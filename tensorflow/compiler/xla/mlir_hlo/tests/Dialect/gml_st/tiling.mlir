@@ -200,3 +200,62 @@ func.func @reduce_row(%lhs: tensor<?x?xf32>,
 // CHECK-PARALLEL:       %[[RES:.*]] = linalg.generic
 // CHECK-PARALLEL-NOT:   gml_st.parallel
 // CHECK-PARALLEL:       return %[[RES]]
+
+// -----
+
+func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
+    %arg : tensor<?x?xf32>) -> tensor<?x?x?xf32> {
+  %bcast = thlo.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
+      outs(%init: tensor<?x?x?xf32>) broadcast_dimensions = [0, 2]
+      { op_label = "tile-3d" }
+  func.return %bcast : tensor<?x?x?xf32>
+}
+
+
+// CHECK-SEQUENTIAL-LABEL: @dynamic_broadcast_in_dim_at_tile
+// CHECK-SEQUENTIAL-SAME:  %[[ARG0:.*]]: tensor<?x?x?xf32>, %[[ARG1:.*]]: tensor<?x?xf32>
+
+// CHECK-SEQUENTIAL:       %[[C0:.*]] = arith.constant 0
+// CHECK-SEQUENTIAL:       %[[C1:.*]] = arith.constant 1
+// CHECK-SEQUENTIAL:       %[[C2:.*]] = arith.constant 2
+// CHECK-SEQUENTIAL:       %[[C256:.*]] = arith.constant 256
+// CHECK-SEQUENTIAL:       %[[C512:.*]] = arith.constant 512
+// CHECK-SEQUENTIAL:       %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+// CHECK-SEQUENTIAL:       %[[DIM_0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+// CHECK-SEQUENTIAL:       %[[DIM_1:.*]] = tensor.dim %[[ARG0]], %[[C2]]
+// CHECK-SEQUENTIAL:       %[[FOR:.*]] = gml_st.for (%[[ARG2:.*]], %[[ARG3:.*]]) = (%[[C0]], %[[C0]])
+// CHECK-SEQUENTIAL-SAME:      to (%[[DIM]], %[[DIM_0]])
+// CHECK-SEQUENTIAL-SAME:      step (%[[C256]], %[[C512]])
+// CHECK-SEQUENTIAL-SAME:      outs (%[[ARG4:.*]] = %[[ARG0]]: tensor<?x?x?xf32>)
+// CHECK-SEQUENTIAL:         %[[MIN:.*]] = affine.min #map0(%[[ARG2]])[%[[C256]], %[[DIM]]]
+// CHECK-SEQUENTIAL:         %[[MIN_0:.*]] = affine.min #map1(%[[ARG3]])[%[[C512]], %[[DIM_0]]]
+// CHECK-SEQUENTIAL:         %[[DIM_2:.*]] = tensor.dim %[[ARG4]], %[[C0]]
+// CHECK-SEQUENTIAL:         %[[DIM_3:.*]] = tensor.dim %[[ARG4]], %[[C1]]
+// CHECK-SEQUENTIAL:         %[[DIM_4:.*]] = tensor.dim %[[ARG4]], %[[C2]]
+// CHECK-SEQUENTIAL:         %[[SPACE:.*]] = gml_st.space [%[[DIM_2]], %[[DIM_3]], %[[DIM_4]]]
+// CHECK-SEQUENTIAL:         %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[ARG2]], %[[ARG3]], %[[C0]]] [%[[MIN]], %[[MIN_0]], %[[DIM_1]]] [1, 1, 1]
+// CHECK-SEQUENTIAL:         %[[DIM_5:.*]] = tensor.dim %[[ARG1]], %[[C0]]
+// CHECK-SEQUENTIAL:         %[[DIM_6:.*]] = tensor.dim %[[ARG1]], %[[C1]]
+// CHECK-SEQUENTIAL:         %[[SPACE_0:.*]] = gml_st.space [%[[DIM_5]], %[[DIM_6]]]
+// CHECK-SEQUENTIAL:         %[[DROP:.*]] = gml_st.drop_dims %[[TILE]], [0, 2]
+// CHECK-SEQUENTIAL:         %[[DIM_7:.*]] = tensor.dim %[[ARG4]], %[[C0]]
+// CHECK-SEQUENTIAL:         %[[CMPI:.*]] = arith.cmpi ne, %[[DIM_5]], %[[DIM_7]]
+// CHECK-SEQUENTIAL:         %[[DIM_8:.*]] = tensor.dim %[[ARG4]], %[[C2]]
+// CHECK-SEQUENTIAL:         %[[CMPI_0:.*]] = arith.cmpi ne, %[[DIM_6]], %[[DIM_8]]
+// CHECK-SEQUENTIAL:         %[[OFFSET:.*]] = gml_st.offset %[[DROP]][%[[C0]]]
+// CHECK-SEQUENTIAL:         %[[SELECT:.*]] = arith.select %[[CMPI]], %[[C0]], %[[OFFSET]]
+// CHECK-SEQUENTIAL:         %[[OFFSET_0:.*]] = gml_st.offset %[[DROP]][%[[C1]]]
+// CHECK-SEQUENTIAL:         %[[SELECT_0:.*]] = arith.select %[[CMPI_0]], %[[C0]], %[[OFFSET_0]]
+// CHECK-SEQUENTIAL:         %[[SIZE:.*]] = gml_st.size %[[DROP]][%[[C0]]]
+// CHECK-SEQUENTIAL:         %[[SELECT_1:.*]] = arith.select %[[CMPI]], %[[C1]], %[[SIZE]]
+// CHECK-SEQUENTIAL:         %[[SIZE_0:.*]] = gml_st.size %[[DROP]][%[[C1]]]
+// CHECK-SEQUENTIAL:         %[[SELECT_2:.*]] = arith.select %[[CMPI_0]], %[[C1]], %[[SIZE_0]]
+// CHECK-SEQUENTIAL:         %[[TILE_0:.*]] = gml_st.tile %[[SPACE_0]] [%[[SELECT]], %[[SELECT_0]]] [%[[SELECT_1]], %[[SELECT_2]]] [1, 1]
+// CHECK-SEQUENTIAL:         %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG4]][%[[TILE]]]
+// CHECK-SEQUENTIAL:         %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[ARG1]][%[[TILE_0]]]
+// CHECK-SEQUENTIAL:         %[[DYNAMIC:.*]] = thlo.dynamic_broadcast_in_dim
+// CHECK-SEQUENTIAL-SAME:        ins(%[[MATERIALIZE_0]]
+// CHECK-SEQUENTIAL-SAME:        outs(%[[MATERIALIZE]]
+// CHECK-SEQUENTIAL-SAME:        broadcast_dimensions = [0, 2]
+// CHECK-SEQUENTIAL:         gml_st.set_yield %[[DYNAMIC]] into %[[ARG4]][%[[TILE]]]
+// CHECK-SEQUENTIAL:       return %[[FOR]]

@@ -2899,6 +2899,7 @@ gentbl_cc_library(
     td_file = "include/mlir-hlo/Dialect/thlo/IR/thlo_ops.td",
     td_srcs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td",
+        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td",
     ],
     deps = [":thlo_ops_td_files"],
 )
@@ -2916,9 +2917,11 @@ cc_library(
         ":fusion_interface",
         ":gml_st",
         ":thlo_ops_inc_gen",
+        ":tiling_interface",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LoopLikeInterface",

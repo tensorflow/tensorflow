@@ -31,16 +31,15 @@ struct ExternalLinalgGenericTilingInterface
     : public TilingInterface::ExternalModel<
           ExternalLinalgGenericTilingInterface, linalg::GenericOp> {
   /// Return the destination operands.
-  SmallVector<Value> getDestinationOperands(Operation *op,
-                                            OpBuilder & /*b*/) const {
+  SmallVector<Value> getDestinationOperands(Operation *op, OpBuilder &) const {
     return cast<linalg::DestinationStyleOpInterface>(op).getOutputOperands();
   }
 
   /// Return the loop iterator type.
   SmallVector<StringRef> getLoopIteratorTypes(Operation *op) const {
-    linalg::GenericOp concreteOp = cast<linalg::GenericOp>(op);
+    linalg::GenericOp genericOp = cast<linalg::GenericOp>(op);
     return llvm::to_vector(
-        llvm::map_range(concreteOp.iterator_types(), [](Attribute strAttr) {
+        llvm::map_range(genericOp.iterator_types(), [](Attribute strAttr) {
           return strAttr.cast<StringAttr>().getValue();
         }));
   }

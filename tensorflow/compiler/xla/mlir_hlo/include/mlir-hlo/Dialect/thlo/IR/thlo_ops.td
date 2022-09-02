@@ -17,6 +17,7 @@ limitations under the License.
 #define THLO_OPS
 
 include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
+include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -35,15 +36,6 @@ class THLO_Op<string mnemonic, list<Trait> traits> :
   let hasVerifier = 1;
 }
 
-
-def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
-    ParentOneOf<["MapOp", "ReductionOp"]>]>,
-    Arguments<(ins Variadic<AnyType>:$values)> {
-  let summary = "Yield operation for thlo.map and thlo.reduce.";
-  let assemblyFormat = "attr-dict $values `:` type($values)";
-  let hasVerifier = 1;
-}
-
 class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
     NoSideEffect] # traits> {
   let hasCustomAssemblyFormat = 1;
@@ -53,6 +45,14 @@ class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
     };
     unsigned getNumOutputs() { return 1; };
   }];
+}
+
+def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
+    ParentOneOf<["MapOp", "ReductionOp"]>]>,
+    Arguments<(ins Variadic<AnyType>:$values)> {
+  let summary = "Yield operation for thlo.map and thlo.reduce.";
+  let assemblyFormat = "attr-dict $values `:` type($values)";
+  let hasVerifier = 1;
 }
 
 def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
@@ -71,6 +71,7 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
 
 def THLO_DynamicBroadcastInDimOp : THLO_DstStyleOp<"dynamic_broadcast_in_dim", [
     DeclareOpInterfaceMethods<FusionInterface>,
+    DeclareOpInterfaceMethods<TilingInterface>,
     SameOperandsAndResultElementType]> {
   let summary = "Destination-style twin for `mhlo.dynamic_broadcast_in_dim`";
 
@@ -84,7 +85,7 @@ def THLO_DynamicBroadcastInDimOp : THLO_DstStyleOp<"dynamic_broadcast_in_dim", [
     OptionalAttr<DenseI64ArrayAttr>:$known_expanding_dimensions,
     OptionalAttr<DenseI64ArrayAttr>:$known_nonexpanding_dimensions
   );
-  let results = (outs Variadic<AnyTensor>:$result);
+  let results = (outs TensorOrMemref:$result);
 
   let extraClassDeclaration = extraBaseClassDeclaration;
 }

@@ -481,7 +481,8 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
   }
 
   void getDependentDialects(DialectRegistry &registry) const final {
-    registry.insert<GmlStDialect>();
+    registry
+        .insert<GmlStDialect, tensor::TensorDialect, linalg::LinalgDialect>();
     registerGmlStTilingInterfaceExternalModels(registry);
   }
 

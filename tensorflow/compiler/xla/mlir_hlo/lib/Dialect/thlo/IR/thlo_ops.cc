@@ -27,11 +27,13 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -443,11 +445,159 @@ LogicalResult DynamicBroadcastInDimOp::verify() {
   return verifyDestinationStyleOp(getOperation(), getNumOutputs());
 }
 
+SmallVector<StringRef> DynamicBroadcastInDimOp::getLoopIteratorTypes() {
+  auto initTy = init().getType().cast<RankedTensorType>();
+  SmallVector<StringRef> allParallel(initTy.getRank(),
+                                     getParallelIteratorTypeName());
+  return allParallel;
+}
+
+SmallVector<Value> DynamicBroadcastInDimOp::getDestinationOperands(
+    OpBuilder &) {
+  return {init()};
+}
+
+SmallVector<Range> DynamicBroadcastInDimOp::getIterationDomain(OpBuilder &b) {
+  // Simple iteration domain defined on the result space. This way, tiling and
+  // fusion rely directly on the same implementation.
+  auto dimValues = tensor::createDimValues(b, getLoc(), init());
+  return llvm::to_vector(llvm::map_range(dimValues, [&](auto d) -> Range {
+    return {b.getIndexAttr(0), d, b.getIndexAttr(1)};
+  }));
+}
+
+gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
+    OpBuilder &b, ValueRange dest, ArrayRef<OpFoldResult> offsets,
+    ArrayRef<OpFoldResult> sizes, bool tileDestOperands) {
+  assert(tileDestOperands && "not tiling dst operands is not implemented");
+  assert(dest.size() == 1 && dest.front() == init() && "expect init operand");
+
+  // Create tile subset.
+  auto loc = getLoc();
+  auto initTy = init().getType().cast<RankedTensorType>();
+  SmallVector<OpFoldResult> unitStrides(initTy.getRank(), b.getIndexAttr(1));
+  SmallVector<Value> dynamicSpaceSizes =
+      tensor::createDynamicDimValues(b, loc, init());
+  ArrayAttr staticSpaceSizes = b.getI64ArrayAttr(initTy.getShape());
+  auto space =
+      b.create<gml_st::SpaceOp>(loc, dynamicSpaceSizes, staticSpaceSizes);
+  auto tile = b.create<gml_st::TileOp>(loc, space, offsets, sizes, unitStrides);
+
+  // Create the needed constants only once.
+  DenseMap<uint64_t, Value> localIndexConstants;
+  auto getIndexConstant = [&](uint64_t c) -> Value {
+    auto it = localIndexConstants.find(c);
+    if (it != localIndexConstants.end()) return it->second;
+    auto cst = b.create<arith::ConstantIndexOp>(loc, c);
+    localIndexConstants[c] = cst;
+    return cst;
+  };
+
+  // Materialize operand space.
+  auto operandTy = operand().getType().cast<RankedTensorType>();
+  auto operandSpaceTy = b.getType<gml_st::TileType>(operandTy.getShape());
+  auto dynamicDims = tensor::createDynamicDimValues(b, loc, operand());
+  auto staticDims = b.getI64ArrayAttr(operandTy.getShape());
+  Value operandSpace =
+      b.create<gml_st::SpaceOp>(loc, operandSpaceTy, dynamicDims, staticDims);
+
+  // Materialize operand dimensions.
+  SmallVector<Value> operandDims;
+  int64_t dynamicDimsIdx = 0;
+  operandDims.reserve(operandTy.getRank());
+  for (const auto &it : llvm::enumerate(operandTy.getShape())) {
+    int64_t d = it.value();
+    Value dim = d == ShapedType::kDynamicSize ? dynamicDims[dynamicDimsIdx++]
+                                              : getIndexConstant(d);
+    operandDims.push_back(dim);
+  }
+
+  // Collapse the subset to operate only on corresponding dimensions.
+  // TODO(frgossen): Only generate this when needed.
+  auto collapsedSubset =
+      b.create<gml_st::DropDimsOp>(loc, tile, broadcast_dimensionsAttr());
+
+  // Find the expanding dimensions. If corresponding operand and result
+  // dimensions are different then the dimension is expanding.
+  // TODO(frgossen): Use info from known expanding and known non-expanding
+  // dimensions here.
+  SmallVector<Value> operandExpandingDims;
+  for (const auto &it : llvm::enumerate(broadcast_dimensions())) {
+    auto operandDim = operandDims[it.index()];
+    auto resultDim =
+        b.create<tensor::DimOp>(loc, init(), getIndexConstant(it.value()));
+    operandExpandingDims.push_back(b.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::ne, operandDim, resultDim));
+  }
+
+  // Compute operand tile offsets.
+  int64_t operandRank = operandTy.getRank();
+  auto staticOffsets = b.getI64ArrayAttr(
+      SmallVector<int64_t>(operandRank, ShapedType::kDynamicStrideOrOffset));
+  SmallVector<Value> operandOffsets;
+  Value zero = getIndexConstant(0);
+  for (int i = 0; i < operandRank; ++i) {
+    Value isExpanding = operandExpandingDims[i];
+    Value collapsedSubsetOffset =
+        b.create<gml_st::OffsetOp>(loc, collapsedSubset, getIndexConstant(i));
+    operandOffsets.push_back(b.create<arith::SelectOp>(loc, isExpanding, zero,
+                                                       collapsedSubsetOffset));
+  }
+
+  // Compute operand tile sizes.
+  auto staticTileSizes = b.getI64ArrayAttr(
+      SmallVector<int64_t>(operandRank, ShapedType::kDynamicSize));
+  SmallVector<Value> tileSizes;
+  Value one = getIndexConstant(1);
+  for (int i = 0; i < operandRank; ++i) {
+    Value isExpanding = operandExpandingDims[i];
+    Value tileSize =
+        b.create<gml_st::SizeOp>(loc, collapsedSubset, getIndexConstant(i));
+    tileSizes.push_back(
+        b.create<arith::SelectOp>(loc, isExpanding, one, tileSize));
+  }
+
+  // Create operand tile.
+  auto staticTileStrides =
+      b.getI64ArrayAttr(SmallVector<int64_t>(operandRank, 1));
+  SmallVector<Value> tileStrides = {};
+  auto operandTileTy = b.getType<gml_st::TileType>(
+      SmallVector<int64_t>(operandRank, ShapedType::kDynamicSize));
+  auto operandTile = b.create<gml_st::TileOp>(
+      loc, operandTileTy, operandSpace, operandOffsets, tileSizes, tileStrides,
+      staticOffsets, staticTileSizes, staticTileStrides);
+
+  // Materialize operand tiles.
+  Value tiledInit = b.create<gml_st::MaterializeOp>(loc, init(), tile);
+  Value tiledOperand =
+      b.create<gml_st::MaterializeOp>(loc, operand(), operandTile);
+
+  // Finally, materialize tiled broadcast.
+  auto tileTy = tile.getType();
+  auto resultTy = result().getType().cast<RankedTensorType>();
+  auto tiledResultTy =
+      RankedTensorType::get(tileTy.getShape(), resultTy.getElementType());
+  return b.create<DynamicBroadcastInDimOp>(
+      loc, TypeRange{tiledResultTy}, tiledOperand, tiledInit,
+      broadcast_dimensionsAttr(), known_expanding_dimensionsAttr(),
+      known_nonexpanding_dimensionsAttr());
+}
+
+FailureOr<Value> DynamicBroadcastInDimOp::generateResultTileValue(
+    OpBuilder &b, unsigned resultNumber, ValueRange dest,
+    ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> sizes,
+    bool tileDestOperands) {
+  assert(resultNumber == 0 && "expect unique result idx");
+  return getTiledImplementation(b, dest, offsets, sizes, tileDestOperands)
+      ->getResults()
+      .front();
+}
+
 Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
                                     OpBuilder &builder) {
   Type subsetTy = subset.getType();
   auto operandTy = operand().getType().cast<RankedTensorType>();
-  auto resultTy = getType(0).cast<RankedTensorType>();
+  auto resultTy = result().getType().cast<RankedTensorType>();
   int64_t operandRank = operandTy.getRank();
 
   // Create the needed constants only once.
@@ -553,12 +703,10 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
     // Finally, materialize tiled broadcast.
     auto tiledResultTy =
         RankedTensorType::get(tileTy.getShape(), resultTy.getElementType());
-    return builder
-        .create<DynamicBroadcastInDimOp>(
-            loc, TypeRange{tiledResultTy}, tiledOperand, tiledInit,
-            broadcast_dimensionsAttr(), known_expanding_dimensionsAttr(),
-            known_nonexpanding_dimensionsAttr())
-        .getResult(0);
+    return builder.create<DynamicBroadcastInDimOp>(
+        loc, TypeRange{tiledResultTy}, tiledOperand, tiledInit,
+        broadcast_dimensionsAttr(), known_expanding_dimensionsAttr(),
+        known_nonexpanding_dimensionsAttr());
   }
 
   return {};

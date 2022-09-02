@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_THLO_IR_THLO_OPS_H_
 
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
