@@ -34,7 +34,6 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -56,6 +55,14 @@ class CustomCallBinding;
 // Registers mappings from TypeIDs supported by the custom calls to their unique
 // names in the given registry.
 void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& registry);
+
+// A type tag to declare MLIR TypeID specializations for types passed to the
+// custom calls. We don't want to declare specializations for scalar types
+// directly in this translation unit, so we rely on a tag to wrap them.
+//
+// See explicit TypeID declarations at the end of this file.
+template <typename T>
+struct Tagged {};
 
 class CustomCall {
  public:
@@ -114,8 +121,16 @@ class CustomCall {
   }
 
   template <typename T>
-  static bool CheckType(RuntimeChecks checks, TypeID type_id) {
-    return !CheckTypes(checks) || type_id == TypeID::get<T>();
+  LLVM_ATTRIBUTE_ALWAYS_INLINE static bool Isa(RuntimeChecks checks,
+                                               TypeID type_id) {
+    return !CheckTypes(checks) || type_id == TypeID::get<Tagged<T>>();
+  }
+
+  template <typename T, typename U, typename... Ts>
+  LLVM_ATTRIBUTE_ALWAYS_INLINE static bool Isa(RuntimeChecks checks,
+                                               TypeID type_id) {
+    return !CheckTypes(checks) || type_id == TypeID::get<Tagged<T>>() ||
+           Isa<U, Ts...>(checks, type_id);
   }
 
   virtual ~CustomCall() = default;
@@ -323,14 +338,6 @@ struct CustomCallAttrDecoding;
 //
 template <typename T, CustomCall::RuntimeChecks>
 struct CustomCallRetDecoding;
-
-// A type tag to declare MLIR TypeID specializations for types passed to the
-// custom calls. We don't want to declare specializations for scalar types
-// directly in this translation unit, so we rely on a tag to wrap them.
-//
-// See explicit TypeID declarations at the end of this file.
-template <typename T>
-struct Tagged {};
 
 // A type tag to represent empty arrays of unknown element type.
 struct EmptyArrayRef {};
@@ -914,9 +921,9 @@ struct CustomCallArgDecoding<StridedMemrefView, checks> {
 
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   static FailureOr<StridedMemrefView> Decode(TypeID type_id, void* value) {
-    if (!(CustomCall::CheckType<Tagged<MemrefView>>(checks, type_id) ||
-          CustomCall::CheckType<Tagged<StridedMemrefView>>(checks, type_id)))
+    if (!CustomCall::Isa<MemrefView, StridedMemrefView>(checks, type_id)) {
       return failure();
+    }
 
     auto* encoded = reinterpret_cast<EncodedMemref*>(value);
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
@@ -937,8 +944,9 @@ struct CustomCallArgDecoding<MemrefView, checks> {
 
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   static FailureOr<MemrefView> Decode(TypeID type_id, void* value) {
-    if (!CustomCall::CheckType<Tagged<MemrefView>>(checks, type_id))
+    if (!CustomCall::Isa<MemrefView>(checks, type_id)) {
       return failure();
+    }
 
     auto* encoded = reinterpret_cast<EncodedMemref*>(value);
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
@@ -956,8 +964,9 @@ struct CustomCallArgDecoding<FlatMemrefView, checks> {
 
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   static FailureOr<FlatMemrefView> Decode(TypeID type_id, void* value) {
-    if (!CustomCall::CheckType<Tagged<MemrefView>>(checks, type_id))
+    if (!CustomCall::Isa<MemrefView>(checks, type_id)) {
       return failure();
+    }
 
     auto* encoded = reinterpret_cast<EncodedMemref*>(value);
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
@@ -976,8 +985,9 @@ struct CustomCallArgDecoding<FlatMemrefView, checks> {
   struct CustomCallArgDecoding<T, checks> {                                 \
     LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(TypeID type_id, \
                                                             void* value) {  \
-      if (!CustomCall::CheckType<Tagged<T>>(checks, type_id))               \
+      if (!CustomCall::Isa<T>(checks, type_id)) {                           \
         return failure();                                                   \
+      }                                                                     \
                                                                             \
       ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(T));                \
       return *reinterpret_cast<T*>(value);                                  \
@@ -997,7 +1007,7 @@ XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(double);
   struct CustomCallRetDecoding<T, checks> {                          \
     LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Result<T>> Decode( \
         TypeID type_id, void* value) {                               \
-      if (!CustomCall::CheckType<Tagged<T>>(checks, type_id)) {      \
+      if (!CustomCall::Isa<T>(checks, type_id)) {                    \
         return mlir::failure();                                      \
       }                                                              \
                                                                      \
@@ -1017,10 +1027,12 @@ template <CustomCall::RuntimeChecks checks>
 struct CustomCallArgDecoding<Eigen::half, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Eigen::half> Decode(
       TypeID type_id, void* value) {
-    if (!CustomCall::CheckType<Tagged<Eigen::half>>(checks, type_id))
+    if (!CustomCall::Isa<Eigen::half>(checks, type_id)) {
       return failure();
+    }
 
     auto* src = reinterpret_cast<uint16_t*>(value);
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(uint16_t));
     return Eigen::numext::bit_cast<Eigen::half>(*src);
   }
 };
@@ -1032,7 +1044,7 @@ template <CustomCall::RuntimeChecks checks>
 struct CustomCallAttrDecoding<std::string_view, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<std::string_view> Decode(
       std::string_view name, TypeID type_id, void* value) {
-    if (!CustomCall::CheckType<Tagged<std::string_view>>(checks, type_id)) {
+    if (!CustomCall::Isa<std::string_view>(checks, type_id)) {
       return failure();
     }
 
@@ -1054,8 +1066,9 @@ struct CustomCallAttrDecoding<CustomCall::VariantAttr, checks> {
   struct CustomCallAttrDecoding<T, checks> {                  \
     LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(  \
         std::string_view name, TypeID type_id, void* value) { \
-      if (!CustomCall::CheckType<Tagged<T>>(checks, type_id)) \
+      if (!CustomCall::Isa<T>(checks, type_id)) {             \
         return failure();                                     \
+      }                                                       \
                                                               \
       return *reinterpret_cast<T*>(value);                    \
     }                                                         \
@@ -1072,22 +1085,19 @@ XLA_RUNTIME_REGISTER_SCALAR_ATTR_DECODING(double);
 // Both EncodedArray and 1-D EncodedDenseElements can be decoded as an
 // llvm::ArrayRef. Pointers to both EncodedArray and 1-D EncodedDenseElements
 // can be dereferenced as a pointer to EncodedArray.
-#define XLA_RUNTIME_REGISTER_ARRAY_ATTR_DECODING(T)                           \
-  template <CustomCall::RuntimeChecks checks>                                 \
-  struct CustomCallAttrDecoding<llvm::ArrayRef<T>, checks> {                  \
-    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<llvm::ArrayRef<T>> Decode(  \
-        std::string_view name, TypeID type_id, void* value) {                 \
-      if ((!CustomCall::CheckType<Tagged<llvm::ArrayRef<T>>>(checks,          \
-                                                             type_id)) &&     \
-          (!CustomCall::CheckType<Tagged<CustomCall::TensorRef<T>>>(          \
-              checks, type_id)) &&                                            \
-          (!CustomCall::CheckType<Tagged<EmptyArrayRef>>(checks, type_id))) { \
-        return failure();                                                     \
-      }                                                                       \
-                                                                              \
-      auto* encoded = reinterpret_cast<internal::EncodedArray<T>*>(value);    \
-      return llvm::ArrayRef<T>(encoded->data, encoded->size);                 \
-    }                                                                         \
+#define XLA_RUNTIME_REGISTER_ARRAY_ATTR_DECODING(T)                          \
+  template <CustomCall::RuntimeChecks checks>                                \
+  struct CustomCallAttrDecoding<llvm::ArrayRef<T>, checks> {                 \
+    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<llvm::ArrayRef<T>> Decode( \
+        std::string_view name, TypeID type_id, void* value) {                \
+      if (!CustomCall::Isa<llvm::ArrayRef<T>, CustomCall::TensorRef<T>,      \
+                           EmptyArrayRef>(checks, type_id)) {                \
+        return failure();                                                    \
+      }                                                                      \
+                                                                             \
+      auto* encoded = reinterpret_cast<internal::EncodedArray<T>*>(value);   \
+      return llvm::ArrayRef<T>(encoded->data, encoded->size);                \
+    }                                                                        \
   }
 
 XLA_RUNTIME_REGISTER_ARRAY_ATTR_DECODING(int32_t);
@@ -1097,22 +1107,22 @@ XLA_RUNTIME_REGISTER_ARRAY_ATTR_DECODING(double);
 
 #undef XLA_RUNTIME_REGISTER_ARRAY_ATTR_DECODING
 
-#define XLA_RUNTIME_REGISTER_DENSE_ELEMENTS_ATTR_DECODING(T)                 \
-  template <CustomCall::RuntimeChecks checks>                                \
-  struct CustomCallAttrDecoding<CustomCall::TensorRef<T>, checks> {          \
-    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<CustomCall::TensorRef<T>>  \
-    Decode(std::string_view name, TypeID type_id, void* value) {             \
-      if (!CustomCall::CheckType<Tagged<CustomCall::TensorRef<T>>>(checks,   \
-                                                                   type_id)) \
-        return failure();                                                    \
-                                                                             \
-      auto* encoded =                                                        \
-          reinterpret_cast<internal::EncodedDenseElements<T>*>(value);       \
-      auto payload = encoded->payload;                                       \
-      llvm::ArrayRef<T> data(payload.data, payload.size);                    \
-      llvm::ArrayRef<int64_t> shape(encoded->shape, encoded->rank);          \
-      return CustomCall::TensorRef<T>({shape, data});                        \
-    }                                                                        \
+#define XLA_RUNTIME_REGISTER_DENSE_ELEMENTS_ATTR_DECODING(T)                \
+  template <CustomCall::RuntimeChecks checks>                               \
+  struct CustomCallAttrDecoding<CustomCall::TensorRef<T>, checks> {         \
+    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<CustomCall::TensorRef<T>> \
+    Decode(std::string_view name, TypeID type_id, void* value) {            \
+      if (!CustomCall::Isa<CustomCall::TensorRef<T>>(checks, type_id)) {    \
+        return failure();                                                   \
+      }                                                                     \
+                                                                            \
+      auto* encoded =                                                       \
+          reinterpret_cast<internal::EncodedDenseElements<T>*>(value);      \
+      auto payload = encoded->payload;                                      \
+      llvm::ArrayRef<T> data(payload.data, payload.size);                   \
+      llvm::ArrayRef<int64_t> shape(encoded->shape, encoded->rank);         \
+      return CustomCall::TensorRef<T>({shape, data});                       \
+    }                                                                       \
   }
 
 XLA_RUNTIME_REGISTER_DENSE_ELEMENTS_ATTR_DECODING(int32_t);
@@ -1141,8 +1151,9 @@ XLA_RUNTIME_REGISTER_DENSE_ELEMENTS_ATTR_DECODING(double);
                                                                   \
     LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(      \
         std::string_view name, TypeID type_id, void* value) {     \
-      if (!CustomCall::CheckType<Tagged<T>>(checks, type_id))     \
+      if (!CustomCall::Isa<T>(checks, type_id)) {                 \
         return failure();                                         \
+      }                                                           \
                                                                   \
       return static_cast<T>(*reinterpret_cast<U*>(value));        \
     }                                                             \
@@ -1174,9 +1185,10 @@ struct AggregateMember {
   struct CustomCallAttrDecoding<T, checks> {                                   \
     LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(                   \
         std::string_view name, TypeID type_id, void* value) {                  \
-      if (!CustomCall::CheckType<Tagged<T>>(checks, type_id)) {                \
+      if (!CustomCall::Isa<T>(checks, type_id)) {                              \
         return failure();                                                      \
       }                                                                        \
+                                                                               \
       auto decoder = internal::AggregateDecoder<T, checks>(__VA_ARGS__);       \
       return decltype(decoder)::Decode(reinterpret_cast<void**>(value),        \
                                        internal::AggregateNames(__VA_ARGS__)); \
@@ -1268,6 +1280,7 @@ XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(std::string_view);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::StridedMemrefView);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::MemrefView);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::FlatMemrefView);
+XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::EmptyArrayRef);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(int32_t);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(int64_t);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(float);
