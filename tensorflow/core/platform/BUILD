@@ -266,7 +266,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
-    ] + tf_platform_deps("dynamic_annotations"),
+        "//tensorflow/tsl/platform:dynamic_annotations",
+    ],
 )
 
 cc_library(

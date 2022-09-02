@@ -33,6 +33,15 @@ cc_library(
 )
 
 cc_library(
+    name = "dynamic_annotations",
+    hdrs = ["dynamic_annotations.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+    ] + tf_platform_deps("dynamic_annotations"),
+)
+
+cc_library(
     name = "gif",
     hdrs = ["gif.h"],
     compatible_with = get_compatible_with_portable(),
@@ -85,6 +94,7 @@ filegroup(
     srcs = [
         "bfloat16.h",
         "casts.h",
+        "dynamic_annotations.h",
         "init_main.h",
         "net.h",
         "stack_frame.h",
@@ -113,6 +123,7 @@ filegroup(
     srcs = [
         "bfloat16.h",
         "byte_order.h",
+        "dynamic_annotations.h",
         "macros.h",
         "platform.h",
     ],
@@ -126,6 +137,7 @@ filegroup(
         "bfloat16.h",
         "byte_order.h",
         "casts.h",
+        "dynamic_annotations.h",
         "init_main.h",
         "intrusive_ptr.h",
         "macros.h",
@@ -162,6 +174,7 @@ filegroup(
             "*.h",
         ],
         exclude = [
+            "dynamic_annotations.h",
             "gif.h",
             "jpeg.h",
             "str_util.h",
@@ -265,6 +278,7 @@ filegroup(
     name = "jpeg_internal_hdrs",
     srcs = [
         "bfloat16.h",
+        "dynamic_annotations.h",
         "macros.h",
         "platform.h",
         "stringpiece.h",
@@ -280,6 +294,7 @@ filegroup(
     name = "gif_internal_hdrs",
     srcs = [
         "bfloat16.h",
+        "dynamic_annotations.h",
         "macros.h",
         "platform.h",
     ],
@@ -299,6 +314,7 @@ cc_library(
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
+        "dynamic_annotations.h",
         "macros.h",
         "platform.h",
     ],
