@@ -13,20 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
-#define TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
+#ifndef TENSORFLOW_CORE_GRAPH_REGULARIZATION_SIMPLE_DELETE_H_
+#define TENSORFLOW_CORE_GRAPH_REGULARIZATION_SIMPLE_DELETE_H_
 
-#include "absl/strings/string_view.h"
-#include "tensorflow/core/protobuf/fingerprint.pb.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 
-namespace tensorflow::saved_model::fingerprinting {
+namespace tensorflow::graph_regularization {
 
-// Creates a FingerprintDef proto from a MetaGraph and the checkpoint meta file
-// (.index) in `export_dir`.
-FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
-                                    absl::string_view export_dir);
+// Regularizes the graph_def by deleting non-deterministic sections.
+void SimpleDelete(GraphDef& graph_def);
 
-}  // namespace tensorflow::saved_model::fingerprinting
+}  // namespace tensorflow::graph_regularization
 
-#endif  // TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
+#endif  // TENSORFLOW_CORE_GRAPH_REGULARIZATION_SIMPLE_DELETE_H_
