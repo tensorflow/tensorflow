@@ -162,6 +162,15 @@ filegroup(
 )
 
 filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "fingerprint.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//tensorflow/core/platform:__pkg__"],
+)
+
+filegroup(
     name = "gif_hdrs",
     srcs = [
         "gif.h",
