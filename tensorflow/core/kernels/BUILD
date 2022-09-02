@@ -4122,7 +4122,6 @@ tf_kernel_library(
         "conv_grad_input_ops_double.cc",
         "conv_grad_input_ops_float.cc",
         "conv_grad_input_ops_half.cc",
-        "conv_grad_input_ops_bfloat16.cc",
         "conv_grad_input_ops_int32.cc",
         "conv_grad_input_ops.cc",
         "conv_grad_ops_3d.cc",

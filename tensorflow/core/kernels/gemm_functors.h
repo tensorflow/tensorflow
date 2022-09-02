@@ -110,31 +110,6 @@ class FastGemmFunctor {
   }
 };
 
-// Use float32 accumulation for bfloat16 to deal with precision accumulation
-// issues.
-template <>
-class FastGemmFunctor<Eigen::bfloat16, Eigen::bfloat16, Eigen::bfloat16> {
- public:
-  void operator()(tensorflow::OpKernelContext* ctx, size_t m, size_t n,
-                  size_t k, const Eigen::bfloat16* a, size_t lda,
-                  const Eigen::bfloat16* b, size_t ldb, Eigen::bfloat16* c,
-                  size_t ldc) {
-    using ConstMatrix =
-        typename tensorflow::TTypes<const Eigen::bfloat16>::Matrix;
-    ConstMatrix a_matrix(a, m, k);
-    ConstMatrix b_matrix(b, k, n);
-    typename tensorflow::TTypes<Eigen::bfloat16>::Matrix c_matrix(c, m, n);
-
-    Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
-    dim_pair[0].first = 1;
-    dim_pair[0].second = 0;
-    c_matrix.device(ctx->eigen_device<Eigen::ThreadPoolDevice>()) =
-        a_matrix.cast<float>()
-            .contract(b_matrix.cast<float>(), dim_pair)
-            .template cast<Eigen::bfloat16>();
-  }
-};
-
 // If we have a fast CBLAS library, use its implementation through a wrapper.
 #if defined(USE_CBLAS_GEMM)
 template <>

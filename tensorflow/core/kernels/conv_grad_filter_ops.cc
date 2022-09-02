@@ -641,7 +641,6 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                               .AttrConstraint("data_format", "NHWC"),         \
                           Conv2DBackpropFilterOp<CPUDevice, T>);
 
-TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);

@@ -761,7 +761,6 @@ class Conv2DOp : public BinaryOp<T> {
 // If we're using the alternative GEMM-based implementation of Conv2D for the
 // CPU implementation, don't register this EigenTensor-based version.
 #if !defined(USE_GEMM_FOR_CONV)
-TF_CALL_bfloat16(REGISTER_CPU);
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);

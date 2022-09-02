@@ -572,11 +572,8 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
 // request the implementation explicitly, since otherwise it will clash with the
 // default EigenTensor-based kernel.
 #if defined(USE_GEMM_FOR_CONV)
-TF_CALL_bfloat16(REGISTER_CPU);
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
-TF_CALL_double(REGISTER_CPU);
-TF_CALL_int32(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 }  // namespace tensorflow
