@@ -30,13 +30,14 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
 
 bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
-  if (instr.opcode() == HloOpcode::kReduce &&
-      !IsReductionFromOrToContiguousDimensions(instr)) {
-    return true;
+  // Avoid fusing gather if it has output larger than the input
+  // which means that inputs are used multiple times.
+  if (instr.opcode() == HloOpcode::kGather) {
+    return ShapeUtil::ElementsIn(instr.shape()) >
+           ShapeUtil::ElementsIn(instr.operand(0)->shape());
   }
   // Avoid fusing reduce-window when stride is less than window size to minimize
   // the number of reads of the same elements.
@@ -50,7 +51,25 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   return false;
 }
 
-}  // namespace
+bool IsExpensiveToRepeat(const HloInstruction& instr) {
+  CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
+  // Reductions which use many input elements to calculate one output element
+  // are both memory and computationally heavy.
+  constexpr int kMaxInputsPerOutput = 10;
+  if (instr.opcode() == HloOpcode::kReduce &&
+      !IsReductionFromOrToContiguousDimensions(instr)) {
+    int64_t reduction_ratio = ShapeUtil::ElementsIn(instr.operand(0)->shape()) /
+                              ShapeUtil::ElementsIn(instr.shape());
+    if (reduction_ratio > kMaxInputsPerOutput) return true;
+  }
+  if (instr.opcode() == HloOpcode::kReduceWindow) {
+    int64_t reduction_ratio = 1;
+    for (const auto& dim : instr.window().dimensions())
+      reduction_ratio *= dim.size();
+    if (reduction_ratio > kMaxInputsPerOutput) return true;
+  }
+  return false;
+}
 
 bool IsPhysicallyTransposing(const HloInstruction& instr) {
   if (instr.opcode() == HloOpcode::kFusion) {
@@ -197,8 +216,8 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     return "the producer is not fusible as it is a multi-output fusion";
   }
 
-  if (CreatesNestedLoop(producer, consumer)) {
-    return "the fusion would create a nested loop";
+  if (CreatesHeavyComputation(producer, consumer)) {
+    return "the fusion would create a heavy computation";
   }
 
   // Do not fuse into fusions if the resulting kernel would suffer from
@@ -262,7 +281,7 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return false;
   }
-  if (CreatesNestedLoop(producer, consumer)) {
+  if (CreatesHeavyComputation(producer, consumer)) {
     return false;
   }
   if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
@@ -472,36 +491,36 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
   return {};
 }
 
-bool CreatesNestedLoop(const HloInstruction& producer,
-                       const HloInstruction& consumer) {
-  // If producer does not have an instruction that codegens a loop then there is
-  // nothing to do.
-  auto producer_has_loop_codegen = [&](const HloInstruction& instr) {
+bool CreatesHeavyComputation(const HloInstruction& producer,
+                             const HloInstruction& consumer) {
+  // If producer's computation is not expensive to repeat even in the consumer
+  // requests the same element multiple times there is nothing to do.
+  auto producer_is_heavy = [&](const HloInstruction& instr) {
     if (producer.opcode() != HloOpcode::kFusion) {
-      return IfFusedReadsElementsMultipleTimes(producer);
+      return IsExpensiveToRepeat(producer);
     }
     for (const auto& instr : producer.fused_instructions()) {
-      if (IfFusedReadsElementsMultipleTimes(*instr)) {
+      if (IsExpensiveToRepeat(*instr)) {
         return true;
       }
     }
     return false;
   };
-  if (!producer_has_loop_codegen(producer)) {
+  if (!producer_is_heavy(producer)) {
     return false;
   }
 
   // If consumer is a non-fusion instruction then we have to check if it
-  // generates a loop.
+  // reads input multiple times.
   if (consumer.opcode() != HloOpcode::kFusion) {
     return IfFusedReadsElementsMultipleTimes(consumer);
   }
 
   // If consumer is a fusion then we have to check if the output of producer is
   // used directly or indirectly as an input to an HLO instruction that
-  // generates a loop, i.e. there is a path in the graph from an operand
-  // corresponding to the producer to an HLO instruction generating a loop in
-  // the consumer.
+  // accesses input multiple times, i.e. there is a path in the graph
+  // from an operand corresponding to the producer to an HLO instruction
+  // generating multiple accesses in the consumer.
   for (const HloInstruction* operand : consumer.operands()) {
     if (operand != &producer) {
       continue;

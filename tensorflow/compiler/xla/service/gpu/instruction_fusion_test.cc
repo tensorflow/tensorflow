@@ -219,6 +219,32 @@ TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduceFusion) {
       GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
 }
 
+TEST_F(InstructionFusionTest, DoNotRepeatLargeReduceWindow) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = s32[512,512,2] parameter(0)
+      p1 = f32[1,1,512,512] parameter(1)
+      constant_1 = f32[] constant(1)
+      reduce-window.1 = reduce-window(p1, constant_1),
+        window={size=1x1x9x9}, to_apply=add
+      ROOT ret = gather(reduce-window.1, p0), offset_dims={0,1,2,3},
+        collapsed_slice_dims={}, start_index_map={1,2},
+        index_vector_dim=2, slice_sizes={1,1,1,1}
+    })")
+                    .value();
+
+  EXPECT_FALSE(
+      GpuInstructionFusion(/*may_duplicate=*/true).Run(module.get()).value());
+}
+
 TEST_F(InstructionFusionTest, FuseLayoutChangingOpWithElementwise) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module

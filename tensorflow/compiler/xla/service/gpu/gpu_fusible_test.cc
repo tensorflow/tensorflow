@@ -1042,29 +1042,30 @@ TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
       static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
 }
 
-TEST_F(GpuFusibleTest, CreatesNestedLoop_NonfusionInstr) {
+TEST_F(GpuFusibleTest, CreatesHeavyComputation_NonfusionInstr) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY entry {
-      p_0 = f32[2,5] parameter(0)
+      p_0 = f32[20,50] parameter(0)
 
       constant_1 = f32[] constant(1)
-      reduce-window_1 = f32[3,5] reduce-window(p_0, constant_1),
-        window={size=2x1 pad=0_2x0_0}, to_apply=scalar_add
+      reduce-window_1 = f32[21,41] reduce-window(p_0, constant_1),
+        window={size=20x10 pad=0_20x0_0}, to_apply=scalar_add
 
       constant_2 = f32[] constant(2)
-      reduce-window_2 = f32[3,5] reduce-window(p_0, constant_2),
-        window={size=2x1 pad=0_2x0_0}, to_apply=scalar_add
+      reduce-window_2 = f32[21,41] reduce-window(p_0, constant_2),
+        window={size=20x10 pad=0_20x0_0}, to_apply=scalar_add
 
-      ROOT root = (f32[3,5], f32[3,5]) tuple(reduce-window_1, reduce-window_2)
+      ROOT root = (f32[21,41], f32[21,41])
+        tuple(reduce-window_1, reduce-window_2)
     })"))
                     .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* producer = root->operand(0);
   const HloInstruction* consumer = root->operand(1);
-  EXPECT_TRUE(CreatesNestedLoop(*producer, *consumer));
+  EXPECT_TRUE(CreatesHeavyComputation(*producer, *consumer));
 }
 
-TEST_F(GpuFusibleTest, DoesNotCreateNestedLoop_NonfusionInstr) {
+TEST_F(GpuFusibleTest, DoesNotCreateHeavyComputation_NonfusionInstr) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY entry {
       p_0 = f32[3,5] parameter(0)
@@ -1082,10 +1083,11 @@ TEST_F(GpuFusibleTest, DoesNotCreateNestedLoop_NonfusionInstr) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* producer = root->operand(0);
   const HloInstruction* consumer = root->operand(1);
-  EXPECT_FALSE(CreatesNestedLoop(*producer, *consumer));
+  EXPECT_FALSE(CreatesHeavyComputation(*producer, *consumer));
 }
 
-TEST_F(GpuFusibleTest, DoesNotCreateNestedLoop_NonoverlappingReduceWindows) {
+TEST_F(GpuFusibleTest,
+       DoesNotCreateHeavyComputation_NonoverlappingReduceWindows) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY entry {
       p_0 = f32[2,5] parameter(0)
@@ -1104,43 +1106,66 @@ TEST_F(GpuFusibleTest, DoesNotCreateNestedLoop_NonoverlappingReduceWindows) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* producer = root->operand(0);
   const HloInstruction* consumer = root->operand(1);
-  EXPECT_FALSE(CreatesNestedLoop(*producer, *consumer));
+  EXPECT_FALSE(CreatesHeavyComputation(*producer, *consumer));
 }
 
-TEST_F(GpuFusibleTest, CreatesNestedLoop_FusionInstr) {
+TEST_F(GpuFusibleTest, CreatesHeavyComputation_ReduceWindowGather) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY entry {
+      p0 = s32[512,512,2] parameter(0)
+      p1 = f32[1,1,512,512] parameter(1)
+      constant_1 = f32[] constant(0)
+      reduce-window.1 = reduce-window(p1, constant_1),
+        window={size=1x1x16x16 stride=1x1x16x16}, to_apply=scalar_add
+      ROOT ret = gather(reduce-window.1, p0), offset_dims={0,1,2,3},
+        collapsed_slice_dims={}, start_index_map={1,2},
+        index_vector_dim=2, slice_sizes={1,1,1,1}
+    })"))
+                    .value();
+  auto gather = module->entry_computation()->root_instruction();
+  auto reduce_window = gather->operand(0);
+  EXPECT_EQ(gather->opcode(), HloOpcode::kGather);
+  EXPECT_EQ(reduce_window->opcode(), HloOpcode::kReduceWindow);
+  EXPECT_FALSE(IfFusedReadsElementsMultipleTimes(*reduce_window));
+  EXPECT_TRUE(IsExpensiveToRepeat(*reduce_window));
+  EXPECT_TRUE(IfFusedReadsElementsMultipleTimes(*gather));
+  EXPECT_TRUE(CreatesHeavyComputation(*reduce_window, *gather));
+}
+
+TEST_F(GpuFusibleTest, CreatesHeavyComputation_FusionInstr) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_producer {
-      operand = f32[2,2] parameter(0)
+      operand = f32[20,20] parameter(0)
       constant = f32[] constant(1)
-      ROOT reduce-window = f32[2,2] reduce-window(operand, constant),
-        window={size=2x2 pad=0_1x0_1}, to_apply=scalar_add
+      ROOT reduce-window = f32[11,11] reduce-window(operand, constant),
+        window={size=20x20 pad=0_10x0_10}, to_apply=scalar_add
     }
 
     fused_consumer {
-      operand_0 = f32[2,2] parameter(0)
-
-      operand_1 = f32[2,2] parameter(1)
+      operand_0 = f32[11,11] parameter(0)
+      operand_1 = f32[11,11] parameter(1)
       constant = f32[] constant(1)
-      reduce-window = f32[2,2] reduce-window(operand_1, constant),
+      reduce-window = f32[11,11] reduce-window(operand_1, constant),
         window={size=2x2 pad=0_1x0_1}, to_apply=scalar_add
-
-      ROOT scaled_operand_1 = f32[2,2] multiply(f32[2, 2] operand_0, f32[2,2] reduce-window)
+      ROOT scaled_operand_1 =
+        f32[11,11] multiply(f32[11,11] operand_0, f32[11,11] reduce-window)
     }
 
     ENTRY entry {
-      p0 = f32[2,2] parameter(0)
-      producer = f32[2,2] fusion(p0), kind=kLoop, calls=fused_producer
-      consumer = f32[2,2] fusion(p0, producer), kind=kLoop, calls=fused_consumer
-      ROOT root = (f32[2,2], f32[2,2]) tuple(producer, consumer)
+      p0 = f32[20,20] parameter(0)
+      p1 = f32[11,11] parameter(1)
+      producer = f32[11,11] fusion(p0), kind=kLoop, calls=fused_producer
+      consumer = f32[11,11] fusion(p1, producer), kind=kLoop, calls=fused_consumer
+      ROOT root = (f32[11,11], f32[11,11]) tuple(producer, consumer)
     })"))
                     .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* producer = root->operand(0);
   const HloInstruction* consumer = root->operand(1);
-  EXPECT_TRUE(CreatesNestedLoop(*producer, *consumer));
+  EXPECT_TRUE(CreatesHeavyComputation(*producer, *consumer));
 }
 
-TEST_F(GpuFusibleTest, DoesNotCreateNestedLoop_FusionInstr) {
+TEST_F(GpuFusibleTest, DoesNotCreateHeavyComputation_FusionInstr) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_producer {
       p_0 = f32[2,2] parameter(0)
@@ -1170,7 +1195,7 @@ TEST_F(GpuFusibleTest, DoesNotCreateNestedLoop_FusionInstr) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* producer = root->operand(0);
   const HloInstruction* consumer = root->operand(1);
-  EXPECT_FALSE(CreatesNestedLoop(*producer, *consumer));
+  EXPECT_FALSE(CreatesHeavyComputation(*producer, *consumer));
 }
 
 }  // namespace gpu
