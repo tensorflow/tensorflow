@@ -436,10 +436,10 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 ::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
     const absl::Span<Literal* const> arguments,
-    const optional<ErrorSpec>& error) {
-  auto result = RunAndCompareTwoModulesInternal(
-      std::move(module_0), std::move(module_1), arguments, error,
-      /*run_hlo_passes=*/true);
+    const optional<ErrorSpec>& error, bool run_hlo_passes) {
+  auto result =
+      RunAndCompareTwoModulesInternal(std::move(module_0), std::move(module_1),
+                                      arguments, error, run_hlo_passes);
   if (!result.ok()) {
     return ::testing::AssertionFailure() << result.status();
   }
@@ -448,7 +448,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-    const optional<ErrorSpec>& error) {
+    const optional<ErrorSpec>& error, bool run_hlo_passes) {
   const auto params_0 = module_0->entry_computation()->parameter_instructions();
   const auto params_1 = module_1->entry_computation()->parameter_instructions();
   for (int i = 0; i < params_0.size(); ++i) {
@@ -491,12 +491,12 @@ HloTestBase::RunAndCompareTwoModulesInternal(
       [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
   return RunAndCompareTwoModules(std::move(module_0), std::move(module_1),
-                                 fake_argument_ptrs, error);
+                                 fake_argument_ptrs, error, run_hlo_passes);
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
     string_view hlo_string_module_0, string_view hlo_string_module_1,
-    const std::optional<ErrorSpec>& error) {
+    const std::optional<ErrorSpec>& error, bool run_hlo_passes) {
   auto module_0_or_status = ParseAndReturnVerifiedModule(hlo_string_module_0);
   if (!module_0_or_status.ok()) {
     return ::testing::AssertionFailure()
@@ -511,7 +511,8 @@ HloTestBase::RunAndCompareTwoModulesInternal(
            << module_1_or_status.status().ToString();
   }
   return RunAndCompareTwoModules(std::move(module_0_or_status).value(),
-                                 std::move(module_1_or_status).value(), error);
+                                 std::move(module_1_or_status).value(), error,
+                                 run_hlo_passes);
 }
 
 ::testing::AssertionResult HloTestBase::Run(
