@@ -17,6 +17,7 @@
 import os
 from typing import List, Optional, Union
 
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.util.tf_export import tf_export
 
 _DT_CLIENT_ID = "DTENSOR_CLIENT_ID"
@@ -120,3 +121,30 @@ def jobs() -> List[str]:
 def heartbeat_enabled() -> bool:
   """Returns true if DTensor heartbeat service is enabled."""
   return os.environ.get(_DT_HEARTBEAT_ENABLED, "true").lower() in ("true", "1")
+
+
+def is_tpu_present() -> bool:
+  """Returns true if TPU devices are present."""
+  # Check if TPU is present from initialized context.
+  # TPU_SYSTEM is a device that indicates TPUs are present.
+  tpu_system_devices = tf_config.list_physical_devices("TPU_SYSTEM")
+  return bool(tpu_system_devices)
+
+
+def is_gpu_present() -> bool:
+  """Returns true if TPU devices are present."""
+  return bool(tf_config.list_physical_devices("GPU"))
+
+
+def preferred_device_type() -> str:
+  """Returns the preferred device type for the accelerators.
+
+  The returned device type is determined by checking the first present device
+  type from all supported device types in the order of 'TPU', 'GPU', 'CPU'.
+  """
+  if is_tpu_present():
+    return "TPU"
+  elif is_gpu_present():
+    return "GPU"
+
+  return "CPU"

@@ -61,6 +61,7 @@ pytype_strict_library(
     srcs = ["config.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/util:tf_export",
     ],
 )
