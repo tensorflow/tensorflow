@@ -45,7 +45,7 @@ class CheckPreemptionOp : public OpKernel {
     OP_REQUIRES_OK(ctx, status_or_task.status());
 
     // Preemption key is set, meaning a task has been preempted.
-    const std::string& preempted_task = status_or_task.ValueOrDie();
+    const std::string& preempted_task = status_or_task.value();
     LOG(INFO) << "Preemption reported by task: " << preempted_task;
     OP_REQUIRES_OK(ctx,
                    errors::AbortedWithPayloads(

@@ -170,7 +170,7 @@ Status PluggableDevice::Init(const SessionOptions& options) {
     return errors::Internal("Failed to get StreamExecutor for device",
                             tf_device_id_.value());
   }
-  executor_ = executor_status.ValueOrDie();
+  executor_ = executor_status.value();
 
   em_ = EventMgrFactory::Singleton()->GetEventMgr(executor_,
                                                   options.config.gpu_options());

@@ -104,7 +104,7 @@ template <typename T>
 void PrintTo(const StatusOr<T>& status_or, std::ostream* os) {
   *os << ::testing::PrintToString(status_or.status());
   if (status_or.ok()) {
-    *os << ": " << ::testing::PrintToString(status_or.ValueOrDie());
+    *os << ": " << ::testing::PrintToString(status_or.value());
   }
 }
 
