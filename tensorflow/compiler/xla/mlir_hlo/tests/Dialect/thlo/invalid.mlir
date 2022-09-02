@@ -84,11 +84,27 @@ func.func @reduction_dimensions_out_of_range(%input: tensor<16x32x64xf32>,
 
 func.func @reduction_duplicate_dimensions(%input: tensor<16x32x64xf32>,
     %init: tensor<16xf32>)  -> tensor<16xf32> {
-  // expected-error @+1 {{'thlo.reduction' op duplicate reduction dimension: 1}}
+  // expected-error @+1 {{'thlo.reduction' op reduction dimensions are not in increasing order: 1, 1}}
   %reduction = thlo.reduction
       ins(%input:tensor<16x32x64xf32>)
       outs(%init:tensor<16xf32>)
       dimensions = [1, 1]
+      (%in: f32, %out: f32) {
+        %0 = arith.addf %in, %out: f32
+        thlo.yield %0: f32
+      }
+  func.return %reduction : tensor<16xf32>
+}
+
+// -----
+
+func.func @reduction_non_increasing_dimensions(%input: tensor<16x32x64xf32>,
+    %init: tensor<16xf32>)  -> tensor<16xf32> {
+  // expected-error @+1 {{'thlo.reduction' op reduction dimensions are not in increasing order: 2, 1}}
+  %reduction = thlo.reduction
+      ins(%input:tensor<16x32x64xf32>)
+      outs(%init:tensor<16xf32>)
+      dimensions = [2, 1]
       (%in: f32, %out: f32) {
         %0 = arith.addf %in, %out: f32
         thlo.yield %0: f32

@@ -168,7 +168,8 @@ def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
   let summary = "Destination-style twin for `mhlo.reduce`";
   let description = [{
     Executes `combiner` on the `dimensions` of `inputs` and returns the
-    reduced result.
+    reduced result. The `dimensions` attribute needs to list the reduction
+    dimensions in increasing order.
 
     Example:
     ```
