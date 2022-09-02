@@ -73,6 +73,12 @@ class InternalTracingContext(trace.TracingContext):
     return default_types.Reference(base_type,
                                    self._global_to_local_id[global_id])
 
+  def alias_global_id(self, global_id: Hashable) -> Hashable:
+    if global_id not in self._global_to_local_id:
+      self._global_to_local_id[global_id] = len(self._global_to_local_id)
+
+    return self._global_to_local_id[global_id]
+
   @property
   def deletion_observer(self) -> WeakrefDeletionObserver:
     """Returns a functor which invalidates the current key when called."""
