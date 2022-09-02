@@ -14,6 +14,10 @@ load(
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
 )
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = [
@@ -87,6 +91,7 @@ filegroup(
         "stacktrace.h",
         "stacktrace_handler.h",
         "stringpiece.h",
+        "stringprintf.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -128,6 +133,8 @@ filegroup(
         "regexp.h",
         "stacktrace.h",
         "stringpiece.h",
+        "stringprintf.cc",
+        "stringprintf.h",
         "threadpool_interface.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -154,6 +161,7 @@ filegroup(
         exclude = [
             "gif.h",
             "jpeg.h",
+            "stringprintf.h",
         ],
     ),
     compatible_with = get_compatible_with_portable(),
@@ -351,6 +359,16 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "stringprintf",
+    srcs = ["stringprintf.cc"],
+    hdrs = ["stringprintf.h"],
+    deps = [
+        ":macros",
+        ":types",
     ],
 )
 

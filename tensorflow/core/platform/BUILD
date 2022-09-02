@@ -809,11 +809,11 @@ cc_library(
 
 cc_library(
     name = "stringprintf",
-    srcs = ["stringprintf.cc"],
     hdrs = ["stringprintf.h"],
     deps = [
         ":macros",
         ":types",
+        "//tensorflow/tsl/platform:stringprintf",
     ],
 )
 
@@ -1873,7 +1873,6 @@ filegroup(
         "strcat.cc",
         "strcat.h",
         "stringpiece.h",
-        "stringprintf.cc",
         "stringprintf.h",
         "tensor_coding.cc",
         "tensor_coding.h",

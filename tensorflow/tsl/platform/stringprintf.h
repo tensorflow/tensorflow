@@ -19,25 +19,34 @@ limitations under the License.
 //      string result = strings::Printf("%d %s\n", 10, "hello");
 //      strings::Appendf(&result, "%d %s\n", 20, "there");
 
-#ifndef TENSORFLOW_CORE_PLATFORM_STRINGPRINTF_H_
-#define TENSORFLOW_CORE_PLATFORM_STRINGPRINTF_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_STRINGPRINTF_H_
+#define TENSORFLOW_TSL_PLATFORM_STRINGPRINTF_H_
 
 #include <stdarg.h>
 
 #include <string>
 
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/stringprintf.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace strings {
-// NOLINTBEGIN(misc-unused-using-decls)
-using tsl::strings::Appendf;
-using tsl::strings::Appendv;
-using tsl::strings::Printf;
-// NOLINTEND(misc-unused-using-decls)
-}  // namespace strings
-}  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_STRINGPRINTF_H_
+// Return a C++ string
+std::string Printf(const char* format, ...)
+    // Tell the compiler to do printf format string checking.
+    TF_PRINTF_ATTRIBUTE(1, 2);
+
+// Append result to a supplied string
+void Appendf(std::string* dst, const char* format, ...)
+    // Tell the compiler to do printf format string checking.
+    TF_PRINTF_ATTRIBUTE(2, 3);
+
+// Lower-level routine that takes a va_list and appends to a specified
+// string.  All other routines are just convenience wrappers around it.
+void Appendv(std::string* dst, const char* format, va_list ap);
+
+}  // namespace strings
+}  // namespace tsl
+
+#endif  // TENSORFLOW_TSL_PLATFORM_STRINGPRINTF_H_

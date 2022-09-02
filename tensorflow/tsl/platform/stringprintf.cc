@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/tsl/platform/stringprintf.h"
 
 #include <errno.h>
 #include <stdarg.h>  // For va_list and related operations
 #include <stdio.h>   // MSVC requires this for _vsnprintf
 
-namespace tensorflow {
+namespace tsl {
 namespace strings {
 
 void Appendv(string* dst, const char* format, va_list ap) {
@@ -90,4 +90,4 @@ void Appendf(string* dst, const char* format, ...) {
 }
 
 }  // namespace strings
-}  // namespace tensorflow
+}  // namespace tsl
