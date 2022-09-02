@@ -13,21 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_RAW_CODING_H_
-#define TENSORFLOW_CORE_PLATFORM_RAW_CODING_H_
+#ifndef TENSORFLOW_TSL_LIB_GTL_INLINED_VECTOR_H_
+#define TENSORFLOW_TSL_LIB_GTL_INLINED_VECTOR_H_
 
-#include <string.h>
+#include "absl/container/inlined_vector.h"  // IWYU pragma: export
+// TODO(kramerb): This is kept only because lots of targets transitively depend
+// on it. Remove all targets' dependencies.
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/types.h"
 
-#include "tensorflow/tsl/platform/raw_coding.h"
+namespace tsl {
+namespace gtl {
 
-namespace tensorflow {
-namespace core {
-// NOLINTBEGIN(misc-unused-using-decls)
-using ::tsl::core::DecodeFixed16;
-using ::tsl::core::DecodeFixed32;
-using ::tsl::core::DecodeFixed64;
-// NOLINTEND(misc-unused-using-decls)
-}  // namespace core
-}  // namespace tensorflow
+using absl::InlinedVector;
 
-#endif  // TENSORFLOW_CORE_PLATFORM_RAW_CODING_H_
+}  // namespace gtl
+}  // namespace tsl
+
+#endif  // TENSORFLOW_TSL_LIB_GTL_INLINED_VECTOR_H_

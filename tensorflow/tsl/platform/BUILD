@@ -101,7 +101,9 @@ filegroup(
         "dynamic_annotations.h",
         "fingerprint.h",
         "init_main.h",
+        "mem.h",
         "net.h",
+        "prefetch.h",
         "stack_frame.h",
         "stacktrace.h",
         "stacktrace_handler.h",
@@ -131,6 +133,7 @@ filegroup(
         "dynamic_annotations.h",
         "macros.h",
         "platform.h",
+        "prefetch.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -144,11 +147,16 @@ filegroup(
         "casts.h",
         "dynamic_annotations.h",
         "fingerprint.h",
+        "hash.cc",
+        "hash.h",
         "init_main.h",
         "intrusive_ptr.h",
         "macros.h",
+        "mem.h",
         "platform.h",
         "platform_strings_computed.h",
+        "prefetch.h",
+        "raw_coding.h",
         "regexp.h",
         "stacktrace.h",
         "str_util.cc",
@@ -209,6 +217,7 @@ exports_files(
         "cuda_libdevice_path.h",
         "bfloat16.h",
         "logging.h",
+        "mem.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -218,6 +227,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = [
         "init_main.h",
+        "mem.h",
     ],
     deps = tf_windows_aware_platform_deps("platform_port"),
 )
@@ -297,6 +307,7 @@ filegroup(
         "bfloat16.h",
         "dynamic_annotations.h",
         "macros.h",
+        "mem.h",
         "platform.h",
         "stringpiece.h",
     ],
@@ -304,6 +315,7 @@ filegroup(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
     ],
 )
 
@@ -313,12 +325,14 @@ filegroup(
         "bfloat16.h",
         "dynamic_annotations.h",
         "macros.h",
+        "mem.h",
         "platform.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gif:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
     ],
 )
 
@@ -507,10 +521,43 @@ cc_library(
     deps = tf_logging_deps(),
 )
 
+cc_library(
+    name = "prefetch",
+    hdrs = ["prefetch.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+    ],
+)
+
+cc_library(
+    name = "hash",
+    srcs = ["hash.cc"],
+    hdrs = ["hash.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":macros",
+        ":raw_coding",
+        ":stringpiece",
+        ":types",
+    ],
+)
+
+cc_library(
+    name = "raw_coding",
+    hdrs = ["raw_coding.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":byte_order",
+        ":types",
+    ],
+)
+
 filegroup(
     name = "lib_internal_private_hdrs",
     srcs = [
         "bfloat16.h",
+        "raw_coding.h",
         "str_util.h",
     ],
     compatible_with = get_compatible_with_portable(),

@@ -328,13 +328,13 @@ cc_library(
 
 cc_library(
     name = "hash",
-    srcs = ["hash.cc"],
     hdrs = ["hash.h"],
     deps = [
         ":macros",
         ":raw_coding",
         ":stringpiece",
         ":types",
+        "//tensorflow/tsl/platform:hash",
     ],
 )
 
@@ -499,6 +499,8 @@ cc_library(
         "snappy.h",
     ],
     deps = [
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:types",
         "//tensorflow/tsl/platform:platform_port",
     ],
 )
@@ -527,7 +529,7 @@ cc_library(
 cc_library(
     name = "prefetch",
     hdrs = ["prefetch.h"],
-    deps = [":platform"],
+    deps = ["//tensorflow/tsl/platform:prefetch"],
 )
 
 cc_library(
@@ -570,6 +572,7 @@ cc_library(
     deps = [
         ":byte_order",
         ":types",
+        "//tensorflow/tsl/platform:raw_coding",
     ],
 )
 
@@ -1625,6 +1628,7 @@ filegroup(
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
         "//tensorflow/tsl/platform:base_hdrs",
+        "//tensorflow/tsl/platform:lib_hdrs",
         # copybara:uncomment(GoogleFileSystem) "//tensorflow/tsl/platform/google:env.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -1766,6 +1770,7 @@ filegroup(
         "tstring.h",
         "types.h",
         ":ctstring",
+        "//tensorflow/tsl/platform:jpeg_internal_hdrs",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -1785,6 +1790,7 @@ filegroup(
         "tstring.h",
         "types.h",
         ":ctstring",
+        "//tensorflow/tsl/platform:gif_internal_hdrs",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -1822,7 +1828,6 @@ filegroup(
         "file_system.cc",
         "file_system.h",
         "file_system_helper.h",
-        "hash.cc",
         "hash.h",
         "host_info.h",
         "init_main.h",
@@ -1872,6 +1877,7 @@ filegroup(
         "tracing.h",
         "tstring.h",
         "types.h",
+        "//tensorflow/tsl/platform:mobile_srcs_no_runtime",
     ] + selects.with_or({
         "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [

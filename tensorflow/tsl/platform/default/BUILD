@@ -292,11 +292,11 @@ cc_library(
         "//tensorflow/core/platform:demangle.h",
         "//tensorflow/core/platform:host_info.h",
         "//tensorflow/core/platform:init_main.h",
-        "//tensorflow/core/platform:mem.h",
         "//tensorflow/core/platform:numa.h",
         "//tensorflow/core/platform:snappy.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
         "//tensorflow/tsl/platform:init_main.h",
+        "//tensorflow/tsl/platform:mem.h",
     ],
     copts = tf_copts(),
     defines = ["TF_USE_SNAPPY"] + select({
@@ -318,6 +318,8 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/platform:platform",
         "//tensorflow/core/platform",
         "@snappy",
     ] + select({

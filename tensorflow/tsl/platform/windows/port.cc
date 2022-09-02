@@ -29,10 +29,10 @@ limitations under the License.
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/mem.h"
 
 namespace tensorflow {
 namespace port {
@@ -112,31 +112,14 @@ void NUMASetThreadNodeAffinity(int node) {}
 
 int NUMAGetThreadNodeAffinity() { return kNUMANoAffinity; }
 
-void* AlignedMalloc(size_t size, int minimum_alignment) {
-  return _aligned_malloc(size, minimum_alignment);
-}
-
-void AlignedFree(void* aligned_memory) { _aligned_free(aligned_memory); }
-
-void* Malloc(size_t size) { return malloc(size); }
-
-void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
-
-void Free(void* ptr) { free(ptr); }
-
 void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
-  return AlignedMalloc(size, minimum_alignment);
+  return tsl::port::AlignedMalloc(size, minimum_alignment);
 }
 
-void NUMAFree(void* ptr, size_t size) { Free(ptr); }
+void NUMAFree(void* ptr, size_t size) { tsl::port::Free(ptr); }
 
 int NUMAGetMemAffinity(const void* addr) { return kNUMANoAffinity; }
 
-void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
-  // No-op.
-}
-
-std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
 
 bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef TF_USE_SNAPPY
@@ -193,6 +176,35 @@ double NominalCPUFrequency() {
   return 1.0;
 }
 
+int NumHyperthreadsPerCore() {
+  static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
+  return (ht_per_core > 0) ? ht_per_core : 1;
+}
+
+}  // namespace port
+}  // namespace tensorflow
+
+namespace tsl {
+namespace port {
+
+void* AlignedMalloc(size_t size, int minimum_alignment) {
+  return _aligned_malloc(size, minimum_alignment);
+}
+
+void AlignedFree(void* aligned_memory) { _aligned_free(aligned_memory); }
+
+void* Malloc(size_t size) { return malloc(size); }
+
+void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
+
+void Free(void* ptr) { free(ptr); }
+
+void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
+  // No-op.
+}
+
+std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
+
 MemoryInfo GetMemoryInfo() {
   MemoryInfo mem_info = {INT64_MAX, INT64_MAX};
   MEMORYSTATUSEX statex;
@@ -208,11 +220,5 @@ MemoryBandwidthInfo GetMemoryBandwidthInfo() {
   MemoryBandwidthInfo membw_info = {INT64_MAX};
   return membw_info;
 }
-
-int NumHyperthreadsPerCore() {
-  static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
-  return (ht_per_core > 0) ? ht_per_core : 1;
-}
-
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl

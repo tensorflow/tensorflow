@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/hash.h"
-
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/raw_coding.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/hash.h"
 
 #include <string.h>
 
-namespace tensorflow {
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/raw_coding.h"
+#include "tensorflow/tsl/platform/types.h"
+
+namespace tsl {
 
 // 0xff is in case char is signed.
 static inline uint32 ByteAs32(char c) { return static_cast<uint32>(c) & 0xff; }
@@ -126,4 +126,4 @@ uint64 Hash64(const char* data, size_t n, uint64 seed) {
   return h;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

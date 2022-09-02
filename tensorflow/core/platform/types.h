@@ -26,6 +26,16 @@ namespace tensorflow {
 // Alias tensorflow::string to std::string.
 using tsl::string;
 
+using tsl::uint16;
+using tsl::uint32;
+using tsl::uint64;
+using tsl::uint8;
+
+using tsl::int16;
+using tsl::int32;
+using tsl::int64;
+using tsl::int8;
+
 static const uint8 kuint8max = tsl::kuint8max;
 static const uint16 kuint16max = tsl::kuint16max;
 static const uint32 kuint32max = tsl::kuint32max;
