@@ -438,8 +438,9 @@ DiagnosticEngine* Executable::GetDiagnosticEngine(KernelContext* ctx) {
 }
 
 mlir::LogicalResult Executable::Call(KernelContext* ctx, class CustomCall& call,
-                                     void** args, void** attrs) {
-  return call.call(args, attrs, ctx->custom_call_data, ctx->diagnostic_engine);
+                                     void** args, void** attrs, void** rets) {
+  return call.call(args, attrs, rets, ctx->custom_call_data,
+                   ctx->diagnostic_engine);
 }
 
 //===----------------------------------------------------------------------===//
@@ -484,7 +485,7 @@ void SetError(KernelContext* ctx, const char* error) {
 }
 
 bool CustomCall(KernelContext* ctx, const char* target, void** args,
-                void** attrs) {
+                void** attrs, void** rets) {
   assert(ctx && target && args && attrs && "all arguments must be not null");
   assert(ctx->custom_call_registry && "custom call registry must be not null");
   if (ctx->custom_call_registry == nullptr) return false;
@@ -493,7 +494,7 @@ bool CustomCall(KernelContext* ctx, const char* target, void** args,
   assert(custom_call && "custom call not found");
   if (custom_call == nullptr) return false;
 
-  return succeeded(custom_call->call(args, attrs, ctx->custom_call_data,
+  return succeeded(custom_call->call(args, attrs, rets, ctx->custom_call_data,
                                      ctx->diagnostic_engine));
 }
 

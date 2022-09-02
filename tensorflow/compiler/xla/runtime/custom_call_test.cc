@@ -82,7 +82,8 @@ static absl::Status CompileAndExecute(
 static int32_t custom_call_counter = 0;
 
 // Direct custom call linked with XLA runtime executable at compile (link) time.
-static bool DirectCustomCall(KernelContext* ctx, void** args, void** attrs) {
+static bool DirectCustomCall(KernelContext* ctx, void** args, void** attrs,
+                             void** rets) {
   auto handler = CustomCall::Bind("test.custom_call")
                      .Arg<int32_t>()
                      .To([&](int32_t arg) -> LogicalResult {
@@ -90,7 +91,7 @@ static bool DirectCustomCall(KernelContext* ctx, void** args, void** attrs) {
                        return success();
                      });
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 TEST(CustomCallTest, DirectCustomCall) {
@@ -112,6 +113,71 @@ TEST(CustomCallTest, DirectCustomCall) {
   ASSERT_TRUE(CompileAndExecute(module, {}, {}, std::move(registry)).ok());
   EXPECT_EQ(custom_call_counter, 42);
 }
+
+TEST(CustomCallTest, ScalarRets) {
+  absl::string_view module = R"(
+    func.func private @custom_call_result() -> (i1, i32, i64, f32, f64)
+      attributes { rt.custom_call = "test.custom_call_result" }
+
+    func.func private @custom_call(%arg0: i1, %arg1: i32, %arg2: i64,
+                                   %arg3: f32, %arg4: f64)
+      attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0, %1, %2, %3, %4 = call @custom_call_result() :
+                                      () -> (i1, i32, i64, f32, f64)
+      call @custom_call(%0, %1, %2, %3, %4) : (i1, i32, i64, f32, f64) -> ()
+      return
+    }
+  )";
+  bool i1 = true;
+  int32_t i32 = 0;
+  int64_t i64 = 0;
+  float f32 = 0.0;
+  double f64 = 0.0;
+
+  auto f_result = [&](Result<bool> ret0, Result<int32_t> ret1,
+                      Result<int64_t> ret2, Result<float> ret3,
+                      Result<double> ret4) {
+    ret0.Set(false);
+    ret1.Set(42);
+    ret2.Set(42);
+    ret3.Set(42.0);
+    ret4.Set(42.0);
+    return success();
+  };
+
+  auto f = [&](bool arg0, int32_t arg1, int64_t arg2, float arg3, double arg4) {
+    (i1 = arg0, i32 = arg1, i64 = arg2, f32 = arg3, f64 = arg4);
+    return success();
+  };
+
+  DynamicCustomCallRegistry registry;
+  registry.Register(CustomCall::Bind("test.custom_call_result")
+                        .Ret<bool>()
+                        .Ret<int32_t>()
+                        .Ret<int64_t>()
+                        .Ret<float>()
+                        .Ret<double>()
+                        .To(f_result));
+  registry.Register(CustomCall::Bind("test.custom_call")
+                        .Arg<bool>()
+                        .Arg<int32_t>()
+                        .Arg<int64_t>()
+                        .Arg<float>()
+                        .Arg<double>()
+                        .To(f));
+
+  ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, std::move(registry)).ok());
+
+  EXPECT_EQ(i1, false);
+  EXPECT_EQ(i32, 42);
+  EXPECT_EQ(i64, 42);
+  EXPECT_EQ(f32, 42.0);
+  EXPECT_EQ(f64, 42.0);
+}
+
+// ===---------------------------------------------------------------------===//
 
 TEST(CustomCallTest, ScalarArgs) {
   absl::string_view module = R"(

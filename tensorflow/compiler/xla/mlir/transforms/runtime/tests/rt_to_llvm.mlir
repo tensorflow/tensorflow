@@ -170,17 +170,23 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 func.func @custom_call(%arg0: !rt.kernel_context) {
 
   // CHECK: %[[C1:.*]] = arith.constant 1 : i32
-  // CHECK: %[[ARGS_ALLOCA:.*]] = llvm.alloca %c1_i32 x !llvm.array<1 x ptr<i8>>
+  // CHECK: %[[RETS_ALLOCA:.*]] = llvm.alloca %[[C1]] x !llvm.array<1 x ptr<i8>>
+
+  // CHECK: %[[C1_0:.*]] = arith.constant 1 : i32
+  // CHECK: %[[ARGS_ALLOCA:.*]] = llvm.alloca %[[C1_0]] x !llvm.array<1 x ptr<i8>>
   // CHECK: %[[ARGS:.*]] = llvm.getelementptr %[[ARGS_ALLOCA]]
 
   // CHECK: %[[ATTRS_ADDR:.*]] = llvm.mlir.addressof @__rt_custom_call_attrs
   // CHECK: %[[ATTRS:.*]] = llvm.getelementptr %[[ATTRS_ADDR]]
+  
+  // CHECK: %[[RETS:.*]] = llvm.getelementptr %[[RETS_ALLOCA]]
 
   // CHECK: %[[CALLEE_ADDR:.*]] = llvm.mlir.addressof @__rt_custom_call_callee
   // CHECK: %[[CALLEE:.*]] = llvm.bitcast %[[CALLEE_ADDR]]
 
   // CHECK: %[[STATUS:.*]] = call @runtimeCustomCall(%[[CTX]], %[[CALLEE]],
-  // CHECK-SAME:                                     %[[ARGS]], %[[ATTRS]])
+  // CHECK-SAME:                                     %[[ARGS]], %[[ATTRS]], 
+  // CHECK-SAME:                                     %[[RETS]])
   // CHECK: cf.assert %[[STATUS]], "oops"
   %status = rt.custom_call %arg0["target"] () : () -> ()
   %ok = rt.is_ok %status
@@ -410,3 +416,25 @@ func.func @direct_custom_call(%arg0: !rt.kernel_context) {
 
 // CHECK: func private @target(!llvm.ptr<i8>, !llvm.ptr<ptr<i8>>,
 // CHECK-SAME:                 !llvm.ptr<ptr<i8>>) -> i1
+
+// -----
+
+// CHECK: %[[C1:.*]] = arith.constant 1 : i32
+// CHECK: %[[RETS_ALLOCA:.*]] = llvm.alloca %[[C1]] x !llvm.array<3 x ptr<i8>>
+
+// CHECK: %[[C1_0:.*]] = arith.constant 1 : i32
+// CHECK: %[[F32_ALLOCA:.*]] = llvm.alloca %[[C1_0]] x f32
+
+// CHECK: %[[N_RETS:.*]]  = llvm.mlir.addressof @__rt_num_rets
+// CHECK: %[[RETS:.*]] = llvm.getelementptr %[[RETS_ALLOCA]]
+
+
+// CHECK: call @runtimeCustomCall
+// CHECK: %[[LOAD2:.*]] = llvm.load %[[F32_ALLOCA]]
+func.func @custom_call(%ctx: !rt.kernel_context,
+                       %input: memref<?xf32>) -> (f32) {
+  %status, %0 = rt.custom_call %ctx["f32_reduce"] (%input)
+                : (memref<?xf32>) -> (f32)
+  %ok = rt.is_ok %status
+  return %0 : f32
+}

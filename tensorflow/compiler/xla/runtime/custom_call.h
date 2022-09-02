@@ -121,7 +121,7 @@ class CustomCall {
   virtual ~CustomCall() = default;
 
   virtual std::string_view name() const = 0;
-  virtual LogicalResult call(void** args, void** attrs,
+  virtual LogicalResult call(void** args, void** attrs, void** rets,
                              const UserData* user_data,
                              const DiagnosticEngine* diagnostic) const = 0;
 
@@ -138,6 +138,11 @@ namespace internal {
 // `CustomCallBinding` variadic template argument.
 template <typename T>
 struct Attr {};
+
+// A type tag to distinguish arguments tied to the return in the
+// `CustomCallBinding` variadic template argument.
+template <typename T>
+struct Ret {};
 
 // A type tag to distinguish arguments tied to the user data in the
 // `CustomCallBinding` variadic template argument.
@@ -157,10 +162,19 @@ template <typename T>
 struct IsWrapped<internal::Attr<T>> : std::true_type {};
 
 template <typename T>
+struct IsWrapped<internal::Ret<T>> : std::true_type {};
+
+template <typename T>
 struct IsWrapped<internal::UserData<T>> : std::true_type {};
 
 template <typename T>
 struct IsWrapped<internal::Value<T>> : std::true_type {};
+
+template <typename T>
+struct IsResult : std::false_type {};
+
+template <typename T>
+struct IsResult<internal::Ret<T>> : std::true_type {};
 
 // Checks if remaining arguments are in the parameter pack.
 template <typename... Ts>
@@ -197,6 +211,11 @@ class CustomCallBinding {
   template <typename T>
   CustomCallBinding<Ts..., internal::Attr<T>> Attr(std::string attr) && {
     attrs_.push_back(std::move(attr));
+    return {std::move(*this)};
+  }
+
+  template <typename T>
+  CustomCallBinding<Ts..., internal::Ret<T>> Ret() && {
     return {std::move(*this)};
   }
 
@@ -246,6 +265,28 @@ inline CustomCallBinding<> CustomCall::Bind(std::string callee) {
   return CustomCallBinding<>(std::move(callee));
 }
 
+template <typename T>
+class Result;
+
+#define XLA_RUNTIME_REGISTER_SCALAR_RESULT(T)          \
+  template <>                                          \
+  struct Result<T> {                                   \
+   public:                                             \
+    explicit Result(T* storage) : storage_(storage) {} \
+    void Set(T value) { *storage_ = value; }           \
+                                                       \
+   private:                                            \
+    T* storage_;                                       \
+  };  // namespace runtime
+
+XLA_RUNTIME_REGISTER_SCALAR_RESULT(bool);
+XLA_RUNTIME_REGISTER_SCALAR_RESULT(int32_t);
+XLA_RUNTIME_REGISTER_SCALAR_RESULT(int64_t);
+XLA_RUNTIME_REGISTER_SCALAR_RESULT(float);
+XLA_RUNTIME_REGISTER_SCALAR_RESULT(double);
+
+#undef XLA_RUNTIME_REGISTER_SCALAR_RESULT
+
 // Custom call arguments decoding must be defined by specializing this template.
 //
 // Example: decoding for the `MyType` arguments
@@ -271,6 +312,18 @@ struct CustomCallArgDecoding;
 template <typename T, CustomCall::RuntimeChecks>
 struct CustomCallAttrDecoding;
 
+// Custom call returns decoding must be defined by specializing this template.
+//
+// Example: decoding for the `MyType` arguments
+//
+//   template <CustomCall::RuntimeChecks checks>
+//   struct CustomCallRetDecoding<MyType, checks> {
+//    static FailureOr<Result<MyType>> Decode(TypeID type_id, void* value);
+//   };
+//
+template <typename T, CustomCall::RuntimeChecks>
+struct CustomCallRetDecoding;
+
 // A type tag to declare MLIR TypeID specializations for types passed to the
 // custom calls. We don't want to declare specializations for scalar types
 // directly in this translation unit, so we rely on a tag to wrap them.
@@ -287,7 +340,6 @@ struct EmptyArrayRef {};
 // various types of arguments/attributes.
 
 namespace internal {
-
 struct EncodedMemref {
   uint8_t dtype;
   uint8_t rank;
@@ -375,6 +427,10 @@ class DecodedAttrs {
   void** attrs_;
   int64_t num_attrs_;
 };
+
+// Using the same class for decoded returns
+using DecodedRet = DecodedArg;
+using DecodedRets = DecodedArgs;
 
 }  // namespace internal
 
@@ -477,6 +533,12 @@ struct FnArgType<internal::Attr<T>> {
   using Type = T;
 };
 
+// Extracts the underlying type from the return type tag.
+template <typename T>
+struct FnArgType<internal::Ret<T>> {
+  using Type = Result<T>;
+};
+
 // Extracts the underlying type from the user data type tag.
 template <typename T>
 struct FnArgType<internal::UserData<T>> {
@@ -500,11 +562,24 @@ struct NumArgs<T> {
   static constexpr int64_t value = !IsWrapped<T>::value;
 };
 
-// When decoding input data we need to keep track of how many arguments and
-// attributes we decoded so far to index into the correct data strucuture.
+// A template for counting returns in the Ts pack.
+template <typename T, typename... Ts>
+struct NumRets {
+  static constexpr int64_t value = IsResult<T>::value + NumRets<Ts...>::value;
+};
+
+template <typename T>
+struct NumRets<T> {
+  static constexpr int64_t value = IsResult<T>::value;
+};
+
+// When decoding input data we need to keep track of how many arguments,
+// attributes, and returns we decoded so far to index into the correct data
+// strucuture.
 struct DecodingOffsets {
   int64_t args = 0;
   int64_t attrs = 0;
+  int64_t rets = 0;
   int64_t values = 0;
 };
 
@@ -512,11 +587,23 @@ template <typename T, CustomCall::RuntimeChecks checks>
 struct Decode {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
-      llvm::ArrayRef<std::string> attrs_names, llvm::ArrayRef<size_t> attrs_idx,
-      internal::DecodedAttrs attrs, llvm::ArrayRef<std::any> values,
-      const CustomCall::UserData* user_data) {
+      internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
+      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
+      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
     internal::DecodedArg arg = args[offsets.args++];
     return CustomCallArgDecoding<T, checks>::Decode(arg.type_id, arg.value);
+  }
+};
+
+template <typename T, CustomCall::RuntimeChecks checks>
+struct Decode<internal::Ret<T>, checks> {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Result<T>> call(
+      DecodingOffsets& offsets, internal::DecodedArgs args,
+      internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
+      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
+      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
+    internal::DecodedRet ret = rets[offsets.rets++];
+    return CustomCallRetDecoding<T, checks>::Decode(ret.type_id, ret.value);
   }
 };
 
@@ -524,9 +611,9 @@ template <typename T, CustomCall::RuntimeChecks checks>
 struct Decode<internal::Attr<T>, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
-      llvm::ArrayRef<std::string> attrs_names, llvm::ArrayRef<size_t> attrs_idx,
-      internal::DecodedAttrs attrs, llvm::ArrayRef<std::any> values,
-      const CustomCall::UserData* user_data) {
+      internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
+      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
+      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
     // Find decoded attribute corresponding for the given attribute index.
     int64_t idx = offsets.attrs++;
 
@@ -558,9 +645,9 @@ template <typename T, CustomCall::RuntimeChecks checks>
 struct Decode<internal::UserData<T>, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
-      llvm::ArrayRef<std::string> attrs_names, llvm::ArrayRef<size_t> attrs_idx,
-      internal::DecodedAttrs attrs, llvm::ArrayRef<std::any> values,
-      const CustomCall::UserData* user_data) {
+      internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
+      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
+      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
     using UserDataT = std::remove_pointer_t<T>;
 
     if (!CustomCall::CheckUserData(checks)) return user_data->get<UserDataT>();
@@ -580,9 +667,9 @@ template <typename T, CustomCall::RuntimeChecks checks>
 struct Decode<internal::Value<T>, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
-      llvm::ArrayRef<std::string> attrs_names, llvm::ArrayRef<size_t> attrs_idx,
-      internal::DecodedAttrs attrs, llvm::ArrayRef<std::any> values,
-      const CustomCall::UserData* user_data) {
+      internal::DecodedRets rets, llvm::ArrayRef<std::string> attrs_names,
+      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
+      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
     return std::any_cast<T>(values[offsets.values++]);
   }
 };
@@ -591,9 +678,9 @@ template <CustomCall::RuntimeChecks checks>
 struct Decode<CustomCall::RemainingArgs, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<CustomCall::RemainingArgs> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
-      llvm::ArrayRef<std::string> attr_names, llvm::ArrayRef<size_t> attrs_idx,
-      internal::DecodedAttrs attrs, llvm::ArrayRef<std::any> values,
-      const CustomCall::UserData* user_data) {
+      internal::DecodedRets rets, llvm::ArrayRef<std::string> attr_names,
+      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
+      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
     return CustomCall::RemainingArgs(args, offsets.args);
   }
 };
@@ -602,9 +689,9 @@ template <CustomCall::RuntimeChecks checks>
 struct Decode<CustomCall::VariantArg, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<CustomCall::VariantArg> call(
       DecodingOffsets& offsets, internal::DecodedArgs args,
-      llvm::ArrayRef<std::string> attr_names, llvm::ArrayRef<size_t> attrs_idx,
-      internal::DecodedAttrs attrs, llvm::ArrayRef<std::any> values,
-      const CustomCall::UserData* user_data) {
+      internal::DecodedRets rets, llvm::ArrayRef<std::string> attr_names,
+      llvm::ArrayRef<size_t> attrs_idx, internal::DecodedAttrs attrs,
+      llvm::ArrayRef<std::any> values, const CustomCall::UserData* user_data) {
     return CustomCall::VariantArg(args, offsets.args++);
   }
 };
@@ -622,6 +709,7 @@ template <CustomCall::RuntimeChecks checks, typename Fn, typename... Ts>
 class CustomCallHandler : public CustomCall {
   static constexpr int64_t kSize = sizeof...(Ts);
   static constexpr int64_t kNumArgs = internal::NumArgs<Ts...>::value;
+  static constexpr int64_t kNumRets = internal::NumRets<Ts...>::value;
 
   template <typename T>
   using FnArgType = typename internal::FnArgType<T>::Type;
@@ -641,24 +729,29 @@ class CustomCallHandler : public CustomCall {
   std::string_view name() const final { return callee_; }
 
   LLVM_ATTRIBUTE_ALWAYS_INLINE LogicalResult
-  call(void** args, void** attrs, const UserData* user_data,
+  call(void** args, void** attrs, void** rets, const UserData* user_data,
        const DiagnosticEngine* diagnostic) const final {
-    // Unpoison the first pointer to get the args and attrs sizes.
+    // Unpoison the first pointer to get the args, attrs, and rets sizes.
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(args, sizeof(void*));
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(attrs, sizeof(void*));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(rets, sizeof(void*));
 
     // Decode arguments and attributes from the opaque pointers.
     internal::DecodedArgs decoded_args(args);
     internal::DecodedAttrs decoded_attrs(attrs);
+    internal::DecodedRets decoded_rets(rets);
 
     int64_t num_args = decoded_args.size();
     int64_t num_attrs = decoded_attrs.size();
+    int64_t num_rets = decoded_rets.size();
 
-    // Unpoison the rest of the of args and attrs data.
+    // Unpoison the rest of the of args, attrs, and rets data.
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(args,
                                         (1 + 2 * num_args) * sizeof(void*));
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(attrs,
                                         (1 + 3 * num_attrs) * sizeof(void*));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(rets,
+                                        (1 + 2 * num_rets) * sizeof(void*));
 
     if (LLVM_UNLIKELY(diagnostic == nullptr))
       diagnostic = DiagnosticEngine::DefaultDiagnosticEngine();
@@ -686,17 +779,24 @@ class CustomCallHandler : public CustomCall {
         return diagnostic->EmitError()
                << "Wrong number of attributes: expected at least "
                << attrs_.size() << " got " << num_attrs;
+
+      // Check that the number of returns matches the signature. The return
+      // decoding will check the actual type.
+      if (LLVM_UNLIKELY(num_rets != kNumRets)) {
+        return diagnostic->EmitError() << "Wrong number of returns: expected "
+                                       << kNumRets << " got " << num_rets;
+      }
     }
 
-    return call(decoded_args, decoded_attrs, user_data, diagnostic,
-                std::make_index_sequence<kSize>{});
+    return call(decoded_args, decoded_attrs, decoded_rets, user_data,
+                diagnostic, std::make_index_sequence<kSize>{});
   }
 
   template <size_t... Is>
   LLVM_ATTRIBUTE_ALWAYS_INLINE LogicalResult
   call(internal::DecodedArgs args, internal::DecodedAttrs attrs,
-       const UserData* user_data, const DiagnosticEngine* diagnostic,
-       std::index_sequence<Is...>) const {
+       internal::DecodedRets rets, const UserData* user_data,
+       const DiagnosticEngine* diagnostic, std::index_sequence<Is...>) const {
     // A helper structure to allow each decoder find the correct offset in the
     // arguments or attributes.
     internal::DecodingOffsets offsets;
@@ -713,10 +813,11 @@ class CustomCallHandler : public CustomCall {
     // on correct offsets computation.
     std::tuple<FailureOr<FnArgType<Ts>>...> fn_args = {
         check_all_decoded(internal::Decode<Ts, checks>::call(
-            offsets, args, attrs_, attrs_idx_, attrs, values_, user_data))...};
+            offsets, args, rets, attrs_, attrs_idx_, attrs, values_,
+            user_data))...};
     if (LLVM_UNLIKELY(!all_decoded))
-      return diagnostic->EmitError()
-             << "Failed to decode all custom call arguments and attributes";
+      return diagnostic->EmitError() << "Failed to decode all custom call "
+                                        "arguments, attributes and returns";
 
     // Custom call returns logical result to signal failures.
     if constexpr (kIsLogicalErr)
@@ -770,6 +871,9 @@ constexpr int64_t CustomCallHandler<checks, Fn, Ts...>::kSize;
 
 template <CustomCall::RuntimeChecks checks, typename Fn, typename... Ts>
 constexpr int64_t CustomCallHandler<checks, Fn, Ts...>::kNumArgs;
+
+template <CustomCall::RuntimeChecks checks, typename Fn, typename... Ts>
+constexpr int64_t CustomCallHandler<checks, Fn, Ts...>::kNumRets;
 
 //===----------------------------------------------------------------------===//
 // Custom arguments attributes decoding.
@@ -887,6 +991,27 @@ XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(float);
 XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(double);
 
 #undef XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING
+
+#define XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(T)                  \
+  template <CustomCall::RuntimeChecks checks>                        \
+  struct CustomCallRetDecoding<T, checks> {                          \
+    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Result<T>> Decode( \
+        TypeID type_id, void* value) {                               \
+      if (!CustomCall::CheckType<Tagged<T>>(checks, type_id)) {      \
+        return mlir::failure();                                      \
+      }                                                              \
+                                                                     \
+      return Result<T>(reinterpret_cast<T*>(value));                 \
+    }                                                                \
+  }
+
+XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(bool);
+XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(int32_t);
+XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(int64_t);
+XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(float);
+XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(double);
+
+#undef XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING
 
 template <CustomCall::RuntimeChecks checks>
 struct CustomCallArgDecoding<Eigen::half, checks> {

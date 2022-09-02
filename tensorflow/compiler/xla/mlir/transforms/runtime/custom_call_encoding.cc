@@ -62,6 +62,22 @@ FailureOr<EncodedArg> CustomCallArgEncodingSet::Encode(Globals &g,
 }
 
 //===----------------------------------------------------------------------===//
+// Custom call results encoding.
+//===----------------------------------------------------------------------===//
+
+using EncodedRet = CustomCallRetEncodingSet::Encoded;
+
+FailureOr<EncodedRet> CustomCallRetEncodingSet::Encode(Globals &g,
+                                                       ImplicitLocOpBuilder &b,
+                                                       Type value,
+                                                       Type converted) const {
+  for (auto &encoding : encodings_)
+    if (succeeded(encoding->Match(value, converted)))
+      return encoding->Encode(g, b, value, converted);
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // Custom call attributes encoding.
 //===----------------------------------------------------------------------===//
 
@@ -926,6 +942,28 @@ Value MemrefArgEncoding::EncodeMemRef(ImplicitLocOpBuilder &b,
 }
 
 //===----------------------------------------------------------------------===//
+// Custom call results encodings.
+//===----------------------------------------------------------------------===//
+
+LogicalResult ScalarRetEncoding::Match(Type value, Type converted) const {
+  return success(IsSupportedScalarType(value));
+}
+
+FailureOr<EncodedRet> ScalarRetEncoding::Encode(Globals &g,
+                                                ImplicitLocOpBuilder &b,
+                                                Type value,
+                                                Type converted) const {
+  Encoded encoded;
+  encoded.type_id = PackTypeId(g, b, ScalarRuntimeTypeId(converted));
+
+  Type ptr = LLVM::LLVMPointerType::get(converted);
+  Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
+  encoded.value = b.create<LLVM::AllocaOp>(ptr, one, 0);
+
+  return encoded;
+}
+
+//===----------------------------------------------------------------------===//
 // Default encodings for arguments and attributes.
 //===----------------------------------------------------------------------===//
 
@@ -940,6 +978,12 @@ CustomCallAttrEncodingSet DefaultAttrEncodings() {
 CustomCallArgEncodingSet DefaultArgEncodings() {
   CustomCallArgEncodingSet encodings;
   encodings.Add<ScalarArgEncoding, MemrefArgEncoding>();
+  return encodings;
+}
+
+CustomCallRetEncodingSet DefaultRetEncodings() {
+  CustomCallRetEncodingSet encodings;
+  encodings.Add<ScalarRetEncoding>();
   return encodings;
 }
 

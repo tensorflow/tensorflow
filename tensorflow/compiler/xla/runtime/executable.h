@@ -233,10 +233,10 @@ class Executable {
   // Returns the diagnostic engine passed via the ExecuteOpts to the executable.
   static DiagnosticEngine* GetDiagnosticEngine(KernelContext* ctx);
 
-  // Calls the custom call handler with the given runtime context, arguments and
-  // attributes.
+  // Calls the custom call handler with the given runtime context, arguments,
+  // attributes, and results.
   static LogicalResult Call(KernelContext* ctx, CustomCall& call, void** args,
-                            void** attrs);
+                            void** attrs, void** rets);
 
  private:
   friend class JitCompiler;  // see `mlir/transforms/runtime/compiler.h`

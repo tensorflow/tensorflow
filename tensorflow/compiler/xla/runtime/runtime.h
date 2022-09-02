@@ -59,7 +59,8 @@ void SetError(KernelContext *, const char *);
 
 // Calls the custom call function registered with the runtime. Returns true
 // if the custom call was successful.
-bool CustomCall(KernelContext *, const char *target, void **args, void **attrs);
+bool CustomCall(KernelContext *, const char *target, void **args, void **attrs,
+                void **rets);
 
 }  // namespace runtime
 }  // namespace xla

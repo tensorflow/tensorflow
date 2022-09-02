@@ -60,7 +60,7 @@ class DirectCustomCallRegistry {
   // Function type corresponding to the direct custom call (custom calls
   // linked directly with the compiled executable).
   using DirectCustomCall = bool (*)(KernelContext* kernel_context, void** args,
-                                    void** attrs);
+                                    void** attrs, void** rets);
 
   void Register(std::string_view name, DirectCustomCall custom_call);
 

@@ -44,6 +44,7 @@ CreateConvertToEntrypoint();
 class TypeIDNameRegistry;
 class CustomCallArgEncodingSet;
 class CustomCallAttrEncodingSet;
+class CustomCallRetEncodingSet;
 
 // Extension points for converting `rt` dialect to the LLVM dialect.
 //
@@ -72,6 +73,9 @@ struct ConvertRuntimeToLLvmOpts {
 
   // Add user-defined attributes type encoding to the custom call lowering.
   std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
+
+  // Add user-defined attributes type encoding to the custom call lowering.
+  std::function<void(CustomCallRetEncodingSet&)> populate_ret_encodings;
 };
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
