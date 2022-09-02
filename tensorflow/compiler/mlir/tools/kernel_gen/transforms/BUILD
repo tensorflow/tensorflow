@@ -161,7 +161,7 @@ cc_library(
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core:lib",
     ] + if_cuda_is_configured([
-        "//tensorflow/core/platform:cuda_libdevice_path",
+        "//tensorflow/tsl/platform:cuda_libdevice_path",
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",

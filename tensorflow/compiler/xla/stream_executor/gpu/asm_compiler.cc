@@ -31,12 +31,12 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/subprocess.h"
+#include "tensorflow/tsl/platform/cuda_libdevice_path.h"
 
 namespace stream_executor {
 
@@ -188,7 +188,7 @@ static std::string FindCudaExecutable(const std::string binary_name,
   }
 
   // Try searching in the default PATH first if applicable.
-  if (tensorflow::PreferPtxasFromPath() &&
+  if (tsl::PreferPtxasFromPath() &&
       GetPtxasVersionString(binary_filename).ok()) {
     VLOG(2) << "Using " << binary_filename;
     seen_binary_paths->emplace(std::move(cache_key), binary_filename);
@@ -199,7 +199,7 @@ static std::string FindCudaExecutable(const std::string binary_name,
   auto env = tensorflow::Env::Default();
   std::string binary_path;
   for (const std::string& cuda_root :
-       tensorflow::CandidateCudaRoots(preferred_cuda_dir)) {
+       tsl::CandidateCudaRoots(preferred_cuda_dir)) {
     binary_path = tensorflow::io::JoinPath(cuda_root, "bin", binary_filename);
     VLOG(2) << "Looking for " << binary_filename << " at " << binary_path;
     if (env->FileExists(binary_path).ok() &&

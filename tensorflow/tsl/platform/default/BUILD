@@ -48,7 +48,7 @@ cc_library(
 cc_library(
     name = "cuda_libdevice_path",
     srcs = ["cuda_libdevice_path.cc"],
-    hdrs = ["//tensorflow/core/platform:cuda_libdevice_path.h"],
+    hdrs = ["//tensorflow/tsl/platform:cuda_libdevice_path.h"],
     compatible_with = [],
     tags = [
         "manual",

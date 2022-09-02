@@ -18,7 +18,6 @@ load(
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
-    "tf_cuda_libdevice_path_deps",
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_google_mobile_srcs_only_runtime",
@@ -81,7 +80,6 @@ exports_files(
         "context.h",
         "cpu_info.cc",
         "cpu_info.h",
-        "cuda_libdevice_path.h",
         "bfloat16.h",
         "demangle.h",
         "env.cc",
@@ -229,12 +227,6 @@ cc_library(
         ":platform",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
     ],
-)
-
-cc_library(
-    name = "cuda_libdevice_path",
-    textual_hdrs = ["cuda_libdevice_path.h"],
-    deps = tf_cuda_libdevice_path_deps(),
 )
 
 cc_library(

@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/cuda_libdevice_path.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
@@ -238,7 +238,7 @@ class GpuKernelToBlobPass
 
   tensorflow::StatusOr<std::string> GetLibdeviceDir(
       const xla::HloModuleConfig& hlo_module_config) {
-    for (const std::string& cuda_root : tensorflow::CandidateCudaRoots(
+    for (const std::string& cuda_root : tsl::CandidateCudaRoots(
              hlo_module_config.debug_options().xla_gpu_cuda_data_dir())) {
       std::string libdevice_dir =
           tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");

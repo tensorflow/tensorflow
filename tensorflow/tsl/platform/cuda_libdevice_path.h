@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_
-#define TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_CUDA_LIBDEVICE_PATH_H_
+#define TENSORFLOW_TSL_PLATFORM_CUDA_LIBDEVICE_PATH_H_
 
 #include <string>
 #include <vector>
 
-namespace tensorflow {
+namespace tsl {
 
 // Returns, in order of preference, potential locations of the root directory of
 // the CUDA SDK, which contains sub-folders such as bin, lib64, and nvvm.
@@ -44,6 +44,6 @@ inline std::vector<std::string> CandidateCudaRoots(
 // Returns true if we should prefer ptxas from PATH.
 bool PreferPtxasFromPath();
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_CUDA_LIBDEVICE_PATH_H_

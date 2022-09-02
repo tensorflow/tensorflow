@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/cuda_libdevice_path.h"
+#include "tensorflow/tsl/platform/cuda_libdevice_path.h"
 
 #include <stdlib.h>
 
@@ -27,7 +27,7 @@ limitations under the License.
 #endif
 #include "tensorflow/core/platform/logging.h"
 
-namespace tensorflow {
+namespace tsl {
 
 std::vector<std::string> CandidateCudaRoots() {
 #if !defined(PLATFORM_GOOGLE)
@@ -40,4 +40,4 @@ std::vector<std::string> CandidateCudaRoots() {
 
 bool PreferPtxasFromPath() { return true; }
 
-}  // namespace tensorflow
+}  // namespace tsl

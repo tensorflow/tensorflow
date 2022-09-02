@@ -8,6 +8,7 @@
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_cuda_libdevice_path_deps",
     "tf_logging_deps",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
@@ -190,6 +191,7 @@ exports_files(
         "net.h",
         "resource_loader.h",
         "stacktrace_handler.h",
+        "cuda_libdevice_path.h",
         "bfloat16.h",
         "logging.h",
     ],
@@ -506,4 +508,11 @@ cc_library(
     deps = [
         ":platform",
     ] + tf_windows_aware_platform_deps("stacktrace"),
+)
+
+cc_library(
+    name = "cuda_libdevice_path",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["cuda_libdevice_path.h"],
+    deps = tf_cuda_libdevice_path_deps(),
 )
