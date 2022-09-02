@@ -3356,9 +3356,7 @@ pywrap_tensorflow_macro(
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
     ],
-    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
-    # copybara:comment_end
     deps = [
         ":bfloat16_lib",
         "//tensorflow/python/grappler:cost_analyzer_lib",
