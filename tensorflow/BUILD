@@ -1348,6 +1348,7 @@ genrule(
         "//tensorflow/c/eager:headers",
         "//tensorflow/cc:headers",
         "//tensorflow/core:headers",
+        "//tensorflow/stream_executor:stream_executor_headers",
     ],
     outs = ["include"],
     cmd = """
