@@ -77,12 +77,12 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "initialize_multi_client"
-    argspec: "args=[\'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    name: "initialize_accelerator_system"
+    argspec: "args=[\'device_type\', \'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "initialize_tpu_system"
-    argspec: "args=[\'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'device_type\', \'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "job_name"
@@ -121,6 +121,10 @@ tf_module {
     argspec: "args=[\'tensors\', \'layout\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "preferred_device_type"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "relayout"
     argspec: "args=[\'tensor\', \'layout\'], varargs=None, keywords=None, defaults=None"
   }
@@ -133,7 +137,7 @@ tf_module {
     argspec: "args=[\'mesh\', \'file_prefix\', \'tensor_names\', \'shape_and_slices\', \'tensors\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "shutdown_tpu_system"
+    name: "shutdown_accelerator_system"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
