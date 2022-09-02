@@ -23,6 +23,7 @@
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -233,7 +234,7 @@ class JitRtAsyncCollectiveSupport {
   llvm::SmallDenseMap<int64_t, se::Event> done_events_ ABSL_GUARDED_BY(mutex_);
 };
 
-xla::runtime::DirectCustomCallLibrary JitRtGpuCustomCalls();
+xla::runtime::DirectCustomCallRegistry JitRtGpuCustomCalls();
 
 }  // namespace gpu
 }  // namespace xla

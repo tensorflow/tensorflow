@@ -63,18 +63,19 @@ struct KernelContext {
   CustomCall::UserData* custom_call_data = nullptr;
 
   // User-defined custom call registry.
-  CustomCallRegistry* custom_call_registry = nullptr;
+  DynamicCustomCallRegistry* custom_call_registry = nullptr;
 
   // User-defined diagnostic engine for reporting diagnostics.
   DiagnosticEngine* diagnostic_engine = nullptr;
 };
 
 //===----------------------------------------------------------------------===//
-// Conversion from custom calls library and type id registry to symbols binding.
+// Conversion from custom calls and type id registries to symbols binding.
 //===----------------------------------------------------------------------===//
 
 ExecutionEngine::SymbolsBinding ToSymbolsBinding(
-    DirectCustomCallLibrary lib, TypeIDNameRegistry::RegistrationFn types) {
+    DirectCustomCallRegistry custom_calls,
+    TypeIDNameRegistry::RegistrationFn types) {
   return [=](MangleAndInterner mangle) {
     SymbolMap symbol_map;
 
@@ -84,8 +85,9 @@ ExecutionEngine::SymbolsBinding ToSymbolsBinding(
     if (types) types(registry);
 
     // Register direct custom calls.
-    using DirectCustomCall = DirectCustomCallLibrary::DirectCustomCall;
-    lib.ForEach([&](std::string_view name, DirectCustomCall custom_call) {
+    using DirectCustomCall = DirectCustomCallRegistry::DirectCustomCall;
+    custom_calls.ForEach([&](std::string_view name,
+                             DirectCustomCall custom_call) {
       symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
           llvm::pointerToJITTargetAddress(custom_call), llvm::JITSymbolFlags());
     });

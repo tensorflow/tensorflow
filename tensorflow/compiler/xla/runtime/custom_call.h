@@ -128,35 +128,6 @@ class CustomCall {
   static CustomCallBinding<> Bind(std::string callee);
 };
 
-// Direct custom call is a custom call that can be linked directly with the
-// compiled executable, and doesn't have to go through the custom call look up
-// by name at run time (see CustomCallRegistry).
-//
-// Direct custom call is a preffered way of implemenenting custom calls with
-// low run time overheads, as they will become just an indirect function calls
-// once LLVM ORC links them with the executable.
-//
-// See `GetSymbolsBinding` to convert custom call library to symbols binding.
-class DirectCustomCallLibrary {
- public:
-  // Function type corresponding to the direct custom call (custom calls
-  // linked directly with the compiled executable).
-  using DirectCustomCall = bool (*)(KernelContext* kernel_context, void** args,
-                                    void** attrs);
-
-  void Insert(std::string_view name, DirectCustomCall custom_call) {
-    lib_.try_emplace(name, custom_call);
-  }
-
-  void ForEach(
-      std::function<void(std::string_view, DirectCustomCall)> f) const {
-    for (auto& kv : lib_) f(kv.first(), kv.second);
-  }
-
- private:
-  llvm::StringMap<DirectCustomCall> lib_;
-};
-
 // Forward declare template defined below.
 template <CustomCall::RuntimeChecks checks, typename Fn, typename... Ts>
 class CustomCallHandler;

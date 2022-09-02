@@ -36,12 +36,12 @@ namespace runtime {
 
 static absl::Status CompileAndExecute(
     std::string_view module, ArgumentsRef args,
-    CustomCallRegistry custom_call_registry = {},
-    DirectCustomCallLibrary custom_call_library = {},
+    DynamicCustomCallRegistry dynamic_custom_calls = {},
+    DirectCustomCallRegistry direct_custom_calls = {},
     TypeIDNameRegistry::RegistrationFn types = {}) {
   JitExecutable::Options opts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
-  opts.compiler.symbols_binding = ToSymbolsBinding(custom_call_library, types);
+  opts.compiler.symbols_binding = ToSymbolsBinding(direct_custom_calls, types);
 
   opts.compiler.register_dialects = [&](mlir::DialectRegistry& registry) {
     RegisterDefaultXlaRuntimeDialects(registry);
@@ -66,7 +66,7 @@ static absl::Status CompileAndExecute(
   if (!initialized.ok()) return initialized;
 
   Executable::ExecuteOpts execute_opts;
-  execute_opts.custom_call_registry = &custom_call_registry;
+  execute_opts.custom_call_registry = &dynamic_custom_calls;
   execute_opts.async_task_runner =
       reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 
@@ -105,11 +105,11 @@ TEST(CustomCallTest, DirectCustomCall) {
     }
   )";
 
-  DirectCustomCallLibrary lib;
-  lib.Insert("test.custom_call", DirectCustomCall);
+  DirectCustomCallRegistry registry;
+  registry.Register("test.custom_call", DirectCustomCall);
 
   ASSERT_EQ(custom_call_counter, 0);
-  ASSERT_TRUE(CompileAndExecute(module, {}, {}, std::move(lib)).ok());
+  ASSERT_TRUE(CompileAndExecute(module, {}, {}, std::move(registry)).ok());
   EXPECT_EQ(custom_call_counter, 42);
 }
 
@@ -141,7 +141,7 @@ TEST(CustomCallTest, ScalarArgs) {
     return success();
   };
 
-  CustomCallRegistry registry;
+  DynamicCustomCallRegistry registry;
   registry.Register(CustomCall::Bind("test.custom_call")
                         .Arg<bool>()
                         .Arg<int32_t>()

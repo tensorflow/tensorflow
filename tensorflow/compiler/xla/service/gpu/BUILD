@@ -558,6 +558,7 @@ config_setting(
 #         "@llvm-project//mlir:Support",
 #         "//tensorflow/compiler/xla/runtime:arguments",
 #         "//tensorflow/compiler/xla/runtime:types",
+#         "//tensorflow/compiler/xla/runtime:custom_call_registry",
 #         "//tensorflow/compiler/xla/runtime:executable",
 #         "//tensorflow/compiler/xla/runtime:jit_executable",
 #         "//tensorflow/compiler/xla:shape_util",

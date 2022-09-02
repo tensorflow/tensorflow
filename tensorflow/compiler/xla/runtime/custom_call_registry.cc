@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -23,17 +24,30 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
-void CustomCallRegistry::Register(std::unique_ptr<CustomCall> custom_call) {
-  std::string_view key = custom_call->name();
-  auto inserted = custom_calls_.insert({key, std::move(custom_call)});
-  assert(inserted.second && "duplicate custom call registration");
-  (void)inserted;
+void DynamicCustomCallRegistry::Register(
+    std::unique_ptr<CustomCall> custom_call) {
+  std::string_view name = custom_call->name();
+  auto emplaced = custom_calls_.try_emplace(name, std::move(custom_call));
+  assert(emplaced.second && "duplicate custom call registration");
+  (void)emplaced;
 }
 
-CustomCall* CustomCallRegistry::Find(std::string_view callee) const {
+CustomCall* DynamicCustomCallRegistry::Find(std::string_view callee) const {
   auto it = custom_calls_.find(callee);
   if (it == custom_calls_.end()) return nullptr;
   return it->second.get();
+}
+
+void DirectCustomCallRegistry::Register(std::string_view name,
+                                        DirectCustomCall custom_call) {
+  auto emplaced = custom_calls_.try_emplace(name, std::move(custom_call));
+  assert(emplaced.second && "duplicate custom call registration");
+  (void)emplaced;
+}
+
+void DirectCustomCallRegistry::ForEach(
+    std::function<void(std::string_view, DirectCustomCall)> f) const {
+  for (auto& kv : custom_calls_) f(kv.first(), kv.second);
 }
 
 }  // namespace runtime

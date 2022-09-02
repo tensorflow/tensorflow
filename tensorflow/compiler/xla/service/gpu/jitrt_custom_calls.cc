@@ -30,6 +30,7 @@
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
@@ -99,7 +100,7 @@ using ::xla::runtime::AggregateAttrDef;
 using ::xla::runtime::AggregateAttrEncoding;
 using ::xla::runtime::CustomCall;
 using ::xla::runtime::CustomCallAttrEncodingSet;
-using ::xla::runtime::DirectCustomCallLibrary;
+using ::xla::runtime::DirectCustomCallRegistry;
 using ::xla::runtime::EnumAttrEncoding;
 using ::xla::runtime::Executable;
 using ::xla::runtime::Tagged;
@@ -2180,45 +2181,47 @@ static bool PartitionId(runtime::KernelContext* ctx, void** args,
 
 // -------------------------------------------------------------------------- //
 
-DirectCustomCallLibrary JitRtGpuCustomCalls() {
-  DirectCustomCallLibrary lib;
+DirectCustomCallRegistry JitRtGpuCustomCalls() {
+  DirectCustomCallRegistry reg;
 
-  lib.Insert("xla.gpu.fft", &xla::gpu::Fft);
-  lib.Insert("xla.gpu.cholesky", &xla::gpu::Cholesky);
-  lib.Insert("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
-  lib.Insert("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
-  lib.Insert("xla.gpu.gemm", &xla::gpu::Gemm);
-  lib.Insert("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
-  lib.Insert("xla.gpu.cublas.lt.matmul.bias", &xla::gpu::CublasLtMatmulBias);
+  reg.Register("xla.gpu.fft", &xla::gpu::Fft);
+  reg.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);
+  reg.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
+  reg.Register("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
+  reg.Register("xla.gpu.gemm", &xla::gpu::Gemm);
+  reg.Register("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
+  reg.Register("xla.gpu.cublas.lt.matmul.bias", &xla::gpu::CublasLtMatmulBias);
 
   auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
-  lib.Insert(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
-  lib.Insert(conv("backward.input"), &ConvFn<CudnnConvKind::kBackwardInput>);
-  lib.Insert(conv("backward.filter"), &ConvFn<CudnnConvKind::kBackwardFilter>);
-  lib.Insert(conv("forward.fused"),
-             &ConvFusedFn<CudnnConvKind::kForwardActivation>);
-  lib.Insert(conv("forward.fused.side_input"),
-             &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
+  reg.Register(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
+  reg.Register(conv("backward.input"), &ConvFn<CudnnConvKind::kBackwardInput>);
+  reg.Register(conv("backward.filter"),
+               &ConvFn<CudnnConvKind::kBackwardFilter>);
+  reg.Register(conv("forward.fused"),
+               &ConvFusedFn<CudnnConvKind::kForwardActivation>);
+  reg.Register(conv("forward.fused.side_input"),
+               &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
 
-  lib.Insert("xla.gpu.memcpy.d2d", &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
-  lib.Insert("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
-  lib.Insert("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
-  lib.Insert("xla.gpu.memset", &MemsetFn);
-  lib.Insert("xla.gpu.infeed", &xla::gpu::Infeed);
-  lib.Insert("xla.gpu.outfeed", &xla::gpu::Outfeed);
-  lib.Insert("xla.gpu.custom_call", &xla::gpu::CustomCall);
+  reg.Register("xla.gpu.memcpy.d2d",
+               &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
+  reg.Register("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
+  reg.Register("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
+  reg.Register("xla.gpu.memset", &MemsetFn);
+  reg.Register("xla.gpu.infeed", &xla::gpu::Infeed);
+  reg.Register("xla.gpu.outfeed", &xla::gpu::Outfeed);
+  reg.Register("xla.gpu.custom_call", &xla::gpu::CustomCall);
 
   // Collective operations.
-  lib.Insert("xla.gpu.all_gather", &xla::gpu::AllGather);
-  lib.Insert("xla.gpu.all_reduce", &xla::gpu::AllReduce);
-  lib.Insert("xla.gpu.all_reduce_done", &xla::gpu::AllReduceDone);
-  lib.Insert("xla.gpu.all_reduce_start", &xla::gpu::AllReduceStart);
-  lib.Insert("xla.gpu.all_to_all", &xla::gpu::AllToAll);
-  lib.Insert("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
-  lib.Insert("xla.gpu.partition_id", &xla::gpu::PartitionId);
-  lib.Insert("xla.gpu.replica_id", &xla::gpu::ReplicaId);
+  reg.Register("xla.gpu.all_gather", &xla::gpu::AllGather);
+  reg.Register("xla.gpu.all_reduce", &xla::gpu::AllReduce);
+  reg.Register("xla.gpu.all_reduce_done", &xla::gpu::AllReduceDone);
+  reg.Register("xla.gpu.all_reduce_start", &xla::gpu::AllReduceStart);
+  reg.Register("xla.gpu.all_to_all", &xla::gpu::AllToAll);
+  reg.Register("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
+  reg.Register("xla.gpu.partition_id", &xla::gpu::PartitionId);
+  reg.Register("xla.gpu.replica_id", &xla::gpu::ReplicaId);
 
-  return lib;
+  return reg;
 }
 
 }  // namespace gpu

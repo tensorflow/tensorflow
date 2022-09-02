@@ -52,7 +52,8 @@ ExecutionEngine::SymbolsBinding RuntimeSymbolsBinding(
 // function automatically registeres type id symbols for all canonical types
 // supported by the XLA runtime custom calls.
 ExecutionEngine::SymbolsBinding ToSymbolsBinding(
-    DirectCustomCallLibrary lib, TypeIDNameRegistry::RegistrationFn types = {});
+    DirectCustomCallRegistry custom_calls,
+    TypeIDNameRegistry::RegistrationFn types = {});
 
 class Executable {
  public:
@@ -191,9 +192,9 @@ class Executable {
 
     // Dynamically registered custom calls library. These custom calls resolved
     // at run time by name. In contrast to custom calls defined by the
-    // `DirectCustomCallLibrary` which are linked directly with the executable
+    // `DirectCustomCallRegistry` which are linked directly with the executable
     // at compile time.
-    CustomCallRegistry* custom_call_registry = nullptr;
+    DynamicCustomCallRegistry* custom_call_registry = nullptr;
 
     // Diagnostic engine is responsible for passing runtime diagnostics back
     // to the caller through the diagnostic handler.

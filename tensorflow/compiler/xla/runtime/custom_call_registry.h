@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_CUSTOM_CALL_REGISTRY_H_
 #define TENSORFLOW_COMPILER_XLA_RUNTIME_CUSTOM_CALL_REGISTRY_H_
 
+#include <functional>
 #include <memory>
 #include <string_view>
 
@@ -25,18 +26,16 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
-// Custom call registry is a container for the custom calls that looks up the
-// handler implementing the custom call by name at run time. It is used to
-// implement a generic `rt.custom_call` runtime intrinsic.
+// Dynamic custom call registry is a container for the custom calls that looks
+// up the handler implementing the custom call by name at run time. It is used
+// to implement a generic `rt.custom_call` runtime intrinsic.
 //
 // For low overhead custom calls prefer direct custom calls that linked with the
-// compiled executable and bypass by-name look up (see DirectCustomCallLibrary).
-class CustomCallRegistry {
+// compiled executable and bypass by-name look up.
+class DynamicCustomCallRegistry {
  public:
   // The type for custom call registration functions.
-  using RegistrationFunction = void (*)(CustomCallRegistry*);
-
-  CustomCallRegistry() = default;
+  using RegistrationFunction = void (*)(DynamicCustomCallRegistry*);
 
   void Register(std::unique_ptr<class CustomCall> custom_call);
 
@@ -44,6 +43,31 @@ class CustomCallRegistry {
 
  private:
   llvm::StringMap<std::unique_ptr<CustomCall>> custom_calls_;
+};
+
+// Direct custom call is a custom call that can be linked directly with the
+// compiled executable, and doesn't have to go through the custom call look up
+// by name at run time (see CustomCallRegistry).
+//
+// Direct custom call is a preferred way of implemenenting custom calls with
+// low run time overheads, as they will become just an indirect function calls
+// once LLVM ORC links them with the executable.
+//
+// See `ToSymbolsBinding` (in executor.h header) to convert direct custom call
+// registry and type name registry to symbols binding.
+class DirectCustomCallRegistry {
+ public:
+  // Function type corresponding to the direct custom call (custom calls
+  // linked directly with the compiled executable).
+  using DirectCustomCall = bool (*)(KernelContext* kernel_context, void** args,
+                                    void** attrs);
+
+  void Register(std::string_view name, DirectCustomCall custom_call);
+
+  void ForEach(std::function<void(std::string_view, DirectCustomCall)> f) const;
+
+ private:
+  llvm::StringMap<DirectCustomCall> custom_calls_;
 };
 
 }  // namespace runtime
