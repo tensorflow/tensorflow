@@ -123,8 +123,8 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
     HloModule multiple_output_fusion_1
     fused_computation.1 {
       param0 = f32[4,5,6,7,8]{4,3,2,1,0} parameter(0)
-      copy = f32[4,5,6,7,8]{2,1,4,3,0} copy(param0)
-      ROOT convert = f16[4,5,6,7,8]{2,1,4,3,0} convert(copy)
+      convert = f16[4,5,6,7,8]{4,3,2,1,0} convert(param0)
+      ROOT copy = f16[4,5,6,7,8]{2,1,4,3,0} copy(convert)
     }
 
     ENTRY copy_in_fusion_run_without_hlo_passes {
@@ -184,40 +184,6 @@ TEST_F(GpuKernelTilingTest, MultipleOutputFusionWithOnePossibleTransposeTiled) {
 
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.0}));
-}
-
-TEST_F(GpuKernelTilingTest,
-       MultipleOutputFusionWithTwoPossibleTransposesNotTiled) {
-  const char *const kHloString = R"(
-    HloModule multiple_output_fusion_2
-    fused_computation.1 {
-      param0 = f16[8,31,31,65]{3,2,1,0} parameter(0)
-      param1 = f16[8,31,31,65]{1,3,2,0} parameter(1)
-      copy2 = f16[8,31,31,65]{2,1,3,0} copy(param0)
-      copy3 = f16[8,31,31,65]{2,1,3,0} copy(param1)
-      ROOT tuple1 = (f16[8,31,31,65]{2,1,3,0}, f16[8,31,31,65]{2,1,3,0})
-        tuple(copy2, copy3)
-    }
-
-    ENTRY multiple_output_fusion_2 {
-      para0 = f16[8,31,31,65]{3,2,1,0} parameter(0)
-      para1 = f16[8,31,31,65]{1,3,2,0} parameter(1)
-      ROOT fusion1 = (f16[8,31,31,65]{2,1,3,0}, f16[8,31,31,65]{2,1,3,0})
-        fusion(para0,para1), kind=kLoop, calls=fused_computation.1
-    })";
-
-  // Check that a call to llvm.nvvm.barrier0 is not generated.
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .value();
-  auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
-; CHECK-NOT: call void BARRIER()
-; CHECK: }
-)";
-  CompileAndVerifyIr(std::move(hlo_module),
-                     MakePlatformSpecificLlvm(expected_ir),
-                     /*match_optimized_ir=*/true);
 }
 
 TEST_F(GpuKernelTilingTest, TransposedInputWithUserReverseNotTiled) {
@@ -286,19 +252,19 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithoutUnsafeUseTiled) {
     HloModule TwoTransposedInputs
 
     fused_computation {
-      param_0 = f32[64,64]{1,0} parameter(0)
-      param_1 = f32[64,64]{1,0} parameter(1)
-      bitcast = f32[64,64]{0,1} bitcast(param_0)
-      copy = f32[64,64]{0,1} copy(param_1)
-      ROOT tuple = (f32[64,64]{0,1}, f32[64,64]{0,1}) tuple(bitcast, copy)
+      param_0 = f32[16,16]{1,0} parameter(0)
+      param_1 = f32[16,16]{1,0} parameter(1)
+      s = f32[16,16]{1,0} exponential(param_0)
+      copy = f32[16,16]{0,1} copy(param_1)
+      ROOT tuple = (f32[16,16]{1,0}, f32[16,16]{0,1}) tuple(s, copy)
     }
 
     ENTRY kernel_entry {
-      parameter.0 = f32[64,64]{1,0} parameter(0)
-      parameter.1 = f32[64,64]{1,0} parameter(1)
-      ROOT fusion = (f32[64,64]{0,1}, f32[64,64]{0,1})
+      parameter.0 = f32[16,16]{1,0} parameter(0)
+      parameter.1 = f32[16,16]{1,0} parameter(1)
+      ROOT fusion = (f32[16,16]{1,0}, f32[16,16]{0,1})
         fusion(parameter.0, parameter.1),
-        kind=kLoop, calls=fused_computation
+        kind=kInput, calls=fused_computation
     })";
 
   // Check that a call to llvm.nvvm.barrier0 is generated.
@@ -314,7 +280,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithoutUnsafeUseTiled) {
                      MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
   // Check that the kernel runs correctly.
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.0001}));
 }
 
 TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {

@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -85,6 +87,59 @@ TEST_F(GpuFusionTest, FusedBiggerThenThresholdButDoNotChangeTheFusionl) {
   for (HloInstruction* instr : module->entry_computation()->instructions()) {
     EXPECT_TRUE(instr->opcode() != HloOpcode::kSlice);
   }
+}
+
+class TransposeFusionTest : public GpuFusionTest {
+ public:
+  void CheckGpuFusion(absl::string_view hlo,
+                      std::optional<absl::string_view> expected) {
+    RunAndFilecheckHloRewrite(hlo, GpuInstructionFusion{/*may_duplicate=*/true},
+                              expected);
+  }
+};
+
+TEST_F(TransposeFusionTest, Elementary) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f32[16,32]{1,0} parameter(0)
+  s = sqrt(p)
+  ROOT c = f32[16,32]{0,1} copy(s)
+}
+  )";
+
+  CheckGpuFusion(hlo, R"(
+// CHECK: %fused_computation (param_0.1: f32[16,32]) -> f32[16,32] {
+// CHECK-NEXT:   %param_0.1 = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
+// CHECK-NEXT:   ROOT %c.1 = f32[16,32]{0,1} copy(%s.1)
+// CHECK-NEXT: }
+// CHECK: ROOT %fusion = f32[16,32]{0,1} fusion(%p), kind=kInput, calls=%fused_computation
+)");
+}
+
+TEST_F(TransposeFusionTest, ReshapeSimpleFusion) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f32[256,16]{1,0} parameter(0)
+  r = f32[16,16,16]{2,1,0} reshape(p)
+  s = sqrt(r)
+  ROOT c = f32[16,16,16]{1,2,0} copy(s)
+}
+  )";
+
+  CheckGpuFusion(hlo, R"(
+// CHECK: %fused_computation (param_0.2: f32[256,16]) -> f32[16,16,16] {
+// CHECK-NEXT:   %param_0.2 = f32[256,16]{1,0} parameter(0)
+// CHECK-NEXT:   %r.1 = f32[16,16,16]{2,1,0} reshape(%param_0.2)
+// CHECK-NEXT:   %s.1 = f32[16,16,16]{2,1,0} sqrt(%r.1)
+// CHECK-NEXT:   ROOT %c.1 = f32[16,16,16]{1,2,0} copy(%s.1)
+// CHECK-NEXT: }
+// CHECK:   ROOT %fusion = f32[16,16,16]{1,2,0} fusion(%p), kind=kInput, calls=%fused_computation
+)");
 }
 
 }  // namespace

@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 
+#include <optional>
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -1263,6 +1269,106 @@ ENTRY main {
   )")
                     .ValueOrDie();
   EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+}
+
+class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {
+ public:
+  void CheckGpuMultiOutputFusion(absl::string_view hlo,
+                                 std::optional<absl::string_view> expected) {
+    RunAndFilecheckHloRewrite(hlo, GpuMultiOutputFusion{}, expected);
+  }
+
+ protected:
+};
+
+TEST_F(TransposeMultiOutputFusionTest, MultipleCopies) {
+  const char* hlo = R"(
+HloModule module
+
+fused_computation {
+  param_0.1 = f32[16,32]{1,0} parameter(0)
+  s.1 = f32[16,32]{1,0} sqrt(param_0.1)
+  ROOT c.1 = f32[16,32]{0,1} copy(s.1)
+}
+
+ENTRY main {
+  p = f32[16,32]{1,0} parameter(0)
+  fusion = f32[16,32]{0,1} fusion(p), kind=kInput, calls=fused_computation
+  c1 = f32[16,32]{0,1} copy(p)
+  ROOT t = (f32[16,32]{0,1}, f32[16,32]{0,1}) tuple(fusion, c1)
+}
+  )";
+
+  CheckGpuMultiOutputFusion(hlo, R"(
+// CHECK: %fused_computation (param_0.1: f32[16,32]) -> (f32[16,32], f32[16,32]) {
+// CHECK-NEXT:   %param_0.1 = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
+// CHECK-NEXT:   %c.1 = f32[16,32]{0,1} copy(%s.1)
+// CHECK-NEXT:   %c1.1 = f32[16,32]{0,1} copy(%param_0.1)
+// CHECK-NEXT:   ROOT %tuple = (f32[16,32]{0,1}, f32[16,32]{0,1}) tuple(%c.1, %c1.1)
+// CHECK-NEXT: }
+
+// CHECK: %fusion = (f32[16,32]{0,1}, f32[16,32]{0,1}) fusion(%p), kind=kInput, calls=%fused_computation
+)");
+}
+
+// Do not group copy and reduction.
+TEST_F(TransposeMultiOutputFusionTest, TiledReduceCopy) {
+  const char* hlo = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = add(lhs, rhs)
+}
+
+fused_computation {
+  param_0.1 = f32[16,32]{1,0} parameter(0)
+  s.1 = f32[16,32]{1,0} sqrt(param_0.1)
+  ROOT c.1 = f32[16,32]{0,1} copy(s.1)
+}
+
+ENTRY main {
+  p = f32[16,32]{1,0} parameter(0)
+  fusion = f32[16,32]{0,1} fusion(p), kind=kInput, calls=fused_computation
+  z = f32[] constant(0)
+  r1 = f32[32]{0} reduce(p, z), dimensions={0}, to_apply=add
+  ROOT t = (f32[16,32]{0,1}, f32[32]{0}) tuple(fusion, r1)
+}
+  )";
+
+  CheckGpuMultiOutputFusion(hlo, std::nullopt);
+}
+
+TEST_F(TransposeMultiOutputFusionTest, MultipleCopiesAndInput) {
+  const char* hlo = R"(
+HloModule module
+
+fused_computation {
+  param_0.1 = f32[16,32]{1,0} parameter(0)
+  s.1 = f32[16,32]{1,0} sqrt(param_0.1)
+  ROOT c.1 = f32[16,32]{0,1} copy(s.1)
+}
+
+ENTRY main {
+  p = f32[16,32]{1,0} parameter(0)
+  fusion = f32[16,32]{0,1} fusion(p), kind=kInput, calls=fused_computation
+  c1 = exponential(p)
+  ROOT t = tuple(fusion, c1)
+}
+  )";
+
+  CheckGpuMultiOutputFusion(hlo, R"(
+// CHECK: %fused_computation (param_0.1: f32[16,32]) -> (f32[16,32], f32[16,32]) {
+// CHECK-NEXT:   %param_0.1 = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
+// CHECK-NEXT:   %c.1 = f32[16,32]{0,1} copy(%s.1)
+// CHECK-NEXT:   %c1.1 = f32[16,32]{1,0} exponential(%param_0.1)
+// CHECK-NEXT:   ROOT %tuple = (f32[16,32]{0,1}, f32[16,32]{1,0}) tuple(%c.1, %c1.1)
+// CHECK-NEXT: }
+// CHECK:   %fusion = (f32[16,32]{0,1}, f32[16,32]{1,0}) fusion(%p), kind=kInput, calls=%fused_computation
+)");
 }
 
 }  // namespace gpu

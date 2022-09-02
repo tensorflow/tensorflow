@@ -44,9 +44,16 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  Status HandleBitcastConvert(HloInstruction* hlo) override {
+    return OkStatus();
+  }
+
   // Sink kCopy across elementwise unary.
   Status HandleElementwiseUnary(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
+    if (hlo->opcode() == HloOpcode::kReducePrecision) {
+      return OkStatus();
+    }
     if (operand->opcode() == HloOpcode::kCopy) {
       HloInstruction* copied = operand->mutable_operand(0);
       TF_ASSIGN_OR_RETURN(
@@ -94,9 +101,17 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
       HloInstruction* copied_a = a->mutable_operand(0);
       HloInstruction* copied_b = b->mutable_operand(0);
       if (copied_a->shape() == copied_b->shape()) {
-        TF_ASSIGN_OR_RETURN(
-            HloInstruction * earlier_elementwise,
-            MakeBinaryHlo(hlo->opcode(), copied_a, copied_b, &hlo->metadata()));
+        HloInstruction* earlier_elementwise;
+        if (hlo->opcode() == HloOpcode::kCompare) {
+          TF_ASSIGN_OR_RETURN(
+              earlier_elementwise,
+              MakeCompareHlo(hlo->comparison_direction(), copied_a, copied_b,
+                             &hlo->metadata()));
+        } else {
+          TF_ASSIGN_OR_RETURN(earlier_elementwise,
+                              MakeBinaryHlo(hlo->opcode(), copied_a, copied_b,
+                                            &hlo->metadata()));
+        }
         HloInstruction* later_copy =
             MakeCopyHlo(earlier_elementwise, hlo->shape());
         TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));

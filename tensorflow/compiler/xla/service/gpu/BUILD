@@ -1236,6 +1236,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
@@ -1626,6 +1627,7 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
+        ":move_copy_to_users",
         ":alias_passthrough_params",
         ":all_reduce_blueconnect",
         ":fusion_bitcast_lift",

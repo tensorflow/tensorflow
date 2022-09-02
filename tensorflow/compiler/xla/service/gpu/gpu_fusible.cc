@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <stack>
 #include <vector>
 
@@ -106,6 +107,20 @@ bool IsInputFusibleReduction(const HloInstruction& instr) {
          IsReductionFromOrToContiguousDimensions(instr);
 }
 
+bool IsTransposeInputFusion(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kFusion) {
+    HloComputation* fusion = instr.called_computations()[0];
+    return absl::c_any_of(
+        GetFusionRoots(fusion),
+        [&](const HloInstruction* instr) { return IsTiledTranspose(*instr); });
+  }
+  return false;
+}
+
+bool IsInputFusibleTranspose(const HloInstruction& instr) {
+  return IsTiledTranspose(instr) || IsTransposeInputFusion(instr);
+}
+
 const HloInstruction* GetRealHeroForMultiOutputFusion(
     const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kFusion) {
@@ -118,7 +133,8 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   // If possible, we want to pick a reduction-from-or-to-contiguous-dims
   // operand of the fusion root, because it has the most constraints.
   for (const auto* inst : fused_expression_root->operands()) {
-    if (IsReductionFromOrToContiguousDimensions(*inst)) {
+    if (IsReductionFromOrToContiguousDimensions(*inst) ||
+        IsTiledTranspose(*inst)) {
       return inst;
     }
   }
@@ -132,7 +148,8 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   auto get_loop_shape = [&](const HloInstruction* element_instr) {
     // Special-case reduction-to-vector ops: The loop dimensions are determined
     // by the shape of the first operand.
-    if (IsReductionFromOrToContiguousDimensions(*element_instr)) {
+    if (IsReductionFromOrToContiguousDimensions(*element_instr) ||
+        IsTiledTranspose(*element_instr)) {
       return element_instr->operand(0)->shape();
     }
     return element_instr->shape();
@@ -147,6 +164,15 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   if (IsReductionFromOrToContiguousDimensions(*instr_1) &&
       IsReductionFromOrToContiguousDimensions(*instr_2) &&
       !AreFusedReductionOutputsConsistent({instr_1, instr_2}, instr_1)) {
+    return false;
+  } else if (IsTiledTranspose(*instr_1) && IsTiledTranspose(*instr_2) &&
+             (instr_1->shape() != instr_2->shape() ||
+              instr_1->operand(0)->shape() != instr_2->operand(0)->shape())) {
+    return false;
+  } else if ((IsTiledTranspose(*instr_1) &&
+              IsReductionFromOrToContiguousDimensions(*instr_2)) ||
+             (IsTiledTranspose(*instr_2) &&
+              IsReductionFromOrToContiguousDimensions(*instr_1))) {
     return false;
   }
   // The elementwise output shapes must be the same (including layout).
@@ -167,7 +193,8 @@ bool IsInputFusibleScatter(const HloInstruction& instr) {
 bool IsInputFusible(const HloInstruction& instr) {
   // Input fusion only handles non-elemental reduction and scatter operations.
   return instr.IsFusible() &&
-         (IsInputFusibleReduction(instr) || IsInputFusibleScatter(instr));
+         (IsInputFusibleReduction(instr) || IsInputFusibleScatter(instr) ||
+          IsInputFusibleTranspose(instr));
 }
 
 bool IsLoopFusible(const HloInstruction& instr) {
@@ -178,7 +205,9 @@ bool IsLoopFusible(const HloInstruction& instr) {
   // address of the GTE result statically, so we can do this without chasing any
   // pointers.
   return instr.IsFusible() &&
-         ((instr.IsElementwise() && instr.operand_count() > 0) ||
+         ((instr.IsElementwise() && instr.operand_count() > 0 &&
+           instr.opcode() != HloOpcode::kCopy) ||
+          (instr.opcode() == HloOpcode::kCopy && !IsTiledTranspose(instr)) ||
           instr.opcode() == HloOpcode::kBitcast ||
           instr.opcode() == HloOpcode::kBroadcast ||
           instr.opcode() == HloOpcode::kConcatenate ||
@@ -312,6 +341,11 @@ static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
       // from potential x-tiling).
       return 2 * 32 * 33 * primitive_size * num_variadic;
     }
+  } else if (IsTiledTranspose(instr)) {
+    // Tile size for transposition.
+    int64_t primitive_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
+    return 32 * 33 * primitive_size;
   } else if (instr.opcode() == HloOpcode::kFusion) {
     int64_t sum = 0;
     for (const HloInstruction* hlo :
@@ -563,7 +597,7 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
   // its emitter doesn't support it.
 
   return instr.IsFusible() &&
-         (IsInputFusibleReduction(instr) ||
+         (IsInputFusibleReduction(instr) || IsInputFusibleTranspose(instr) ||
           instr.IsLoopFusion() ||  // TODO(b/130013493): Use IsLoopFusible here.
           instr.IsElementwise());
 }

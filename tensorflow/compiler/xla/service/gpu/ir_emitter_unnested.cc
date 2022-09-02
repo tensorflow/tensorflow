@@ -1743,6 +1743,49 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
   return OkStatus();
 }
 
+Status IrEmitterUnnested::EmitUnnestedTranspose(
+    mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation) {
+  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fused_computation);
+  HloInstruction* first_transpose = *absl::c_find_if(
+      hlo_roots,
+      [](HloInstruction* instr) { return IsTiledTranspose(*instr); });
+  HloInstruction* operand = first_transpose->mutable_operand(0);
+
+  std::optional<Vector3> dims =
+      ShapeUtil::FindTranspose021(operand->shape(), first_transpose->shape());
+
+  // TODO(cheshire): have a more robust way of checking this.
+  CHECK(dims.has_value());
+
+  constexpr int kNumRows = 4;
+  CHECK_EQ(WarpSize() % kNumRows, 0);
+
+  // 3D view over the input shape.
+  Vector3 permuted_dims = {dims->at(0), dims->at(2), dims->at(1)};
+
+  TilingScheme tiling_scheme(
+      /*permuted_dims*/ permuted_dims,
+      /*tile_sizes=*/{1, WarpSize() / kNumRows, 1},
+      /*num_threads=*/{1, kNumRows, WarpSize()},
+      /*indexing_order=*/kLinearIndexingX,
+      /*vector_size=*/1,
+      /*scaling_factor=*/1);
+  LaunchDimensions launch_dimensions(
+      tiling_scheme.GetNumberOfBlocksPhysical(),
+      tiling_scheme.GetNumThreadsPerBlockPhysical());
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  TF_ASSIGN_OR_RETURN(auto kernel_thunk,
+                      BuildKernelThunk(fusion, GetThunkInfo(fusion), &ir_arrays,
+                                       launch_dimensions));
+  TF_RETURN_IF_ERROR(EmitTranspose021Tile(
+      fusion, fused_computation,
+      absl::MakeSpan(ir_arrays).subspan(0, fusion.getInputBuffers().size()),
+      absl::MakeSpan(ir_arrays).subspan(fusion.getInputBuffers().size()),
+      tiling_scheme, launch_dimensions));
+  AddThunkToThunkSequence(std::move(kernel_thunk));
+  return OkStatus();
+}
+
 Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
   TF_ASSIGN_OR_RETURN(
@@ -1752,6 +1795,10 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
 
   if (HasAnyUnnestedReductionRoot(fused_computation)) {
     return EmitUnnestedReduction(fusion_op, fused_computation);
+  }
+
+  if (HasAnyTiledTransposeRoot(fused_computation)) {
+    return EmitUnnestedTranspose(fusion_op, fused_computation);
   }
 
   auto fusion_results = fusion_op.getFusionResults();
@@ -1808,11 +1855,6 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
       }
       return OkStatus();
     }
-  }
-
-  if (std::optional<TransposeDimsAndParams> descr =
-          Match021Transpose(fused_computation)) {
-    return Emit021Transpose(*descr, fusion_op);
   }
 
   return EmitLoopFusion(op);
@@ -3510,8 +3552,8 @@ void IrEmitterUnnested::EmitTile(
 static IrArray::Index GetUnnormalizedIndex(
     const IrArray::Index& normalized_shape_index,
     const Shape& unnormalized_shape, llvm::IRBuilder<>* b_,
-    const TilingScheme& tiling_scheme) {
-  DCHECK_EQ(normalized_shape_index.size(), 3);
+    absl::Span<const int64_t> dims_in_elems) {
+  CHECK_EQ(normalized_shape_index.size(), 3);
   // If the normalization only add a new dimensions of size 1,
   // generate simpler indexing. LLVM doesn't always simplify the more
   // complicated indexing and this prevents it from vectorizing some
@@ -3534,8 +3576,7 @@ static IrArray::Index GetUnnormalizedIndex(
     return IrArray::Index({multidim[2], multidim[1]}, unnormalized_shape,
                           normalized_shape_index.GetType());
   }
-  llvm::Value* linear =
-      normalized_shape_index.Linearize(tiling_scheme.GetDimsInElems(), b_);
+  llvm::Value* linear = normalized_shape_index.Linearize(dims_in_elems, b_);
   return IrArray::Index(linear, unnormalized_shape, b_);
 }
 
@@ -3576,7 +3617,8 @@ void IrEmitterUnnested::EmitTileElementForTranspose(
             thread_id_info.GEPIntoSharedMemory(&b_, param_tile_buffer, idx);
         auto type =
             thread_id_info.GEPIntoSharedMemoryType(param_tile_buffer, idx);
-        return Load(type, gep, "tiled_buffer");
+        llvm::Value* loaded = b_.CreateLoad(type, gep, "tiled_buffer");
+        return loaded;
       };
     } else {
       auto array = operand_arrays[i];
@@ -3589,7 +3631,7 @@ void IrEmitterUnnested::EmitTileElementForTranspose(
                                 std::move(gen));
   }
   IrArray::Index untiled_index = GetUnnormalizedIndex(
-      index, output_arrays[0].GetShape(), &b_, tiling_scheme);
+      index, output_arrays[0].GetShape(), &b_, tiling_scheme.GetDimsInElems());
   llvm_ir::ElementGenerator output_generator =
       *fused_emitter.GetGenerator(*fused_computation->root_instruction());
   llvm::Value* output_value = output_generator(untiled_index).ValueOrDie();
@@ -4252,143 +4294,145 @@ llvm::CallInst* IrEmitterUnnested::EmitSyncThreads() {
   return EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
 }
 
-Status IrEmitterUnnested::EmitHlo021Tile(
-    mlir::lmhlo::FusionOp fusion,
+static IrArray::Index PermuteIndex(const IrArray::Index& index,
+                                   absl::Span<const int64_t> permutation) {
+  return IrArray::Index{Permute(index.multidim(), permutation),
+                        Permute(index.dims(), permutation), index.GetType()};
+}
+
+Status IrEmitterUnnested::EmitTranspose021Tile(
+    mlir::lmhlo::FusionOp fusion, HloComputation* fusion_hlo,
     absl::Span<const llvm_ir::IrArray> operand_arrays,
     absl::Span<const llvm_ir::IrArray> output_arrays,
-    TransposeDimsAndParams descr, const TilingScheme& tiling_scheme,
+    const TilingScheme& tiling_scheme,
     const LaunchDimensions& launch_dimensions) {
   std::string name = GetIrNameFromLoc(fusion.getLoc());
-
   llvm::Type* index_type = GetIndexTypeForKernel(
       fusion.getOperation(), launch_dimensions.launch_bound(), &b_);
 
-  // For each tiled parameter, cast its input IrArray to the corresponding
-  // reduced shape and keep the reduced shape live during IR emission.
-  std::map<int64_t, IrArray> param_in_reduced_shape_arrays;
-  std::vector<llvm::Value*> param_shmem_buffers(fusion.getInputBuffers().size(),
-                                                nullptr);
+  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion_hlo);
+  HloInstruction* first_transpose = *absl::c_find_if(
+      hlo_roots,
+      [](HloInstruction* instr) { return IsTiledTranspose(*instr); });
+  const Shape& out_shape = first_transpose->shape();
+  const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
 
-  auto get_shared_memory_buffer = [&](llvm::Type* elem_ty,
-                                      absl::string_view buffer_name) {
-    // For Nvidia GPUs, the warp size is 32 threads and the shared memory bank
-    // is organized into 32-way. We usually use the warp size or a multiplier or
-    // a the warp size as the size for tiling. This may cause all elements in
-    // the same column of a tile use the same memory bank and therefore shared
-    // memory bank conflicts. Adding 1 to the minor dimension of the shared
-    // memory buffer can reduce such shared memory bank conflicts.
-    return AllocateShared(tiling_scheme, elem_ty,
-                          {tiling_scheme.GetBlockTileSizeFor(kDimY),
-                           tiling_scheme.GetBlockTileSizeFor(kDimX) + 1},
-                          buffer_name);
-  };
-
-  for (int64_t id : descr.params) {
-    const Shape& param_shape = GetShape(fusion.getInputBuffers()[id]);
-    param_shmem_buffers[id] = get_shared_memory_buffer(
-        llvm_ir::PrimitiveTypeToIrType(param_shape.element_type(), module_),
-        IrName(name, StrCat("tile", id)));
-    VLOG(3) << "Added shmem buffer for parameter " << id << ": "
-            << llvm_ir::DumpToString(*param_shmem_buffers[id]);
-    Shape reduced_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-        param_shape.element_type(), Permute(descr.dims, {0, 2, 1}));
-    param_in_reduced_shape_arrays[id] =
-        operand_arrays[id].CastToShape(reduced_shape, &b_);
+  // We need the following invariant:
+  // For every tuple element:
+  //  -> EITHER it's a kCopy: S{L} -> S{L'}
+  //  -> OR it's an elementwise op of shape S{L}
+  for (HloInstruction* root : hlo_roots) {
+    if (IsTiledTranspose(*root)) {
+      CHECK(ShapeUtil::EqualIgnoringElementType(transpose_in_shape,
+                                                root->operand(0)->shape()));
+      CHECK(ShapeUtil::EqualIgnoringElementType(out_shape, root->shape()));
+    } else {
+      CHECK(ShapeUtil::EqualIgnoringElementType(root->shape(),
+                                                transpose_in_shape));
+    }
   }
 
-  TileElementGenerator tile_generator =
-      [&](const ThreadIdInfo& thread_id_info, const IrArray::Index& index,
-          ValueVector2 tile_dimensions) {
-        // If shared memory transpose is needed, wait for all threads to reach
-        // this point, lest we copy a value from tile to output before the other
-        // thread copies it from input to tile. This is `__syncthreads` in CUDA.
-        if (!descr.params.empty()) {
-          // Calculate the input tile origin from the output tile origin.
-          const IrArray::Index input_tile_origin(
-              Permute(index.multidim(), {0, 2, 1}),
-              Permute(index.dims(), {0, 2, 1}), index.GetType());
+  GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
+                                          GetNestedComputer());
+  FusedIrEmitter fused_emitter(elemental_emitter);
+  for (int i = 0; i < fusion_hlo->num_parameters(); i++) {
+    llvm_ir::IrArray ir_array = operand_arrays[i];
+    HloInstruction* fused_operand = fusion_hlo->parameter_instruction(i);
+    fused_emitter.BindGenerator(
+        *fused_operand,
+        [this, ir_array, fused_operand](const llvm_ir::IrArray::Index& index) {
+          return ir_array.EmitReadArrayElement(index, &b_,
+                                               fused_operand->name());
+        });
+  }
 
-          ValueVector2 transposed_tile_dimensions = {tile_dimensions[1],
-                                                     tile_dimensions[0]};
+  absl::flat_hash_map<HloInstruction*, llvm::GlobalVariable*> tiles;
+  for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
+    if (IsTiledTranspose(*root)) {
+      tiles[root] =
+          AllocateShared(tiling_scheme,
+                         llvm_ir::PrimitiveTypeToIrType(
+                             transpose_in_shape.element_type(), module_),
+                         {tiling_scheme.GetBlockTileSizeFor(kDimY),
+                          tiling_scheme.GetBlockTileSizeFor(kDimX) + 1},
+                         absl::StrCat("tr_tile_", tile_idx));
+    }
+  }
 
-          // Copy input parameter values to shared memory buffers:
-          // tile[thread_id_y, thread_id_x] = input[index]
-          // Note that tile_width and tile_height are flipped here because we
-          // are reading a transposed tile.
-          EmitTile(tiling_scheme, input_tile_origin, thread_id_info,
-                   transposed_tile_dimensions,
-                   [&](const ThreadIdInfo& thread_id_info,
-                       const IrArray::Index& index, llvm::Value* y_loc,
-                       llvm::Value* x_loc, llvm::Value* /*x_iter_num*/) {
-                     for (int64_t id : descr.params) {
-                       IrArray& input_in_logical_shape =
-                           param_in_reduced_shape_arrays[id];
+  TileElementGenerator tile_generator = [&](const ThreadIdInfo& thread_id_info,
+                                            const IrArray::Index& index,
+                                            ValueVector2 tile_dimensions) {
+    // Copy input parameter values to shared memory buffers:
+    // tile[thread_id_y, thread_id_x] = input[index]
+    // Note that tile_width and tile_height are flipped here because we
+    // are reading a transposed tile.
+    EmitTile(
+        tiling_scheme, index, thread_id_info, tile_dimensions,
+        [&](const ThreadIdInfo& thread_id_info, const IrArray::Index& index,
+            llvm::Value* y_loc, llvm::Value* x_loc,
+            llvm::Value* /*x_iter_num*/) {
+          // Compute all extra output values before writing them. This avoids
+          // overwriting aliased input/output values before all reads occurred.
+          std::vector<std::tuple<IrArray, IrArray::Index, llvm::Value*>>
+              scheduled_writes;
 
-                       auto shmem_buffer = llvm::cast<llvm::GlobalVariable>(
-                           param_shmem_buffers.at(id));
-                       llvm::Value* value =
-                           input_in_logical_shape.EmitReadArrayElement(
-                               index, &b_, "input_element");
+          for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
+            IrArray::Index input_index = GetUnnormalizedIndex(
+                index, transpose_in_shape, &b_, tiling_scheme.GetDimsInElems());
+            if (IsTiledTranspose(*root)) {
+              llvm_ir::ElementGenerator input_gen =
+                  *fused_emitter.GetGenerator(*root->operand(0));
+              llvm::Value* value = *input_gen(input_index);
+              llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
+                  &b_, tiles[root], {y_loc, x_loc});
+              b_.CreateStore(value, addr);
+            } else {
+              llvm_ir::ElementGenerator output_gen =
+                  *fused_emitter.GetGenerator(*root);
+              llvm::Value* output_value = *output_gen(input_index);
+              scheduled_writes.emplace_back(output_arrays[output_idx],
+                                            input_index, output_value);
+            }
+          }
 
-                       llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
-                           &b_, shmem_buffer, {y_loc, x_loc});
-                       b_.CreateStore(value, addr);
-                     }
-                   });
+          for (const auto& [output, idx, value] : scheduled_writes) {
+            output.EmitWriteArrayElement(idx, value, &b_);
+          }
+        });
 
-          // Wait for all threads to reach this point using `__syncthreads` in
-          // CUDA.
-          EmitSyncThreads();
-        }
+    EmitSyncThreads();
 
-        EmitTile(tiling_scheme, index, thread_id_info, tile_dimensions,
-                 /*emit_elem_function=*/
-                 [&](const ThreadIdInfo& thread_id_info,
-                     const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-                     llvm::Value* x_loc, llvm::Value* /*x_iter_num*/) {
-                   EmitTileElementForTranspose(
-                       thread_id_info, fusion, operand_arrays, output_arrays,
-                       index, tiling_scheme, y_loc, x_loc, param_shmem_buffers);
-                 });
-        bool block_contains_multi_tiles =
-            tiling_scheme.GetBlockTileSizeFor(kDimZ) > 1;
+    Vector3 permutation{0, 2, 1};
+    IrArray::Index output_tile_index = PermuteIndex(index, permutation);
+    ValueVector2 transposed_tile_dimensions = {tile_dimensions[1],
+                                               tile_dimensions[0]};
 
-        // If a tile block contains multiple tiles and shared memory buffers are
-        // used, we need to wait for all threads to finish using the shared
-        // memory buffer for the current tile before we move on to process the
-        // next tile and overwrite the shared memory buffers.
-        if (block_contains_multi_tiles && !descr.params.empty()) {
-          EmitSyncThreads();
-        }
-      };
+    EmitTile(
+        tiling_scheme, output_tile_index, thread_id_info,
+        transposed_tile_dimensions,
+        /*emit_elem_function=*/
+        [&](const ThreadIdInfo& thread_id_info,
+            const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
+            llvm::Value* x_loc, llvm::Value* /*x_iter_num*/) {
+          for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
+            if (IsTiledTranspose(*root)) {
+              IrArray::Index untiled_index = GetUnnormalizedIndex(
+                  index, root->shape(), &b_,
+                  Permute(tiling_scheme.GetDimsInElems(), permutation));
+              std::vector<llvm::Value*> idx = {x_loc, y_loc};
+              llvm::Value* gep =
+                  thread_id_info.GEPIntoSharedMemory(&b_, tiles[root], idx);
+              llvm::Type* type =
+                  thread_id_info.GEPIntoSharedMemoryType(tiles[root], idx);
+              llvm::Value* loaded = b_.CreateLoad(type, gep, "tiled_buffer");
+              output_arrays[output_idx].EmitWriteArrayElement(untiled_index,
+                                                              loaded, &b_);
+            }
+          }
+        });
+  };
 
   return EmitTilingKernel(tiling_scheme, index_type, tile_generator).status();
-}
-
-Status IrEmitterUnnested::Emit021Transpose(TransposeDimsAndParams descr,
-                                           mlir::lmhlo::FusionOp fusion) {
-  constexpr int kNumRows = 4;
-  CHECK_EQ(WarpSize() % kNumRows, 0);
-  TilingScheme tiling_scheme(descr.dims,
-                             /*tile_sizes=*/{1, WarpSize() / kNumRows, 1},
-                             /*num_threads=*/{1, kNumRows, WarpSize()},
-                             /*indexing_order=*/kLinearIndexingX,
-                             /*vector_size=*/1,
-                             /*scaling_factor=*/1);
-  LaunchDimensions launch_dimensions(
-      tiling_scheme.GetNumberOfBlocksPhysical(),
-      tiling_scheme.GetNumThreadsPerBlockPhysical());
-  std::vector<llvm_ir::IrArray> ir_arrays;
-  TF_ASSIGN_OR_RETURN(auto kernel_thunk,
-                      BuildKernelThunk(fusion, GetThunkInfo(fusion), &ir_arrays,
-                                       launch_dimensions));
-  TF_RETURN_IF_ERROR(EmitHlo021Tile(
-      fusion,
-      absl::MakeSpan(ir_arrays).subspan(0, fusion.getInputBuffers().size()),
-      absl::MakeSpan(ir_arrays).subspan(fusion.getInputBuffers().size()), descr,
-      tiling_scheme, launch_dimensions));
-  AddThunkToThunkSequence(std::move(kernel_thunk));
-  return Status::OK();
 }
 
 namespace {
@@ -4774,11 +4818,11 @@ Status IrEmitterUnnested::EmitIRForReduction(
       fusion, reduction_info, reductions, fused_emitter);
 
   EmitElementFunction emit_reduction_element =
-      [&](const ThreadIdInfo& thread_id_info,
-          const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-          llvm::Value* x_loc, llvm::Value* x_iter_num) {
+      [&](const ThreadIdInfo& thread_id_info, const IrArray::Index& index,
+          llvm::Value* y_loc, llvm::Value* x_loc, llvm::Value* x_iter_num) {
         IrArray::Index input_index = GetUnnormalizedIndex(
-            index, input_shape, &b_, codegen_state.GetTilingScheme());
+            index, input_shape, &b_,
+            codegen_state.GetTilingScheme().GetDimsInElems());
 
         llvm::Value* partial_result_index =
             codegen_state.IsRowReduction() ? b_.getInt32(0) : x_iter_num;
@@ -4788,8 +4832,8 @@ Status IrEmitterUnnested::EmitIRForReduction(
         // of the computation for different partial results. Use this index if
         // 'num_partial_results > 1'.
         int num_partial_results = codegen_state.GetNumPartialResults();
-        llvm_ir::IrArray::Index index_without_linear = IrArray::Index(
-            input_index.multidim(), input_shape, input_index.GetType());
+        IrArray::Index index_without_linear{input_index.multidim(), input_shape,
+                                            input_index.GetType()};
 
         // Emit code to generate the input and perform the reduction computation
         // for each reduction instruction.
@@ -4980,8 +5024,7 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
 
   // Skip all parameter buffers first.
   int ir_arrays_idx = fused_computation->num_parameters();
-  std::vector<HloInstruction*> roots = GetFusionRoots(fused_computation);
-  for (HloInstruction* root : roots) {
+  for (HloInstruction* root : hlo_roots) {
     int get_num_results = GetNumOutputs(root->shape());
     result_ir_arrays[root] =
         absl::MakeSpan(ir_arrays).subspan(ir_arrays_idx, get_num_results);

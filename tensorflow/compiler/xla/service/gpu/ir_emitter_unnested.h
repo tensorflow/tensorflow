@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <functional>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -442,6 +443,33 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion,
                                HloComputation* fused_computation);
 
+  // Emits a kernel for the given hlo instruction using a tiled 0-2-1 transpose
+  // algorithm to improve the memory access patterns for the input parameters
+  // with a shape that is a 0-2-1 transpose of the output tensor shape. The
+  // caller is responsible for making sure that it is safe to apply the shared
+  // memory transpose on the input parameters.
+  //
+  //
+  // For the purpose of tiling, the output tensors have a logical shape of three
+  // components 0-2-1 while the relevant input parameters have a logical shape
+  // of three components 0-1-2 in the order major to minor. The x- and y-
+  // dimensions of the tensors are tiled in square tiles with an edge length
+  // `kTileSize`. Each thread block of `kTileSize` x `kNumRows` threads
+  // transposes one tile: each thread copies kTileSize/kNumRows elements from
+  // the input to a shared memory tile, then the otherwise "regular HLO kernel"
+  // reads from the shared memory instead of the original input.
+  //
+  // This is similar to the following CUDA algorithm in TensorFlow:
+  // https://goo.gl/MStRV6.
+  //
+  // `kTileSize` should usually be same as warp size. We currently choose 32 for
+  // `kTileSize` and 4 for `kNumRows`. The CUDA algorithm uses 8 for `kNumRows`.
+  //
+  // TODO(b/33320379): Here each block transposes 1 tile. It may be more
+  // efficient to launch fewer blocks so each transposes many tiles.
+  Status EmitUnnestedTranspose(mlir::lmhlo::FusionOp fusion,
+                               HloComputation* fused_computation);
+
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
   // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
   // and first_reduce are the same instruction. For a kInput fusion,
@@ -501,41 +529,12 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitScatter(const ScatterDescriptor& desc, Thunk* thunk,
                      const LaunchDimensions& launch_dimensions);
 
-  // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
-  // for the hlo instruction.
-  Status Emit021Transpose(TransposeDimsAndParams descr,
-                          mlir::lmhlo::FusionOp fusion);
-
-  // Emits a kernel for the given hlo instruction using a tiled 0-2-1 transpose
-  // algorithm to improve the memory access patterns for the input parameters
-  // with a shape that is a 0-2-1 transpose of the output tensor shape. The
-  // caller is responsible for making sure that it is safe to apply the shared
-  // memory transpose on the input parameters.
-  //
-  //
-  // For the purpose of tiling, the output tensors have a logical shape of three
-  // components 0-2-1 while the relevant input parameters have a logical shape
-  // of three components 0-1-2 in the order major to minor. The x- and y-
-  // dimensions of the tensors are tiled in square tiles with an edge length
-  // `kTileSize`. Each thread block of `kTileSize` x `kNumRows` threads
-  // transposes one tile: each thread copies kTileSize/kNumRows elements from
-  // the input to a shared memory tile, then the otherwise "regular HLO kernel"
-  // reads from the shared memory instead of the original input.
-  //
-  // This is similar to the following CUDA algorithm in TensorFlow:
-  // https://goo.gl/MStRV6.
-  //
-  // `kTileSize` should usually be same as warp size. We currently choose 32 for
-  // `kTileSize` and 4 for `kNumRows`. The CUDA algorithm uses 8 for `kNumRows`.
-  //
-  // TODO(b/33320379): Here each block transposes 1 tile. It may be more
-  // efficient to launch fewer blocks so each transposes many tiles.
-  Status EmitHlo021Tile(mlir::lmhlo::FusionOp fusion,
-                        absl::Span<const llvm_ir::IrArray> operand_arrays,
-                        absl::Span<const llvm_ir::IrArray> output_arrays,
-                        TransposeDimsAndParams descr,
-                        const TilingScheme& tiling_scheme,
-                        const LaunchDimensions& launch_dimensions);
+  Status EmitTranspose021Tile(mlir::lmhlo::FusionOp fusion,
+                              HloComputation* fusion_hlo,
+                              absl::Span<const llvm_ir::IrArray> operand_arrays,
+                              absl::Span<const llvm_ir::IrArray> output_arrays,
+                              const TilingScheme& tiling_scheme,
+                              const LaunchDimensions& launch_dimensions);
 
   Status EmitScatter(mlir::lmhlo::FusionOp fusion_op,
                      const HloComputation* fused_computation);

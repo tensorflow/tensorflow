@@ -37,6 +37,10 @@ namespace gpu {
 // some extra space for cache.
 inline constexpr int64_t kSharedMemoryBudgetInBytes = 48 * 1024;
 
+// If a dimensions is smaller than this, untiled transposition may be more
+// efficient.
+inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
+
 // Matrix multiplication before the rewrite.
 //
 // This function should never return "true" on instructions after
@@ -206,13 +210,6 @@ struct TransposeDimsAndParams {
   }
 };
 
-// Attempts to match 021 transpose on the given fusion and return a
-// transposition description.
-//
-// Precondition: input is a fused computation, with kCopy as a root.
-std::optional<TransposeDimsAndParams> Match021Transpose(
-    const HloComputation* fused_computation);
-
 // Returns instructions which are roots of the fusion, following the operands of
 // GTE instructions in the root tuple. Groups multiple subsequent instructions
 // with the same root. CHECKs that the fusion never outputs the same instruction
@@ -235,6 +232,12 @@ std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation);
 // Returns whether the computation has at least one root triggering unnested
 // reduction emitter.
 bool HasAnyUnnestedReductionRoot(HloComputation* computation);
+
+// Whether there is a fusion root triggering transposition emitter.
+bool HasAnyTiledTransposeRoot(HloComputation* computation);
+
+// Returns whether the given instruction is a tiled transposition.
+bool IsTiledTranspose(const HloInstruction& instr);
 
 }  // namespace gpu
 }  // namespace xla
