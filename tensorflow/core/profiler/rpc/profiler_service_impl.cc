@@ -31,13 +31,15 @@ limitations under the License.
 #include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/rpc/client/save_profile.h"
+#include "tensorflow/core/profiler/utils/file_system_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+const absl::string_view kXPlanePb = "xplane.pb";
 
 // Collects data in XSpace format. The data is saved to a repository
 // unconditionally.
@@ -51,8 +53,19 @@ Status CollectDataToRepository(const ProfileRequest& request,
   VLOG(3) << "Collected XSpace to repository.";
   response->set_empty_trace(IsEmpty(xspace));
 
-  return SaveXSpace(request.repository_root(), request.session_id(),
-                    request.host_name(), xspace);
+  std::string log_dir_path =
+      ProfilerJoinPath(request.repository_root(), request.session_id());
+  VLOG(1) << "Creating " << log_dir_path;
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(log_dir_path));
+
+  std::string file_name = absl::StrCat(request.host_name(), ".", kXPlanePb);
+  // Windows file names do not support colons.
+  absl::StrReplaceAll({{":", "_"}}, &file_name);
+  // Dumps profile data to <repository_root>/<run>/<host>_<port>.<kXPlanePb>
+  std::string out_path = ProfilerJoinPath(log_dir_path, file_name);
+  LOG(INFO) << "Collecting XSpace to repository: " << out_path;
+
+  return WriteBinaryProto(Env::Default(), out_path, xspace);
 }
 
 class ProfilerServiceImpl : public grpc::ProfilerService::Service {

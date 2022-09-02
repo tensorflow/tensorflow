@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/time/clock.h"
@@ -238,8 +237,19 @@ Status Monitor(const std::string& service_addr, int duration_ms,
 
 Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir) {
   TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
-  return SaveXSpace(GetTensorBoardProfilePluginDir(logdir),
-                    GetCurrentTimeStampAsString(), port::Hostname(), xspace);
+
+  ProfileResponse response;
+  ProfileRequest request = PopulateProfileRequest(
+      GetTensorBoardProfilePluginDir(logdir), GetCurrentTimeStampAsString(),
+      port::Hostname(), /*options=*/{});
+  TF_RETURN_IF_ERROR(
+      ConvertXSpaceToProfileResponse(xspace, request, &response));
+  std::stringstream ss;  // Record LOG messages.
+  TF_RETURN_IF_ERROR(SaveProfile(request.repository_root(),
+                                 request.session_id(), request.host_name(),
+                                 response, &ss));
+  LOG(INFO) << ss.str();
+  return OkStatus();
 }
 
 }  // namespace profiler
