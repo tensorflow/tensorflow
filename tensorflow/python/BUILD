@@ -386,6 +386,11 @@ tf_python_pybind_extension(
         "//tensorflow/c/eager:headers",
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
     ],
+    dynamic_deps = select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
     static_deps = tf_python_pybind_static_deps(),
     deps = [
         "//tensorflow/core:protos_all_cc",

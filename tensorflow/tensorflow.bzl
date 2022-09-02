@@ -3168,6 +3168,8 @@ def tf_python_pybind_extension(
     It is used for targets under //third_party/tensorflow/python that link
     against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
     """
+    extended_deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"])
+    extended_deps += [] if dynamic_deps else if_windows([], ["//tensorflow:libtensorflow_framework_import_lib"])
     pybind_extension(
         name,
         srcs,
@@ -3175,7 +3177,7 @@ def tf_python_pybind_extension(
         hdrs = hdrs,
         dynamic_deps = dynamic_deps,
         static_deps = static_deps,
-        deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]) + if_windows([], ["//tensorflow:libtensorflow_framework_import_lib"]),
+        deps = extended_deps,
         compatible_with = compatible_with,
         copts = copts,
         defines = defines,
