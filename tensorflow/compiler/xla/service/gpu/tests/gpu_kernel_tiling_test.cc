@@ -29,22 +29,6 @@ namespace {
 
 class GpuKernelTilingTest : public GpuCodegenTest {
  protected:
-  GpuKernelTilingTest() {}
-
-  std::string MakePlatformSpecific(absl::string_view input) {
-    return absl::StrReplaceAll(
-        input,
-        {{"KERNEL_ANNOTATION",
-          is_built_with_rocm_ ? "amdgpu_kernel void" : "void"},
-         {"BARRIER", is_built_with_rocm_ ? "@llvm.amdgcn.s.barrier"
-                                         : "@llvm.nvvm.barrier0"},
-         {"SHUFFLE", is_built_with_rocm_
-                         ? "i32 @llvm.amdgcn.ds.bpermute"
-                         : "float @llvm.nvvm.shfl.sync.down.f32"},
-         {"TIDX", is_built_with_rocm_ ? "llvm.amdgcn.workitem.id.x"
-                                      : "@llvm.nvvm.read.ptx.sreg.tid.x"}});
-  }
-
   // Most tests in this file want to skip layout assignment, but a few need it
   // enabled.
   HloModuleConfig ConfigWithLayoutAssignment() {
@@ -85,7 +69,8 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
 ; CHECK: call void BARRIER()
 ; CHECK: }
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
@@ -112,7 +97,8 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
 ; CHECK-NOT: call void BARRIER()
 ; CHECK: }
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 }
 
@@ -156,7 +142,8 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
 ; CHECK: call void BARRIER()
 ; CHECK: }
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
@@ -191,7 +178,8 @@ TEST_F(GpuKernelTilingTest, MultipleOutputFusionWithOnePossibleTransposeTiled) {
 ; CHECK: call void BARRIER()
 ; CHECK: }
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
@@ -227,7 +215,8 @@ TEST_F(GpuKernelTilingTest,
 ; CHECK-NOT: call void BARRIER()
 ; CHECK: }
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 }
 
@@ -255,7 +244,8 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserReverseNotTiled) {
 ; CHECK-NOT: call void BARRIER()
 ; CHECK: }
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 }
 
@@ -283,7 +273,8 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserBitcastNotTiled) {
 ; CHECK-NOT: call void BARRIER()
 ; CHECK: }
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
@@ -319,7 +310,8 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithoutUnsafeUseTiled) {
 ; CHECK: call void BARRIER()
 ; CHECK: }
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.0}));
@@ -444,7 +436,8 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK-NOT: store float %{{.*}}, ptr addrspace(1)
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
@@ -475,7 +468,8 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: }
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
@@ -507,7 +501,8 @@ TEST_F(GpuKernelTilingTest, RowReductionWithLayoutChangeTiled) {
 ; CHECK: call SHUFFLE
 ; CHECK: }
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
@@ -543,7 +538,8 @@ TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {
 ; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
 ; CHECK: br i1 %[[LOGICAL_T0]],
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
@@ -579,7 +575,8 @@ TEST_F(GpuKernelTilingTest, RowReductionFourRowsPerWarp) {
 ; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
 ; CHECK: br i1 %[[LOGICAL_T0]],
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
@@ -612,7 +609,8 @@ TEST_F(GpuKernelTilingTest,
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: }
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
@@ -689,7 +687,8 @@ TEST_F(GpuKernelTilingTest,
 ; CHECK-NOT: call SHUFFLE
 ; CHECK: }
 )";
-  CompileAndVerifyIr(std::move(hlo_module), MakePlatformSpecific(expected_ir),
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
