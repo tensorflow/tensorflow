@@ -48,9 +48,11 @@ void LlvmIrGenTestBase::ResetIrHook() {
 
 void LlvmIrGenTestBase::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const std::string& pattern,
-    bool match_optimized_ir) {
+    bool match_optimized_ir, bool run_optimization_passes) {
   SetIrHook(match_optimized_ir);
-  Status status = CompileToExecutable(std::move(hlo_module)).status();
+  Status status =
+      CompileToExecutable(std::move(hlo_module), run_optimization_passes)
+          .status();
   ResetIrHook();
   TF_ASSERT_OK(status);
 
@@ -61,12 +63,14 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(
 
 void LlvmIrGenTestBase::CompileAndVerifyIr(const std::string& hlo_text,
                                            const std::string& expected_llvm_ir,
-                                           bool match_optimized_ir) {
+                                           bool match_optimized_ir,
+                                           bool run_optimization_passes) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text, config));
-  CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir);
+  CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir,
+                     run_optimization_passes);
 }
 
 void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(

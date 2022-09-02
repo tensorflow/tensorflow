@@ -213,7 +213,7 @@ void HloTestBase::RunAndFilecheckHloRewrite(
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));
-  EXPECT_EQ(changed, expected.has_value());
+  EXPECT_EQ(changed, expected.has_value()) << module->ToString();
   if (changed) {
     TF_ASSERT_OK_AND_ASSIGN(
         bool filecheck_matches,
