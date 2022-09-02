@@ -1626,18 +1626,14 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
     if (failed(typeConverter->convertTypes(op.getResultTypes(), resultTypes)))
       return failure();
 
-    SmallVector<Value> operands, outputs;
+    SmallVector<Value> outputs;
     SmallVector<AffineMap, 3> indexingMaps;
-    for (auto values :
+    for (auto [operand, initValue, resultType] :
          llvm::zip(adaptor.operands(), adaptor.init_values(), resultTypes)) {
       // Check if init_value is constant. If so, inline the value into the
       // region.
-      Value operand = std::get<0>(values);
-      Value initValue = std::get<1>(values);
-      Type resultType = std::get<2>(values);
       initValue = rewriter.createOrFold<tensor::ExtractOp>(loc, initValue);
 
-      operands.push_back(operand);
       SmallVector<Value, 8> dynShape = getReduceOpInitTensorDynSizes(
           rewriter, loc, operand, resultType, reductionDims);
       auto initTensor = getInitTensor(rewriter, loc, resultType, dynShape);
@@ -1665,7 +1661,7 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
                                        rewriter.getContext()));
 
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, /*resultTensorTypes=*/resultTypes, operands,
+        loc, /*resultTensorTypes=*/resultTypes, adaptor.operands(),
         /*outputBuffers=*/ValueRange{outputs}, indexingMaps,
         getParallelAndReductionIterators(srcRank, reductionDims.size()),
         /*bodyBuild=*/nullptr, pruneAttributeList(op));
@@ -1679,20 +1675,24 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
     rewriter.inlineRegionBefore(op.body(), region, region.end());
     TypeConverter::SignatureConversion signatureConverter(numOperands * 2);
 
-    // Reduce requires that the seed be used as a LHS operand inside the
-    // region, and the seed is encoded in linalg in the intial out value, so
+    // The mhlo ReduceOp requires that the seed be used as a LHS operand inside
+    // the region, and the seed is encoded in linalg in the intial out value, so
     // modify the signature of the block and the value mappings, so the output
-    // args will correlate with the LHS and the inputs correlate with the RHS.
-    for (const auto& [idx, val] : llvm::enumerate(op.init_values())) {
+    // args will correlate with the original LHS and the inputs correlate with
+    // the original RHS.
+    for (const auto& [idx, val] : llvm::enumerate(op.operands())) {
       signatureConverter.addInputs(
-          idx + numOperands,
+          /*origigInputNo=*/idx + numOperands,
+          // type for the new operand number 'idx'.
           typeConverter->convertType(
               val.getType().cast<ShapedType>().getElementType()));
     }
-    for (const auto& [idx, val] : llvm::enumerate(op.operands())) {
+    for (const auto& [idx, val] : llvm::enumerate(op.init_values())) {
       signatureConverter.addInputs(
-          idx, typeConverter->convertType(
-                   val.getType().cast<ShapedType>().getElementType()));
+          /*origInputNo=*/idx,
+          // type for the new operand number 'idx' + 'numOperands'.
+          typeConverter->convertType(
+              val.getType().cast<ShapedType>().getElementType()));
     }
 
     rewriter.applySignatureConversion(&region, signatureConverter,
