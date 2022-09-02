@@ -1685,6 +1685,13 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
     int64_t definition_time =
         instruction_schedule.at(allocation_value.defining_instruction());
 
+    if (!options_.is_position_allowed_in_alternate_mem_fn(
+            allocation_value.defining_position())) {
+      AddRequiredAssignment(allocation_value.value(),
+                            allocation_value.defining_instruction(),
+                            MemorySpace::kDefault, definition_time);
+    }
+
     AliasedOffset* preferred_offset = nullptr;
     auto preferred_offset_it =
         preferred_offset_for_computation.find(allocation_value.computation());

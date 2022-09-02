@@ -5747,6 +5747,107 @@ ENTRY entry {
   AssignMemorySpace(module.get());
 }
 
+TEST_P(MemorySpaceAssignmentTest, AsyncCallDisableAlternateMem) {
+  absl::string_view hlo_string = R"(
+HloModule Module, is_scheduled=true
+
+called_comp {
+  p0 = f32[2,3] parameter(0)
+  negate10 = f32[2,3] negate(p0)
+  negate11 = f32[2,3] negate(negate10)
+  negate12 = f32[2,3] negate(negate11)
+  negate13 = f32[2,3] negate(negate12)
+  negate14 = f32[2,3] negate(negate13)
+  ROOT negate15 = f32[2,3] negate(negate14)
+}, execution_thread="foobar"
+
+async_comp {
+  p0 = f32[2,3] parameter(0)
+  ROOT call = f32[2,3] call(p0), to_apply=called_comp
+}, execution_thread="foobar"
+
+ENTRY entry {
+  p0 = f32[2,3] parameter(0)
+  negate0 = f32[2,3] negate(p0)
+  negate1 = f32[2,3] negate(negate0)
+  negate2 = f32[2,3] negate(negate1)
+  negate3 = f32[2,3] negate(negate2)
+  negate4 = f32[2,3] negate(negate3)
+  async-start = ((f32[2,3]), f32[2,3], f32[2]) async-start(negate1), async_group_id=0, async_execution_thread="foobar", calls=async_comp
+  async-done = f32[2,3] async-done(async-start), async_group_id=0, async_execution_thread="foobar", calls=async_comp
+  add0 = f32[2,3] add(negate0, async-done)
+  negate5 = f32[2,3] negate(add0)
+  negate6 = f32[2,3] negate(negate5)
+  negate7 = f32[2,3] negate(negate6)
+  negate8 = f32[2,3] negate(negate7)
+  negate9 = f32[2,3] negate(negate8)
+  ROOT add1 = f32[2,3] add(negate9, async-done)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  options.is_use_allowed_in_alternate_mem_fn = [](const HloUse& use) {
+    return use.instruction->opcode() != HloOpcode::kAsyncStart &&
+           use.instruction->opcode() != HloOpcode::kAsyncDone &&
+           use.instruction->parent()->IsMainThread();
+  };
+  options.is_position_allowed_in_alternate_mem_fn = [](const HloPosition& pos) {
+    return pos.instruction->opcode() != HloOpcode::kAsyncStart &&
+           pos.instruction->opcode() != HloOpcode::kAsyncDone &&
+           pos.instruction->parent()->IsMainThread();
+  };
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2,
+                    options);
+  auto has_alternate_memory_allocation =
+      [&](const HloInstruction* instruction) {
+        bool result = false;
+        auto shape_has_alternate_memory_allocation =
+            [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+              if (subshape.IsArray() &&
+                  subshape.layout().memory_space() == kAlternateMemorySpace) {
+                result = true;
+              }
+            };
+        ShapeUtil::ForEachSubshape(instruction->shape(),
+                                   shape_has_alternate_memory_allocation);
+        for (const HloInstruction* operand : instruction->operands()) {
+          ShapeUtil::ForEachSubshape(operand->shape(),
+                                     shape_has_alternate_memory_allocation);
+        }
+        return result;
+      };
+
+  // Check that the async ops themselves and the instructions inside async
+  // computations do not have any alternate memory allocations.
+  const HloInstruction* async_start =
+      FindInstruction(module.get(), "async-start");
+  const HloInstruction* async_done =
+      FindInstruction(module.get(), "async-done");
+  EXPECT_FALSE(has_alternate_memory_allocation(async_start));
+  EXPECT_FALSE(has_alternate_memory_allocation(async_done));
+  for (const HloInstruction* instruction :
+       async_start->async_wrapped_instruction()
+           ->called_computations()[0]
+           ->instructions()) {
+    EXPECT_FALSE(has_alternate_memory_allocation(instruction));
+  }
+  // Check that we still allow the tensor used/produced by the async computation
+  // to be placed in the alternate memory before/after the async computation.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Add(op::Negate(),
+                      op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                    op::AsyncDone())));
+  EXPECT_THAT(async_start,
+              op::AsyncStart(op::AsyncCopy(
+                  kDefaultMemorySpace, kAlternateMemorySpace, op::Negate())));
+}
+
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));
