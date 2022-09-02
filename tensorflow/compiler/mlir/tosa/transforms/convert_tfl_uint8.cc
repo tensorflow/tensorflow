@@ -51,9 +51,12 @@ namespace mlir {
 namespace tosa {
 namespace {
 
+#define GEN_PASS_DEF_TOSACONVERTTFLUINT8PASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 // Performs lowering to TOSA dialect.
 class ConvertUint8ToInt8
-    : public TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
+    : public impl::TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
  public:
   explicit ConvertUint8ToInt8() {}
   void runOnOperation() override;

@@ -50,8 +50,11 @@ namespace mlir {
 namespace tosa {
 namespace {
 
+#define GEN_PASS_DEF_TOSALEGALIZETFLPASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 // Performs lowering to TOSA dialect.
-class LegalizeTFL : public TosaLegalizeTFLPassBase<LegalizeTFL> {
+class LegalizeTFL : public impl::TosaLegalizeTFLPassBase<LegalizeTFL> {
  public:
   LegalizeTFL() = default;
   explicit LegalizeTFL(ArrayRef<std::string> disabled_patterns,
