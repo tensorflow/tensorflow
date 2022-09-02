@@ -38,9 +38,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
+#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/utility.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 #include "tensorflow/core/transforms/utils/eval_utils.h"
 #include "tensorflow/core/transforms/utils/op_cat_helper.h"
 #include "tensorflow/core/transforms/utils/utils.h"
@@ -49,6 +49,9 @@ limitations under the License.
 
 namespace mlir {
 namespace tfg {
+
+#define GEN_PASS_DEF_CONSTANTFOLDINGPASS
+#include "tensorflow/core/transforms/passes.h.inc"
 
 template <typename T>
 static std::enable_if_t<std::is_integral<T>::value, ElementsAttr>
@@ -3528,7 +3531,7 @@ void RegisterPatterns(::mlir::RewritePatternSet &patterns,
 }
 }  // namespace
 
-class ConstantFolding : public ConstantFoldingPassBase<ConstantFolding> {
+class ConstantFolding : public impl::ConstantFoldingPassBase<ConstantFolding> {
  public:
   LogicalResult initialize(MLIRContext *context) override {
     helper_ = std::make_shared<OpPropertyHelper>(

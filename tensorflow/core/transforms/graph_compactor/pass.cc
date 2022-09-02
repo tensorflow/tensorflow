@@ -35,10 +35,14 @@ limitations under the License.
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
+
+#define GEN_PASS_DEF_ADDDEFAULTATTRS
+#define GEN_PASS_DEF_NAMECOMPRESS
+#define GEN_PASS_DEF_STRIPDEFAULTATTRS
+#include "tensorflow/core/transforms/passes.h.inc"
 
 // Encode an unsigned integer in as few characters as possible to a string that
 // is still a valid TensorFlow node name. The regex for valid names, according
@@ -79,7 +83,7 @@ static void EncodeName(unsigned counter, std::string &output) {
 }
 
 namespace {
-class NameCompressPass : public NameCompressBase<NameCompressPass> {
+class NameCompressPass : public impl::NameCompressBase<NameCompressPass> {
  public:
   LogicalResult initialize(MLIRContext *context) override {
     dialect_ = context->getOrLoadDialect<TFGraphDialect>();
@@ -162,7 +166,7 @@ std::unique_ptr<Pass> CreateNameCompressPass() {
 
 namespace {
 class StripDefaultAttrsPass
-    : public StripDefaultAttrsBase<StripDefaultAttrsPass> {
+    : public impl::StripDefaultAttrsBase<StripDefaultAttrsPass> {
  public:
   LogicalResult initialize(MLIRContext *context) override {
     // Initialize the pass by getting a registered instance of the TensorFlow
@@ -218,7 +222,8 @@ LogicalResult StripDefaultAttrsPass::removeDefaultValuedAttrs(Operation *op) {
   for (const tensorflow::OpDef::AttrDef &attr : op_reg_data->op_def.attr()) {
     // Ignore attributes without default values.
     if (!attr.has_default_value()) continue;
-    auto it = impl::findAttrSorted(attrs.begin(), attrs.end(), attr.name());
+    auto it =
+        ::mlir::impl::findAttrSorted(attrs.begin(), attrs.end(), attr.name());
     // Ignore default-valued attributes that are already missing.
     if (!it.second) continue;
     // Convert the TensorFlow attribute value and compare it to the MLIR
@@ -249,7 +254,8 @@ std::unique_ptr<Pass> CreateStripDefaultAttrsPass() {
 }
 
 namespace {
-class AddDefaultAttrsPass : public AddDefaultAttrsBase<AddDefaultAttrsPass> {
+class AddDefaultAttrsPass
+    : public impl::AddDefaultAttrsBase<AddDefaultAttrsPass> {
  public:
   LogicalResult initialize(MLIRContext *context) override {
     // Initialize the pass by getting a registered instance of the TensorFlow

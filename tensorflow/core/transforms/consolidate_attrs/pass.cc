@@ -32,10 +32,13 @@ limitations under the License.
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utility.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
+
+#define GEN_PASS_DEF_CONSOLIDATEATTRIBUTES
+#define GEN_PASS_DEF_PREPAREATTRIBUTESFOREXPORT
+#include "tensorflow/core/transforms/passes.h.inc"
 
 static const char *kRegenerateOutputShapes = "tfg.regenerate_output_shapes";
 
@@ -662,7 +665,7 @@ void PrepareAttributesForExportPassImpl::runOnOperation() {
 
 namespace {
 struct ConsolidateAttributesPass
-    : public ConsolidateAttributesBase<ConsolidateAttributesPass> {
+    : public impl::ConsolidateAttributesBase<ConsolidateAttributesPass> {
   void runOnOperation() override {
     // Run the sub-pass on both `tfg.graph` and `tfg.func`.
     PassManager mgr(&getContext());
@@ -675,7 +678,8 @@ struct ConsolidateAttributesPass
 };
 
 struct PrepareAttributesForExportPass
-    : public PrepareAttributesForExportBase<PrepareAttributesForExportPass> {
+    : public impl::PrepareAttributesForExportBase<
+          PrepareAttributesForExportPass> {
   void runOnOperation() override {
     // Run the sub-pass on both `tfg.graph` and `tfg.func`.
     PassManager mgr(&getContext());
