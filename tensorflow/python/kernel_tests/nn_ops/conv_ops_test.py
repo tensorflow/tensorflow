@@ -172,6 +172,7 @@ class Conv2DTest(test.TestCase):
         out.append(dtypes.float16)
       if not test.is_built_with_rocm():
         out.append(dtypes.float64)
+        out.append(dtypes.bfloat16)
       return out
 
     return [dtypes.float32, dtypes.float64, dtypes.float16, dtypes.bfloat16]
