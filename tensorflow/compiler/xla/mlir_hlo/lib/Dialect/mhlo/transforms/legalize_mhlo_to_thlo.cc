@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -226,6 +227,131 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
   }
 };
 
+static SmallVector<Value, 8> getReduceOpInitTensorDynSizes(
+    OpBuilder& b, Location loc, Value operand, int64_t srcRank,
+    RankedTensorType resultType, ArrayRef<int64_t> reductionDims) {
+  SmallVector<Value, 8> dynShape;
+  for (size_t i = 0, j = 0; i < srcRank; ++i) {
+    if (j < reductionDims.size() && reductionDims[j] == i) {
+      ++j;
+      continue;
+    }
+    size_t resultIndex = i - j;
+    if (!resultType.isDynamicDim(resultIndex)) continue;
+    dynShape.push_back(b.create<tensor::DimOp>(loc, operand, resultIndex));
+  }
+  return dynShape;
+}
+
+struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
+  using OpConversionPattern<mhlo::ReduceOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ReduceOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto srcRank =
+        adaptor.operands()[0].getType().cast<RankedTensorType>().getRank();
+    auto reductionDims = llvm::to_vector(op.dimensions().getValues<int64_t>());
+    // mhlo.reduce doesn't specify the order of the reduction dimensions.
+    std::sort(reductionDims.begin(), reductionDims.end());
+
+    auto toRankedTensor = [](Value v) -> RankedTensorType {
+      return v.getType().dyn_cast<RankedTensorType>();
+    };
+
+    SmallVector<Value> outputs;
+    SmallVector<RankedTensorType> operandTypes, initTypes;
+    SmallVector<Type> resultTypes;
+    if (failed(typeConverter->convertTypes(op.getResultTypes(), resultTypes)))
+      return failure();
+
+    Location loc = op.getLoc();
+    for (auto [operand, initValue, resultType] :
+         llvm::zip(adaptor.operands(), adaptor.init_values(), resultTypes)) {
+      auto initType = toRankedTensor(initValue);
+      if (!initType)
+        return rewriter.notifyMatchFailure(op,
+                                           "expects known-rank init values");
+      initTypes.push_back(initType);
+      auto operandType = toRankedTensor(initValue);
+      if (!operandType)
+        return rewriter.notifyMatchFailure(op, "expects known-rank operands");
+      operandTypes.push_back(operandType);
+      initValue = rewriter.createOrFold<tensor::ExtractOp>(loc, initValue);
+      auto tensorResultType = resultType.cast<RankedTensorType>();
+
+      SmallVector<Value, 8> dynShape = getReduceOpInitTensorDynSizes(
+          rewriter, loc, operand, srcRank, tensorResultType, reductionDims);
+      Value initTensor = rewriter.create<linalg::InitTensorOp>(
+          loc, dynShape, tensorResultType.getShape(),
+          tensorResultType.getElementType());
+      Value filledTensor =
+          rewriter.create<linalg::FillOp>(loc, initValue, initTensor).result();
+      outputs.push_back(filledTensor);
+    }
+
+    auto thloReduction = rewriter.create<thlo::ReductionOp>(
+        loc, resultTypes, adaptor.operands(), outputs,
+        rewriter.getDenseI64ArrayAttr(reductionDims));
+    Region& region = thloReduction.combiner();
+    rewriter.inlineRegionBefore(op.body(), region, region.end());
+
+    // Convert the signature of the body. The reduce op 'computation' region
+    // apply function has a signature with tensor types, this is converted to a
+    // function with element types. E.g. the signature "(tensor<f32>,
+    // tensor<f32>) -> tensor<f32>" will be converted to "(f32, f32) -> f32".
+    // Also, we need to swap the operands of the function. The mhlo.reduce op
+    // expects the init values to be the first parameters of the apply function,
+    // while the thlo.reduction op expects the init values as the last
+    // parameters of the 'combiner' region apply function.
+    TypeConverter::SignatureConversion signatureConverter(
+        thloReduction.getNumInputs() * 2);
+    assert(thloReduction.getNumInputs() == thloReduction.getNumOutputs());
+    for (const auto& [idx, val] : llvm::enumerate(operandTypes)) {
+      signatureConverter.addInputs(
+          /*origInputNo=*/idx + thloReduction.getNumInputs(),
+          // type for new operand number 'idx'.
+          typeConverter->convertType(val.getElementType()));
+    }
+    for (const auto& [idx, val] : llvm::enumerate(initTypes)) {
+      signatureConverter.addInputs(
+          /*origInputNo=*/idx,
+          // type for new operand number 'idx' + thloReduction.getNumInputs()
+          typeConverter->convertType(val.getElementType()));
+    }
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
+
+    rewriter.replaceOp(op, thloReduction.getResults());
+    return success();
+  }
+};
+
+static bool isInBodyOfThloReduction(Operation* op) {
+  auto* parentOp = op->getParentRegion()->getParentOp();
+  return isa<thlo::ReductionOp>(*parentOp);
+}
+
+// Rewrites a mhlo::ReturnOp inside a thlo::ReductionOp to thlo::YieldOp.
+struct ReduceRegionReturnOpConversion
+    : public OpConversionPattern<mhlo::ReturnOp> {
+  using OpConversionPattern<mhlo::ReturnOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::ReturnOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    if (!isInBodyOfThloReduction(op)) return failure();
+    SmallVector<Value, 4> operands(adaptor.getOperands());
+    auto loc = op.getLoc();
+    for (size_t i = 0; i < operands.size(); ++i) {
+      if (operands[i].getType().isa<ShapedType>()) {
+        operands[i] = rewriter.create<tensor::ExtractOp>(loc, operands[i]);
+      }
+    }
+    rewriter.replaceOpWithNewOp<thlo::YieldOp>(op, operands);
+    return success();
+  }
+};
+
 // Rewrites simple scatter patterns.
 struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
   using OpConversionPattern<mhlo::ScatterOp>::OpConversionPattern;
@@ -311,6 +437,8 @@ class LegalizeMHLOToTHLOPass
         ConcatenateOpPattern,
         DynamicBroadcastInDimOpPattern,
         GatherPattern,
+        ReduceRegionReturnOpConversion,
+        ReductionPattern,
         ScatterPattern>(*typeConverter, ctx);
     // clang-format on
 
