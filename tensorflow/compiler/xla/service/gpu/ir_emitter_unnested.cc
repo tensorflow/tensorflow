@@ -192,38 +192,6 @@ void AnnotateThunkLaunchDimensions(const LaunchDimensions& launch_dims,
   }
 }
 
-bool BinarySearchDenseElementsAttr(mlir::DenseIntElementsAttr elements,
-                                   int64_t v) {
-  mlir::APInt value(sizeof(int64_t) * 8, v, /*isSigned=*/true);
-  return std::binary_search(
-      elements.begin(), elements.end(), value,
-      [](const mlir::APInt& x, const mlir::APInt& y) { return x.slt(y); });
-}
-
-bool MhloOpIsElementwise(mlir::Operation* op) {
-  CHECK(op->getDialect() ==
-        op->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>());
-  auto opcode = *MhloToHloOpcode(op);
-  if (HloInstruction::IsOpElementwise(opcode)) {
-    return true;
-  }
-  if (opcode == HloOpcode::kMap) {
-    int iota = 0;
-    for (const llvm::APInt& i :
-         mlir::cast<mlir::mhlo::MapOp>(op).dimensions()) {
-      if (i.getZExtValue() != iota) {
-        return false;
-      }
-      iota++;
-    }
-    return true;
-  }
-  // TODO(timshen): not sure about whether porting
-  // HloFusionInstruction::IsElementwiseImpl() is necessary. HandleFusion()
-  // doesn't use such information.
-  return false;
-}
-
 bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion) {
   int instruction_count = 0;
   for (mlir::Operation& instr : fusion.getRegion().front()) {
