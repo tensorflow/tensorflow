@@ -6,9 +6,11 @@
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_cuda_libdevice_path_deps",
+    "tf_fingerprint_deps",
     "tf_logging_deps",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
@@ -96,6 +98,7 @@ filegroup(
         "bfloat16.h",
         "casts.h",
         "dynamic_annotations.h",
+        "fingerprint.h",
         "init_main.h",
         "net.h",
         "stack_frame.h",
@@ -139,6 +142,7 @@ filegroup(
         "byte_order.h",
         "casts.h",
         "dynamic_annotations.h",
+        "fingerprint.h",
         "init_main.h",
         "intrusive_ptr.h",
         "macros.h",
@@ -449,6 +453,7 @@ cc_library(
     ],
     deps = [
         ":byte_order",
+        ":fingerprint",
         ":gif",
         ":jpeg",
         ":macros",
@@ -515,4 +520,26 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["cuda_libdevice_path.h"],
     deps = tf_cuda_libdevice_path_deps(),
+)
+
+cc_library(
+    name = "fingerprint",
+    hdrs = ["fingerprint.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":stringpiece",
+        ":types",
+    ] + tf_fingerprint_deps(),
+)
+
+tf_cc_test(
+    name = "fingerprint_test",
+    size = "small",
+    srcs = ["fingerprint_test.cc"],
+    deps = [
+        ":fingerprint",
+        ":types",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )

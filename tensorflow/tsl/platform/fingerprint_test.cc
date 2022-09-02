@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 
 #include <unordered_set>
 
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 TEST(Fingerprint64, IsForeverFrozen) {
@@ -57,7 +57,7 @@ TEST(FingerprintCat64, IsForeverFrozen) {
 
 // Hashes don't change.
 TEST(FingerprintCat64, Idempotence) {
-  const uint64 orig =
+  const uint64_t orig =
       FingerprintCat64(Fingerprint64("Hello"), Fingerprint64("World"));
   EXPECT_EQ(orig,
             FingerprintCat64(Fingerprint64("Hello"), Fingerprint64("World")));
@@ -70,4 +70,4 @@ TEST(FingerprintCat64, Idempotence) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

@@ -18,7 +18,6 @@ load(
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
-    "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_google_mobile_srcs_only_runtime",
     "tf_kernel_tests_linkstatic",
@@ -314,7 +313,8 @@ cc_library(
     deps = [
         ":stringpiece",
         ":types",
-    ] + tf_fingerprint_deps(),
+        "//tensorflow/tsl/platform:fingerprint",
+    ],
 )
 
 cc_library(
@@ -1202,7 +1202,6 @@ tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
     srcs = [
-        "fingerprint_test.cc",
         "integral_types_test.cc",
         "logging_test.cc",
         "mutex_test.cc",
