@@ -1,0 +1,42 @@
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -173,18 +173,19 @@ cc_library(
+     deps = [
+         ":libc_root",
+     ],
+ )
+ 
+ cc_library(
+     name = "__support_fputil_division_and_remainder_operations",
+     hdrs = ["src/__support/FPUtil/DivisionAndRemainderOperations.h"],
+     deps = [
++        ":__support_cpp_type_traits",
+         ":__support_fputil_fp_bits",
+         ":__support_fputil_manipulation_functions",
+         ":__support_fputil_normal_float",
+         ":libc_root",
+     ],
+ )
+ 
+ cc_library(
+     name = "__support_fputil_except_value_utils",
+@@ -199,18 +200,19 @@ cc_library(
+ cc_library(
+     name = "__support_fputil_fenv_impl",
+     hdrs = ["src/__support/FPUtil/FEnvImpl.h"],
+     textual_hdrs = [
+         "src/__support/FPUtil/x86_64/FEnvImpl.h",
+         "src/__support/FPUtil/aarch64/FEnvImpl.h",
+     ],
+     deps = [
+         ":__support_common",
++        ":__support_fputil_fp_bits",
+         ":libc_root",
+     ],
+ )
+ 
+ cc_library(
+     name = "__support_fputil_float_properties",
+     hdrs = ["src/__support/FPUtil/FloatProperties.h"],
+     deps = [
+         ":__support_fputil_platform_defs",
