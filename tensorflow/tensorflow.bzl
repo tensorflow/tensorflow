@@ -838,9 +838,10 @@ def tf_cc_shared_library(
                 name = filegroup_name,
                 srcs = [name_os_full],
                 output_group = "main_shared_library_output",
+                visibility = visibility,
             )
-            _create_symlink(name_os, name_os_major)
-            _create_symlink(name_os_major, filegroup_name)
+            _create_symlink(name_os, name_os_major, visibility = visibility)
+            _create_symlink(name_os_major, filegroup_name, visibility = visibility)
 
     if name not in [item for sublist in names for item in sublist]:
         native.filegroup(
@@ -891,13 +892,14 @@ def _tf_cc_shared_library(
         win_def_file = if_windows(win_def_file, otherwise = None),
     )
 
-def _create_symlink(src, dest):
+def _create_symlink(src, dest, visibility = None):
     native.genrule(
         name = src + "_sym",
         outs = [src],
         srcs = [dest],
         output_to_bindir = 1,
         cmd = "ln -sf $$(basename $<) $@",
+        visibility = visibility,
     )
 
 def _get_shared_library_name_os_version_matrix(name, per_os_targets = False, version = None):
