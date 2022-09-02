@@ -459,11 +459,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
           self.name, self.get_shape(), self.dtype.name)
 
   def __tf_tracing_type__(self, signature_context):
-    alias_id = signature_context.alias_global_id(self._handle._id)  # pylint:disable=protected-access
-    return VariableSpec(shape=self.shape,
-                        dtype=self.dtype,
-                        trainable=self.trainable,
-                        alias_id=alias_id)
+    return signature_context.make_reference_type(
+        VariableSpec(self.shape, self.dtype), self._handle._id)  # pylint:disable=protected-access
 
   @contextlib.contextmanager
   def _assign_dependencies(self):
@@ -2482,48 +2479,8 @@ class VariableSpec(tensor_spec.DenseSpec):
   def _serialize(self):
     return self.shape, self.dtype, self.trainable, self.alias_id
 
-  # TraceType method
-  def is_subtype_of(self, other):
-    if type(self) is not type(other):
-      return False
-
-    # Remove this once we add alias_id to all CompositeTensors with
-    # ResourceVariable components.
-    if self.alias_id is None and other.alias_id is None:
-      return super().is_subtype_of(other)
-
-    if self.alias_id is None or other.alias_id is None:
-      raise NotImplementedError(f"VariableSpec.is_subtype_of doesn't support "
-                                f"alias_id=None, got self: {self} and other: "
-                                f"{other}.")
-
-    return super().is_subtype_of(other)
-
-  # TraceType method
-  def most_specific_common_supertype(self, others):
-    if any(type(self) is not type(other) for other in others):
-      return None
-
-    # It is a special case for tf.nest, which often takes CompositeTensors and
-    # converts to TypeSpecs internally, such as tf.nest.assert_same_structure.
-    if (self.alias_id is None and
-        all(other.alias_id is None for other in others)):
-      return super().most_specific_common_supertype(others)
-
-    if self.alias_id is None or any(other.alias_id is None for other in others):
-      raise NotImplementedError(f"VariableSpec.most_specific_common_supertype "
-                                f"doesn't support alias_id=None, got self: "
-                                f"{self} and others: {others}.")
-
-    return super().most_specific_common_supertype(others)
-
-  # TraceType method
-  def _placeholder_value(self):
-    if self.alias_id is None:
-      raise NotImplementedError(f"VariableSpec._placeholder_value doesn't "
-                                f"support alias_id=None, got self: {self}.")
-
-    return super()._placeholder_value()
+  def __tf_tracing_type__(self, signature_context):
+    return signature_context.make_reference_type(self, id(self))
 
   def __repr__(self):
     return (f"{type(self).__name__}(shape={self.shape}, dtype={self.dtype!r}, "

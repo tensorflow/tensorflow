@@ -22,7 +22,6 @@ import weakref
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.function import trace_type
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
@@ -71,8 +70,7 @@ class UnknownArgument(object):
   pass
 
 
-def convert_structure_to_signature(structure, arg_names=None,
-                                   signature_context=None):
+def convert_structure_to_signature(structure, arg_names=None):
   """Convert a potentially nested structure to a signature.
 
   Args:
@@ -80,8 +78,6 @@ def convert_structure_to_signature(structure, arg_names=None,
       tuple.
     arg_names: Optional list of arguments that has equal number of elements as
       `structure` and is used for naming corresponding TensorSpecs.
-    signature_context: TraceType InternalTracingContext to generate alias_ids
-      for mutable objects, like ResourceVariables.
 
   Returns:
     Identical structure that has TensorSpec objects instead of Tensors and
@@ -105,11 +101,11 @@ def convert_structure_to_signature(structure, arg_names=None,
       else:
         name = "/".join(str(p) for p in path)
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
-    if isinstance(arg, resource_variable_ops.ResourceVariable):
-      return trace_type.from_value(arg, signature_context)
     if isinstance(arg, composite_tensor.CompositeTensor):
       # TODO(b/133606651) Do we need to inject arg_name?
       return arg._type_spec  # pylint: disable=protected-access
+    if isinstance(arg, resource_variable_ops.BaseResourceVariable):
+      return resource_variable_ops.VariableSpec.from_value(arg)
     if isinstance(arg, (
         int,
         float,
@@ -1178,16 +1174,12 @@ def func_graph_from_py_func(name,
     func_args = _get_defun_inputs_from_args(args, arg_names)
     func_kwargs = _get_defun_inputs_from_kwargs(kwargs)
 
-    signature_context = trace_type.InternalTracingContext()
     # Convert all Tensors into TensorSpecs before saving the structured inputs.
     # If storing pure concrete functions that are not called through polymorphic
     # functions, we don't have access to FunctionSpec, so we need to call the
     # TensorSpecs by their `arg_names` for later binding.
-    func_graph.structured_input_signature = (
-        convert_structure_to_signature(
-            func_args, arg_names, signature_context=signature_context),
-        convert_structure_to_signature(
-            func_kwargs, signature_context=signature_context))
+    func_graph.structured_input_signature = (convert_structure_to_signature(
+        func_args, arg_names), convert_structure_to_signature(func_kwargs))
 
     flat_func_args = nest.flatten(func_args, expand_composites=True)
     flat_func_kwargs = nest.flatten(func_kwargs, expand_composites=True)
@@ -1522,10 +1514,12 @@ def _get_defun_inputs(args, names, structured_args):
             placeholder = graph_placeholder(
                 dtypes.resource, arg.shape, name=name)
 
-            arg = resource_variable_ops.ResourceVariable(
+            arg = resource_variable_ops.BaseResourceVariable(
+                name=name,
                 shape=arg.shape,
                 dtype=arg.dtype,
                 handle=placeholder,
+                handle_name=name,
                 trainable=arg.trainable)
         # Capture arg variables to create placeholders for them. These will be
         # removed as captures after the function is traced (since otherwise we'd
