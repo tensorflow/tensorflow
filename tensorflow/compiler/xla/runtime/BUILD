@@ -106,6 +106,7 @@ tf_cc_test(
         ":async_runtime",
         ":custom_call",
         ":custom_call_registry",
+        ":diagnostics",
         ":executable",
         ":jit_executable",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline",
