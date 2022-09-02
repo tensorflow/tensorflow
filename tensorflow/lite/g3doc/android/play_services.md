@@ -1,15 +1,31 @@
-# TensorFlow Lite in Google Play services (BETA)
+# TensorFlow Lite in Google Play services
 
-Beta: The functionality described in this page is in beta release. The
-functionality and APIs described here may change in future releases.
+TensorFlow Lite is available in Google Play services runtime for all Android
+devices running the current version of Play services. This runtime allows you to
+run machine learning (ML) models without statically bundling TensorFlow Lite
+libraries into your app.
 
-TensorFlow Lite is available in the Google Play services API as a public beta on
-all Android devices running the current version of Play services. This API lets
-you run machine learning (ML) models without statically bundling TensorFlow Lite
-libraries into your app, allowing you to:
+With the Google Play services API, you can reduce the size of your apps and gain
+improved performance from the latest stable version of the libraries. TensorFlow
+Lite in Google Play services is the recommended way to use TensorFlow Lite on
+Android.
 
-*   Reduce your app size
-*   Gain improved performance from the latest, stable version of TensorFlow Lite
+You can get started with the Play services runtime with the
+[Quickstart](../android/quickstart), which provides a step-by-step guide to
+implement a sample application. If you are already using stand-alone TensorFlow
+Lite in your app, refer to the
+[Migrating from stand-alone TensorFlow Lite](#migrating) section to update an
+existing app to use the Play services runtime. For more information about Google
+Play services, see the
+[Google Play services](https://developers.google.com/android/guides/overview)
+website.
+
+<aside class="note"> <b>Terms:</b> By accessing or using TensorFlow Lite in
+Google Play services APIs, you agree to the <a href="#tos">Terms of Service</a>.
+Please read and understand all applicable terms and policies before accessing
+the APIs. </aside>
+
+## Using the Play services runtime
 
 TensorFlow Lite in Google Play services is available through the
 [TensorFlow Lite Task API](../api_docs/java/org/tensorflow/lite/task/core/package-summary)
@@ -20,39 +36,10 @@ machine learning tasks using visual, audio, and text data. The TensorFlow Lite
 Interpreter API, provided by the TensorFlow runtime and support libraries,
 provides a more general-purpose interface for building and running ML models.
 
-This page provides a brief overview on how to use the new TensorFlow Lite in
-Google Play services APIs in your Android app.
-
-For more information about Google Play services, see the
-[Google Play services](https://developers.google.com/android/guides/overview)
-website.
-
-<aside class="note"> <b>Terms:</b> By accessing or using TensorFlow Lite in
-Google Play services, you agree to the <a href="#tos">Terms of Service</a>.
-Please read and understand all applicable terms and policies before accessing
-the APIs. </aside>
-
-## Add TensorFlow Lite to your app
-
-You can use the TensorFlow Lite in Google Play services API by making a few
-changes to your app module dependencies, initializing the new API, and using a
-specific class as your interpreter object.
-
-The following instructions provide more details on how to implement the
-Interpreter and Task Library APIs in Google Play services. While it is possible
-for an app to use both the Interpreter APIs and Task Library APIs, most apps
-should only use one set of APIs.
-
-Note: If you are already using TensorFlow Lite in your app, you should review
-the [Migrating from stand-alone TensorFlow Lite](#migrating) section.
-
-### Example app with Task Library
-
-You can review and test an example implementation of TensorFlow Lite in Google
-Play services in the
-[example app](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android_play_services).
-This example app uses the Task Library within Play services to create an object
-detection app.
+The following sections provide instructions on how to implement the Interpreter
+and Task Library APIs in Google Play services. While it is possible for an app
+to use both the Interpreter APIs and Task Library APIs, most apps should only
+use one set of APIs.
 
 ### Using the Task Library APIs
 
@@ -71,13 +58,14 @@ contain the following libraries:
 *   Audio library: `org.tensorflow:tensorflow-lite-task-audio-play-services`
 *   Text library: `org.tensorflow:tensorflow-lite-task-text-play-services`
 
-Add one of the dependencies to your app project code to access the Play Services
-API for TensorFlow Lite. For example, to implement a vision task:
+Add one of the dependencies to your app project code to access the Play services
+API for TensorFlow Lite. For example, use the following to implement a vision
+task:
 
 ```
 dependencies {
 ...
-    implementation 'org.tensorflow:tensorflow-lite-task-vision-play-services:0.4.2-beta03'
+    implementation 'org.tensorflow:tensorflow-lite-task-vision-play-services:0.4.2'
 ...
 }
 ```
@@ -161,15 +149,15 @@ interface for building and running ML models.
 #### 1. Add project dependencies
 
 Add the following dependencies to your app project code to access the Play
-Services API for TensorFlow Lite:
+services API for TensorFlow Lite:
 
 ```
 dependencies {
 ...
     // Tensorflow Lite dependencies for Google Play services
-    implementation 'com.google.android.gms:play-services-tflite-java:16.0.0-beta03'
+    implementation 'com.google.android.gms:play-services-tflite-java:16.0.0'
     // Optional: include Tensorflow Lite Support Library
-    implementation 'com.google.android.gms:play-services-tflite-support:16.0.0-beta03'
+    implementation 'com.google.android.gms:play-services-tflite-support:16.0.0'
 ...
 }
 ```
@@ -311,7 +299,7 @@ specialized hardware processors, such as graphics processing units (GPUs). You
 can take advantage of these specialized processors using hardware drivers called
 [*delegates*](https://www.tensorflow.org/lite/performance/delegates). You can
 use the following hardware acceleration delegates with TensorFlow Lite in Google
-Play Services:
+Play services:
 
 -   *[GPU delegate](https://www.tensorflow.org/lite/performance/gpu)
     (recommended)* - This delegate is provided through Google Play services and
@@ -326,14 +314,102 @@ For more information about hardware acceleration with TensorFlow Lite, see the
 [TensorFlow Lite Delegates](https://www.tensorflow.org/lite/performance/delegates)
 page.
 
+### Checking device compatibility
+
+Not all devices support GPU hardware acceleration with TFLite. In order to
+mitigate errors and potential crashes, use the
+`TfLiteGpu.isGpuDelegateAvailable` method to check whether a device is
+compatible with the GPU delegate.
+
+Use this method to confirm whether a device is compatible with GPU, and use CPU
+or the NNAPI delegate as a fallback for when GPU is not supported.
+
+```
+useGpuTask = TfLiteGpu.isGpuDelegateAvailable(context)
+```
+
+Once you have a variable like `useGpuTask`, you can use it to determine whether
+devices use the GPU delegate. The following examples show how this can be done
+with both the Task Library and Interpreter APIs.
+
+**With the Task Api**
+
+<div>
+<devsite-selector>
+<section>
+  <h3>Kotlin</h3>
+    <pre class="prettyprint">
+lateinit val optionsTask = useGpuTask.continueWith { task ->
+  val baseOptionsBuilder = BaseOptions.builder()
+  if (task.result) {
+    baseOptionsBuilder.useGpu()
+  }
+ ObjectDetectorOptions.builder()
+          .setBaseOptions(baseOptionsBuilder.build())
+          .setMaxResults(1)
+          .build()
+}
+    </pre>
+</section>
+<section>
+  <h3>Java</h3>
+    <pre class="prettyprint">
+Task&lt;ObjectDetectorOptions> optionsTask = useGpuTask.continueWith({ task ->
+  BaseOptions baseOptionsBuilder = BaseOptions.builder();
+  if (task.getResult()) {
+    baseOptionsBuilder.useGpu();
+  }
+  return ObjectDetectorOptions.builder()
+          .setBaseOptions(baseOptionsBuilder.build())
+          .setMaxResults(1)
+          .build()
+});
+    </pre>
+</section>
+</devsite-selector>
+</div>
+
+**With the Interpreter Api**
+
+<div>
+<devsite-selector>
+<section>
+  <h3>Kotlin</h3>
+    <pre class="prettyprint">
+val interpreterTask = useGpuTask.continueWith { task ->
+  val interpreterOptions = InterpreterApi.Options()
+      .setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY)
+  if (task.result) {
+      interpreterOptions.addDelegateFactory(GpuDelegateFactory())
+  }
+  InterpreterApi.create(FileUtil.loadMappedFile(context, MODEL_PATH), interpreterOptions)
+}
+    </pre>
+</section>
+<section>
+  <h3>Java</h3>
+    <pre class="prettyprint">
+Task&lt;InterpreterApi.Options> interpreterOptionsTask = useGpuTask.continueWith({ task ->
+  InterpreterApi.Options options =
+      new InterpreterApi.Options().setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY);
+  if (task.getResult()) {
+     options.addDelegateFactory(new GpuDelegateFactory());
+  }
+  return options;
+});
+    </pre>
+</section>
+</devsite-selector>
+</div>
+
 ### GPU with Task Library APIs
 
 To use the GPU delegate with the Task APIs:
 
-1.  Update the project dependencies to use the GPU delegate from Play Services:
+1.  Update the project dependencies to use the GPU delegate from Play services:
 
     ```
-    implementation 'com.google.android.gms:play-services-tflite-gpu:16.0.0-beta03'
+    implementation 'com.google.android.gms:play-services-tflite-gpu:16.0.0'
     ```
 
 1.  Initialize the GPU delegate with `setEnableGpuDelegateSupport`. For example,
@@ -344,13 +420,13 @@ To use the GPU delegate with the Task APIs:
     <section>
       <h3>Kotlin</h3>
         <pre class="prettyprint">
-          TfLiteVision.initialize(context, TfLiteInitializationOptions.builder().setEnableGpuDelegateSupport(true).build())
+        TfLiteVision.initialize(context, TfLiteInitializationOptions.builder().setEnableGpuDelegateSupport(true).build())
         </pre>
     </section>
     <section>
       <h3>Java</h3>
         <pre class="prettyprint">
-          TfLiteVision.initialize(context, TfLiteInitializationOptions.builder().setEnableGpuDelegateSupport(true).build());
+        TfLiteVision.initialize(context, TfLiteInitializationOptions.builder().setEnableGpuDelegateSupport(true).build());
         </pre>
     </section>
     </devsite-selector>
@@ -364,13 +440,13 @@ To use the GPU delegate with the Task APIs:
     <section>
       <h3>Kotlin</h3>
         <pre class="prettyprint">
-          val baseOptions = BaseOptions.builder().useGpu().build()
+        val baseOptions = BaseOptions.builder().useGpu().build()
         </pre>
     </section>
     <section>
       <h3>Java</h3>
         <pre class="prettyprint">
-          BaseOptions baseOptions = BaseOptions.builder().useGpu().build();
+        BaseOptions baseOptions = BaseOptions.builder().useGpu().build();
         </pre>
     </section>
     </devsite-selector>
@@ -408,10 +484,10 @@ To use the GPU delegate with the Task APIs:
 
 To use the GPU delegate with the Interpreter APIs:
 
-1.  Update the project dependencies to use the GPU delegate from Play Services:
+1.  Update the project dependencies to use the GPU delegate from Play services:
 
     ```
-    implementation 'com.google.android.gms:play-services-tflite-gpu:16.0.0-beta03'
+    implementation 'com.google.android.gms:play-services-tflite-gpu:16.0.0'
     ```
 
 1.  Enable the GPU delegate option in the TFlite initialization:
@@ -421,19 +497,19 @@ To use the GPU delegate with the Interpreter APIs:
     <section>
       <h3>Kotlin</h3>
         <pre class="prettyprint">
-          TfLite.initialize(this,
-            TfLiteInitializationOptions.builder()
-             .setEnableGpuDelegateSupport(true)
-             .build())
+        TfLite.initialize(context,
+          TfLiteInitializationOptions.builder()
+           .setEnableGpuDelegateSupport(true)
+           .build())
         </pre>
     </section>
     <section>
       <h3>Java</h3>
         <pre class="prettyprint">
-          TfLite.initialize(this,
-            TfLiteInitializationOptions.builder()
-             .setEnableGpuDelegateSupport(true)
-             .build());
+        TfLite.initialize(context,
+          TfLiteInitializationOptions.builder()
+           .setEnableGpuDelegateSupport(true)
+           .build());
         </pre>
     </section>
     </devsite-selector>
@@ -447,17 +523,17 @@ To use the GPU delegate with the Interpreter APIs:
     <section>
       <h3>Kotlin</h3>
         <pre class="prettyprint">
-          val interpreterOption = InterpreterApi.Options()
-           .setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY)
-           .addDelegateFactory(GpuDelegateFactory())
+        val interpreterOption = InterpreterApi.Options()
+         .setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY)
+         .addDelegateFactory(GpuDelegateFactory())
         </pre>
     </section>
     <section>
       <h3>Java</h3>
         <pre class="prettyprint">
-          Options interpreterOption = InterpreterApi.Options()
-            .setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY)
-            .addDelegateFactory(new GpuDelegateFactory());
+        Options interpreterOption = InterpreterApi.Options()
+          .setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY)
+          .addDelegateFactory(new GpuDelegateFactory());
         </pre>
     </section>
     </devsite-selector>
@@ -500,188 +576,6 @@ If you want to use stand-alone TensorFlow Lite and the Play services API
 side-by-side, you must use TensorFlow Lite 2.9 (or later). TensorFlow Lite 2.8
 and earlier versions are not compatible with the Play services API version.
 
-## Known issues
-
-After implementing TensorFlow Lite in Google Play services, make sure to test
-your application and exercise the machine learning model functions of your app.
-If you experience errors or issues you are unable to resolve, please report them
-by using the channels outlined in the [Support and feedback](#support) section
-below.
-
-### LoadingException: No acceptable module
-
-The `LoadingException` error occurs when an app fails to initialize either the
-TFlite or GPU module. This error can occur if you are not part of the
-[tflite-play-services-beta-access](https://groups.google.com/g/tflite-play-services-beta-access/about)
-group, or when a device is not support GPU hardware acceleration.
-
-#### TFlite module
-
-While testing your app through a development environment during the Beta launch
-period, you may get an exception when your app attempts to initialize the
-TensorFlow Lite class (`TfLite.intialize(context)`):
-
-```
-com.google.android.gms.dynamite.DynamiteModule$LoadingException:
-  No acceptable module com.google.android.gms.tflite_dynamite found.
-  Local version is 0 and remote version is 0.
-```
-
-This error means that the TensorFlow Lite in Google Play services API is not yet
-available on your test device. You can resolve this exception by joining this
-Google group
-[tflite-play-services-beta-access](https://groups.google.com/g/tflite-play-services-beta-access/about)
-with *the user account you are using to test on your device.* Once you have been
-added to the beta access group, this exception should be resolved. If you are
-already part of the beta access group, try restarting the app.
-
-Allow at least one business day after you join this group for access to be
-granted and the error to clear. If you continue to experience this error, report
-it using the channels outlined in the [Support and feedback](#support) section
-below.
-
-Note: This error only occurs when testing this API in a development environment.
-Apps that use this API and are installed or updated on a device through the
-Google Play Store automatically receive the required libraries.
-
-#### GPU module
-
-Not all devices support hardware acceleration for TFLite. In order to mitigate
-errors and potential crashes the download of the Play Services GPU module is
-allowlisted only for supported devices.
-
-When initializing TFLite with the GPU delegate, also initialize TFLite with CPU
-as a fallback. This allows the app to use CPU with devices that do not support
-GPU.
-
-<div>
-<devsite-selector>
-<section>
-  <h3>Kotlin</h3>
-    <pre class="prettyprint">
-// Instantiate the initialization task with GPU delegate
-private var useGpu = true
-private val initializeTask: Task&lt;Void> by lazy {
-   TfLite.initialize(this,
-       TfLiteInitializationOptions.builder().setEnableGpuDelegateSupport(true).build())
-       // Add a TFLite initialization task with CPU as a failsafe
-       .continueWithTask { task: Task&lt;Void> ->
-         if (task.exception != null) {
-           useGpu = false
-           return@continueWithTask TfLite.initialize(this)
-         } else {
-           return@continueWithTask Tasks.forResult&lt;Void>(null)
-         }
-       }
-}
-    </pre>
-</section>
-<section>
-  <h3>Java</h3>
-    <pre class="prettyprint">
-// Initialize TFLite asynchronously
-initializeTask = TfLite.initialize(
-   this, TfLiteInitializationOptions.builder()
-      .setEnableGpuDelegateSupport(true)
-      .build()
-).continueWithTask(
-      task -> {
-         if (task.getException() != null) {
-            useGpu = false;
-            return TfLite.initialize(this);
-         } else {
-            return Tasks.forResult(null);
-         }
-      }
-);
-    </pre>
-</section>
-</devsite-selector>
-</div>
-
-After initializing TFLite with the GPU delegate and a CPU fallback, you can use
-the GPU delegate only when it is supported.
-
-**With the Task Api**
-
-<div>
-<devsite-selector>
-<section>
-  <h3>Kotlin</h3>
-    <pre class="prettyprint">
-lateinit val options
-if (useGpu) {
-   val baseOptions = BaseOptions.builder().useGpu().build()
-   options =
-      ObjectDetectorOptions.builder()
-          .setBaseOptions(baseOptions)
-          .setMaxResults(1)
-          .build()
-} else {
-   options =
-      ObjectDetectorOptions.builder()
-        .setMaxResults(1)
-        .build()
-}
-    </pre>
-</section>
-<section>
-  <h3>Java</h3>
-    <pre class="prettyprint">
-ObjectDetectorOptions options;
-   if (useGpu) {
-      BaseOptions baseOptions = BaseOptions.builder().useGpu().build()
-      options =
-        ObjectDetectorOptions.builder()
-          .setBaseOptions(baseOptions)
-          .setMaxResults(1)
-          .build()
-   } else {
-      options =
-         ObjectDetectorOptions.builder()
-           .setMaxResults(1)
-           .build()
-   }
-    </pre>
-</section>
-</devsite-selector>
-</div>
-
-**With the Interpreter Api**
-
-<div>
-<devsite-selector>
-<section>
-  <h3>Kotlin</h3>
-    <pre class="prettyprint">
-val interpreterOptions = if (useGpu) {
-  InterpreterApi.Options()
-      .setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY)
-      .addDelegateFactory(GpuDelegateFactory())
-} else {
-   InterpreterApi.Options()
-      .setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY)
-}
-InterpreterApi.create(FileUtil.loadMappedFile(context, MODEL_PATH), interpreterOption)
-    </pre>
-</section>
-<section>
-  <h3>Java</h3>
-    <pre class="prettyprint">
-InterpreterApi.Options options;
-  if (useGpu) {
-    options =
-      new InterpreterApi.Options().setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY)
-        .addDelegateFactory(new GpuDelegateFactory());
-  } else {
-    options =
-      new InterpreterApi.Options().setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY);
-  }
-    </pre>
-</section>
-</devsite-selector>
-</div>
-
 ## Limitations
 
 TensorFlow Lite in Google Play services has the following limitations:
@@ -705,18 +599,15 @@ for TensorFlow Lite in Google Play services.
 
 ## Terms of service {:#tos}
 
-Use of TensorFlow Lite in Google Play services is subject to the
+Use of TensorFlow Lite in Google Play services APIs is subject to the
 [Google APIs Terms of Service](https://developers.google.com/terms/).
-
-Note: TensorFlow Lite in Google Play services is in beta and, as such, its
-functionality as well as associated APIs may change without advance notice.
 
 ### Privacy and data collection
 
 When you use TensorFlow Lite in Google Play services APIs, processing of the
 input data, such as images, video, text, fully happens on-device, and TensorFlow
-Lite in Google Play services does not send that data to Google servers. As a
-result, you can use our APIs for processing data that should not leave the
+Lite in Google Play services APIs does not send that data to Google servers. As
+a result, you can use our APIs for processing data that should not leave the
 device.
 
 The TensorFlow Lite in Google Play services APIs may contact Google servers from
@@ -729,7 +620,7 @@ as further described in our
 [Privacy Policy](https://policies.google.com/privacy).
 
 **You are responsible for informing users of your app about Google's processing
-of TensorFlow Lite in Google Play services metrics data as required by
+of TensorFlow Lite in Google Play services APIs metrics data as required by
 applicable law.**
 
 Data we collect includes the following:
