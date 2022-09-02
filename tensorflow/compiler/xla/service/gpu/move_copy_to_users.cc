@@ -93,12 +93,14 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     if (a->opcode() == HloOpcode::kCopy && b->opcode() == HloOpcode::kCopy) {
       HloInstruction* copied_a = a->mutable_operand(0);
       HloInstruction* copied_b = b->mutable_operand(0);
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * earlier_elementwise,
-          MakeBinaryHlo(hlo->opcode(), copied_a, copied_b, &hlo->metadata()));
-      HloInstruction* later_copy =
-          MakeCopyHlo(earlier_elementwise, hlo->shape());
-      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+      if (copied_a->shape() == copied_b->shape()) {
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * earlier_elementwise,
+            MakeBinaryHlo(hlo->opcode(), copied_a, copied_b, &hlo->metadata()));
+        HloInstruction* later_copy =
+            MakeCopyHlo(earlier_elementwise, hlo->shape());
+        TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+      }
     }
     return OkStatus();
   }

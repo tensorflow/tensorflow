@@ -126,5 +126,21 @@ ENTRY main {
 )");
 }
 
+TEST_F(MoveCopyToUsersTest, BinaryDifferentLayoutNoChange) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,17,9,9]{3,2,0,1} parameter(0)
+  input2 = f32[1,17,9,9]{3,2,1,0} parameter(1)
+  copy = f32[1,17,9,9]{1,3,2,0} copy(input)
+  copy2 = f32[1,17,9,9]{1,3,2,0} copy(input2)
+  ROOT add = f32[1,17,9,9]{1,3,2,0} add(copy, copy2)
+}
+)";
+
+  CheckMoveCopyToUsers(hlo, std::nullopt);
+}
+
 }  // namespace
 }  // namespace xla
