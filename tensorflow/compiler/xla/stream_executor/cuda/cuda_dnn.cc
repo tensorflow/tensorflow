@@ -3491,7 +3491,7 @@ port::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
     bool is_virtual = false) {
   auto tensor = cudnn_frontend::TensorBuilder()
                     .setDim(dims.size(), dims.data())
-                    .setStrides(strides.size(), strides.data())
+                    .setStride(strides.size(), strides.data())
                     .setId(uid)
                     .setAlignment(32)
                     .setDataType(ToCudnnDataType(dtype))
@@ -3570,10 +3570,10 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
 
   auto conv_desc =
       cudnn_frontend::ConvDescBuilder()
-          .setComputePrecision(accumulator_type)
+          .setComputeType(accumulator_type)
           .setMathMode(mode)
-          .setNDims(conv_dim)
-          .setStrides(conv_dim, convolution_descriptor.strides().data())
+          .setSpatialDimCount(conv_dim)
+          .setSpatialStride(conv_dim, convolution_descriptor.strides().data())
           .setPrePadding(conv_dim, convolution_descriptor.padding().data())
           .setPostPadding(conv_dim, convolution_descriptor.padding().data())
           .setDilation(conv_dim, convolution_descriptor.dilations().data())
@@ -3745,10 +3745,10 @@ GetCudnnFusedOperationGraph(
   cudnnDataType_t cudnn_activation_type = ToCudnnDataType(activation_type);
   auto conv_desc =
       cudnn_frontend::ConvDescBuilder()
-          .setComputePrecision(cudnn_convolution_type)
+          .setComputeType(cudnn_convolution_type)
           .setMathMode(mode)
-          .setNDims(conv_dim)
-          .setStrides(conv_dim, convolution_descriptor.strides().data())
+          .setSpatialDimCount(conv_dim)
+          .setSpatialStride(conv_dim, convolution_descriptor.strides().data())
           .setPrePadding(conv_dim, convolution_descriptor.padding().data())
           .setPostPadding(conv_dim, convolution_descriptor.padding().data())
           .setDilation(conv_dim, convolution_descriptor.dilations().data())
