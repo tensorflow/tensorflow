@@ -34,15 +34,44 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace {
-std::string MultiplyAccumulate(const GpuInfo& gpu_info,
-                               const std::string& accum, const std::string& a,
-                               const std::string& b) {
+// Multiply-Accumulate
+std::string MAC(const GpuInfo& gpu_info, const std::string& accum,
+                const std::string& a, const std::string& b) {
   const bool use_fma = gpu_info.IsAMD() && gpu_info.IsApiOpenCl();
   if (use_fma) {
     return accum + " = fma(" + a + ", " + b + ", " + accum + ")";
   } else {
     return accum + " += " + a + " * " + b;
   }
+}
+
+int GetConvWeightsCount(const Convolution2DAttributes& attr) {
+  int conv_src_ch_aligned = AlignByN(attr.weights.shape.i, 4);
+  int conv_dst_ch_aligned = AlignByN(attr.weights.shape.o, 4);
+  return conv_dst_ch_aligned + conv_src_ch_aligned * conv_dst_ch_aligned *
+                                   attr.weights.shape.w * attr.weights.shape.h;
+}
+
+int GetConvWeightsSize(const Convolution2DAttributes& attr,
+                       CalculationsPrecision precision) {
+  DataType data_type = precision == CalculationsPrecision::F32
+                           ? DataType::FLOAT32
+                           : DataType::FLOAT16;
+  return GetConvWeightsCount(attr) * SizeOf(data_type);
+}
+
+int GetDepthwiseConvWeightsCount(const DepthwiseConvolution2DAttributes& attr) {
+  int dw_dst_ch_aligned = AlignByN(attr.weights.shape.i, 4);
+  return dw_dst_ch_aligned +
+         dw_dst_ch_aligned * attr.weights.shape.h * attr.weights.shape.w;
+}
+
+int GetDepthwiseConvWeightsSize(const DepthwiseConvolution2DAttributes& attr,
+                                CalculationsPrecision precision) {
+  DataType data_type = precision == CalculationsPrecision::F32
+                           ? DataType::FLOAT32
+                           : DataType::FLOAT16;
+  return GetDepthwiseConvWeightsCount(attr) * SizeOf(data_type);
 }
 }  // namespace
 
@@ -93,13 +122,11 @@ class ThinPointwiseFuser {
 
 void ThinPointwiseFuser::AddDepthwiseConvData(
     const DepthwiseConvolution2DAttributes& dw_attr) {
-  int dw_dst_ch_aligned = AlignByN(dw_attr.weights.shape.i, 4);
-  int dw_weights_count = dw_dst_ch_aligned + dw_dst_ch_aligned *
-                                                 dw_attr.weights.shape.h *
-                                                 dw_attr.weights.shape.w;
+  const int dst_slices = DivideRoundUp(dw_attr.weights.shape.i, 4);
+  const int dw_weights_count = GetDepthwiseConvWeightsCount(dw_attr);
   gpu_data_.reserve(gpu_data_.size() + dw_weights_count);
   // dw bias loading
-  for (int i = 0; i < dw_dst_ch_aligned; ++i) {
+  for (int i = 0; i < dst_slices * 4; ++i) {
     if (i < dw_attr.bias.shape.v) {
       gpu_data_.push_back(dw_attr.bias.data[i]);
     } else {
@@ -107,7 +134,7 @@ void ThinPointwiseFuser::AddDepthwiseConvData(
     }
   }
   // dw weights loading
-  for (int d = 0; d < dw_dst_ch_aligned / 4; ++d) {
+  for (int d = 0; d < dst_slices; ++d) {
     for (int y = 0; y < dw_attr.weights.shape.h; ++y) {
       for (int x = 0; x < dw_attr.weights.shape.w; ++x) {
         for (int i = 0; i < 4; ++i) {
@@ -126,13 +153,12 @@ void ThinPointwiseFuser::AddDepthwiseConvData(
 }
 
 void ThinPointwiseFuser::AddConvData(const Convolution2DAttributes& conv_attr) {
-  int conv_src_ch_aligned = AlignByN(conv_attr.weights.shape.i, 4);
-  int conv_dst_ch_aligned = AlignByN(conv_attr.weights.shape.o, 4);
-  int conv_weights_count =
-      conv_dst_ch_aligned + conv_src_ch_aligned * conv_dst_ch_aligned;
-  gpu_data_.reserve(gpu_data_.size() + conv_weights_count);
+  const int src_slices = DivideRoundUp(conv_attr.weights.shape.i, 4);
+  const int dst_slices = DivideRoundUp(conv_attr.weights.shape.o, 4);
+  const int weights_count = GetConvWeightsCount(conv_attr);
+  gpu_data_.reserve(gpu_data_.size() + weights_count);
   // conv bias loading
-  for (int i = 0; i < conv_dst_ch_aligned; ++i) {
+  for (int i = 0; i < dst_slices * 4; ++i) {
     if (i < conv_attr.bias.shape.v) {
       gpu_data_.push_back(conv_attr.bias.data[i]);
     } else {
@@ -140,8 +166,8 @@ void ThinPointwiseFuser::AddConvData(const Convolution2DAttributes& conv_attr) {
     }
   }
   // conv weights loading
-  for (int d = 0; d < conv_dst_ch_aligned / 4; ++d) {
-    for (int s = 0; s < conv_src_ch_aligned / 4; ++s) {
+  for (int d = 0; d < dst_slices; ++d) {
+    for (int s = 0; s < src_slices; ++s) {
       for (int j = 0; j < 4; ++j) {
         for (int i = 0; i < 4; ++i) {
           const int s_ch = s * 4 + j;
@@ -271,17 +297,14 @@ bool ThinPointwiseFuser::IsNodeSupported(const GpuInfo& gpu_info,
     if (!good_conv) {
       return false;
     }
+    const int weights_size = GetConvWeightsSize(*conv_attr, op_def_.precision);
     if (gpu_info.IsAdreno() && gpu_info.IsApiOpenCl()) {
-      int conv_src_ch_aligned = AlignByN(conv_attr->weights.shape.i, 4);
-      int conv_dst_ch_aligned = AlignByN(conv_attr->weights.shape.o, 4);
-      int conv_weights_count =
-          conv_dst_ch_aligned + conv_src_ch_aligned * conv_dst_ch_aligned;
-
-      DataType data_type = op_def_.precision == CalculationsPrecision::F32
-                               ? DataType::FLOAT32
-                               : DataType::FLOAT16;
-      int weights_size = conv_weights_count * SizeOf(data_type);
       if (convs_count_ >= 3 || buffer_size_ + weights_size > 1024 * 3) {
+        return false;
+      }
+    } else if (gpu_info.IsApple() && gpu_info.IsApiMetal() &&
+               gpu_info.apple_info.IsBionic()) {
+      if (convs_count_ >= 3 || buffer_size_ + weights_size > 1024 * 2) {
         return false;
       }
     } else {
@@ -322,30 +345,13 @@ bool ThinPointwiseFuser::ReserveNode(const GpuInfo& gpu_info, Node* node) {
     convs_count_++;
     Convolution2DAttributes* conv_attr =
         absl::any_cast<Convolution2DAttributes>(&node->operation.attributes);
-
-    int conv_src_ch_aligned = AlignByN(conv_attr->weights.shape.i, 4);
-    int conv_dst_ch_aligned = AlignByN(conv_attr->weights.shape.o, 4);
-    int conv_weights_count =
-        conv_dst_ch_aligned + conv_src_ch_aligned * conv_dst_ch_aligned;
-
-    DataType data_type = op_def_.precision == CalculationsPrecision::F32
-                             ? DataType::FLOAT32
-                             : DataType::FLOAT16;
-    buffer_size_ += conv_weights_count * SizeOf(data_type);
+    buffer_size_ += GetConvWeightsSize(*conv_attr, op_def_.precision);
   }
   if (IsDwConvNode(node)) {
     DepthwiseConvolution2DAttributes* dw_attr =
         absl::any_cast<DepthwiseConvolution2DAttributes>(
             &node->operation.attributes);
-
-    int dw_dst_ch_aligned = AlignByN(dw_attr->weights.shape.i, 4);
-    int dw_weights_count = dw_dst_ch_aligned + dw_dst_ch_aligned *
-                                                   dw_attr->weights.shape.h *
-                                                   dw_attr->weights.shape.w;
-    DataType data_type = op_def_.precision == CalculationsPrecision::F32
-                             ? DataType::FLOAT32
-                             : DataType::FLOAT16;
-    buffer_size_ += dw_weights_count * SizeOf(data_type);
+    buffer_size_ += GetDepthwiseConvWeightsSize(*dw_attr, op_def_.precision);
   }
   return true;
 }
@@ -459,8 +465,7 @@ void ThinPointwiseFuser::AddDepthwiseConvNode(
         code_ += "  src" + s_postfix + " = args.src_tensor.Read(x_c, y_c, " +
                  std::to_string(d) + ")" + s_postfix + multiplier + ";\n";
         code_ += "  " +
-                 MultiplyAccumulate(
-                     gpu_info, "dw_res_" + std::to_string(d) + s_postfix,
+                 MAC(gpu_info, "dw_res_" + std::to_string(d) + s_postfix,
                      "src" + s_postfix,
                      "args.constants.Read(" +
                          std::to_string(weights_counter_++) + ")" + s_postfix) +
@@ -527,10 +532,10 @@ void ThinPointwiseFuser::AddConvNode(const GpuInfo& gpu_info,
           "args.constants.Read(" + std::to_string(weights_counter_++) + ")";
       const std::string c3 =
           "args.constants.Read(" + std::to_string(weights_counter_++) + ")";
-      code_ += "  " + MultiplyAccumulate(gpu_info, dst, c0, src + ".x") + ";\n";
-      code_ += "  " + MultiplyAccumulate(gpu_info, dst, c1, src + ".y") + ";\n";
-      code_ += "  " + MultiplyAccumulate(gpu_info, dst, c2, src + ".z") + ";\n";
-      code_ += "  " + MultiplyAccumulate(gpu_info, dst, c3, src + ".w") + ";\n";
+      code_ += "  " + MAC(gpu_info, dst, c0, src + ".x") + ";\n";
+      code_ += "  " + MAC(gpu_info, dst, c1, src + ".y") + ";\n";
+      code_ += "  " + MAC(gpu_info, dst, c2, src + ".z") + ";\n";
+      code_ += "  " + MAC(gpu_info, dst, c3, src + ".w") + ";\n";
     }
     if (last_op_) {
       code_ += "  if(" + std::to_string(d) + " < args.dst_tensor.Slices()) {\n";
