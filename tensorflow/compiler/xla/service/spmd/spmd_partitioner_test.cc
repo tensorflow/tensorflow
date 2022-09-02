@@ -11113,6 +11113,60 @@ ENTRY %main.21 (Arg_0.1: f32[4,4,8], Arg_1.2: f32[4,8]) -> (f32[4,4,8], f32[4]) 
                             _, op::Shape("f32[1]"), _))));
 }
 
+TEST_F(SpmdPartitioningTest, UnevenPadAllToAllReshard) {
+  const char* const hlo_string = R"(
+HloModule pjit_xmap_dummy.5
+
+ENTRY %main.21 {
+  %Arg_0.1 = f32[19,19]{1,0} parameter(0), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  add.3171 = f32[19,19]{1,0} add(Arg_0.1, Arg_0.1), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  transpose.3172 = f32[19,19]{0,1} transpose(add.3171), dimensions={1,0}, sharding={devices=[2,4]0,2,4,6,1,3,5,7}
+  ROOT add.3173 = f32[19,19]{1,0} add(add.3171, transpose.3172), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  int64_t collective_permute_count = 0;
+  for (auto* i : module->entry_computation()->instructions()) {
+    if (i->opcode() == HloOpcode::kCollectivePermute) {
+      ++collective_permute_count;
+    }
+  }
+  // Expected that the number of collective permutes is 1. Padding is the same
+  // between the two dimension (1,1).
+  EXPECT_EQ(collective_permute_count, 1);
+}
+
+TEST_F(SpmdPartitioningTest, UnevenPadAllToAllReshard2) {
+  const char* const hlo_string = R"(
+HloModule pjit_xmap_dummy.5
+
+ENTRY %main.21 {
+  %Arg_0.1 = f32[5,5]{1,0} parameter(0), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  add.3171 = f32[5,5]{1,0} add(Arg_0.1, Arg_0.1), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  transpose.3172 = f32[5,5]{0,1} transpose(add.3171), dimensions={1,0}, sharding={devices=[2,4]0,2,4,6,1,3,5,7}
+  ROOT add.3173 = f32[5,5]{1,0} add(add.3171, transpose.3172), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  int64_t collective_permute_count = 0;
+  for (auto* i : module->entry_computation()->instructions()) {
+    if (i->opcode() == HloOpcode::kCollectivePermute) {
+      ++collective_permute_count;
+    }
+  }
+  // Expected that the number of collective permutes is 3 for the correct
+  // reshard.
+  EXPECT_EQ(collective_permute_count, 3);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
