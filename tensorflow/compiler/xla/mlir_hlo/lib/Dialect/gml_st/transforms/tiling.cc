@@ -384,6 +384,105 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
   return loop;
 }
 
+struct DimOfMaterializedTilePattern : public OpRewritePattern<tensor::DimOp> {
+  using OpRewritePattern<tensor::DimOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::DimOp op,
+                                PatternRewriter &rewriter) const override {
+    Operation *def = op.getSource().getDefiningOp();
+    if (!def) return failure();
+
+    if (auto materializeOp = llvm::dyn_cast<MaterializeOp>(def)) {
+      Value set = materializeOp.set();
+      if (!set.getType().isa<TileType>()) return failure();
+      rewriter.replaceOpWithNewOp<gml_st::SizeOp>(op, set, op.getIndex());
+      return success();
+    }
+    return failure();
+  }
+};
+
+// Given a `tensor` and a `set` checks if `tensor` was produced by a
+// MaterializeOp. If yes, then returns the `source` arg of the MaterializeOp and
+// the new subset resulted from composition of the set-chain of the `set` arg
+// and the set-chain of the MaterializeOp.
+//
+// NOTE: At the moment the set ops are restricted to `gml_st.tile`. We might
+// revisit it when we have more different set types.
+FailureOr<std::pair<Value, Value>> foldMaterializeOp(
+    Location loc, Value tensor, Value set, PatternRewriter &rewriter) {
+  // Find inner materialize op.
+  auto materializeOp = tensor.getDefiningOp<MaterializeOp>();
+  if (!materializeOp) return failure();
+
+  // Find outer tile chain to replace its root space op.
+  TileOp tileOp;
+  Operation *tileDef = set.getDefiningOp();
+  while (tileDef && !isa<SpaceOp>(tileDef)) {
+    auto currentTileOp = dyn_cast<TileOp>(tileDef);
+    if (!currentTileOp) return failure();
+    tileOp = currentTileOp;
+    tileDef = currentTileOp.superset().getDefiningOp();
+  }
+  if (!tileOp) return failure();
+
+  auto chainedTileOp =
+      rewriter.create<TileOp>(loc, tileOp, tileOp.getMixedOffsets(),
+                              tileOp.getMixedSizes(), tileOp.getMixedStrides());
+  return {std::make_pair(materializeOp.source(), chainedTileOp)};
+}
+
+// Folds `gml_st.materialize` into the source argument of `gml_st.materialize`.
+struct ComposeMaterializeOpsPattern : public OpRewritePattern<MaterializeOp> {
+  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(MaterializeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto setYieldOp = dyn_cast<SetYieldOp>(op->getBlock()->getTerminator());
+    if (setYieldOp) {
+      if (llvm::find(setYieldOp.dsts(), op.source()) != setYieldOp.dsts().end())
+        return failure();
+    }
+
+    auto foldedTensorAndSetOr =
+        foldMaterializeOp(op.getLoc(), op.source(), op.set(), rewriter);
+    if (failed(foldedTensorAndSetOr)) return failure();
+
+    rewriter.replaceOpWithNewOp<MaterializeOp>(op, foldedTensorAndSetOr->first,
+                                               foldedTensorAndSetOr->second);
+    return success();
+  }
+};
+
+// Folds `gml_st.materialize` into the dst argument of `gml_st.set_yield`.
+struct ComposeSetYieldOfMaterializePattern
+    : public OpRewritePattern<SetYieldOp> {
+  using OpRewritePattern<SetYieldOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SetYieldOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    SmallVector<Value> dsts, sets;
+    bool materializeOpFound = false;
+    for (auto [dst, set] : llvm::zip(op.dsts(), op.sets())) {
+      auto foldedTensorAndSetOr = foldMaterializeOp(loc, dst, set, rewriter);
+      if (failed(foldedTensorAndSetOr)) {
+        dsts.push_back(dst);
+        sets.push_back(set);
+        continue;
+      }
+      dsts.push_back(foldedTensorAndSetOr->first);
+      sets.push_back(foldedTensorAndSetOr->second);
+      materializeOpFound = true;
+    }
+    if (!materializeOpFound) return failure();
+
+    rewriter.replaceOpWithNewOp<SetYieldOp>(op, op.srcs(), dsts, sets);
+    return success();
+  }
+};
+
 /// Pattern to tile an op that implements the `TilingInterface` using
 /// `gml_st.for` for iterating over the tiles.
 struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
@@ -511,6 +610,10 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
     };
     RewritePatternSet patterns(ctx);
     populateTilingPatterns(ctx, filterFn, opts, &patterns);
+    // TODO(pifon): We have to decide how to update set_yield of the outer loop
+    // before enabling folding of materialize op into set_yield.
+    patterns.add<DimOfMaterializedTilePattern, ComposeMaterializeOpsPattern
+                 /*, ComposeSetYieldOfMaterializePattern*/>(ctx);
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
 

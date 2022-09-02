@@ -1620,12 +1620,12 @@ cc_library(
         ":copy_removal",
         ":expand_hlo_tuples",
         ":generic_host_to_llvm",
-        ":gml_st_collapse_materialize_ops",
         ":gml_st_compose_set_ops",
         ":gml_st_fusion",
         ":gml_st_passes_inc_gen",
         ":gml_st_tiling",
         ":gml_st_to_scf",
+        ":gml_st_uncollapse_materialize_ops",
         ":group_reduction_dimensions",
         ":hlo_legalize_shape_ops_to_standard",
         ":hlo_legalize_to_arithmetic",
@@ -2233,7 +2233,6 @@ cc_library(
         ":alloc_to_arg_pass",
         ":bufferize_pass",
         ":collapse_parallel_loops_to_1d_pass",
-        ":gml_st_collapse_materialize_ops",
         ":gml_st_compose_set_ops",
         ":gml_st_fusion",
         ":gml_st_passes",
@@ -2791,10 +2790,11 @@ cc_library(
 )
 
 cc_library(
-    name = "gml_st_collapse_materialize_ops",
-    srcs = ["lib/Dialect/gml_st/transforms/collapse_materialize_ops.cc"],
+    name = "gml_st_uncollapse_materialize_ops",
+    srcs = ["lib/Dialect/gml_st/transforms/uncollapse_materialize_ops.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
+        "include/mlir-hlo/Dialect/gml_st/transforms/rewriters.h",
     ],
     includes = ["include"],
     deps = [

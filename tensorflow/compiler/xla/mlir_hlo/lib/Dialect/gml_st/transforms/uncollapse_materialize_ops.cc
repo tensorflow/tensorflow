@@ -27,7 +27,7 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-#define GEN_PASS_DEF_COLLAPSEMATERIALIZEOPSPASS
+#define GEN_PASS_DEF_UNCOLLAPSEMATERIALIZEOPSPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 // Uncollapse materialize operations with nested tile chains t1, t2, ..., tn. A
@@ -67,67 +67,15 @@ struct UncollapseMaterializePattern : public OpRewritePattern<MaterializeOp> {
   }
 };
 
-// Collapse materialize operations with nested tile chains t1, t2, ..., tn, and
-// u1, u2, ..., un. A materialize op of the form ...
-//   `materialize(t1(t2(...(tn(sn)))), materialize(u1(u2(...(un(sn')))), arg))`
-// ... is collapsed as ...
-//   `materialize(t1(t2(...(tn(u1(u2(...(un(sn'))))))), arg)`.
-struct CollapseMaterializePattern : public OpRewritePattern<MaterializeOp> {
-  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(MaterializeOp op,
-                                PatternRewriter &rewriter) const override {
-    // Find inner materialize op.
-    auto innerMaterialize = op.source().getDefiningOp<MaterializeOp>();
-    if (!innerMaterialize) return failure();
-
-    // Find outer tile chain to replace its root space op.
-    llvm::SmallVector<TileOp> tileChain;
-    Operation *tileDef = op.set().getDefiningOp();
-    while (tileDef && !llvm::isa<SpaceOp>(tileDef)) {
-      auto tileOp = llvm::dyn_cast<TileOp>(tileDef);
-      if (!tileOp) return failure();
-      tileChain.push_back(tileOp);
-      tileDef = tileOp.superset().getDefiningOp();
-    }
-
-    // Create new tile chain, starting with its tail.
-    auto loc = op.getLoc();
-    Value newTileChain = innerMaterialize.set();
-    while (!tileChain.empty()) {
-      TileOp tileOp = tileChain.pop_back_val();
-      newTileChain = rewriter.create<TileOp>(
-          loc, newTileChain, tileOp.offsets(), tileOp.sizes(), tileOp.strides(),
-          tileOp.static_offsets(), tileOp.static_sizes(),
-          tileOp.static_strides());
-    }
-
-    // Create collapsed materialize op.
-    rewriter.replaceOpWithNewOp<MaterializeOp>(op, innerMaterialize.source(),
-                                               newTileChain);
-    return success();
-  }
-};
-
-struct CollapseMaterializeOpsPass
-    : public impl::CollapseMaterializeOpsPassBase<CollapseMaterializeOpsPass> {
-  explicit CollapseMaterializeOpsPass(bool reverse)
-      : CollapseMaterializeOpsPassBase() {
-    reverse_ = reverse;
-  }
-
-  void getDependentDialects(DialectRegistry &registry) const final {}
-
+struct UncollapseMaterializeOpsPass
+    : public impl::UncollapseMaterializeOpsPassBase<
+          UncollapseMaterializeOpsPass> {
   void runOnOperation() final {
     MLIRContext *ctx = &getContext();
 
     // Populate collapse or uncollapse pattern.
     RewritePatternSet patterns(ctx);
-    if (reverse_) {
-      patterns.add<UncollapseMaterializePattern>(ctx);
-    } else {
-      patterns.add<CollapseMaterializePattern>(ctx);
-    }
+    patterns.add<UncollapseMaterializePattern>(ctx);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
@@ -138,9 +86,9 @@ struct CollapseMaterializeOpsPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createCollapseMaterializeOpsPass(
-    bool reverse) {
-  return std::make_unique<CollapseMaterializeOpsPass>(reverse);
+std::unique_ptr<OperationPass<func::FuncOp>>
+createUncollapseMaterializeOpsPass() {
+  return std::make_unique<UncollapseMaterializeOpsPass>();
 }
 
 }  // namespace gml_st

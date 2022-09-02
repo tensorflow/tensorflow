@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN: --gml-tiling="tile-sizes=256,512 distribute=false op-label=generic-2d" \
-// RUN: --gml-tiling="tile-sizes=4,1 distribute=false op-label=generic-2d" | \
+// RUN: --gml-tiling="tile-sizes=256,512 distribute=true op-label=generic-2d" \
+// RUN: --gml-tiling="tile-sizes=4,1 distribute=true op-label=generic-2d" | \
 // RUN: FileCheck %s
 
 #id2d = affine_map<(d0, d1) -> (d0, d1)>
@@ -9,30 +9,21 @@
 // CHECK-SAME:  %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>
 func.func @add(%lhs : tensor<?x?xf32>, %rhs : tensor<?x?xf32>)
     -> tensor<?x?xf32> {
-  // CHECK:      %[[C4:.*]] = arith.constant 4
-  // CHECK:      %[[C1:.*]] = arith.constant 1
-  // CHECK:      %[[C0:.*]] = arith.constant 0
-  // CHECK:      %[[C256:.*]] = arith.constant 256
-  // CHECK:      %[[C512:.*]] = arith.constant 512
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [%{{.*}}, %{{.*}}]
-  // CHECK:      %[[UB0:.*]] = tensor.dim %[[LHS]], %[[C0]]
-  // CHECK:      %[[UB1:.*]] = tensor.dim %[[LHS]], %[[C1]]
-  // CHECK:      %[[FOR:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
-  // CHECK-SAME:     to (%[[UB0]], %[[UB1]])
-  // CHECK-SAME:     step (%[[C256]], %[[C512]])
-  // CHECK-SAME:     outs (%[[ACC:.*]] = %[[INIT]]: tensor<?x?xf32>)
-  // CHECK:        %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]]
-  // CHECK:        %[[ACC_SUB:.*]] = gml_st.materialize %[[ACC]]
-  // CHECK:        %[[UB0_:.*]] = tensor.dim %[[LHS_SUB]], %[[C0]]
-  // CHECK:        %[[UB1_:.*]] = tensor.dim %[[LHS_SUB]], %[[C1]]
-  // CHECK:        %[[FOR_:.*]] = gml_st.for (%[[K:.*]], %[[L:.*]]) = (%[[C0]], %[[C0]])
-  // CHECK-SAME:       to (%[[UB0_]], %[[UB1_]])
-  // CHECK-SAME:       step (%[[C4]], %[[C1]])
-  // CHECK-SAME:       outs (%[[ACC_:.*]] = %[[ACC_SUB]]: tensor<?x?xf32>)
-  // CHECK:          %[[GENERIC:.*]] = linalg.generic
-  // CHECK:          gml_st.set_yield %[[GENERIC]] into %[[ACC_]]
-  // CHECK:        gml_st.set_yield %[[FOR_]] into %[[ACC]]
-  // CHECK:      return %[[FOR]]
+  // CHECK:     %[[INIT:.*]] = linalg.init_tensor
+
+  // CHECK:     %[[OUTER_LOOP:.*]] = gml_st.parallel
+  // CHECK:       %[[INIT_SUB:.*]] = gml_st.materialize
+
+  // CHECK:       %[[INNER_LOOP:.*]] = gml_st.parallel
+  // CHECK:     %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]]
+  // CHECK:     %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]]
+  // CHECK:     %[[INIT_SUB_SUB:.*]] = gml_st.materialize %[[INIT_SUB]]
+  // CHECK:         %[[GENERIC:.*]] = linalg.generic
+  // CHECK-SAME:      ins(%[[LHS_SUB]], %[[RHS_SUB]]
+  // CHECK-SAME:      outs(%[[INIT_SUB_SUB]]
+  // CHECK:         gml_st.set_yield %[[GENERIC]] into %[[INIT_SUB]]
+  // CHECK:       gml_st.set_yield %[[INNER_LOOP]] into %[[INIT]]
+  // CHECK:     return %[[OUTER_LOOP]]
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %d0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
