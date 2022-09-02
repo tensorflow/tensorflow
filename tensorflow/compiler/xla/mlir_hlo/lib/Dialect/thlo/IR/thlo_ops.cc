@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <tuple>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -831,6 +832,45 @@ void MapOp::print(OpAsmPrinter &p) {
 
 LogicalResult MapOp::verify() {
   return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+}
+
+//===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult YieldOp::verify() {
+  auto *parentOp = getOperation()->getParentRegion()->getParentOp();
+
+  SmallVector<Value, 2> tensorOuts;
+  // TODO(akuegel): Simplify this code when MapOp and ReductionOp implement
+  // the DestinationStyleOpInterface.
+  int numOutputs = 1;
+  if (auto reductionOp = dyn_cast<thlo::ReductionOp>(*parentOp)) {
+    numOutputs = reductionOp.getNumOutputs();
+  }
+  llvm::copy_if(parentOp->getOperands().take_back(numOutputs),
+                std::back_inserter(tensorOuts), [&](Value out) {
+                  return out.getType().isa<RankedTensorType>();
+                });
+  if (tensorOuts.size() != values().size())
+    return emitOpError("expects number of tensor output args = ")
+           << tensorOuts.size()
+           << " to match the number of yield operands = " << values().size();
+
+  TypeRange tensorTypes{ValueRange{tensorOuts}};
+  for (auto &item :
+       llvm::enumerate(llvm::zip(tensorTypes, getOperandTypes()))) {
+    Type outputType, resultType;
+    unsigned index = item.index();
+    std::tie(outputType, resultType) = item.value();
+    Type outputElementType =
+        outputType.cast<RankedTensorType>().getElementType();
+    if (outputElementType != resultType)
+      return emitOpError("expects yield operand ")
+             << index << " with type = " << resultType
+             << " to match output arg element type = " << outputElementType;
+  }
+  return success();
 }
 
 }  // namespace thlo

@@ -36,11 +36,12 @@ class THLO_Op<string mnemonic, list<Trait> traits> :
 }
 
 
-def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator]>,
+def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
+    ParentOneOf<["MapOp", "ReductionOp"]>]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Yield operation for thlo.map and thlo.reduce.";
   let assemblyFormat = "attr-dict $values `:` type($values)";
-  let hasVerifier = 0;
+  let hasVerifier = 1;
 }
 
 class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
@@ -209,7 +210,7 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
 ]> {
   let summary = "Destination-style twin for elementwise operations";
   let description = [{
-    Models elementwise operations on tensors in terms of arithmetic operations 
+    Models elementwise operations on tensors in terms of arithmetic operations
     on the corresponding elements.
 
     Example:
