@@ -2285,6 +2285,7 @@ def pywrap_tensorflow_macro(
         deps = [],
         dynamic_deps = [],
         static_deps = [],
+        exports_filter = [],
         copts = [],
         version_script = None,
         win_def_file = None):
@@ -2351,6 +2352,7 @@ def pywrap_tensorflow_macro(
         deps = deps + extra_deps,
         dynamic_deps = dynamic_deps,
         static_deps = static_deps,
+        exports_filter = exports_filter,
         win_def_file = win_def_file,
         additional_linker_inputs = additional_linker_inputs,
     )
@@ -3128,6 +3130,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@mkl_dnn_v1//:__subpackages__",
         "@nsync//:__subpackages__",
+        "@nccl_archive//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -3168,8 +3171,8 @@ def tf_python_pybind_extension(
     It is used for targets under //third_party/tensorflow/python that link
     against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
     """
-    extended_deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"])
-    extended_deps += [] if dynamic_deps else if_windows([], ["//tensorflow:libtensorflow_framework_import_lib"])
+    extended_deps = deps + if_mkl_ml(["//third_party/mkl:intel_binary_blob"])
+    extended_deps += [] if dynamic_deps else if_windows([], ["//tensorflow:libtensorflow_framework_import_lib"]) + tf_binary_pybind_deps()
     pybind_extension(
         name,
         srcs,
