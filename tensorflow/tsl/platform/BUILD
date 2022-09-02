@@ -97,6 +97,7 @@ filegroup(
     srcs = [
         "bfloat16.h",
         "casts.h",
+        "crash_analysis.h",
         "dynamic_annotations.h",
         "fingerprint.h",
         "init_main.h",
@@ -193,6 +194,7 @@ exports_files(
     [
         "init_main.h",
         "net.h",
+        "crash_analysis.h",
         "resource_loader.h",
         "stacktrace_handler.h",
         "cuda_libdevice_path.h",
@@ -399,6 +401,15 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "crash_analysis",
+    hdrs = ["crash_analysis.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+    ] + tf_platform_deps("crash_analysis"),
 )
 
 cc_library(

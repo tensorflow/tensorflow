@@ -193,7 +193,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
-    ] + tf_platform_deps("crash_analysis"),
+        "//tensorflow/tsl/platform:crash_analysis",
+    ],
 )
 
 cc_library(

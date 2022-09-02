@@ -502,15 +502,17 @@ cc_library(
     srcs = [
         "crash_analysis.cc",
     ],
-    hdrs = ["crash_analysis.h"],
+    hdrs = ["//tensorflow/tsl/platform:crash_analysis.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
+    textual_hdrs = ["crash_analysis.h"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/tsl/platform",
     ],
 )
 

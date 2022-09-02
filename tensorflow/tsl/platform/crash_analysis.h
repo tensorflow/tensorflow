@@ -13,10 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_CRASH_ANALYSIS_H_
-#define TENSORFLOW_CORE_PLATFORM_CRASH_ANALYSIS_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_CRASH_ANALYSIS_H_
+#define TENSORFLOW_TSL_PLATFORM_CRASH_ANALYSIS_H_
 
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/tsl/platform/crash_analysis.h"
+#include "tensorflow/tsl/platform/platform.h"
 
-#endif  // TENSORFLOW_CORE_PLATFORM_CRASH_ANALYSIS_H_
+// Include appropriate platform-dependent implementations
+#if defined(PLATFORM_GOOGLE)
+#include "tensorflow/tsl/platform/google/crash_analysis.h"  // IWYU pragma: export
+#else
+#include "tensorflow/tsl/platform/default/crash_analysis.h"  // IWYU pragma: export
+#endif
+
+#endif  // TENSORFLOW_TSL_PLATFORM_CRASH_ANALYSIS_H_
