@@ -194,14 +194,14 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
 
 void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<func::FuncOp>(
-      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
+      CreateCanonicalizeCompileAndReplicateAttributesPass());
   CreateTPUBridgePipelineImpl(pm);
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   // Convert to unified compilation and replication attributes.
   pm.addNestedPass<func::FuncOp>(
-      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
+      CreateCanonicalizeCompileAndReplicateAttributesPass());
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
@@ -300,8 +300,6 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this.
   VLOG(2) << "Create TF XLA Bridge pipeline";
-  pm.addNestedPass<func::FuncOp>(
-      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
   pm.addNestedPass<func::FuncOp>(
       tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));

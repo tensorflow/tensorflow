@@ -16,9 +16,7 @@ limitations under the License.
 // This transformation pass converts existing compilation and replication
 // attributes into unified attributes. For example, A _tpu_replicate=X
 // should be replaced with _xla_compile_device_type=TPU and
-// _replication_info=X attributes by the conversion. An _XlaMustCompile=true
-// should be replaced with _xla_compile_device_type with the value of device
-// attribute.
+// _replication_info=X attributes by the conversion.
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
@@ -29,12 +27,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
-#include "tensorflow/core/util/device_name_utils.h"
 
 #define DEBUG_TYPE "tf-canonicalize-compile-and-replicate-attributes"
 
 namespace mlir {
-namespace TF {
+namespace TFTPU {
 
 namespace {
 
@@ -48,56 +45,15 @@ void CanonicalizeCompileAndReplicateAttributesPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   ModuleOp module_op = func_op->getParentOfType<ModuleOp>();
   mlir::OpBuilder builder(module_op.getContext());
-
-  auto walk_result = func_op->walk([&](mlir::Operation* op) {
-    // Convert `_tpu_replicate`.
+  func_op->walk([&](mlir::Operation* op) {
     if (op->hasAttr(TF::kTpuReplicateAttr)) {
-      op->setAttr(tensorflow::kReplicationInfoAttr,
-                  op->getAttr(TF::kTpuReplicateAttr));
-      op->removeAttr(tensorflow::kTpuReplicateAttr);
-      op->setAttr(tensorflow::kCompileDeviceTypeAttr,
-                  builder.getStringAttr(tensorflow::kTpuDevice));
+      op->setAttr(TF::kReplicationInfoAttr, op->getAttr(TF::kTpuReplicateAttr));
+      op->removeAttr(TF::kTpuReplicateAttr);
+      op->setAttr(TF::kCompileDeviceTypeAttr,
+                  builder.getStringAttr(TF::kTpuDevice));
     }
-
-    // Convert `_XlaMustCompile`.
-    if (op->hasAttr(tensorflow::kMustCompileAttr)) {
-      bool must_compile_attr_val =
-          op->getAttrOfType<BoolAttr>(tensorflow::kMustCompileAttr).getValue();
-      op->removeAttr(tensorflow::kMustCompileAttr);
-      if (!must_compile_attr_val) {
-        if (op->hasAttr(tensorflow::kCompileDeviceTypeAttr)) {
-          op->emitOpError()
-              << "has both '" << tensorflow::kMustCompileAttr
-              << " = false' and '" << tensorflow::kCompileDeviceTypeAttr
-              << "' attribute which contradicts each other";
-          return mlir::WalkResult::interrupt();
-        }
-        return mlir::WalkResult::advance();
-      }
-      if (op->hasAttr(tensorflow::kCompileDeviceTypeAttr)) {
-        return mlir::WalkResult::advance();
-      }
-      auto device_attr = op->getAttrOfType<StringAttr>(tensorflow::kDeviceAttr);
-      if (!device_attr) {
-        op->setAttr(tensorflow::kCompileDeviceTypeAttr,
-                    builder.getStringAttr(tensorflow::kEmptyDevice));
-        return mlir::WalkResult::advance();
-      }
-      tensorflow::DeviceNameUtils::ParsedName parsed_name;
-      tensorflow::DeviceNameUtils::ParseFullOrLocalName(device_attr.getValue(),
-                                                        &parsed_name);
-      auto device_type = builder.getStringAttr(parsed_name.type);
-      if (failed(IsValidDeviceTypeOrEmpty(device_type))) {
-        op->emitOpError() << "'" << tensorflow::kDeviceAttr << "'"
-                          << " has invalid value";
-        return mlir::WalkResult::interrupt();
-      }
-      op->setAttr(tensorflow::kCompileDeviceTypeAttr, device_type);
-    }
-
     return mlir::WalkResult::advance();
   });
-  if (walk_result.wasInterrupted()) signalPassFailure();
 }
 
 }  // namespace
@@ -107,5 +63,5 @@ CreateCanonicalizeCompileAndReplicateAttributesPass() {
   return std::make_unique<CanonicalizeCompileAndReplicateAttributesPass>();
 }
 
-}  // namespace TF
+}  // namespace TFTPU
 }  // namespace mlir

@@ -39,21 +39,17 @@ LogicalResult HasValidCompilationAndReplicationAttributes(Operation& op) {
     return op.emitOpError()
            << "has an empty '" << kReplicationInfoAttr << "' attribute";
   }
-  if (compile_attr && failed(IsValidDeviceTypeOrEmpty(compile_attr))) {
-    return op.emitOpError() << "has invalid '" << kCompileDeviceTypeAttr
-                            << "' value '" << compile_attr.getValue() << "'";
+  if (compile_attr) {
+    auto value = compile_attr.getValue();
+    // TODO(b/229028654): Remove string conversion once we have C++17.
+    absl::string_view device_type(value.data(), value.size());
+    auto it = std::find(kValidDeviceTypes.begin(), kValidDeviceTypes.end(),
+                        device_type);
+    if (it == kValidDeviceTypes.end()) {
+      return op.emitOpError() << "has invalid '" << kCompileDeviceTypeAttr
+                              << "' value '" << compile_attr.getValue() << "'";
+    }
   }
-  return success();
-}
-
-LogicalResult IsValidDeviceTypeOrEmpty(StringAttr device_attr) {
-  auto value = device_attr.getValue();
-  // TODO(b/229028654): Remove string conversion once we have C++17.
-  absl::string_view device_type(value.data(), value.size());
-  // Device type may be empty for some ops, e.g. tf.PartitionedCall.
-  auto it = std::find(kValidDeviceTypes.begin(), kValidDeviceTypes.end(),
-                      device_type);
-  if (it == kValidDeviceTypes.end()) return failure();
   return success();
 }
 

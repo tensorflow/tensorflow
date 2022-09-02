@@ -88,12 +88,7 @@ bool GetValueAsConstant(Value val, AttrT &attr) {
   return matchPattern(val, m_Constant(&attr));
 }
 
-// Checks if both compilation and replication attributes are present in the
-// operation, and if their values are valid.
 LogicalResult HasValidCompilationAndReplicationAttributes(Operation &op);
-
-// Checks if the device attribute is valid.
-LogicalResult IsValidDeviceTypeOrEmpty(StringAttr attr);
 
 }  // namespace TF
 }  // namespace mlir
