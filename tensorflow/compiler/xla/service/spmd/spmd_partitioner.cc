@@ -1542,7 +1542,7 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
   auto temp_target = target.ReplicateOnLastTileDim()
                          ? HloSharding::PartialTile(temp_target_tile)
                          : HloSharding::Tile(temp_target_tile);
-  VLOG(0) << "Temp target: " << temp_target.ToString();
+  VLOG(5) << "Temp target sharding: " << temp_target.ToString();
   auto padded_shape = hlo_->shape();
   auto padded_base_shape = base_shape_;
   auto current_base_padded_shape = base_shape_;
