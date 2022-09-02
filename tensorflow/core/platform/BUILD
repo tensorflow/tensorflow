@@ -773,14 +773,12 @@ cc_library(
 
 cc_library(
     name = "str_util",
-    srcs = ["str_util.cc"],
     hdrs = ["str_util.h"],
     deps = [
-        ":logging",
         ":macros",
         ":stringpiece",
         ":types",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:str_util",
     ],
 )
 
@@ -1868,7 +1866,6 @@ filegroup(
         "statusor.h",
         "statusor_internals.h",
         "statusor.cc",
-        "str_util.cc",
         "str_util.h",
         "strcat.cc",
         "strcat.h",

@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/tsl/platform/str_util.h"
 
 #include <cctype>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -23,10 +24,10 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/stringpiece.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace str_util {
 
 string CEscape(StringPiece src) { return absl::CEscape(src); }
@@ -60,14 +61,14 @@ size_t RemoveWhitespaceContext(StringPiece* text) {
   return count;
 }
 
-bool ConsumeLeadingDigits(StringPiece* s, uint64* val) {
+bool ConsumeLeadingDigits(StringPiece* s, uint64_t* val) {
   const char* p = s->data();
   const char* limit = p + s->size();
-  uint64 v = 0;
+  uint64_t v = 0;
   while (p < limit) {
     const char c = *p;
     if (c < '0' || c > '9') break;
-    uint64 new_v = (v * 10) + (c - '0');
+    uint64_t new_v = (v * 10) + (c - '0');
     if (new_v / 8 < v) {
       // Overflow occurred
       return false;
@@ -228,4 +229,4 @@ string ArgDefCase(StringPiece s) {
 }
 
 }  // namespace str_util
-}  // namespace tensorflow
+}  // namespace tsl

@@ -90,6 +90,7 @@ filegroup(
         "stack_frame.h",
         "stacktrace.h",
         "stacktrace_handler.h",
+        "str_util.h",
         "stringpiece.h",
         "stringprintf.h",
     ],
@@ -132,6 +133,8 @@ filegroup(
         "platform_strings_computed.h",
         "regexp.h",
         "stacktrace.h",
+        "str_util.cc",
+        "str_util.h",
         "stringpiece.h",
         "stringprintf.cc",
         "stringprintf.h",
@@ -161,6 +164,7 @@ filegroup(
         exclude = [
             "gif.h",
             "jpeg.h",
+            "str_util.h",
             "stringprintf.h",
         ],
     ),
@@ -354,6 +358,19 @@ cc_library(
 )
 
 cc_library(
+    name = "str_util",
+    srcs = ["str_util.cc"],
+    hdrs = ["str_util.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":stringpiece",
+        ":types",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "stringpiece",
     hdrs = ["stringpiece.h"],
     compatible_with = get_compatible_with_portable(),
@@ -451,6 +468,7 @@ filegroup(
     name = "lib_internal_private_hdrs",
     srcs = [
         "bfloat16.h",
+        "str_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/core:__pkg__"],
