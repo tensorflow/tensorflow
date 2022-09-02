@@ -27,10 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-mutex& executor_factory_lock() {
-  static mutex mu(LINKER_INITIALIZED);
-  return mu;
-}
+static mutex executor_factory_lock(LINKER_INITIALIZED);
 
 typedef std::unordered_map<string, ExecutorFactory*> ExecutorFactories;
 ExecutorFactories* executor_factories() {
@@ -42,7 +39,7 @@ ExecutorFactories* executor_factories() {
 
 void ExecutorFactory::Register(const string& executor_type,
                                ExecutorFactory* factory) {
-  mutex_lock l(executor_factory_lock());
+  mutex_lock l(executor_factory_lock);
   if (!executor_factories()->insert({executor_type, factory}).second) {
     LOG(FATAL) << "Two executor factories are being registered "
                << "under" << executor_type;
@@ -51,7 +48,7 @@ void ExecutorFactory::Register(const string& executor_type,
 
 namespace {
 const string RegisteredFactoriesErrorMessageLocked()
-    TF_SHARED_LOCKS_REQUIRED(executor_factory_lock()) {
+    TF_SHARED_LOCKS_REQUIRED(executor_factory_lock) {
   std::vector<string> factory_types;
   for (const auto& executor_factory : *executor_factories()) {
     factory_types.push_back(executor_factory.first);
@@ -63,7 +60,7 @@ const string RegisteredFactoriesErrorMessageLocked()
 
 Status ExecutorFactory::GetFactory(const string& executor_type,
                                    ExecutorFactory** out_factory) {
-  tf_shared_lock l(executor_factory_lock());
+  tf_shared_lock l(executor_factory_lock);
 
   auto iter = executor_factories()->find(executor_type);
   if (iter == executor_factories()->end()) {
