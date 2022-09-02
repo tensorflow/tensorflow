@@ -33,6 +33,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace tensorflow {
+#define GEN_PASS_DECL_TILEREDUCTION
+#define GEN_PASS_DECL_TILEFILL
+#define GEN_PASS_DECL_TILECWISE
+#define GEN_PASS_DECL_MATHAPPROXIMATION
+#define GEN_PASS_DECL_CLUSTERING
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 // Pass for trivial buffer forwarding for the linalg.generic operations.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

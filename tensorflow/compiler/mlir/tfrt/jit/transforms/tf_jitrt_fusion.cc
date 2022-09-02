@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_FUSION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 // -------------------------------------------------------------------------- //
@@ -124,7 +124,7 @@ static bool SkipUnitDimReshape(OpOperand *fusedOperand) {
   return true;
 }
 
-struct FusionPass : public FusionBase<FusionPass> {
+struct FusionPass : public impl::FusionBase<FusionPass> {
   void runOnOperation() override {
     Operation *op = getOperation();
 

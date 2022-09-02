@@ -29,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PEELTILEDLOOPS
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 constexpr llvm::StringRef kWasPeeledAttr = "PeelStLoopsPeeledAttr";
@@ -57,7 +57,8 @@ struct PeelGmlStLoop : public mlir::OpRewritePattern<LoopOp> {
   }
 };
 
-struct PeelTiledLoopsPass : public PeelTiledLoopsBase<PeelTiledLoopsPass> {
+struct PeelTiledLoopsPass
+    : public impl::PeelTiledLoopsBase<PeelTiledLoopsPass> {
   void runOnOperation() override {
     auto func_op = getOperation();
 

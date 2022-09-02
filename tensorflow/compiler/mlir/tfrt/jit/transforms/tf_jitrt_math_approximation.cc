@@ -24,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_MATHAPPROXIMATION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using ::llvm::ArrayRef;
@@ -310,7 +310,7 @@ static void populateMathApproximationPatterns(RewritePatternSet &patterns,
 }
 
 struct MathApproximationPass
-    : public MathApproximationBase<MathApproximationPass> {
+    : public impl::MathApproximationBase<MathApproximationPass> {
   explicit MathApproximationPass(ArrayRef<std::string> approx_oplist) {
     this->oplist = approx_oplist;
   }
