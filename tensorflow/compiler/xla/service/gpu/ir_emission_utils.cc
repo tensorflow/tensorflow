@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <numeric>
 #include <optional>
@@ -47,10 +46,10 @@ bool IsRank2(const Shape& shape, int64_t batch_dimensions_size) {
 // the dimensions more major then the given dimensions, minor is the size of
 // dimensions more minor then the given dimensions, and middle is the size of
 // the given dimensions.
-std::array<int64_t, 3> PartitionShapeByMiddleDimensions(
+Vector3 PartitionShapeByMiddleDimensions(
     const Shape& shape, absl::Span<const int64_t> dims_middle) {
   CHECK(LayoutUtil::AreDimensionsConsecutive(shape.layout(), dims_middle));
-  std::array<int64_t, 3> values = {1, 1, 1};
+  Vector3 values = {1, 1, 1};
   enum Segment { kMajor = 0, kMiddle = 1, kMinor = 2 };
   Segment cur_segment = kMinor;
 
@@ -127,9 +126,8 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
   return true;
 }
 
-std::array<int64_t, 3> GetReductionTiling(
-    const ReductionDimensions& reduction_dimensions,
-    se::CudaComputeCapability cuda_compute_capability) {
+Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions,
+                           se::CudaComputeCapability cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
     int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
                               BatchedReductionRaceFreeBound());
@@ -247,7 +245,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
 
   if (LayoutUtil::AreDimensionsConsecutive(input_shape.layout(),
                                            dims_to_keep)) {
-    std::array<int64_t, 3> shape_partition =
+    Vector3 shape_partition =
         PartitionShapeByMiddleDimensions(input_shape, dims_to_keep);
     if (shape_partition[1] == 1) {
       return {/*is_row_reduction=*/true,
@@ -260,7 +258,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
     return {/*is_row_reduction=*/true, shape_partition};
   }
 
-  std::array<int64_t, 3> shape_partition =
+  Vector3 shape_partition =
       PartitionShapeByMiddleDimensions(input_shape, dims_to_reduce);
 
   if (shape_partition[2] == 1) {
@@ -623,7 +621,7 @@ Shape GetShape(mlir::Value value) {
 }
 
 bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
-                         const std::array<int64_t, 3>& reduction_tiling) {
+                         const Vector3& reduction_tiling) {
   return (reduction_dimensions.is_row_reduction &&
           reduction_dimensions.dimensions[2] <=
               MinThreadsXRowReduction() * reduction_tiling[2] &&
