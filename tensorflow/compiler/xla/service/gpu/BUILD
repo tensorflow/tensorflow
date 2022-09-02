@@ -31,6 +31,8 @@ load(
     "if_cuda_is_configured",
 )
 
+load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
+
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
@@ -1744,6 +1746,19 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
+)
+
+xla_test(
+    name = "gpu_compiler_test",
+    srcs = ["gpu_compiler_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    disabled_backends = [ "cpu" ],
+    deps = [
+        ":horizontal_loop_fusion",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
 )
 
 cc_library(
