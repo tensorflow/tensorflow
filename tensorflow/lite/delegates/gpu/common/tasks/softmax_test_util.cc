@@ -42,7 +42,8 @@ absl::Status SoftmaxTest(TestExecutionEnvironment* env) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation = CreateSoftmax(op_def);
+      GPUOperation operation =
+          CreateSoftmax(op_def, env->GetGpuInfo(), src_tensor.shape);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
@@ -82,7 +83,8 @@ absl::Status SoftmaxBigNumberTest(TestExecutionEnvironment* env) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation = CreateSoftmax(op_def);
+      GPUOperation operation =
+          CreateSoftmax(op_def, env->GetGpuInfo(), src_tensor.shape);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));

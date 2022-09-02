@@ -206,7 +206,7 @@ void SelectSoftmax(const GpuInfo& gpu_info, const BHWC& shape,
     Softmax1x1 operation = CreateSoftmax1x1(op_def, gpu_info, shape);
     *ptr = std::make_unique<Softmax1x1>(std::move(operation));
   } else {
-    GPUOperation operation = CreateSoftmax(op_def);
+    GPUOperation operation = CreateSoftmax(op_def, gpu_info, shape);
     *ptr = std::make_unique<GPUOperation>(std::move(operation));
   }
 }
