@@ -335,14 +335,14 @@ cc_library(
 cc_library(
     name = "resource",
     srcs = ["resource.cc"],
-    hdrs = ["//tensorflow/core/platform:resource.h"],
+    hdrs = ["//tensorflow/tsl/platform:resource.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/tsl/platform:stringpiece",
     ],
 )
 

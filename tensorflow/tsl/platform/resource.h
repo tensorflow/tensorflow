@@ -13,19 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tsl/platform/resource.h"
+#ifndef TENSORFLOW_TSL_PLATFORM_RESOURCE_H_
+#define TENSORFLOW_TSL_PLATFORM_RESOURCE_H_
+
+#include <memory>
 
 #include "tensorflow/tsl/platform/stringpiece.h"
 
 namespace tsl {
 
-class ResourceTagger::ResourceTaggerImpl {
+// ResourceTagger objects should only be allocated on the stack.
+class ResourceTagger {
  public:
-  ResourceTaggerImpl(StringPiece key, StringPiece value) {}
+  ResourceTagger(StringPiece key, StringPiece value);
+  ~ResourceTagger();
+
+  // Do not allow copying or moving ResourceTagger
+  ResourceTagger(const ResourceTagger&) = delete;
+  ResourceTagger(ResourceTagger&&) = delete;
+  ResourceTagger& operator=(const ResourceTagger&) = delete;
+  ResourceTagger& operator=(ResourceTagger&&) = delete;
+
+ private:
+  class ResourceTaggerImpl;
+  const std::unique_ptr<ResourceTaggerImpl> impl_;
 };
 
-ResourceTagger::ResourceTagger(StringPiece key, StringPiece value) {}
-
-ResourceTagger::~ResourceTagger() {}
-
 }  // namespace tsl
+
+#endif  // TENSORFLOW_TSL_PLATFORM_RESOURCE_H_

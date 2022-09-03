@@ -24,7 +24,6 @@ load(
     "tf_platform_alias",
     "tf_platform_deps",
     "tf_protobuf_deps",
-    "tf_resource_deps",
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
 )
@@ -634,7 +633,8 @@ cc_library(
     textual_hdrs = ["resource.h"],
     deps = [
         ":stringpiece",
-    ] + tf_resource_deps(),
+        "//tensorflow/tsl/platform:resource",
+    ],
 )
 
 cc_library(

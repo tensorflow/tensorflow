@@ -18,6 +18,7 @@ load(
     "tf_logging_deps",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
+    "tf_resource_deps",
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
 )
@@ -66,6 +67,14 @@ cc_library(
 )
 
 cc_library(
+    name = "resource",
+    textual_hdrs = ["resource.h"],
+    deps = [
+        ":stringpiece",
+    ] + tf_resource_deps(),
+)
+
+cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
     compatible_with = get_compatible_with_portable(),
@@ -106,6 +115,7 @@ filegroup(
         "mem.h",
         "net.h",
         "prefetch.h",
+        "resource.h",
         "stack_frame.h",
         "stacktrace.h",
         "stacktrace_handler.h",
@@ -160,6 +170,7 @@ filegroup(
         "prefetch.h",
         "raw_coding.h",
         "regexp.h",
+        "resource.h",
         "stacktrace.h",
         "str_util.cc",
         "str_util.h",
@@ -213,6 +224,7 @@ exports_files(
         "net.h",
         "crash_analysis.h",
         "resource_loader.h",
+        "resource.h",
         "stacktrace_handler.h",
         "cuda_libdevice_path.h",
         "bfloat16.h",
