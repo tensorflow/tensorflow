@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace runtime {
@@ -174,7 +175,7 @@ class InFlightDiagnostic {
 // caller, e.g. the handler can collect all of the emitted diagnostics into the
 // string message, and pass it to the caller as the async error.
 //
-// Unhandled error diagnostics will be dumped to the llvm::errs() stream.
+// Unhandled error diagnostics will be logged with the warning level.
 class DiagnosticEngine {
  public:
   // Diagnostic handler must return success if it consumed the diagnostic, and
@@ -201,9 +202,9 @@ class DiagnosticEngine {
       if (succeeded(handler(diagnostic))) return;
     }
 
-    // Dump unhandled errors to llvm::errs() stream.
+    // Log unhandled errors to the warning log.
     if (diagnostic.severity() == DiagnosticSeverity::kError)
-      llvm::errs() << "Error: " << diagnostic.str() << "\n";
+      LOG(WARNING) << "XLA runtime error: " << diagnostic.str();
   }
 
  private:

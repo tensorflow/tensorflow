@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 
+#include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
@@ -36,12 +39,19 @@ namespace runtime {
 // calls (direct or dynamic) and custom types.
 //===----------------------------------------------------------------------===//
 
-static absl::StatusOr<JitExecutable> Compile(
-    std::string_view module, DirectCustomCallRegistry direct_custom_calls,
-    TypeIDNameRegistry::RegistrationFn types) {
+struct TestOpts {
+  DynamicCustomCallRegistry dynamic_custom_calls;
+  DirectCustomCallRegistry direct_custom_calls;
+  TypeIDNameRegistry::RegistrationFn types;
+  DiagnosticEngine diagnostic_engine;
+};
+
+static absl::StatusOr<JitExecutable> Compile(std::string_view module,
+                                             const TestOpts& test_opts) {
   JitExecutable::Options opts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
-  opts.compiler.symbols_binding = ToSymbolsBinding(direct_custom_calls, types);
+  opts.compiler.symbols_binding =
+      ToSymbolsBinding(test_opts.direct_custom_calls, test_opts.types);
 
   opts.compiler.register_dialects = [&](mlir::DialectRegistry& registry) {
     RegisterDefaultXlaRuntimeDialects(registry);
@@ -55,13 +65,10 @@ static absl::StatusOr<JitExecutable> Compile(
   return JitExecutable::Instantiate(module, "test", opts);
 }
 
-static absl::Status CompileAndExecute(
-    std::string_view module, ArgumentsRef args,
-    DynamicCustomCallRegistry dynamic_custom_calls = {},
-    DirectCustomCallRegistry direct_custom_calls = {},
-    TypeIDNameRegistry::RegistrationFn types = {}) {
-  absl::StatusOr<JitExecutable> jit_executable =
-      Compile(module, direct_custom_calls, types);
+static absl::Status CompileAndExecute(std::string_view module,
+                                      ArgumentsRef args,
+                                      const TestOpts& test_opts) {
+  absl::StatusOr<JitExecutable> jit_executable = Compile(module, test_opts);
   if (!jit_executable.ok()) return jit_executable.status();
 
   AsyncValuePtr<Executable> executable = jit_executable->DefaultExecutable();
@@ -74,7 +81,8 @@ static absl::Status CompileAndExecute(
   if (!initialized.ok()) return initialized;
 
   Executable::ExecuteOpts execute_opts;
-  execute_opts.custom_call_registry = &dynamic_custom_calls;
+  execute_opts.custom_call_registry = &test_opts.dynamic_custom_calls;
+  execute_opts.diagnostic_engine = &test_opts.diagnostic_engine;
   execute_opts.async_task_runner =
       reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 
@@ -82,6 +90,23 @@ static absl::Status CompileAndExecute(
   if (call_frame.is_error) return absl::InternalError(call_frame.error);
 
   return absl::OkStatus();
+}
+
+// Diagnostic engine that appends all emitted diagnostic to the `error` string.
+static DiagnosticEngine CollectDiagnostic(std::string* error) {
+  DiagnosticEngine diagnostic_engine;
+  diagnostic_engine.AddHandler([=](Diagnostic& diagnostic) -> LogicalResult {
+    error->append(diagnostic.str());
+    return success();
+  });
+  return diagnostic_engine;
+}
+
+// No-Op custom call with a single `i32` argument.
+static std::unique_ptr<CustomCall> I32NoOp() {
+  return CustomCall::Bind("test.custom_call").Arg<int32_t>().To([](int32_t) {
+    return success();
+  });
 }
 
 //===----------------------------------------------------------------------===//
@@ -114,11 +139,11 @@ TEST(CustomCallTest, DirectCustomCall) {
     }
   )";
 
-  DirectCustomCallRegistry registry;
-  registry.Register("test.custom_call", CustomCallFn);
+  TestOpts opts;
+  opts.direct_custom_calls.Register("test.custom_call", CustomCallFn);
 
   ASSERT_EQ(custom_call_counter, 0);
-  ASSERT_TRUE(CompileAndExecute(module, {}, {}, std::move(registry)).ok());
+  ASSERT_TRUE(CompileAndExecute(module, {}, opts).ok());
   EXPECT_EQ(custom_call_counter, 42);
 }
 
@@ -150,16 +175,16 @@ TEST(CustomCallTest, ScalarArgs) {
     return success();
   };
 
-  DynamicCustomCallRegistry registry;
-  registry.Register(CustomCall::Bind("test.custom_call")
-                        .Arg<bool>()
-                        .Arg<int32_t>()
-                        .Arg<int64_t>()
-                        .Arg<float>()
-                        .Arg<double>()
-                        .To(f));
+  TestOpts opts;
+  opts.dynamic_custom_calls.Register(CustomCall::Bind("test.custom_call")
+                                         .Arg<bool>()
+                                         .Arg<int32_t>()
+                                         .Arg<int64_t>()
+                                         .Arg<float>()
+                                         .Arg<double>()
+                                         .To(f));
 
-  ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, std::move(registry)).ok());
+  ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
 
   EXPECT_EQ(i1, false);
   EXPECT_EQ(i32, 42);
@@ -207,24 +232,24 @@ TEST(CustomCallTest, ScalarRets) {
     return success();
   };
 
-  DynamicCustomCallRegistry registry;
-  registry.Register(CustomCall::Bind("test.custom_call_result")
-                        .Ret<bool>()
-                        .Ret<int32_t>()
-                        .Ret<int64_t>()
-                        .Ret<float>()
-                        .Ret<double>()
-                        .To(f_result));
+  TestOpts opts;
+  opts.dynamic_custom_calls.Register(CustomCall::Bind("test.custom_call_result")
+                                         .Ret<bool>()
+                                         .Ret<int32_t>()
+                                         .Ret<int64_t>()
+                                         .Ret<float>()
+                                         .Ret<double>()
+                                         .To(f_result));
 
-  registry.Register(CustomCall::Bind("test.custom_call")
-                        .Arg<bool>()
-                        .Arg<int32_t>()
-                        .Arg<int64_t>()
-                        .Arg<float>()
-                        .Arg<double>()
-                        .To(f));
+  opts.dynamic_custom_calls.Register(CustomCall::Bind("test.custom_call")
+                                         .Arg<bool>()
+                                         .Arg<int32_t>()
+                                         .Arg<int64_t>()
+                                         .Arg<float>()
+                                         .Arg<double>()
+                                         .To(f));
 
-  ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, std::move(registry)).ok());
+  ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
 
   EXPECT_EQ(i1, false);
   EXPECT_EQ(i32, 42);
@@ -233,11 +258,63 @@ TEST(CustomCallTest, ScalarRets) {
   EXPECT_EQ(f64, 42.0);
 }
 
+TEST(CustomCallTest, ArgSizeCheck) {
+  // Try to pass two argument to a custom call that expects one.
+  absl::string_view wrong_type = R"(
+    func.func private @custom_call(%arg0: i32, %arg1: i32)
+      attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = arith.constant 42 : i32
+      call @custom_call(%0, %0) : (i32, i32) -> ()
+      return
+    }
+  )";
+
+  std::string error = "";
+
+  TestOpts opts;
+  opts.dynamic_custom_calls.Register(I32NoOp());
+  opts.diagnostic_engine = CollectDiagnostic(&error);
+
+  auto status = CompileAndExecute(wrong_type, /*args=*/{}, opts);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.message(), "custom call 'test.custom_call' failed");
+  EXPECT_EQ(error, "Wrong number of arguments: expected 1 got 2");
+}
+
+TEST(CustomCallTest, ArgTypeCheck) {
+  // Try to pass `i64` argument to a custom call that expects `i32`.
+  absl::string_view wrong_type = R"(
+    func.func private @custom_call(%arg1: i64)
+      attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = arith.constant 42 : i64
+      call @custom_call(%0) : (i64) -> ()
+      return
+    }
+  )";
+
+  std::string error = "";
+
+  TestOpts opts;
+  opts.dynamic_custom_calls.Register(I32NoOp());
+  opts.diagnostic_engine = CollectDiagnostic(&error);
+
+  auto status = CompileAndExecute(wrong_type, /*args=*/{}, opts);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.message(), "custom call 'test.custom_call' failed");
+  EXPECT_EQ(
+      error,
+      "Failed to decode all custom call arguments, attributes and returns");
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
 
-using State = benchmark::State;
+using benchmark::State;
 
 using DirectCustomCall = DirectCustomCallRegistry::DirectCustomCall;
 using RuntimeChecks = CustomCall::RuntimeChecks;
@@ -252,11 +329,11 @@ static void BenchmarkCustomCall(State& state, std::string_view module,
                                 DirectCustomCall custom_call,
                                 TypeIDNameRegistry::RegistrationFn types = {}) {
   // Wrap benchmarked custom call into a direct custom call registry.
-  DirectCustomCallRegistry custom_calls;
-  custom_calls.Register(name, custom_call);
+  TestOpts opts;
+  opts.direct_custom_calls.Register(name, custom_call);
+  opts.types = std::move(types);
 
-  absl::StatusOr<JitExecutable> jit_executable =
-      Compile(module, custom_calls, types);
+  absl::StatusOr<JitExecutable> jit_executable = Compile(module, opts);
   CHECK(jit_executable.ok()) << jit_executable.status();
 
   AsyncValuePtr<Executable> executable = jit_executable->DefaultExecutable();

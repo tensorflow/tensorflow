@@ -133,6 +133,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":logical_result",
+        "//tensorflow/tsl/platform:logging",
         "@llvm-project//llvm:Support",
     ],
 )

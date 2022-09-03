@@ -188,17 +188,17 @@ class Executable {
 
     // A container for passing arbitrary user-provided data to the custom call
     // handlers. Must outlive all async tasks launched by this executable.
-    CustomCall::UserData* custom_call_data = nullptr;
+    const CustomCall::UserData* custom_call_data = nullptr;
 
     // Dynamically registered custom calls library. These custom calls resolved
     // at run time by name. In contrast to custom calls defined by the
     // `DirectCustomCallRegistry` which are linked directly with the executable
     // at compile time.
-    DynamicCustomCallRegistry* custom_call_registry = nullptr;
+    const DynamicCustomCallRegistry* custom_call_registry = nullptr;
 
     // Diagnostic engine is responsible for passing runtime diagnostics back
     // to the caller through the diagnostic handler.
-    DiagnosticEngine* diagnostic_engine = nullptr;
+    const DiagnosticEngine* diagnostic_engine = nullptr;
   };
 
   // Loads executable from an object file. It is the caller responsibility to
@@ -228,10 +228,10 @@ class Executable {
   // call implementations do not have to depend on the `executable` target.
 
   // Returns the user data passed via the ExecuteOpts to the executable.
-  static CustomCall::UserData* GetUserData(ExecutionContext* ctx);
+  static const CustomCall::UserData* GetUserData(ExecutionContext* ctx);
 
   // Returns the diagnostic engine passed via the ExecuteOpts to the executable.
-  static DiagnosticEngine* GetDiagnosticEngine(ExecutionContext* ctx);
+  static const DiagnosticEngine* GetDiagnosticEngine(ExecutionContext* ctx);
 
   // Calls the custom call handler with the given runtime context, arguments,
   // attributes and results.

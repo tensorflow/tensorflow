@@ -60,13 +60,13 @@ struct ExecutionContext {
   Executable::CallFrame* call_frame = nullptr;
 
   // User-defined data for custom call handlers.
-  CustomCall::UserData* custom_call_data = nullptr;
+  const CustomCall::UserData* custom_call_data = nullptr;
 
   // User-defined custom call registry.
-  DynamicCustomCallRegistry* custom_call_registry = nullptr;
+  const DynamicCustomCallRegistry* custom_call_registry = nullptr;
 
   // User-defined diagnostic engine for reporting diagnostics.
-  DiagnosticEngine* diagnostic_engine = nullptr;
+  const DiagnosticEngine* diagnostic_engine = nullptr;
 };
 
 //===----------------------------------------------------------------------===//
@@ -429,11 +429,11 @@ std::unique_ptr<llvm::MemoryBuffer> Executable::obj_file() const {
   return engine_->obj_file();
 }
 
-CustomCall::UserData* Executable::GetUserData(ExecutionContext* ctx) {
+const CustomCall::UserData* Executable::GetUserData(ExecutionContext* ctx) {
   return ctx->custom_call_data;
 }
 
-DiagnosticEngine* Executable::GetDiagnosticEngine(ExecutionContext* ctx) {
+const DiagnosticEngine* Executable::GetDiagnosticEngine(ExecutionContext* ctx) {
   return ctx->diagnostic_engine;
 }
 
