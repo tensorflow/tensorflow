@@ -6,7 +6,11 @@
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_cuda_library",
+)
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_cuda_libdevice_path_deps",
@@ -198,8 +202,6 @@ filegroup(
             "dynamic_annotations.h",
             "gif.h",
             "jpeg.h",
-            "str_util.h",
-            "stringprintf.h",
         ],
     ),
     compatible_with = get_compatible_with_portable(),
@@ -597,5 +599,26 @@ tf_cc_test(
         ":types",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "cuda",
+    hdrs = ["cuda.h"],
+    deps = [
+        ":platform",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
+    ],
+)
+
+tf_cuda_library(
+    name = "stream_executor",
+    srcs = ["stream_executor.h"],
+    hdrs = [
+        "cuda.h",
+    ],
+    features = ["-parse_headers"],
+    deps = [
+        "//tensorflow/tsl/platform/default/build_config:stream_executor",
     ],
 )

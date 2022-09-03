@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_CUDA_H_
-#define TENSORFLOW_CORE_PLATFORM_CUDA_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_CUDA_H_
+#define TENSORFLOW_TSL_PLATFORM_CUDA_H_
 
 // TODO(jakeharmon): move cuda_activation into TSL
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"  // IWYU pragma: keep
-#include "tensorflow/core/platform/platform.h"  // IWYU pragma: keep
-#include "tensorflow/tsl/platform/cuda.h"
+#include "tensorflow/tsl/platform/platform.h"  // IWYU pragma: keep
 
-#endif  // TENSORFLOW_CORE_PLATFORM_CUDA_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_CUDA_H_

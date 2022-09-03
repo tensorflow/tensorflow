@@ -226,6 +226,7 @@ cc_library(
     deps = [
         ":platform",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
+        "//tensorflow/tsl/platform:cuda",
     ],
 )
 
@@ -1090,6 +1091,7 @@ tf_cuda_library(
     ],
     features = ["-parse_headers"],
     deps = [
+        "//tensorflow/tsl/platform:cuda",
         "//tensorflow/tsl/platform/default/build_config:stream_executor",
     ],
 )
