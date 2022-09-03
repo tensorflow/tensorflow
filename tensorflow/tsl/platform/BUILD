@@ -47,7 +47,6 @@ cc_library(
 cc_library(
     name = "gif",
     hdrs = ["gif.h"],
-    compatible_with = get_compatible_with_portable(),
     deps = [
         "@gif",
     ],
@@ -56,7 +55,6 @@ cc_library(
 cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],
-    compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
         "@com_googlesource_code_re2//:re2",
@@ -249,7 +247,6 @@ filegroup(
 cc_library(
     name = "intrusive_ptr",
     hdrs = ["intrusive_ptr.h"],
-    compatible_with = get_compatible_with_portable(),
     deps = [],
 )
 
@@ -281,7 +278,6 @@ filegroup(
 cc_library(
     name = "jpeg",
     hdrs = ["jpeg.h"],
-    compatible_with = get_compatible_with_portable(),
     deps = [
         "@libjpeg_turbo//:jpeg",
     ],
@@ -354,7 +350,6 @@ filegroup(
 
 cc_library(
     name = "net",
-    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["net.h"],
     deps = tf_windows_aware_platform_deps("net"),
 )
@@ -370,20 +365,17 @@ cc_library(
     srcs = [
         "platform_strings_computed.h",
     ],
-    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
     name = "protobuf_compiler",
     hdrs = ["protobuf_compiler.h"],
-    compatible_with = get_compatible_with_portable(),
     deps = tf_protobuf_compiler_deps(),
 )
 
 cc_library(
     name = "resource_loader",
     testonly = 1,
-    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["resource_loader.h"],
     deps = tf_testing_deps("resource_loader"),
 )
@@ -398,7 +390,6 @@ filegroup(
 
 cc_library(
     name = "stacktrace_handler",
-    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["stacktrace_handler.h"],
     deps = tf_windows_aware_platform_deps("stacktrace_handler"),
     alwayslink = 1,
@@ -481,7 +472,6 @@ cc_library(
 cc_library(
     name = "build_test",
     testonly = 1,
-    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/core/platform:__pkg__",
     ],
@@ -567,7 +557,6 @@ filegroup(
 cc_library(
     name = "casts",
     hdrs = ["casts.h"],
-    compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
     ] + tf_platform_deps("casts"),
