@@ -65,7 +65,11 @@ Status SetName(HloModule *module, HloInstruction *gemm) {
 }
 
 // Returns whether a given PrimitiveType is supported by cuBLASLt Epilogue
-// Fusion.
+// Fusion. A table of supported data types can be found in the cuBLASLt
+// documentation: https://docs.nvidia.com/cuda/cublas/index.html#cublasLtMatmul.
+// Note that `Ctype` also describes the output type of the GEMM. Rows with
+// `Non-default epilogue not supported` entries in the last column indicate data
+// types not compatible with Epilogue Fusion.
 bool SupportsEpilogueFusion(PrimitiveType type) {
   switch (type) {
     case F16:
@@ -142,6 +146,35 @@ HloInstruction *MaybeConstantFoldBias(HloInstruction *bias) {
 // We then guide the buffer assignment to alias the buffer of the custom call
 // and C.
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
+ private:
+  // Short forms for ops commonly used in pattern matching:
+  static constexpr auto bitcast = [](auto operand) {
+    return m::Bitcast(operand).WithOneUser();
+  };
+  static constexpr auto broadcast_bias = [](auto bias) {
+    return m::Broadcast(bias, m::Op()).WithOneUser();
+  };
+  static constexpr auto convert_from_bf16 = [](auto operand) {
+    return m::Convert(operand).WithOneUser();
+  };
+  static constexpr auto gemm = [](auto gemm) {
+    return m::Op(gemm)
+        .WithCustomCallTarget(kCublasLtMatmulCallTarget)
+        .WithOneUser();
+  };
+  static constexpr auto gemm_bf16 = [](auto gemm) {
+    return m::Op(gemm)
+        .WithCustomCallTarget({kGemmCallTarget, kCublasLtMatmulCallTarget})
+        .WithOneUser()
+        .WithElementType(BF16);
+  };
+  static constexpr auto slice = [](auto capture, auto operand) {
+    return m::Slice(capture, operand).WithOneUser();
+  };
+  static constexpr auto zeros = []() {
+    return m::Broadcast(m::ConstantScalar(0)).WithOneUser();
+  };
+
  public:
   explicit GemmRewriterVisitor(
       se::CudaComputeCapability cuda_compute_capability)
@@ -207,37 +240,23 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   Status HandleAdd(HloInstruction *instr) override {
-    HloInstruction *bias, *existing_gemm, *slice;
-    auto Slice = [](auto capture, auto operand) {
-      return m::Slice(capture, operand).WithOneUser();
-    };
-    auto Bitcast = [](auto operand) {
-      return m::Bitcast(operand).WithOneUser();
-    };
-    auto BroadcastBias = [](auto bias) {
-      return m::Broadcast(bias, m::Op()).WithOneUser();
-    };
-    auto Gemm = [](auto gemm) {
-      return m::Op(gemm)
-          .WithCustomCallTarget(kCublasLtMatmulCallTarget)
-          .WithOneUser();
-    };
-
+    HloInstruction *bias, *existing_gemm, *existing_slice;
     // Attempt to elide broadcast and fuse addition of a vector bias into GEMM.
     if (Match(instr,
-              m::AddAnyOrder(Gemm(&existing_gemm), BroadcastBias(&bias)))) {
+              m::AddAnyOrder(gemm(&existing_gemm), broadcast_bias(&bias)))) {
       TF_ASSIGN_OR_RETURN(bool was_fused,
-                          FuseVectorBiasAddSliced(instr, bias, existing_gemm));
+                          FuseVectorBiasAdd(instr, bias, existing_gemm));
       if (was_fused) return OkStatus();
     }
 
     // Attempt to elide broadcast and fuse addition of a vector bias into GEMM
     // when slicing is applied to the result.
-    if (Match(instr, m::AddAnyOrder(Slice(&slice, Gemm(&existing_gemm)),
-                                    BroadcastBias(&bias)))) {
+    if (Match(instr,
+              m::AddAnyOrder(slice(&existing_slice, gemm(&existing_gemm)),
+                             broadcast_bias(&bias)))) {
       TF_ASSIGN_OR_RETURN(
           bool was_fused,
-          FuseVectorBiasAddSliced(instr, bias, existing_gemm, slice));
+          FuseVectorBiasAdd(instr, bias, existing_gemm, existing_slice));
       if (was_fused) {
         return OkStatus();
       }
@@ -249,8 +268,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     //   bitcast(add(gemm(a, b), bitcast(broadcast(bias)))) ->
     //   bitcast(gemm(a, b, bitcast(broadcast(bias)))) (FuseMatrixBiasAdd)
     //
-    if (Match(instr, m::AddAnyOrder(Bitcast(Gemm(&existing_gemm)),
-                                    BroadcastBias(&bias)))) {
+    if (Match(instr, m::AddAnyOrder(bitcast(gemm(&existing_gemm)),
+                                    broadcast_bias(&bias)))) {
       TF_ASSIGN_OR_RETURN(
           HloInstruction * new_add,
           MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
@@ -274,7 +293,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // FuseMatrixBiasAdd), but if so that's okay -- we'll have done a useless
     // transformation, but it doesn't hurt anything.
     if (Match(instr,
-              m::AddAnyOrder(Bitcast(m::Op(&existing_gemm)
+              m::AddAnyOrder(bitcast(m::Op(&existing_gemm)
                                          .WithCustomCallTarget(kGemmCallTarget)
                                          .WithOneUser()),
                              m::Op(&bias)))) {
@@ -303,44 +322,33 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   Status HandleMaximum(HloInstruction *instr) override {
-    HloInstruction *existing_gemm, *slice;
-    auto zero_pattern = m::Broadcast(m::ConstantScalar(0)).WithOneUser();
-    auto Slice = [](auto capture, auto operand) {
-      return m::Slice(capture, operand).WithOneUser();
-    };
-    auto Bitcast = [](auto operand) {
-      return m::Bitcast(operand).WithOneUser();
-    };
-    auto Gemm = [](auto gemm) {
-      return m::Op(gemm)
-          .WithCustomCallTarget(kCublasLtMatmulCallTarget)
-          .WithOneUser();
-    };
-
+    HloInstruction *existing_gemm, *existing_slice;
     // Attempt to elide maximum and fuse ReLU activation into GEMM.
-    if (Match(instr, m::MaximumAnyOrder(Gemm(&existing_gemm), zero_pattern))) {
+    if (Match(instr, m::MaximumAnyOrder(gemm(&existing_gemm), zeros()))) {
       TF_ASSIGN_OR_RETURN(bool was_fused,
-                          FuseReluActivationSliced(instr, existing_gemm));
+                          FuseReluActivation(instr, existing_gemm));
       if (was_fused) {
         return OkStatus();
       }
     }
     // Attempt to elide maximum and bitcast and fuse ReLU activation into
     // *batched* GEMM.
-    if (Match(instr, m::MaximumAnyOrder(Bitcast(Gemm(&existing_gemm)),
-                                        zero_pattern))) {
+    if (Match(instr,
+              m::MaximumAnyOrder(bitcast(gemm(&existing_gemm)), zeros()))) {
       TF_ASSIGN_OR_RETURN(bool was_fused,
-                          FuseReluActivationSliced(instr, existing_gemm));
+                          FuseReluActivation(instr, existing_gemm));
       if (was_fused) {
         return OkStatus();
       }
     }
     // Attempt to elide maximum and fuse ReLU activation into GEMM when slicing
     // is applied to the result.
-    if (Match(instr, m::MaximumAnyOrder(Slice(&slice, Gemm(&existing_gemm)),
-                                        zero_pattern))) {
-      TF_ASSIGN_OR_RETURN(bool was_fused, FuseReluActivationSliced(
-                                              instr, existing_gemm, slice));
+    if (Match(instr,
+              m::MaximumAnyOrder(slice(&existing_slice, gemm(&existing_gemm)),
+                                 zeros()))) {
+      TF_ASSIGN_OR_RETURN(
+          bool was_fused,
+          FuseReluActivation(instr, existing_gemm, existing_slice));
       if (was_fused) {
         return OkStatus();
       }
@@ -351,23 +359,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   Status HandleConvert(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm;
-    auto ConvertFromBF16 = [](auto operand) {
-      return m::Convert(operand).WithOneUser();
-    };
-    auto GemmBF16 = [](auto gemm) {
-      return m::Op(gemm)
-          .WithCustomCallTarget({kGemmCallTarget, kCublasLtMatmulCallTarget})
-          .WithOneUser()
-          .WithElementType(BF16);
-    };
-
-    if (Match(
-            instr,
-            m::Convert(m::AddAnyOrder(
-                           ConvertFromBF16(GemmBF16(&existing_gemm)),
-                           ConvertFromBF16(m::Op(&bias).WithElementType(BF16)))
-                           .WithOneUser())
-                .WithElementType(BF16))) {
+    if (Match(instr,
+              m::Convert(
+                  m::AddAnyOrder(
+                      convert_from_bf16(gemm_bf16(&existing_gemm)),
+                      convert_from_bf16(m::Op(&bias).WithElementType(BF16)))
+                      .WithOneUser())
+                  .WithElementType(BF16))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
     return OkStatus();
@@ -438,10 +436,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  StatusOr<bool> FuseVectorBiasAddSliced(HloInstruction *instr,
-                                         HloInstruction *broadcast_bias,
-                                         HloInstruction *matmul,
-                                         HloInstruction *slice = nullptr) {
+  StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
+                                   HloInstruction *broadcast_bias,
+                                   HloInstruction *matmul,
+                                   HloInstruction *slice = nullptr) {
     TF_RET_CHECK(broadcast_bias->shape() ==
                  (slice ? slice->shape() : matmul->shape()));
     auto out_type = matmul->shape().element_type();
@@ -511,9 +509,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return true;
   }
 
-  StatusOr<bool> FuseReluActivationSliced(HloInstruction *instr,
-                                          HloInstruction *matmul,
-                                          HloInstruction *slice = nullptr) {
+  StatusOr<bool> FuseReluActivation(HloInstruction *instr,
+                                    HloInstruction *matmul,
+                                    HloInstruction *slice = nullptr) {
     auto out_type = matmul->shape().element_type();
     // Verify that the data type is supported by Epilogue Fusion.
     if (!SupportsEpilogueFusion(out_type)) {
