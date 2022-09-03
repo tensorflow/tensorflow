@@ -237,6 +237,8 @@ TEST(CustomCallTest, ScalarRets) {
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
 
+using State = benchmark::State;
+
 using DirectCustomCall = DirectCustomCallRegistry::DirectCustomCall;
 using RuntimeChecks = CustomCall::RuntimeChecks;
 
@@ -245,9 +247,8 @@ static constexpr RuntimeChecks all = RuntimeChecks::kDefault;
 static constexpr RuntimeChecks types = RuntimeChecks::kTypes;
 static constexpr RuntimeChecks none = RuntimeChecks::kNone;
 
-static void BenchmarkCustomCall(benchmark::State& state,
-                                std::string_view module, ArgumentsRef args,
-                                std::string_view name,
+static void BenchmarkCustomCall(State& state, std::string_view module,
+                                ArgumentsRef args, std::string_view name,
                                 DirectCustomCall custom_call,
                                 TypeIDNameRegistry::RegistrationFn types = {}) {
   // Wrap benchmarked custom call into a direct custom call registry.
@@ -288,13 +289,16 @@ static bool I32X1(ExecutionContext* ctx, void** args, void** attrs,
                   void** rets) {
   static auto* handler = CustomCall::Bind("test.custom_call")
                              .Arg<int32_t>()
-                             .To<checks>([](int32_t arg0) { return success(); })
+                             .To<checks>([](int32_t arg0) {
+                               benchmark::DoNotOptimize(arg0);
+                               return success();
+                             })
                              .release();
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 template <RuntimeChecks checks>
-static void I32X1(benchmark::State& state) {
+static void I32X1(State& state) {
   absl::string_view module = R"(
     func.func private @custom_call(%arg0: i32)
       attributes { rt.direct_custom_call = "test.custom_call" }
@@ -309,13 +313,323 @@ static void I32X1(benchmark::State& state) {
   BenchmarkCustomCall(state, module, {}, "test.custom_call", &I32X1<checks>);
 }
 
-static void BM_I32X1All(benchmark::State& state) { I32X1<all>(state); }
-static void BM_I32X1Types(benchmark::State& state) { I32X1<types>(state); }
-static void BM_I32X1None(benchmark::State& state) { I32X1<none>(state); }
+static void BM_I32X1All(State& s) { I32X1<all>(s); }
+static void BM_I32X1None(State& s) { I32X1<none>(s); }
 
 BENCHMARK(BM_I32X1All);
-BENCHMARK(BM_I32X1Types);
 BENCHMARK(BM_I32X1None);
+
+//===----------------------------------------------------------------------===//
+// Custom call with twelve i32 argument.
+//===----------------------------------------------------------------------===//
+
+template <CustomCall::RuntimeChecks checks>
+static bool I32X12(ExecutionContext* ctx, void** args, void** attrs,
+                   void** rets) {
+  static auto* handler =
+      CustomCall::Bind("test.custom_call")
+          .Arg<int32_t>()
+          .Arg<int32_t>()
+          .Arg<int32_t>()
+          .Arg<int32_t>()
+          .Arg<int32_t>()
+          .Arg<int32_t>()
+          .Arg<int32_t>()
+          .Arg<int32_t>()
+          .Arg<int32_t>()
+          .Arg<int32_t>()
+          .Arg<int32_t>()
+          .Arg<int32_t>()
+          .To<checks>([](int32_t arg0, int32_t arg1, int32_t arg2, int32_t arg3,
+                         int32_t arg4, int32_t arg5, int32_t arg6, int32_t arg7,
+                         int32_t arg8, int32_t arg9, int32_t arg10,
+                         int32_t arg11) {
+            benchmark::DoNotOptimize(arg0 + arg1 + arg2 + arg3 + arg4 + arg5 +
+                                     arg6 + arg7 + arg8 + arg9 + arg10 + arg11);
+            return success();
+          })
+          .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+template <CustomCall::RuntimeChecks checks>
+static void I32X12(State& state) {
+  absl::string_view module = R"(
+    func.func private @custom_call(%arg0: i32, %arg1: i32, %arg2: i32,
+                                   %arg3: i32, %arg4: i32, %arg5: i32,
+                                   %arg6: i32, %arg7: i32, %arg8: i32,
+                                   %arg9: i32, %arg10: i32, %arg11: i32)
+      attributes { rt.direct_custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = arith.constant 0 : i32
+      %1 = arith.constant 1 : i32
+      %2 = arith.constant 2 : i32
+      %3 = arith.constant 3 : i32
+      %4 = arith.constant 4 : i32
+      %5 = arith.constant 5 : i32
+      %6 = arith.constant 6 : i32
+      %7 = arith.constant 7 : i32
+      %8 = arith.constant 8 : i32
+      %9 = arith.constant 9 : i32
+      %10 = arith.constant 10 : i32
+      %11 = arith.constant 11 : i32
+      call @custom_call(%0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %11)
+        : (i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
+      func.return
+    }
+  )";
+
+  BenchmarkCustomCall(state, module, {}, "test.custom_call", &I32X12<checks>);
+}
+
+static void BM_I32X12All(State& s) { I32X12<all>(s); }
+static void BM_I32X12None(State& s) { I32X12<none>(s); }
+
+BENCHMARK(BM_I32X12All);
+BENCHMARK(BM_I32X12None);
+
+//===----------------------------------------------------------------------===//
+// Custom call with a single memref argument.
+//===----------------------------------------------------------------------===//
+
+using Flat = FlatMemrefView;
+using Strided = StridedMemrefView;
+
+template <CustomCall::RuntimeChecks checks, typename MemrefType>
+static bool MemrefX1(ExecutionContext* ctx, void** args, void** attrs,
+                     void** rets) {
+  static auto* handler = CustomCall::Bind("test.custom_call")
+                             .Arg<MemrefType>()
+                             .template To<checks>([](MemrefType arg0) {
+                               benchmark::DoNotOptimize(arg0);
+                               return success();
+                             })
+                             .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+template <CustomCall::RuntimeChecks checks, typename MemrefType>
+static void MemrefX1(State& state) {
+  absl::string_view module = R"(
+    func.func private @custom_call(%arg0: memref<4x4xf32>)
+      attributes { rt.direct_custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = memref.alloca() : memref<4x4xf32>
+      call @custom_call(%0) : (memref<4x4xf32>) -> ()
+      return
+    }
+  )";
+
+  BenchmarkCustomCall(state, module, {}, "test.custom_call",
+                      &MemrefX1<checks, MemrefType>);
+}
+
+static void BM_FlatMemrefX1All(State& s) { MemrefX1<all, Flat>(s); }
+static void BM_FlatMemrefX1None(State& s) { MemrefX1<none, Flat>(s); }
+static void BM_MemrefX1All(State& s) { MemrefX1<all, MemrefView>(s); }
+static void BM_MemrefX1None(State& s) { MemrefX1<none, MemrefView>(s); }
+static void BM_StridedMemrefX1All(State& s) { MemrefX1<all, Strided>(s); }
+static void BM_StridedMemrefX1None(State& s) { MemrefX1<none, Strided>(s); }
+
+BENCHMARK(BM_FlatMemrefX1All);
+BENCHMARK(BM_FlatMemrefX1None);
+
+BENCHMARK(BM_MemrefX1All);
+BENCHMARK(BM_MemrefX1None);
+
+BENCHMARK(BM_StridedMemrefX1All);
+BENCHMARK(BM_StridedMemrefX1None);
+
+//===----------------------------------------------------------------------===//
+// Custom call with twelve memref argument.
+//===----------------------------------------------------------------------===//
+
+template <CustomCall::RuntimeChecks checks, typename MemrefType>
+static bool MemrefX12(ExecutionContext* ctx, void** args, void** attrs,
+                      void** rets) {
+  static auto* handler =
+      CustomCall::Bind("test.custom_call")
+          .template Arg<MemrefType>()
+          .template Arg<MemrefType>()
+          .template Arg<MemrefType>()
+          .template Arg<MemrefType>()
+          .template Arg<MemrefType>()
+          .template Arg<MemrefType>()
+          .template Arg<MemrefType>()
+          .template Arg<MemrefType>()
+          .template Arg<MemrefType>()
+          .template Arg<MemrefType>()
+          .template Arg<MemrefType>()
+          .template Arg<MemrefType>()
+          .template To<checks>(
+              [](MemrefType arg0, MemrefType arg1, MemrefType arg2,
+                 MemrefType arg3, MemrefType arg4, MemrefType arg5,
+                 MemrefType arg6, MemrefType arg7, MemrefType arg8,
+                 MemrefType arg9, MemrefType arg10, MemrefType arg11) {
+                benchmark::DoNotOptimize(arg0);
+                benchmark::DoNotOptimize(arg1);
+                benchmark::DoNotOptimize(arg2);
+                benchmark::DoNotOptimize(arg3);
+                benchmark::DoNotOptimize(arg4);
+                benchmark::DoNotOptimize(arg5);
+                benchmark::DoNotOptimize(arg6);
+                benchmark::DoNotOptimize(arg7);
+                benchmark::DoNotOptimize(arg8);
+                benchmark::DoNotOptimize(arg9);
+                benchmark::DoNotOptimize(arg10);
+                benchmark::DoNotOptimize(arg11);
+                return success();
+              })
+          .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+template <CustomCall::RuntimeChecks checks, typename MemrefType>
+static void MemrefX12(State& state) {
+  absl::string_view module = R"(
+    func.func private @custom_call(
+      %arg0: memref<4x4xf32>, %arg1: memref<4x4xf32>, %arg2: memref<4x4xf32>,
+      %arg3: memref<4x4xf32>, %arg4: memref<4x4xf32>, %arg5: memref<4x4xf32>,
+      %arg6: memref<4x4xf32>, %arg7: memref<4x4xf32>, %arg8: memref<4x4xf32>,
+      %arg9: memref<4x4xf32>, %arg10: memref<4x4xf32>, %arg11: memref<4x4xf32>
+    ) attributes { rt.direct_custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = memref.alloca() : memref<4x4xf32>
+      call @custom_call(%0, %0, %0, %0, %0, %0, %0, %0, %0, %0, %0, %0)
+        : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>,
+           memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>,
+           memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>
+          ) -> ()
+      return
+    }
+  )";
+
+  BenchmarkCustomCall(state, module, {}, "test.custom_call",
+                      &MemrefX12<checks, MemrefType>);
+}
+
+static void BM_FlatMemrefX12All(State& s) { MemrefX12<all, Flat>(s); }
+static void BM_FlatMemrefX12None(State& s) { MemrefX12<none, Flat>(s); }
+static void BM_MemrefX12All(State& s) { MemrefX12<all, MemrefView>(s); }
+static void BM_MemrefX12None(State& s) { MemrefX12<none, MemrefView>(s); }
+static void BM_StridedMemrefX12All(State& s) { MemrefX12<all, Strided>(s); }
+static void BM_StridedMemrefX12None(State& s) { MemrefX12<none, Strided>(s); }
+
+BENCHMARK(BM_FlatMemrefX12All);
+BENCHMARK(BM_FlatMemrefX12None);
+
+BENCHMARK(BM_MemrefX12All);
+BENCHMARK(BM_MemrefX12None);
+
+BENCHMARK(BM_StridedMemrefX12All);
+BENCHMARK(BM_StridedMemrefX12None);
+
+//===----------------------------------------------------------------------===//
+// Custom call with a single i32 attribute.
+//===----------------------------------------------------------------------===//
+
+template <CustomCall::RuntimeChecks checks>
+static bool I32AttrX1(ExecutionContext* ctx, void** args, void** attrs,
+                      void** rets) {
+  static auto* handler = CustomCall::Bind("test.custom_call")
+                             .Attr<int32_t>("attr0")
+                             .To<checks>([](int32_t attr0) {
+                               benchmark::DoNotOptimize(attr0);
+                               return success();
+                             })
+                             .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+template <CustomCall::RuntimeChecks checks>
+static void I32AttrX1(State& state) {
+  absl::string_view module = R"(
+    func.func private @custom_call()
+      attributes { rt.direct_custom_call = "test.custom_call" }
+
+    func.func @test() {
+      call @custom_call() { attr0 = 42 : i32 }: () -> ()
+      return
+    }
+  )";
+
+  BenchmarkCustomCall(state, module, {}, "test.custom_call",
+                      &I32AttrX1<checks>);
+}
+
+static void BM_I32AttrX1All(State& s) { I32AttrX1<all>(s); }
+static void BM_I32AttrX1None(State& s) { I32AttrX1<none>(s); }
+static void BM_I32AttrX1Types(State& s) { I32AttrX1<types>(s); }
+
+BENCHMARK(BM_I32AttrX1All);
+BENCHMARK(BM_I32AttrX1Types);
+BENCHMARK(BM_I32AttrX1None);
+
+//===----------------------------------------------------------------------===//
+// Custom call with twelve i32 attributes.
+//===----------------------------------------------------------------------===//
+
+template <CustomCall::RuntimeChecks checks>
+static bool I32AttrX12(ExecutionContext* ctx, void** args, void** attrs,
+                       void** rets) {
+  static auto* handler =
+      CustomCall::Bind("test.custom_call")
+          .Attr<int32_t>("attr0")
+          .Attr<int32_t>("attr1")
+          .Attr<int32_t>("attr2")
+          .Attr<int32_t>("attr3")
+          .Attr<int32_t>("attr4")
+          .Attr<int32_t>("attr5")
+          .Attr<int32_t>("attr6")
+          .Attr<int32_t>("attr7")
+          .Attr<int32_t>("attr8")
+          .Attr<int32_t>("attr9")
+          .Attr<int32_t>("attr10")
+          .Attr<int32_t>("attr11")
+          .To<checks>([](int32_t attr0, int32_t attr1, int32_t attr2,
+                         int32_t attr3, int32_t attr4, int32_t attr5,
+                         int32_t attr6, int32_t attr7, int32_t attr8,
+                         int32_t attr9, int32_t attr10, int32_t attr11) {
+            benchmark::DoNotOptimize(attr0 + attr1 + attr2 + attr3 + attr4 +
+                                     attr5 + attr6 + attr7 + attr8 + attr9 +
+                                     attr10 + attr11);
+            return success();
+          })
+          .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+template <CustomCall::RuntimeChecks checks>
+static void I32AttrX12(State& state) {
+  absl::string_view module = R"(
+    func.func private @custom_call()
+      attributes { rt.direct_custom_call = "test.custom_call" }
+
+    func.func @test() {
+      call @custom_call()
+       { "attr0" = 0 : i32, "attr1" = 1 : i32, "attr2" = 2 : i32,
+         "attr3" = 3 : i32, "attr4" = 4 : i32, "attr5" = 5 : i32,
+         "attr6" = 6 : i32, "attr7" = 7 : i32, "attr8" = 8 : i32,
+         "attr9" = 9 : i32, "attr10" = 10 : i32, "attr11" = 11 : i32
+       } : () -> ()
+      func.return
+    }
+  )";
+
+  BenchmarkCustomCall(state, module, {}, "test.custom_call",
+                      &I32AttrX12<checks>);
+}
+
+static void BM_I32AttrX12All(State& s) { I32AttrX12<all>(s); }
+static void BM_I32AttrX12None(State& s) { I32AttrX12<none>(s); }
+static void BM_I32AttrX12Types(State& s) { I32AttrX12<types>(s); }
+
+BENCHMARK(BM_I32AttrX12All);
+BENCHMARK(BM_I32AttrX12Types);
+BENCHMARK(BM_I32AttrX12None);
 
 }  // namespace runtime
 }  // namespace xla
