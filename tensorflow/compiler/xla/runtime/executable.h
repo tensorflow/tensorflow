@@ -39,7 +39,7 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
-class KernelContext;
+class ExecutionContext;
 class JitCompiler;
 
 // Returns a symbols binding for running XLA executable with a custom symbols
@@ -73,8 +73,8 @@ class Executable {
   // dimensions of the memrefs matches the operands). Returns an error if finds
   // a mismatch.
   //
-  // This function leaves the kernel context argument (the first argument of an
-  // entry function) uninitialized. It will be initialized in the `Execute`
+  // This function leaves the execution context argument (the first argument of
+  // an entry function) uninitialized. It will be initialized in the `Execute`
   // function right before the actual execution.
   absl::Status InitializeCallFrame(ArgumentsRef arguments,
                                    CallFrame* call_frame,
@@ -228,15 +228,15 @@ class Executable {
   // call implementations do not have to depend on the `executable` target.
 
   // Returns the user data passed via the ExecuteOpts to the executable.
-  static CustomCall::UserData* GetUserData(KernelContext* ctx);
+  static CustomCall::UserData* GetUserData(ExecutionContext* ctx);
 
   // Returns the diagnostic engine passed via the ExecuteOpts to the executable.
-  static DiagnosticEngine* GetDiagnosticEngine(KernelContext* ctx);
+  static DiagnosticEngine* GetDiagnosticEngine(ExecutionContext* ctx);
 
   // Calls the custom call handler with the given runtime context, arguments,
-  // attributes, and results.
-  static LogicalResult Call(KernelContext* ctx, CustomCall& call, void** args,
-                            void** attrs, void** rets);
+  // attributes and results.
+  static LogicalResult Call(ExecutionContext* ctx, CustomCall& call,
+                            void** args, void** attrs, void** rets);
 
  private:
   friend class JitCompiler;  // see `mlir/transforms/runtime/compiler.h`
@@ -283,7 +283,7 @@ class Executable {
   // - Operands and results types converted to the types with well-defined ABI
   //   (e.g. tensors converted to memrefs).
   //
-  // - First argument is always a kernel context added to the function by the
+  // - First argument is always a execution context added to the function by the
   //   lowering pipeline.
   //
   // From this signature executable infers how to pack runtime operands

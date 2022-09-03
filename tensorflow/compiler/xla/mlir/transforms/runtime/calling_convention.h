@@ -36,17 +36,17 @@ namespace runtime {
 //
 // If conversion is not possible, calling convention must return a null value.
 //
-// Example: abstract kernel defined in high level dialect, e.g. MHLO
+// Example: abstract executable defined in high level dialect, e.g. MHLO
 //
 //   ```mlir
-//     func @kernel(%arg0: tensor<?xf32>,
-//                  %arg1: tensor<?xf32>) -> tensor<?x?xf32> { ... }
+//     func @compute(%arg0: tensor<?xf32>,
+//                   %arg1: tensor<?xf32>) -> tensor<?x?xf32> { ... }
 //   ```
 //
 //   after calling convention conversion becomes:
 //
 //   ```mlir
-//     func @kernel(%ctx: !rt.kernel_context,
+//     func @compute(%ctx: !rt.execution_context,
 //                  %arg0: memref<?xf32>,
 //                  %arg1: memref<?xf32>) -> memref<?x?xf32> { ... }
 //   ```
@@ -58,30 +58,31 @@ namespace runtime {
 //    level information is lost, e.g. all memrefs are deconstructed into
 //    primitive fields when passed as inputs.
 //
-// 2) Compiled kernel function always returns void, and uses runtime API to
+// 2) Compiled entrypoint function always returns void, and uses runtime API to
 //    return results back to the caller (see `rt-convert-to-entrypoint` pass).
 //
 // Calling convention function type is a XLA-compatible description of the
-// compiled kernel ABI, so that XLA runtime can correctly initialize CallFrame
-// arguments, allocate memory for returned results, and then correctly decode
-// results memory into the high level types (e.g. convert returned memref
+// compiled executable ABI, so that XLA runtime can correctly initialize
+// CallFrame arguments, allocate memory for returned results, and then correctly
+// decode results memory into the high level types (e.g. convert returned memref
 // descriptor to a Tensor).
 class CallingConvention
     : public std::function<mlir::FunctionType(mlir::FunctionType)> {
   using function::function;
 };
 
-// Returns a calling convention that only adds the kernel context argument.
+// Returns a calling convention that only adds the execution context argument.
 CallingConvention DefaultCallingConvention();
 
 // Returns a calling convention that uses user-provided type converter to
-// convert all inputs and results types, and adds the kernel context argument.
+// convert all inputs and results types, and adds the execution context
+// argument.
 CallingConvention DefaultCallingConvention(mlir::TypeConverter);
 
-// Returns a calling convention that (1) prepends the kernel context argument,
-// (2) uses the user-provided type converter to convert all inputs and results
-// types, and (3) converts result types into out-params by appending them
-// to the arguments.
+// Returns a calling convention that (1) prepends the execution context
+// argument, (2) uses the user-provided type converter to convert all inputs and
+// results types, and (3) converts result types into out-params by appending
+// them to the arguments.
 CallingConvention ResultsToOutsCallingConvention(mlir::TypeConverter);
 
 }  // namespace runtime

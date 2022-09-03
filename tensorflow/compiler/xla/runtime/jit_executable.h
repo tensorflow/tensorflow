@@ -41,12 +41,13 @@ class JitExecutable {
   // XLA program can be specialized and recompiled at runtime to the concrete
   // input shapes and sometimes values (e.g. reduction dimension).
   enum class Specialization {
-    // Recompile specialized kernels when needed.
+    // Recompile specialized executables when needed.
     kEnabled,
-    // Completely disable specialized kernels (always call default executable).
+    // Completely disable specialized executables (always call default
+    // executable).
     kDisabled,
-    // Always use specialized kernels, and never call default executable (only
-    // required for getting reproducible results in benchmarks).
+    // Always use specialized executables, and never call default executable
+    // (only required for getting reproducible results in benchmarks).
     kAlways,
   };
 
@@ -164,8 +165,8 @@ class JitExecutable {
   //
   // This function signature is allowed to have operands and results types
   // without a well-defined ABI (e.g. it can have tensors when compiled module
-  // defined in Tensorflow dialect), and it corresponds to the kernel definition
-  // in one of the high level dialects (e.g. Tensorflow or mHLO).
+  // defined in Tensorflow dialect), and it corresponds to the executable
+  // definition in one of the high level dialects (e.g. Tensorflow or mHLO).
   //
   // When compiled module prepared for execution, function operands and results
   // are mapped to the types with well-defined ABI (e.g. tensors mapped to

@@ -45,22 +45,20 @@ namespace runtime {
 // The compilation pipeline will automatically convert assertions in the
 // entrypoint function into run-time errors.
 
-// TODO(ezhulenev): Rename KernelContext to ExecutionContext.
-
 // Opaque runtime execution context passed as the first argument to compiled
 // executables and passed back to all runtime API methods.
-using KernelContext = struct KernelContext;
+using ExecutionContext = struct ExecutionContext;
 
 // Returns a pointer to the memory location of the result at the given index.
-void *GetResultStorage(KernelContext *, int64_t);
+void *GetResultStorage(ExecutionContext *, int64_t);
 
 // Sets execution context to an error state.
-void SetError(KernelContext *, const char *);
+void SetError(ExecutionContext *, const char *);
 
 // Calls the custom call function registered with the runtime. Returns true
 // if the custom call was successful.
-bool CustomCall(KernelContext *, const char *target, void **args, void **attrs,
-                void **rets);
+bool CustomCall(ExecutionContext *, const char *target, void **args,
+                void **attrs, void **rets);
 
 }  // namespace runtime
 }  // namespace xla

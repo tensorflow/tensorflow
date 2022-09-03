@@ -273,7 +273,7 @@ StatusOr<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
 
   // Maybe return Executable from the cache.
   if (auto cached = specializations_->Find(*hash)) {
-    // Always use specialized kernel if required by the compilation options.
+    // Always use specialized executable if required by the compilation options.
     if (opts_.specialization == Specialization::kAlways) return cached;
 
     // Fall back on default executable if the specialization is not yet

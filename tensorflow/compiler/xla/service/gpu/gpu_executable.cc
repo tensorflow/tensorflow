@@ -1100,7 +1100,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   // Create a JitRt function signature (all arguments passed as 1d memrefs).
   std::vector<std::unique_ptr<runtime::Type>> args;
   std::vector<std::unique_ptr<runtime::Type>> rt_args;
-  rt_args.push_back(std::make_unique<runtime::KernelContextOperandType>());
+  rt_args.push_back(std::make_unique<runtime::ExecutionContextOperandType>());
 
   for (int64_t size : buffer_sizes) {
     auto s8 = PrimitiveType::S8;

@@ -58,7 +58,7 @@ static Status VerifyMemrefOperand(unsigned index, mlir::ShapedType shaped,
   // matter if it's a tensor or a memref.
 
   // We do not support unranked memrefs at runtime, however we need to verify
-  // operand types when we do compiled kernel specialization to shape.
+  // operand types when we do compiled executable specialization to shape.
   if (shaped.hasRank()) {
     MemrefType type(shaped.getShape(), *element_ty);
     if (auto st = VerifyMemrefArgument(index, type, memref); !st.ok())

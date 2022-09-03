@@ -38,9 +38,9 @@ using absl::StrFormat;
 // Type conversion for the canonical MLIR types supported by the runtime.
 static std::unique_ptr<Type> ConvertCanonicalType(
     mlir::Type type, const TypeConverter& convert) {
-  // KernelContextType -> KernelContextOperandType (both in xla::runtime).
-  if (auto ctx = type.dyn_cast<KernelContextType>())
-    return std::make_unique<KernelContextOperandType>();
+  // ExecutionContextType -> ExecutionContextOperandType (both in xla::runtime).
+  if (auto ctx = type.dyn_cast<ExecutionContextType>())
+    return std::make_unique<ExecutionContextOperandType>();
 
   // mlir::async::TokenType -> xla::runtime::AsyncTokenType
   if (type.isa<mlir::async::TokenType>())

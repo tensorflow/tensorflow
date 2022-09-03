@@ -90,7 +90,7 @@ static absl::Status CompileAndExecute(
 static int32_t custom_call_counter = 0;
 
 // Direct custom call linked with XLA runtime executable at compile (link) time.
-static bool CustomCallFn(KernelContext* ctx, void** args, void** attrs,
+static bool CustomCallFn(ExecutionContext* ctx, void** args, void** attrs,
                          void** rets) {
   auto handler = CustomCall::Bind("test.custom_call")
                      .Arg<int32_t>()
@@ -273,7 +273,7 @@ static void BenchmarkCustomCall(benchmark::State& state,
   execute_opts.diagnostic_engine = &diagnostic_engine;
 
   for (auto _ : state) {
-    call_frame.args[0] = nullptr;  // reset kernel context
+    call_frame.args[0] = nullptr;  // reset execution context
     executable->Execute(call_frame, execute_opts);
     CHECK(!call_frame.is_error) << call_frame.error;
   }
@@ -284,7 +284,8 @@ static void BenchmarkCustomCall(benchmark::State& state,
 //===----------------------------------------------------------------------===//
 
 template <RuntimeChecks checks>
-static bool I32X1(KernelContext* ctx, void** args, void** attrs, void** rets) {
+static bool I32X1(ExecutionContext* ctx, void** args, void** attrs,
+                  void** rets) {
   static auto* handler = CustomCall::Bind("test.custom_call")
                              .Arg<int32_t>()
                              .To<checks>([](int32_t arg0) { return success(); })

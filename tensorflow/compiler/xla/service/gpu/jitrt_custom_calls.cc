@@ -487,8 +487,8 @@ Error LaunchFunc::operator()(
   return Error::success();
 }
 
-static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs,
-                       void** rets) {
+static bool LaunchFunc(runtime::ExecutionContext* ctx, void** args,
+                       void** attrs, void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.func.launch")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const std::string*>()
@@ -561,7 +561,7 @@ Error Gemm::operator()(const ServiceExecutableRunOptions* run_options,
   return Error::success();
 }
 
-static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs,
+static bool Gemm(runtime::ExecutionContext* ctx, void** args, void** attrs,
                  void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.gemm")
                              .UserData<const ServiceExecutableRunOptions*>()
@@ -659,7 +659,7 @@ static auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
       .template Attr<int64_t>("uid");
 }
 
-static bool CublasLtMatmul(runtime::KernelContext* ctx, void** args,
+static bool CublasLtMatmul(runtime::ExecutionContext* ctx, void** args,
                            void** attrs, void** rets) {
   static auto* handler =
       BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul")
@@ -677,7 +677,7 @@ static bool CublasLtMatmul(runtime::KernelContext* ctx, void** args,
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
-static bool CublasLtMatmulBias(runtime::KernelContext* ctx, void** args,
+static bool CublasLtMatmulBias(runtime::ExecutionContext* ctx, void** args,
                                void** attrs, void** rets) {
   static auto* handler =
       BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul.bias")
@@ -909,7 +909,7 @@ static auto BindConvAttributes(runtime::CustomCallBinding<Ts...> binding) {
 }
 
 template <CudnnConvKind kind>
-static bool ConvFn(runtime::KernelContext* ctx, void** args, void** attrs,
+static bool ConvFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
                    void** rets) {
   static auto* handler =
       BindConvAttributes(CustomCall::Bind("xla.gpu.conv")
@@ -929,8 +929,8 @@ static bool ConvFn(runtime::KernelContext* ctx, void** args, void** attrs,
 }
 
 template <CudnnConvKind kind>
-static bool ConvFusedFn(runtime::KernelContext* ctx, void** args, void** attrs,
-                        void** rets) {
+static bool ConvFusedFn(runtime::ExecutionContext* ctx, void** args,
+                        void** attrs, void** rets) {
   static auto* handler =
       BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused")
                              .UserData<const ServiceExecutableRunOptions*>()
@@ -950,7 +950,7 @@ static bool ConvFusedFn(runtime::KernelContext* ctx, void** args, void** attrs,
 }
 
 template <CudnnConvKind kind>
-static bool ConvFuseSideInputdFn(runtime::KernelContext* ctx, void** args,
+static bool ConvFuseSideInputdFn(runtime::ExecutionContext* ctx, void** args,
                                  void** attrs, void** rets) {
   static auto* handler =
       BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused.side_input")
@@ -1028,7 +1028,7 @@ Error Infeed::operator()(const ServiceExecutableRunOptions* run_options,
   return Error::success();
 }
 
-static bool Infeed(runtime::KernelContext* ctx, void** args, void** attrs,
+static bool Infeed(runtime::ExecutionContext* ctx, void** args, void** attrs,
                    void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.infeed")
                              .UserData<const ServiceExecutableRunOptions*>()
@@ -1106,7 +1106,7 @@ Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
   return Error::success();
 }
 
-static bool Outfeed(runtime::KernelContext* ctx, void** args, void** attrs,
+static bool Outfeed(runtime::ExecutionContext* ctx, void** args, void** attrs,
                     void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.outfeed")
                              .UserData<const ServiceExecutableRunOptions*>()
@@ -1172,7 +1172,7 @@ Error Memcpy<direction>::operator()(
 }
 
 template <MemcpyDirection direction>
-static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs,
+static bool MemcpyFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
                      void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
                              .UserData<const ServiceExecutableRunOptions*>()
@@ -1239,7 +1239,7 @@ Error Memset::operator()(const ServiceExecutableRunOptions* run_options,
   return Error::success();
 }
 
-static bool MemsetFn(runtime::KernelContext* ctx, void** args, void** attrs,
+static bool MemsetFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
                      void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.memset")
                              .UserData<const ServiceExecutableRunOptions*>()
@@ -1304,7 +1304,7 @@ Error Fft::operator()(const ServiceExecutableRunOptions* run_options,
   return Error::success();
 }
 
-static bool Fft(runtime::KernelContext* ctx, void** args, void** attrs,
+static bool Fft(runtime::ExecutionContext* ctx, void** args, void** attrs,
                 void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.fft")
                              .UserData<const ServiceExecutableRunOptions*>()
@@ -1365,7 +1365,7 @@ Error Cholesky::operator()(const ServiceExecutableRunOptions* run_options,
 #endif
 }
 
-static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs,
+static bool Cholesky(runtime::ExecutionContext* ctx, void** args, void** attrs,
                      void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.cholesky")
                              .UserData<const ServiceExecutableRunOptions*>()
@@ -1596,8 +1596,8 @@ Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
   return MakeStringError("Incorrect custom call API version");
 }
 
-static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs,
-                       void** rets) {
+static bool CustomCall(runtime::ExecutionContext* ctx, void** args,
+                       void** attrs, void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
@@ -1661,7 +1661,7 @@ Error AllReduce::operator()(const ServiceExecutableRunOptions* run_options,
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool AllReduce(runtime::KernelContext* ctx, void** args, void** attrs,
+static bool AllReduce(runtime::ExecutionContext* ctx, void** args, void** attrs,
                       void** rets) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.all_reduce")
@@ -1739,7 +1739,7 @@ Error AllReduceStart::operator()(const ServiceExecutableRunOptions* run_options,
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool AllReduceStart(runtime::KernelContext* ctx, void** args,
+static bool AllReduceStart(runtime::ExecutionContext* ctx, void** args,
                            void** attrs, void** rets) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.all_reduce_start")
@@ -1795,7 +1795,7 @@ Error AllReduceDone::operator()(const ServiceExecutableRunOptions* run_options,
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool AllReduceDone(runtime::KernelContext* ctx, void** args,
+static bool AllReduceDone(runtime::ExecutionContext* ctx, void** args,
                           void** attrs, void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.all_reduce_done")
                              .UserData<const ServiceExecutableRunOptions*>()
@@ -1858,7 +1858,7 @@ Error ReduceScatter::operator()(const ServiceExecutableRunOptions* run_options,
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool ReduceScatter(runtime::KernelContext* ctx, void** args,
+static bool ReduceScatter(runtime::ExecutionContext* ctx, void** args,
                           void** attrs, void** rets) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.reduce_scatter")
@@ -1924,7 +1924,7 @@ Error AllGather::operator()(const ServiceExecutableRunOptions* run_options,
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool AllGather(runtime::KernelContext* ctx, void** args, void** attrs,
+static bool AllGather(runtime::ExecutionContext* ctx, void** args, void** attrs,
                       void** rets) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.all_gather")
@@ -1990,7 +1990,7 @@ Error AllToAll::operator()(const ServiceExecutableRunOptions* run_options,
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool AllToAll(runtime::KernelContext* ctx, void** args, void** attrs,
+static bool AllToAll(runtime::ExecutionContext* ctx, void** args, void** attrs,
                      void** rets) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.all_to_all")
@@ -2089,7 +2089,7 @@ Error CollectivePermute::operator()(
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool CollectivePermute(runtime::KernelContext* ctx, void** args,
+static bool CollectivePermute(runtime::ExecutionContext* ctx, void** args,
                               void** attrs, void** rets) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.collective_permute")
@@ -2140,7 +2140,7 @@ Error ReplicaId::operator()(const ServiceExecutableRunOptions* run_options,
   return Error::success();
 }
 
-static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs,
+static bool ReplicaId(runtime::ExecutionContext* ctx, void** args, void** attrs,
                       void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.replica_id")
                              .UserData<const ServiceExecutableRunOptions*>()
@@ -2182,8 +2182,8 @@ Error PartitionId::operator()(const ServiceExecutableRunOptions* run_options,
   return Error::success();
 }
 
-static bool PartitionId(runtime::KernelContext* ctx, void** args, void** attrs,
-                        void** rets) {
+static bool PartitionId(runtime::ExecutionContext* ctx, void** args,
+                        void** attrs, void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.partition_id")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .Arg<runtime::FlatMemrefView>()  // result

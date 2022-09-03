@@ -46,7 +46,7 @@ namespace xla {
 namespace runtime {
 
 // Forward declare.
-struct KernelContext;
+struct ExecutionContext;
 
 // Forward declare template defined below.
 template <typename... Ts>

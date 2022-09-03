@@ -46,9 +46,9 @@ using llvm::dyn_cast;
 using llvm::orc::MangleAndInterner;
 using llvm::orc::SymbolMap;
 
-// KernelContext encapsulates all the data that is required to implement XLA
+// ExecutionContext encapsulates all the data that is required to implement XLA
 // Runtime <-> XLA Executable integration API.
-struct KernelContext {
+struct ExecutionContext {
   // Results memory layout is owned by the executable, and stays alive after
   // the entrypoint function execution completes.
   const Executable::ResultsMemoryLayout* results_memory_layout = nullptr;
@@ -219,16 +219,16 @@ Status Executable::InitializeCallFrame(ArgumentsRef arguments,
 
     // Verify that all arguments passed at runtime are compatible with compiled
     // function signature.
-    auto kctx = dyn_cast<KernelContextOperandType>(signature.operand(0));
+    auto kctx = dyn_cast<ExecutionContextOperandType>(signature.operand(0));
     if (LLVM_UNLIKELY(!kctx)) {
       return InvalidArgumentError(StrFormat(
-          "expected KernelContext in first argument of signature, got: %s",
+          "expected ExecutionContext in first argument of signature, got: %s",
           signature.operand(0)->ToString()));
     }
 
-    // We use 0-based index for arguments, because the kernel context argument
-    // is an internal implementation detail, and in case of an error users
-    // should get back argument index corresponding to the user provided
+    // We use 0-based index for arguments, because the execution context
+    // argument is an internal implementation detail, and in case of an error
+    // users should get back argument index corresponding to the user provided
     // signature.
     for (unsigned i = 0; i < arguments.size(); ++i) {
       unsigned idx = i + 1;  // use 1-based index to fetch signature operand
@@ -241,7 +241,7 @@ Status Executable::InitializeCallFrame(ArgumentsRef arguments,
   size_t num_args_ptrs = arguments_memory_layout_.num_args_ptrs;
   call_frame->args.resize_for_overwrite(num_args_ptrs);
 
-  // Add a placeholder for the kernel context as the first argument.
+  // Add a placeholder for the execution context as the first argument.
   call_frame->args[0] = nullptr;
 
   // Mutable view into the call frame arguments.
@@ -249,7 +249,7 @@ Status Executable::InitializeCallFrame(ArgumentsRef arguments,
 
   // Pack all arguments according to the ABI to the call frame arguments.
   //
-  // We use layout information starting with offset 1 because the kernel
+  // We use layout information starting with offset 1 because the execution
   // context argument packed above, and is not passed as a regular argument.
   for (unsigned i = 0; i < arguments.size(); ++i) {
     size_t offset = arguments_memory_layout_.offsets[i + 1];
@@ -325,17 +325,17 @@ void Executable::Execute(CallFrame& call_frame, const ExecuteOpts& opts) const {
   // executable.
   AsyncRuntime::Set(AsyncRuntime(opts.async_task_runner));
 
-  // Runtime kernel context can be used only by the entrypoint function and can
-  // be safely allocated on the stack.
-  KernelContext kernel_context = {
+  // Runtime execution context can be used only by the entrypoint function and
+  // can be safely allocated on the stack.
+  ExecutionContext execution_ctx = {
       &results_memory_layout_, &call_frame, opts.custom_call_data,
       opts.custom_call_registry, opts.diagnostic_engine};
 
-  // Override the kernel context argument.
-  KernelContext* kernel_context_ptr = &kernel_context;
+  // Override the execution context argument.
+  ExecutionContext* execution_context_ptr = &execution_ctx;
   assert(call_frame.args.size() == arguments_memory_layout_.num_args_ptrs);
   assert(call_frame.args[0] == nullptr && "expected to see a placeholder");
-  call_frame.args[0] = &kernel_context_ptr;
+  call_frame.args[0] = &execution_context_ptr;
 
   // Call the compiled function.
   (*fptr_)(call_frame.args.data());
@@ -429,16 +429,17 @@ std::unique_ptr<llvm::MemoryBuffer> Executable::obj_file() const {
   return engine_->obj_file();
 }
 
-CustomCall::UserData* Executable::GetUserData(KernelContext* ctx) {
+CustomCall::UserData* Executable::GetUserData(ExecutionContext* ctx) {
   return ctx->custom_call_data;
 }
 
-DiagnosticEngine* Executable::GetDiagnosticEngine(KernelContext* ctx) {
+DiagnosticEngine* Executable::GetDiagnosticEngine(ExecutionContext* ctx) {
   return ctx->diagnostic_engine;
 }
 
-mlir::LogicalResult Executable::Call(KernelContext* ctx, class CustomCall& call,
-                                     void** args, void** attrs, void** rets) {
+mlir::LogicalResult Executable::Call(ExecutionContext* ctx,
+                                     class CustomCall& call, void** args,
+                                     void** attrs, void** rets) {
   return call.call(args, attrs, rets, ctx->custom_call_data,
                    ctx->diagnostic_engine);
 }
@@ -466,8 +467,8 @@ SymbolMap RuntimeApiSymbolMap(MangleAndInterner mangle) {
 // Implement XLA Runtime <-> XLA Executable integration API.
 //----------------------------------------------------------------------------//
 
-void* GetResultStorage(KernelContext* ctx, int64_t index) {
-  assert(ctx && "kernel context must be not null");
+void* GetResultStorage(ExecutionContext* ctx, int64_t index) {
+  assert(ctx && "execution context must be not null");
   assert(!ctx->call_frame->is_error && "error must not be set");
   size_t offset = ctx->results_memory_layout->offsets[index];
   assert(offset < ctx->call_frame->results.size() && "offset is out of bounds");
@@ -475,8 +476,8 @@ void* GetResultStorage(KernelContext* ctx, int64_t index) {
   return &ctx->call_frame->results[offset];
 }
 
-void SetError(KernelContext* ctx, const char* error) {
-  assert(ctx && "kernel context must be not null");
+void SetError(ExecutionContext* ctx, const char* error) {
+  assert(ctx && "execution context must be not null");
   assert(error && "runtime error must be not null");
   assert(!ctx->call_frame->is_error && "error must be set only once");
   assert(!ctx->call_frame->has_set_outputs && "outputs must be undefined");
@@ -484,9 +485,9 @@ void SetError(KernelContext* ctx, const char* error) {
   ctx->call_frame->error = {error};
 }
 
-bool CustomCall(KernelContext* ctx, const char* target, void** args,
+bool CustomCall(ExecutionContext* ctx, const char* target, void** args,
                 void** attrs, void** rets) {
-  assert(ctx && target && args && attrs && "all arguments must be not null");
+  assert(ctx && target && args && attrs && rets && "must be not null");
   assert(ctx->custom_call_registry && "custom call registry must be not null");
   if (ctx->custom_call_registry == nullptr) return false;
 

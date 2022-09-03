@@ -65,7 +65,7 @@ class AsyncValue : public AsyncRuntimeObject {
   explicit AsyncValue(size_t size, size_t alignment, unsigned ref_count = 1)
       : AsyncRuntimeObject(ref_count),
         storage_(MakeConstructedAsyncValueRef<Storage>(size, alignment)) {
-    // Storage memory will be initialized by the compiled kernel.
+    // Storage memory will be initialized by the compiled executable.
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(GetStorage(), size);
   }
 

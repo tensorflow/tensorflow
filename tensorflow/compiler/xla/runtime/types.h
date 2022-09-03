@@ -218,11 +218,11 @@ class UnrankedMemrefType : public llvm::RTTIExtends<UnrankedMemrefType, Type> {
 };
 
 //===----------------------------------------------------------------------===//
-// Corresponds to the RT dialect's KernelContextType.
+// Corresponds to the RT dialect's ExecutionContextType.
 //===----------------------------------------------------------------------===//
 
-class KernelContextOperandType
-    : public llvm::RTTIExtends<KernelContextOperandType, Type> {
+class ExecutionContextOperandType
+    : public llvm::RTTIExtends<ExecutionContextOperandType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
 

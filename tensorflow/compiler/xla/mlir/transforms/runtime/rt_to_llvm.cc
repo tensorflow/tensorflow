@@ -89,36 +89,36 @@ struct RuntimeAPI {
   }
 
   static FunctionType GetResultStorageFunctionType(MLIRContext *ctx) {
-    auto kernel_context = OpaquePointerType(ctx);
+    auto execution_ctx = OpaquePointerType(ctx);
     auto i64 = IntegerType::get(ctx, 64);
     auto storage = OpaquePointerType(ctx);
-    return FunctionType::get(ctx, {kernel_context, i64}, {storage});
+    return FunctionType::get(ctx, {execution_ctx, i64}, {storage});
   }
 
   static FunctionType SetErrorFunctionType(MLIRContext *ctx) {
-    auto kernel_context = OpaquePointerType(ctx);
+    auto execution_ctx = OpaquePointerType(ctx);
     auto error_msg = OpaquePointerType(ctx);
-    return FunctionType::get(ctx, {kernel_context, error_msg}, {});
+    return FunctionType::get(ctx, {execution_ctx, error_msg}, {});
   }
 
   static FunctionType CustomCallFunctionType(MLIRContext *ctx) {
-    auto kernel_context = OpaquePointerType(ctx);
+    auto execution_ctx = OpaquePointerType(ctx);
     auto callee = OpaquePointerType(ctx);
     auto args = CustomCallArgumentsType(ctx);
     auto attrs = CustomCallAttributesType(ctx);
     auto rets = CustomCallResultsType(ctx);
     auto i1 = IntegerType::get(ctx, 1);
-    return FunctionType::get(ctx, {kernel_context, callee, args, attrs, rets},
+    return FunctionType::get(ctx, {execution_ctx, callee, args, attrs, rets},
                              {i1});
   }
 
   static FunctionType DirectCustomCallFunctionType(MLIRContext *ctx) {
-    auto kernel_context = OpaquePointerType(ctx);
+    auto execution_ctx = OpaquePointerType(ctx);
     auto args = CustomCallArgumentsType(ctx);
     auto attrs = CustomCallAttributesType(ctx);
     auto rets = CustomCallResultsType(ctx);
     auto i1 = IntegerType::get(ctx, 1);
-    return FunctionType::get(ctx, {kernel_context, args, attrs, rets}, {i1});
+    return FunctionType::get(ctx, {execution_ctx, args, attrs, rets}, {i1});
   }
 };
 
@@ -155,11 +155,12 @@ class RuntimeTypeConverter : public TypeConverter {
  public:
   RuntimeTypeConverter() {
     addConversion([](Type type) { return type; });
-    addConversion(ConvertKernelContextType);
+    addConversion(ConvertExecutionContextType);
     addConversion(ConvertStatusType);
   }
 
-  static llvm::Optional<Type> ConvertKernelContextType(KernelContextType type) {
+  static llvm::Optional<Type> ConvertExecutionContextType(
+      ExecutionContextType type) {
     return LLVM::LLVMPointerType::get(IntegerType::get(type.getContext(), 8));
   }
 
@@ -181,14 +182,14 @@ class SetOutputOpLowering : public OpConversionPattern<SetOutputOp> {
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
 
-    auto kernel_context = adaptor.ctx();
+    auto execution_ctx = adaptor.ctx();
     auto index = rewriter.create<ConstantOp>(loc, adaptor.indexAttr());
 
     // Get a pointer to the result value storage from the runtime.
     auto result_ptr_ty = RuntimeAPI::OpaquePointerType(rewriter.getContext());
     auto result_ptr = rewriter.create<CallOp>(
         loc, kGetResultStorage, TypeRange(result_ptr_ty),
-        ValueRange({kernel_context, index}));
+        ValueRange({execution_ctx, index}));
 
     // Cast from i8* to the LLVM pointer type to store the result.
     auto stored_type = getTypeConverter()->convertType(op.value().getType());
@@ -237,7 +238,7 @@ static FailureOr<Value> EncodeArguments(
     ImplicitLocOpBuilder &b, ValueRange operands, ValueRange converted) {
   llvm::SmallVector<CustomCallArgEncoding::Encoded> encoded;
 
-  // Encode all arguments as a set of pointers (skip the kernel context).
+  // Encode all arguments as a set of pointers (skip the execution context).
   for (auto tuple : llvm::drop_begin(llvm::zip(operands, converted))) {
     // Check if the value was already encoded.
     auto it = encoded_args.find(std::get<0>(tuple));
@@ -509,9 +510,9 @@ class SetErrorOpLowering : public OpConversionPattern<SetErrorOp> {
         b, globals_.GetOrCreate(b, op.error(), "__assert_failed"));
 
     // Call runtime API to report the error.
-    auto kernel_context = adaptor.ctx();
+    auto execution_ctx = adaptor.ctx();
     rewriter.replaceOpWithNewOp<CallOp>(op, kSetError, TypeRange(),
-                                        ValueRange({kernel_context, err}));
+                                        ValueRange({execution_ctx, err}));
 
     return success();
   }
@@ -546,7 +547,8 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
 
   // We use conversion to LLVM type to lower all runtime operands to LLVM types.
   LLVMTypeConverter llvm_converter(ctx);
-  llvm_converter.addConversion(RuntimeTypeConverter::ConvertKernelContextType);
+  llvm_converter.addConversion(
+      RuntimeTypeConverter::ConvertExecutionContextType);
   llvm_converter.addConversion(RuntimeTypeConverter::ConvertStatusType);
 
   // TODO(ezhulenev): We should combine AsyncToLLVM and RtToLLVM into a single

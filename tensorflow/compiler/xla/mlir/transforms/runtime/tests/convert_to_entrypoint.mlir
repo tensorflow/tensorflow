@@ -1,7 +1,7 @@
 // RUN: xla-runtime-opt %s --xla-rt-convert-to-entrypoint | FileCheck %s
 
 // CHECK: func @single_result(
-// CHECK:   %[[CTX:.*]]: !rt.kernel_context,
+// CHECK:   %[[CTX:.*]]: !rt.execution_context,
 // CHECK:   %[[ARG:.*]]: memref<?xf32>
 // CHECK: ) {
 func.func @single_result(%arg0: memref<?xf32>) -> memref<?xf32>
@@ -12,7 +12,7 @@ func.func @single_result(%arg0: memref<?xf32>) -> memref<?xf32>
 }
 
 // CHECK: func @two_results(
-// CHECK:   %[[CTX:.*]]: !rt.kernel_context,
+// CHECK:   %[[CTX:.*]]: !rt.execution_context,
 // CHECK:   %[[ARG:.*]]: memref<?xf32>
 // CHECK: ) {
 func.func @two_results(%arg0: memref<?xf32>) -> (memref<?xf32>, memref<?xf32>)
@@ -33,7 +33,7 @@ func.func @not_an_entrypoint(%arg0: memref<?xf32>) -> memref<?xf32> {
 }
 
 // CHECK: func @assert_to_error(
-// CHECK:   %[[CTX:.*]]: !rt.kernel_context,
+// CHECK:   %[[CTX:.*]]: !rt.execution_context,
 // CHECK:   %[[ASSERT:.*]]: i1
 // CHECK: ) {
 func.func @assert_to_error(%arg0: i1) attributes { rt.entrypoint } {
@@ -53,7 +53,7 @@ func.func private @custom_call(%arg0: memref<?xf32>) -> memref<?xf32>
   attributes { rt.custom_call = "target", attr0 = 1 : i32, attr1 = 1.0 : f32 }
 
 // CHECK: func @function_call_to_custom_call(
-// CHECK:   %[[CTX:.*]]: !rt.kernel_context,
+// CHECK:   %[[CTX:.*]]: !rt.execution_context,
 // CHECK:   %[[ARG:.*]]: memref<?xf32>
 // )
 func.func @function_call_to_custom_call(%arg0: memref<?xf32>) -> memref<?xf32>
@@ -77,7 +77,7 @@ func.func private @direct_custom_call(%arg0: memref<?xf32>)
   attributes { rt.direct_custom_call = "target" }
 
 // CHECK: func @function_call_to_direct_custom_call(
-// CHECK:   %[[CTX:.*]]: !rt.kernel_context,
+// CHECK:   %[[CTX:.*]]: !rt.execution_context,
 // CHECK:   %[[ARG:.*]]: memref<?xf32>
 // )
 func.func @function_call_to_direct_custom_call(%arg0: memref<?xf32>)

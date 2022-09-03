@@ -187,11 +187,11 @@ class ArgumentsRef {
 };
 
 //===----------------------------------------------------------------------===//
-// Canonical types for passing compiled kernel arguments.
+// Canonical types for passing compiled executable arguments.
 //===----------------------------------------------------------------------===//
 
 // By default we provide a set of types for passing common arguments to the
-// compiled kernel. The type hierarchy is open, and users can extend it by
+// compiled executable. The type hierarchy is open, and users can extend it by
 // definining new `Type` and `Argument` with the corresponding MLIR types and
 // MLIR passes to lower types and operations to the LLVM dialect.
 

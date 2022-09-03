@@ -47,7 +47,7 @@ TEST(CallingConventionTest, DefaultCallingConvention) {
   auto converted = calling_convention(signature);
 
   EXPECT_EQ(converted.getNumInputs(), 2);
-  EXPECT_TRUE(converted.getInput(0).isa<KernelContextType>());
+  EXPECT_TRUE(converted.getInput(0).isa<ExecutionContextType>());
   EXPECT_TRUE(converted.getInput(1).isa<IntegerType>());
 }
 
@@ -68,7 +68,7 @@ TEST(CallingConventionTest, DefaultCallingConventionWithTypeConverter) {
   auto converted = calling_convention(signature);
 
   EXPECT_EQ(converted.getNumInputs(), 2);
-  EXPECT_TRUE(converted.getInput(0).isa<KernelContextType>());
+  EXPECT_TRUE(converted.getInput(0).isa<ExecutionContextType>());
   EXPECT_TRUE(converted.getInput(1).isa<MemRefType>());
 }
 
@@ -89,7 +89,7 @@ TEST(CallingConventionTest, ResultsToOutsCallingConvention) {
   auto converted = calling_convention(signature);
 
   EXPECT_EQ(converted.getNumInputs(), 2);
-  EXPECT_TRUE(converted.getInput(0).isa<KernelContextType>());
+  EXPECT_TRUE(converted.getInput(0).isa<ExecutionContextType>());
   EXPECT_TRUE(converted.getInput(1).isa<MemRefType>());
 
   EXPECT_EQ(converted.getNumResults(), 0);

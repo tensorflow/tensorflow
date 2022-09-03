@@ -175,7 +175,7 @@ static void ConvertAssertOperations(func::FuncOp func, Value exec_ctx) {
 }
 
 static Value PrependExecutionContextArgument(func::FuncOp func) {
-  Type new_type = KernelContextType::get(func.getContext());
+  Type new_type = ExecutionContextType::get(func.getContext());
   DictionaryAttr attr = DictionaryAttr::get(func.getContext());
   func.insertArguments({0}, {new_type}, {attr}, {func.getLoc()});
   return func.getArgument(0);

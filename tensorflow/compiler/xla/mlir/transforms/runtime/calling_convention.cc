@@ -27,7 +27,7 @@ CallingConvention DefaultCallingConvention() {
   return [](mlir::FunctionType func) {
     mlir::MLIRContext* ctx = func.getContext();
 
-    llvm::SmallVector<mlir::Type> inputs = {KernelContextType::get(ctx)};
+    llvm::SmallVector<mlir::Type> inputs = {ExecutionContextType::get(ctx)};
     inputs.reserve(1 + func.getNumInputs());
     llvm::append_range(inputs, func.getInputs());
 
@@ -47,8 +47,8 @@ CallingConvention DefaultCallingConvention(mlir::TypeConverter type_converter) {
       return converted;
     };
 
-    // Add kernel context as the first argument.
-    llvm::SmallVector<mlir::Type> inputs = {KernelContextType::get(ctx)};
+    // Add execution context as the first argument.
+    llvm::SmallVector<mlir::Type> inputs = {ExecutionContextType::get(ctx)};
     inputs.reserve(1 + func.getNumInputs());
     llvm::transform(func.getInputs(), std::back_inserter(inputs), convert);
 
@@ -80,7 +80,7 @@ CallingConvention ResultsToOutsCallingConvention(
 
     llvm::SmallVector<mlir::Type> inputs;
     inputs.reserve(1 + func.getNumInputs() + func.getNumResults());
-    inputs.push_back(KernelContextType::get(ctx));
+    inputs.push_back(ExecutionContextType::get(ctx));
     llvm::transform(func.getInputs(), std::back_inserter(inputs), convert);
     llvm::transform(func.getResults(), std::back_inserter(inputs), convert);
 
