@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -374,6 +375,9 @@ std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
 }
 
 Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
+  if (auto* partitioner = GetCustomCallPartitioner(hlo->custom_call_target())) {
+    return partitioner->Partition(this, hlo);
+  }
   if (hlo->custom_call_target() == "SPMDFullToShardShape") {
     // This op switches from auto partitioning to manual partitioning.
     auto input_partitioned = GetPartitionedHlo(hlo->operand(0));

@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 
+#include <optional>
+
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -11165,6 +11168,79 @@ ENTRY %main.21 {
   // Expected that the number of collective permutes is 3 for the correct
   // reshard.
   EXPECT_EQ(collective_permute_count, 3);
+}
+
+TEST_F(SpmdPartitioningTest, CustomCallShardingRegistration) {
+  class BatchableCustomCallPartitioner : public CustomCallPartitioner {
+   public:
+    HloSharding PropagateUserSharding(
+        const HloInstruction* instruction, const HloInstruction* user,
+        const HloSharding& sharding) const override {
+      return sharding;
+    }
+    std::optional<HloSharding> InferShardingFromOperands(
+        const HloInstruction* instruction) const override {
+      if (instruction->operand(0)->has_sharding()) {
+        return instruction->operand(0)->sharding();
+      }
+      return std::nullopt;
+    }
+    bool IsCustomCallShardable(
+        const HloInstruction* instruction) const override {
+      return true;
+    }
+    xla::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
+                          HloInstruction* hlo) const override {
+      if (hlo->shape().rank() <= 2) {
+        return partitioner->DefaultAction(hlo);
+      }
+      const int first_non_batch_dim = hlo->shape().rank() - 2;
+      HloInstruction* operand = hlo->mutable_operand(0);
+      HloSharding target_sharding =
+          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              hlo->sharding(), {first_non_batch_dim, first_non_batch_dim + 1});
+      spmd::PartitionedHlo operand_partitioned =
+          partitioner->GetPartitionedHlo(operand).Reshard(target_sharding);
+      HloCustomCallInstruction* custom_call =
+          Cast<HloCustomCallInstruction>(hlo);
+      Shape partitioned_shape_with_layout_constraint =
+          operand_partitioned.hlo()->shape();
+      (*partitioned_shape_with_layout_constraint.mutable_layout()) =
+          custom_call->operand_shapes_with_layout()[0].layout();
+      HloInstruction* partitioned_hlo = partitioner->builder()->AddInstruction(
+          HloInstruction::CreateCustomCall(
+              operand_partitioned.hlo()->shape(), {operand_partitioned.hlo()},
+              "BatchableCustomCall",
+              {partitioned_shape_with_layout_constraint}));
+      partitioned_hlo->set_sharding(target_sharding);
+      spmd::PartitionedHlo result_partitioned =
+          spmd::PartitionedHlo(partitioned_hlo,
+                               operand_partitioned.base_shape(),
+                               operand_partitioned.state())
+              .Reshard(hlo->sharding());
+      partitioner->SetPartitionedHlo(hlo, result_partitioned);
+      return OkStatus();
+    }
+  };
+  RegisterCustomCallPartitioner(
+      "BatchableCustomCall",
+      std::make_unique<BatchableCustomCallPartitioner>());
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p = f32[102,128,128]{2,1,0:T(8,128)} parameter(0), sharding={devices=[2,1,2]0,1,2,3}
+  ROOT custom-call = f32[102,128,128]{2,1,0:T(8,128)} custom-call(p), custom_call_target="BatchableCustomCall", operand_layout_constraints={f32[102,128,128]{2,1,0}}, sharding={devices=[2,1,2]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::DynamicSlice(
+                        AllOf(op::CustomCall(_), op::Shape("f32[51,128,128]")),
+                        _, _, _));
 }
 
 }  // namespace

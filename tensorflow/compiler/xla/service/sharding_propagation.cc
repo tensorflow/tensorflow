@@ -376,8 +376,15 @@ bool SupportSpatialPartitioning(
     case HloOpcode::kReverse:
       return is_spmd;
     case HloOpcode::kCustomCall:
-      return is_spmd && (IsPassthroughCustomOps(instruction) ||
-                         sharding_helper->IsCustomCallShardable(instruction));
+      if (!is_spmd) {
+        return false;
+      }
+      if (auto* partitioner =
+              GetCustomCallPartitioner(instruction->custom_call_target())) {
+        return partitioner->IsCustomCallShardable(instruction);
+      }
+      return (IsPassthroughCustomOps(instruction) ||
+              sharding_helper->IsCustomCallShardable(instruction));
     default:
       return false;
   }
@@ -757,9 +764,17 @@ bool InferShardingFromUsers(
     std::optional<HloSharding> user_sharding =
         ShardingPropagation::GetShardingFromUser(*instruction, *user,
                                                  aggressiveness, is_spmd);
-    if (user_sharding && sharding_helper->IsCustomCallShardable(instruction)) {
-      user_sharding = sharding_helper->PropagateUserSharding(instruction, user,
+    if (user_sharding && instruction->opcode() == HloOpcode::kCustomCall) {
+      if (auto* partitioner =
+              GetCustomCallPartitioner(instruction->custom_call_target())) {
+        if (partitioner->IsCustomCallShardable(instruction)) {
+          user_sharding = partitioner->PropagateUserSharding(instruction, user,
                                                              *user_sharding);
+        }
+      } else if (sharding_helper->IsCustomCallShardable(instruction)) {
+        user_sharding = sharding_helper->PropagateUserSharding(
+            instruction, user, *user_sharding);
+      }
     }
     if (user_sharding) {
       improved_sharding |= MaybeImproveInstructionSharding(
@@ -2218,7 +2233,16 @@ bool ShardingPropagation::InferShardingFromOperands(
         return false;
       }
       HloSharding inferred_operand_sharding = HloSharding::Replicate();
-      if (sharding_helper_->IsCustomCallShardable(instruction)) {
+      if (auto* partitioner =
+              GetCustomCallPartitioner(instruction->custom_call_target());
+          partitioner && partitioner->IsCustomCallShardable(instruction)) {
+        if (auto sharding =
+                sharding_helper_->InferShardingFromOperands(instruction)) {
+          inferred_operand_sharding = *sharding;
+        } else {
+          return false;
+        }
+      } else if (sharding_helper_->IsCustomCallShardable(instruction)) {
         if (auto sharding =
                 sharding_helper_->InferShardingFromOperands(instruction)) {
           inferred_operand_sharding = *sharding;
