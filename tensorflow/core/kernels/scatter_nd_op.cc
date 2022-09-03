@@ -313,6 +313,25 @@ class ScatterNdUpdateOp : public OpKernel {
   }
 };
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#define REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(type)                     \
+  template Status functor::DoScatterNd<GPUDevice, type, int64,            \
+                                       scatter_nd_op::UpdateOp::ASSIGN>(  \
+      OpKernelContext*, Tensor const&, Tensor const&, TensorShape const&, \
+      Tensor*, bool);
+
+// Explicitly instantiate DoScatterNd for template arguments which are used
+// by the CSRSparseMatrixToDense op.
+REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(float)
+REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(double)
+REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex64)
+REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex128)
+
+#undef REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #define REGISTER_SCATTER_ND_KERNEL_INDEX(type, index_type, dev, name) \
   REGISTER_KERNEL_BUILDER(Name(name)                                  \
                               .Device(DEVICE_##dev)                   \
