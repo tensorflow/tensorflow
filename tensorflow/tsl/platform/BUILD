@@ -58,6 +58,13 @@ cc_library(
 )
 
 cc_library(
+    name = "mutex",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["mutex.h"],
+    deps = tf_platform_deps("mutex"),
+)
+
+cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],
     deps = [
@@ -78,6 +85,11 @@ cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
     compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "thread_annotations",
+    hdrs = ["thread_annotations.h"],
 )
 
 cc_library(
@@ -113,6 +125,7 @@ filegroup(
         "fingerprint.h",
         "init_main.h",
         "mem.h",
+        "mutex.h",
         "net.h",
         "prefetch.h",
         "resource.h",
@@ -122,6 +135,7 @@ filegroup(
         "str_util.h",
         "stringpiece.h",
         "stringprintf.h",
+        "thread_annotations.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -144,8 +158,10 @@ filegroup(
         "byte_order.h",
         "dynamic_annotations.h",
         "macros.h",
+        "mutex.h",
         "platform.h",
         "prefetch.h",
+        "thread_annotations.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -165,6 +181,7 @@ filegroup(
         "intrusive_ptr.h",
         "macros.h",
         "mem.h",
+        "mutex.h",
         "platform.h",
         "platform_strings_computed.h",
         "prefetch.h",
@@ -177,6 +194,7 @@ filegroup(
         "stringpiece.h",
         "stringprintf.cc",
         "stringprintf.h",
+        "thread_annotations.h",
         "threadpool_interface.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -213,6 +231,7 @@ filegroup(
             "dynamic_annotations.h",
             "gif.h",
             "jpeg.h",
+            "thread_annotations.h",
         ],
     ),
     compatible_with = get_compatible_with_portable(),
@@ -230,6 +249,7 @@ exports_files(
         "bfloat16.h",
         "logging.h",
         "mem.h",
+        "mutex.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )

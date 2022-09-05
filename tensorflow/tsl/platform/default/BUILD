@@ -232,7 +232,7 @@ cc_library(
         "mutex.cc",
         "mutex_data.h",
     ],
-    hdrs = ["//tensorflow/core/platform:mutex.h"],
+    hdrs = ["//tensorflow/tsl/platform:mutex.h"],
     tags = [
         "manual",
         "no_oss",
@@ -240,10 +240,10 @@ cc_library(
     ],
     textual_hdrs = ["mutex.h"],
     deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:thread_annotations",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "//tensorflow/tsl/platform:types",
         "@nsync//:nsync_cpp",
     ],
 )

@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_MUTEX_H_
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_MUTEX_H_
 
-// IWYU pragma: private, include "third_party/tensorflow/core/platform/mutex.h"
-// IWYU pragma: friend third_party/tensorflow/core/platform/mutex.h
+// IWYU pragma: private, include "third_party/tensorflow/tsl/platform/mutex.h"
+// IWYU pragma: friend third_party/tensorflow/tsl/platform/mutex.h
 
-namespace tensorflow {
+namespace tsl {
 
 namespace internal {
 std::cv_status wait_until_system_clock(
@@ -30,10 +30,10 @@ std::cv_status wait_until_system_clock(
 template <class Rep, class Period>
 std::cv_status condition_variable::wait_for(
     mutex_lock &lock, std::chrono::duration<Rep, Period> dur) {
-  return tensorflow::internal::wait_until_system_clock(
-      &this->cv_, &lock.mutex()->mu_, std::chrono::system_clock::now() + dur);
+  return wait_until_system_clock(&this->cv_, &lock.mutex()->mu_,
+                                 std::chrono::system_clock::now() + dur);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_MUTEX_H_
