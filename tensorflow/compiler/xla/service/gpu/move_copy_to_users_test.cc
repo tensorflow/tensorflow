@@ -37,7 +37,7 @@ TEST_F(MoveCopyToUsersTest, Pad) {
 HloModule module
 
 ENTRY main {
-  input = s8[1,17,9,9]{3,2,1,0} parameter(0)
+  input = s8[1,17,9,9]{3,1,2,0} parameter(0)
   copy = s8[1,17,9,9]{1,3,2,0} copy(input)
   constant = s8[] constant(0)
   ROOT pad = s8[1,32,9,9]{1,3,2,0} pad(copy, constant), padding=0_0x0_15x0_0x0_0
@@ -46,7 +46,7 @@ ENTRY main {
 
   CheckMoveCopyToUsers(hlo, R"(
 // CHECK: [[constant_0:%[^ ]+]] = s8[] constant(0)
-// CHECK: [[pad_1_1:%[^ ]+]] = s8[1,32,9,9]{3,2,1,0} pad([[input_2:%[^ ]+]], [[constant_0]]), padding=0_0x0_15x0_0x0_0
+// CHECK: [[pad_1_1:%[^ ]+]] = s8[1,32,9,9]{3,1,2,0} pad([[input_2:%[^ ]+]], [[constant_0]]), padding=0_0x0_15x0_0x0_0
 // CHECK: ROOT [[copy_1_3:%[^ ]+]] = s8[1,32,9,9]{1,3,2,0} copy([[pad_1_1]])
 )");
 }

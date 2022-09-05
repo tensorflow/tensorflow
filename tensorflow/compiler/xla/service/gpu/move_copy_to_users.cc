@@ -38,6 +38,9 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
       TF_ASSIGN_OR_RETURN(
           HloInstruction * earlier_pad,
           MakePadHlo(copied, c, hlo->padding_config(), &hlo->metadata()));
+      // MakePadHlo fails to propagate layout.
+      *earlier_pad->mutable_shape()->mutable_layout() =
+          copied->shape().layout();
       HloInstruction* later_copy = MakeCopyHlo(earlier_pad, hlo->shape());
       TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
     }
