@@ -111,11 +111,11 @@ ENTRY main {
 
   CheckGpuFusion(hlo, R"(
 // CHECK: %fused_computation (param_0.1: f32[16,32]) -> f32[16,32] {
-// CHECK-NEXT:   %param_0.1 = f32[16,32]{1,0} parameter(0)
-// CHECK-NEXT:   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
-// CHECK-NEXT:   ROOT %c.1 = f32[16,32]{0,1} copy(%s.1)
+// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
+// CHECK-NEXT:   ROOT [[c_1_2:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1_1]])
 // CHECK-NEXT: }
-// CHECK: ROOT %fusion = f32[16,32]{0,1} fusion(%p), kind=kInput, calls=%fused_computation
+// CHECK: ROOT [[fusion_0:%[^ ]+]] = f32[16,32]{0,1} fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
 )");
 }
 
@@ -133,12 +133,12 @@ ENTRY main {
 
   CheckGpuFusion(hlo, R"(
 // CHECK: %fused_computation (param_0.2: f32[256,16]) -> f32[16,16,16] {
-// CHECK-NEXT:   %param_0.2 = f32[256,16]{1,0} parameter(0)
-// CHECK-NEXT:   %r.1 = f32[16,16,16]{2,1,0} reshape(%param_0.2)
-// CHECK-NEXT:   %s.1 = f32[16,16,16]{2,1,0} sqrt(%r.1)
-// CHECK-NEXT:   ROOT %c.1 = f32[16,16,16]{1,2,0} copy(%s.1)
+// CHECK-NEXT:   [[param_0_2_0:%[^ ]+]] = f32[256,16]{1,0} parameter(0)
+// CHECK-NEXT:   [[r_1_1:%[^ ]+]] = f32[16,16,16]{2,1,0} reshape([[param_0_2_0]])
+// CHECK-NEXT:   [[s_1_2:%[^ ]+]] = f32[16,16,16]{2,1,0} sqrt([[r_1_1]])
+// CHECK-NEXT:   ROOT [[c_1_3:%[^ ]+]] = f32[16,16,16]{1,2,0} copy([[s_1_2]])
 // CHECK-NEXT: }
-// CHECK:   ROOT %fusion = f32[16,16,16]{1,2,0} fusion(%p), kind=kInput, calls=%fused_computation
+// CHECK:   ROOT [[fusion_0:%[^ ]+]] = f32[16,16,16]{1,2,0} fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
 )");
 }
 

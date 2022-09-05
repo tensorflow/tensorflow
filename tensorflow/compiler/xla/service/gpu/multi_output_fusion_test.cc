@@ -1301,14 +1301,14 @@ ENTRY main {
 
   CheckGpuMultiOutputFusion(hlo, R"(
 // CHECK: %fused_computation (param_0.1: f32[16,32]) -> (f32[16,32], f32[16,32]) {
-// CHECK-NEXT:   %param_0.1 = f32[16,32]{1,0} parameter(0)
-// CHECK-NEXT:   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
-// CHECK-NEXT:   %c.1 = f32[16,32]{0,1} copy(%s.1)
-// CHECK-NEXT:   %c1.1 = f32[16,32]{0,1} copy(%param_0.1)
-// CHECK-NEXT:   ROOT %tuple = (f32[16,32]{0,1}, f32[16,32]{0,1}) tuple(%c.1, %c1.1)
+// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
+// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1_1]])
+// CHECK-NEXT:   [[c1_1_3:%[^ ]+]] = f32[16,32]{0,1} copy([[param_0_1_0]])
+// CHECK-NEXT:   ROOT [[tuple_4:%[^ ]+]] = (f32[16,32]{0,1}, f32[16,32]{0,1}) tuple([[c_1_2]], [[c1_1_3]])
 // CHECK-NEXT: }
 
-// CHECK: %fusion = (f32[16,32]{0,1}, f32[16,32]{0,1}) fusion(%p), kind=kInput, calls=%fused_computation
+// CHECK: [[fusion_0:%[^ ]+]] = (f32[16,32]{0,1}, f32[16,32]{0,1}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
 )");
 }
 
@@ -1361,13 +1361,13 @@ ENTRY main {
 
   CheckGpuMultiOutputFusion(hlo, R"(
 // CHECK: %fused_computation (param_0.1: f32[16,32]) -> (f32[16,32], f32[16,32]) {
-// CHECK-NEXT:   %param_0.1 = f32[16,32]{1,0} parameter(0)
-// CHECK-NEXT:   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
-// CHECK-NEXT:   %c.1 = f32[16,32]{0,1} copy(%s.1)
-// CHECK-NEXT:   %c1.1 = f32[16,32]{1,0} exponential(%param_0.1)
-// CHECK-NEXT:   ROOT %tuple = (f32[16,32]{0,1}, f32[16,32]{1,0}) tuple(%c.1, %c1.1)
+// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
+// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1_1]])
+// CHECK-NEXT:   [[c1_1_3:%[^ ]+]] = f32[16,32]{1,0} exponential([[param_0_1_0]])
+// CHECK-NEXT:   ROOT [[tuple_4:%[^ ]+]] = (f32[16,32]{0,1}, f32[16,32]{1,0}) tuple([[c_1_2]], [[c1_1_3]])
 // CHECK-NEXT: }
-// CHECK:   %fusion = (f32[16,32]{0,1}, f32[16,32]{1,0}) fusion(%p), kind=kInput, calls=%fused_computation
+// CHECK:   [[fusion_0:%[^ ]+]] = (f32[16,32]{0,1}, f32[16,32]{1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
 )");
 }
 
