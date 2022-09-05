@@ -113,7 +113,7 @@ TEST(FloorDivModel, BroadcastFloorDivFloat) {
   model.PopulateTensor<float>(model.input2(), {-3.3});
   model.Invoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(-4.0, 2.0, 3.0, -3.0));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(-4.0, 3.0, 3.0, -3.0));
 }
 }  // namespace
 }  // namespace tflite
