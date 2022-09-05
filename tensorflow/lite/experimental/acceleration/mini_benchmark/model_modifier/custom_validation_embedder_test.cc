@@ -19,12 +19,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -32,6 +37,8 @@ namespace tflite {
 namespace acceleration {
 namespace {
 using ::flatbuffers::FlatBufferBuilder;
+
+constexpr int kMobileNetModelInputByteSize = 1 * 224 * 224 * 3;
 
 class CustomValidationEmbedderTest : public ::testing::Test {
  protected:
@@ -44,17 +51,15 @@ class CustomValidationEmbedderTest : public ::testing::Test {
     plain_model_loader_ = std::make_unique<PathModelLoader>(plain_model_path);
     ASSERT_EQ(plain_model_loader_->Init(), kMinibenchmarkSuccess);
   }
+
   std::unique_ptr<ModelLoader> plain_model_loader_;
 };
 
 TEST_F(CustomValidationEmbedderTest, EmbedInputSucceed) {
-  std::vector<float> input_buffer(224 * 224 * 3 / sizeof(float), 1.0);
-  uint8_t* ptr = reinterpret_cast<uint8_t*>(input_buffer.data());
-  std::vector<uint8_t> input_buffer_uint8{ptr, ptr + input_buffer.size()};
-
+  std::vector<uint8_t> input_buffer(kMobileNetModelInputByteSize, 1);
   FlatBufferBuilder model_with_input;
   EXPECT_EQ(GenerateModelWithInput(*plain_model_loader_->GetModel()->GetModel(),
-                                   {input_buffer_uint8}, model_with_input),
+                                   {input_buffer}, model_with_input),
             kMinibenchmarkSuccess);
 
   EXPECT_NE(FlatBufferModel::BuildFromModel(
@@ -68,6 +73,43 @@ TEST_F(CustomValidationEmbedderTest, TooManyInput) {
   EXPECT_EQ(GenerateModelWithInput(*plain_model_loader_->GetModel()->GetModel(),
                                    {{}, {}}, model_with_input),
             kMinibenchmarkPreconditionNotMet);
+}
+
+TEST_F(CustomValidationEmbedderTest, BuildValidationModelSucceed) {
+  int batch_size = 5;
+  std::vector<uint8_t> input_buffer(batch_size * kMobileNetModelInputByteSize);
+  CustomValidationEmbedder embedder(
+      *plain_model_loader_->GetModel()->GetModel(), batch_size, {input_buffer});
+
+  FlatBufferBuilder fbb;
+  EXPECT_EQ(embedder.BuildModel(fbb), kMinibenchmarkSuccess);
+
+  // Verify validation graph can be invoked.
+  auto model =
+      FlatBufferModel::BuildFromModel(GetModel(fbb.GetBufferPointer()));
+  auto interpreter = std::make_unique<Interpreter>();
+  auto resolver = std::make_unique<
+      ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
+  resolver->AddCustom("validation/call", ops::Register_CALL(), 1);
+  ASSERT_EQ(InterpreterBuilder(*model, *resolver)(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+  Subgraph* validation_graph = interpreter->subgraph(1);
+  EXPECT_THAT(input_buffer, testing::ElementsAreArray(
+                                GetTensorData<uint8_t>(validation_graph->tensor(
+                                    validation_graph->inputs()[0])),
+                                input_buffer.size()));
+  EXPECT_EQ(validation_graph->AllocateTensors(), kTfLiteOk);
+  EXPECT_EQ(validation_graph->Invoke(), kTfLiteOk);
+}
+
+TEST_F(CustomValidationEmbedderTest, BuildValidationModelTooManyInput) {
+  int batch_size = 5;
+  CustomValidationEmbedder embedder(
+      *plain_model_loader_->GetModel()->GetModel(), batch_size, {{}, {}});
+
+  FlatBufferBuilder fbb;
+  EXPECT_EQ(embedder.BuildModel(fbb),
+            kMinibenchmarkValidationSubgraphBuildFailed);
 }
 
 }  // namespace
