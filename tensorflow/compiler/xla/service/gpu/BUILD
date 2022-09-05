@@ -234,6 +234,17 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "target_util_test",
+    srcs = ["target_util_test.cc"],
+    deps = [
+        ":target_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@llvm-project//llvm:Core",
+    ],
+)
+
 cc_library(
     name = "gpu_device_info",
     srcs = ["gpu_device_info.cc"],
