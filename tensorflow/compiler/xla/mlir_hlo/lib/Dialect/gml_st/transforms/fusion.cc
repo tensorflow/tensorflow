@@ -189,8 +189,7 @@ FailureOr<TilingInterface> fuseIntoMaterializeOp(OpBuilder& b,
   OpBuilder::InsertionGuard guard(b);
   b.setInsertionPoint(materializeOp);
   FailureOr<Value> tiledProducer = tileableOp.generateResultTileValue(
-      b, /*resultNumber=*/0, destinationOperands, tile.getMixedOffsets(),
-      tile.getMixedSizes(), true);
+      b, /*resultNumber=*/0, tile.getMixedOffsets(), tile.getMixedSizes());
   if (failed(tiledProducer)) return failure();
   return tiledProducer->getDefiningOp<TilingInterface>();
 }

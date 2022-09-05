@@ -467,11 +467,8 @@ SmallVector<Range> DynamicBroadcastInDimOp::getIterationDomain(OpBuilder &b) {
 }
 
 gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
-    OpBuilder &b, ValueRange dest, ArrayRef<OpFoldResult> offsets,
-    ArrayRef<OpFoldResult> sizes, bool tileDestOperands) {
-  assert(tileDestOperands && "not tiling dst operands is not implemented");
-  assert(dest.size() == 1 && dest.front() == init() && "expect init operand");
-
+    OpBuilder &b, ArrayRef<OpFoldResult> offsets,
+    ArrayRef<OpFoldResult> sizes) {
   // Create tile subset.
   auto loc = getLoc();
   auto initTy = init().getType().cast<RankedTensorType>();
@@ -584,13 +581,10 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
 }
 
 FailureOr<Value> DynamicBroadcastInDimOp::generateResultTileValue(
-    OpBuilder &b, unsigned resultNumber, ValueRange dest,
-    ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> sizes,
-    bool tileDestOperands) {
+    OpBuilder &b, unsigned resultNumber, ArrayRef<OpFoldResult> offsets,
+    ArrayRef<OpFoldResult> sizes) {
   assert(resultNumber == 0 && "expect unique result idx");
-  return getTiledImplementation(b, dest, offsets, sizes, tileDestOperands)
-      ->getResults()
-      .front();
+  return getTiledImplementation(b, offsets, sizes)->getResults().front();
 }
 
 Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,

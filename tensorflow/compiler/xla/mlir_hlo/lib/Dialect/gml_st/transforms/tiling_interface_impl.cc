@@ -65,10 +65,8 @@ struct ExternalLinalgGenericTilingInterface
 
   // Instantiate the tiled implementation of the operation.
   TilingInterface getTiledImplementation(Operation *op, OpBuilder &b,
-                                         ValueRange /*dest*/,
                                          ArrayRef<OpFoldResult> offsets,
-                                         ArrayRef<OpFoldResult> sizes,
-                                         bool /*tileDestOperands*/) const {
+                                         ArrayRef<OpFoldResult> sizes) const {
     Location loc = op->getLoc();
     linalg::LinalgOp linalgOp = cast<linalg::LinalgOp>(op);
     SmallVector<Value> valuesToTile = linalgOp.getInputAndOutputOperands();
@@ -108,10 +106,8 @@ struct ExternalLinalgGenericTilingInterface
 
   FailureOr<Value> generateResultTileValue(Operation *op, OpBuilder &b,
                                            unsigned resultNumber,
-                                           ValueRange dest,
                                            ArrayRef<OpFoldResult> offsets,
-                                           ArrayRef<OpFoldResult> sizes,
-                                           bool tileDestOperands) const {
+                                           ArrayRef<OpFoldResult> sizes) const {
     auto linalgOp = cast<linalg::LinalgOp>(op);
 
     // Check that the indexing map used for the output is a projected
@@ -146,7 +142,7 @@ struct ExternalLinalgGenericTilingInterface
     }
 
     TilingInterface tiledOp = tilingInterfaceOp.getTiledImplementation(
-        b, dest, iterationTileOffsets, iterationTileSizes, tileDestOperands);
+        b, iterationTileOffsets, iterationTileSizes);
 
     return tiledOp->getResult(resultNumber);
   }

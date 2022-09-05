@@ -538,8 +538,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     rewriter.setInsertionPoint(terminator);
 
     // 4. Insert the tiled implementation within the loop.
-    tilingResult.tiledOp =
-        op.getTiledImplementation(rewriter, dstOperands, offsets, sizes, true);
+    tilingResult.tiledOp = op.getTiledImplementation(rewriter, offsets, sizes);
 
     // 5. Add `gml_st.set_yield` terminator.
     SmallVector<Value> dstSubsets;
