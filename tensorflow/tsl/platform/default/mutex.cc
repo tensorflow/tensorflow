@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/core/platform/mutex.h"
 
 #include <time.h>
 
@@ -22,7 +22,7 @@ limitations under the License.
 #include "nsync_mu_wait.h"  // NOLINT
 #include "nsync_time.h"     // NOLINT
 
-namespace tsl {
+namespace tensorflow {
 
 // Check that the MuData struct used to reserve space for the mutex
 // in tensorflow::mutex is big enough.
@@ -61,7 +61,7 @@ void mutex::Await(const Condition &cond) {
   nsync::nsync_mu_wait(mu_cast(&mu_), &EvaluateCondition, &cond, nullptr);
 }
 
-bool mutex::AwaitWithDeadline(const Condition &cond, uint64_t abs_deadline_ns) {
+bool mutex::AwaitWithDeadline(const Condition &cond, uint64 abs_deadline_ns) {
   time_t seconds = abs_deadline_ns / (1000 * 1000 * 1000);
   nsync::nsync_time abs_time = nsync::nsync_time_s_ns(
       seconds, abs_deadline_ns - seconds * (1000 * 1000 * 1000));
@@ -107,4 +107,4 @@ std::cv_status wait_until_system_clock(
 }
 }  // namespace internal
 
-}  // namespace tsl
+}  // namespace tensorflow
