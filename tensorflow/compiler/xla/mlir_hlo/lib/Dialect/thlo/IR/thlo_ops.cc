@@ -198,6 +198,20 @@ SmallVector<Range> getIterationDomainForTensor(OpBuilder &b, Location loc,
   }));
 }
 
+Value getMaterializedTile(OpBuilder &b, Location loc,
+                          TypedValue<TensorType> tensor,
+                          ArrayRef<OpFoldResult> offsets,
+                          ArrayRef<OpFoldResult> sizes) {
+  SmallVector<Value> dynamicDims =
+      tensor::createDynamicDimValues(b, loc, tensor);
+  ArrayAttr staticDims = b.getI64ArrayAttr(tensor.getType().getShape());
+  Value space = b.create<gml_st::SpaceOp>(loc, dynamicDims, staticDims);
+
+  SmallVector<OpFoldResult> strides(offsets.size(), b.getIndexAttr(1));
+  Value tile = b.create<gml_st::TileOp>(loc, space, offsets, sizes, strides);
+  return b.create<gml_st::MaterializeOp>(loc, tensor, tile);
+}
+
 }  // namespace
 }  // namespace mlir
 
@@ -833,20 +847,11 @@ mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
                              b.getI32IntegerAttr(0)));
   Value updateScalar = b.create<tensor::FromElementsOp>(
       getLoc(), RankedTensorType::get({}, elementTy), accumulatedUpdates);
-
-  SmallVector<Value> dynamicDims =
-      tensor::createDynamicDimValues(b, loc, init());
-  ArrayAttr staticDims = b.getI64ArrayAttr(initTy.getShape());
-  Value operandSpace = b.create<gml_st::SpaceOp>(loc, dynamicDims, staticDims);
-
-  SmallVector<OpFoldResult> strides(offsets.size(), b.getIndexAttr(1));
-  Value tile =
-      b.create<gml_st::TileOp>(loc, operandSpace, offsets, sizes, strides);
-  Value inputSlice = b.create<gml_st::MaterializeOp>(getLoc(), init(), tile);
+  Value initSlice = getMaterializedTile(b, loc, init(), offsets, sizes);
 
   return b
-      .create<ScatterOp>(getLoc(), TypeRange{inputSlice.getType()},
-                         ValueRange{zeroIndexVector, updateScalar, inputSlice})
+      .create<ScatterOp>(getLoc(), TypeRange{initSlice.getType()},
+                         ValueRange{zeroIndexVector, updateScalar, initSlice})
       .getOperation();
 }
 
@@ -869,6 +874,53 @@ void GatherOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult GatherOp::verify() {
   return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+}
+
+SmallVector<StringRef> GatherOp::getLoopIteratorTypes() {
+  // Currently, `offset_dims` is empty, so the iteration domain is just the
+  // entire output.
+  return getParallelIteratorTypesForTensor(init());
+}
+
+SmallVector<Value> GatherOp::getDestinationOperands(OpBuilder &) {
+  return {init()};
+}
+
+SmallVector<Range> GatherOp::getIterationDomain(OpBuilder &b) {
+  // Currently, `offset_dims` is empty, so the iteration domain is just the
+  // entire output.
+  return getIterationDomainForTensor(b, getLoc(), init());
+}
+
+mlir::gml_st::TilingInterface GatherOp::getTiledImplementation(
+    OpBuilder &b, ArrayRef<OpFoldResult> offsets,
+    ArrayRef<OpFoldResult> sizes) {
+  auto offsetsWithVectorDim = offsets.vec();
+  auto sizesWithVectorDim = sizes.vec();
+
+  offsetsWithVectorDim.emplace_back(b.getIndexAttr(0));
+  sizesWithVectorDim.emplace_back(
+      b.getIndexAttr(start_indices().getType().getShape().back()));
+
+  llvm::SmallVector<OpFoldResult> strides(offsets.size() + 1,
+                                          b.getIndexAttr(1));
+
+  auto subStartIndices = b.create<tensor::ExtractSliceOp>(
+      getLoc(), start_indices(), offsetsWithVectorDim, sizesWithVectorDim,
+      strides);
+  Value initSlice = getMaterializedTile(b, getLoc(), init(), offsets, sizes);
+
+  return b
+      .create<GatherOp>(getLoc(), TypeRange{initSlice.getType()},
+                        ValueRange{operand(), subStartIndices, initSlice})
+      .getOperation();
+}
+
+FailureOr<Value> GatherOp::generateResultTileValue(
+    OpBuilder &b, unsigned resultNumber, ArrayRef<OpFoldResult> offsets,
+    ArrayRef<OpFoldResult> sizes) {
+  assert(resultNumber == 0 && "resultNumber > 0 not implemented");
+  return getTiledImplementation(b, offsets, sizes)->getResult(0);
 }
 
 //===----------------------------------------------------------------------===//

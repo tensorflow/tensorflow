@@ -362,3 +362,39 @@ func.func @scatter_2d_indices(%indices: tensor<?x?x2xi32>,
 
 // PARALLEL-LABEL: @scatter_2d_indices
 // PARALLEL: gml_st.parallel
+
+// -----
+
+func.func @gather(%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x?x4xi64>,
+    %init: tensor<?x?xf64>) -> tensor<?x?xf64> {
+  %result = thlo.gather
+    ins (%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x?x4xi64>)
+    outs (%init: tensor<?x?xf64>) { op_label = "tile-2d" }
+  return %result : tensor<?x?xf64>
+}
+
+// CHECK-SEQUENTIAL-LABEL: @gather
+// CHECK-SEQUENTIAL-SAME:    %[[OPERAND:.*]]: tensor<?x?x?x?xf64>
+// CHECK-SEQUENTIAL-SAME:    %[[INDICES:.*]]: tensor<?x?x4xi64>
+// CHECK-SEQUENTIAL-SAME:    %[[INIT:.*]]:
+// CHECK-SEQUENTIAL-DAG:   %[[ZERO:.*]] = arith.constant 0 : index
+// CHECK-SEQUENTIAL-DAG:   %[[ONE:.*]] = arith.constant 1 : index
+// CHECK-SEQUENTIAL:       %[[RESULT:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) =
+// CHECK-SEQUENTIAL:         %[[SIZE0:.*]] = affine.min {{.*}}%[[I]]
+// CHECK-SEQUENTIAL:         %[[SIZE1:.*]] = affine.min {{.*}}%[[J]]
+// CHECK-SEQUENTIAL:         %[[INDEX_SLICE:.*]] = tensor.extract_slice
+// CHECK-SEQUENTIAL-SAME:       %[[INDICES]][%[[I]], %[[J]], 0]
+// CHECK-SEQUENTIAL-SAME:       [%[[SIZE0]], %[[SIZE1]], 4]
+// CHECK-SEQUENTIAL-SAME:       [1, 1, 1]
+// CHECK-SEQUENTIAL:         %[[TILE:.*]] = gml_st.tile {{.*}} [%[[I]], %[[J]]]
+// CHECK-SEQUENTIAL-SAME:       [%[[SIZE0]], %[[SIZE1]]] [1, 1]
+// CHECK-SEQUENTIAL:         %[[INIT_SLICE:.*]] = gml_st.materialize 
+// CHECK-SEQUENTIAL-SAME:       [%[[TILE]]]
+// CHECK-SEQUENTIAL:         %[[GATHER_SLICE:.*]] = thlo.gather
+// CHECK-SEQUENTIAL-SAME:       ins(%[[OPERAND]] :
+// CHECK-SEQUENTIAL-SAME:         , %[[INDEX_SLICE]]
+// CHECK-SEQUENTIAL-SAME:       outs(%[[INIT_SLICE]]
+// CHECK-SEQUENTIAL:         gml_st.set_yield %[[GATHER_SLICE]]
+
+// PARALLEL-LABEL: @gather
+// PARALLEL: gml_st.parallel
