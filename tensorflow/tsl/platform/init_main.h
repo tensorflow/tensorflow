@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_INIT_MAIN_H_
 #define TENSORFLOW_TSL_PLATFORM_INIT_MAIN_H_
 
-namespace tensorflow {
+namespace tsl {
 namespace port {
 
 void InitMain(const char* usage, int* argc, char*** argv);
 
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_INIT_MAIN_H_

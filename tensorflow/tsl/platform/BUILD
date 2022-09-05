@@ -108,12 +108,14 @@ filegroup(
     srcs = [
         "bfloat16.h",
         "casts.h",
+        "cpu_info.h",
         "crash_analysis.h",
         "dynamic_annotations.h",
         "fingerprint.h",
         "init_main.h",
         "mem.h",
         "net.h",
+        "numa.h",
         "prefetch.h",
         "resource.h",
         "stack_frame.h",
@@ -142,6 +144,7 @@ filegroup(
     srcs = [
         "bfloat16.h",
         "byte_order.h",
+        "cpu_info.h",
         "dynamic_annotations.h",
         "macros.h",
         "platform.h",
@@ -157,20 +160,26 @@ filegroup(
         "bfloat16.h",
         "byte_order.h",
         "casts.h",
+        "cpu_info.cc",
+        "cpu_info.h",
+        "demangle.h",
         "dynamic_annotations.h",
         "fingerprint.h",
         "hash.cc",
         "hash.h",
+        "host_info.h",
         "init_main.h",
         "intrusive_ptr.h",
         "macros.h",
         "mem.h",
+        "numa.h",
         "platform.h",
         "platform_strings_computed.h",
         "prefetch.h",
         "raw_coding.h",
         "regexp.h",
         "resource.h",
+        "snappy.h",
         "stacktrace.h",
         "str_util.cc",
         "str_util.h",
@@ -220,28 +229,24 @@ filegroup(
 
 exports_files(
     [
-        "init_main.h",
-        "net.h",
-        "crash_analysis.h",
-        "resource_loader.h",
-        "resource.h",
-        "stacktrace_handler.h",
-        "cuda_libdevice_path.h",
+        "host_info.h",
         "bfloat16.h",
+        "cpu_info.h",
+        "cpu_info.cc",
+        "crash_analysis.h",
+        "cuda_libdevice_path.h",
+        "demangle.h",
+        "init_main.h",
         "logging.h",
         "mem.h",
+        "net.h",
+        "numa.h",
+        "resource_loader.h",
+        "resource.h",
+        "snappy.h",
+        "stacktrace_handler.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
-)
-
-cc_library(
-    name = "platform_port",
-    compatible_with = get_compatible_with_portable(),
-    textual_hdrs = [
-        "init_main.h",
-        "mem.h",
-    ],
-    deps = tf_windows_aware_platform_deps("platform_port"),
 )
 
 filegroup(
@@ -267,8 +272,11 @@ cc_library(
 filegroup(
     name = "lib_internal_public_hdrs",
     srcs = [
+        "demangle.h",
+        "host_info.h",
         "intrusive_ptr.h",
         "platform.h",
+        "snappy.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
@@ -372,6 +380,21 @@ cc_library(
     name = "platform",
     hdrs = ["platform.h"],
     compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "platform_port",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = [
+        "cpu_info.h",
+        "demangle.h",
+        "host_info.h",
+        "init_main.h",
+        "mem.h",
+        "numa.h",
+        "snappy.h",
+    ],
+    deps = tf_windows_aware_platform_deps("platform_port"),
 )
 
 cc_library(

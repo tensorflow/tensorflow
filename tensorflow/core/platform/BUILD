@@ -76,7 +76,6 @@ package_group(
 exports_files(
     [
         "context.h",
-        "cpu_info.cc",
         "cpu_info.h",
         "bfloat16.h",
         "demangle.h",
@@ -500,6 +499,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
         "//tensorflow/tsl/platform:platform_port",
     ],
@@ -1814,7 +1814,6 @@ filegroup(
         "coding.h",
         "context.h",
         "cord.h",
-        "cpu_info.cc",
         "cpu_info.h",
         ":ctstring",
         "demangle.h",

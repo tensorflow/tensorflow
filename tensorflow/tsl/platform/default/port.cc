@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/base/internal/sysinfo.h"
-#include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
-#include "tensorflow/core/platform/snappy.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/platform/numa.h"
+#include "tensorflow/tsl/platform/snappy.h"
+#include "tensorflow/tsl/platform/types.h"
 
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sched.h>
@@ -64,7 +64,7 @@ limitations under the License.
 #include <cxxabi.h>
 #endif
 
-namespace tensorflow {
+namespace tsl {
 namespace port {
 
 void InitMain(const char* usage, int* argc, char*** argv) {}
@@ -161,7 +161,7 @@ int GetCurrentCPU() {
 }
 
 int NumHyperthreadsPerCore() {
-  static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
+  static const int ht_per_core = tsl::port::CPUIDNumSMT();
   return (ht_per_core > 0) ? ht_per_core : 1;
 }
 
@@ -370,7 +370,7 @@ double NominalCPUFrequency() {
 }
 
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl
 
 namespace tsl {
 namespace port {

@@ -24,17 +24,17 @@ limitations under the License.
 #include <processthreadsapi.h>
 #include <shlwapi.h>
 
-#include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/demangle.h"
-#include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/numa.h"
-#include "tensorflow/core/platform/snappy.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/demangle.h"
+#include "tensorflow/tsl/platform/host_info.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/platform/numa.h"
+#include "tensorflow/tsl/platform/snappy.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace port {
 
 void InitMain(const char* usage, int* argc, char*** argv) {}
@@ -177,12 +177,12 @@ double NominalCPUFrequency() {
 }
 
 int NumHyperthreadsPerCore() {
-  static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
+  static const int ht_per_core = tsl::port::CPUIDNumSMT();
   return (ht_per_core > 0) ? ht_per_core : 1;
 }
 
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl
 
 namespace tsl {
 namespace port {

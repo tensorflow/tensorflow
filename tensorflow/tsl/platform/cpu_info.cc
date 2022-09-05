@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 
 #include "absl/base/call_once.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/platform.h"
+#include "tensorflow/tsl/platform/types.h"
 #if defined(PLATFORM_IS_X86)
 #include <mutex>  // NOLINT
 #endif
@@ -47,7 +47,7 @@ limitations under the License.
 #endif
 #endif
 
-namespace tensorflow {
+namespace tsl {
 namespace port {
 namespace {
 
@@ -406,4 +406,4 @@ int CPUIDNumSMT() {
 }
 
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,27 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_SNAPPY_H_
-#define TENSORFLOW_CORE_PLATFORM_SNAPPY_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_DEMANGLE_H_
+#define TENSORFLOW_TSL_PLATFORM_DEMANGLE_H_
 
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/snappy.h"
+#include "tensorflow/tsl/platform/types.h"
 
-#if !defined(PLATFORM_WINDOWS)
-#include <sys/uio.h>
-#else
-namespace tensorflow {
-using tsl::iovec;
-}  // namespace tensorflow
-#endif
-
-namespace tensorflow {
+namespace tsl {
 namespace port {
-using tsl::port::Snappy_Compress;
-using tsl::port::Snappy_GetUncompressedLength;
-using tsl::port::Snappy_Uncompress;
-using tsl::port::Snappy_UncompressToIOVec;
-}  // namespace port
-}  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_SNAPPY_H_
+// If the compiler supports, demangle a mangled symbol name and return
+// the demangled name. Otherwise, returns 'mangled' as is.
+string Demangle(const char* mangled);
+inline string Demangle(const string mangled) {
+  return Demangle(mangled.c_str());
+}
+
+}  // namespace port
+}  // namespace tsl
+
+#endif  // TENSORFLOW_TSL_PLATFORM_DEMANGLE_H_

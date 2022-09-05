@@ -13,27 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_SNAPPY_H_
-#define TENSORFLOW_CORE_PLATFORM_SNAPPY_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_HOST_INFO_H_
+#define TENSORFLOW_TSL_PLATFORM_HOST_INFO_H_
 
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/snappy.h"
+#include "tensorflow/tsl/platform/types.h"
 
-#if !defined(PLATFORM_WINDOWS)
-#include <sys/uio.h>
-#else
-namespace tensorflow {
-using tsl::iovec;
-}  // namespace tensorflow
-#endif
-
-namespace tensorflow {
+namespace tsl {
 namespace port {
-using tsl::port::Snappy_Compress;
-using tsl::port::Snappy_GetUncompressedLength;
-using tsl::port::Snappy_Uncompress;
-using tsl::port::Snappy_UncompressToIOVec;
-}  // namespace port
-}  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_SNAPPY_H_
+// Return the hostname of the machine on which this process is running.
+string Hostname();
+
+// Return the job name as a string if it exists, otherwise return an empty
+// string.
+string JobName();
+
+// Returns the Borg job UID as an int64_t if it exists. Otherwise return -1.
+int64_t JobUid();
+
+}  // namespace port
+}  // namespace tsl
+
+#endif  // TENSORFLOW_TSL_PLATFORM_HOST_INFO_H_
