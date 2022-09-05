@@ -91,13 +91,6 @@ class CustomValidationEmbedder {
   ErrorReporter* error_reporter_ = tflite::DefaultErrorReporter();
 };
 
-// Generate a new Model by fill the input data of plain_model with
-// new_input_buffer. The new model version is set to 3.
-MinibenchmarkStatus GenerateModelWithInput(
-    const tflite::Model& plain_model,
-    const std::vector<std::vector<uint8_t>>& new_input_buffer,
-    flatbuffers::FlatBufferBuilder& output_model);
-
 }  // namespace acceleration
 }  // namespace tflite
 

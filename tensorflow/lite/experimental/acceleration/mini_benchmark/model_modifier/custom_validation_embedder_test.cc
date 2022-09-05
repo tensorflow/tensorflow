@@ -55,26 +55,6 @@ class CustomValidationEmbedderTest : public ::testing::Test {
   std::unique_ptr<ModelLoader> plain_model_loader_;
 };
 
-TEST_F(CustomValidationEmbedderTest, EmbedInputSucceed) {
-  std::vector<uint8_t> input_buffer(kMobileNetModelInputByteSize, 1);
-  FlatBufferBuilder model_with_input;
-  EXPECT_EQ(GenerateModelWithInput(*plain_model_loader_->GetModel()->GetModel(),
-                                   {input_buffer}, model_with_input),
-            kMinibenchmarkSuccess);
-
-  EXPECT_NE(FlatBufferModel::BuildFromModel(
-                GetModel(model_with_input.GetBufferPointer()))
-                ->GetModel(),
-            nullptr);
-}
-
-TEST_F(CustomValidationEmbedderTest, TooManyInput) {
-  FlatBufferBuilder model_with_input;
-  EXPECT_EQ(GenerateModelWithInput(*plain_model_loader_->GetModel()->GetModel(),
-                                   {{}, {}}, model_with_input),
-            kMinibenchmarkPreconditionNotMet);
-}
-
 TEST_F(CustomValidationEmbedderTest, BuildValidationModelSucceed) {
   int batch_size = 5;
   std::vector<uint8_t> input_buffer(batch_size * kMobileNetModelInputByteSize);

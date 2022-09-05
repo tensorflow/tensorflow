@@ -90,17 +90,6 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithEmbeddedValidation) {
   EXPECT_GE(results.metrics.size(), 0);
   EXPECT_EQ(results.delegate_error, 0);
   EXPECT_EQ(results.actual_inference_output.size(), model_output_size);
-  EXPECT_EQ(results.golden_inference_output.size(), model_output_size);
-  // Only compares the output value when running on forge or local host. The
-  // golden output is generated at build time, while actual output is generated
-  // at run time. When running on Android, these two outputs may generated on
-  // different machines and have diffs.
-#ifndef __ANDROID__
-  for (auto expected : results.golden_inference_output) {
-    EXPECT_THAT(results.actual_inference_output[expected.first],
-                testing::ContainerEq(expected.second));
-  }
-#endif  // __ANDROID__
 }
 
 TEST_F(ValidatorTest, HappyPathOnCpuWithCustomValidation) {
@@ -117,16 +106,14 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithCustomValidation) {
     model_input_byte_size *= shape_i;
   }
 
+  int batch_size = 5;
   // Create model with input.
-  // 1. Create the random buffer in float type.
-  std::vector<float> input_buffer(model_input_byte_size / sizeof(float), 1.0);
-  uint8_t* ptr = reinterpret_cast<uint8_t*>(input_buffer.data());
-  // 2. Convert it to uint8_t and embedd it model.
-  std::vector<uint8_t> input_buffer_uint8{ptr, ptr + model_input_byte_size};
   FlatBufferBuilder model_with_input;
-  GenerateModelWithInput(*plain_model_loader_->GetModel()->GetModel(),
-                         {input_buffer_uint8}, model_with_input);
-  // 3. Dump the model with input to temp.
+  CustomValidationEmbedder embedder(
+      *plain_model_loader_->GetModel()->GetModel(), batch_size,
+      {std::vector<uint8_t>(batch_size * model_input_byte_size, 1)});
+  EXPECT_EQ(embedder.BuildModel(model_with_input), kMinibenchmarkSuccess);
+  // Dump the model with input to temp.
   std::string model_path = MiniBenchmarkTestHelper::DumpToTempFile(
       "mobilenet_quant_with_input.tflite", model_with_input.GetBufferPointer(),
       model_with_input.GetSize());
@@ -142,17 +129,6 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithCustomValidation) {
   EXPECT_EQ(results.metrics.size(), 0);
   EXPECT_EQ(results.delegate_error, 0);
   EXPECT_EQ(results.actual_inference_output.size(), model_output_size);
-  EXPECT_EQ(results.golden_inference_output.size(), model_output_size);
-  // Only compares the output value when running on forge or local host. The
-  // golden output is generated at build time, while actual output is generated
-  // at run time. When running on Android, these two outputs may generated on
-  // different machines and have diffs.
-#ifndef __ANDROID__
-  for (auto expected : results.golden_inference_output) {
-    EXPECT_THAT(results.actual_inference_output[expected.first],
-                testing::ContainerEq(expected.second));
-  }
-#endif  // __ANDROID__
 }
 
 TEST_F(ValidatorTest, DelegateNotSupported) {
@@ -167,9 +143,27 @@ TEST_F(ValidatorTest, DelegateNotSupported) {
             kMinibenchmarkDelegateNotSupported);
 }
 
-TEST_F(ValidatorTest, NoValidationSubgraphNoInput) {
+TEST_F(ValidatorTest, NoValidationSubgraph) {
   Validator validator(std::move(plain_model_loader_),
                       default_compute_settings_);
+  Validator::Results results;
+  EXPECT_EQ(validator.RunValidation(&results),
+            kMinibenchmarkValidationSubgraphNotFound);
+}
+
+TEST_F(ValidatorTest, NoValidationInputData) {
+  ASSERT_EQ(plain_model_loader_->Init(), kMinibenchmarkSuccess);
+  FlatBufferBuilder model_with_input;
+  CustomValidationEmbedder embedder(
+      *plain_model_loader_->GetModel()->GetModel(), 1, {{}});
+  EXPECT_EQ(embedder.BuildModel(model_with_input), kMinibenchmarkSuccess);
+  std::string model_path = MiniBenchmarkTestHelper::DumpToTempFile(
+      "mobilenet_quant_with_input.tflite", model_with_input.GetBufferPointer(),
+      model_with_input.GetSize());
+  ASSERT_TRUE(!model_path.empty());
+  auto model_loader = std::make_unique<PathModelLoader>(model_path);
+
+  Validator validator(std::move(model_loader), default_compute_settings_);
   Validator::Results results;
   EXPECT_EQ(validator.RunValidation(&results),
             kMinibenchmarkValidationInputMissing);

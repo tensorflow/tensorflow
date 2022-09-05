@@ -413,6 +413,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:constants",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
