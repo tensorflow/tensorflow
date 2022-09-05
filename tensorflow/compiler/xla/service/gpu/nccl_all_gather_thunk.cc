@@ -80,7 +80,7 @@ Status RunAllGather(std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
                         ToNcclDataTypeAndCountMultiplier(element_type));
     ncclDataType_t dtype = dtype_and_multiplier.first;
-    int element_count = buffer.element_count * dtype_and_multiplier.second;
+    int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
     VLOG(3) << absl::StreamFormat(
         "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, sendcount=%d, "
