@@ -57,7 +57,7 @@ cc_library(
     hdrs = ["validation_graph_builder.h"],
     deps = [
         ":grafter",
-        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
