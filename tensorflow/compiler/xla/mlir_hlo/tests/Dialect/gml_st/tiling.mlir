@@ -1,10 +1,12 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
 // RUN:     --gml-tiling="tile-sizes=256,512 distribute=false op-label=tile-2d" \
+// RUN:     --gml-tiling="tile-sizes=1,1 distribute=false op-label=tile-2d-point" \
 // RUN:     --gml-tiling="tile-sizes=256,512 distribute=false op-label=tile-3d" | \
 // RUN: FileCheck %s --check-prefix=CHECK-SEQUENTIAL
 
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:     --gml-tiling="tile-sizes=256,512 distribute=true op-label=tile-2d" | \
+// RUN:     --gml-tiling="tile-sizes=256,512 distribute=true op-label=tile-2d" \
+// RUN:     --gml-tiling="tile-sizes=1,1 distribute=true op-label=tile-2d-point" | \
 // RUN: FileCheck %s --check-prefix=CHECK-PARALLEL
 
 
@@ -259,3 +261,104 @@ func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
 // CHECK-SEQUENTIAL-SAME:        broadcast_dimensions = [0, 2]
 // CHECK-SEQUENTIAL:         gml_st.set_yield %[[DYNAMIC]] into %[[ARG4]][%[[TILE]]]
 // CHECK-SEQUENTIAL:       return %[[FOR]]
+
+// -----
+
+func.func @scatter_i32_i64(%indices: tensor<?x2xi32>, %updates: tensor<?xi64>,
+                           %init: tensor<?x?xi64>) -> tensor<?x?xi64> {
+  %result = thlo.scatter
+    ins (%indices: tensor<?x2xi32>, %updates: tensor<?xi64>)
+    outs (%init: tensor<?x?xi64>) { op_label = "tile-2d-point" }
+  return %result : tensor<?x?xi64>
+}
+
+// CHECK-SEQUENTIAL-LABEL: @scatter_i32_i64
+// CHECK-SEQUENTIAL-SAME:  (%[[INDICES:.*]]: {{.*}}, %[[UPDATES:.*]]: {{.*}}, %[[INIT:.*]]:
+// CHECK-SEQUENTIAL-DAG:   %[[ZERO:.*]] = arith.constant 0 : index
+// CHECK-SEQUENTIAL-DAG:   %[[ONE:.*]] = arith.constant 1 : index
+// CHECK-SEQUENTIAL-DAG:   %[[ZERO_I64:.*]] = arith.constant 0 : i64
+// CHECK-SEQUENTIAL-DAG:   %[[ZERO_TENSOR:.*]] = arith.constant dense<0> : tensor<1x1xi32>
+// CHECK-SEQUENTIAL:       %[[RESULT:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) =
+// CHECK-SEQUENTIAL-SAME:    outs (%[[INIT_FOR:.*]] = %[[INIT]]
+// CHECK-SEQUENTIAL:       %[[INDICES_D0:.*]] = tensor.dim %[[INDICES]], %[[ZERO]]
+// CHECK-SEQUENTIAL:       %[[UPD_ACC:.*]] = scf.for %[[K:[^ ]*]] =
+// CHECK-SEQUENTIAL-SAME:      %[[ZERO]] to %[[INDICES_D0]] step %[[ONE]]
+// CHECK-SEQUENTIAL-SAME:      iter_args(%[[UPD_ACC_VAR:.*]] = %[[ZERO_I64]])
+// CHECK-SEQUENTIAL:         %[[IDX_0:.*]] = tensor.extract %[[INDICES]][%[[K]], %[[ZERO]]]
+// CHECK-SEQUENTIAL:         %[[IDX_0_CAST:.*]] = arith.index_cast %[[IDX_0]]
+// CHECK-SEQUENTIAL:         %[[IDX_0_OK:.*]] = arith.cmpi eq, %[[IDX_0_CAST]], %[[I]]
+// CHECK-SEQUENTIAL:         %[[IDX_1:.*]] = tensor.extract %[[INDICES]][%[[K]], %[[ONE]]]
+// CHECK-SEQUENTIAL:         %[[IDX_1_CAST:.*]] = arith.index_cast %[[IDX_1]]
+// CHECK-SEQUENTIAL:         %[[IDX_1_OK:.*]] = arith.cmpi eq, %[[IDX_1_CAST]], %[[J]]
+// CHECK-SEQUENTIAL:         %[[UPD_IDX_OK:.*]] = arith.andi %[[IDX_0_OK]], %[[IDX_1_OK]]
+// CHECK-SEQUENTIAL:         %[[UPD_ACC_STEP:.*]] = scf.if %[[UPD_IDX_OK]]
+// CHECK-SEQUENTIAL:           %[[UPD_VALUE:.*]] = tensor.extract %[[UPDATES]][%[[K]]]
+// CHECK-SEQUENTIAL:           %[[UPD_ACC_SUM:.*]] = arith.addi %[[UPD_ACC_VAR]],
+// CHECK-SEQUENTIAL-SAME:                                       %[[UPD_VALUE]]
+// CHECK-SEQUENTIAL:           scf.yield %[[UPD_ACC_SUM]]
+// CHECK-SEQUENTIAL:         } else {
+// CHECK-SEQUENTIAL:           scf.yield %[[UPD_ACC_VAR]]
+// CHECK-SEQUENTIAL:         }
+// CHECK-SEQUENTIAL:         scf.yield %[[UPD_ACC_STEP]]
+// CHECK-SEQUENTIAL:       }
+// CHECK-SEQUENTIAL:       %[[UPD_TENSOR:.*]] = tensor.from_elements %[[UPD_ACC]]
+// CHECK-SEQUENTIAL:       %[[INIT_TILE:.*]] = gml_st.tile {{.*}} [%[[I]], %[[J]]]
+// CHECK-SEQUENTIAL:       %[[INIT_MAT:.*]] = gml_st.materialize
+// CHECK-SEQUENTIAL-SAME:                       %[[INIT_FOR]][%[[INIT_TILE]]]
+// CHECK-SEQUENTIAL:       %[[YIELD_VAL:.*]] = thlo.scatter
+// CHECK-SEQUENTIAL-SAME:     ins(%[[ZERO_TENSOR]] : {{.*}}, %[[UPD_TENSOR]] :
+// CHECK-SEQUENTIAL-SAME:     outs(%[[INIT_MAT]] :
+// CHECK-SEQUENTIAL:       gml_st.set_yield %[[YIELD_VAL]]
+// CHECK-SEQUENTIAL:       return %[[RESULT]]
+
+// PARALLEL-LABEL: @scatter_i32_i64
+// PARALLEL: gml_st.parallel
+
+// -----
+
+func.func @scatter_i32_f32(%indices: tensor<?x2xi32>, %updates: tensor<?xf32>,
+                           %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %result = thlo.scatter
+    ins (%indices: tensor<?x2xi32>, %updates: tensor<?xf32>)
+    outs (%init: tensor<?x?xf32>) { op_label = "tile-2d-point" }
+  return %result : tensor<?x?xf32>
+}
+
+// CHECK-SEQUENTIAL-LABEL: @scatter_i32_f32
+// CHECK-SEQUENTIAL-SAME:  (%{{.*}}, %[[UPDATES:.*]]: {{.*}}, %{{.*}}:
+// CHECK-SEQUENTIAL-DAG:   %[[ZERO_F:.*]] = arith.constant 0.00
+// CHECK-SEQUENTIAL:       scf.for %[[K:.*]] = {{.*}} step
+// CHECK-SEQUENTIAL-SAME:  iter_args(%[[UPD_ACC_VAR:.*]] = %[[ZERO_F]])
+// CHECK-SEQUENTIAL:       %[[UPD_VALUE:.*]] = tensor.extract %[[UPDATES]][%[[K]]]
+// CHECK-SEQUENTIAL:       arith.addf %[[UPD_ACC_VAR]], %[[UPD_VALUE]]
+
+// PARALLEL-LABEL: @scatter_i32_f32
+// PARALLEL: gml_st.parallel
+
+// -----
+
+func.func @scatter_2d_indices(%indices: tensor<?x?x2xi32>,
+    %updates: tensor<?x?xf32>, %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %result = thlo.scatter
+    ins (%indices: tensor<?x?x2xi32>, %updates: tensor<?x?xf32>)
+    outs (%init: tensor<?x?xf32>) { op_label = "tile-2d-point" }
+  return %result : tensor<?x?xf32>
+}
+
+// CHECK-SEQUENTIAL-LABEL: @scatter_2d_indices
+// CHECK-SEQUENTIAL-SAME:  (%[[INDICES:[^ ]*]]:
+// CHECK-SEQUENTIAL-DAG:   %[[ZERO:.*]] = arith.constant 0 : index
+// CHECK-SEQUENTIAL-DAG:   %[[ONE:.*]] = arith.constant 1 : index
+// CHECK-SEQUENTIAL-DAG:   %[[ZERO_F32:.*]] = arith.constant 0.00
+// CHECK-SEQUENTIAL:       %[[INDICES_D0:.*]] = tensor.dim %[[INDICES]], %[[ZERO]]
+// CHECK-SEQUENTIAL:       %[[OUTER_RESULT:.*]] = scf.for %{{[^ ]*}} = %[[ZERO]] to %[[INDICES_D0]]
+// CHECK-SEQUENTIAL-SAME:      iter_args(%[[OUTER_ACC:.*]] = %[[ZERO_F32]])
+// CHECK-SEQUENTIAL:         %[[INDICES_D1:.*]] = tensor.dim %[[INDICES]], %[[ONE]]
+// CHECK-SEQUENTIAL:         %[[INNER_RESULT:.*]] = scf.for %{{[^ ]*}} = %[[ZERO]] to %[[INDICES_D1]]
+// CHECK-SEQUENTIAL-SAME:        iter_args(%[[INNER_ACC:.*]] = %[[OUTER_ACC]])
+// CHECK-SEQUENTIAL:           scf.yield
+// CHECK-SEQUENTIAL:         scf.yield %[[INNER_RESULT]]
+// CHECK-SEQUENTIAL:       tensor.from_elements %[[OUTER_RESULT]]
+
+// PARALLEL-LABEL: @scatter_2d_indices
+// PARALLEL: gml_st.parallel

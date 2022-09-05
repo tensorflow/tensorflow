@@ -112,7 +112,8 @@ def THLO_GatherOp : THLO_DstStyleOp<"gather", []> {
   let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
-def THLO_ScatterOp : THLO_DstStyleOp<"scatter", []> {
+def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
+    DeclareOpInterfaceMethods<TilingInterface>]> {
   let summary = "Destination-style twin for `mhlo.scatter`";
   let description = [{
     Caveats:
