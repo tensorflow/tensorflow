@@ -748,7 +748,7 @@ SmallVector<Value> ScatterOp::getDestinationOperands(OpBuilder &) {
 }
 
 SmallVector<Range> ScatterOp::getIterationDomain(OpBuilder &b) {
-  auto initRank = init().getType().cast<ShapedType>().getRank();
+  auto initRank = init().getType().getRank();
   auto indexVectorDimSize = indices().getType().getShape().back();
   (void)initRank;
   (void)indexVectorDimSize;
@@ -768,7 +768,7 @@ mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
   // inefficient, but for now only correctness is the goal.
   auto loc = getLoc();
   TensorType indicesTy = indices().getType();
-  auto initTy = init().getType().cast<ShapedType>();
+  auto initTy = init().getType();
 
   // We accumulate all the updates for the current point.
   Type elementTy = initTy.getElementType();
@@ -960,8 +960,8 @@ LogicalResult TransposeOp::verify() {
   if (!isValidPermutation(permutationRef))
     return emitOpError("permutation is not valid");
 
-  auto inputType = input().getType().cast<ShapedType>();
-  auto initType = init().getType().cast<ShapedType>();
+  auto inputType = input().getType();
+  auto initType = init().getType();
 
   int64_t rank = inputType.getRank();
 

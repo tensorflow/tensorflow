@@ -22,7 +22,8 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-def TensorOrMemref : AnyTypeOf<[AnyMemRef, AnyRankedTensor]>;
+def TensorOrMemref :
+  AnyTypeOf<[AnyMemRef, AnyRankedTensor], "", "::mlir::ShapedType">;
 
 def THLO_Dialect : Dialect {
   let name = "thlo";
