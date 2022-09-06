@@ -152,13 +152,13 @@ bool dimensionsMatch(int64_t d1, int64_t d2) {
   return ShapedType::isDynamic(d1) || ShapedType::isDynamic(d2) || d1 == d2;
 }
 
-SmallVector<StringRef> getParallelIteratorTypes(int dimCount) {
+SmallVector<StringRef> getParallelIteratorTypes(int64_t dimCount) {
   return SmallVector<StringRef>(dimCount, getParallelIteratorTypeName());
 }
 
 SmallVector<Range> getIterationDomainForTensor(OpBuilder &b, Location loc,
                                                Value tensor,
-                                               int dimCount = -1) {
+                                               int64_t dimCount = -1) {
   auto dimValues = tensor::createDimValues(b, loc, tensor);
   if (dimCount >= 0) dimValues.resize(dimCount);
   return llvm::to_vector(llvm::map_range(dimValues, [&](Value d) {
@@ -202,24 +202,6 @@ void THLODialect::initialize() {
 
 namespace {
 
-SmallVector<StringRef> getDefaultLoopIteratorTypes(Value initTensor) {
-  auto initTy = initTensor.getType().cast<RankedTensorType>();
-  SmallVector<StringRef> allParallel(initTy.getRank(),
-                                     getParallelIteratorTypeName());
-  return allParallel;
-}
-
-SmallVector<Range> getDefaultIterationDomain(OpBuilder &b, Location loc,
-                                             Value initTensor) {
-  // Simple iteration domain defined on the result space. This way, tiling and
-  // fusion can rely directly on the same implementation.
-  auto dimValues = tensor::createDimValues(b, loc, initTensor);
-  auto oneAttr = b.getIndexAttr(1);
-  return llvm::to_vector(llvm::map_range(dimValues, [&](auto d) -> Range {
-    return {b.getIndexAttr(0), d, oneAttr};
-  }));
-}
-
 gml_st::TileOp createTileOp(OpBuilder &b, Location loc, Value tensor,
                             ArrayRef<OpFoldResult> offsets,
                             ArrayRef<OpFoldResult> sizes) {
@@ -236,7 +218,7 @@ gml_st::TileOp createTileOp(OpBuilder &b, Location loc, Value tensor,
 }  // namespace
 
 SmallVector<StringRef> ConcatenateOp::getLoopIteratorTypes() {
-  return getDefaultLoopIteratorTypes(init());
+  return getParallelIteratorTypes(init().getType().getRank());
 }
 
 SmallVector<Value> ConcatenateOp::getDestinationOperands(OpBuilder &) {
@@ -244,7 +226,7 @@ SmallVector<Value> ConcatenateOp::getDestinationOperands(OpBuilder &) {
 }
 
 SmallVector<Range> ConcatenateOp::getIterationDomain(OpBuilder &b) {
-  return getDefaultIterationDomain(b, getLoc(), init());
+  return getIterationDomainForTensor(b, getLoc(), init());
 }
 
 namespace {
@@ -517,7 +499,7 @@ SmallVector<Value> DynamicBroadcastInDimOp::getDestinationOperands(
 }
 
 SmallVector<Range> DynamicBroadcastInDimOp::getIterationDomain(OpBuilder &b) {
-  return getDefaultIterationDomain(b, getLoc(), init());
+  return getIterationDomainForTensor(b, getLoc(), init());
 }
 
 gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
