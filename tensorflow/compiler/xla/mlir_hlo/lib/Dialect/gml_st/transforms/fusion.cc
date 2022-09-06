@@ -172,26 +172,56 @@ class DeprecatedFusionPass
   }
 };
 
-FailureOr<TilingInterface> fuseIntoMaterializeOp(OpBuilder& b,
-                                                 MaterializeOp materializeOp) {
+// Helper function to extract indices from the subset-based representation in.
+// This is to adapt to the tiling interface.
+void getOrMaterializeMixedOffsetsAndSizes(OpBuilder& b, Location loc,
+                                          Value tile,
+                                          SmallVector<OpFoldResult>& offsets,
+                                          SmallVector<OpFoldResult>& sizes) {
+  // If the tile is not nested, we can extract the indices from the op.
+  if (auto tileOp = tile.getDefiningOp<TileOp>()) {
+    if (tileOp.superset().getDefiningOp<SpaceOp>()) {
+      offsets = tileOp.getMixedOffsets();
+      sizes = tileOp.getMixedSizes();
+      return;
+    }
+  }
+
+  // Otherwise, we have to materialize ops to extract the needed offstes and
+  // sizes.
+  int64_t rank = tile.getType().cast<TileType>().getRank();
+  offsets.clear();
+  offsets.reserve(rank);
+  sizes.clear();
+  sizes.reserve(rank);
+  for (int64_t i = 0; i < rank; i++) {
+    auto iCst = b.create<arith::ConstantIndexOp>(loc, i);
+    Value offset = b.create<OffsetOp>(loc, tile, iCst);
+    offsets.push_back(offset);
+    Value size = b.create<SizeOp>(loc, tile, iCst);
+    sizes.push_back(size);
+  }
+}
+
+FailureOr<Value> fuseIntoMaterializeOp(OpBuilder& b, Location loc,
+                                       MaterializeOp materializeOp) {
   auto tileableOp = materializeOp.source().getDefiningOp<TilingInterface>();
   if (!tileableOp) return failure();
 
-  SmallVector<Value> destinationOperands = tileableOp.getDestinationOperands(b);
+  Value tile = materializeOp.set();
+  if (!tile.getType().isa<TileType>()) return failure();
 
-  // Restrict the subsets in which we can fuse to a gml_st.tile(gml_st.space).
-  auto set = materializeOp.set();
-  auto tile = set.getDefiningOp<TileOp>();
-  if (!tile) return failure();
-  if (!tile.superset().getDefiningOp<SpaceOp>()) return failure();
+  SmallVector<OpFoldResult> offsets;
+  SmallVector<OpFoldResult> sizes;
+  getOrMaterializeMixedOffsetsAndSizes(b, loc, tile, offsets, sizes);
 
   // Tile the producer.
   OpBuilder::InsertionGuard guard(b);
   b.setInsertionPoint(materializeOp);
-  FailureOr<Value> tiledProducer = tileableOp.generateResultTileValue(
-      b, /*resultNumber=*/0, tile.getMixedOffsets(), tile.getMixedSizes());
+  FailureOr<Value> tiledProducer =
+      tileableOp.generateResultTileValue(b, /*resultNumber=*/0, offsets, sizes);
   if (failed(tiledProducer)) return failure();
-  return tiledProducer->getDefiningOp<TilingInterface>();
+  return tiledProducer;
 }
 
 class FusionPattern : public OpRewritePattern<MaterializeOp> {
@@ -202,13 +232,22 @@ class FusionPattern : public OpRewritePattern<MaterializeOp> {
 
   LogicalResult matchAndRewrite(MaterializeOp materializeOp,
                                 PatternRewriter& rewriter) const override {
-    if (!filterFn || failed(filterFn(materializeOp))) return failure();
+    assert(filterFn && "expect filter function");
+    if (failed(filterFn(materializeOp))) return failure();
 
-    auto fusedOpOr = fuseIntoMaterializeOp(rewriter, materializeOp);
-    if (failed(fusedOpOr)) return failure();
+    Location loc = materializeOp.getLoc();
+    FailureOr<Value> fused =
+        fuseIntoMaterializeOp(rewriter, loc, materializeOp);
+    if (failed(fused)) return failure();
 
-    rewriter.replaceOp(materializeOp, fusedOpOr->getOperation()->getResult(0));
+    // Insert cast if needed.
+    if (fused->getType() != materializeOp.getType()) {
+      fused =
+          rewriter.create<tensor::CastOp>(loc, materializeOp.getType(), *fused)
+              .getResult();
+    }
 
+    rewriter.replaceOp(materializeOp, *fused);
     return success();
   }
 
@@ -223,7 +262,7 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
   }
 
   void getDependentDialects(DialectRegistry& registry) const final {
-    registry.insert<GmlStDialect>();
+    registry.insert<GmlStDialect, tensor::TensorDialect>();
     registerGmlStTilingInterfaceExternalModels(registry);
   }
 
@@ -234,8 +273,9 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
       auto materializeOp = cast<MaterializeOp>(op);
       Operation* producerOp = materializeOp.source().getDefiningOp();
       if (!producerOp || (!producerLabel.empty() &&
-                          !hasMatchingLabel(producerOp, producerLabel)))
+                          !hasMatchingLabel(producerOp, producerLabel))) {
         return failure();
+      }
 
       Operation* consumerOp = nullptr;
       if (!consumerLabel.empty()) {
@@ -247,6 +287,7 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
         }
         return success(consumerOp != nullptr);
       }
+
       return success();
     };
 
@@ -267,9 +308,15 @@ std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedFusionPass() {
   return std::make_unique<DeprecatedFusionPass>();
 }
 
-void populateFusionPatterns(MLIRContext* context, OpFilterFn filterFn,
+void populateFusionPatterns(MLIRContext* ctx, OpFilterFn filterFn,
                             RewritePatternSet* patterns) {
-  patterns->insert<FusionPattern>(context, filterFn);
+  patterns->insert<FusionPattern>(ctx, filterFn);
+  // clang-format off
+  patterns->insert<
+      DimOpFissionPattern,
+      DimOpReificationPattern,
+      DeprecatedFusionPattern>(ctx);
+  // clang-format on
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
