@@ -14,6 +14,7 @@ package_group(
         # copybara:uncomment "//learning/brain/google/xla/...",
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        "//tensorflow/core/common_runtime/next_pluggable_device/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/eager/backends/tpu/...",
         "//tensorflow/dtensor/...",
@@ -47,7 +48,10 @@ cc_library(
     hdrs = [
         "async_value_tensor.h",
     ],
-    compatible_with = if_google(["//buildenv/target:libtpu"]),
+    compatible_with = if_google([
+        "//buildenv/target:libtpu",
+        "//buildenv/target:gce",
+    ]),
     visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
