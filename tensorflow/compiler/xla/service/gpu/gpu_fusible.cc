@@ -34,9 +34,10 @@ namespace gpu {
 
 bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
-  // Avoid fusing gather if it has output larger than the input
+  // Avoid fusing gather or broadcast if output is larger than the input
   // which means that inputs are used multiple times.
-  if (instr.opcode() == HloOpcode::kGather) {
+  if (instr.opcode() == HloOpcode::kGather ||
+      instr.opcode() == HloOpcode::kBroadcast) {
     return ShapeUtil::ElementsIn(instr.shape()) >
            ShapeUtil::ElementsIn(instr.operand(0)->shape());
   }
