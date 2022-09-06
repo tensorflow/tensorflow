@@ -1655,6 +1655,7 @@ filegroup(
     srcs = [
         "test.h",
         "test_benchmark.h",
+        "//tensorflow/tsl/platform:test_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -1664,6 +1665,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "test.h",
+        "//tensorflow/tsl/platform:android_test_srcs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
