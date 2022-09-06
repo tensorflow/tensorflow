@@ -51,6 +51,7 @@ cc_library(
         "//tensorflow/core/platform:platform_port",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
     ],
