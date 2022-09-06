@@ -27,11 +27,11 @@ func.func @gather(%arg: tensor<100xf32>,
 
 // -----
 
-func.func @scatter(%indices: tensor<2x2xi64>,
+func.func @scatter(%indices: tensor<3x2xi64>,
                    %updates: tensor<3xf32>,
                    %dst: tensor<3x3xf32>) -> tensor<3x3xf32> {
   %scatter = thlo.scatter
-      ins(%indices: tensor<2x2xi64>, %updates: tensor<3xf32>)
+      ins(%indices: tensor<3x2xi64>, %updates: tensor<3xf32>)
       outs(%dst: tensor<3x3xf32>)
   func.return %scatter : tensor<3x3xf32>
 }

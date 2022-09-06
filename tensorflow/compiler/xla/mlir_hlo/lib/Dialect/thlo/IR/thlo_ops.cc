@@ -736,7 +736,18 @@ ParseResult ScatterOp::parse(OpAsmParser &parser, OperationState &result) {
 void ScatterOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult ScatterOp::verify() {
-  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+  if (failed(verifyDestinationStyleOp(getOperation(), getNumOutputs())))
+    return failure();
+
+  auto indicesShapeWithoutVectorDim =
+      indices().getType().getShape().drop_back(1);
+  if (indicesShapeWithoutVectorDim !=
+      updates().getType().cast<ShapedType>().getShape()) {
+    return emitOpError(
+        "Expected indices.shape to be updates.shape + [index_vector_dim_size]");
+  }
+
+  return success();
 }
 
 SmallVector<StringRef> ScatterOp::getLoopIteratorTypes() {
@@ -840,10 +851,9 @@ mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
   b.setInsertionPointAfter(forOps.front().getOperation());
 
   // Construct a unit scatter.
-  SmallVector<int64_t> allOnes(offsets.size(), 1);
   Value zeroIndexVector = b.create<arith::ConstantOp>(
       getLoc(),
-      SplatElementsAttr::get(RankedTensorType::get(allOnes, b.getI32Type()),
+      DenseElementsAttr::get(RankedTensorType::get({1}, b.getI32Type()),
                              b.getI32IntegerAttr(0)));
   Value updateScalar = b.create<tensor::FromElementsOp>(
       getLoc(), RankedTensorType::get({}, elementTy), accumulatedUpdates);

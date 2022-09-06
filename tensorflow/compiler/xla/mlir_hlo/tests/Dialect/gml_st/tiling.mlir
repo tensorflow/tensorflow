@@ -277,7 +277,7 @@ func.func @scatter_i32_i64(%indices: tensor<?x2xi32>, %updates: tensor<?xi64>,
 // CHECK-SEQUENTIAL-DAG:   %[[ZERO:.*]] = arith.constant 0 : index
 // CHECK-SEQUENTIAL-DAG:   %[[ONE:.*]] = arith.constant 1 : index
 // CHECK-SEQUENTIAL-DAG:   %[[ZERO_I64:.*]] = arith.constant 0 : i64
-// CHECK-SEQUENTIAL-DAG:   %[[ZERO_TENSOR:.*]] = arith.constant dense<0> : tensor<1x1xi32>
+// CHECK-SEQUENTIAL-DAG:   %[[ZERO_TENSOR:.*]] = arith.constant dense<0> : tensor<1xi32>
 // CHECK-SEQUENTIAL:       %[[RESULT:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) =
 // CHECK-SEQUENTIAL-SAME:    outs (%[[INIT_FOR:.*]] = %[[INIT]]
 // CHECK-SEQUENTIAL:       %[[INDICES_D0:.*]] = tensor.dim %[[INDICES]], %[[ZERO]]
