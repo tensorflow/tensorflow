@@ -318,14 +318,13 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
     // concat dimension. The remaining offset is subtracted by the operand's
     // size but must remain >= 0.
     if (operand != allOperands.back()) {
-      remainingTileOffsetInConcatDim = builder.create<arith::SelectOp>(
-          loc,
-          builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ule,
-                                        remainingTileOffsetInConcatDim,
-                                        operandSizeInConcatDim),
-          zeroCst,
-          builder.create<arith::SubIOp>(loc, remainingTileOffsetInConcatDim,
-                                        operandSizeInConcatDim));
+      Value cmp = builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ule,
+                                                remainingTileOffsetInConcatDim,
+                                                operandSizeInConcatDim);
+      Value sub = builder.create<arith::SubIOp>(
+          loc, remainingTileOffsetInConcatDim, operandSizeInConcatDim);
+      remainingTileOffsetInConcatDim =
+          builder.create<arith::SelectOp>(loc, cmp, zeroCst, sub);
     }
   }
 
