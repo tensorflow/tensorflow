@@ -81,6 +81,51 @@ cc_library(
 )
 
 cc_library(
+    name = "test",
+    testonly = True,
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["test.h"],
+    deps = tf_testing_deps("test") + [
+        ":macros",
+        ":platform",
+        "@com_google_googletest//:gtest",
+        "//tensorflow/core:tflite_portable_logging",
+    ],
+)
+
+cc_library(
+    name = "test_benchmark",
+    testonly = True,
+    hdrs = ["test_benchmark.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+        "@com_google_benchmark//:benchmark",
+    ],
+)
+
+filegroup(
+    name = "test_hdrs",
+    testonly = 1,
+    srcs = [
+        "test.h",
+        "test_benchmark.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "android_test_srcs",
+    testonly = 1,
+    srcs = [
+        "test.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+cc_library(
     name = "tstring",
     hdrs = [
         "ctstring.h",
@@ -194,9 +239,13 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "fingerprint.h",
+        "test_benchmark.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//tensorflow/core/platform:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+    ],
 )
 
 filegroup(
@@ -244,6 +293,10 @@ exports_files(
         "resource.h",
         "snappy.h",
         "stacktrace_handler.h",
+        "cuda_libdevice_path.h",
+        "test.h",
+        "bfloat16.h",
+        "logging.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )

@@ -406,6 +406,7 @@ cc_library(
         "//tensorflow/core/lib/core:legacy_lib_core_status_test_util_header",
         "//tensorflow/core/platform:test_hdrs",
         "//tensorflow/core/util:test_hdrs",
+        "//tensorflow/tsl/platform:test_hdrs",
     ],
     copts = tf_copts(),
     linkopts = select({
@@ -957,6 +958,7 @@ filegroup(
         "//tensorflow/core/lib/random:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/strings:mobile_srcs_only_runtime",
         "//tensorflow/core/platform:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/platform:mobile_srcs_only_runtime",
 
         # Wav io files
         "//tensorflow/core/lib/wav:wav_io.h",

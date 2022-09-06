@@ -24,7 +24,7 @@ load(
     "tf_platform_alias",
     "tf_platform_deps",
     "tf_protobuf_deps",
-    "tf_testing_deps",
+    "tf_testing_deps",  # @unused
     "tf_windows_aware_platform_deps",
 )
 load(
@@ -849,12 +849,10 @@ cc_library(
 cc_library(
     name = "test",
     testonly = True,
+    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["test.h"],
-    deps = tf_testing_deps("test") + [
-        ":macros",
-        ":platform",
-        "@com_google_googletest//:gtest",
-        "//tensorflow/core:tflite_portable_logging",
+    deps = [
+        "//tensorflow/tsl/platform:test",
     ],
 )
 
@@ -863,8 +861,7 @@ cc_library(
     testonly = True,
     hdrs = ["test_benchmark.h"],
     deps = [
-        ":platform",
-        "@com_google_benchmark//:benchmark",
+        "//tensorflow/tsl/platform:test_benchmark",
     ],
 )
 
