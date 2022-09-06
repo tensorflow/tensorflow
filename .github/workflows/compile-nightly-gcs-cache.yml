@@ -16,7 +16,7 @@
 on:
   workflow_dispatch:  # Allow manual triggers
   schedule:
-    - cron: 0 5 * * *  # 4am UTC is 9pm PDT and 8pm PST (1 hour after nightly push job)
+    - cron: 0 5 * * *  # 5am UTC is 10pm PDT and 9pm PST (1 hour after nightly push job)
 name: Compile nightly brach with the bazel public remote GCS cache 
 jobs: 
   compile-nigihtly-with-gcs-cache:
