@@ -48,7 +48,7 @@ cc_library(
     hdrs = ["async_runtime.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/tsl/platform:platform_port",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/status",
@@ -62,7 +62,7 @@ cc_library(
     hdrs = ["async_values_cache.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/core/platform:platform",
+        "//tensorflow/tsl/platform:platform",
     ] + tf_platform_deps(
         "async_values_cache",
         platform_dir = "//tensorflow/compiler/xla/runtime/",
@@ -263,7 +263,7 @@ cc_library(
     hdrs = ["memory_mapper.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/core/platform:platform",
+        "//tensorflow/tsl/platform:platform",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:Support",
     ] + tf_platform_deps(

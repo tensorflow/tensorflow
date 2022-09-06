@@ -34,9 +34,9 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/tsl/platform/cuda_libdevice_path.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace stream_executor {
 

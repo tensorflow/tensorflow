@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace {
 
@@ -46,7 +46,7 @@ xla::XlaComputation Doubler() {
 }  // namespace
 
 int main(int argc, char** argv) {
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  tsl::port::InitMain(argv[0], &argc, &argv);
 
   auto client = xla::ClientLibrary::GetOrCreateCompileOnlyClient().value();
 

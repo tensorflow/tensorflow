@@ -42,8 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace jax {
 

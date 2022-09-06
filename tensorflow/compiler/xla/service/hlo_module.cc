@@ -47,10 +47,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -805,7 +805,7 @@ class FingerprintMap {
     auto result = fingerprint_map_.try_emplace(computation, 0);
     if (result.second) {
       result.first->second =
-          tensorflow::Fingerprint64(computation->ToString(print_options_));
+          tsl::Fingerprint64(computation->ToString(print_options_));
     }
     return result.first->second;
   }

@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/numbers.h"
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 namespace xla {
 

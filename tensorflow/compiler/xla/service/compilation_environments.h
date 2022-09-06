@@ -23,8 +23,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/casts.h"
 
 namespace xla {
 

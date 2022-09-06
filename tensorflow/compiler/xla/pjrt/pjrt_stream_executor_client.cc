@@ -118,13 +118,13 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/mem.h"
 
 namespace xla {
 
@@ -195,11 +195,9 @@ class CpuAllocator : public tensorflow::Allocator {
   std::string Name() override { return "cpu"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    return tensorflow::port::AlignedMalloc(num_bytes, alignment);
+    return tsl::port::AlignedMalloc(num_bytes, alignment);
   }
-  void DeallocateRaw(void* ptr) override {
-    return tensorflow::port::AlignedFree(ptr);
-  }
+  void DeallocateRaw(void* ptr) override { return tsl::port::AlignedFree(ptr); }
 };
 
 PjRtStreamExecutorClient::PjRtStreamExecutorClient(
@@ -209,7 +207,7 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
-    : platform_id_(tensorflow::Fingerprint64(platform_name)),
+    : platform_id_(tsl::Fingerprint64(platform_name)),
       platform_name_(std::move(platform_name)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),

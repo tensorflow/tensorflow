@@ -60,6 +60,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
     ],
     alwayslink = True,  # Contains compiler registration
@@ -123,6 +124,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
@@ -152,6 +154,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/host:host_timer",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_headers_lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/types:span",
     ],
 )

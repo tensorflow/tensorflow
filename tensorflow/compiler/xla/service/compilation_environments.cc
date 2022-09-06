@@ -28,8 +28,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {

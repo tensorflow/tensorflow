@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
@@ -64,15 +64,15 @@ inline const char* TpuName() {
   return kTpuName;
 }
 inline PjRtPlatformId CpuId() {
-  static const PjRtPlatformId kCpuId = tensorflow::Fingerprint64(CpuName());
+  static const PjRtPlatformId kCpuId = tsl::Fingerprint64(CpuName());
   return kCpuId;
 }
 inline PjRtPlatformId GpuId() {
-  static const PjRtPlatformId kGpuId = tensorflow::Fingerprint64(GpuName());
+  static const PjRtPlatformId kGpuId = tsl::Fingerprint64(GpuName());
   return kGpuId;
 }
 inline PjRtPlatformId TpuId() {
-  static const PjRtPlatformId kTpuId = tensorflow::Fingerprint64(TpuName());
+  static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
   return kTpuId;
 }
 

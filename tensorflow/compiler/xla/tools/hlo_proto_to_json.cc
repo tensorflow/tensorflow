@@ -33,9 +33,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 using std::string;
 using tensorflow::Env;
@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
   };
   const std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
+  tsl::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(parse_ok && argc == 1) << "\n" << usage;
 
   QCHECK(!input_file.empty()) << "--input_file is required";

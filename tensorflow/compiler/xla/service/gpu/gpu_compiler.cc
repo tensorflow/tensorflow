@@ -180,15 +180,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 #if XLA_ENABLE_XLIR
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"

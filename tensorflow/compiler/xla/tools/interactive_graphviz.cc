@@ -44,11 +44,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 #if defined(PLATFORM_GOOGLE)
 #include "util/readline/readline.h"
 #endif
@@ -769,7 +769,7 @@ int main(int argc, char** argv) {
   };
   std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  tsl::port::InitMain(argv[0], &argc, &argv);
   if (argc != 1 || !parse_ok || need_help) {
     LOG(QFATAL) << usage;
   }

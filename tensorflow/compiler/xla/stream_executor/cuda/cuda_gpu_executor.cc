@@ -366,7 +366,7 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
 
 namespace {
 absl::uint128 Fingerprint128(const absl::string_view s) {
-  auto fp = tensorflow::Fingerprint128(s);
+  auto fp = tsl::Fingerprint128(s);
   return absl::MakeUint128(fp.high64, fp.low64);
 }
 }  // namespace

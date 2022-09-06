@@ -74,9 +74,9 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace tools {
@@ -566,7 +566,7 @@ int main(int argc, char** argv) {
   xla::AppendDebugOptionsFlags(&flag_list);
   std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  tsl::port::InitMain(argv[0], &argc, &argv);
   if (argc < 2 || !parse_ok) {
     LOG(QFATAL) << usage;
   }

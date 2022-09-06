@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/tsl/platform/macros.h"
 
 namespace tensorflow {
 namespace tpu {

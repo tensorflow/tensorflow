@@ -80,7 +80,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/kernel_cache_config.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/array_slice.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace stream_executor {
 

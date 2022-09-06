@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
 

@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 
 namespace stream_executor {
 

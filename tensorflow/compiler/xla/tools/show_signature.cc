@@ -26,6 +26,7 @@ limitations under the License.
 // file_path: computation_name :: program_shape_str
 
 #include <stdio.h>
+
 #include <memory>
 #include <string>
 
@@ -38,8 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace tools {
@@ -63,7 +64,7 @@ void RealMain(absl::Span<char* const> args) {
 }  // namespace xla
 
 int main(int argc, char** argv) {
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  tsl::port::InitMain(argv[0], &argc, &argv);
 
   absl::Span<char* const> args(argv, argc);
   args.remove_prefix(1);  // Pop off the binary name, argv[0]

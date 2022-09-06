@@ -58,7 +58,7 @@ limitations under the License.
 #include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
 namespace {

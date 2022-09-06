@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
                                      void*, int64_t*, uint64_t*);

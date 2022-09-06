@@ -124,7 +124,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/human_readable_json.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/cublas_lt_matmul_thunk.h"

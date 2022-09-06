@@ -18,9 +18,9 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 GTEST_API_ int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;

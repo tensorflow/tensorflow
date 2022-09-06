@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 

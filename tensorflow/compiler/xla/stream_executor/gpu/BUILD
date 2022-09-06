@@ -112,6 +112,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -123,7 +124,7 @@ cc_library(
     hdrs = if_gpu_is_configured(["gpu_helpers.h"]),
     deps = [
         ":gpu_types_header",
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 
@@ -241,7 +242,7 @@ cc_library(
         ":gpu_helpers_header",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/core/platform:regexp",
+        "//tensorflow/tsl/platform:regexp",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:env",
@@ -282,7 +283,7 @@ cc_library(
         ":gpu_helpers_header",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/core/platform:regexp",
+        "//tensorflow/tsl/platform:regexp",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:env",
@@ -328,6 +329,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",

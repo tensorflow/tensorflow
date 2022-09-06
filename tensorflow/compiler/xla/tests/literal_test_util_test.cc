@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {

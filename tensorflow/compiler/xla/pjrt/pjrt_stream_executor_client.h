@@ -53,7 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/casts.h"
+#include "tensorflow/tsl/platform/casts.h"
 
 namespace xla {
 

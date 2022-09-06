@@ -21,9 +21,9 @@ limitations under the License.
 #include "grpcpp/server_builder.h"
 #include "tensorflow/compiler/xla/rpc/grpc_service.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -46,7 +46,7 @@ int RealMain(int argc, char** argv) {
     LOG(ERROR) << usage;
     return 2;
   }
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  tsl::port::InitMain(argv[0], &argc, &argv);
 
   se::Platform* platform = nullptr;
   if (!platform_str.empty()) {

@@ -26,9 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 const char* const kUsage = R"(
 This tool reads in an HloModule from a file, compiles it using the NVPTX
@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
   const std::string kUsageString = absl::StrCat(
       kUsage, "\n\n", tensorflow::Flags::Usage(argv[0], flag_list));
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  tensorflow::port::InitMain(kUsageString.c_str(), &argc, &argv);
+  tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
   if (!parse_ok) {
     LOG(QFATAL) << kUsageString;
   }

@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace stream_executor {
 

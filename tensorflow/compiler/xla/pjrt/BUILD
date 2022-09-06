@@ -32,6 +32,7 @@ cc_library(
     hdrs = ["worker_thread.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -56,7 +57,7 @@ cc_library(
     hdrs = ["semaphore.h"],
     deps = [
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
     ],
@@ -70,6 +71,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -93,6 +95,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
     ],
@@ -171,6 +174,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -338,6 +342,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -383,6 +388,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_initializer_helper",
         "//tensorflow/core/tpu:tpu_on_demand_compiler",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -515,7 +521,7 @@ cc_library(
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/synchronization",
@@ -596,7 +602,7 @@ cc_library(
     name = "lru_cache",
     hdrs = ["lru_cache.h"],
     deps = [
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:node_hash_map",
     ],
 )
@@ -609,7 +615,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 
@@ -627,8 +633,8 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core/platform:logging",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/platform:logging",
         "//third_party/eigen3",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",

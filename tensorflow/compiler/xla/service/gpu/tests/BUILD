@@ -61,6 +61,7 @@ cc_library(
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -218,6 +219,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -275,6 +277,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -297,6 +300,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -320,6 +324,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -348,6 +353,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -375,6 +381,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -399,6 +406,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -422,6 +430,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 
@@ -535,6 +544,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 
@@ -730,6 +740,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -749,6 +760,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
@@ -792,6 +804,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 
