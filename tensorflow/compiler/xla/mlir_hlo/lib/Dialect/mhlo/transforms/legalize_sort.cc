@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arithmetic/Utils/Utils.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -84,6 +85,7 @@ Value emitBinarySearch(ImplicitLocOpBuilder& b, Value leftInit, Value rightInit,
                        SmallVector<Value>& pivots, ValueRange arrayMemrefs,
                        Region& comparator) {
   SmallVector<Type, 2> types{leftInit.getType(), rightInit.getType()};
+  ArithBuilder arith(b, b.getLoc());
 
   // while (
   auto whileOp =
@@ -96,9 +98,7 @@ Value emitBinarySearch(ImplicitLocOpBuilder& b, Value leftInit, Value rightInit,
   {
     Value left = before->getArgument(0), right = before->getArgument(1);
     b.setInsertionPointToEnd(before);
-    b.create<scf::ConditionOp>(
-        b.create<arith::CmpIOp>(CmpIPredicate::slt, left, right),
-        before->getArguments());
+    b.create<scf::ConditionOp>(arith.slt(left, right), before->getArguments());
   }
 
   Block* after = b.createBlock(&whileOp.getAfter(), {}, types,
@@ -108,7 +108,7 @@ Value emitBinarySearch(ImplicitLocOpBuilder& b, Value leftInit, Value rightInit,
     b.setInsertionPointToEnd(after);
     //   int mid = (left + right) >> 1;
     Value one = b.create<arith::ConstantIndexOp>(1);
-    Value mid = b.create<arith::ShRUIOp>(b.create<AddIOp>(left, right), one);
+    Value mid = b.create<arith::ShRUIOp>(arith.add(left, right), one);
     Value midPlusOne = b.create<AddIOp>(mid, one);
 
     auto arraysAtMid = llvm::to_vector(
@@ -120,8 +120,8 @@ Value emitBinarySearch(ImplicitLocOpBuilder& b, Value leftInit, Value rightInit,
     //     right = mid;
     //   else
     //     left = mid + 1;
-    Value newLeft = b.create<SelectOp>(cond, left, midPlusOne);
-    Value newRight = b.create<SelectOp>(cond, mid, right);
+    Value newLeft = arith.select(cond, left, midPlusOne);
+    Value newRight = arith.select(cond, mid, right);
 
     // }
     b.create<scf::YieldOp>(ValueRange{newLeft, newRight});
@@ -158,6 +158,7 @@ void storeMemrefElements(ImplicitLocOpBuilder& b, ValueRange memrefs,
 void emitInsertionSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
                        ValueRange inputTensors, ValueRange outputMemrefs,
                        mlir::Region& comparator) {
+  ArithBuilder arith(b, b.getLoc());
   Value zero = b.create<arith::ConstantIndexOp>(0);
   Value one = b.create<arith::ConstantIndexOp>(1);
 
@@ -167,7 +168,7 @@ void emitInsertionSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
 
   // for (int start = lo + 1; start < hi; ++start)
   {
-    auto forOp = b.create<scf::ForOp>(b.create<AddIOp>(lo, one), hi, one);
+    auto forOp = b.create<scf::ForOp>(arith.add(lo, one), hi, one);
     OpBuilder::InsertionGuard outerGuard(b);
     b.setInsertionPointToStart(forOp.getBody());
     Value start = forOp.getInductionVar();
@@ -180,7 +181,7 @@ void emitInsertionSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
         emitBinarySearch(b, lo, start, pivots, outputMemrefs, comparator);
 
     //   int n = start - index;  // The number of elements to move
-    Value n = b.create<SubIOp>(start, index);
+    Value n = arith.sub(start, index);
 
     // memmove(&array[index + 1], &array[index], n * sizeof(T))
     // memref::CopyOp would be nice to use here, but:
@@ -194,8 +195,8 @@ void emitInsertionSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
       b.setInsertionPointToStart(copyForOp.getBody());
       Value copyLoopIndex = copyForOp.getBody()->getArgument(0);
 
-      Value dstIndex = b.create<SubIOp>(start, copyLoopIndex);
-      Value srcIndex = b.create<SubIOp>(dstIndex, one);
+      Value dstIndex = arith.sub(start, copyLoopIndex);
+      Value srcIndex = arith.sub(dstIndex, one);
       storeMemrefElements(b, outputMemrefs, dstIndex,
                           loadMemrefElements(b, outputMemrefs, srcIndex));
     }
@@ -207,6 +208,7 @@ void emitInsertionSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
 void emitMerge(ImplicitLocOpBuilder& b, Value lo, Value mid, Value hi,
                ValueRange readBufs, ValueRange writeBufs,
                mlir::Region& comparator) {
+  ArithBuilder arith(b, b.getLoc());
   // The while loop runs until we reach the end of either interval. It has three
   // loop-carried variables:
   // 1. current output index
@@ -227,10 +229,10 @@ void emitMerge(ImplicitLocOpBuilder& b, Value lo, Value mid, Value hi,
       b.setInsertionPointToEnd(before);
 
       //     i0 < mid && i1 < hi) {
-      Value inbounds0 = b.create<arith::CmpIOp>(CmpIPredicate::slt, i0, mid);
-      Value inbounds1 = b.create<arith::CmpIOp>(CmpIPredicate::slt, i1, hi);
+      Value inbounds0 = arith.slt(i0, mid);
+      Value inbounds1 = arith.slt(i1, hi);
 
-      b.create<scf::ConditionOp>(b.create<arith::AndIOp>(inbounds0, inbounds1),
+      b.create<scf::ConditionOp>(arith._and(inbounds0, inbounds1),
                                  before->getArguments());
     }
 
@@ -255,8 +257,8 @@ void emitMerge(ImplicitLocOpBuilder& b, Value lo, Value mid, Value hi,
       storeMemrefElements(b, writeBufs, iOut, pickedVals);
 
       Value one = b.create<arith::ConstantIndexOp>(1);
-      Value nexti0 = b.create<SelectOp>(cmp, i0, b.create<AddIOp>(i0, one));
-      Value nexti1 = b.create<SelectOp>(cmp, b.create<AddIOp>(i1, one), i1);
+      Value nexti0 = b.create<SelectOp>(cmp, i0, arith.add(i0, one));
+      Value nexti1 = b.create<SelectOp>(cmp, arith.add(i1, one), i1);
       //   ++iOut;
       Value nextIOut = b.create<AddIOp>(iOut, one);
       b.create<scf::YieldOp>(ValueRange{nextIOut, nexti0, nexti1});
@@ -270,10 +272,10 @@ void emitMerge(ImplicitLocOpBuilder& b, Value lo, Value mid, Value hi,
 
   // We could use memref::CopyOp here, but typically, there aren't many leftover
   // elements for randomly shuffled inputs.
-  Value leftoverIn0 = b.create<arith::CmpIOp>(CmpIPredicate::slt, i0, mid);
-  Value start = b.create<SelectOp>(leftoverIn0, i0, i1);
-  Value end = b.create<SelectOp>(leftoverIn0, mid, hi);
-  Value n = b.create<arith::SubIOp>(end, start);
+  Value leftoverIn0 = arith.slt(i0, mid);
+  Value start = arith.select(leftoverIn0, i0, i1);
+  Value end = arith.select(leftoverIn0, mid, hi);
+  Value n = arith.sub(end, start);
 
   Value zero = b.create<arith::ConstantIndexOp>(0);
   Value one = b.create<arith::ConstantIndexOp>(1);
@@ -281,8 +283,8 @@ void emitMerge(ImplicitLocOpBuilder& b, Value lo, Value mid, Value hi,
   b.setInsertionPointToStart(forOp.getBody());
   Value copyIndex = forOp.getBody()->getArgument(0);
 
-  Value srcIndex = b.create<AddIOp>(start, copyIndex);
-  Value dstIndex = b.create<AddIOp>(iOut, copyIndex);
+  Value srcIndex = arith.add(start, copyIndex);
+  Value dstIndex = arith.add(iOut, copyIndex);
   storeMemrefElements(b, writeBufs, dstIndex,
                       loadMemrefElements(b, readBufs, srcIndex));
 }
@@ -295,7 +297,8 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
                             int64_t staticSortDimSize, ValueRange inputTensors,
                             ValueRange outputs0, ValueRange outputs1,
                             mlir::Region& comparator) {
-  Value size = b.create<arith::SubIOp>(hi, lo);
+  ArithBuilder arith(b, b.getLoc());
+  Value size = arith.sub(hi, lo);
 
   Value zero = b.create<arith::ConstantIndexOp>(0);
   Value insertionSortSize =
@@ -308,9 +311,8 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(forOp.getBody());
     Value start = forOp.getBody()->getArgument(0);
-    Value end = b.create<AddIOp>(
-        b.create<MinSIOp>(b.create<AddIOp>(start, insertionSortSize), size),
-        lo);
+    Value end = arith.add(
+        b.create<MinSIOp>(arith.add(start, insertionSortSize), size), lo);
     emitInsertionSort(b, start, end, inputTensors, outputs0, comparator);
   }
 
@@ -347,9 +349,8 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
         b.createBlock(&whileOp.getBefore(), {}, whileArgTypes, whileArgLocs);
     Value currentSize = before->getArgument(0);
     b.setInsertionPointToEnd(before);
-    b.create<scf::ConditionOp>(
-        b.create<arith::CmpIOp>(CmpIPredicate::slt, currentSize, size),
-        before->getArguments());
+    b.create<scf::ConditionOp>(arith.slt(currentSize, size),
+                               before->getArguments());
   }
 
   size_t numArgs = inputTensors.size();
@@ -363,7 +364,7 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
     auto readBufs = after->getArguments().drop_front(2).take_front(numArgs);
     auto writeBufs = after->getArguments().take_back(numArgs);
 
-    Value twoCurrentSize = b.create<AddIOp>(currentSize, currentSize);
+    Value twoCurrentSize = arith.add(currentSize, currentSize);
 
     // for (int start = 0; start < size; start += 2*currentSize) {
     {
@@ -371,9 +372,8 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
       b.setInsertionPointToStart(forOp.getBody());
       Value start = forOp.getBody()->getArgument(0);
 
-      Value mid = b.create<MinSIOp>(size, b.create<AddIOp>(start, currentSize));
-      Value end =
-          b.create<MinSIOp>(size, b.create<AddIOp>(start, twoCurrentSize));
+      Value mid = b.create<MinSIOp>(size, arith.add(start, currentSize));
+      Value end = b.create<MinSIOp>(size, arith.add(start, twoCurrentSize));
       emitMerge(b, start, mid, end, readBufs, writeBufs, comparator);
       b.setInsertionPointAfter(forOp);
     }
@@ -381,7 +381,7 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
 
     // parity = !parity;
     Value one = b.create<arith::ConstantIntOp>(1, 1);
-    Value notParity = b.create<arith::SubIOp>(one, parity);
+    Value notParity = arith.sub(one, parity);
     // currentSize *= 2;
     SmallVector<Value> nextWhileArgs{twoCurrentSize, notParity};
     llvm::copy(writeBufs, std::back_inserter(nextWhileArgs));

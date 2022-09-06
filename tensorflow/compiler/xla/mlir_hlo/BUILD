@@ -1223,6 +1223,7 @@ cc_library(
         ":mlir_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithmeticUtils",
         "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:FuncDialect",
