@@ -451,7 +451,7 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
   auto status_or_optimized_graph =
       OptimizeGraph(*result.graph, build_graph_options);
   if (status_or_optimized_graph.ok()) {
-    result.graph = std::move(status_or_optimized_graph.ValueOrDie());
+    result.graph = std::move(status_or_optimized_graph.value());
   } else {
     LOG(WARNING) << "TFRT failed to optimize graph: "
                  << status_or_optimized_graph.status();

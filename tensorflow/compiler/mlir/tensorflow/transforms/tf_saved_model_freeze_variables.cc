@@ -52,7 +52,7 @@ ElementsAttr GetTensorValueAsElementsAttr(const tensorflow::Tensor& tensor,
   tensorflow::StatusOr<ElementsAttr> tensor_attr_or =
       tensorflow::ConvertTensor(tensor, &builder);
   if (!tensor_attr_or.ok()) return nullptr;
-  return tensor_attr_or.ValueOrDie();
+  return tensor_attr_or.value();
 }
 
 // Creates a constant op that holds 'tensor_elements'.

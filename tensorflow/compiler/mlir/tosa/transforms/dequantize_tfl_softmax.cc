@@ -30,8 +30,11 @@ namespace mlir {
 namespace tosa {
 namespace {
 
+#define GEN_PASS_DEF_TOSADEQUANTIZETFLSOFTMAXPASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 class TosaDequantizeTFLSoftmax
-    : public TosaDequantizeTFLSoftmaxPassBase<TosaDequantizeTFLSoftmax> {
+    : public impl::TosaDequantizeTFLSoftmaxPassBase<TosaDequantizeTFLSoftmax> {
  public:
   explicit TosaDequantizeTFLSoftmax() {}
   void runOnOperation() override;

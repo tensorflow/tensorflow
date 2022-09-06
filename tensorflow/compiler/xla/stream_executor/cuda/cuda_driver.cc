@@ -208,7 +208,7 @@ namespace {
 std::string CUDAPointerToDeviceString(CUdeviceptr pointer) {
   auto value = GpuDriver::GetPointerDevice(pointer);
   if (value.ok()) {
-    return absl::StrCat(value.ValueOrDie());
+    return absl::StrCat(value.value());
   }
   LOG(ERROR) << "could not query device: " << value.status();
   return "?";
@@ -220,7 +220,7 @@ std::string CUDAPointerToDeviceString(CUdeviceptr pointer) {
 std::string CUDAPointerToMemorySpaceString(CUdeviceptr pointer) {
   auto value = GpuDriver::GetPointerMemorySpace(pointer);
   if (value.ok()) {
-    return MemorySpaceString(value.ValueOrDie());
+    return MemorySpaceString(value.value());
   }
   LOG(ERROR) << "could not query device: " << value.status();
   return "?";
@@ -243,8 +243,8 @@ std::string CUDAPointersToCanAccessString(CUdeviceptr from, CUdeviceptr to) {
                << to_context.status();
     return "destination ptr error";
   }
-  return GpuDriver::CanEnablePeerAccess(from_context.ValueOrDie(),
-                                        to_context.ValueOrDie())
+  return GpuDriver::CanEnablePeerAccess(from_context.value(),
+                                        to_context.value())
              ? "true"
              : "false";
 }
@@ -1123,14 +1123,14 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     if (static_cast<void*>(dst_context) == nullptr) {
       port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
       if (tmp_context.ok()) {
-        dst_context = tmp_context.ValueOrDie()->context();
+        dst_context = tmp_context.value()->context();
       }
     }
 
     if (static_cast<void*>(src_context) == nullptr) {
       port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
       if (tmp_context.ok()) {
-        src_context = tmp_context.ValueOrDie()->context();
+        src_context = tmp_context.value()->context();
       }
     }
 
@@ -1208,14 +1208,14 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     if (static_cast<void*>(dst_context) == nullptr) {
       port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
       if (tmp_context.ok()) {
-        dst_context = tmp_context.ValueOrDie()->context();
+        dst_context = tmp_context.value()->context();
       }
     }
 
     if (static_cast<void*>(src_context) == nullptr) {
       port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
       if (tmp_context.ok()) {
-        src_context = tmp_context.ValueOrDie()->context();
+        src_context = tmp_context.value()->context();
       }
     }
 
@@ -1363,7 +1363,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     return result.status();
   }
 
-  return DeviceFromContext(result.ValueOrDie());
+  return DeviceFromContext(result.value());
 }
 
 /* static */ port::Status GpuDriver::GetComputeCapability(int* cc_major,
@@ -1600,7 +1600,7 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
                << to_device.status();
     return false;
   }
-  return CanEnablePeerAccess(from_device.ValueOrDie(), to_device.ValueOrDie());
+  return CanEnablePeerAccess(from_device.value(), to_device.value());
 }
 
 /* static */ bool GpuDriver::CanEnablePeerAccess(GpuDeviceHandle from,

@@ -1533,6 +1533,38 @@ func.func @embedding_effect_different_devices(
 
 // -----
 
+// Tests that we treat different op instances with `TPUEmbeddingSideEffect` as
+// independent if they have different devices (even if device ordinals are
+// equal).
+func.func @embedding_effect_same_ordinal_different_devices(
+  // expected-remark@above {{ID: 7}}
+  %arg0: tensor<!tf_type.string>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {table_ids = [1, 2], device_ordinal = 1, device = "/job:tpu_host_worker/replica:0/task:1/device:CPU:0"} : (tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {table_ids = [1, 2], device_ordinal = 1, device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"} : (tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0,1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
 // Tests that we create dependencies between ops with `TPUEmbeddingSideEffect`
 // and unknown side-effecting ops.
 func.func @mixed_embedding_and_unknown_effects(

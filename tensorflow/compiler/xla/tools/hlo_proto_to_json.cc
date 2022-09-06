@@ -68,7 +68,7 @@ void RealMain(const std::string& input, const std::string& output) {
                         << statusor.status();
 
   TF_CHECK_OK(tensorflow::WriteStringToFile(tensorflow::Env::Default(), output,
-                                            statusor.ValueOrDie()));
+                                            statusor.value()));
 }
 
 }  // namespace tools

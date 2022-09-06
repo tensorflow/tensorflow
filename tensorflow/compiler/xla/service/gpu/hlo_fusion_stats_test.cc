@@ -82,7 +82,7 @@ TEST_F(HloFusionStatsTest, LoopFusionAndReduceFusion) {
       ROOT root = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32,32]{2,1,0}, f32[32,32,32]{2,1,0})
         tuple(gte1, gte1, select, select_2)
     })")
-                    .ValueOrDie();
+                    .value();
   HloFusionStatsVisitor fusion_stats_visitor;
   TF_ASSERT_OK(
       module.get()->entry_computation()->Accept(&fusion_stats_visitor));
@@ -111,7 +111,7 @@ TEST_F(HloFusionStatsTest, AggregateCwiseOps) {
       ROOT fusion = f32[8,1,5,16,1,2]{5,4,3,2,1,0} fusion(p0), kind=kLoop,
         calls=fused_computation
     })")
-                    .ValueOrDie();
+                    .value();
   HloFusionStatsVisitor fusion_stats_visitor;
   TF_ASSERT_OK(
       module.get()->entry_computation()->Accept(&fusion_stats_visitor));

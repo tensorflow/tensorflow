@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -42,6 +41,10 @@ limitations under the License.
 
 namespace mlir {
 namespace lmhlo {
+
+#define GEN_PASS_DEF_LHLOLEGALIZETOGPUPASS
+#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
+
 namespace {
 
 // A simple translation of LHLO reduce operations to a corresponding gpu
@@ -171,7 +174,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 };
 
 struct LhloLegalizeToGpuPass
-    : public LhloLegalizeToGpuPassBase<LhloLegalizeToGpuPass> {
+    : public impl::LhloLegalizeToGpuPassBase<LhloLegalizeToGpuPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, gpu::GPUDialect, linalg::LinalgDialect,
                     memref::MemRefDialect, scf::SCFDialect>();

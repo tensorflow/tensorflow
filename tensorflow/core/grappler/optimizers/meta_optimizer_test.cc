@@ -1081,6 +1081,11 @@ TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
 
   GraphDef output;
   ConfigProto config_proto;
+  // Disable conditional code motion to prevent placeholders from being sunk
+  // into branch_func (would result in zero parameters for it).
+  config_proto.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_experimental_conditional_code_motion(RewriterConfig::OFF);
 
   MetaOptimizer optimizer(nullptr, config_proto);
   Status status = optimizer.Optimize(nullptr, item, &output);

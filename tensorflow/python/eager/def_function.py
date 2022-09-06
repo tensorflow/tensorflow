@@ -71,10 +71,11 @@ from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import function_spec as function_spec_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
+from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -698,9 +699,10 @@ class Function(core.GenericFunction, trackable.Trackable):
         nameattrlist = attr_value_pb2.NameAttrList()
         _text_format.Merge(self._implements, nameattrlist)
         attr_value.func.CopyFrom(nameattrlist)
-        attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = attr_value
+        attributes[monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME] = attr_value
       except (_text_format.ParseError, DecodeError):
-        attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
+        attributes[
+            monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
     return attributes
 
   def _defun(self, fn):
@@ -712,7 +714,7 @@ class Function(core.GenericFunction, trackable.Trackable):
 
     share = self._shared_rendezvous
     if share is not None:
-      attributes[function_lib.SHARED_RENDEZVOUS_ATTRIBUTE_NAME] = share
+      attributes[monomorphic_function.SHARED_RENDEZVOUS_ATTRIBUTE_NAME] = share
 
     if self._jit_compile is not None:
       attributes.update(_XlaMustCompile=bool(self._jit_compile))
@@ -720,7 +722,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         attributes.update(_noinline=True)
     if not attributes:
       attributes = None
-    return function_lib.defun_with_attributes(
+    return polymorphic_function.defun_with_attributes(
         fn,
         input_signature=self.input_signature,
         attributes=attributes,
@@ -990,8 +992,8 @@ class Function(core.GenericFunction, trackable.Trackable):
     canon_args, canon_kwds, filtered_flat_args = (
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
             args, kwds))
-    return function_lib.defun(fn_with_cond)(canon_args, canon_kwds,
-                                            filtered_flat_args)
+    return polymorphic_function.defun(fn_with_cond)(canon_args, canon_kwds,
+                                                    filtered_flat_args)
 
   def experimental_get_compiler_ir(self, *args, **kwargs):
     # Implements GenericFunction.experimental_get_compiler_ir
@@ -1057,7 +1059,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     # Note: using defun here avoids an infinite recursion.
     # Most of the code in this function runs eagerly with init_scope, where
     # autograph is not necessary.
-    @function_lib.defun(autograph=False)
+    @polymorphic_function.defun(autograph=False)
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
 
@@ -1113,7 +1115,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       self._initialize(args, kwargs, add_initializers_to=initializers)
 
     # Note: using defun here avoids an infinite recursion.
-    @function_lib.defun
+    @polymorphic_function.defun
     def initialize_variables():
       for v, init in initializers:
         v.assign(
@@ -1259,7 +1261,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       # It's unclear whether we need the tf-decorator, or could just call
       # MethodType(self.clone(), instance)
       self._descriptor_cache[instance] = (
-          function_lib.class_method_to_instance_method(self, instance))
+          polymorphic_function.class_method_to_instance_method(self, instance))
     return self._descriptor_cache[instance]
 
 

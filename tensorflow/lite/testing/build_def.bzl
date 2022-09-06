@@ -143,6 +143,7 @@ def generated_test_models():
         "shape",
         "shape_to_strided_slice",
         "sigmoid",
+        "sign",
         "sin",
         "slice",
         "softmax",

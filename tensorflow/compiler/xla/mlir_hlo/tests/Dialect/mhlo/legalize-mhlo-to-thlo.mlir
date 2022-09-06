@@ -121,6 +121,29 @@ func.func @simple_gather(%operand : tensor<3x3xf32>,
 //  CHECK-SAME:   outs(%[[INIT]] : tensor<3xf32>)
 //       CHECK: return %[[GATHER]]
 
+func.func @simple_gather_unsigned(
+    %operand : tensor<3x3xui32>, %indices: tensor<3x2xi64>) -> tensor<3xui32> {
+  %0 = "mhlo.gather"(%operand, %indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 1,
+      offset_dims = [],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<3x3xui32>, tensor<3x2xi64>) -> tensor<3xui32>
+  func.return %0 : tensor<3xui32>
+}
+// CHECK-LABEL: @simple_gather_unsigned
+//       CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<3x3xui32> to tensor<3x3xi32>
+//       CHECK: %[[INIT:.*]] = linalg.init_tensor [3] : tensor<3xi32>
+//       CHECK: %[[GATHER:.*]] = thlo.gather
+//  CHECK-SAME:   ins(%[[CAST]] : tensor<3x3xi32>, %arg1 : tensor<3x2xi64>)
+//  CHECK-SAME:   outs(%[[INIT]] : tensor<3xi32>)
+//       CHECK: %[[CAST2:.*]] = builtin.unrealized_conversion_cast %[[GATHER]] : tensor<3xi32> to tensor<3xui32>
+//       CHECK: return %[[CAST2]]
+
 func.func @unsupported_gather(%operand: tensor<3x3xf32>,
                               %indices: tensor<3x2xi64>) -> tensor<3xf32> {
   %0 = "mhlo.gather"(%operand, %indices) {
@@ -229,6 +252,52 @@ func.func @scatter_wrong_dims(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
   } : (tensor<3xi32>, tensor<1x1xi32>, tensor<3x1xi32>) -> tensor<3xi32>
   func.return %0 : tensor<3xi32>
 }
-
 // CHECK-LABEL: @scatter_wrong_dims
 //       CHECK: mhlo.scatter
+
+// CHECK-LABEL: @reduce_add(
+func.func @reduce_add(
+    %arg0: tensor<5x4xf32>, %arg1: tensor<f32>) -> tensor<5xf32> {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%init: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %init, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>, someattr} :
+    (tensor<5x4xf32>, tensor<f32>) -> tensor<5xf32>
+  func.return %0 : tensor<5xf32>
+}
+// CHECK: %[[EXTRACT:.*]] = tensor.extract %arg1[] : tensor<f32>
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [5] : tensor<5xf32>
+// CHECK: %[[FILL:.*]] = linalg.fill ins(%[[EXTRACT]] : f32) outs(%[[INIT]] : tensor<5xf32>) -> tensor<5xf32>
+// CHECK: %[[REDUCTION:.*]] = thlo.reduction ins(%arg0 : tensor<5x4xf32>) outs(%[[FILL]] : tensor<5xf32>)
+// CHECK-SAME: dimensions = [1] (%[[ARG2:.*]]: f32, %[[ARG3:.*]]: f32) {
+// CHECK: %[[ARG3_TENSOR:.*]] = tensor.from_elements %[[ARG3]] : tensor<f32>
+// CHECK: %[[ARG2_TENSOR:.*]] = tensor.from_elements %[[ARG2]] : tensor<f32>
+// CHECK: %[[ADD:.*]] = mhlo.add %[[ARG3_TENSOR]], %[[ARG2_TENSOR]] : tensor<f32>
+// CHECK: %[[RES:.*]] = tensor.extract %[[ADD]][] : tensor<f32>
+// CHECK: thlo.yield %[[RES]] : f32
+// CHECK: return %[[REDUCTION]] : tensor<5xf32>
+
+// CHECK-LABEL: @variadic_reduce_add(
+func.func @variadic_reduce_add(
+    %arg0: tensor<5x4xf32>, %arg1: tensor<?x?xi32>,
+    %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<5xf32>, tensor<?xi32>) {
+  %reduce:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
+  ^bb0(%init1: tensor<f32>, %init2: tensor<i32>,
+       %arg4: tensor<f32>, %arg5: tensor<i32>):
+    %2 = mhlo.add %init1, %arg4 : tensor<f32>
+    %3 = mhlo.add %init2, %arg5 : tensor<i32>
+    "mhlo.return"(%2, %3) : (tensor<f32>, tensor<i32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>, someattr} :
+    (tensor<5x4xf32>, tensor<?x?xi32>, tensor<f32>, tensor<i32>)
+    -> (tensor<5xf32>, tensor<?xi32>)
+  func.return %reduce#0, %reduce#1 : tensor<5xf32>, tensor<?xi32>
+}
+// CHECK: %[[FILL_F32:.*]] = linalg.fill ins(%{{.*}} : f32) outs(%{{.*}} : tensor<5xf32>) -> tensor<5xf32>
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[DIM_0:.*]] = tensor.dim %{{.*}}, %[[C0]] : tensor<?x?xi32>
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[DIM_0]]] : tensor<?xi32>
+// CHECK: %[[FILL_I32:.*]] = linalg.fill ins(%{{.*}} : i32) outs(%[[INIT]] : tensor<?xi32>) -> tensor<?xi32>
+// CHECK: %[[REDUCTION:.*]]:2 = thlo.reduction ins(%arg0 : tensor<5x4xf32>, %arg1 : tensor<?x?xi32>) outs(%[[FILL_F32]] : tensor<5xf32>, %[[FILL_I32]] : tensor<?xi32>)
+// CHECK: thlo.yield %{{.*}}, %{{.*}} : f32, i32
+// CHECK: return %[[REDUCTION]]#0, %[[REDUCTION]]#1 : tensor<5xf32>, tensor<?xi32>

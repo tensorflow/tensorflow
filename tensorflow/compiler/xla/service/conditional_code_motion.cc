@@ -491,7 +491,7 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
 
   HloInstruction* old_root =
       conditional->branch_computation(0)->root_instruction();
-  VLOG(2) << "BEFORE :" << conditional->parent()->parent()->ToString();
+  VLOG(2) << "BEFORE :" << conditional->GetModule()->ToString();
   // Identify the gte using `index'.
   auto find_gte = [](const HloInstruction* conditional_result,
                      int64_t index) -> HloInstruction* {
@@ -605,7 +605,7 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
     // No need to explicitly delete a hoisted instruction since if its dead
     // then the subsequent DCE will remove it.
   }
-  VLOG(2) << "AFTER :" << conditional->parent()->parent()->ToString();
+  VLOG(2) << "AFTER :" << conditional->GetModule()->ToString();
   return true;
 }
 
@@ -1549,7 +1549,7 @@ StatusOr<bool> ConditionalCodeMotion::Run(
           // overhead of cloning is minimal since later stages of the compiler
           // inline all the computations anyway.
           HloComputation* clone_i =
-              conditional->parent()->parent()->AddEmbeddedComputation(
+              conditional->GetModule()->AddEmbeddedComputation(
                   branch_i->Clone("clone", &clone_context));
           conditional->set_branch_computation(i, clone_i);
           conditional_computations[branch_i]--;

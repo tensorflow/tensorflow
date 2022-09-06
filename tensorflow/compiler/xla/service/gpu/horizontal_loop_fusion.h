@@ -93,6 +93,8 @@ namespace gpu {
 // output dims of the concatenate will be used as the kernel launch dims.
 // Instruction bitcasts can be used for Reshape2 and Reshape3 as long as the
 // outputs of Mul and Add are row-major.
+//
+// Note, reshapes are added only if the tensors isn't already a vector.
 class GpuHorizontalLoopFusion : public HloModulePass {
  public:
   GpuHorizontalLoopFusion() {}

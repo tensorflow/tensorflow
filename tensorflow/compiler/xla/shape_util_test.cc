@@ -936,7 +936,7 @@ BENCHMARK(BM_MakeShape);
 
 void BM_MakeValidatedShape(::testing::benchmark::State& state) {
   for (auto s : state) {
-    ShapeUtil::MakeValidatedShape(F32, {2}).ValueOrDie();
+    ShapeUtil::MakeValidatedShape(F32, {2}).value();
   }
 }
 BENCHMARK(BM_MakeValidatedShape);

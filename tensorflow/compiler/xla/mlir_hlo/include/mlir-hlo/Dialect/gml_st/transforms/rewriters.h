@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_REWRITERS_H
 #define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_REWRITERS_H
 
+#include <functional>
+
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
 
 namespace mlir {
 namespace bufferization {
@@ -24,13 +28,39 @@ class BufferizeTypeConverter;
 }  // namespace bufferization
 class MLIRContext;
 class RewritePatternSet;
+
 namespace gml_st {
+
+using OpFilterFn = llvm::function_ref<LogicalResult(Operation *)>;
+
+/// Options to use to control tiling.
+struct TilingOptions {
+  using TileSizeComputationFn =
+      std::function<SmallVector<Value>(OpBuilder &, Operation *)>;
+
+  /// Function to materialize the tile sizes for a given operation. This allows
+  /// to infer tile sizes statically, e.g. based on an operation's rank, and
+  /// also dynamically based, e.g. based on a tensor's shape at runtime.
+  TileSizeComputationFn tileSizeComputationFn = nullptr;
+
+  /// If `true`, generate a `gml_st.parallel` loop nest.
+  bool distribute = true;
+};
 
 /// Populate pattern to bufferize `linalg.tiled_loop`.
 void populateTiledLoopBufferizePattern(
     MLIRContext *context,
     mlir::bufferization::BufferizeTypeConverter *converter,
     RewritePatternSet *patterns);
+
+/// Populate tiling patterns.
+void populateTilingPatterns(MLIRContext *context, OpFilterFn filterFn,
+                            const TilingOptions &opts,
+                            RewritePatternSet *patterns);
+
+/// Populate fusion patterns.
+void populateFusionPatterns(MLIRContext *context, OpFilterFn filterFn,
+                            RewritePatternSet *patterns);
 
 }  // namespace gml_st
 }  // namespace mlir

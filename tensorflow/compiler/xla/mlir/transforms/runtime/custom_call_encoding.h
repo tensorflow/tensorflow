@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_MLIR_RUNTIME_CUSTOM_CALL_ENCODING_H_
-#define XLA_MLIR_RUNTIME_CUSTOM_CALL_ENCODING_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_CUSTOM_CALL_ENCODING_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_CUSTOM_CALL_ENCODING_H_
 
 #include <functional>
 #include <memory>
@@ -106,6 +106,49 @@ class CustomCallArgEncodingSet {
 
  private:
   std::vector<std::unique_ptr<CustomCallArgEncoding>> encodings_;
+};
+
+//===----------------------------------------------------------------------===//
+// Custom call results encoding.
+//===----------------------------------------------------------------------===//
+
+// Encodes result into stack allocated storage according to the ABI.
+class CustomCallRetEncoding {
+ public:
+  struct Encoded {
+    mlir::Value type_id;         // !llvm.ptr<i64>
+    mlir::LLVM::AllocaOp value;  // !llvm.alloca 1 x ResultType
+  };
+
+  virtual ~CustomCallRetEncoding() = default;
+
+  virtual mlir::LogicalResult Match(mlir::Type type,
+                                    mlir::Type converted) const = 0;
+
+  virtual mlir::FailureOr<Encoded> Encode(Globals &g,
+                                          mlir::ImplicitLocOpBuilder &b,
+                                          mlir::Type value,
+                                          mlir::Type converted) const = 0;
+};
+
+// A set of registered custom call results encodings.
+class CustomCallRetEncodingSet {
+ public:
+  using Encoded = CustomCallRetEncoding::Encoded;
+
+  // Finds matching result encoding and tries to encode the values. Returns
+  // failure if didn't match values to any of the result encodings.
+  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+                                  mlir::Type value, mlir::Type converted) const;
+
+  template <typename... Ts, typename = std::enable_if_t<sizeof...(Ts) != 0>>
+  CustomCallRetEncodingSet &Add() {
+    (encodings_.emplace_back(std::make_unique<Ts>()), ...);
+    return *this;
+  }
+
+ private:
+  std::vector<std::unique_ptr<CustomCallRetEncoding>> encodings_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -498,13 +541,26 @@ class MemrefArgEncoding : public CustomCallArgEncoding {
 };
 
 //===----------------------------------------------------------------------===//
-// Default encodings for arguments and attributes.
+// Custom call results encoding.
+//===----------------------------------------------------------------------===//
+
+// Encodes scalar operands.
+class ScalarRetEncoding : public CustomCallRetEncoding {
+ public:
+  mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+                                  mlir::Type, mlir::Type) const final;
+};
+
+//===----------------------------------------------------------------------===//
+// Default encodings for arguments, attributes and results.
 //===----------------------------------------------------------------------===//
 
 CustomCallArgEncodingSet DefaultArgEncodings();
 CustomCallAttrEncodingSet DefaultAttrEncodings();
+CustomCallRetEncodingSet DefaultRetEncodings();
 
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_MLIR_RUNTIME_CUSTOM_CALL_ENCODING_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_CUSTOM_CALL_ENCODING_H_

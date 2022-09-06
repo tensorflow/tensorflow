@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_CUPTI_TRACER_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_CUPTI_TRACER_H_
+#ifndef TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_CUPTI_TRACER_H_
+#define TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_CUPTI_TRACER_H_
 
 #include "absl/types/optional.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
@@ -153,4 +153,4 @@ class CuptiTracer {
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_CUPTI_TRACER_H_
+#endif  // TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_CUPTI_TRACER_H_

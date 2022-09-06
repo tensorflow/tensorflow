@@ -172,7 +172,7 @@ pybind11::tuple PyBuffer::python_shape() const {
 
 pybind11::dtype PyBuffer::python_dtype() const {
   PrimitiveType primitive = buffer()->on_device_shape().element_type();
-  return PrimitiveTypeToDtype(primitive).ValueOrDie();
+  return PrimitiveTypeToDtype(primitive).value();
 }
 
 ClientAndPtr<PjRtDevice> PyBuffer::device() const {
@@ -634,7 +634,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   type.attr("dtype") = property_readonly([](PyBuffer::object self) {
     PrimitiveType primitive =
         self.buf()->buffer()->on_device_shape().element_type();
-    return PrimitiveTypeToDtype(primitive).ValueOrDie();
+    return PrimitiveTypeToDtype(primitive).value();
   });
   type.attr("size") =
       property_readonly([](PyBuffer::object self) -> StatusOr<int64_t> {
@@ -731,7 +731,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       .def_static("create_sharded_buffer",
                   &PyShardedBuffer::CreateFromPyBuffers)
       .def_property_readonly("dtype", [](const PyShardedBuffer& self) {
-        return PrimitiveTypeToDtype(self.dtype()).ValueOrDie();
+        return PrimitiveTypeToDtype(self.dtype()).value();
       });
 
   return OkStatus();

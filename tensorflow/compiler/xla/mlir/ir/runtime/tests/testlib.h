@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_MLIR_RUNTIME_TESTLIB_H_
-#define XLA_MLIR_RUNTIME_TESTLIB_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_TESTS_TESTLIB_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_TESTS_TESTLIB_H_
 
 #include <cstdint>
 
@@ -32,4 +32,4 @@ limitations under the License.
 #define GET_TYPEDEF_CLASSES
 #include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_types.h.inc"
 
-#endif  // XLA_MLIR_RUNTIME_TESTLIB_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_TESTS_TESTLIB_H_

@@ -553,7 +553,7 @@ StatusOr<AutotuneResult> PickBestResult(
   }
 
   auto selected_result = filtered_results.begin();
-  if (!RequireDeterminism(instr.parent()->parent()->config())) {
+  if (!RequireDeterminism(instr.GetModule()->config())) {
     selected_result = absl::c_min_element(
         filtered_results,
         [](const AutotuneResult& lhs, const AutotuneResult& rhs) {

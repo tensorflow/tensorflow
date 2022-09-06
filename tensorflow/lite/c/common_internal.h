@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_C_C_API_COMMON_INTERNAL_H_
-#define TENSORFLOW_LITE_C_C_API_COMMON_INTERNAL_H_
+#ifndef TENSORFLOW_LITE_C_COMMON_INTERNAL_H_
+#define TENSORFLOW_LITE_C_COMMON_INTERNAL_H_
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
@@ -50,4 +50,4 @@ typedef struct TfLiteRegistrationExternal {
   TfLiteStatus (*invoke)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
 } TfLiteRegistrationExternal;
 
-#endif  // TENSORFLOW_LITE_C_C_API_INTERNAL_H_
+#endif  // TENSORFLOW_LITE_C_COMMON_INTERNAL_H_

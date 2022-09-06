@@ -283,7 +283,6 @@ class AutoShardDatasetTest(tf_record_test_base.TFRecordTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testShardInputToInterleaveWithIdentityFunction(self):
-    self.skipTest("Currently fails due to b/238645949")
     file1 = self._writeFile("f0", [1, 2, 3])
     file2 = self._writeFile("f1", [4, 5, 6])
     file3 = self._writeFile("f2", [7, 8, 9])

@@ -902,7 +902,7 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
     packed_tensor =
         TensorWithLayout::Wrap(std::move(parallel_tensor),
                                *target_parallel_device, *target_layout)
-            .ValueOrDie();
+            .value();
   }
 
   RecordInShapeLayoutCache(*packed_tensor);
@@ -991,7 +991,7 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
   if (is_remote_mesh(target_parallel_device->mesh_config())) {
     // Create a dummy SparseTensorWithLayout.
     packed_tensor = SparseTensorWithLayout::Dummy(
-        local_shape, *target_parallel_device, target_layout.ValueOrDie());
+        local_shape, *target_parallel_device, target_layout.value());
   } else {
     // Parse the indices, values, and dense_shape tensors and put them into
     // parallel tensors, and then pack it into a single SparseTensorWithLayout.
@@ -1047,8 +1047,8 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
                                      std::move(parallel_values_tensor),
                                      std::move(parallel_dense_shapes_tensor),
                                      *target_parallel_device,
-                                     target_layout.ValueOrDie(), local_shape)
-            .ValueOrDie();
+                                     target_layout.value(), local_shape)
+            .value();
   }
 
   RecordInShapeLayoutCache(*packed_tensor);
@@ -2029,7 +2029,7 @@ void AddMesh(const std::string& serialized_mesh, void* device_info,
                      .c_str());
     return;
   }
-  auto mesh_config = mesh_config_or_status.ValueOrDie();
+  auto mesh_config = mesh_config_or_status.value();
   std::vector<std::string> underlying_devices;
   underlying_devices.insert(underlying_devices.end(),
                             mesh_config.local_devices().begin(),
@@ -2059,7 +2059,7 @@ void ExperimentalSetDefaultLayout(const std::string& serialized_layout,
     RETURN_STATUS(status, TF_INTERNAL, layout.status().error_message().c_str());
   }
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  device->SetDefaultLayout(layout.ValueOrDie());
+  device->SetDefaultLayout(layout.value());
 }
 
 void ExperimentalClearDefaultLayout(void* device_info, TF_Status* status) {
@@ -2074,7 +2074,7 @@ void ExperimentalSetDefaultMesh(const std::string& serialized_mesh,
     RETURN_STATUS(status, TF_INTERNAL, mesh.status().error_message().c_str());
   }
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  device->SetDefaultMesh(mesh.ValueOrDie());
+  device->SetDefaultMesh(mesh.value());
 }
 
 void ExperimentalClearDefaultMesh(void* device_info, TF_Status* status) {

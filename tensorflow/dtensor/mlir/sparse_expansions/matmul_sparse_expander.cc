@@ -37,9 +37,9 @@ StatusOr<mlir::Operation*> MatMulSparseExpander::ExpandOp(mlir::Operation* op) {
         builder.create<mlir::TF::SparseTensorDenseMatMulOp>(
             op->getLoc(), op->getResultTypes(),
             mlir::ValueRange{
-                GetIndicesFromSparseTensor(op->getOperand(0)).ValueOrDie(),
-                GetValuesFromSparseTensor(op->getOperand(0)).ValueOrDie(),
-                GetDenseShapesFromSparseTensor(op->getOperand(0)).ValueOrDie(),
+                GetIndicesFromSparseTensor(op->getOperand(0)).value(),
+                GetValuesFromSparseTensor(op->getOperand(0)).value(),
+                GetDenseShapesFromSparseTensor(op->getOperand(0)).value(),
                 op->getOperand(1)});
 
     op->getResult(0).replaceAllUsesWith(new_op.getResult());

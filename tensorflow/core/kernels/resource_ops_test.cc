@@ -105,7 +105,7 @@ TEST_F(MockHandleCreationOpTest, RefCounting) {
   ResourceBase* base = output_handle.resource().get();
   EXPECT_TRUE(base);
   EXPECT_EQ(base->RefCount(), 1);
-  MockResource* mock = output_handle.GetResource<MockResource>().ValueOrDie();
+  MockResource* mock = output_handle.GetResource<MockResource>().value();
   EXPECT_TRUE(mock);
   EXPECT_EQ(mock->payload_, payload);
   EXPECT_EQ(base->RefCount(), 1);

@@ -61,7 +61,7 @@ TEST_F(HloControlFlowFlatteningTest, WhileRoot) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -121,7 +121,7 @@ TEST_F(HloControlFlowFlatteningTest, WhileConditionCallComputation) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   XLA_VLOG_LINES(3, "Loaded HLO module: " + module->ToString());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -176,7 +176,7 @@ TEST_F(HloControlFlowFlatteningTest, WhileRootScheduled) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -232,7 +232,7 @@ TEST_F(HloControlFlowFlatteningTest, WhileUser) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -256,7 +256,7 @@ TEST_F(HloControlFlowFlatteningTest, Infeed) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -278,7 +278,7 @@ TEST_F(HloControlFlowFlatteningTest, InfeedPreserveLayout) {
   Shape root_shape = module->entry_computation()->root_instruction()->shape();
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -301,7 +301,7 @@ TEST_F(HloControlFlowFlatteningTest, Outfeed) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -329,7 +329,7 @@ TEST_F(HloControlFlowFlatteningTest, AllReduce) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -359,7 +359,7 @@ TEST_F(HloControlFlowFlatteningTest, AllReduceStartAndDone) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -382,7 +382,7 @@ TEST_F(HloControlFlowFlatteningTest, AllGather) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -405,7 +405,7 @@ TEST_F(HloControlFlowFlatteningTest, AllToAll) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -428,7 +428,7 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermute) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -457,7 +457,7 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermuteInPlaceUpdate) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -483,7 +483,7 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermuteStartAndDone) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -511,7 +511,7 @@ TEST_F(HloControlFlowFlatteningTest, Recv) {
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   TF_ASSERT_OK(control_remover.Run(module.get()).status());
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -542,7 +542,7 @@ TEST_F(HloControlFlowFlatteningTest, RecvHostTransfer) {
       /*flatten_while_loop=*/true, /*remove_comm=*/false,
       /*remove_host_transfer=*/true});
   TF_ASSERT_OK(control_remover.Run(module.get()).status());
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -571,7 +571,7 @@ TEST_F(HloControlFlowFlatteningTest, Send) {
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   TF_ASSERT_OK(control_remover.Run(module.get()).status());
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -603,7 +603,7 @@ TEST_F(HloControlFlowFlatteningTest, SendHostTransfer) {
       /*flatten_while_loop=*/true, /*remove_comm=*/false,
       /*remove_host_transfer=*/true});
   TF_ASSERT_OK(control_remover.Run(module.get()).status());
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -631,7 +631,7 @@ TEST_F(HloControlFlowFlatteningTest, AllGatherStartAndDone) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -685,7 +685,7 @@ ENTRY main {
   EXPECT_TRUE(IsCollective(module->entry_computation()->root_instruction()));
 
   HloControlFlowFlattening flattening({});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
@@ -773,7 +773,7 @@ TEST_F(HloControlFlowFlatteningTest, MaxOuterLoopCount) {
   HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
       /*while_execution_count=*/kWhileExecutionCount,
       /*max_outer_loop_count=*/kMaxLoopCount});
-  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())

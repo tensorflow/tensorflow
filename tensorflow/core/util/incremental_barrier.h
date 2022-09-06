@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_INCREMENTAL_BARRIER_H_
-#define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_INCREMENTAL_BARRIER_H_
+#ifndef TENSORFLOW_CORE_UTIL_INCREMENTAL_BARRIER_H_
+#define TENSORFLOW_CORE_UTIL_INCREMENTAL_BARRIER_H_
 
 #include <atomic>
 #include <functional>
@@ -78,4 +78,4 @@ class IncrementalBarrier {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_INCREMENTAL_BARRIER_H_
+#endif  // TENSORFLOW_CORE_UTIL_INCREMENTAL_BARRIER_H_

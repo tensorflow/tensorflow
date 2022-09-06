@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_WEIGHTS_H_
-#define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_WEIGHTS_H_
+#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_WEIGHTS_H_
+#define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_WEIGHTS_H_
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -288,4 +288,4 @@ class TRT_TensorOrWeights {
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
-#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_WEIGHTS_H_
+#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_WEIGHTS_H_

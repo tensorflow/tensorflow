@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -97,6 +96,10 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
                                               {b_->getInt32(2)}, {U32}, U64, {},
                                               b_);
               }};
+    }
+    case TargetIntrinsicID::kGroupBarrierId: {
+      return {llvm::Intrinsic::nvvm_bar_warp_sync,
+              llvm::Intrinsic::amdgcn_wave_barrier};
     }
   }
 }

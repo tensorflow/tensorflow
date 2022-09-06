@@ -769,6 +769,7 @@ pybind_extension(
                "//tensorflow/compiler/xla/pjrt/distributed:client",
                "//tensorflow/compiler/xla/pjrt/distributed:service",
                "//tensorflow/core:lib",
+               "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
                # Do NOT remove this dependency. The XLA Python extension must not
                # depend on any part of TensorFlow at runtime, **including**
                # libtensorflow_framework.so. The XLA module is deployed self-contained

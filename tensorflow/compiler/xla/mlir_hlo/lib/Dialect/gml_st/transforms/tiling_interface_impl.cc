@@ -21,48 +21,25 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 
 namespace mlir {
 namespace gml_st {
 namespace {
 
-using linalg::LinalgOp;
-using linalg::SliceParameters;
-
-///////////////////////////////////////////////////////////////////////////////
-/// Linalg Tiling Interface.
-///////////////////////////////////////////////////////////////////////////////
-
-SmallVector<OpFoldResult> getMixedValues(Location loc, OpBuilder &b,
-                                         Value tensor) {
-  SmallVector<OpFoldResult> tensorDims;
-
-  auto tensorType = tensor.getType().cast<RankedTensorType>();
-  int64_t rank = tensorType.getRank();
-  for (auto i = 0; i < rank; ++i) {
-    tensorDims.push_back(
-        tensorType.isDynamicDim(i)
-            ? OpFoldResult{b.createOrFold<tensor::DimOp>(loc, tensor, i)}
-            : OpFoldResult{b.getI64IntegerAttr(tensorType.getDimSize(i))});
-  }
-  return tensorDims;
-}
-
-template <typename LinalgOpTy>
-struct LinalgOpTilingInterface
-    : public TilingInterface::ExternalModel<LinalgOpTilingInterface<LinalgOpTy>,
-                                            LinalgOpTy> {
+struct ExternalLinalgGenericTilingInterface
+    : public TilingInterface::ExternalModel<
+          ExternalLinalgGenericTilingInterface, linalg::GenericOp> {
   /// Return the destination operands.
-  SmallVector<Value> getDestinationOperands(Operation *op,
-                                            OpBuilder & /*b*/) const {
+  SmallVector<Value> getDestinationOperands(Operation *op, OpBuilder &) const {
     return cast<linalg::DestinationStyleOpInterface>(op).getOutputOperands();
   }
 
   /// Return the loop iterator type.
   SmallVector<StringRef> getLoopIteratorTypes(Operation *op) const {
-    LinalgOpTy concreteOp = cast<LinalgOpTy>(op);
+    linalg::GenericOp genericOp = cast<linalg::GenericOp>(op);
     return llvm::to_vector(
-        llvm::map_range(concreteOp.iterator_types(), [](Attribute strAttr) {
+        llvm::map_range(genericOp.iterator_types(), [](Attribute strAttr) {
           return strAttr.cast<StringAttr>().getValue();
         }));
   }
@@ -72,7 +49,7 @@ struct LinalgOpTilingInterface
     OpBuilder::InsertionGuard g(b);
     b.setInsertionPoint(op);
     Location loc = op->getLoc();
-    LinalgOp linalgOp = cast<LinalgOp>(op);
+    linalg::LinalgOp linalgOp = cast<linalg::LinalgOp>(op);
     SmallVector<OpFoldResult> allShapesSizes =
         linalgOp.createFlatListOfOperandDims(b, loc);
     AffineMap map = linalgOp.getShapesToLoopsMap();
@@ -88,25 +65,25 @@ struct LinalgOpTilingInterface
 
   // Instantiate the tiled implementation of the operation.
   TilingInterface getTiledImplementation(Operation *op, OpBuilder &b,
-                                         ValueRange /*dest*/,
                                          ArrayRef<OpFoldResult> offsets,
-                                         ArrayRef<OpFoldResult> sizes,
-                                         bool /*tileDestOperands*/) const {
+                                         ArrayRef<OpFoldResult> sizes) const {
     Location loc = op->getLoc();
-    LinalgOp linalgOp = cast<LinalgOp>(op);
+    linalg::LinalgOp linalgOp = cast<linalg::LinalgOp>(op);
     SmallVector<Value> valuesToTile = linalgOp.getInputAndOutputOperands();
-    SmallVector<Optional<SliceParameters>> allSliceParams =
+    SmallVector<Optional<linalg::SliceParameters>> allSliceParams =
         linalg::computeAllSliceParameters(b, loc, linalgOp, valuesToTile,
                                           offsets, sizes, {}, true);
 
     SmallVector<Value> tiledOperands;
     for (auto item : llvm::zip(valuesToTile, allSliceParams)) {
       Value valueToTile = std::get<0>(item);
+      auto valueToTileTy = valueToTile.getType().cast<RankedTensorType>();
       const Optional<linalg::SliceParameters> &sliceParams = std::get<1>(item);
 
-      SmallVector<OpFoldResult> tensorDims =
-          getMixedValues(loc, b, valueToTile);
-      Value set = b.create<SpaceOp>(loc, tensorDims);
+      SmallVector<Value> dynamicSizes =
+          tensor::createDynamicDimValues(b, loc, valueToTile);
+      auto staticSizes = b.getI64ArrayAttr(valueToTileTy.getShape());
+      Value set = b.create<SpaceOp>(loc, dynamicSizes, staticSizes);
       if (sliceParams.has_value()) {
         set = b.create<TileOp>(loc, set, sliceParams->offsets,
                                sliceParams->sizes, sliceParams->strides);
@@ -122,18 +99,16 @@ struct LinalgOpTilingInterface
 
     Operation *tiledOp =
         linalgOp.clone(b, loc, resultTensorTypes, tiledOperands);
-    offsetIndices(b, cast<LinalgOp>(tiledOp), offsets);
+    offsetIndices(b, cast<linalg::LinalgOp>(tiledOp), offsets);
 
     return {tiledOp};
   }
 
   FailureOr<Value> generateResultTileValue(Operation *op, OpBuilder &b,
                                            unsigned resultNumber,
-                                           ValueRange dest,
                                            ArrayRef<OpFoldResult> offsets,
-                                           ArrayRef<OpFoldResult> sizes,
-                                           bool tileDestOperands) const {
-    auto linalgOp = cast<LinalgOp>(op);
+                                           ArrayRef<OpFoldResult> sizes) const {
+    auto linalgOp = cast<linalg::LinalgOp>(op);
 
     // Check that the indexing map used for the output is a projected
     // permutation. This could be relaxed with a more general approach that can
@@ -167,7 +142,7 @@ struct LinalgOpTilingInterface
     }
 
     TilingInterface tiledOp = tilingInterfaceOp.getTiledImplementation(
-        b, dest, iterationTileOffsets, iterationTileSizes, tileDestOperands);
+        b, iterationTileOffsets, iterationTileSizes);
 
     return tiledOp->getResult(resultNumber);
   }
@@ -176,11 +151,10 @@ struct LinalgOpTilingInterface
 }  // namespace
 
 void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
-  registry.addExtension(
-      +[](MLIRContext *ctx, linalg::LinalgDialect * /*dialect*/) {
-        linalg::GenericOp::attachInterface<
-            LinalgOpTilingInterface<linalg::GenericOp>>(*ctx);
-      });
+  registry.addExtension(+[](MLIRContext *ctx, linalg::LinalgDialect *) {
+    linalg::GenericOp::attachInterface<ExternalLinalgGenericTilingInterface>(
+        *ctx);
+  });
 }
 
 }  // namespace gml_st

@@ -84,6 +84,7 @@ add_mlir_library(MhloToThloConversion
 
   DEPENDS
   MLIRGmlStFusionInterfaceIncGen
+  MLIRMhloPassIncGen
   THLODialect
 
   LINK_COMPONENTS
@@ -91,6 +92,7 @@ add_mlir_library(MhloToThloConversion
 
   LINK_LIBS PUBLIC
   MhloDialect
+  MhloTypeConversion
   THLODialect
   MLIRIR
   MLIRMhloUtils

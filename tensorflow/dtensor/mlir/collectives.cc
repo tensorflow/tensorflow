@@ -163,7 +163,7 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
 
   mlir::TF::WhereOp indices = builder.create<mlir::TF::WhereOp>(
       not_equal.getLoc(),
-      mlir::RankedTensorType::get(GetShapeOfValue(not_equal).ValueOrDie(),
+      mlir::RankedTensorType::get(GetShapeOfValue(not_equal).value(),
                                   builder.getI64Type()),
       not_equal);
 
@@ -277,7 +277,7 @@ StatusOr<mlir::Value> EmitRelayout(
 
   if (!is_sparse) return all_scatter;
   if (!all_scatter.ok()) return all_scatter;
-  return EmitDenseToSparseToDense(builder, all_scatter.ValueOrDie(),
+  return EmitDenseToSparseToDense(builder, all_scatter.value(),
                                   newly_created_ops);
 }
 

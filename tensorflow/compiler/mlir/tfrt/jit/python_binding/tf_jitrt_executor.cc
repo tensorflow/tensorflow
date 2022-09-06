@@ -69,7 +69,7 @@ namespace tensorflow {
 TfJitRtExecutor::TfJitRtExecutor()
     : host_context_(
           [](const DecodedDiagnostic& diag) {
-            llvm::errs() << "Encountered runtime error: " << diag.message
+            llvm::errs() << "Encountered runtime error: " << diag.message()
                          << "\n";
           },
           CreateMallocAllocator(), CreateMultiThreadedWorkQueue(4, 4)) {}

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_DEFAULT_ASYNC_VALUES_CACHE_H_
-#define XLA_RUNTIME_DEFAULT_ASYNC_VALUES_CACHE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_DEFAULT_ASYNC_VALUES_CACHE_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_DEFAULT_ASYNC_VALUES_CACHE_H_
 
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/DenseMap.h"
@@ -107,4 +107,4 @@ AsyncValueRef<Chain> AsyncValuesCache<Key, Value>::AllAvailable() const {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_DEFAULT_ASYNC_VALUES_CACHE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_DEFAULT_ASYNC_VALUES_CACHE_H_

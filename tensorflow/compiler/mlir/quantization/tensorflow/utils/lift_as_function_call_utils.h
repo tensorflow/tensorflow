@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_OPS_LIFTING_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_OPS_LIFTING_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_LIFT_AS_FUNCTION_CALL_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_LIFT_AS_FUNCTION_CALL_UTILS_H_
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
@@ -52,4 +52,4 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
 
 }  // namespace quant
 }  // namespace mlir
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_OPS_LIFTING_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_LIFT_AS_FUNCTION_CALL_UTILS_H_

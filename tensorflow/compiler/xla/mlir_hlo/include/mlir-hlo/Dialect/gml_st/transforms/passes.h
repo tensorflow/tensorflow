@@ -22,6 +22,11 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
+#define GEN_PASS_DECL_DEPRECATEDTILINGPASS
+#define GEN_PASS_DECL_FUSIONPASS
+#define GEN_PASS_DECL_TILINGPASS
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
+
 namespace mlir {
 namespace gml_st {
 
@@ -35,9 +40,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
     const std::string& tileSizes);
 
-/// Pass to tile ops using TilingInterface and gml_st::ForOp.
-std::unique_ptr<OperationPass<func::FuncOp>> createTileToForPass(
-    StringRef tilingTarget = "", ArrayRef<int64_t> tileSizes = {});
+/// Pass to tile ops using TilingInterface.
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
+    StringRef opName = "", StringRef opLabel = "", bool distribute = true,
+    ArrayRef<int64_t> tileSizes = {});
 
 /// Pass to fuse producers into a tiled consumer.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
@@ -46,9 +52,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
 /// Pass to compose set operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createComposeSetOpsPass();
 
-/// Pass to collapse (or uncollapse) materialize operations.
-std::unique_ptr<OperationPass<func::FuncOp>> createCollapseMaterializeOpsPass(
-    bool reverse = false);
+/// Pass to uncollapse materialize operations.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createUncollapseMaterializeOpsPass();
 
 /// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
 /// loops and memref.load/memref.store accesses.

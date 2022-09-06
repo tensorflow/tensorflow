@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -33,11 +32,16 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_CONVERTTOSIGNLESSPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 // Generic pattern that rewrites any op by rewriting its operands and result
@@ -95,7 +99,7 @@ class ConvertConstantToSignless
 };
 
 struct ConvertToSignlessPass
-    : public ConvertToSignlessPassBase<ConvertToSignlessPass> {
+    : public impl::ConvertToSignlessPassBase<ConvertToSignlessPass> {
  public:
   void runOnOperation() override {
     auto& context = getContext();

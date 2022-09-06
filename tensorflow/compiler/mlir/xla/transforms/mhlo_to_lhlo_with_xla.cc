@@ -129,11 +129,11 @@ Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
   }
 
   xla::BackendOptions backend_options;
-  backend_options.set_platform(platform.ValueOrDie());
+  backend_options.set_platform(platform.value());
   auto backend_or_err = xla::Backend::CreateBackend(backend_options);
   TF_RETURN_WITH_CONTEXT_IF_ERROR(backend_or_err.status(),
                                   "failed to create XLA Backend ");
-  auto backend = std::move(backend_or_err.ValueOrDie());
+  auto backend = std::move(backend_or_err.value());
 
   StatusOr<std::unique_ptr<HloModule>> optimized_hlo_module;
 
@@ -209,7 +209,7 @@ class XlaHloToLhloPass
       TF_RETURN_WITH_CONTEXT_IF_ERROR(statusOrHloModule.status(),
                                       "parsing HLO proto to HLO module failed");
       std::unique_ptr<HloModule> hlo_module =
-          std::move(statusOrHloModule.ValueOrDie());
+          std::move(statusOrHloModule.value());
 
       return OptimizeAndConvertHloToLmhlo(std::move(hlo_module), module,
                                           platform_, optimize_xla_hlo_);

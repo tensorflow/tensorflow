@@ -38,9 +38,8 @@ add_library(fft2d_fft4f2d "${FFT2D_SOURCE_DIR}/fft4f2d.c")
 target_include_directories(fft2d_fft4f2d PRIVATE "${FFT2D_SOURCE_DIR}")
 
 add_library(fft2d_fftsg "${FFT2D_SOURCE_DIR}/fftsg.c")
-
-if (NOT WIN32)
-  target_link_libraries(fft2d_fftsg m)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL Windows)
+target_link_libraries(fft2d_fftsg m)
 endif()
 
 install(

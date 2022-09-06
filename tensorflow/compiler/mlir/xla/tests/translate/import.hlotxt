@@ -421,6 +421,18 @@ add {
   ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[2,3] %arg1, f32[5,5] %arg2), custom_call_target="foo", called_computations={%custom_call_computation_0, %custom_call_computation_1}
 }
 
+// CHECK-LABEL:  func private @test_custom_call_with_output_operand_alising
+// CHECK-SAME:  [[ARG_0:%.*]]: tuple<tensor<1x1xf32>, tensor<2x3xf32>>, [[ARG_1:%.*]]: tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
+%test_custom_call_with_output_operand_alising (arg1: (f32[1,1], f32[2,3]), arg2: f32[5,5]) -> (f32[2,3]) {
+  %arg1 = (f32[1,1], f32[2,3]) parameter(0)
+  %arg2 = f32[5,5] parameter(1)
+  // CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {
+  // CHECK-SAME: call_target_name = "foo"
+  // CHECK-SAME{LITERAL}: custom_call_output_operand_aliasing = [#mhlo.output_operand_alias<output_tuple_indices = [0], operand_index = 0, operand_tuple_indices = [1]>]
+  // CHECK-SAME: (tuple<tensor<1x1xf32>, tensor<2x3xf32>>, tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
+  ROOT %custom-call = (f32[2,3]) custom-call((f32[1,1], f32[2,3]) %arg1, f32[5,5] %arg2), custom_call_target="foo", output_to_operand_aliasing={{0}: (0, {1})}
+}
+
 // CHECK-LABEL:  func private @test_div(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
 %test_div (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
@@ -1514,6 +1526,41 @@ add {
   // CHECK: mhlo.add_dependency %[[ARG0]], %[[TOK]] : (tensor<4x4xf32>, !mhlo.token) -> tensor<4x4xf32>
   ROOT %add-dep = f32[4,4] add-dependency(f32[4,4] %Arg_0.1, token[] %after-all)
 }
+
+// CHECK-LABEL: func private @AsyncOp
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<10xf32>)
+ %AsyncOp (p0.1: f32[10]) -> f32[20] {
+   %p0.1 = f32[10]{0} parameter(0)
+  // CHECK:  "mhlo.custom_call"
+   ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %p0.1),
+                                  custom_call_target="foo"
+ }
+
+// CHECK-LABEL: func private @async
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<10xf32>)
+%async (p0: f32[10]) -> f32[20] {
+   %p0 = f32[10]{0} parameter(0)
+  // CHECK:  %[[START:.*]] = "mhlo.async_start"(%[[ARG0]])
+  // CHECK-SAME: called_computation = @AsyncOp
+  // CHECK-SAME: execution_thread = "main"
+  // CHECK-SAME: group_id = 1
+   %async-start = (f32[10]{0}, f32[20]{0}, s32[]) async-start(%p0),
+                                                    calls=%AsyncOp,
+                                                    async_group_id=1
+  // CHECK: %[[UPDATE:.*]] = "mhlo.async_update"(%[[START]])
+  // CHECK-SAME: called_computation = @AsyncOp
+  // CHECK-SAME: execution_thread = "main"
+  // CHECK-SAME: group_id = 1
+   %async-update = (f32[10]{0}, f32[20]{0}, s32[]) async-update(
+                                                         %async-start),
+                                                     calls=%AsyncOp,
+                                                     async_group_id=1
+  // CHECK: "mhlo.async_done"(%[[UPDATE]])
+  // CHECK-SAME: called_computation = @AsyncOp
+  // CHECK-SAME: execution_thread = "main"
+  // CHECK-SAME: group_id = 1
+   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp, async_group_id=1
+ }
 
 // CHECK-LABEL: func private @test_args_and_result_with_sharding
 // CHECK-SAME: ([[Arg:%.*]]: tensor<4xi32> {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"}) -> (tensor<4xi32> {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"})

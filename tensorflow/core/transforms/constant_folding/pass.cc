@@ -38,9 +38,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
+#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/utility.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 #include "tensorflow/core/transforms/utils/eval_utils.h"
 #include "tensorflow/core/transforms/utils/op_cat_helper.h"
 #include "tensorflow/core/transforms/utils/utils.h"
@@ -50,6 +50,9 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
+#define GEN_PASS_DEF_CONSTANTFOLDINGPASS
+#include "tensorflow/core/transforms/passes.h.inc"
+
 template <typename T>
 static std::enable_if_t<std::is_integral<T>::value, ElementsAttr>
 CreateElementsAttrOfTypeValues(Type element_type, ArrayRef<int64_t> shape,
@@ -58,20 +61,6 @@ CreateElementsAttrOfTypeValues(Type element_type, ArrayRef<int64_t> shape,
   SmallVector<APInt> elements;
   for (T v : values)
     elements.push_back(APInt(element_type.getIntOrFloatBitWidth(), v));
-  auto const_attr = DenseElementsAttr::get(tensor_shape, elements);
-  return const_attr;
-}
-
-template <typename T>
-static std::enable_if_t<std::is_floating_point<T>::value, ElementsAttr>
-CreateElementsAttrOfTypeValues(Type element_type, ArrayRef<int64_t> shape,
-                               ArrayRef<T> values) {
-  auto tensor_shape = RankedTensorType::get(shape, element_type);
-  SmallVector<APFloat> elements;
-  if (element_type.getIntOrFloatBitWidth() == 32)
-    llvm::for_each(values, [&](float v) { elements.push_back(APFloat(v)); });
-  else
-    llvm::for_each(values, [&](double v) { elements.push_back(APFloat(v)); });
   auto const_attr = DenseElementsAttr::get(tensor_shape, elements);
   return const_attr;
 }
@@ -1227,29 +1216,28 @@ class MaterializeConstantValuedNode
 
     // FillOp is handled in MaterializeFillNode pattern.
     if (dialect_->IsFill(op)) return failure();
-    if (!dialect_->IsZerosLike(op) && !dialect_->IsOnesLike(op))
-      return failure();
+    const bool is_zeros_like = dialect_->IsZerosLike(op);
+    if (!is_zeros_like && !dialect_->IsOnesLike(op)) return failure();
 
     // TODO(chiahungduan): If op->getOperand(0) has static shape, can we use
     // that to materialize?
     auto output_type = op->getResult(0).getType().cast<ShapedType>();
     if (!output_type.hasStaticShape()) return failure();
 
-    int value =
-        dialect_->IsZerosLike(op) ? 0 : (dialect_->IsOnesLike(op) ? 1 : -1);
-    if (value < 0) return failure();
-
-    if (!output_type.getElementType().isIntOrIndexOrFloat()) return failure();
+    int value = is_zeros_like ? 0 : 1;
+    Type output_element_type = output_type.getElementType();
+    if (!output_element_type.isIntOrIndexOrFloat()) return failure();
 
     ElementsAttr const_attr;
-    if (output_type.getElementType().isIntOrIndex()) {
-      const_attr = CreateElementsAttrOfTypeValues(output_type.getElementType(),
-                                                  output_type.getShape(),
-                                                  ArrayRef<int>(value));
+    if (output_element_type.isIntOrIndex()) {
+      const_attr = SplatElementsAttr::get(
+          output_type,
+          APInt(output_element_type.getIntOrFloatBitWidth(), value));
     } else {
-      const_attr = CreateElementsAttrOfTypeValues(output_type.getElementType(),
-                                                  output_type.getShape(),
-                                                  ArrayRef<double>(value));
+      const_attr = SplatElementsAttr::get(
+          output_type,
+          APFloat(output_element_type.cast<FloatType>().getFloatSemantics(),
+                  value));
     }
 
     FailureOr<TFOp> const_op =
@@ -1791,6 +1779,7 @@ class SimplifySqueezeOp : public FolderPatternBase<SimplifySqueezeOp> {
 
 // This implementation is mapped with ConstantFolding::SimplifyPack
 // in grappler/optimizers/constant_folding.cc
+// Rewrite a Pack op with a single non-control input into ExpandDims.
 class SimplifyPackOp : public FolderPatternBase<SimplifyPackOp> {
  public:
   explicit SimplifyPackOp(OpPropertyHelper &helper)
@@ -1799,6 +1788,16 @@ class SimplifyPackOp : public FolderPatternBase<SimplifyPackOp> {
                                 PatternRewriter &rewriter) const override {
     auto [non_control_operands, control_operands] = TFOp(op).splitOperands();
     if (non_control_operands.size() != 1) return failure();
+
+    // ExpandDims is not supported on DT_VARIANT (see ExpandDimsOp::Compute),
+    // and DT_VARIANT tensor protos are converted to opaque tensors. We skip
+    // such cases (even though not all opaque tensors are DT_VARIANT tensor
+    // protos, e.g. there is DT_RESOURCE).
+    // TODO(tlongeri): is there a reason ExpandDims does not support DT_VARIANT?
+    if (ShapedType values_type =
+            non_control_operands[0].getType().dyn_cast<ShapedType>();
+        !values_type || values_type.getElementType().isa<VariantType>())
+      return failure();
 
     // It's unsafe to add a control dependency on the feed node, because it
     // might have been never executed otherwiwise.
@@ -1887,7 +1886,9 @@ class MoveConstantsPastRefEnterOp
 };
 
 // This implementation is mapped with ConstantFolding::SimplifySwitch
-// in grappler/optimizers/constant_folding.cc
+// in grappler/optimizers/constant_folding.cc.
+// In addition to the Grappler functionality, we remove duplicate anchors from
+// the switch.
 class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
  public:
   explicit SimplifySwitchOp(OpPropertyHelper &helper)
@@ -1896,65 +1897,70 @@ class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
             {}, IntegerType::get(helper.getDialect()->getContext(), 1))) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    if (op->getOperand(0) != op->getOperand(1)) return failure();
+    // Currently, there is no infallible protection against reapplications of
+    // the pattern resulting in constant nodes with duplicate names (Grappler
+    // handled this by checking names globally).
+    // We could add a suffix to the node name on each application, but then we
+    // could not apply the pattern on fetch/preserved nodes.
+    // Removing duplicate anchors prevents the problem from manifesting in
+    // certain situations (namely, when the common subgraph elimination pass
+    // merges two switch ops on which the pattern had been already applied).
 
-    // If the optimization was already applied, the switch would have exactly
-    // one Identity node consuming each of its outputs, each without any
-    // non-control outputs.
-    // TODO(tlongeri): This does not hold anymore as other patterns may need to
-    // introduce an anchor. Fix this check, and handle both sides independently.
-    if (llvm::any_of(op->getResults().drop_back(), [&](Value res) {
-          return res.hasOneUse() &&
-                 IsControlAnchor(*res.getUsers().begin(), dialect_);
-        })) {
-      return failure();
+    bool modified = false;
+
+    auto remove_duplicate_anchors = [&](OpResult result) {
+      auto anchors = make_filter_range(result.getUsers(), [&](Operation *op) {
+        return IsControlAnchor(op, dialect_);
+      });
+
+      for (Operation *anchor : make_early_inc_range(anchors)) {
+        if (anchor == *anchors.begin()) continue;
+        rewriter.replaceOp(anchor, (*anchors.begin())->getResults());
+        modified = true;
+      }
+    };
+
+    auto simplify_result = [&](OpResult result, const bool const_value,
+                               const StringRef name_suffix) {
+      if (result.use_empty() ||
+          (result.hasOneUse() &&
+           IsControlAnchor(*result.getUsers().begin(), dialect_)))
+        return;
+
+      FailureOr<TFOp> failure_or_const_op = CreateConstantTensorOp(
+          rewriter, op->getLoc(), TFOp(op).name(), result.getType(), llvm::None,
+          DenseElementsAttr::get(zero_dim_i1_tensor_type_, const_value));
+      if (failed(failure_or_const_op)) return;
+      TFOp const_op = *failure_or_const_op;
+      const_op.setName(TFOp(op).name() + name_suffix);
+      if (StringAttr device_attr = TFOp(op).deviceAttr())
+        const_op.setRequestedDevice(device_attr);
+
+      // May create a new op - must be careful to not fail out after.
+      TFOp anchor = GetControlAnchorForSwitchResult(rewriter, result, dialect_);
+      const_op->insertOperands(0, anchor.controlRet());
+
+      // Note that we can't use replaceAllUsesWith here because we don't want to
+      // replace the user of control identity.
+      for (OpOperand &user : llvm::make_early_inc_range(result.getUses())) {
+        if (user.getOwner() == &(*anchor)) continue;
+
+        rewriter.startRootUpdate(user.getOwner());
+        user.set(const_op->getResult(0));
+        rewriter.finalizeRootUpdate(user.getOwner());
+      }
+      modified = true;
+    };
+
+    remove_duplicate_anchors(op->getResult(0));
+    remove_duplicate_anchors(op->getResult(1));
+
+    if (op->getOperand(0) == op->getOperand(1)) {
+      simplify_result(op->getResult(0), false, "/_const_false");
+      simplify_result(op->getResult(1), true, "/_const_true");
     }
 
-    TFOp true_control_identity =
-        GetControlAnchorForSwitchResult(rewriter, op->getResult(1), dialect_);
-    TFOp false_control_identity =
-        GetControlAnchorForSwitchResult(rewriter, op->getResult(0), dialect_);
-
-    FailureOr<TFOp> true_op = CreateConstantTensorOp(
-        rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[1],
-        true_control_identity.controlRet(),
-        DenseElementsAttr::get(zero_dim_i1_tensor_type_, true));
-    if (failed(true_op)) return failure();
-
-    (*true_op).setName(Twine(TFOp(op).name(), "/_const_true"));
-    if (!TFOp(op).device().empty())
-      (*true_op).setRequestedDevice(TFOp(op).device());
-
-    FailureOr<TFOp> false_op = CreateConstantTensorOp(
-        rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[0],
-        false_control_identity.controlRet(),
-        DenseElementsAttr::get(zero_dim_i1_tensor_type_, false));
-    if (failed(false_op)) return failure();
-
-    (*false_op).setName(Twine(TFOp(op).name(), "/_const_false"));
-    if (!TFOp(op).device().empty())
-      (*false_op).setRequestedDevice(TFOp(op).device().data());
-
-    // Note that we can't use replaceAllUsesWith here because we don't want to
-    // replace the user of control identity.
-    for (OpOperand &user :
-         llvm::make_early_inc_range(op->getResult(1).getUses())) {
-      if (user.getOwner() == &(*true_control_identity)) continue;
-
-      rewriter.startRootUpdate(user.getOwner());
-      user.set((*true_op)->getResult(0));
-      rewriter.finalizeRootUpdate(user.getOwner());
-    }
-    for (OpOperand &user :
-         llvm::make_early_inc_range(op->getResult(0).getUses())) {
-      if (user.getOwner() == &(*false_control_identity)) continue;
-
-      rewriter.startRootUpdate(user.getOwner());
-      user.set((*false_op)->getResult(0));
-      rewriter.finalizeRootUpdate(user.getOwner());
-    }
-
-    return success();
+    return success(modified);
   }
 
   RankedTensorType zero_dim_i1_tensor_type_;
@@ -2181,8 +2187,12 @@ class SimplifyArithmeticOp
     ShapedType x_type = (*x->result_type_begin()).cast<ShapedType>();
     ShapedType y_type = (*y->result_type_begin()).cast<ShapedType>();
 
-    const bool y_matches_output_shape = op_type == y_type;
-    const bool x_matches_output_shape = op_type == x_type;
+    const bool y_matches_output_shape = op_type.hasStaticShape() &&
+                                        y_type.hasStaticShape() &&
+                                        op_type == y_type;
+    const bool x_matches_output_shape = op_type.hasStaticShape() &&
+                                        x_type.hasStaticShape() &&
+                                        op_type == x_type;
 
     const bool x_is_zero = helper_.IsZeros(x);
     const bool x_is_one = x_is_zero ? false : helper_.IsOnes(x);
@@ -3521,7 +3531,7 @@ void RegisterPatterns(::mlir::RewritePatternSet &patterns,
 }
 }  // namespace
 
-class ConstantFolding : public ConstantFoldingPassBase<ConstantFolding> {
+class ConstantFolding : public impl::ConstantFoldingPassBase<ConstantFolding> {
  public:
   LogicalResult initialize(MLIRContext *context) override {
     helper_ = std::make_shared<OpPropertyHelper>(

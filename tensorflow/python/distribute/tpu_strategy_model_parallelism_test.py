@@ -30,7 +30,6 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -77,8 +76,6 @@ class TPUStrategyModelParallelismTest(
     strategy_test_lib.TwoDeviceDistributionTestBase):
 
   def test_logical_device_assignment(self):
-    if test_util.is_mlir_bridge_enabled():
-      self.skipTest("TODO(b/238811067): fix MLIR bridge")
     strategy, num_replicas = get_tpu_strategy()
     with strategy.scope():
       v = variables.Variable(2.)
@@ -116,8 +113,6 @@ class TPUStrategyModelParallelismTest(
                        self.evaluate(strategy.reduce("SUM", result, axis=None)))
 
   def test_paritioned_model_checkpointing(self):
-    if test_util.is_mlir_bridge_enabled():
-      self.skipTest("TODO(b/238811067): fix MLIR bridge")
 
     class PartitionedModel(module.Module):
 
@@ -407,6 +402,7 @@ class TPUStrategyModelParallelismTest(
     result = strategy.run(fn, args=(arg,))
     self.assertEqual(3 * num_replicas,
                      self.evaluate(strategy.reduce("SUM", result, axis=None)))
+
 
 if __name__ == "__main__":
   test.main()

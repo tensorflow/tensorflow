@@ -39,7 +39,6 @@ int main(int argc, char **argv) {
   tfrt::RegisterTFRTDialects(registry);
 
   mlir::registerAllPasses();
-  tensorflow::registerConvertLmhloToGpuBinaryPass();
   tfrt::gpu::RegisterPasses();
 #if XLA_ENABLE_XLIR
   tensorflow::registerLmhloToJitRtPasses();

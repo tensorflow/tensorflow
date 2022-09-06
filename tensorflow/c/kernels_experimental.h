@@ -171,6 +171,9 @@ TF_CAPI_EXPORT extern void TF_ZerosLikeVariant(
     void (*zeros_like_func)(TF_OpKernelContext* ctx, TF_Tensor* input,
                             TF_Tensor* out),
     TF_Status* status);
+
+typedef struct TF_CoordinationServiceAgent TF_CoordinationServiceAgent;
+
 #endif  // IS_MOBILE_PLATFORM
 
 #ifdef __cplusplus

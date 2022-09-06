@@ -210,11 +210,11 @@ def set_parameters(tensor_tracer_params=None):
           using the fingerprint of the trace metadata under the provided
           trace_dir.
   """
-  flags = '--%s=1' % tensor_tracer_flags.FLAG_NAME_ENABLE
+  enable_flags = '--%s=1' % tensor_tracer_flags.FLAG_NAME_ENABLE
   if tensor_tracer_params:
     for key, value in tensor_tracer_params.items():
-      flags += ' --%s=%s' % (key, value)
-  os.environ[tensor_tracer_flags.FLAGS_ENV_VAR] = flags
+      enable_flags += ' --%s=%s' % (key, value)
+  os.environ[tensor_tracer_flags.FLAGS_ENV_VAR] = enable_flags
 
 
 def op_priority(op_type):
@@ -565,6 +565,8 @@ class TensorTracer:
     # _cache_variables is a dict (key = graph, value = dicts
     # (key = name, value = tensors))
     self._cache_variables = {}
+    self._history_value_cache = {}
+
     self._traced_op_names = set()
     self._report_proto = None
     # _temp_cache_var is a dict (key = graph, value = [])
@@ -596,10 +598,62 @@ class TensorTracer:
     """
     return self._report_proto_path
 
+  def _escape_namescopes(self, variable_name):
+    return variable_name.replace('/', '_').replace(':', '_')
+
   def _cache_variable_for_graph(self, graph):
     if graph not in self._cache_variables:
       self._cache_variables[graph] = {}
     return self._cache_variables[graph]
+
+  def _create_or_get_tensor_history_values_cache(self,
+                                                 cache_name,
+                                                 graph,
+                                                 shape=None,
+                                                 dtype=dtypes.float32):
+    """Creates a variable as the cache to store historic intermediate tensor values.
+
+    Args:
+      cache_name: Name to be given to the cache (an instance of tf.variable).
+      graph: Tensorflow graph.
+      shape: A list of dimensions.
+      dtype: Data type of created cache.
+    Returns:
+      A ref to newly created or existing cache with the given dimensions.
+    Raises:
+      ValueError:
+        (1) If graph is None, or
+        (2) shape is None when a new cache needs to be created.
+    """
+    if graph is None:
+      raise ValueError('Invalid graph.')
+
+    if graph not in self._history_value_cache:
+      self._history_value_cache[graph] = {}
+
+    if cache_name not in self._history_value_cache[graph]:
+      if shape is None:
+        raise ValueError('shape must be provided at cache creation.')
+      if dtype.is_integer:
+        init_val = int(_COMPACT_TRACE_ENTRY_INIT_VALUE)
+      else:
+        init_val = _COMPACT_TRACE_ENTRY_INIT_VALUE
+
+      # Create in proper graph and base name_scope.
+      with graph.as_default() as g, g.name_scope(None):
+        self._history_value_cache[graph][
+            cache_name] = variable_scope.get_variable(
+                'tt_history' + '_' + self._escape_namescopes(cache_name),
+                shape=shape,
+                dtype=dtype,
+                initializer=init_ops.constant_initializer(init_val),
+                trainable=False,
+                use_resource=True,
+                collections=[
+                    _TENSOR_TRACER_STORAGE, ops.GraphKeys.LOCAL_VARIABLES
+                ])
+
+    return self._history_value_cache[graph][cache_name]
 
   def _create_or_get_tensor_values_cache(self, cache_name, graph,
                                          shape=None, dtype=dtypes.float32):
@@ -617,12 +671,6 @@ class TensorTracer:
         (1) If graph is None, or
         (2) shape is None when a new cache needs to be created.
     """
-
-    def _escape_namescopes(variable_name):
-      # TODO(deveci): This might cause name collisions as in "foo/bar/mytensor"
-      # and "foo_bar/mytensor".
-      return variable_name.replace('/', '_').replace(':', '_')
-
     if graph is None:
       raise ValueError('Invalid graph.')
 
@@ -639,7 +687,7 @@ class TensorTracer:
       # Create in proper graph and base name_scope.
       with graph.as_default() as g, g.name_scope(None):
         graph_cache_var[cache_name] = variable_scope.get_variable(
-            _TT_SNAPSHOT + '_' + _escape_namescopes(cache_name),
+            _TT_SNAPSHOT + '_' + self._escape_namescopes(cache_name),
             shape=shape, dtype=dtype,
             initializer=init_ops.constant_initializer(init_val),
             trainable=False,
@@ -703,6 +751,7 @@ class TensorTracer:
     if self._parameters.trace_mode in set([
         tensor_tracer_flags.TRACE_MODE_NAN_INF,
         tensor_tracer_flags.TRACE_MODE_NORM,
+        tensor_tracer_flags.TRACE_MODE_HISTORY,
         tensor_tracer_flags.TRACE_MODE_MAX_ABS]):
       return {self._parameters.trace_mode: 0}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_SUMMARY:
@@ -919,6 +968,9 @@ class TensorTracer:
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_NORM:
       return {self._parameters.trace_mode: array_ops.reshape(
           _show_norm(tensor), [1])}
+    if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_HISTORY:
+      return {self._parameters.trace_mode: array_ops.reshape(
+          _show_norm(tensor), [1])}
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_MAX_ABS:
       return {self._parameters.trace_mode: _show_max_abs(tensor)}
 
@@ -1034,7 +1086,8 @@ class TensorTracer:
         tensor_tracer_flags.TRACE_MODE_NORM,
         tensor_tracer_flags.TRACE_MODE_FULL_TENSOR,
         tensor_tracer_flags.TRACE_MODE_MAX_ABS,
-        tensor_tracer_flags.TRACE_MODE_SUMMARY
+        tensor_tracer_flags.TRACE_MODE_SUMMARY,
+        tensor_tracer_flags.TRACE_MODE_HISTORY
         ):
       return _show_full_tensor
 
@@ -1189,6 +1242,7 @@ class TensorTracer:
       if self._parameters.trace_mode in (
           tensor_tracer_flags.TRACE_MODE_NAN_INF,
           tensor_tracer_flags.TRACE_MODE_NORM,
+          tensor_tracer_flags.TRACE_MODE_HISTORY,
           tensor_tracer_flags.TRACE_MODE_MAX_ABS,
           tensor_tracer_flags.TRACE_MODE_SUMMARY
           ):
@@ -1337,6 +1391,8 @@ class TensorTracer:
     Returns:
       An instance of tensor_tracer_report.TensorTraceOrder, containing list of
       tensors to be traced with their topological order information.
+    Raises:
+      RuntimeError: If opname filtering is incorrectly set.
     """
 
     self._check_trace_files()
@@ -1348,6 +1404,8 @@ class TensorTracer:
     traced_tensors = self._determine_and_instrument_traced_tensors(
         graph_order, ops_in_exec_path, tensor_trace_points, report_handler)
     logging.info('TensorTracer is tracing %d tensors.', len(traced_tensors))
+    if traced_tensors and tensor_tracer_flags.TT_CHECK_FILTER.value:
+      raise RuntimeError('Verify ops being traced by tensor tracer.')
 
     tensor_trace_order = tensor_tracer_report.TensorTraceOrder(graph_order,
                                                                traced_tensors)
@@ -1357,10 +1415,12 @@ class TensorTracer:
       if self._use_temp_cache():
         self._create_temp_cache(len(traced_tensors), num_signatures, graph)
       else:
-        self._create_or_get_tensor_values_cache(_TT_SUMMARY_TAG,
-                                                graph,
-                                                [len(traced_tensors),
-                                                 num_signatures])
+        self._create_or_get_tensor_values_cache(
+            _TT_SUMMARY_TAG, graph, [len(traced_tensors), num_signatures])
+        if self._parameters.trace_mode in (
+            tensor_tracer_flags.TRACE_MODE_HISTORY):
+          self._create_or_get_tensor_history_values_cache(
+              _TT_SUMMARY_TAG, graph, [len(traced_tensors), num_signatures])
     if self._parameters.trace_mode in (
         tensor_tracer_flags.TRACE_MODE_SUMMARY,
         tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY):
@@ -1379,8 +1439,10 @@ class TensorTracer:
         report_handler.write_report_proto(self._report_proto_path,
                                           self._report_proto, self._parameters)
     else:
-      report_handler.create_report(self._tt_config, self._parameters,
-                                   tensor_trace_order, tensor_trace_points)
+      if self._parameters.trace_mode not in (
+          tensor_tracer_flags.TRACE_MODE_HISTORY):
+        report_handler.create_report(self._tt_config, self._parameters,
+                                     tensor_trace_order, tensor_trace_points)
     return tensor_trace_order
 
   def _create_host_call(self):
@@ -1457,6 +1519,58 @@ class TensorTracer:
     return logging_ops.print_v2(*stats, summarize=-1,
                                 output_stream=output_stream)
 
+  def _inspect_history_cache(self, cache, replica_id, step_num,
+                             tensor_trace_order):
+    """Generates a conditional print operation to log differences in tensor values.
+
+    Args:
+      cache: Tensor storing the trace results for the step.
+      replica_id: Tensor storing the replica id of the running core.
+      step_num: Step number.
+      tensor_trace_order: TensorTraceOrder object holding tensorname to id map.
+
+    Returns:
+      The Op to flush the cache to file.
+    """
+    # Check if there are graph operations being profiled.
+    if not tensor_trace_order.traced_tensors:
+      logging.warn('TT history mode has no tensors in the cache to check.')
+      return control_flow_ops.no_op
+
+    stats = ['\n\n', 'core:', replica_id, ',', 'step:', step_num]
+    diffs = []
+    for tensor_name, cache_idx in sorted(
+        tensor_trace_order.tensorname_to_cache_idx.items(),
+        key=lambda item: item[1]):
+
+      tensor_to_write = cache[cache_idx, 0]
+      snapshot_variable = self._create_or_get_tensor_history_values_cache(
+          tensor_to_write.name, tensor_to_write.op.graph,
+          tensor_to_write.shape.as_list(), tensor_to_write.dtype)
+
+      with ops.control_dependencies([snapshot_variable]):
+        old_value = state_ops.assign_add(snapshot_variable, 0.0)
+
+      with ops.control_dependencies([old_value]):
+        new_value = math_ops.cast(tensor_to_write, dtypes.float32)
+        delta = math_ops.abs(math_ops.subtract(old_value, new_value))
+        updated = state_ops.assign(snapshot_variable, new_value)
+        diffs.append(delta)
+      with ops.control_dependencies([updated]):
+        new_value_from_var = state_ops.assign_add(snapshot_variable, 0.0)
+
+      stats.extend([
+          '\n', 'core:', replica_id, ',', 'step:', step_num, ',',
+          tensor_name, '-->', old_value, new_value_from_var, delta])
+
+    diff_stack = array_ops.stack(diffs)
+    step_max = math_ops.reduce_max(diff_stack)
+
+    return control_flow_ops.cond(
+        math_ops.greater(step_max, tensor_tracer_flags.DELTA_THRESHOLD.value),
+        lambda: logging_ops.print_v2(*stats, summarize=-1),
+        lambda: control_flow_ops.no_op())  # pylint: disable=unnecessary-lambda
+
   def _get_outfile_suffix(self):
     if remote_utils.is_remote_path(self._parameters.trace_dir):
       return remote_utils.get_appendable_file_encoding()
@@ -1498,10 +1612,22 @@ class TensorTracer:
           if self._parameters.inspect_trace:
             if self._num_signature_dimensions() > 1:
               raise ValueError('Inspecting multi signatures are not supported.')
-            print_ops.append(self._inspect_summary_cache(
-                cache=cache, replica_id=replica_id, step_num=step_num,
-                output_stream=output_stream,
-                tensor_trace_order=tensor_trace_order))
+            if self._parameters.trace_mode in (
+                tensor_tracer_flags.TRACE_MODE_HISTORY):
+              print_ops.append(
+                  self._inspect_history_cache(
+                      cache=cache,
+                      replica_id=replica_id,
+                      step_num=step_num,
+                      tensor_trace_order=tensor_trace_order))
+            else:
+              print_ops.append(
+                  self._inspect_summary_cache(
+                      cache=cache,
+                      replica_id=replica_id,
+                      step_num=step_num,
+                      output_stream=output_stream,
+                      tensor_trace_order=tensor_trace_order))
           else:
             for i in range(self._num_signature_dimensions()):
               print_ops.append(logging_ops.print_v2(

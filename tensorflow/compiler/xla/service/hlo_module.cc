@@ -313,7 +313,7 @@ HloModuleProto HloModule::ToProto() const {
     proto.add_computations()->Swap(&computation_proto);
   }
   if (has_schedule()) {
-    *proto.mutable_schedule() = schedule().ToProto().ValueOrDie();
+    *proto.mutable_schedule() = schedule().ToProto().value();
   }
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
   *proto.mutable_dynamic_parameter_binding() =

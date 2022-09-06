@@ -270,7 +270,7 @@ port::Status CUDAFftPlan::UpdateScratchAllocator(
 
   if (scratch_size_bytes_ != 0) {
     auto allocated = scratch_allocator->AllocateBytes(scratch_size_bytes_);
-    if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
+    if (!allocated.ok() || (scratch_ = allocated.value()) == nullptr) {
       LOG(ERROR) << "Failed to allocate work area.";
       return allocated.status();
     }
@@ -511,9 +511,8 @@ bool CUDAFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufftExec,
     if (allocator) {
       auto allocated = allocator->AllocateBytes(input.size());
       if (allocated.ok()) {
-        if (stream->ThenMemcpy(&allocated.ValueOrDie(), input, input.size())
-                .ok()) {
-          input_maybe_copy = DeviceMemory<InputT>(allocated.ValueOrDie());
+        if (stream->ThenMemcpy(&allocated.value(), input, input.size()).ok()) {
+          input_maybe_copy = DeviceMemory<InputT>(allocated.value());
         }
       }
       // Keep going even the workaround fails, since we don't have a good

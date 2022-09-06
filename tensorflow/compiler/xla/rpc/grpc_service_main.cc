@@ -50,7 +50,7 @@ int RealMain(int argc, char** argv) {
 
   se::Platform* platform = nullptr;
   if (!platform_str.empty()) {
-    platform = PlatformUtil::GetPlatform(platform_str).ValueOrDie();
+    platform = PlatformUtil::GetPlatform(platform_str).value();
   }
   std::unique_ptr<xla::GRPCService> service =
       xla::GRPCService::NewService(platform).value();

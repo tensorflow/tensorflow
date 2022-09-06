@@ -48,15 +48,17 @@ void LlvmIrGenTestBase::ResetIrHook() {
 
 void LlvmIrGenTestBase::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const std::string& pattern,
-    bool match_optimized_ir) {
+    bool match_optimized_ir, bool run_optimization_passes) {
   SetIrHook(match_optimized_ir);
-  Status status = CompileToExecutable(std::move(hlo_module)).status();
+  Status status =
+      CompileToExecutable(std::move(hlo_module), run_optimization_passes)
+          .status();
   ResetIrHook();
   TF_ASSERT_OK(status);
 
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   TF_ASSERT_OK(filecheck_result.status());
-  EXPECT_TRUE(filecheck_result.ValueOrDie()) << "Full IR: " << ir_;
+  EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
 }
 
 void LlvmIrGenTestBase::CompileAndVerifyIr(
@@ -79,12 +81,14 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(
 
 void LlvmIrGenTestBase::CompileAndVerifyIr(const std::string& hlo_text,
                                            const std::string& expected_llvm_ir,
-                                           bool match_optimized_ir) {
+                                           bool match_optimized_ir,
+                                           bool run_optimization_passes) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text, config));
-  CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir);
+  CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir,
+                     run_optimization_passes);
 }
 
 void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
@@ -98,7 +102,7 @@ void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
 
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   ASSERT_TRUE(filecheck_result.ok());
-  EXPECT_TRUE(filecheck_result.ValueOrDie()) << "Full IR: " << ir_;
+  EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
 }
 
 void LlvmIrGenTestBase::MatchOptimizedHlo(absl::string_view hlo,
@@ -111,7 +115,7 @@ void LlvmIrGenTestBase::MatchOptimizedHlo(absl::string_view hlo,
   StatusOr<bool> filecheck_result =
       RunFileCheck(optimized_module->ToString(print_opts), pattern);
   TF_ASSERT_OK(filecheck_result.status());
-  EXPECT_TRUE(filecheck_result.ValueOrDie());
+  EXPECT_TRUE(filecheck_result.value());
 }
 
 StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(

@@ -36,9 +36,14 @@ namespace {
 class BufferComparatorTest : public testing::Test {
  protected:
   BufferComparatorTest()
+<<<<<<< HEAD
       : platform_(
             se::MultiPlatformManager::PlatformWithName(PLATFORM).ValueOrDie()),
         stream_exec_(platform_->ExecutorForDevice(0).ValueOrDie()) {}
+=======
+      : platform_(se::MultiPlatformManager::PlatformWithName("cuda").value()),
+        stream_exec_(platform_->ExecutorForDevice(0).value()) {}
+>>>>>>> google_upstream/master
 
   // Take floats only for convenience. Still uses ElementType internally.
   template <typename ElementType>

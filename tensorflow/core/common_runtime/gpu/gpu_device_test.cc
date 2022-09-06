@@ -38,7 +38,7 @@ const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
 int64_t GetTotalGPUMemory(PlatformDeviceId gpu_id) {
   se::StreamExecutor* se =
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .ValueOrDie();
+          .value();
 
   int64_t total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
@@ -48,7 +48,7 @@ int64_t GetTotalGPUMemory(PlatformDeviceId gpu_id) {
 se::CudaComputeCapability GetComputeCapability() {
   return DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                    PlatformDeviceId(0))
-      .ValueOrDie()
+      .value()
       ->GetDeviceDescription()
       .cuda_compute_capability();
 }

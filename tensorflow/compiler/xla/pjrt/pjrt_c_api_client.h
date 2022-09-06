@@ -135,21 +135,16 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::string_view platform_version() const override;
 
+  // TODO(b/244756954): Rethink this function altogether
   PjRtRuntimeType runtime_type() const override {
 #ifdef PJRT_C_API_BYPASS
     return wrapped_->runtime_type();
 #endif  // PJRT_C_API_BYPASS
-    CHECK(false) << "PJRT C API does not support runtime_type.";
+    return PjRtRuntimeType::kTfrt;
   }
 
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_partitions) const override {
-#ifdef PJRT_C_API_BYPASS
-    return wrapped_->GetDefaultDeviceAssignment(num_replicas, num_partitions);
-#endif  // PJRT_C_API_BYPASS
-    return Unimplemented(
-        "PJRT C API does not support GetDefaultDeviceAssignment");
-  }
+      int num_replicas, int num_partitions) const override;
 
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override {
 #ifdef PJRT_C_API_BYPASS
@@ -159,13 +154,7 @@ class PjRtCApiClient : public PjRtClient {
   }
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options) override {
-#ifdef PJRT_C_API_BYPASS
-    return WrapExecutable(wrapped_->Compile(computation, options));
-#endif  // PJRT_C_API_BYPASS
-    return Unimplemented(
-        "PJRT C API does not support Compile with XlaComputation");
-  }
+      const XlaComputation& computation, CompileOptions options) override;
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override;
@@ -197,14 +186,7 @@ class PjRtCApiClient : public PjRtClient {
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer,
-      PjRtDevice* device) override {
-#ifdef PJRT_C_API_BYPASS
-    return WrapBuffer(wrapped_->BufferFromHostBuffer(
-        data, type, dims, byte_strides, host_buffer_semantics,
-        on_done_with_host_buffer, PjRtCApiDevice::GetWrapped(device)));
-#endif  // PJRT_C_API_BYPASS
-    return Unimplemented("PJRT C API does not support BufferFromHostBuffer");
-  }
+      PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override {
@@ -284,6 +266,8 @@ class PjRtCApiClient : public PjRtClient {
   }
 
  private:
+  void InitDevices();
+
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
 
@@ -298,8 +282,6 @@ class PjRtCApiClient : public PjRtClient {
   // wrapped_ and related functionality should be removed.
   PjRtClient* wrapped_;
   absl::flat_hash_map<PjRtDevice*, PjRtCApiDevice*> wrapped_device_map_;
-
-  void InitDevices();
 };
 
 class PjRtCApiBuffer : public PjRtBuffer {
@@ -328,13 +310,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
         "PJRT C API does not support AcquireExternalReference");
   }
 
-  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override {
-#ifdef PJRT_C_API_BYPASS
-    return wrapped_->ToLiteral(literal);
-#endif  // PJRT_C_API_BYPASS
-    return PjRtFuture<Status>(
-        Unimplemented("PJRT C API does not support ToLiteral"));
-  }
+  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
@@ -432,9 +408,8 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
  public:
   PjRtCApiExecutable(PjRtCApiClient* client,
                      std::unique_ptr<PjRtLoadedExecutable> wrapped);
-  PjRtCApiExecutable(PjRtCApiClient* client, PJRT_Executable* executable);
 
-  ~PjRtCApiExecutable() override;
+  PjRtCApiExecutable(PjRtCApiClient* client, PJRT_Executable* executable);
 
   PjRtClient* client() const override { return client_; }
   absl::string_view name() const override;
@@ -509,7 +484,7 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
 
  private:
   PjRtCApiClient* client_;
-  PJRT_Executable* executable_;
+  std::unique_ptr<PJRT_Executable, pjrt::PJRT_ExecutableDeleter> executable_;
   std::vector<PjRtDevice*> addressable_devices_;
 
   void InitDevices();

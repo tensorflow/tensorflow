@@ -537,7 +537,7 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
     return cluster.emitError()
            << "error in fetching TPU compilation/execution devices: "
            << status_or_tpu_device_assignment.status().error_message();
-  auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
+  auto& tpu_device_assignment = status_or_tpu_device_assignment.value();
 
   *host_device = tpu_device_assignment.tpu_devices[0][0].host;
   return mlir::success();

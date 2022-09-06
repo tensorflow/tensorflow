@@ -235,6 +235,17 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "target_util_test",
+    srcs = ["target_util_test.cc"],
+    deps = [
+        ":target_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@llvm-project//llvm:Core",
+    ],
+)
+
 cc_library(
     name = "gpu_device_info",
     srcs = ["gpu_device_info.cc"],
@@ -559,6 +570,7 @@ config_setting(
 #         "@llvm-project//mlir:Support",
 #         "//tensorflow/compiler/xla/runtime:arguments",
 #         "//tensorflow/compiler/xla/runtime:types",
+#         "//tensorflow/compiler/xla/runtime:custom_call_registry",
 #         "//tensorflow/compiler/xla/runtime:executable",
 #         "//tensorflow/compiler/xla/runtime:jit_executable",
 #         "//tensorflow/compiler/xla:shape_util",
@@ -1058,6 +1070,45 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "move_copy_to_users",
+    srcs = ["move_copy_to_users.cc"],
+    hdrs = ["move_copy_to_users.h"],
+    deps = [
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "move_copy_to_users_test",
+    srcs = [
+        "move_copy_to_users_test.cc",
+    ],
+    deps = [
+        ":move_copy_to_users",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
 tf_cc_test(
     name = "gpu_conv_rewriter_test",
     srcs = ["gpu_conv_rewriter_test.cc"],
@@ -1197,6 +1248,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
@@ -1587,6 +1639,7 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
+        ":move_copy_to_users",
         ":alias_passthrough_params",
         ":all_reduce_blueconnect",
         ":fusion_bitcast_lift",
@@ -1766,7 +1819,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:cuda_libdevice_path",
+        "//tensorflow/tsl/platform:cuda_libdevice_path",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1822,7 +1875,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:cuda_libdevice_path",
+        "//tensorflow/tsl/platform:cuda_libdevice_path",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_diagnostics",
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
@@ -2124,13 +2177,13 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:kernel_spec",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:cuda_libdevice_path",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util/proto:proto_utils",
+        "//tensorflow/tsl/platform:cuda_libdevice_path",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

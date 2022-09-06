@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_MLIR_UTILS_RUNTIME_ASYNC_RUNTIME_API_H_
-#define XLA_MLIR_UTILS_RUNTIME_ASYNC_RUNTIME_API_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_ASYNC_RUNTIME_API_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_ASYNC_RUNTIME_API_H_
 
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
@@ -59,4 +59,4 @@ llvm::orc::SymbolMap AsyncRuntimeMemoryAllocationSymbolMap(
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_MLIR_UTILS_RUNTIME_ASYNC_RUNTIME_API_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_ASYNC_RUNTIME_API_H_

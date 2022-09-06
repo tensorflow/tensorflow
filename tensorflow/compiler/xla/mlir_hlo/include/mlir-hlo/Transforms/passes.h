@@ -44,6 +44,12 @@ using BufferizePatternsCallback = std::function<void(
 // Passes
 //===----------------------------------------------------------------------===//
 
+#define GEN_PASS_DECL_BUFFERPACKING
+#define GEN_PASS_DECL_FINALBUFFERIZEPASS
+#define GEN_PASS_DECL_PROPAGATESTATICSHAPESTOKERNELPASS
+#define GEN_PASS_DECL_TILELOOPSPASS
+#include "mlir-hlo/Transforms/passes.h.inc"
+
 /// Creates a pass that reuses buffers which are already allocated.
 std::unique_ptr<OperationPass<func::FuncOp>> createBufferReusePass();
 

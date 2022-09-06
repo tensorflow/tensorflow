@@ -132,7 +132,7 @@ class FusedBatchNormOp : public XlaOpKernel {
             kVarianceOutputIndex,
             xla::Broadcast(
                 xla::NanValue(b, ctx->output_xla_type(kVarianceOutputIndex)),
-                status_or_output_shape.ValueOrDie().dimensions()));
+                status_or_output_shape.value().dimensions()));
 
       } else {
         if (exponential_avg_factor_ == 1.0f) {

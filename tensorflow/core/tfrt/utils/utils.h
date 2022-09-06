@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TFRT_UTILS_H_
-#define TENSORFLOW_CORE_TFRT_UTILS_H_
+#ifndef TENSORFLOW_CORE_TFRT_UTILS_UTILS_H_
+#define TENSORFLOW_CORE_TFRT_UTILS_UTILS_H_
 
 #include <string>
 
@@ -130,8 +130,8 @@ int64_t GetUniqueInt();
         _status,                                                              \
         ::tensorflow::strings::StrCat(stage, ": ", _status.error_message())); \
   }                                                                           \
-  lhs = std::move(statusor.ValueOrDie())
+  lhs = std::move(statusor.value())
 
 }  // namespace tfrt
 
-#endif  // TENSORFLOW_CORE_TFRT_UTILS_H_
+#endif  // TENSORFLOW_CORE_TFRT_UTILS_UTILS_H_

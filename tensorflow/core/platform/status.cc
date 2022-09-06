@@ -112,11 +112,21 @@ std::vector<StackFrame> GetStackTrace(const ::tensorflow::Status& status) {
 
 }  // namespace errors
 
+Status::~Status() {}
+
 void Status::SetStackTrace(std::vector<StackFrame> stack_trace) {
-  stack_trace_ = stack_trace;
+  if (state_ != nullptr) {
+    state_->stack_trace = stack_trace;
+  }
 }
 
-std::vector<StackFrame> Status::GetStackTrace() const { return stack_trace_; }
+std::vector<StackFrame> Status::GetStackTrace() const {
+  if (state_ != nullptr) {
+    return state_->stack_trace;
+  } else {
+    return std::vector<StackFrame>();
+  }
+}
 
 absl::Span<const SourceLocation> Status::GetSourceLocations() const {
   return state_ != nullptr ? state_->source_locations
@@ -162,6 +172,10 @@ void Status::SlowCopyFrom(const State* src) {
   } else {
     state_ = std::make_unique<State>(*src);
   }
+}
+
+Status::State* Status::NewStateFromNonOKStatus(const Status& s) {
+  return new State(*s.state_);
 }
 
 const std::string& Status::empty_string() {

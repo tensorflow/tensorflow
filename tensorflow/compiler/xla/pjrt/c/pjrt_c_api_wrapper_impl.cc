@@ -15,16 +15,27 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+
 // TODO(b/238999986): Remove this.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 
@@ -44,6 +55,10 @@ std::string StructSizeErrorMsg(absl::string_view struct_name,
   return absl::StrCat("Unexpected ", struct_name, " size: expected ",
                       expected_size, ", got ", actual_size,
                       ". Check installed software versions.");
+}
+
+std::string ProgramFormatErrorMsg(absl::string_view program_format) {
+  return absl::StrCat("Unknown program format '", program_format, "'.");
 }
 
 // Returns C device from wrapped C++ device.
@@ -233,20 +248,116 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_CompileOptions",
                                                 PJRT_CompileOptions_STRUCT_SIZE,
                                                 args->options->struct_size));
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Program", PJRT_Program_STRUCT_SIZE, args->program->struct_size));
+
   PJRT_ASSIGN_OR_RETURN(
       xla::CompileOptions options,
       ConvertCCompileOptionstoCppCompileOptions(args->options));
-  absl::string_view module_str(args->module, args->module_size);
-  mlir::MLIRContext context;
-  PJRT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                        xla::ParseMlirModuleString(module_str, context));
 
-  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
-                        args->client->client->Compile(*module, options));
+  absl::string_view format_str(args->program->format,
+                               args->program->format_size);
+  absl::string_view module_sv(args->program->code, args->program->code_size);
+
+  std::unique_ptr<xla::PjRtLoadedExecutable> executable;
+  if (format_str == pjrt::kMlirFormat) {
+    mlir::MLIRContext context;
+    PJRT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          xla::ParseMlirModuleString(module_sv, context));
+
+    PJRT_ASSIGN_OR_RETURN(executable,
+                          args->client->client->Compile(*module, options));
+  } else if (format_str == pjrt::kHloFormat) {
+    xla::HloModuleProto module_proto;
+    // Open source ParseFromString doesn't support string_view.
+    std::string module_str(module_sv);
+    module_proto.ParseFromString(module_str);
+    xla::XlaComputation computation(module_proto);
+    PJRT_ASSIGN_OR_RETURN(executable,
+                          args->client->client->Compile(computation, options));
+  } else {
+    PJRT_RETURN_IF_ERROR(
+        tensorflow::errors::InvalidArgument(ProgramFormatErrorMsg(format_str)));
+  }
   // TODO(b/237545405): Implement creation methods for PJRT_Executable.
   args->executable = new PJRT_Executable{std::move(executable), args->client};
   PopulatePjrtExecutableAddressableDevices(args->executable);
   args->executable->populated = true;
+  return nullptr;
+}
+
+static void PopulateDeviceAssignment(int* const device_assignment_buffer,
+                                     int num_replicas, int num_partitions,
+                                     xla::DeviceAssignment device_assignment) {
+  int* iterator = device_assignment_buffer;
+  for (int replica = 0; replica < num_replicas; ++replica) {
+    for (int partition = 0; partition < num_partitions; ++partition) {
+      *(iterator++) = device_assignment(replica, partition);
+    }
+  }
+}
+
+PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
+    PJRT_Client_DefaultDeviceAssignment_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_DefaultAssignment_Args",
+      PJRT_Client_DefaultDeviceAssignment_Args_STRUCT_SIZE, args->struct_size));
+
+  const int replicas = args->num_replicas;
+  const int partitions = args->num_partitions;
+  const size_t buffer_size = args->default_assignment_size;
+  if (buffer_size < replicas * partitions) {
+    xla::Status status = tensorflow::errors::FailedPrecondition(
+        absl::StrCat(__func__, ": `default_assignment_size` ", buffer_size,
+                     " < `num_replicas * num_partitions`, ", replicas, " * ",
+                     partitions, " = ", replicas * partitions));
+    return new PJRT_Error{status};
+  }
+
+  PJRT_ASSIGN_OR_RETURN(
+      xla::DeviceAssignment device_assignment,
+      args->client->client->GetDefaultDeviceAssignment(replicas, partitions));
+
+  PopulateDeviceAssignment(args->default_assignment, replicas, partitions,
+                           std::move(device_assignment));
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_BufferFromHostBuffer(
+    PJRT_Client_BufferFromHostBuffer_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_BufferFromHostBuffer_Args",
+      PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE, args->struct_size));
+
+  absl::Span<const int64_t> dims =
+      absl::Span<const int64_t>(args->dims, args->num_dims);
+
+  std::optional<absl::Span<int64_t const>> byte_strides = std::nullopt;
+  if (args->byte_strides != nullptr) {
+    byte_strides =
+        absl::Span<const int64_t>(args->byte_strides, args->num_byte_strides);
+  }
+
+  xla::PjRtFuture<xla::Status>::Promise promise =
+      xla::PjRtFuture<xla::Status>::CreatePromise();
+
+  std::function<void()> on_done_with_host_buffer = [promise]() mutable {
+    promise.Set(xla::Status::OK());
+  };
+
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer> buffer,
+      args->client->client->BufferFromHostBuffer(
+          args->data, ::pjrt::ConvertFromPjRtBufferType(args->type), dims,
+          byte_strides,
+          ::pjrt::ConvertFromPjRtHostBufferSemantics(
+              args->host_buffer_semantics),
+          on_done_with_host_buffer, args->device->device));
+
+  args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
+  args->done_with_host_buffer =
+      new PJRT_Event{xla::PjRtFuture<xla::Status>(std::move(promise))};
+
   return nullptr;
 }
 
@@ -535,6 +646,41 @@ PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args) {
       args->buffer->buffer->CopyToDevice(args->dst_device->device));
   args->dst_buffer =
       new PJRT_Buffer{std::move(dst_buffer), args->buffer->client};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_ToHostBuffer_Args",
+      PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE, args->struct_size));
+
+  const xla::Shape& host_shape = xla::ShapeUtil::DeviceShapeToHostShape(
+      args->src->buffer->on_device_shape());
+
+  size_t host_buffer_size = xla::ShapeUtil::ByteSizeOfElements(host_shape);
+
+  if (args->dst == nullptr) {
+    args->dst_size = host_buffer_size;
+    return nullptr;
+  }
+
+  if (args->dst_size < host_buffer_size) {
+    return new PJRT_Error{
+        xla::InvalidArgument("`dst_size` must be >= %zu, got %zu.",
+                             host_buffer_size, args->dst_size)};
+  }
+
+  auto literal = std::make_unique<xla::MutableBorrowingLiteral>(
+      static_cast<char*>(args->dst), host_shape);
+  xla::PjRtFuture<xla::Status> future =
+      args->src->buffer->ToLiteral(literal.get());
+
+  args->event = new PJRT_Event{std::move(future)};
+  args->event->future.OnReady(
+      [literal{std::move(literal)}](xla::Status status) {
+        /* To keep literal alive */
+      });
+
   return nullptr;
 }
 

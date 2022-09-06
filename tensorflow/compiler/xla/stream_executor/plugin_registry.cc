@@ -112,7 +112,7 @@ bool PluginRegistry::SetDefaultFactory(Platform::Id platform_id,
         MultiPlatformManager::PlatformWithId(platform_id);
     std::string platform_name = "<unregistered platform>";
     if (status.ok()) {
-      platform_name = status.ValueOrDie()->Name();
+      platform_name = status.value()->Name();
     }
 
     LOG(ERROR) << "A factory must be registered for a platform before being "

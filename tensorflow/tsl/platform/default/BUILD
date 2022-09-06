@@ -48,7 +48,7 @@ cc_library(
 cc_library(
     name = "cuda_libdevice_path",
     srcs = ["cuda_libdevice_path.cc"],
-    hdrs = ["//tensorflow/core/platform:cuda_libdevice_path.h"],
+    hdrs = ["//tensorflow/tsl/platform:cuda_libdevice_path.h"],
     compatible_with = [],
     tags = [
         "manual",
@@ -199,7 +199,7 @@ cc_library(
 cc_library(
     name = "logging",
     srcs = ["logging.cc"],
-    hdrs = ["//tensorflow/core/platform:logging.h"],
+    hdrs = ["//tensorflow/tsl/platform:logging.h"],
     tags = [
         "manual",
         "no_oss",
@@ -207,11 +207,11 @@ cc_library(
     ],
     textual_hdrs = ["logging.h"],
     deps = [
-        "//tensorflow/core/platform",
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ],
@@ -285,18 +285,17 @@ cc_library(
     name = "platform_port",
     srcs = [
         "port.cc",
-        "//tensorflow/core/platform:cpu_info.cc",
+        "//tensorflow/tsl/platform:cpu_info.cc",
     ],
     hdrs = [
-        "//tensorflow/core/platform:cpu_info.h",
-        "//tensorflow/core/platform:demangle.h",
-        "//tensorflow/core/platform:host_info.h",
-        "//tensorflow/core/platform:init_main.h",
-        "//tensorflow/core/platform:mem.h",
-        "//tensorflow/core/platform:numa.h",
-        "//tensorflow/core/platform:snappy.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/tsl/platform:cpu_info.h",
+        "//tensorflow/tsl/platform:demangle.h",
+        "//tensorflow/tsl/platform:host_info.h",
         "//tensorflow/tsl/platform:init_main.h",
+        "//tensorflow/tsl/platform:mem.h",
+        "//tensorflow/tsl/platform:numa.h",
+        "//tensorflow/tsl/platform:snappy.h",
     ],
     copts = tf_copts(),
     defines = ["TF_USE_SNAPPY"] + select({
@@ -318,6 +317,8 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/platform:platform",
         "//tensorflow/core/platform",
         "@snappy",
     ] + select({
@@ -333,14 +334,14 @@ cc_library(
 cc_library(
     name = "resource",
     srcs = ["resource.cc"],
-    hdrs = ["//tensorflow/core/platform:resource.h"],
+    hdrs = ["//tensorflow/tsl/platform:resource.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/tsl/platform:stringpiece",
     ],
 )
 
@@ -502,15 +503,17 @@ cc_library(
     srcs = [
         "crash_analysis.cc",
     ],
-    hdrs = ["crash_analysis.h"],
+    hdrs = ["//tensorflow/tsl/platform:crash_analysis.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
+    textual_hdrs = ["crash_analysis.h"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/tsl/platform",
     ],
 )
 

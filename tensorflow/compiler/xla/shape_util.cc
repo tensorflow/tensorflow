@@ -257,7 +257,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     const std::vector<bool>& dynamic_dimensions) {
   return MakeValidatedShape(element_type, dimensions, dynamic_dimensions)
-      .ValueOrDie();
+      .value();
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithStaticDimensions(
@@ -309,7 +309,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
       element_type, dimensions, minor_to_major, dim_level_types, tiles,
       element_size_in_bits, memory_space, std::move(physical_shape));
   if (!ret.ok()) LOG(ERROR) << ret.status();
-  return ret.ValueOrDie();
+  return ret.value();
 }
 
 /* static */ Shape ShapeUtil::MoveDimToMajor(const Shape& shape, int64_t dim) {
@@ -1745,7 +1745,9 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
 
 /*static*/ int64_t ShapeUtil::ArraySize(const Shape& shape) {
   CHECK(LayoutUtil::IsDenseArray(shape));
-  CHECK(!shape.layout().tiles().empty());
+  if (shape.layout().tiles().empty()) {
+    return ByteSizeOfElements(shape);
+  }
 
   auto tile_dimensions = shape.layout().tiles(0).dimensions();
   auto shape_dimensions = shape.dimensions();

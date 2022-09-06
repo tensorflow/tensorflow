@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_RESULTS_H_
-#define XLA_RUNTIME_RESULTS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_RESULTS_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_RESULTS_H_
 
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
@@ -77,4 +77,4 @@ struct NoResultConverter : public ResultConverter {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_RESULTS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_RESULTS_H_

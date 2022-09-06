@@ -32,6 +32,8 @@ class Flags {
   TF_DECLARE_FLAG(enable_nested_function_shape_inference, false,
                   "Allow ops such as tf.cond to invoke the ShapeRefiner on "
                   "their nested functions.");
+  TF_DECLARE_FLAG(enable_quantized_dtypes_training, false,
+                  "Set quantized dtypes, like tf.qint8, to be trainable.");
   TF_DECLARE_FLAG(graph_building_optimization, false,
                   "Optimize graph building for faster tf.function tracing.");
   TF_DECLARE_FLAG(

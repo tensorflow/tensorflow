@@ -40,7 +40,7 @@ TEST_F(HloElementTypeConverterTest, CustomCallsNotConverted) {
            custom_call_target="foo"
     }
   )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloElementTypeConverter type_converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_FALSE(converted);
@@ -56,7 +56,7 @@ TEST_F(HloElementTypeConverterTest, InfeedsOutfeedsNotConverted) {
       outfeed = token[] outfeed(infeed.data, token0)
     }
   )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloElementTypeConverter type_converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_FALSE(converted);
@@ -75,7 +75,7 @@ TEST_F(HloElementTypeConverterTest, OperationsInNestedTuplesConverted) {
     }
   )";
 
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloElementTypeConverter type_converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_TRUE(converted);
@@ -103,7 +103,7 @@ TEST_F(HloElementTypeConverterTest, BatchNormGradBF16Converted) {
     }
   )";
 
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloElementTypeConverter type_converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_TRUE(converted);
@@ -127,7 +127,7 @@ ENTRY main {
   ROOT rng = bf16[1,1000,20]{2,1,0} rng(constant.3, constant.4), distribution=rng_uniform
 }
   )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloElementTypeConverter type_converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_TRUE(converted);
@@ -152,7 +152,7 @@ ENTRY main {
   ROOT rng1 = bf16[1,1000,20]{2,1,0} rng(constant.3, constant.4), control-predecessors={%rng0}, distribution=rng_uniform
 }
   )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
   HloElementTypeConverter type_converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
@@ -184,7 +184,7 @@ TEST_F(HloElementTypeConverterTest, BitcastConvertIsUnmodified) {
     p = bf16[] parameter(0)
     ROOT c = u16[] bitcast-convert(p)
   })";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloElementTypeConverter converter(BF16, F32);
   TF_ASSERT_OK_AND_ASSIGN(bool converted, RunHloPass(&converter, module.get()));
   EXPECT_FALSE(converted);

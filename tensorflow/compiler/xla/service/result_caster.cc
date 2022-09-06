@@ -47,14 +47,14 @@ bool ResultCaster::InstructionMatchesPattern(HloInstruction* instruction) {
       !status_or_inferred_shape->has_value()) {
     return false;
   }
-  const Shape& inferred_shape = status_or_inferred_shape.ValueOrDie().value();
+  const Shape& inferred_shape = status_or_inferred_shape.value().value();
   return inferred_shape.element_type() != instruction->shape().element_type();
 }
 
 StatusOr<HloInstruction*> ResultCaster::ExpandInstruction(
     HloInstruction* instruction) {
   auto* computation = instruction->parent();
-  Shape inferred_shape = MaybeInferShape(instruction).ValueOrDie().value();
+  Shape inferred_shape = MaybeInferShape(instruction).value().value();
   *inferred_shape.mutable_layout() = instruction->shape().layout();
   auto clone = computation->AddInstruction(
       instruction->CloneWithNewShape(inferred_shape));

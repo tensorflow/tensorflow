@@ -3,7 +3,7 @@
 // CHECK: func @pass_context(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @pass_context(%arg0: !rt.kernel_context) {
+func.func @pass_context(%arg0: !rt.execution_context) {
   func.return
 }
 
@@ -12,7 +12,7 @@ func.func @pass_context(%arg0: !rt.kernel_context) {
 // CHECK: func @set_output(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @set_output(%arg0: !rt.kernel_context) {
+func.func @set_output(%arg0: !rt.execution_context) {
   // CHECK: %[[MEMREF:.*]] = memref.alloc
   // CHECK: %[[LLVM_MEMREF:.*]] = builtin.unrealized_conversion_cast %[[MEMREF]]
   %0 = memref.alloc() : memref<f32>
@@ -32,7 +32,7 @@ func.func @set_output(%arg0: !rt.kernel_context) {
 // CHECK: func @set_error(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @set_error(%arg0: !rt.kernel_context) {
+func.func @set_error(%arg0: !rt.execution_context) {
   // CHECK: %[[ADDR0:.*]] = llvm.mlir.addressof @[[ERR0]]
   // CHECK: %[[PTR0:.*]] = llvm.bitcast %[[ADDR0]] {{.*}} to !llvm.ptr<i8>
   // CHECK: call @runtimeSetError(%[[CTX]], %[[PTR0]])
@@ -52,7 +52,7 @@ func.func @set_error(%arg0: !rt.kernel_context) {
 // CHECK: func @dedup_error_message(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @dedup_error_message(%arg0: !rt.kernel_context) {
+func.func @dedup_error_message(%arg0: !rt.execution_context) {
   // CHECK: %[[ADDR:.*]] = llvm.mlir.addressof @[[ERR]]
   rt.set_error %arg0, "Failed precondition"
   // CHECK: %[[ADDR:.*]] = llvm.mlir.addressof @[[ERR]]
@@ -89,7 +89,7 @@ func.func @dedup_error_message(%arg0: !rt.kernel_context) {
 // CHECK: func @custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @custom_call(%arg0: !rt.kernel_context) {
+func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @runtimeCustomCall
   rt.custom_call %arg0["target"] () { arr = [1, 2, 3] } : () -> ()
   func.return
@@ -122,7 +122,7 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 // CHECK: func @custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @custom_call(%arg0: !rt.kernel_context) {
+func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @runtimeCustomCall
   rt.custom_call %arg0["target"] ()
     { attr_name = array<i64: 1, 2, 3> } : () -> ()
@@ -145,7 +145,7 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 // CHECK: func @custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @custom_call(%arg0: !rt.kernel_context) {
+func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @runtimeCustomCall
   rt.custom_call %arg0["target"] () { arr = [] } : () -> ()
   func.return
@@ -167,20 +167,26 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 // CHECK: func @custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @custom_call(%arg0: !rt.kernel_context) {
+func.func @custom_call(%arg0: !rt.execution_context) {
 
   // CHECK: %[[C1:.*]] = arith.constant 1 : i32
-  // CHECK: %[[ARGS_ALLOCA:.*]] = llvm.alloca %c1_i32 x !llvm.array<1 x ptr<i8>>
+  // CHECK: %[[RETS_ALLOCA:.*]] = llvm.alloca %[[C1]] x !llvm.array<1 x ptr<i8>>
+
+  // CHECK: %[[C1_0:.*]] = arith.constant 1 : i32
+  // CHECK: %[[ARGS_ALLOCA:.*]] = llvm.alloca %[[C1_0]] x !llvm.array<1 x ptr<i8>>
   // CHECK: %[[ARGS:.*]] = llvm.getelementptr %[[ARGS_ALLOCA]]
 
   // CHECK: %[[ATTRS_ADDR:.*]] = llvm.mlir.addressof @__rt_custom_call_attrs
   // CHECK: %[[ATTRS:.*]] = llvm.getelementptr %[[ATTRS_ADDR]]
 
+  // CHECK: %[[RETS:.*]] = llvm.getelementptr %[[RETS_ALLOCA]]
+
   // CHECK: %[[CALLEE_ADDR:.*]] = llvm.mlir.addressof @__rt_custom_call_callee
   // CHECK: %[[CALLEE:.*]] = llvm.bitcast %[[CALLEE_ADDR]]
 
   // CHECK: %[[STATUS:.*]] = call @runtimeCustomCall(%[[CTX]], %[[CALLEE]],
-  // CHECK-SAME:                                     %[[ARGS]], %[[ATTRS]])
+  // CHECK-SAME:                                     %[[ARGS]], %[[ATTRS]],
+  // CHECK-SAME:                                     %[[RETS]])
   // CHECK: cf.assert %[[STATUS]], "oops"
   %status = rt.custom_call %arg0["target"] () : () -> ()
   %ok = rt.is_ok %status
@@ -210,7 +216,7 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 // CHECK: func @custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @custom_call(%arg0: !rt.kernel_context) {
+func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @runtimeCustomCall
   rt.custom_call %arg0["target"] () { attr_name = 123.0 : f32 } : () -> ()
   func.return
@@ -245,7 +251,7 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 // CHECK: func @custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @custom_call(%arg0: !rt.kernel_context) {
+func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @runtimeCustomCall
   rt.custom_call %arg0["target"] ()
     { attr_name = dense<[1, 2, 3]> : tensor<3xi32> } : () -> ()
@@ -283,7 +289,7 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 // CHECK: func @custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @custom_call(%arg0: !rt.kernel_context) {
+func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @runtimeCustomCall
   rt.custom_call %arg0["target"] ()
     { attr_name = dense<[[1], [2]]> : tensor<2x1xi32> } : () -> ()
@@ -304,7 +310,7 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 // CHECK: func @custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @custom_call(%arg0: !rt.kernel_context) {
+func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @runtimeCustomCall
   rt.custom_call %arg0["target"] () { attr_name = "attr_value" } : () -> ()
   func.return
@@ -316,7 +322,7 @@ func.func @custom_call(%arg0: !rt.kernel_context) {
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>,
 // CHECK:   %[[ARG:.*]]: f32
 // CHECK: )
-func.func @custom_call(%arg0: !rt.kernel_context, %arg1 : f32) {
+func.func @custom_call(%arg0: !rt.execution_context, %arg1 : f32) {
   // CHECK-DAG: %[[MEM:.*]] = llvm.alloca {{.*}} x f32
   // CHECK-DAG: %[[ARGS:.*]] = llvm.alloca {{.*}} x !llvm.array<3 x ptr<i8>
 
@@ -337,7 +343,7 @@ func.func @custom_call(%arg0: !rt.kernel_context, %arg1 : f32) {
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>,
 // CHECK:   %[[ARG:.*]]: memref<?x256xf32>
 // CHECK: )
-func.func @custom_call(%arg0: !rt.kernel_context, %arg1 : memref<?x256xf32>) {
+func.func @custom_call(%arg0: !rt.execution_context, %arg1 : memref<?x256xf32>) {
 
   // CHECK: %[[DESC:.*]] = builtin.unrealized_conversion_cast %[[ARG]]
   // CHECK-SAME: to !llvm.struct
@@ -373,7 +379,7 @@ func.func @custom_call(%arg0: !rt.kernel_context, %arg1 : memref<?x256xf32>) {
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>,
 // CHECK:   %[[ARG:.*]]: f16
 // CHECK: )
-func.func @custom_call(%arg0: !rt.kernel_context, %arg1: f16) {
+func.func @custom_call(%arg0: !rt.execution_context, %arg1: f16) {
   // CHECK: call @target
   rt.custom_call direct %arg0["target"] (%arg1) : (f16) -> ()
   func.return
@@ -387,7 +393,7 @@ func.func @custom_call(%arg0: !rt.kernel_context, %arg1: f16) {
 // CHECK: func @dedup_custom_call_attrs(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @dedup_custom_call_attrs(%arg0: !rt.kernel_context) {
+func.func @dedup_custom_call_attrs(%arg0: !rt.execution_context) {
   // CHECK: call @runtimeCustomCall
   rt.custom_call %arg0["target"] () { arr = [1, 2, 3] } : () -> ()
   // CHECK: call @runtimeCustomCall
@@ -400,7 +406,7 @@ func.func @dedup_custom_call_attrs(%arg0: !rt.kernel_context) {
 // CHECK: func @direct_custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr<i8>
 // CHECK: )
-func.func @direct_custom_call(%arg0: !rt.kernel_context) {
+func.func @direct_custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @target
   // CHECK: call @target
   rt.custom_call direct %arg0["target"] () : () -> ()
@@ -410,3 +416,21 @@ func.func @direct_custom_call(%arg0: !rt.kernel_context) {
 
 // CHECK: func private @target(!llvm.ptr<i8>, !llvm.ptr<ptr<i8>>,
 // CHECK-SAME:                 !llvm.ptr<ptr<i8>>) -> i1
+
+// -----
+
+// CHECK: %[[C1:.*]] = arith.constant 1 : i32
+// CHECK: %[[RETS_ALLOCA:.*]] = llvm.alloca %[[C1]] x !llvm.array<3 x ptr<i8>>
+
+// CHECK: %[[C1_0:.*]] = arith.constant 1 : i32
+// CHECK: %[[F32_ALLOCA:.*]] = llvm.alloca %[[C1_0]] x f32
+
+// CHECK: %[[N_RETS:.*]]  = llvm.mlir.addressof @__rt_num_rets
+// CHECK: %[[RETS:.*]] = llvm.getelementptr %[[RETS_ALLOCA]]
+
+// CHECK: call @runtimeCustomCall
+// CHECK: %[[LOAD2:.*]] = llvm.load %[[F32_ALLOCA]]
+func.func @custom_call(%ctx: !rt.execution_context) -> (f32) {
+  %status, %0 = rt.custom_call %ctx["f32_reduce"] () : () -> (f32)
+  return %0 : f32
+}

@@ -21,6 +21,7 @@ package_group(
         "//tensorflow/compiler/xla:friends",
     ],
     packages = [
+        "//third_party/australis/...",
         "//third_party/py/jax/...",
     ],
 )
@@ -471,31 +472,6 @@ cc_library(
     ] + if_nccl(["@local_config_nccl//:nccl"]),
 )
 
-tf_cc_test(
-    name = "gpu_multistream_test",
-    srcs = ["gpu_multistream_test.cc"],
-    tags = [
-        # TODO(phawkins): figure out TF test infra such that this only runs under GPU.
-        "no_oss",
-        "requires-gpu-nvidia",
-        "notap",
-    ],
-    deps = [
-        ":gpu_device",
-        ":pjrt_client",
-        ":pjrt_stream_executor_client",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/client:executable_build_options",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:random",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
 cc_library(
     name = "mlir_to_hlo",
     srcs = ["mlir_to_hlo.cc"],
@@ -709,6 +685,7 @@ cc_library(
     }),
     deps = [
         ":pjrt_client",
+        ":pjrt_future",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
@@ -717,6 +694,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_wrapper_impl",  # TODO(skyewm): remove
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:pjrt_api",
         "//tensorflow/core/tpu:tpu_initializer_helper",
     ],

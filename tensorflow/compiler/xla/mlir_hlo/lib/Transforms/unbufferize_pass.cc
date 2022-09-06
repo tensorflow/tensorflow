@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -30,11 +29,15 @@ limitations under the License.
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Value.h"
 
-using namespace mlir;
+namespace mlir {
+
+#define GEN_PASS_DEF_UNBUFFERIZEPASS
+#include "mlir-hlo/Transforms/passes.h.inc"
+
 using ::mlir::func::FuncOp;
 
 namespace {
-class UnbufferizePass : public UnbufferizePassBase<UnbufferizePass> {
+class UnbufferizePass : public impl::UnbufferizePassBase<UnbufferizePass> {
  public:
   using UnbufferizePassBase<UnbufferizePass>::UnbufferizePassBase;
 
@@ -86,3 +89,5 @@ void UnbufferizePass::runOnOperation() {
 std::unique_ptr<OperationPass<func::FuncOp>> hlo::createUnbufferizePass() {
   return std::make_unique<UnbufferizePass>();
 }
+
+}  // namespace mlir

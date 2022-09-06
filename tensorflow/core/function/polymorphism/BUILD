@@ -33,7 +33,7 @@ pytype_strict_library(
     srcs = ["function_cache.py"],
     srcs_version = "PY3",
     visibility = [
-        "//tensorflow/python/eager:__pkg__",
+        "//tensorflow/python/eager:__subpackages__",
     ],
     deps = [
         "//tensorflow/core/function/polymorphism:type_dispatch",

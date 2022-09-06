@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_PRESIZED_CUCKOO_MAP_H_
-#define TENSORFLOW_UTIL_PRESIZED_CUCKOO_MAP_H_
+#ifndef TENSORFLOW_CORE_UTIL_PRESIZED_CUCKOO_MAP_H_
+#define TENSORFLOW_CORE_UTIL_PRESIZED_CUCKOO_MAP_H_
 
 #include <algorithm>
 #include <vector>
@@ -361,4 +361,4 @@ class PresizedCuckooMap {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_PRESIZED_CUCKOO_MAP_H_
+#endif  // TENSORFLOW_CORE_UTIL_PRESIZED_CUCKOO_MAP_H_

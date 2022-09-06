@@ -151,8 +151,7 @@ void HloFunctionImporter::ReplaceBlockArgumentsWithImplicitOperands(
       assert(implicit_operand_index < implicit_operands.size());
       arg.replaceAllUsesWith(implicit_operands[implicit_operand_index++]);
     }
-    region.front().eraseArguments(
-        llvm::to_vector(llvm::seq<unsigned>(0, region.getNumArguments())));
+    region.front().eraseArguments(0, region.getNumArguments());
   }
 }
 
@@ -508,7 +507,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto attr = CreateDenseElementsAttrFromLiteral(literal, *builder_);
       if (!attr.ok()) return attr.status();
       mlir::Operation* new_operation =
-          func_builder->create<mlir::mhlo::ConstantOp>(loc, attr.ValueOrDie());
+          func_builder->create<mlir::mhlo::ConstantOp>(loc, attr.value());
       for (auto attr : attributes) {
         new_operation->setAttr(attr.getName(), attr.getValue());
       }
@@ -521,6 +520,50 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
               func_builder->getI64IntegerAttr(
                   Cast<HloIotaInstruction>(instruction)->iota_dimension()))
           .getOperation();
+    }
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone: {
+      auto async_op = Cast<HloAsyncInstruction>(instruction);
+      auto called_computation = async_op->async_wrapped_computation();
+      TF_ASSIGN_OR_RETURN(FuncOp function,
+                          ImportAsFunc(*called_computation, /*is_main=*/false));
+      attributes.push_back(builder_->getNamedAttr(
+          "called_computation",
+          mlir::FlatSymbolRefAttr::get(builder_->getContext(),
+                                       function.getName())));
+      auto execution_thread = async_op->async_execution_thread();
+      attributes.push_back(builder_->getNamedAttr(
+          "execution_thread", builder_->getStringAttr(execution_thread)));
+      function->setAttr("execution_thread",
+                        builder_->getStringAttr(execution_thread));
+      auto group_id = async_op->async_group_id();
+      if (group_id) {
+        attributes.push_back(builder_->getNamedAttr(
+            "group_id", builder_->getI64IntegerAttr(*group_id)));
+      }
+
+      if (instruction->opcode() == HloOpcode::kAsyncStart) {
+        auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
+            context_, result_type.cast<mlir::TupleType>().getTypes());
+        return func_builder
+            ->create<mlir::mhlo::AsyncStartOp>(loc, bundle_result_type,
+                                               operands, attributes)
+            .getOperation();
+      } else if (instruction->opcode() == HloOpcode::kAsyncUpdate) {
+        auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
+            context_, result_type.cast<mlir::TupleType>().getTypes());
+        return func_builder
+            ->create<mlir::mhlo::AsyncUpdateOp>(loc, bundle_result_type,
+                                                operands, attributes)
+            .getOperation();
+      } else {
+        assert(instruction->opcode() == HloOpcode::kAsyncDone);
+        return func_builder
+            ->create<mlir::mhlo::AsyncDoneOp>(loc, result_type, operands,
+                                              attributes)
+            .getOperation();
+      }
     }
     case HloOpcode::kBroadcast: {
       // Note that the HLO broadcast is more powerful than the XLA broadcast
@@ -662,6 +705,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
+      attributes.push_back(builder_->getNamedAttr(
+          "custom_call_output_operand_aliasing",
+          ConvertCustomCallOutputOperandAliasing(
+              instruction->custom_call_output_operand_aliasing(), builder_)));
       return func_builder
           ->create<mlir::mhlo::CustomCallOp>(loc, result_type, operands,
                                              attributes)

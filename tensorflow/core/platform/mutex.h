@@ -53,7 +53,15 @@ class TF_LOCKABLE mutex {
   mutex();
   // The default implementation of the underlying mutex is safe to use after
   // the linker initialization to zero.
-  explicit mutex(LinkerInitialized x);
+  explicit constexpr mutex(LinkerInitialized x)
+      :
+#if defined(PLATFORM_GOOGLE)
+        mu_(absl::kConstInit)
+#else
+        mu_()
+#endif
+  {
+  }
 
   void lock() TF_EXCLUSIVE_LOCK_FUNCTION();
   bool try_lock() TF_EXCLUSIVE_TRYLOCK_FUNCTION(true);

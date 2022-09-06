@@ -34881,6 +34881,19 @@ func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf
 	return op.Output(0)
 }
 
+// RandomIndexShuffleAttr is an optional argument to RandomIndexShuffle.
+type RandomIndexShuffleAttr func(optionalAttr)
+
+// RandomIndexShuffleRounds sets the optional rounds attribute to value.
+//
+// value: The number of rounds to use the in block cipher.
+// If not specified, defaults to 4
+func RandomIndexShuffleRounds(value int64) RandomIndexShuffleAttr {
+	return func(m optionalAttr) {
+		m["rounds"] = value
+	}
+}
+
 // Outputs the position of `value` in a permutation of [0, ..., max_index].
 //
 // Output values are a bijection of the `index` for any combination and `seed` and `max_index`.
@@ -34897,15 +34910,20 @@ func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf
 //	max_index: A scalar tensor or vector of dtype `dtype`. The upper bound(s) of the interval (inclusive).
 //
 // Returns A scalar tensor of dtype `dtype`, within [0, max_index]. The randomly shuffled index.
-func RandomIndexShuffle(scope *Scope, index tf.Output, seed tf.Output, max_index tf.Output) (output tf.Output) {
+func RandomIndexShuffle(scope *Scope, index tf.Output, seed tf.Output, max_index tf.Output, optional ...RandomIndexShuffleAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "RandomIndexShuffle",
 		Input: []tf.Input{
 			index, seed, max_index,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

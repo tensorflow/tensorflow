@@ -93,7 +93,7 @@ TEST(ConvertTypeToTensorTypeTest, ConvertStringTensor) {
   Tt.setValues({"one", "two", "three", "four"});
   auto value_or_status = ConvertTensor(tensor, &b);
   ASSERT_TRUE(value_or_status.ok());
-  auto attr = value_or_status.ValueOrDie();
+  auto attr = value_or_status.value();
 
   EXPECT_TRUE(attr.isa<mlir::DenseStringElementsAttr>());
   auto string_attr = attr.cast<mlir::DenseStringElementsAttr>();
@@ -116,7 +116,7 @@ class ConvertTensorTest : public ::testing::Test {
 
     auto value_or = ConvertTensor(tensor, &b);
     TF_ASSERT_OK(value_or.status());
-    auto attr = value_or.ValueOrDie();
+    auto attr = value_or.value();
 
     EXPECT_EQ(attr.getType().getElementType(), expected_ty);
 

@@ -57,7 +57,7 @@ TEST_F(ReshapeMoverTest, ReshapesWithDifferentInputShapesNotMoved) {
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Reshape(param0), op::Reshape(param1)));
 
-  EXPECT_FALSE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Reshape(param0), op::Reshape(param1)));
@@ -100,7 +100,7 @@ TEST_F(ReshapeMoverTest, 1ConstantAnd1ReshapesOnRngNotMoved) {
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Reshape(rng0), const1));
 
-  EXPECT_FALSE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Reshape(rng0), const1));
@@ -126,7 +126,7 @@ TEST_F(ReshapeMoverTest, ScalarReshapesNotMoved) {
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Reshape(param0), op::Reshape(param1)));
 
-  EXPECT_FALSE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
@@ -152,7 +152,7 @@ TEST_F(ReshapeMoverTest, EquivalentReshapesMoved) {
 
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Reshape(param0), op::Reshape(param1)));
-  EXPECT_TRUE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Add(param0, param1)));
@@ -207,7 +207,7 @@ TEST_F(ReshapeMoverTest, 1ConstantAnd2ReshapesMoved) {
   EXPECT_THAT(computation->root_instruction(),
               op::Select(const0, reshape1, reshape2));
 
-  EXPECT_TRUE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Select(op::Reshape(const0), param1, param2)));
@@ -243,7 +243,7 @@ TEST_F(ReshapeMoverTest, 1ParameterAnd1ReshapeNotMoved) {
 
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Reshape(param0), param1));
-  EXPECT_FALSE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Reshape(param0), param1));
@@ -288,7 +288,7 @@ TEST_F(ReshapeMoverTest, 2TrivialConstantReshapeNotMoved) {
   EXPECT_THAT(computation->root_instruction(),
               op::Select(pred, op::Reshape(const0), op::Reshape(const1)));
 
-  EXPECT_FALSE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Select(pred, op::Reshape(const0), op::Reshape(const1)));
@@ -334,7 +334,7 @@ TEST_F(ReshapeMoverTest, 1NonTrivialReshapeMoved) {
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Reshape(param0), const1));
 
-  EXPECT_TRUE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Add(param0, op::Reshape(const1))));
@@ -377,7 +377,7 @@ TEST_F(ReshapeMoverTest, 1NonTrivialReshapeWith1ReshapedConstNotMoved) {
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Reshape(param0), op::Reshape(const1)));
 
-  EXPECT_FALSE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Reshape(param0), op::Reshape(const1)));
@@ -407,7 +407,7 @@ TEST_F(ReshapeMoverTest, EquivalentReshapesMovedAcrossFusion) {
   EXPECT_THAT(computation->root_instruction(),
               op::Fusion(op::Reshape(param0), op::Reshape(param1)));
 
-  EXPECT_TRUE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Fusion(param0, param1)));
@@ -441,7 +441,7 @@ TEST_F(ReshapeMoverTest, EquivalentReshapesMovedAcrossSelect) {
       computation->root_instruction(),
       op::Select(op::Reshape(pred), op::Reshape(param0), op::Reshape(param1)));
 
-  EXPECT_TRUE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Select(pred, param0, param1)));
@@ -469,7 +469,7 @@ TEST_F(ReshapeMoverTest, ScalarReshapeNotMovedAcrossSelect) {
   EXPECT_THAT(computation->root_instruction(),
               op::Select(op::Reshape(pred), param0, param1));
 
-  EXPECT_FALSE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Select(op::Reshape(pred), param0, param1));
@@ -521,7 +521,7 @@ TEST_F(ReshapeMoverTest, MultiplePasses) {
       op::Add(op::Reshape(param2),
               op::Reshape(op::Add(op::Reshape(param0), op::Reshape(param1)))));
 
-  EXPECT_TRUE(ReshapeMover().Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(ReshapeMover().Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),

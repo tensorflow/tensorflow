@@ -19,6 +19,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/math:math_util",
     ],
 )
 
@@ -33,5 +34,4 @@ filegroup(
 
 exports_files([
     "math_util.h",
-    "math_util_test.cc",
 ])

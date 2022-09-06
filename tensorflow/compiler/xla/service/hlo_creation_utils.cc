@@ -432,7 +432,7 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
     b.AddInstruction(
         HloInstruction::CreateBinary(scalar_shape, binary_opcode, lhs, rhs));
     reduce_computation =
-        operand->parent()->parent()->AddEmbeddedComputation(b.Build());
+        operand->GetModule()->AddEmbeddedComputation(b.Build());
   }
   return MakeReduceHlo(operand, init_value, dimensions, reduce_computation,
                        metadata);

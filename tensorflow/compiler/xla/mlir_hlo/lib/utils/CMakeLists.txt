@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 
-add_mlir_library(MLIRMhloUtils
+add_mlir_dialect_library(MLIRMhloUtils
   codegen_utils.cc
   convert_op_folder.cc
   cycle_detector.cc

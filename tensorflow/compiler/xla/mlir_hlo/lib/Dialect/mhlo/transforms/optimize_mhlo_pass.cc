@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -27,8 +26,12 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_OPTIMIZEMHLOPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
-class OptimizeMhloPass : public OptimizeMhloPassBase<OptimizeMhloPass> {
+class OptimizeMhloPass : public impl::OptimizeMhloPassBase<OptimizeMhloPass> {
  public:
   /// Performs the lowering to MHLO dialect.
   void runOnOperation() override;

@@ -64,8 +64,8 @@ std::string UnrankedMemrefType::ToString() const {
   return StrCat("memref<*x", LowercasePrimitiveTypeName(element_type()), ">");
 }
 
-std::string KernelContextOperandType::ToString() const {
-  return "!rt.kernel_context";
+std::string ExecutionContextOperandType::ToString() const {
+  return "!rt.execution_context";
 }
 
 //===----------------------------------------------------------------------===//
@@ -103,8 +103,8 @@ absl::StatusOr<ResultAbi> MemrefType::AsResult() const {
   };
 }
 
-// Kernel context passed as a single opaque pointer.
-absl::StatusOr<ArgumentAbi> KernelContextOperandType::AsArgument() const {
+// Execution context passed as a single opaque pointer.
+absl::StatusOr<ArgumentAbi> ExecutionContextOperandType::AsArgument() const {
   return ArgumentAbi{1};
 }
 

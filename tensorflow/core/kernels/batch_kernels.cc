@@ -121,7 +121,7 @@ static thread::ThreadPool* GetOrCreateBatchThreadsPool() {
       return nullptr;
     }
     static serving::BoundedExecutor* executor =
-        status_or_executor.ValueOrDie().release();
+        status_or_executor.value().release();
     return new thread::ThreadPool(executor);
   }();
   return shared_thread_pool;

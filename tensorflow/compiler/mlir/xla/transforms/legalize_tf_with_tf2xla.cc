@@ -535,7 +535,7 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
       tensorflow::OpRegistry::Global(), tensorflow::FunctionDefLibrary());
   pflr_ = std::make_unique<tensorflow::ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), tensorflow::Env::Default(), /*config=*/nullptr,
-      version_or.ValueOrDie(), flib_def_.get(), tensorflow::OptimizerOptions());
+      version_or.value(), flib_def_.get(), tensorflow::OptimizerOptions());
   params_.function_library = pflr_->GetFLR(device_->name());
   return success();
 }
@@ -568,7 +568,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
 
   std::shared_ptr<const tensorflow::NodeProperties> props;
   tensorflow::Status status = tensorflow::NodeProperties::CreateFromNodeDef(
-      *nodedef_or.ValueOrDie(),
+      *nodedef_or.value(),
       params_.function_library->GetFunctionLibraryDefinition(), &props);
   if (!status.ok()) {
     return op_->emitRemark()
@@ -631,7 +631,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
 
     tensors.emplace_back(
         device_->GetAllocator(tensorflow::AllocatorAttributes()), expr.dtype(),
-        shape_or.ValueOrDie());
+        shape_or.value());
     tensorflow::Tensor& tensor = tensors.back();
     tensorflow::XlaExpression::AssignExpressionToTensor(expr, &tensor);
     inputs.emplace_back(&tensor);
@@ -705,7 +705,7 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
                      << xla_op_or.status().ToString();
     return tensorflow::XlaExpression::Invalid();
   }
-  ::xla::XlaOp xla_op = xla_op_or.ValueOrDie();
+  ::xla::XlaOp xla_op = xla_op_or.value();
 
   tensorflow::DataType dtype;
   auto status = tensorflow::ConvertToDataType(operand.getType(), &dtype);

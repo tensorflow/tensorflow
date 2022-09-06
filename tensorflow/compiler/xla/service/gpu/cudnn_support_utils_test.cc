@@ -81,7 +81,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(conv,
@@ -109,7 +109,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(conv,
@@ -140,7 +140,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                       .ValueOrDie();
+                       .value();
 
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -159,7 +159,7 @@ TEST_F(CudnnSupportUtilsTest,
               custom_call_target="__cudnn$convBackwardFilter"
     ROOT gte = f16[2,2,41,40] get-tuple-element(result), index=0
   })")
-                             .ValueOrDie();
+                             .value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleBwdFilter.get(), "__cudnn$convBackwardFilter"));
@@ -177,7 +177,7 @@ TEST_F(CudnnSupportUtilsTest,
               custom_call_target="__cudnn$convBackwardInput"
     ROOT gte = f16[10,20,30,41] get-tuple-element(result), index=0
   })")
-                            .ValueOrDie();
+                            .value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleBwdInput.get(), "__cudnn$convBackwardInput"));
@@ -197,7 +197,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                           .ValueOrDie();
+                           .value();
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleS8InOut.get(), "__cudnn$convForward"));
@@ -216,7 +216,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                              .ValueOrDie();
+                              .value();
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleS8InF32Out.get(), "__cudnn$convForward"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
@@ -234,7 +234,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                               .ValueOrDie();
+                               .value();
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleF32InF32Out.get(), "__cudnn$convForward"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
@@ -256,7 +256,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2}, dim_labels=b012f_012io->b012f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(conv,
                           GetCustomCall(module.get(), "__cudnn$convForward"));
@@ -279,7 +279,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=2x2 rhs_dilate=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(conv,
                           GetCustomCall(module.get(), "__cudnn$convForward"));
@@ -301,7 +301,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=3x3}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                                     .ValueOrDie();
+                                     .value();
   HloCustomCallInstruction* conv;
   TF_ASSERT_OK_AND_ASSIGN(conv, GetCustomCall(moduleFilterCoversInput.get(),
                                               "__cudnn$convForward"));
@@ -320,7 +320,7 @@ TEST_F(CudnnSupportUtilsTest,
                   window={size=3x3}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                                           .ValueOrDie();
+                                           .value();
   TF_ASSERT_OK_AND_ASSIGN(conv,
                           GetCustomCall(moduleFilterAlmostCoversInput.get(),
                                         "__cudnn$convForward"));

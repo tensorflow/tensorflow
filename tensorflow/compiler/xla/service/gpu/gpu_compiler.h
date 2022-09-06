@@ -53,11 +53,15 @@ class JitRtAotCompilationResult : public AotCompilationResult {
 
   JitRtAotCompilationResult(HloModuleProto hlo, const std::string& obj_file,
                             const std::string& mlir_module,
-                            EntryFunctionAttributes entry_func_attrs) {
+                            EntryFunctionAttributes entry_func_attrs,
+                            const std::string& gpu_asm_text,
+                            absl::Span<const uint8_t> gpu_binary) {
     *jitrt_executable_.mutable_hlo_module_proto() = hlo;
     *jitrt_executable_.mutable_entry_func_attrs() = entry_func_attrs;
     jitrt_executable_.set_obj_file(obj_file);
     jitrt_executable_.set_mlir_module(mlir_module);
+    jitrt_executable_.set_gpu_asm_text(gpu_asm_text);
+    jitrt_executable_.set_gpu_binary(gpu_binary.data(), gpu_binary.size());
   }
 
   StatusOr<std::string> SerializeAsString() const override {

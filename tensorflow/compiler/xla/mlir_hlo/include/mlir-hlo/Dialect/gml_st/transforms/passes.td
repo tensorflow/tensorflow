@@ -30,12 +30,16 @@ def DeprecatedTilingPass : Pass<"gml-deprecated-tiling", "mlir::func::FuncOp"> {
   ];
 }
 
-def TileToForPass : Pass<"gml-tile-to-for", "mlir::func::FuncOp"> {
+def TilingPass : Pass<"gml-tiling", "mlir::func::FuncOp"> {
   let summary = "Tile operations using TilingInterface to produce gml_st.for";
-  let constructor = "::mlir::gml_st::createTileToForPass()";
+  let constructor = "::mlir::gml_st::createTilingPass()";
   let options = [
-    Option<"tilingTarget", "tiling-target", "std::string", /*default=*/"",
+    Option<"opName", "op-name", "std::string", /*default=*/"",
+           "Operation with this name is the anchor to latch on.">,
+    Option<"opLabel", "op-label", "std::string", /*default=*/"",
            "Operation with this label is the anchor to latch on.">,
+    Option<"distribute", "distribute", "bool", /*default=*/"true",
+           "Generate gml_st.parallel or gml_st.for">,
     ListOption<"tileSizes", "tile-sizes", "int64_t", "Tile sizes",
                "llvm::cl::ZeroOrMore">,
   ];
@@ -45,9 +49,9 @@ def FusionPass : Pass<"gml-fusion", "mlir::func::FuncOp"> {
   let summary = "Fuse producers in into `gml_st.materialize` operations";
   let constructor = "::mlir::gml_st::createFusionPass()";
   let options = [
-    Option<"producer", "producer", "std::string", /*default=*/"",
+    Option<"producerLabel", "producer-label", "std::string", /*default=*/"",
            "Producer label.">,
-    Option<"consumer", "consumer", "std::string", /*default=*/"",
+    Option<"consumerLabel", "consumer-label", "std::string", /*default=*/"",
            "Consumer label.">,
   ];
 }
@@ -57,14 +61,10 @@ def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
   let constructor = "::mlir::gml_st::createComposeSetOpsPass()";
 }
 
-def CollapseMaterializeOpsPass : Pass<"gml-collapse-materialize-ops",
+def UncollapseMaterializeOpsPass : Pass<"gml-uncollapse-materialize-ops",
     "mlir::func::FuncOp"> {
-  let summary = "Collapse (or uncollapse) materialize operations.";
-  let constructor = "::mlir::gml_st::createCollapseMaterializeOpsPass()";
-  let options = [
-    Option<"reverse_", "reverse", "bool", /*default=*/"false", "Whether to "
-        "revert collapsing of materialize operations.">,
-  ];
+  let summary = "Uncollapse materialize operations.";
+  let constructor = "::mlir::gml_st::createUncollapseMaterializeOpsPass()";
 }
 
 def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {

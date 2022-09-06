@@ -75,6 +75,9 @@ enum ActivationMode {
   kElu = 7;
   // Leaky Rectified linear activation: f(x) = x < 0 ? alpha * x : x
   kLeakyRelu = 8;
+  // Gaussian Error linear unit activation:
+  //   x * P(X <= x) = 0.5 * x * (1 + erf(x / sqrt(2))), where P(X) ~ N(0, 1).
+  kGeluExact = 9;
 }
 
 // Describe the math definition for the conv op. The popular behavior is

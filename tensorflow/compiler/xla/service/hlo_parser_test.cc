@@ -2438,17 +2438,17 @@ ENTRY %blabla (a: f32[1,291,291]) -> f32[1,291,291] {
 )";
   auto result = ParseAndReturnVerifiedModule(original);
   EXPECT_EQ(OkStatus(), result.status());
-  EXPECT_EQ("Cholesky", result.ValueOrDie()
+  EXPECT_EQ("Cholesky", result.value()
                             ->entry_computation()
                             ->root_instruction()
                             ->metadata()
                             .op_name());
-  EXPECT_EQ("Cholesky", result.ValueOrDie()
+  EXPECT_EQ("Cholesky", result.value()
                             ->entry_computation()
                             ->root_instruction()
                             ->metadata()
                             .op_type());
-  EXPECT_EQ(WINDOW, *result.ValueOrDie()
+  EXPECT_EQ(WINDOW, *result.value()
                          ->entry_computation()
                          ->root_instruction()
                          ->metadata()
@@ -2516,7 +2516,7 @@ ENTRY %configuration_test() -> s32[] {
 })";
   auto result = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(result.status());
-  EXPECT_EQ("foo bar", result.ValueOrDie()
+  EXPECT_EQ("foo bar", result.value()
                            ->entry_computation()
                            ->root_instruction()
                            ->raw_backend_config_string());
@@ -2699,7 +2699,7 @@ ENTRY %ShortConstant.v4 () -> f32[67,89] {
 )";
   auto result = ParseAndReturnVerifiedModule(original);
   TF_EXPECT_OK(result.status());
-  EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
+  EXPECT_EQ(result.value()->ToString(HloPrintOptions()), original);
 }
 
 TEST_F(HloParserTest, NegativeNan) {
@@ -2713,7 +2713,7 @@ ENTRY %NegativeNan () -> bf16[2] {
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_EQ(OkStatus(), result.status());
-  EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
+  EXPECT_EQ(result.value()->ToString(HloPrintOptions()), original);
 }
 
 TEST_F(HloParserTest, NanPayload) {
@@ -2727,7 +2727,7 @@ ENTRY %NanPayload () -> bf16[2] {
 )";
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_EQ(OkStatus(), result.status());
-  EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
+  EXPECT_EQ(result.value()->ToString(HloPrintOptions()), original);
 }
 
 TEST_F(HloParserTest, AttributesAnyOrder) {
@@ -2898,7 +2898,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
-  auto program_layout = module.ValueOrDie()->entry_computation_layout();
+  auto program_layout = module.value()->entry_computation_layout();
   ASSERT_EQ(program_layout.parameter_count(), 1);
   auto param_layout = program_layout.parameter_layout(0).layout();
   auto result_layout = program_layout.result_layout().layout();
@@ -2921,7 +2921,7 @@ c2 {
 })";
   auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
-  EXPECT_EQ(module.ValueOrDie()->entry_computation()->name(), "c2");
+  EXPECT_EQ(module.value()->entry_computation()->name(), "c2");
 }
 
 TEST_F(HloParserTest, NoRoot) {
@@ -2932,9 +2932,8 @@ ENTRY consts {
 })";
   auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
-  EXPECT_EQ(
-      module.ValueOrDie()->entry_computation()->root_instruction()->name(),
-      "last");
+  EXPECT_EQ(module.value()->entry_computation()->root_instruction()->name(),
+            "last");
 }
 
 TEST_F(HloParserTest, Comments) {
@@ -4067,7 +4066,7 @@ ENTRY TestComputation {
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
   TF_EXPECT_OK(result.status());
-  EXPECT_TRUE(result.ValueOrDie()->config().alias_passthrough_params());
+  EXPECT_TRUE(result.value()->config().alias_passthrough_params());
 }
 
 TEST_F(HloParserTest, NestedBroadcastWithoutDimensionsAttribute) {

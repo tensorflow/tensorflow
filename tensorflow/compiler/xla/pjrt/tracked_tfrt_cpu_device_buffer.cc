@@ -51,7 +51,7 @@ tfrt::AsyncValueRef<CpuEvent> AfterAll(
     event.AndThen([state, event = event.AsPtr()]() {
       if (event.IsError()) {
         absl::MutexLock lock(&state->mutex);
-        state->error_message = event.GetError().message;
+        state->error_message = event.GetError().message();
       }
 
       if (state->count.fetch_sub(1, std::memory_order_acq_rel) == 1) {
@@ -93,8 +93,7 @@ TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
     size_t index_table_byte_size = buffers_.size() * sizeof(void*);
     // We assume tuple table allocations will not fail.
     tuple_index_table_ =
-        MaybeOwningCpuMemory::AllocateShared(index_table_byte_size)
-            .ValueOrDie();
+        MaybeOwningCpuMemory::AllocateShared(index_table_byte_size).value();
     uintptr_t* index_table =
         reinterpret_cast<uintptr_t*>(tuple_index_table_->data());
     for (int i = 0; i < buffers_.size(); ++i) {

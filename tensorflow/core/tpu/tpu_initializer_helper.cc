@@ -172,8 +172,7 @@ Status TryAcquireTpuLock() {
       auto pid = FindLibtpuProcess();
       if (pid.ok()) {
         return errors::Aborted(absl::StrCat(
-            "libtpu.so is already in use by process with pid ",
-            pid.ValueOrDie(),
+            "libtpu.so is already in use by process with pid ", pid.value(),
             ". Not attempting to load libtpu.so in this process."));
       } else {
         return errors::Aborted(

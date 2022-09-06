@@ -52,7 +52,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,2], filter: f32[1,1,2]) -> f32[1,2
   auto cost_model = [](HloInstruction* conv) { return true; };
   ConvolutionGroupConverter converter(should_expand, cost_model,
                                       /*convert_batch_groups_only=*/false);
-  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(converter.Run(module.get()).value());
   root = computation->root_instruction();
   // Make sure the convolution is converted to one with feature_group_count = 1.
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
@@ -86,7 +86,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,4], filter: f32[1,2,2]) -> f32[1,2
   ConvolutionGroupConverter converter(should_expand,
                                       cost_model, /*convert_batch_groups_only=*/
                                       false);
-  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(converter.Run(module.get()).value());
   root = computation->root_instruction();
   // Make sure the convolution is replaced with a reshape.
   EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
@@ -115,7 +115,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[16,19,19,512]{3,2,1,0}, filter: f32[16
   ConvolutionGroupConverter converter(should_expand,
                                       cost_model, /*convert_batch_groups_only=*/
                                       true);
-  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(converter.Run(module.get()).value());
   root = computation->root_instruction();
 
   // Verify that the convolution is replaced by a convert.
@@ -146,7 +146,7 @@ TEST_F(ConvolutionGroupConverterTest,
                                       true);
   // Make sure that batch group count is rewritten even if
   // batch_group_count == output_feature but not input_batch
-  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(converter.Run(module.get()).value());
 }
 
 }  // namespace

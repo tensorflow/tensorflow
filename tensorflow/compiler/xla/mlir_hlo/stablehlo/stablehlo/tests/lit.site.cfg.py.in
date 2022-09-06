@@ -44,7 +44,6 @@ config.llvm_host_triple = '@LLVM_HOST_TRIPLE@'
 config.host_arch = "@HOST_ARCH@"
 config.stablehlo_src_root = "@STABLEHLO_SOURCE_DIR@"
 config.stablehlo_obj_root = "@CMAKE_BINARY_DIR@"
-config.mlir_runner_utils_dir = os.path.join(config.llvm_obj_root, "lib")
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.

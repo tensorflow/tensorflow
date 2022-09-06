@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
@@ -272,7 +273,7 @@ StatusOr<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
 
   // Maybe return Executable from the cache.
   if (auto cached = specializations_->Find(*hash)) {
-    // Always use specialized kernel if required by the compilation options.
+    // Always use specialized executable if required by the compilation options.
     if (opts_.specialization == Specialization::kAlways) return cached;
 
     // Fall back on default executable if the specialization is not yet
@@ -324,7 +325,7 @@ StatusOr<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
 
         // Set the allocated entry async value state to error or concrete.
         if (!executable.ok()) {
-          ref.SetError(MakeStringError(executable.status().message()));
+          ref.SetError(executable.status());
         } else {
           ref.emplace(std::move(*executable));
         }

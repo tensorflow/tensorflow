@@ -225,7 +225,7 @@ TEST_F(CallInlinerTest, InlineSingleUseCalleesOnly) {
     ROOT tuple = ((), (), ()) tuple(a, b, c)
   })";
 
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   CallInliner call_inliner(/*single_call_site=*/true);
   TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);

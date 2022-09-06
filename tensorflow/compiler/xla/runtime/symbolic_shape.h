@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_SYMBOLIC_SHAPE_H_
-#define XLA_RUNTIME_SYMBOLIC_SHAPE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_SYMBOLIC_SHAPE_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_SYMBOLIC_SHAPE_H_
 
 #include <optional>
 
@@ -114,4 +114,4 @@ class SymbolicShapesResolver {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_SYMBOLIC_SHAPE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_SYMBOLIC_SHAPE_H_

@@ -325,7 +325,7 @@ TEST_F(EagerContextTest, XlaCompileDeviceType) {
   context()->SetJitCompileRewrite(true);
   auto op = ImmediateOpPtr(context()->CreateOperation());
   TF_ASSERT_OK(
-      op->Reset("XTimesTwo", "/job:localhost/replica:0/task:0/device:TPU:0"));
+      op->Reset("XTimesTwo", "/job:localhost/replica:0/task:0/device:CPU:0"));
   Tensor int_tensor = test::AsScalar<int64_t>(3);
   auto input_int = core::RefCountPtr<ImmediateExecutionTensorHandle>(
       context()->CreateLocalHandleFromTFTensor(

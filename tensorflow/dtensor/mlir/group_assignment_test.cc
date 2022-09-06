@@ -99,7 +99,7 @@ TEST(DTensorGroupAssignmentTest, InputOutput) {
   EXPECT_EQ(group_assignment_attr_out, group_assignment_attr_in);
 
   group_assignment_attr_out =
-      group_assignment.SliceToMLIR(context, /*slice_id=*/0).ValueOrDie();
+      group_assignment.SliceToMLIR(context, /*slice_id=*/0).value();
   EXPECT_EQ(group_assignment_attr_out, group_assignment_attr_in);
 }
 

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_H_
 
 #include "tensorflow/core/lib/gtl/int_type.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

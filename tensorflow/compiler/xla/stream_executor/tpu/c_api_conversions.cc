@@ -106,7 +106,7 @@ SE_DeviceMemoryAllocator ToC(
           se_status, status.code(), status.error_message().data(),
           status.error_message().size());
     } else {
-      auto& scoped_memory = allocation.ValueOrDie();
+      auto& scoped_memory = allocation.value();
       memory->wrapped = ApiConverter::ToC(scoped_memory.Release());
       memory->device_ordinal = scoped_memory.device_ordinal();
     }

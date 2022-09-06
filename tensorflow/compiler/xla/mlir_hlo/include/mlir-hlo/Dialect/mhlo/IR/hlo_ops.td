@@ -408,7 +408,9 @@ def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
 }
+
 def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType],
     TensorOf<[HLO_SInt, HLO_Float, HLO_Complex]>> {
@@ -901,6 +903,94 @@ def HLO_AfterAllOp : HLO_Op<"after_all", [NoSideEffect]> {
   let results = (outs HLO_Token);
 
   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
+}
+
+def HLO_AsyncStartOp : HLO_Op<"async_start", []> {
+  let summary = "AsyncStart operator";
+
+  let description = [{
+    AsyncStart kicks off an asynchronous computation.
+
+    This is used when there are functions that contain both asynchronous waits
+    (such as DMAs) and on-thread computation. For example, a function might
+    consist of a computation, a DMA, another computation, a second DMA, and a
+    final computation. This would be represented as an async_start followed by
+    and async_update and an async_done. The async_start would do the first
+    computation on-thread and then start the DMA. The async_update would wait
+    for the DMA to complete if it wasn't yet done, then execute the second
+    computation in the function, and start the second DMA. Finally, the
+    async_done would wait on this last DMA, and then run the last computation
+    that needs to be run on-thread and return the result of that final
+    computation.
+
+    `operands` are passed to the computation directly
+    `called_computation` is the function that will be run asynchronously
+    `execution_thread` is the name of the thread in which it will be run. The main
+      thread is called "main". All threads have names.
+    `group_id` labels a set of async-start, async-done, and zero or more
+      async-update ops corresponding to the same computation. We
+      represent a missing group_id with either an negative value or None.
+
+    This returns all the state needed between async ops. After buffer
+    assignment, the return values represents the space needed to hold the input,
+    results, and any scratchpads needed or edited by the async op.
+  }];
+
+  let arguments = (ins
+    Variadic<HLO_TensorOrTokenOrTuple>:$operands,
+    FlatSymbolRefAttr:$called_computation,
+    StrAttr:$execution_thread,
+    OptionalAttr<I64Attr>:$group_id
+  );
+
+  let results = (outs HLO_AsyncBundle);
+  let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
+}
+
+def HLO_AsyncUpdateOp : HLO_Op<"async_update", [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "AsyncUpdate operator";
+
+  let description = [{
+    AsyncUpdate blocks on an asynchronous computation until a sync barrier.
+    This returns `bundle` after operating on it.
+
+    See the documentation for AsyncStart for more information.
+  }];
+
+  let arguments = (ins
+    HLO_AsyncBundle:$bundle,
+    FlatSymbolRefAttr:$called_computation,
+    StrAttr:$execution_thread,
+    OptionalAttr<I64Attr>:$group_id
+    );
+
+  let results = (outs HLO_AsyncBundle);
+
+  let hasVerifier = 1;
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_AsyncDoneOp : HLO_Op<"async_done", [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "AsyncDone operator";
+
+  let description = [{
+    AsyncDone blocks until the end of an asynchronous computation.
+    It returns the final result of the asynchronous computation.
+
+    See the documentation for AsyncStart for more information.
+  }];
+
+  let arguments = (ins
+    HLO_AsyncBundle:$bundle,
+    FlatSymbolRefAttr:$called_computation,
+    StrAttr:$execution_thread,
+    OptionalAttr<I64Attr>:$group_id
+    );
+
+  let results = (outs Variadic<HLO_TensorOrTokenOrTuple>);
+  let hasVerifier = 1;
+  let hasCustomHLOConverter = 1;
 }
 
 // Xla Client API has two separate calls for indexed and predicated conditional,
@@ -1792,11 +1882,29 @@ def HLO_CustomCallOp: HLO_Op<"custom_call",
         $api_version,
     DefaultValuedOptionalAttr<HLO_FlatSymbolRefArrayAttr, "{}">:$called_computations,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$operand_layouts,
-    OptionalAttr<HLO_ArrayOfLayoutAttr>:$result_layouts
+    OptionalAttr<HLO_ArrayOfLayoutAttr>:$result_layouts,
+    DefaultValuedOptionalAttr<
+        TypedArrayAttrBase<
+            OutputOperandAlias,
+            "Aliasing attribute for outputs and operands of CustomCall">,
+        "{}">:$output_operand_aliases
   );
   let results = (outs Variadic<HLO_TensorOrTokenOrTuple>);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
+
+  // TODO(b/244367323): Need update all usage by adding the arg
+  // `output_operand_aliases`, and remove this builder after the bug fix.
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::TypeRange":$result_type, "::mlir::ValueRange":$operands,
+      "::mlir::StringAttr":$call_target_name,
+      "::mlir::BoolAttr":$has_side_effect,
+      "::mlir::StringAttr":$backend_config,
+      "::mlir::mhlo::CustomCallApiVersionAttr":$api_version,
+      "::mlir::ArrayAttr":$called_computations,
+      "::mlir::ArrayAttr":$operand_layouts,
+      "::mlir::ArrayAttr":$result_layouts)>];
 }
 
 def HLO_DotOp: HLO_Op<"dot",
