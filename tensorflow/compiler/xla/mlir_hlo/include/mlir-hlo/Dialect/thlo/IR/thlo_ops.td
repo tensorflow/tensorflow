@@ -59,7 +59,8 @@ def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
 
 def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
     SameOperandsAndResultElementType,
-    DeclareOpInterfaceMethods<FusionInterface>]> {
+    DeclareOpInterfaceMethods<FusionInterface>,
+    DeclareOpInterfaceMethods<TilingInterface>]> {
   let summary = "Destination-style twin for `mhlo.concatenate`";
   let arguments = (ins
     Variadic<AnyTensor>:$operands,

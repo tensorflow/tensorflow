@@ -202,6 +202,55 @@ void THLODialect::initialize() {
 
 namespace {
 
+SmallVector<StringRef> getDefaultLoopIteratorTypes(Value initTensor) {
+  auto initTy = initTensor.getType().cast<RankedTensorType>();
+  SmallVector<StringRef> allParallel(initTy.getRank(),
+                                     getParallelIteratorTypeName());
+  return allParallel;
+}
+
+SmallVector<Range> getDefaultIterationDomain(OpBuilder &b, Location loc,
+                                             Value initTensor) {
+  // Simple iteration domain defined on the result space. This way, tiling and
+  // fusion can rely directly on the same implementation.
+  auto dimValues = tensor::createDimValues(b, loc, initTensor);
+  auto oneAttr = b.getIndexAttr(1);
+  return llvm::to_vector(llvm::map_range(dimValues, [&](auto d) -> Range {
+    return {b.getIndexAttr(0), d, oneAttr};
+  }));
+}
+
+gml_st::TileOp createTileOp(OpBuilder &b, Location loc, Value tensor,
+                            ArrayRef<OpFoldResult> offsets,
+                            ArrayRef<OpFoldResult> sizes) {
+  auto initTy = tensor.getType().cast<RankedTensorType>();
+  SmallVector<OpFoldResult> unitStrides(initTy.getRank(), b.getIndexAttr(1));
+  SmallVector<Value> dynamicSpaceSizes =
+      tensor::createDynamicDimValues(b, loc, tensor);
+  ArrayAttr staticSpaceSizes = b.getI64ArrayAttr(initTy.getShape());
+  auto space =
+      b.create<gml_st::SpaceOp>(loc, dynamicSpaceSizes, staticSpaceSizes);
+  return b.create<gml_st::TileOp>(loc, space, offsets, sizes, unitStrides);
+}
+
+}  // namespace
+
+SmallVector<StringRef> ConcatenateOp::getLoopIteratorTypes() {
+  return getDefaultLoopIteratorTypes(init());
+}
+
+SmallVector<Value> ConcatenateOp::getDestinationOperands(OpBuilder &) {
+  return {init()};
+}
+
+SmallVector<Range> ConcatenateOp::getIterationDomain(OpBuilder &b) {
+  return getDefaultIterationDomain(b, getLoc(), init());
+}
+
+namespace {
+
+// TODO(frgossen): Fuse this as a switch statement if all the operands are unit
+// size in the concatenation dimension.
 Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
                                    Location loc, Value tile) {
   uint64_t concatDim = op.dimension();
@@ -391,6 +440,24 @@ Value fuseConcatenateOpThroughPoint(ConcatenateOp op, OpBuilder &builder,
 
 }  // namespace
 
+gml_st::TilingInterface ConcatenateOp::getTiledImplementation(
+    OpBuilder &b, ArrayRef<OpFoldResult> offsets,
+    ArrayRef<OpFoldResult> sizes) {
+  // Create tile subset.
+  auto loc = getLoc();
+  gml_st::TileOp tile = createTileOp(b, loc, init(), offsets, sizes);
+
+  auto tiled = fuseConcatenateOpThroughTile(*this, b, loc, tile);
+  return llvm::cast<gml_st::TilingInterface>(tiled.getDefiningOp());
+}
+
+FailureOr<Value> ConcatenateOp::generateResultTileValue(
+    OpBuilder &b, unsigned resultNumber, ArrayRef<OpFoldResult> offsets,
+    ArrayRef<OpFoldResult> sizes) {
+  assert(resultNumber == 0 && "expect unique result idx");
+  return getTiledImplementation(b, offsets, sizes)->getResults().front();
+}
+
 Value ConcatenateOp::fuse(Location loc, Value subset, OpBuilder &builder) {
   Type subsetTy = subset.getType();
   if (subsetTy.isa<gml_st::TileType>()) {
@@ -450,7 +517,7 @@ SmallVector<Value> DynamicBroadcastInDimOp::getDestinationOperands(
 }
 
 SmallVector<Range> DynamicBroadcastInDimOp::getIterationDomain(OpBuilder &b) {
-  return getIterationDomainForTensor(b, getLoc(), init());
+  return getDefaultIterationDomain(b, getLoc(), init());
 }
 
 gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
@@ -458,14 +525,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
     ArrayRef<OpFoldResult> sizes) {
   // Create tile subset.
   auto loc = getLoc();
-  auto initTy = init().getType().cast<RankedTensorType>();
-  SmallVector<OpFoldResult> unitStrides(initTy.getRank(), b.getIndexAttr(1));
-  SmallVector<Value> dynamicSpaceSizes =
-      tensor::createDynamicDimValues(b, loc, init());
-  ArrayAttr staticSpaceSizes = b.getI64ArrayAttr(initTy.getShape());
-  auto space =
-      b.create<gml_st::SpaceOp>(loc, dynamicSpaceSizes, staticSpaceSizes);
-  auto tile = b.create<gml_st::TileOp>(loc, space, offsets, sizes, unitStrides);
+  auto tile = createTileOp(b, loc, init(), offsets, sizes);
 
   // Create the needed constants only once.
   DenseMap<uint64_t, Value> localIndexConstants;
