@@ -2488,7 +2488,7 @@ name=None))
     Since windows are datasets, they can be iterated over:
 
     >>> for window in dataset:
-    ...   print([item.numpy() for item in window])
+    ...   print(list(window.as_numpy_iterator()))
     [0, 1, 2]
     [3, 4, 5]
     [6]
@@ -2584,8 +2584,7 @@ name=None))
 
     For example, to turn each window into a dense tensor:
 
-    >>> size = 3
-    >>> dataset = tf.data.Dataset.range(7).window(size, shift=1,
+    >>> dataset = tf.data.Dataset.range(7).window(3, shift=1,
     ...                                           drop_remainder=True)
     >>> batched = dataset.flat_map(lambda x:x.batch(3))
     >>> for batch in batched:
