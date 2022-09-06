@@ -251,6 +251,20 @@ func.func @map_binary_wrong_yield_operands(
 
 // -----
 
+func.func @map_buffer_semantics_with_tensor_result(
+    %lhs: memref<64xf32>, %rhs: memref<64xf32>, %init: tensor<64xf32>)
+    -> tensor<64xf32> {
+  // expected-error@+1{{'thlo.map' op expected either buffer or tensor semantics}}
+  %add = "thlo.map"(%lhs, %rhs, %init) ({
+     ^bb0(%lhs_elem: f32, %rhs_elem: f32):
+       %0 = arith.addf %lhs_elem, %rhs_elem: f32
+       thlo.yield %0: f32
+  }) : (memref<64xf32>, memref<64xf32>, tensor<64xf32>) -> tensor<64xf32>
+  func.return %add : tensor<64xf32>
+}
+
+// -----
+
 func.func @variadic_reduction_wrong_yield_operand_types(
     %input1: tensor<16x32x64xf32>, %init1: tensor<16x64xf32>,
     %input2: tensor<16x32x64xi64>, %init2: tensor<16x64xi64>)
@@ -266,4 +280,26 @@ func.func @variadic_reduction_wrong_yield_operand_types(
         thlo.yield %0, %0: f32, f32
       }
   func.return %reduction, %reduction2 : tensor<16x64xf32>, tensor<16x64xi64>
+}
+
+// -----
+
+func.func @scatter_output_result_mismatch(
+    %indices: tensor<3x3xi64>, %updates: tensor<3xf32>, %dst: tensor<3x3xf32>)
+    -> () {
+  // expected-error@+1{{'thlo.scatter' op expected the number of results (0) to be equal to the number of output tensors (1)}}
+  "thlo.scatter"(%indices, %updates, %dst) :
+      (tensor<3x3xi64>, tensor<3xf32>, tensor<3x3xf32>) -> ()
+  func.return
+}
+
+// -----
+
+func.func @gather_output_result_mismatch(
+    %arg: tensor<100xf32>, %indices: tensor<42x1xi64>, %dst: tensor<42xf32>)
+    -> tensor<42xf64> {
+  // expected-error@+1{{'thlo.gather' op expected type of operand #2 ('tensor<42xf32>') to match type of corresponding result ('tensor<42xf64>')}}
+  %gather = "thlo.gather"(%arg, %indices, %dst) :
+      (tensor<100xf32>, tensor<42x1xi64>, tensor<42xf32>) -> (tensor<42xf64>)
+  func.return %gather : tensor<42xf64>
 }

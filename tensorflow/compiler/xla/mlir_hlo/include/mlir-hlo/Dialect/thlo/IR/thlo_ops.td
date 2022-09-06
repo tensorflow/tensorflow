@@ -18,6 +18,7 @@ limitations under the License.
 
 include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
 include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td"
+include "mlir/Dialect/Linalg/IR/LinalgInterfaces.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -38,7 +39,7 @@ class THLO_Op<string mnemonic, list<Trait> traits> :
 }
 
 class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
-    NoSideEffect] # traits> {
+    DestinationStyleOpInterface, NoSideEffect] # traits> {
   let hasCustomAssemblyFormat = 1;
   code extraBaseClassDeclaration = [{
     unsigned getNumInputs() {
@@ -67,7 +68,12 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
   );
   let results = (outs AnyTensor:$result);
 
-  let extraClassDeclaration = extraBaseClassDeclaration;
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    // Implement functions necessary for DestinationStyleOpInterface.
+    mlir::ValueRange inputs() { return operands(); }
+    mlir::ValueRange getInputs() { return operands(); }
+    mlir::ValueRange outputs() { return getOperands().take_back(1); }
+  }];
 }
 
 def THLO_DynamicBroadcastInDimOp : THLO_DstStyleOp<"dynamic_broadcast_in_dim", [
@@ -88,7 +94,12 @@ def THLO_DynamicBroadcastInDimOp : THLO_DstStyleOp<"dynamic_broadcast_in_dim", [
   );
   let results = (outs TensorOrMemref:$result);
 
-  let extraClassDeclaration = extraBaseClassDeclaration;
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    // Implement functions necessary for DestinationStyleOpInterface.
+    mlir::ValueRange inputs() { return getOperands().take_front(1); }
+    mlir::ValueRange getInputs() { return inputs(); }
+    mlir::ValueRange outputs() { return getOperands().take_back(1); }
+  }];
 }
 
 def THLO_GatherOp : THLO_DstStyleOp<"gather", [
@@ -111,7 +122,14 @@ def THLO_GatherOp : THLO_DstStyleOp<"gather", [
   );
   let results = (outs Variadic<AnyTensor>:$result);
 
-  let extraClassDeclaration = extraBaseClassDeclaration;
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    // Implement functions necessary for DestinationStyleOpInterface.
+    mlir::ValueRange inputs() {
+      return getOperands().drop_back(getNumOutputs());
+    }
+    mlir::ValueRange getInputs() { return inputs(); }
+    mlir::ValueRange outputs() { return getOperands().take_back(1); }
+  }];
 }
 
 def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
@@ -136,7 +154,14 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
   );
   let results = (outs Variadic<AnyTensor>:$result);
 
-  let extraClassDeclaration = extraBaseClassDeclaration;
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    // Implement functions necessary for DestinationStyleOpInterface.
+    mlir::ValueRange inputs() {
+      return getOperands().drop_back(getNumOutputs());
+    }
+    mlir::ValueRange getInputs() { return inputs(); }
+    mlir::ValueRange outputs() { return getOperands().take_back(1); }
+  }];
 }
 
 def THLO_TransposeOp : THLO_DstStyleOp<"transpose", []> {
@@ -164,7 +189,12 @@ def THLO_TransposeOp : THLO_DstStyleOp<"transpose", []> {
   );
   let results = (outs TensorOrMemref:$result);
 
-  let extraClassDeclaration = extraBaseClassDeclaration;
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    // Implement functions necessary for DestinationStyleOpInterface.
+    mlir::ValueRange inputs() { return getOperands().take_front(1); }
+    mlir::ValueRange getInputs() { return inputs(); }
+    mlir::ValueRange outputs() { return getOperands().take_back(1); }
+  }];
 }
 
 def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
@@ -201,9 +231,10 @@ def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
   let regions = (region SizedRegion<1>:$combiner);
 
   let extraClassDeclaration = [{
-    unsigned getNumInputs() {
-      return this->getOperation()->getNumOperands() - getNumOutputs();
-    };
+    // Implement functions necessary for DestinationStyleOpInterface.
+    mlir::ValueRange getInputs() { return inputs(); }
+    mlir::ValueRange outputs() { return inits(); }
+    unsigned getNumInputs() { return inputs().size(); };
     unsigned getNumOutputs() { return inits().size(); };
   }];
 }
@@ -237,9 +268,13 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
     TensorOrMemref:$init
   );
   let results = (outs AnyTensor:$result);
-  let regions = (region AnyRegion:$mapper);
+  let regions = (region SizedRegion<1>:$mapper);
 
-  let extraClassDeclaration = extraBaseClassDeclaration;
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    // Implement functions necessary for DestinationStyleOpInterface.
+    mlir::ValueRange getInputs() { return inputs(); }
+    mlir::ValueRange outputs() { return getOperands().take_back(1); }
+  }];
 }
 
 #endif // THLO_OPS

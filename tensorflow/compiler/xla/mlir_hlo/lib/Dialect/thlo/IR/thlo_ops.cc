@@ -48,44 +48,13 @@ namespace {
 // Destination-style ops tools
 //===----------------------------------------------------------------------===//
 
-bool hasTensorSemantics(OperandRange operands, unsigned numOutputArgs) {
-  for (auto operand : operands.drop_back(numOutputArgs)) {
-    if (!operand.getType().isa<ShapedType>()) continue;
-    if (!operand.getType().isa<RankedTensorType>()) return false;
-  }
-  return llvm::all_of(operands.take_back(numOutputArgs), [](Value operand) {
-    return operand.getType().isa<RankedTensorType>();
-  });
-}
+LogicalResult verifyDestinationStyleOp(Operation *op) {
+  auto dstStyleOp = cast<linalg::DestinationStyleOpInterface>(*op);
+  if (dstStyleOp.hasBufferSemantics()) return success(op->getNumResults() == 0);
 
-bool hasBufferSemantics(OperandRange operands) {
-  return llvm::all_of(operands, [](Value operand) {
-    return operand.getType().isa<MemRefType>();
-  });
-}
-
-LogicalResult verifyDestinationStyleOp(Operation *op,
-                                       unsigned numOutputArgs = 1) {
-  if (hasBufferSemantics(op->getOperands()))
-    return success(op->getNumResults() == 0);
-
-  if (!hasTensorSemantics(op->getOperands(), numOutputArgs))
+  if (!dstStyleOp.hasTensorSemantics())
     return op->emitOpError("expected either buffer or tensor semantics");
 
-  if (op->getNumResults() != numOutputArgs) {
-    return op->emitOpError(
-        "expected the number of output args to match the number of results");
-  }
-  for (auto &en : llvm::enumerate(llvm::zip(
-           op->getResultTypes(), op->getOperands().take_back(numOutputArgs)))) {
-    size_t index = en.index();
-    Type resultType = std::get<0>(en.value());
-    Type outputOperandType = std::get<1>(en.value()).getType();
-    if (resultType != outputOperandType)
-      op->emitOpError() << "type " << resultType << " of result " << index
-                        << " does not match output operand type "
-                        << outputOperandType;
-  }
   return success();
 }
 
@@ -440,7 +409,7 @@ ParseResult ConcatenateOp::parse(OpAsmParser &parser, OperationState &result) {
 void ConcatenateOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult ConcatenateOp::verify() {
-  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+  return verifyDestinationStyleOp(getOperation());
 }
 
 //===----------------------------------------------------------------------===//
@@ -468,7 +437,7 @@ void DynamicBroadcastInDimOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult DynamicBroadcastInDimOp::verify() {
-  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+  return verifyDestinationStyleOp(getOperation());
 }
 
 SmallVector<StringRef> DynamicBroadcastInDimOp::getLoopIteratorTypes() {
@@ -735,8 +704,7 @@ ParseResult ScatterOp::parse(OpAsmParser &parser, OperationState &result) {
 void ScatterOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult ScatterOp::verify() {
-  if (failed(verifyDestinationStyleOp(getOperation(), getNumOutputs())))
-    return failure();
+  if (failed(verifyDestinationStyleOp(getOperation()))) return failure();
 
   auto indicesShapeWithoutVectorDim =
       indices().getType().getShape().drop_back(1);
@@ -883,7 +851,7 @@ ParseResult GatherOp::parse(OpAsmParser &parser, OperationState &result) {
 void GatherOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult GatherOp::verify() {
-  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+  return verifyDestinationStyleOp(getOperation());
 }
 
 SmallVector<StringRef> GatherOp::getLoopIteratorTypes() {
@@ -996,7 +964,7 @@ LogicalResult TransposeOp::verify() {
                            << "]) = " << inputDim;
     }
   }
-  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+  return verifyDestinationStyleOp(getOperation());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1138,7 +1106,7 @@ LogicalResult ReductionOp::verify() {
                          << blockArgumentOutputTypes;
   }
 
-  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+  return verifyDestinationStyleOp(getOperation());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1172,7 +1140,7 @@ void MapOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult MapOp::verify() {
-  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
+  return verifyDestinationStyleOp(getOperation());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1180,19 +1148,13 @@ LogicalResult MapOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult YieldOp::verify() {
-  auto *parentOp = getOperation()->getParentRegion()->getParentOp();
+  auto parentOp = dyn_cast<linalg::DestinationStyleOpInterface>(
+      *(getOperation()->getParentOp()));
 
   SmallVector<Value, 2> tensorOuts;
-  // TODO(akuegel): Simplify this code when MapOp and ReductionOp implement
-  // the DestinationStyleOpInterface.
-  int numOutputs = 1;
-  if (auto reductionOp = dyn_cast<thlo::ReductionOp>(*parentOp)) {
-    numOutputs = reductionOp.getNumOutputs();
-  }
-  llvm::copy_if(parentOp->getOperands().take_back(numOutputs),
-                std::back_inserter(tensorOuts), [&](Value out) {
-                  return out.getType().isa<RankedTensorType>();
-                });
+  llvm::copy_if(
+      parentOp.outputs(), std::back_inserter(tensorOuts),
+      [&](Value out) { return out.getType().isa<RankedTensorType>(); });
   if (tensorOuts.size() != values().size())
     return emitOpError("expects number of tensor output args = ")
            << tensorOuts.size()
