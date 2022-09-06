@@ -1,0 +1,12 @@
+diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+index 0eec88d3efd6..b6d082ccda05 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -859,6 +859,7 @@ cc_library(
+         ":BinaryFormat",
+         ":BitReader",
+         ":Core",
++        ":IRReader",
+         ":MC",
+         ":MCParser",
+         ":Support",
