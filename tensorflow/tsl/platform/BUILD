@@ -164,7 +164,6 @@ filegroup(
         "cpu_info.h",
         "demangle.h",
         "dynamic_annotations.h",
-        "fingerprint.h",
         "hash.cc",
         "hash.h",
         "host_info.h",
