@@ -77,6 +77,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
