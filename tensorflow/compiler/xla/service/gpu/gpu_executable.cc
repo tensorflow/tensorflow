@@ -69,10 +69,10 @@ namespace gpu {
 
 bool IsJitRtExecutableEnabled(const HloModuleConfig& config) {
 #if !XLA_ENABLE_XLIR
-  CHECK(!config.debug_options().xla_gpu_jitrt_executable())
-      << "Failed to enable JitRt backend, because it was not compiled.";
+  CHECK(!config.debug_options().xla_gpu_enable_xla_runtime_executable())
+      << "Failed to enable XLA Runtime backend, because it was not compiled.";
 #endif  // !XLA_ENABLE_XLIR
-  return config.debug_options().xla_gpu_jitrt_executable();
+  return config.debug_options().xla_gpu_enable_xla_runtime_executable();
 }
 
 namespace {

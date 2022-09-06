@@ -1942,7 +1942,7 @@ tf_cc_test(
 #         "gpu_aot_compilation_test.cc",
 #     ],
 #     env = {
-#         "XLA_FLAGS": "--xla_gpu_jitrt_executable",
+#         "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
 #     },
 #     tags = [
 #         "gpu",
@@ -2685,7 +2685,7 @@ cc_library(
     ],
 )
 
-# These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_jitrt_executable
+# These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_enable_xla_runtime_executable
 # See tap/tensorflow.xla_gpu_jitrt.
 test_suite(
     name = "jitrt_executable_tests",
