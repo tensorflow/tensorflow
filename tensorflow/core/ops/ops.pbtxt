@@ -38540,6 +38540,13 @@ op {
     type_attr: "dtype"
   }
   attr {
+    name: "rounds"
+    type: "int"
+    default_value {
+      i: 4
+    }
+  }
+  attr {
     name: "dtype"
     type: "type"
     allowed_values {
