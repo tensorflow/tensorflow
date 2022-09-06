@@ -506,7 +506,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Set the entry async value state to error or concrete.
     if (!jit_executable.ok())
-      ref.SetError(MakeStringError(jit_executable.status().message()));
+      ref.SetError(jit_executable.status());
     else
       ref.emplace(std::move(*jit_executable));
   });

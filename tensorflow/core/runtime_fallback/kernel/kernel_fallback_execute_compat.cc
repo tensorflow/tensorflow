@@ -90,9 +90,10 @@ void KernelFallbackEmitError(
                 fallback_request_state->session_metadata().version(), ") ");
   auto error = EmitErrorAsync(
       exec_ctx,
-      tfrt::StrCat(model_info, "error running kernel fallback kernel ", op_name,
-                   ": ", status.error_message()),
-      tfrt::ConvertTfErrorCodeToTfrtErrorCode(status));
+      absl::Status(
+          ToAbslStatus(status).code(),
+          tfrt::StrCat(model_info, "error running kernel fallback kernel ",
+                       op_name, ": ", status.error_message())));
   std::fill(results.begin(), results.end(), error);
   if (op_chain) *op_chain = std::move(error);
 }
@@ -265,10 +266,10 @@ static void KernelFallbackExecuteCompatAsyncInternal(
     if (!context.status().ok()) {
       auto diag = tfrt::EmitError(
           exec_ctx,
-          {tfrt::StrCat("error running kernel fallback kernel ",
-                        context.op_kernel().name(), ": ",
-                        context.status().error_message())},
-          tfrt::ConvertTfErrorCodeToTfrtErrorCode(context.status()));
+          absl::Status(ToAbslStatus(context.status()).code(),
+                       tfrt::StrCat("error running kernel fallback kernel ",
+                                    context.op_kernel().name(), ": ",
+                                    context.status().error_message())));
       for (auto& result : async_state->result_refs) result.SetError(diag);
       async_state->chain.SetError(diag);
       return;
@@ -625,9 +626,8 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackCreateOp(
       attr_builder, fallback_request_state->device_manager(),
       fallback_request_state->process_function_library_runtime());
   if (!statusor_runner.ok())
-    return tfrt::EmitErrorAsync(
-        exec_ctx, statusor_runner.status().error_message(),
-        tfrt::ConvertTfErrorCodeToTfrtErrorCode(statusor_runner.status()));
+    return tfrt::EmitErrorAsync(exec_ctx,
+                                ToAbslStatus(statusor_runner.status()));
 
   if (!runner_table->Insert(op_key.GetValue(),
                             std::move(statusor_runner).value())) {

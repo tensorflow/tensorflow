@@ -267,7 +267,8 @@ void AsyncRuntime::SetAvailable(AsyncRuntime::Token* token) {
 void AsyncRuntime::SetError(AsyncRuntime::Token* token) {
   // TODO(ezhulenev): Construct a better diagnostincs when async runtime API
   // will support passing custom error messages.
-  token->GetAsyncValue()->SetError(DecodedDiagnostic("<async runtime error>"));
+  token->GetAsyncValue()->SetError(
+      absl::InternalError("<async runtime error>"));
   // Async tokens created with a ref count `2` to keep token alive until the
   // async task completes. Drop extra reference explicitly when token emplaced.
   DropRef(token);
@@ -300,7 +301,8 @@ void AsyncRuntime::SetAvailable(AsyncRuntime::Value* value) {
 void AsyncRuntime::SetError(AsyncRuntime::Value* value) {
   // TODO(ezhulenev): Construct a better diagnostincs when async runtime API
   // will support passing custom error messages.
-  value->GetAsyncValue()->SetError(DecodedDiagnostic("<async runtime error>"));
+  value->GetAsyncValue()->SetError(
+      absl::InternalError("<async runtime error>"));
   // Async values created with a ref count `2` to keep token alive until the
   // async task completes. Drop extra reference explicitly when token emplaced.
   DropRef(value);

@@ -325,7 +325,7 @@ StatusOr<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
 
         // Set the allocated entry async value state to error or concrete.
         if (!executable.ok()) {
-          ref.SetError(MakeStringError(executable.status().message()));
+          ref.SetError(executable.status());
         } else {
           ref.emplace(std::move(*executable));
         }

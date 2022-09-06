@@ -73,7 +73,7 @@ static absl::Status CompileAndExecute(std::string_view module,
 
   AsyncValuePtr<Executable> executable = jit_executable->DefaultExecutable();
   if (executable.IsError())
-    return absl::InternalError(executable.GetError().message);
+    return absl::InternalError(executable.GetError().message());
 
   // Prepare the call frame outside of a benchmark loop.
   Executable::CallFrame call_frame;
@@ -337,7 +337,7 @@ static void BenchmarkCustomCall(State& state, std::string_view module,
   CHECK(jit_executable.ok()) << jit_executable.status();
 
   AsyncValuePtr<Executable> executable = jit_executable->DefaultExecutable();
-  CHECK(!executable.IsError()) << executable.GetError().message;
+  CHECK(!executable.IsError()) << executable.GetError().message();
 
   // Prepare the call frame outside of a benchmark loop.
   Executable::CallFrame call_frame;

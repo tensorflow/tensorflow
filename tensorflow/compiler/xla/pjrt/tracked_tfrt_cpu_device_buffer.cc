@@ -51,7 +51,7 @@ tfrt::AsyncValueRef<CpuEvent> AfterAll(
     event.AndThen([state, event = event.AsPtr()]() {
       if (event.IsError()) {
         absl::MutexLock lock(&state->mutex);
-        state->error_message = event.GetError().message;
+        state->error_message = event.GetError().message();
       }
 
       if (state->count.fetch_sub(1, std::memory_order_acq_rel) == 1) {
