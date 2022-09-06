@@ -1,12 +1,14 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
 // RUN:     --gml-tiling="tile-sizes=256,512 distribute=false op-label=tile-2d" \
 // RUN:     --gml-tiling="tile-sizes=1,1 distribute=false op-label=tile-2d-point" \
-// RUN:     --gml-tiling="tile-sizes=256,512 distribute=false op-label=tile-3d" | \
+// RUN:     --gml-tiling="tile-sizes=256,512 distribute=false op-label=tile-3d" \
+// RUN:     --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-SEQUENTIAL
 
 // RUN: mlir-hlo-opt %s --split-input-file \
 // RUN:     --gml-tiling="tile-sizes=256,512 distribute=true op-label=tile-2d" \
-// RUN:     --gml-tiling="tile-sizes=1,1 distribute=true op-label=tile-2d-point" | \
+// RUN:     --gml-tiling="tile-sizes=1,1 distribute=true op-label=tile-2d-point" \
+// RUN:     --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-PARALLEL
 
 
@@ -40,32 +42,28 @@ func.func @add(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>)
 // CHECK-SEQUENTIAL:       %[[C1:.*]] = arith.constant 1
 // CHECK-SEQUENTIAL:       %[[C256:.*]] = arith.constant 256
 // CHECK-SEQUENTIAL:       %[[C512:.*]] = arith.constant 512
-// CHECK-SEQUENTIAL:       %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-// CHECK-SEQUENTIAL:       %[[DIM_0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-// CHECK-SEQUENTIAL:       %[[INIT:.*]] = linalg.init_tensor [%[[DIM]], %[[DIM_0]]]
-// CHECK-SEQUENTIAL:       %[[DIM_1:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-// CHECK-SEQUENTIAL:       %[[DIM_2:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+// CHECK-SEQUENTIAL:       %[[LHS_DIM_0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+// CHECK-SEQUENTIAL:       %[[LHS_DIM_1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+// CHECK-SEQUENTIAL:       %[[INIT:.*]] = linalg.init_tensor [%[[LHS_DIM_0]], %[[LHS_DIM_1]]]
 // CHECK-SEQUENTIAL:       %[[FOR:.*]] = gml_st.for (%[[ARG2:.*]], %[[ARG3:.*]]) = (%[[C0]], %[[C0]])
-// CHECK-SEQUENTIAL-SAME:      to (%[[DIM_1]], %[[DIM_2]])
+// CHECK-SEQUENTIAL-SAME:      to (%[[LHS_DIM_0]], %[[LHS_DIM_1]])
 // CHECK-SEQUENTIAL-SAME:      step (%[[C256]], %[[C512]])
-// CHECK-SEQUENTIAL-SAME:      outs (%[[ARG4:.*]] = %[[INIT]]: tensor<?x?xf32>)
-// CHECK-SEQUENTIAL:         %[[MIN:.*]] = affine.min #map0(%[[ARG2]])[%[[C256]], %[[DIM_1]]]
-// CHECK-SEQUENTIAL:         %[[MIN_0:.*]] = affine.min #map1(%[[ARG3]])[%[[C512]], %[[DIM_2]]]
-// CHECK-SEQUENTIAL:         %[[DIM_3:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-// CHECK-SEQUENTIAL:         %[[DIM_4:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-// CHECK-SEQUENTIAL:         %[[SPACE:.*]] = gml_st.space [%[[DIM_3]], %[[DIM_4]]]
+// CHECK-SEQUENTIAL-SAME:      outs (%[[OUT:.*]] = %[[INIT]]: tensor<?x?xf32>)
+// CHECK-SEQUENTIAL:         %[[MIN:.*]] = affine.min #map0(%[[ARG2]])[%[[C256]], %[[LHS_DIM_0]]]
+// CHECK-SEQUENTIAL:         %[[MIN_0:.*]] = affine.min #map1(%[[ARG3]])[%[[C512]], %[[LHS_DIM_1]]]
+// CHECK-SEQUENTIAL:         %[[SPACE:.*]] = gml_st.space [%[[LHS_DIM_0]], %[[LHS_DIM_1]]]
 // CHECK-SEQUENTIAL:         %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[ARG2]], %[[ARG3]]] [%[[MIN]], %[[MIN_0]]] [1, 1]
 // CHECK-SEQUENTIAL:         %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG0]][%[[TILE]]]
-// CHECK-SEQUENTIAL:         %[[DIM_5:.*]] = tensor.dim %[[ARG1]], %[[C0]]
-// CHECK-SEQUENTIAL:         %[[DIM_6:.*]] = tensor.dim %[[ARG1]], %[[C1]]
-// CHECK-SEQUENTIAL:         %[[SPACE_0:.*]] = gml_st.space [%[[DIM_5]], %[[DIM_6]]]
+// CHECK-SEQUENTIAL:         %[[RHS_DIM_0:.*]] = tensor.dim %[[ARG1]], %[[C0]]
+// CHECK-SEQUENTIAL:         %[[RHS_DIM_1:.*]] = tensor.dim %[[ARG1]], %[[C1]]
+// CHECK-SEQUENTIAL:         %[[SPACE_0:.*]] = gml_st.space [%[[RHS_DIM_0]], %[[RHS_DIM_1]]]
 // CHECK-SEQUENTIAL:         %[[TILE_0:.*]] = gml_st.tile %[[SPACE_0]] [%[[ARG2]], %[[ARG3]]] [%[[MIN]], %[[MIN_0]]] [1, 1]
 // CHECK-SEQUENTIAL:         %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[ARG1]][%[[TILE_0]]]
-// CHECK-SEQUENTIAL:         %[[DIM_7:.*]] = tensor.dim %[[ARG4]], %[[C0]]
-// CHECK-SEQUENTIAL:         %[[DIM_8:.*]] = tensor.dim %[[ARG4]], %[[C1]]
-// CHECK-SEQUENTIAL:         %[[SPACE_1:.*]] = gml_st.space [%[[DIM_7]], %[[DIM_8]]]
+// CHECK-SEQUENTIAL:         %[[INIT_DIM_0:.*]] = tensor.dim %[[OUT]], %[[C0]]
+// CHECK-SEQUENTIAL:         %[[INIT_DIM_1:.*]] = tensor.dim %[[OUT]], %[[C1]]
+// CHECK-SEQUENTIAL:         %[[SPACE_1:.*]] = gml_st.space [%[[INIT_DIM_0]], %[[INIT_DIM_1]]]
 // CHECK-SEQUENTIAL:         %[[TILE_1:.*]] = gml_st.tile %[[SPACE_1]] [%[[ARG2]], %[[ARG3]]] [%[[MIN]], %[[MIN_0]]] [1, 1]
-// CHECK-SEQUENTIAL:         %[[MATERIALIZE_1:.*]] = gml_st.materialize %[[ARG4]][%[[TILE_1]]]
+// CHECK-SEQUENTIAL:         %[[MATERIALIZE_1:.*]] = gml_st.materialize %[[OUT]][%[[TILE_1]]]
 // CHECK-SEQUENTIAL:         %[[GENERIC:.*]] = linalg.generic
 // CHECK-SEQUENTIAL-SAME:        iterator_types = ["parallel", "parallel"]
 // CHECK-SEQUENTIAL-SAME:        ins(%[[MATERIALIZE]], %[[MATERIALIZE_0]] : tensor<?x?xf32>, tensor<?x?xf32>)
@@ -74,40 +72,36 @@ func.func @add(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>)
 // CHECK-SEQUENTIAL:         ^bb0(%[[ARG5:.*]]: f32, %[[ARG6:.*]]: f32, %[[ARG7:.*]]: f32):
 // CHECK-SEQUENTIAL:           %[[ADDF:.*]] = arith.addf %[[ARG5]], %[[ARG6]]
 // CHECK-SEQUENTIAL:           linalg.yield %[[ADDF]]
-// CHECK-SEQUENTIAL:         gml_st.set_yield %[[GENERIC]] into %[[ARG4]][%[[TILE_1]]]
+// CHECK-SEQUENTIAL:         gml_st.set_yield %[[GENERIC]] into %[[OUT]][%[[TILE_1]]]
 // CHECK-SEQUENTIAL:       return %[[FOR]]
 
 
 // CHECK-PARALLEL-LABEL: @add
-// CHECK-PARALLEL-SAME:  %[[ARG0:.*]]: tensor<?x?xf32>, %[[ARG1:.*]]: tensor<?x?xf32>
+// CHECK-PARALLEL-SAME:  %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>
 
 // CHECK-PARALLEL:       %[[C0:.*]] = arith.constant 0
 // CHECK-PARALLEL:       %[[C1:.*]] = arith.constant 1
 // CHECK-PARALLEL:       %[[C256:.*]] = arith.constant 256
 // CHECK-PARALLEL:       %[[C512:.*]] = arith.constant 512
-// CHECK-PARALLEL:       %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-// CHECK-PARALLEL:       %[[DIM_0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-// CHECK-PARALLEL:       %[[INIT:.*]] = linalg.init_tensor [%[[DIM]], %[[DIM_0]]]
-// CHECK-PARALLEL:       %[[DIM_1:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-// CHECK-PARALLEL:       %[[DIM_2:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+// CHECK-PARALLEL:       %[[LHS_DIM_0:.*]] = tensor.dim %[[LHS]], %[[C0]]
+// CHECK-PARALLEL:       %[[LHS_DIM_1:.*]] = tensor.dim %[[LHS]], %[[C1]]
+// CHECK-PARALLEL:       %[[INIT:.*]] = linalg.init_tensor [%[[LHS_DIM_0]], %[[LHS_DIM_1]]]
 // CHECK-PARALLEL:       %[[PARALLEL:.*]] = gml_st.parallel (%[[ARG2:.*]], %[[ARG3:.*]]) = (%[[C0]], %[[C0]])
-// CHECK-PARALLEL-SAME:      to (%[[DIM_1]], %[[DIM_2]])
+// CHECK-PARALLEL-SAME:      to (%[[LHS_DIM_0]], %[[LHS_DIM_1]])
 // CHECK-PARALLEL-SAME:      step (%[[C256]], %[[C512]])
-// CHECK-PARALLEL:         %[[MIN:.*]] = affine.min #map0(%[[ARG2]])[%[[C256]], %[[DIM_1]]]
-// CHECK-PARALLEL:         %[[MIN_0:.*]] = affine.min #map1(%[[ARG3]])[%[[C512]], %[[DIM_2]]]
-// CHECK-PARALLEL:         %[[DIM_3:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-// CHECK-PARALLEL:         %[[DIM_4:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-// CHECK-PARALLEL:         %[[SPACE:.*]] = gml_st.space [%[[DIM_3]], %[[DIM_4]]]
+// CHECK-PARALLEL:         %[[MIN:.*]] = affine.min #map0(%[[ARG2]])[%[[C256]], %[[LHS_DIM_0]]]
+// CHECK-PARALLEL:         %[[MIN_0:.*]] = affine.min #map1(%[[ARG3]])[%[[C512]], %[[LHS_DIM_1]]]
+// CHECK-PARALLEL:         %[[SPACE:.*]] = gml_st.space [%[[LHS_DIM_0]], %[[LHS_DIM_1]]]
 // CHECK-PARALLEL:         %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[ARG2]], %[[ARG3]]] [%[[MIN]], %[[MIN_0]]] [1, 1]
-// CHECK-PARALLEL:         %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG0]][%[[TILE]]]
-// CHECK-PARALLEL:         %[[DIM_5:.*]] = tensor.dim %[[ARG1]], %[[C0]]
-// CHECK-PARALLEL:         %[[DIM_6:.*]] = tensor.dim %[[ARG1]], %[[C1]]
-// CHECK-PARALLEL:         %[[SPACE_0:.*]] = gml_st.space [%[[DIM_5]], %[[DIM_6]]]
+// CHECK-PARALLEL:         %[[MATERIALIZE:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]]
+// CHECK-PARALLEL:         %[[RHS_DIM_0:.*]] = tensor.dim %[[RHS]], %[[C0]]
+// CHECK-PARALLEL:         %[[RHS_DIM_1:.*]] = tensor.dim %[[RHS]], %[[C1]]
+// CHECK-PARALLEL:         %[[SPACE_0:.*]] = gml_st.space [%[[RHS_DIM_0]], %[[RHS_DIM_1]]]
 // CHECK-PARALLEL:         %[[TILE_0:.*]] = gml_st.tile %[[SPACE_0]] [%[[ARG2]], %[[ARG3]]] [%[[MIN]], %[[MIN_0]]] [1, 1]
-// CHECK-PARALLEL:         %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[ARG1]][%[[TILE_0]]]
-// CHECK-PARALLEL:         %[[DIM_7:.*]] = tensor.dim %[[INIT]], %[[C0]]
-// CHECK-PARALLEL:         %[[DIM_8:.*]] = tensor.dim %[[INIT]], %[[C1]]
-// CHECK-PARALLEL:         %[[SPACE_1:.*]] = gml_st.space [%[[DIM_7]], %[[DIM_8]]]
+// CHECK-PARALLEL:         %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[RHS]][%[[TILE_0]]]
+// CHECK-PARALLEL:         %[[INIT_DIM_0:.*]] = tensor.dim %[[INIT]], %[[C0]]
+// CHECK-PARALLEL:         %[[INIT_DIM_1:.*]] = tensor.dim %[[INIT]], %[[C1]]
+// CHECK-PARALLEL:         %[[SPACE_1:.*]] = gml_st.space [%[[INIT_DIM_0]], %[[INIT_DIM_1]]]
 // CHECK-PARALLEL:         %[[TILE_1:.*]] = gml_st.tile %[[SPACE_1]] [%[[ARG2]], %[[ARG3]]] [%[[MIN]], %[[MIN_0]]] [1, 1]
 // CHECK-PARALLEL:         %[[MATERIALIZE_1:.*]] = gml_st.materialize %[[INIT]][%[[TILE_1]]]
 // CHECK-PARALLEL:         %[[GENERIC:.*]] = linalg.generic
@@ -115,8 +109,8 @@ func.func @add(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>)
 // CHECK-PARALLEL-SAME:        ins(%[[MATERIALIZE]], %[[MATERIALIZE_0]] : tensor<?x?xf32>, tensor<?x?xf32>)
 // CHECK-PARALLEL-SAME:        outs(%[[MATERIALIZE_1]] : tensor<?x?xf32>)
 // CHECK-PARALLEL-SAME:        attrs =  {op_label = "tile-2d"}
-// CHECK-PARALLEL:         ^bb0(%[[ARG4:.*]]: f32, %[[ARG5:.*]]: f32, %[[ARG6:.*]]: f32):
-// CHECK-PARALLEL:           %[[ADDF:.*]] = arith.addf %[[ARG4]], %[[ARG5]]
+// CHECK-PARALLEL:         ^bb0(%[[OUT:.*]]: f32, %[[ARG5:.*]]: f32, %[[ARG6:.*]]: f32):
+// CHECK-PARALLEL:           %[[ADDF:.*]] = arith.addf %[[OUT]], %[[ARG5]]
 // CHECK-PARALLEL:           linalg.yield %[[ADDF]]
 // CHECK-PARALLEL:         gml_st.set_yield %[[GENERIC]] into %[[INIT]][%[[TILE_1]]]
 // CHECK-PARALLEL:       return %[[PARALLEL]]
@@ -150,38 +144,35 @@ func.func @reduce_row(%lhs: tensor<?x?xf32>,
 
 
 // CHECK-SEQUENTIAL-LABEL: @reduce_row
-// CHECK-SEQUENTIAL-SAME:  %[[ARG0_0:.*]]: tensor<?x?xf32>, %[[ARG1_0:.*]]: tensor<?x?xf32>
+// CHECK-SEQUENTIAL-SAME:  %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>
 
-// CHECK-SEQUENTIAL:       %[[C0_0:.*]] = arith.constant 0
-// CHECK-SEQUENTIAL:       %[[C1_0:.*]] = arith.constant 1
-// CHECK-SEQUENTIAL:       %[[C256_0:.*]] = arith.constant 256
-// CHECK-SEQUENTIAL:       %[[C512_0:.*]] = arith.constant 512
-// CHECK-SEQUENTIAL:       %[[CST:.*]] = arith.constant 0.000000e+00
-// CHECK-SEQUENTIAL:       %[[DIM_9:.*]] = tensor.dim %[[ARG0_0]], %[[C0_0]]
-// CHECK-SEQUENTIAL:       %[[INIT_0:.*]] = linalg.init_tensor [%[[DIM_9]]]
-// CHECK-SEQUENTIAL:       %[[FILL:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[INIT_0]] : tensor<?xf32>)
-// CHECK-SEQUENTIAL:       %[[DIM_10:.*]] = tensor.dim %[[ARG0_0]], %[[C0_0]]
-// CHECK-SEQUENTIAL:       %[[DIM_11:.*]] = tensor.dim %[[ARG0_0]], %[[C1_0]]
+// CHECK-SEQUENTIAL-DAG:   %[[C0_0:.*]] = arith.constant 0
+// CHECK-SEQUENTIAL-DAG:   %[[C1_0:.*]] = arith.constant 1
+// CHECK-SEQUENTIAL-DAG:   %[[LHS_DIM_0:.*]] = tensor.dim %[[LHS]], %[[C0_0]]
+// CHECK-SEQUENTIAL-DAG:   %[[LHS_DIM_1:.*]] = tensor.dim %[[LHS]], %[[C1_0]]
+// CHECK-SEQUENTIAL-DAG:   %[[C256_0:.*]] = arith.constant 256
+// CHECK-SEQUENTIAL-DAG:   %[[C512_0:.*]] = arith.constant 512
+// CHECK-SEQUENTIAL-DAG:   %[[CST:.*]] = arith.constant 0.000000e+00
+// CHECK-SEQUENTIAL-DAG:   %[[INIT_0:.*]] = linalg.init_tensor [%[[LHS_DIM_0]]]
+// CHECK-SEQUENTIAL-DAG:   %[[FILL:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[INIT_0]] : tensor<?xf32>)
 // CHECK-SEQUENTIAL:       %[[FOR_0:.*]] = gml_st.for (%[[ARG2_0:.*]], %[[ARG3_0:.*]]) = (%[[C0_0]], %[[C0_0]])
-// CHECK-SEQUENTIAL-SAME:      to (%[[DIM_10]], %[[DIM_11]])
+// CHECK-SEQUENTIAL-SAME:      to (%[[LHS_DIM_0]], %[[LHS_DIM_1]])
 // CHECK-SEQUENTIAL-SAME:      step (%[[C256_0]], %[[C512_0]])
-// CHECK-SEQUENTIAL-SAME:      outs (%[[ARG4_0:.*]] = %[[FILL]]: tensor<?xf32>)
-// CHECK-SEQUENTIAL:         %[[MIN_1:.*]] = affine.min #map0(%[[ARG2_0]])[%[[C256_0]], %[[DIM_10]]]
-// CHECK-SEQUENTIAL:         %[[MIN_2:.*]] = affine.min #map1(%[[ARG3_0]])[%[[C512_0]], %[[DIM_11]]]
-// CHECK-SEQUENTIAL:         %[[DIM_12:.*]] = tensor.dim %[[ARG0_0]], %[[C0_0]]
-// CHECK-SEQUENTIAL:         %[[DIM_13:.*]] = tensor.dim %[[ARG0_0]], %[[C1_0]]
-// CHECK-SEQUENTIAL:         %[[SPACE_2:.*]] = gml_st.space [%[[DIM_12]], %[[DIM_13]]]
+// CHECK-SEQUENTIAL-SAME:      outs (%[[OUT_0:.*]] = %[[FILL]]: tensor<?xf32>)
+// CHECK-SEQUENTIAL:         %[[MIN_1:.*]] = affine.min #map0(%[[ARG2_0]])[%[[C256_0]], %[[LHS_DIM_0]]]
+// CHECK-SEQUENTIAL:         %[[MIN_2:.*]] = affine.min #map1(%[[ARG3_0]])[%[[C512_0]], %[[LHS_DIM_1]]]
+// CHECK-SEQUENTIAL:         %[[SPACE_2:.*]] = gml_st.space [%[[LHS_DIM_0]], %[[LHS_DIM_1]]]
 // CHECK-SEQUENTIAL:         %[[TILE_2:.*]] = gml_st.tile %[[SPACE_2]] [%[[ARG2_0]], %[[ARG3_0]]] [%[[MIN_1]], %[[MIN_2]]] [1, 1]
-// CHECK-SEQUENTIAL:         %[[MATERIALIZE_2:.*]] = gml_st.materialize %[[ARG0_0]][%[[TILE_2]]]
-// CHECK-SEQUENTIAL:         %[[DIM_14:.*]] = tensor.dim %[[ARG1_0]], %[[C0_0]]
-// CHECK-SEQUENTIAL:         %[[DIM_15:.*]] = tensor.dim %[[ARG1_0]], %[[C1_0]]
-// CHECK-SEQUENTIAL:         %[[SPACE_3:.*]] = gml_st.space [%[[DIM_14]], %[[DIM_15]]]
+// CHECK-SEQUENTIAL:         %[[MATERIALIZE_2:.*]] = gml_st.materialize %[[LHS]][%[[TILE_2]]]
+// CHECK-SEQUENTIAL:         %[[RHS_DIM_0:.*]] = tensor.dim %[[RHS]], %[[C0_0]]
+// CHECK-SEQUENTIAL:         %[[RHS_DIM_1:.*]] = tensor.dim %[[RHS]], %[[C1_0]]
+// CHECK-SEQUENTIAL:         %[[SPACE_3:.*]] = gml_st.space [%[[RHS_DIM_0]], %[[RHS_DIM_1]]]
 // CHECK-SEQUENTIAL:         %[[TILE_3:.*]] = gml_st.tile %[[SPACE_3]] [%[[ARG2_0]], %[[ARG3_0]]] [%[[MIN_1]], %[[MIN_2]]] [1, 1]
-// CHECK-SEQUENTIAL:         %[[MATERIALIZE_3:.*]] = gml_st.materialize %[[ARG1_0]][%[[TILE_3]]]
-// CHECK-SEQUENTIAL:         %[[DIM_16:.*]] = tensor.dim %[[ARG4_0]], %[[C0_0]]
+// CHECK-SEQUENTIAL:         %[[MATERIALIZE_3:.*]] = gml_st.materialize %[[RHS]][%[[TILE_3]]]
+// CHECK-SEQUENTIAL:         %[[DIM_16:.*]] = tensor.dim %[[OUT_0]], %[[C0_0]]
 // CHECK-SEQUENTIAL:         %[[SPACE_4:.*]] = gml_st.space [%[[DIM_16]]]
 // CHECK-SEQUENTIAL:         %[[TILE_4:.*]] = gml_st.tile %[[SPACE_4]] [%[[ARG2_0]]] [%[[MIN_1]]] [1]
-// CHECK-SEQUENTIAL:         %[[MATERIALIZE_4:.*]] = gml_st.materialize %[[ARG4_0]][%[[TILE_4]]]
+// CHECK-SEQUENTIAL:         %[[MATERIALIZE_4:.*]] = gml_st.materialize %[[OUT_0]][%[[TILE_4]]]
 // CHECK-SEQUENTIAL:         %[[GENERIC_0:.*]] = linalg.generic
 // CHECK-SEQUENTIAL-SAME:        iterator_types = ["parallel", "reduction"]}
 // CHECK-SEQUENTIAL-SAME:        ins(%[[MATERIALIZE_2]], %[[MATERIALIZE_3]] : tensor<?x?xf32>, tensor<?x?xf32>)
@@ -191,12 +182,12 @@ func.func @reduce_row(%lhs: tensor<?x?xf32>,
 // CHECK-SEQUENTIAL:           %[[MULF:.*]] = arith.mulf %[[ARG5_0]], %[[ARG6_0]]
 // CHECK-SEQUENTIAL:           %[[ADDF_0:.*]] = arith.addf %[[MULF]], %[[ARG7_0]]
 // CHECK-SEQUENTIAL:           linalg.yield %[[ADDF_0]]
-// CHECK-SEQUENTIAL:         gml_st.set_yield %[[GENERIC_0]] into %[[ARG4_0]][%[[TILE_4]]]
+// CHECK-SEQUENTIAL:         gml_st.set_yield %[[GENERIC_0]] into %[[OUT_0]][%[[TILE_4]]]
 // CHECK-SEQUENTIAL:       return %[[FOR_0]]
 
 
 // CHECK-PARALLEL-LABEL: @reduce_row
-// CHECK-PARALLEL-SAME:  %[[ARG0_0:.*]]: tensor<?x?xf32>, %[[ARG1_0:.*]]: tensor<?x?xf32>
+// CHECK-PARALLEL-SAME:  %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>
 
 // CHECK-PARALLEL-NOT:   gml_st.parallel
 // CHECK-PARALLEL:       %[[RES:.*]] = linalg.generic
@@ -215,35 +206,33 @@ func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
 
 
 // CHECK-SEQUENTIAL-LABEL: @dynamic_broadcast_in_dim_at_tile
-// CHECK-SEQUENTIAL-SAME:  %[[ARG0:.*]]: tensor<?x?x?xf32>, %[[ARG1:.*]]: tensor<?x?xf32>
+// CHECK-SEQUENTIAL-SAME:  %[[INIT:.*]]: tensor<?x?x?xf32>, %[[ARG:.*]]: tensor<?x?xf32>
 
 // CHECK-SEQUENTIAL:       %[[C0:.*]] = arith.constant 0
 // CHECK-SEQUENTIAL:       %[[C1:.*]] = arith.constant 1
 // CHECK-SEQUENTIAL:       %[[C2:.*]] = arith.constant 2
 // CHECK-SEQUENTIAL:       %[[C256:.*]] = arith.constant 256
 // CHECK-SEQUENTIAL:       %[[C512:.*]] = arith.constant 512
-// CHECK-SEQUENTIAL:       %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-// CHECK-SEQUENTIAL:       %[[DIM_0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-// CHECK-SEQUENTIAL:       %[[DIM_1:.*]] = tensor.dim %[[ARG0]], %[[C2]]
+// CHECK-SEQUENTIAL:       %[[INIT_DIM_0:.*]] = tensor.dim %[[INIT]], %[[C0]]
+// CHECK-SEQUENTIAL:       %[[INIT_DIM_1:.*]] = tensor.dim %[[INIT]], %[[C1]]
+// CHECK-SEQUENTIAL:       %[[INIT_DIM_2:.*]] = tensor.dim %[[INIT]], %[[C2]]
 // CHECK-SEQUENTIAL:       %[[FOR:.*]] = gml_st.for (%[[ARG2:.*]], %[[ARG3:.*]]) = (%[[C0]], %[[C0]])
-// CHECK-SEQUENTIAL-SAME:      to (%[[DIM]], %[[DIM_0]])
+// CHECK-SEQUENTIAL-SAME:      to (%[[INIT_DIM_0]], %[[INIT_DIM_1]])
 // CHECK-SEQUENTIAL-SAME:      step (%[[C256]], %[[C512]])
-// CHECK-SEQUENTIAL-SAME:      outs (%[[ARG4:.*]] = %[[ARG0]]: tensor<?x?x?xf32>)
-// CHECK-SEQUENTIAL:         %[[MIN:.*]] = affine.min #map0(%[[ARG2]])[%[[C256]], %[[DIM]]]
-// CHECK-SEQUENTIAL:         %[[MIN_0:.*]] = affine.min #map1(%[[ARG3]])[%[[C512]], %[[DIM_0]]]
-// CHECK-SEQUENTIAL:         %[[DIM_2:.*]] = tensor.dim %[[ARG4]], %[[C0]]
-// CHECK-SEQUENTIAL:         %[[DIM_3:.*]] = tensor.dim %[[ARG4]], %[[C1]]
-// CHECK-SEQUENTIAL:         %[[DIM_4:.*]] = tensor.dim %[[ARG4]], %[[C2]]
-// CHECK-SEQUENTIAL:         %[[SPACE:.*]] = gml_st.space [%[[DIM_2]], %[[DIM_3]], %[[DIM_4]]]
-// CHECK-SEQUENTIAL:         %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[ARG2]], %[[ARG3]], %[[C0]]] [%[[MIN]], %[[MIN_0]], %[[DIM_1]]] [1, 1, 1]
-// CHECK-SEQUENTIAL:         %[[DIM_5:.*]] = tensor.dim %[[ARG1]], %[[C0]]
-// CHECK-SEQUENTIAL:         %[[DIM_6:.*]] = tensor.dim %[[ARG1]], %[[C1]]
-// CHECK-SEQUENTIAL:         %[[SPACE_0:.*]] = gml_st.space [%[[DIM_5]], %[[DIM_6]]]
+// CHECK-SEQUENTIAL-SAME:      outs (%[[OUT:.*]] = %[[INIT]]: tensor<?x?x?xf32>)
+// CHECK-SEQUENTIAL:         %[[MIN:.*]] = affine.min #map0(%[[ARG2]])[%[[C256]], %[[INIT_DIM_0]]]
+// CHECK-SEQUENTIAL:         %[[MIN_0:.*]] = affine.min #map1(%[[ARG3]])[%[[C512]], %[[INIT_DIM_1]]]
+// CHECK-SEQUENTIAL:         %[[OUT_DIM_0:.*]] = tensor.dim %[[OUT]], %[[C0]]
+// CHECK-SEQUENTIAL:         %[[OUT_DIM_1:.*]] = tensor.dim %[[OUT]], %[[C1]]
+// CHECK-SEQUENTIAL:         %[[OUT_DIM_2:.*]] = tensor.dim %[[OUT]], %[[C2]]
+// CHECK-SEQUENTIAL:         %[[SPACE:.*]] = gml_st.space [%[[OUT_DIM_0]], %[[OUT_DIM_1]], %[[OUT_DIM_2]]]
+// CHECK-SEQUENTIAL:         %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[ARG2]], %[[ARG3]], %[[C0]]] [%[[MIN]], %[[MIN_0]], %[[INIT_DIM_2]]] [1, 1, 1]
+// CHECK-SEQUENTIAL:         %[[ARG_DIM_0:.*]] = tensor.dim %[[ARG]], %[[C0]]
+// CHECK-SEQUENTIAL:         %[[ARG_DIM_1:.*]] = tensor.dim %[[ARG]], %[[C1]]
+// CHECK-SEQUENTIAL:         %[[SPACE_0:.*]] = gml_st.space [%[[ARG_DIM_0]], %[[ARG_DIM_1]]]
 // CHECK-SEQUENTIAL:         %[[DROP:.*]] = gml_st.drop_dims %[[TILE]], [0, 2]
-// CHECK-SEQUENTIAL:         %[[DIM_7:.*]] = tensor.dim %[[ARG4]], %[[C0]]
-// CHECK-SEQUENTIAL:         %[[CMPI:.*]] = arith.cmpi ne, %[[DIM_5]], %[[DIM_7]]
-// CHECK-SEQUENTIAL:         %[[DIM_8:.*]] = tensor.dim %[[ARG4]], %[[C2]]
-// CHECK-SEQUENTIAL:         %[[CMPI_0:.*]] = arith.cmpi ne, %[[DIM_6]], %[[DIM_8]]
+// CHECK-SEQUENTIAL:         %[[CMPI:.*]] = arith.cmpi ne, %[[ARG_DIM_0]], %[[OUT_DIM_0]]
+// CHECK-SEQUENTIAL:         %[[CMPI_0:.*]] = arith.cmpi ne, %[[ARG_DIM_1]], %[[OUT_DIM_2]]
 // CHECK-SEQUENTIAL:         %[[OFFSET:.*]] = gml_st.offset %[[DROP]][%[[C0]]]
 // CHECK-SEQUENTIAL:         %[[SELECT:.*]] = arith.select %[[CMPI]], %[[C0]], %[[OFFSET]]
 // CHECK-SEQUENTIAL:         %[[OFFSET_0:.*]] = gml_st.offset %[[DROP]][%[[C1]]]
@@ -253,13 +242,13 @@ func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
 // CHECK-SEQUENTIAL:         %[[SIZE_0:.*]] = gml_st.size %[[DROP]][%[[C1]]]
 // CHECK-SEQUENTIAL:         %[[SELECT_2:.*]] = arith.select %[[CMPI_0]], %[[C1]], %[[SIZE_0]]
 // CHECK-SEQUENTIAL:         %[[TILE_0:.*]] = gml_st.tile %[[SPACE_0]] [%[[SELECT]], %[[SELECT_0]]] [%[[SELECT_1]], %[[SELECT_2]]] [1, 1]
-// CHECK-SEQUENTIAL:         %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG4]][%[[TILE]]]
-// CHECK-SEQUENTIAL:         %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[ARG1]][%[[TILE_0]]]
+// CHECK-SEQUENTIAL:         %[[MATERIALIZE:.*]] = gml_st.materialize %[[OUT]][%[[TILE]]]
+// CHECK-SEQUENTIAL:         %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[ARG]][%[[TILE_0]]]
 // CHECK-SEQUENTIAL:         %[[DYNAMIC:.*]] = thlo.dynamic_broadcast_in_dim
 // CHECK-SEQUENTIAL-SAME:        ins(%[[MATERIALIZE_0]]
 // CHECK-SEQUENTIAL-SAME:        outs(%[[MATERIALIZE]]
 // CHECK-SEQUENTIAL-SAME:        broadcast_dimensions = [0, 2]
-// CHECK-SEQUENTIAL:         gml_st.set_yield %[[DYNAMIC]] into %[[ARG4]][%[[TILE]]]
+// CHECK-SEQUENTIAL:         gml_st.set_yield %[[DYNAMIC]] into %[[OUT]][%[[TILE]]]
 // CHECK-SEQUENTIAL:       return %[[FOR]]
 
 // -----
@@ -332,8 +321,8 @@ func.func @scatter_i32_f32(%indices: tensor<?x2xi32>, %updates: tensor<?xf32>,
 // CHECK-SEQUENTIAL:       %[[UPD_VALUE:.*]] = tensor.extract %[[UPDATES]][%[[K]]]
 // CHECK-SEQUENTIAL:       arith.addf %[[UPD_ACC_VAR]], %[[UPD_VALUE]]
 
-// PARALLEL-LABEL: @scatter_i32_f32
-// PARALLEL: gml_st.parallel
+// CHECK-PARALLEL-LABEL: @scatter_i32_f32
+// CHECK-PARALLEL: gml_st.parallel
 
 // -----
 
@@ -360,8 +349,35 @@ func.func @scatter_2d_indices(%indices: tensor<?x?x2xi32>,
 // CHECK-SEQUENTIAL:         scf.yield %[[INNER_RESULT]]
 // CHECK-SEQUENTIAL:       tensor.from_elements %[[OUTER_RESULT]]
 
-// PARALLEL-LABEL: @scatter_2d_indices
-// PARALLEL: gml_st.parallel
+// CHECK-PARALLEL-LABEL: @scatter_2d_indices
+// CHECK-PARALLEL: gml_st.parallel
+
+// -----
+
+func.func @scatter_small_vector_dim(%indices: tensor<?x?x2xi32>,
+    %updates: tensor<?x?xf32>, %init: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+  %result = thlo.scatter
+    ins (%indices: tensor<?x?x2xi32>, %updates: tensor<?x?xf32>)
+    outs (%init: tensor<?x?x?xf32>) { op_label = "tile-2d-point" }
+  return %result : tensor<?x?x?xf32>
+}
+
+// CHECK-SEQUENTIAL-LABEL: @scatter_small_vector_dim
+// CHECK-SEQUENTIAL-DAG:   %[[C2:.*]] = arith.constant 2 : index
+// CHECK-SEQUENTIAL:       gml_st.for (%[[I:.*]], %[[J:.*]]) = (
+// CHECK-SEQUENTIAL-SAME:    outs (%[[OUT:.*]] =
+// CHECK-SEQUENTIAL:         %[[SIZE0:.*]] = affine.min {{.*}}%[[I]]
+// CHECK-SEQUENTIAL:         %[[SIZE1:.*]] = affine.min {{.*}}%[[J]]
+// CHECK-SEQUENTIAL:         %[[OUT_DIM2:.*]] = tensor.dim %[[OUT]], %[[C2]]
+// CHECK-SEQUENTIAL:         %[[TILE:.*]] = gml_st.tile
+// CHECK-SEQUENTIAL-SAME:      [%[[I]], %[[J]], 0]
+// CHECK-SEQUENTIAL-SAME:      [%[[SIZE0]], %[[SIZE1]], %[[OUT_DIM2]]] [1, 1, 1]
+// CHECK-SEQUENTIAL:         %[[OUT_MAT:.*]] = gml_st.materialize %[[OUT]][%[[TILE]]]
+// CHECK-SEQUENTIAL:         thlo.scatter
+// CHECK-SEQUENTIAL-SAME:       outs(%[[OUT_MAT]]
+
+// CHECK-PARALLEL-LABEL: @scatter_small_vector_dim
+// CHECK-PARALLEL: gml_st.parallel
 
 // -----
 
@@ -396,5 +412,5 @@ func.func @gather(%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x?x4xi64>,
 // CHECK-SEQUENTIAL-SAME:       outs(%[[INIT_SLICE]]
 // CHECK-SEQUENTIAL:         gml_st.set_yield %[[GATHER_SLICE]]
 
-// PARALLEL-LABEL: @gather
-// PARALLEL: gml_st.parallel
+// CHECK-PARALLEL-LABEL: @gather
+// CHECK-PARALLEL: gml_st.parallel
