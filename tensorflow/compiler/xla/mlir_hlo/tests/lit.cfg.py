@@ -69,10 +69,7 @@ tool_dirs = [
 tools = [
     'mlir-hlo-opt',
     'mlir-cpu-runner',
-    ToolSubst(
-        '%mlir_runner_utils_dir',
-        config.mlir_runner_utils_dir,
-        unresolved='ignore'),
+    ToolSubst('%mlir_lib_dir', config.mlir_lib_dir, unresolved='ignore'),
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
