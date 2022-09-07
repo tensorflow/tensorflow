@@ -144,6 +144,9 @@ class Subgraph {
       bool is_variable = false, const size_t ndims_signature = 0,
       const int* dims_signature = nullptr);
 
+  // Get all tensors in the subgraph.
+  TfLiteTensor* tensors() { return context_.tensors; }
+
   // Get a mutable tensor data structure.
   TfLiteTensor* tensor(int tensor_index) {
     if (tensor_index < 0 ||
