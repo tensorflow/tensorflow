@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -59,7 +59,7 @@ StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
 
   // Note: we are duplicating a hack from `cholesky_expander` to build a
   // computation using XlaBuilder.
-  HloModule* module = instruction->parent()->parent();
+  HloModule* module = instruction->GetModule();
   HloComputation*& computation =
       computation_cache_.emplace(name, nullptr).first->second;
   if (!computation) {

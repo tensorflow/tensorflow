@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -63,7 +64,7 @@ std::optional<int64_t> SelectDominantDevice(
 // Assigns all the instructions of a computation, to a given device.
 // This API does not recurse into called computations, and does not assign
 // instructions which already have sharding.
-Status AssignComputationDevice(HloComputation* computation, int64_t device);
+void AssignComputationDevice(HloComputation* computation, int64_t device);
 
 // Given an instruction container, returns the device which is most commonly
 // occurring among the instructions.
@@ -77,7 +78,7 @@ std::optional<int64_t> GetMostOccurringDevice(
 // This API does not recurse into called computations.
 // If no device exists that satisfies the condition, the returned optional will
 // hold no value.
-StatusOr<std::optional<int64_t>> GetDominantDevice(
+std::optional<int64_t> GetDominantDevice(
     absl::Span<HloComputation* const> computations, double dominant_factor);
 
 // Returns the HloSharding with the tile dimensions and tile assignment
@@ -164,6 +165,11 @@ std::optional<HloSharding> GatherOutputShardingFromDataOperand(
 std::optional<HloSharding> GatherDataOperandShardingFromOutput(
     const HloSharding& output_sharding, const HloInstruction& hlo);
 
+// Returns the slice size for a scatter with given operand and update shapes.
+std::vector<int64_t> GetScatterSliceSize(const Shape& operand_shape,
+                                         const Shape& update_shape,
+                                         const ScatterDimensionNumbers& dnums);
+
 // Returns an output sharding of scatter by passing through the update operand's
 // sharding.
 std::optional<HloSharding> ScatterOutputShardingFromUpdate(
@@ -174,6 +180,14 @@ std::optional<HloSharding> ScatterOutputShardingFromUpdate(
 std::optional<HloSharding> ScatterUpdateShardingFromOutput(
     const HloSharding& per_output_sharding,
     const HloScatterInstruction& scatter);
+
+// Returns an output sharding of gather or update operand sharding of scatter by
+// passing through the indices' sharding on index parallel dimensions.
+HloSharding GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
+    const HloSharding& indices_sharding,
+    const int64_t output_or_update_shape_rank,
+    absl::Span<const int64_t> indices_parallel_dims,
+    absl::Span<const int64_t> output_or_update_parallel_dims);
 
 // Returns an identity value and an HloOpcode for reduce computation of scatter
 // instruction.
@@ -253,6 +267,7 @@ struct GroupedSharding {
         data_rank(data_rank),
         sharding(std::move(grouped_sharding)),
         subgroup_manual(subgroup_manual) {}
+  std::string ToString() const;
   std::vector<std::vector<int64_t>> device_groups;
   std::vector<int64_t> group_dims;
   std::vector<int64_t> group_dim_sizes;
@@ -282,6 +297,18 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding);
 bool DeviceGroupsAreMatch(GroupedSharding& lhs, GroupedSharding& rhs,
                           bool ignore_group_order = true);
 
+// Spawns a new dimension by splitting an existing dimension and generating a
+// new dimension to its right of the passed down size. The original dimension
+// will be of size "original_dim_size / new_dim_size". The original dimension
+// size needs to be divisible by new_dim_size.
+HloSharding SplitShardingDimension(const HloSharding& sharding,
+                                   int64_t dimension, int64_t new_dim_size);
+
+// Merges a dimension
+// to its left. The new dimension will be of size
+// dimensions[dimension] * dimensions[dimension+1}.
+HloSharding MergeShardingDimension(const HloSharding& sharding,
+                                   int64_t dimension);
 }  // namespace hlo_sharding_util
 }  // namespace xla
 

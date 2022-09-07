@@ -37,10 +37,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/util/determinism.h"
@@ -513,6 +513,9 @@ absl::flat_hash_set<string> GetExperiments(
     }
   }
 
+  if (opt_outs_raw == "all_except_opt_in") {
+    return experiments;
+  }
   // Stochastically include live experiments unless they are opted out.
   for (const auto& pair : live_experiments) {
     auto& experiment = pair.first;
@@ -902,10 +905,13 @@ absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
 namespace {
 
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations", 0);
-REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt, 50);
+REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization", 0);
+REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt, 0);
 REGISTER_DATASET_EXPERIMENT("inject_prefetch", 100);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
 REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch", 0);
+REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length", 0);
+REGISTER_DATASET_EXPERIMENT("stage_based_autotune", 0);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

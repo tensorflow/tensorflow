@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <functional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/tensor.h"
@@ -264,6 +266,24 @@ TEST(BufferMapTest, TensorflowBufferReuse) {
   EXPECT_TRUE(tensor_buffer_reused->BufferReusedFromTfLiteTensor());
   EXPECT_EQ(tensor_buffer_reused->data(), tensor.data.raw);
   tensor_buffer_reused->Unref();
+
+  TfLiteTensorDataFree(&tensor);
+}
+
+TEST(BufferMapTest, ExplicitlyDisableBufferReuse) {
+  TfLiteTensor tensor;
+  tensor.allocation_type = kTfLiteDynamic;
+  tensor.data.raw = nullptr;
+  TfLiteTensorRealloc(10, &tensor);
+  CHECK(tensor.data.raw);
+  EXPECT_EQ(tensor.bytes, 10);
+
+  TfLiteTensorBuffer* tensor_buffer =
+      new TfLiteTensorBuffer(&tensor, /*=allow_reusing*/ false);
+  // Checks that the underlying buffer is not reused.
+  EXPECT_FALSE(tensor_buffer->BufferReusedFromTfLiteTensor());
+  EXPECT_NE(tensor_buffer->data(), tensor.data.raw);
+  tensor_buffer->Unref();
 
   TfLiteTensorDataFree(&tensor);
 }

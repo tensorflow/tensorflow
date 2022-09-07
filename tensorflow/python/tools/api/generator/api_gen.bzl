@@ -46,8 +46,10 @@ def gen_api_init_files(
         packages = [
             "tensorflow.python",
             "tensorflow.dtensor.python.api",
+            "tensorflow.dtensor.python.config",
             "tensorflow.dtensor.python.d_checkpoint",
             "tensorflow.dtensor.python.d_variable",
+            "tensorflow.dtensor.python.input_util",
             "tensorflow.dtensor.python.layout",
             "tensorflow.dtensor.python.mesh_util",
             "tensorflow.dtensor.python.save_restore",

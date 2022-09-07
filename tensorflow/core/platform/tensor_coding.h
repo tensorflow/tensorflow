@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // Helper routines for encoding/decoding tensor contents.
-#ifndef TENSORFLOW_PLATFORM_TENSOR_CODING_H_
-#define TENSORFLOW_PLATFORM_TENSOR_CODING_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_TENSOR_CODING_H_
+#define TENSORFLOW_CORE_PLATFORM_TENSOR_CODING_H_
 
 #include <string>
 
@@ -132,4 +132,4 @@ std::unique_ptr<StringListDecoder> NewStringListDecoder(const absl::Cord& in);
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_TENSOR_CODING_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_TENSOR_CODING_H_

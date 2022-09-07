@@ -47,7 +47,10 @@ class BaseTfLiteTensorBuffer : public tensorflow::TensorBuffer {
 // this TensorBuffer.
 class TfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
  public:
-  explicit TfLiteTensorBuffer(const TfLiteTensor* tensor);
+  // If `allow_reusing=false`, then the tensor buffer won't be reused from the
+  // TfLiteTensor.
+  explicit TfLiteTensorBuffer(const TfLiteTensor* tensor,
+                              bool allow_reusing = true);
 
   ~TfLiteTensorBuffer() override;
 
@@ -63,7 +66,8 @@ class TfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
   // tensorflow's CPU allocator.
   // TODO(b/205153246): Also consider reusing memory to avoid copying from
   // tensorflow::Tensor to TfLiteTensor.
-  void* MaybeAllocateTensorflowBuffer(const TfLiteTensor* tensor) const;
+  void* MaybeAllocateTensorflowBuffer(const TfLiteTensor* tensor,
+                                      bool allow_reusing) const;
 
  private:
   size_t len_;
@@ -88,9 +92,12 @@ class StringTfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
   int num_strings_;
 };
 
-// Sets the `tensorflow::Tensor` content from `TfLiteTensor` object.
+// Sets the `tensorflow::Tensor` content from `TfLiteTensor` object. If
+// `allow_reusing=false`, then we explicitly disallow reusing the TF Lite
+// tensor buffer when constructing the new tensorflow Tensor.
 tensorflow::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
-                                         tensorflow::Tensor* tf_tensor);
+                                         tensorflow::Tensor* tf_tensor,
+                                         bool allow_reusing = true);
 
 }  // namespace flex
 }  // namespace tflite

@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -85,7 +85,7 @@ inline StatusOr<T> WithContext(StatusOr<T>&& ds, absl::string_view file,
     return ::tensorflow::dtensor::WithContext(statusor.status(), __FILE__, \
                                               __LINE__, ##__VA_ARGS__);    \
   }                                                                        \
-  lhs = std::move(statusor.ValueOrDie())
+  lhs = std::move(statusor.value())
 
 #undef TF_ASSIGN_OR_RETURN
 #define TF_ASSIGN_OR_RETURN(lhs, rexpr, ...)                                   \

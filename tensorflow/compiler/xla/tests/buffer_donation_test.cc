@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -136,7 +137,7 @@ class BufferDonationTest : public HloTestBase {
           << expected_failure;
       return;
     }
-    ExecutionOutput output = output_status.ConsumeValueOrDie();
+    ExecutionOutput output = std::move(output_status).value();
 
     se::DeviceMemoryBase result_root_buffer = output.Result().root_buffer();
     LOG(INFO) << "result allocation = " << result_root_buffer.opaque()

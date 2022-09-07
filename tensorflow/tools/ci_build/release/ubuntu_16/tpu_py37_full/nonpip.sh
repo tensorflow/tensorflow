@@ -17,11 +17,10 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
-source tensorflow/tools/ci_build/ctpu/ctpu.sh
 
 install_ubuntu_16_python_pip_deps python3.9
+pip3.9 install --user --upgrade --ignore-installed cloud-tpu-client
 install_bazelisk
-install_ctpu pip3.9
 
 test_patterns=(//tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/...)
 tag_filters="tpu,-tpu_pod,-no_tpu,-notpu,-no_oss,-no_oss_py37"
@@ -38,7 +37,30 @@ bazel_args=(
 
 bazel build "${bazel_args[@]}" -- "${test_patterns[@]}"
 
-ctpu_up -s v2-8 -p tensorflow-testing-tpu
+TPU_NAME="kokoro-tpu-2vm-${RANDOM}"
+TPU_PROJECT="tensorflow-testing-tpu"
+TPU_ZONES="us-central1-b:v2-8 us-central1-c:v2-8 us-central1-b:v3-8 us-central1-a:v3-8"
+
+for TPU_ZONE_WITH_TYPE in $TPU_ZONES; do
+  TPU_ZONE="$(echo "${TPU_ZONE_WITH_TYPE}" | cut -d : -f 1)"
+  TPU_TYPE="$(echo "${TPU_ZONE_WITH_TYPE}" | cut -d : -f 2)"
+  if gcloud compute tpus create "$TPU_NAME" \
+    --zone="${TPU_ZONE}" \
+    --accelerator-type="${TPU_TYPE}" \
+    --version=nightly; then
+    TPU_CREATED="true"
+    break
+  fi
+done
+
+if [[ ! "${TPU_CREATED}" == "true" ]]; then
+  exit 1
+fi
+
+# Clean up script uses these files.
+echo "${TPU_NAME}" > "${KOKORO_ARTIFACTS_DIR}/tpu_name"
+echo "${TPU_ZONE}" > "${KOKORO_ARTIFACTS_DIR}/tpu_zone"
+echo "${TPU_PROJECT}" > "${KOKORO_ARTIFACTS_DIR}/tpu_project"
 
 test_args=(
   --test_timeout=120,600,-1,-1 \

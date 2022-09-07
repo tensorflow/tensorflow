@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_CUPTI_COLLECTOR_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_CUPTI_COLLECTOR_H_
+#ifndef TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_CUPTI_COLLECTOR_H_
+#define TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_CUPTI_COLLECTOR_H_
 
 #include <memory>
 
@@ -271,4 +271,4 @@ std::unique_ptr<CuptiTraceCollector> CreateCuptiCollector(
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_CUPTI_COLLECTOR_H_
+#endif  // TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_CUPTI_COLLECTOR_H_

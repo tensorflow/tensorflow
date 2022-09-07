@@ -23,9 +23,13 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
+#define GEN_PASS_DECL_REMAPPER
+#include "tensorflow/core/transforms/passes.h.inc"
+
 // Creates a remapper pass to remap the operations onto other opreations which
 // decrease the amount of operations to perform a computation.
-std::unique_ptr<Pass> CreateRemapperPass(bool enable_mkl_patterns = false);
+std::unique_ptr<Pass> CreateRemapperPass(bool enable_onednn_patterns = false,
+                                         bool xla_auto_clustering = false);
 
 }  // namespace tfg
 }  // namespace mlir

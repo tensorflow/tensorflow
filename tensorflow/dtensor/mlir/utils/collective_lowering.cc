@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -113,17 +114,36 @@ namespace {
 // `host_group_size` sets host collective group size. It should match the number
 //   of active devices running the host collective and supplying device IDs,
 //   else the host collective will crash or hang.
-mlir::TF::CollectiveReduceV2Op EmitCollectiveReduce(
+mlir::Operation* EmitCollectiveReduce(
     mlir::OpBuilder& builder, const mlir::Location& loc, mlir::Value input,
     const std::string& reduce_op_str,
     const mlir::DenseIntElementsAttr& group_assignment, int32 key_base,
-    mlir::Value device_id, int32 host_group_size) {
+    mlir::Value device_id, int32 host_group_size,
+    const mlir::StringRef device_type) {
   DCHECK_EQ(group_assignment.getType().getRank(), 2);
   auto shape = group_assignment.getType().getShape();
   const int32 num_groups = shape[0];
   const int32 group_size = shape[1];
   const int32 num_devices = num_groups * group_size;
+  const mlir::TensorType input_type =
+      input.getType().dyn_cast<mlir::TensorType>();
 
+  const bool need_int32_to_int64_upcast =
+      (device_type.endswith("GPU") && input_type &&
+       input_type.getElementType().isInteger(32));
+
+  if (need_int32_to_int64_upcast) {
+    LOG(WARNING) << "On GPU, collective reduce of int32 is not supported. "
+                    "Casting to int64 as a workaround: "
+                 << mlir::debugString(loc);
+
+    mlir::TF::CastOp cast_to_int64 = builder.create<mlir::TF::CastOp>(
+        loc,
+        mlir::RankedTensorType::get(input_type.getShape(),
+                                    builder.getIntegerType(64)),
+        input);
+    input = cast_to_int64.getResult();
+  }
   mlir::Value group_key_scalar;
   llvm::SmallVector<int32, 4> device_id_to_group_key(num_devices);
   device_id_to_group_key.resize(num_devices, kUninitializedGroupKey);
@@ -170,6 +190,13 @@ mlir::TF::CollectiveReduceV2Op EmitCollectiveReduce(
       /*timeout_seconds=*/builder.getF32FloatAttr(0.),
       /*max_subdivs_per_device=*/builder.getI64IntegerAttr(16));
   SetSingleLayoutOnOp(collective_reduce, Layout::Empty());
+  if (need_int32_to_int64_upcast) {
+    return builder.create<mlir::TF::CastOp>(
+        loc,
+        mlir::RankedTensorType::get(input_type.getShape(),
+                                    builder.getIntegerType(32)),
+        collective_reduce);
+  }
   return collective_reduce;
 }
 
@@ -213,16 +240,17 @@ mlir::LogicalResult LowerAllReduceOpImpl(
     // groups in one program reducing over all hosts and reducing over pairs
     // of hosts, we need unique ids for each case.
     mlir::Value device_id = ops_util::ReshapeScalarToSizeType(
-        builder, DeviceId(all_reduce.getResult()).ValueOrDie(), loc);
+        builder, DeviceId(all_reduce.getResult()).value(), loc);
     // TODO(b/188076080): Clean up device id.
     mlir::Value start_device_id = ops_util::GetR1Const(
         {(*output_layout).mesh().min_global_device_id()}, builder, loc);
     mlir::Value relative_device_id =
         builder.create<mlir::TF::SubOp>(loc, device_id, start_device_id);
+
     final_op = EmitCollectiveReduce(
         builder, loc, all_reduce.input(), all_reduce.reduce_op().str(),
         group_assignment_attr, key_base, relative_device_id,
-        /*host_group_size=*/group_size);
+        /*host_group_size=*/group_size, all_reduce.device_type().str());
   }
   SetSingleLayoutOnOp(final_op, *output_layout);
   *value = final_op->getResult(0);
@@ -477,10 +505,9 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
         if (!device_loc_or_status.ok())
           return all_gather.emitOpError()
                  << device_loc_or_status.status().error_message();
-        const DeviceLocation device_loc = device_loc_or_status.ValueOrDie();
-        const int32 mesh_idx = src_layout.mesh()
-                                   .idx_for_dim(src_layout.sharding_spec(i))
-                                   .ValueOrDie();
+        const DeviceLocation device_loc = device_loc_or_status.value();
+        const int32 mesh_idx =
+            src_layout.mesh().idx_for_dim(src_layout.sharding_spec(i)).value();
         const int64 device_offset = device_loc[mesh_idx];
         const int64 step = output_shape[i] / src_layout.num_shards()[i];
         device_id_to_begin_flat.push_back(step * device_offset);
@@ -499,7 +526,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
   if (!device_id_scalar_or_status.ok())
     return all_gather.emitOpError()
            << device_id_scalar_or_status.status().error_message();
-  const mlir::Value device_id_scalar = device_id_scalar_or_status.ValueOrDie();
+  const mlir::Value device_id_scalar = device_id_scalar_or_status.value();
   const mlir::Value device_id =
       ops_util::ReshapeScalarToSizeType(builder, device_id_scalar, loc);
   // TODO(b/188076080): Clean up device id.
@@ -542,7 +569,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
   if (!partitions_or_status.ok())
     return all_gather.emitOpError()
            << partitions_or_status.status().error_message();
-  auto partitions = partitions_or_status.ValueOrDie();
+  auto partitions = partitions_or_status.value();
   const int32 num_partitions = partitions.size();
   assert(num_partitions <= num_devices);
   if (num_partitions == num_devices) {
@@ -576,7 +603,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
   if (!device_type_or_status.ok())
     return all_gather.emitOpError()
            << device_type_or_status.status().error_message();
-  const std::string device_type = device_type_or_status.ValueOrDie();
+  const std::string device_type = device_type_or_status.value();
 
   // Support bool types by switching to Any reduce rather than Add. For each
   // position in the tensor, only one task in the reduction group can have a 1.
@@ -610,7 +637,7 @@ mlir::LogicalResult LowerAllScatterOp(
   if (!mesh_coordinates_status.ok())
     return all_scatter.emitOpError()
            << mesh_coordinates_status.status().error_message();
-  mlir::Value mesh_coordinates = mesh_coordinates_status.ValueOrDie();
+  mlir::Value mesh_coordinates = mesh_coordinates_status.value();
 
   // We need to compute the slice offset, which is dynamic based on the id.
   //

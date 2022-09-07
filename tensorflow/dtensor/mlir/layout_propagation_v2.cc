@@ -448,9 +448,9 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
 
     auto current_layout = merged_layouts.find(value);
     if (current_layout == merged_layouts.end() ||
-        current_layout->second != merged.ValueOrDie()) {
+        current_layout->second != merged.value()) {
       updated_merge.insert(value);
-      merged_layouts[value] = merged.ValueOrDie();
+      merged_layouts[value] = merged.value();
     }
   }
 
@@ -462,6 +462,9 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
 mlir::LogicalResult GetMostShardedLayout(llvm::ArrayRef<Layout> layouts,
                                          mlir::Location location,
                                          absl::optional<Layout>* out) {
+  // If there are no layouts to merge, leave the output empty.
+  if (layouts.empty()) return mlir::success();
+
   absl::optional<Layout> layout;
   std::map<std::string, std::set<int>> layout_map;
   for (const Layout& layout : layouts) {

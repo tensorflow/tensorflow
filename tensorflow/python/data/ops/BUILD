@@ -17,10 +17,17 @@ py_library(
 )
 
 py_library(
+    name = "counter_op",
+    srcs = ["counter_op.py"],
+)
+
+py_library(
     name = "dataset_ops",
     srcs = ["dataset_ops.py"],
     srcs_version = "PY3",
     deps = [
+        ":counter_op",
+        ":from_tensor_slices_op",
         ":iterator_ops",
         ":load_ops",
         ":options",
@@ -43,7 +50,6 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
-        "//tensorflow/python/compat",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:options",
@@ -57,6 +63,11 @@ py_library(
         "//tensorflow/python/trackable:resource",
         "//third_party/py/numpy",
     ],
+)
+
+py_library(
+    name = "from_tensor_slices_op",
+    srcs = ["from_tensor_slices_op.py"],
 )
 
 py_library(

@@ -256,7 +256,10 @@ class LayoutAssignment : public HloModulePass {
 
   // Assign layouts to the given module. Returns whether the module was changed
   // (any layouts were changed).
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Class encapsulating the layout constraints of the values in a HLO
   // computation.
@@ -520,7 +523,9 @@ class LayoutAssignment : public HloModulePass {
 
   // Check that all layouts in the module have been set and satisfy all
   // necessary conditions.
-  Status CheckLayouts(HloModule* module);
+  Status CheckLayouts(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Computes the ComputationLayout of the given constraints based of the
   // layouts assigned to parameters and root instruction. Also propagate
@@ -531,7 +536,9 @@ class LayoutAssignment : public HloModulePass {
   Status ClearComputationLayouts(HloComputation* computation);
 
   // Clears the side effects of a previous pass, like added copy instructions.
-  Status ClearPreviousPassSideEffects(HloModule* module);
+  Status ClearPreviousPassSideEffects(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Propagates the layouts computed by the layout assignment pass on the given
   // computation, to the computation layout passed in to this API.

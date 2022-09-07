@@ -19,6 +19,7 @@ limitations under the License.
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/SubElementInterfaces.td"
 include "tensorflow/core/ir/types/dialect.td"
+include "mlir/IR/BuiltinAttributeInterfaces.td"
 
 // Base class for TFType dialect attributes.
 class TFType_Attr<string name, list<Trait> traits = []>
@@ -323,7 +324,7 @@ def TFType_FullTypeAttr : AttrDef<TFTypeDialect, "FullType"> {
 
 def TFType_FuncAttr : TFType_Attr<"Func", [
     DeclareAttrInterfaceMethods<SubElementAttrInterface,
-        ["replaceImmediateSubAttribute"]>
+        ["replaceImmediateSubElements"]>
   ]> {
   let mnemonic = "func";
   let summary = "Models the `AttrValue.value.func` proto attribute value as a "
@@ -444,5 +445,42 @@ def TFType_VersionAttr : TFType_Attr<"Version"> {
   );
   let hasCustomAssemblyFormat = 1;
 }
+
+//===----------------------------------------------------------------------===//
+// Tensorflow devices metadata
+//===----------------------------------------------------------------------===//
+
+// Tensorflow GPU device metadata.
+def TFType_GpuDeviceMetadata : TFType_Attr<"GpuDeviceMetadata"> {
+  let mnemonic = "gpu_device_metadata";
+  let summary = "Attribute that specifies a GPU's compute capability";
+  let parameters = (ins "int32_t":$cc_major, "int32_t":$cc_minor);
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+//===----------------------------------------------------------------------===//
+// TensorProtoAttr
+//===----------------------------------------------------------------------===//
+
+def TF_TensorProtoAttr : TFType_Attr<"TensorProto", [ElementsAttrInterface, TypedAttrInterface]> {
+  let mnemonic = "tensor_proto";
+
+  let summary = "Attribute that stores TensorFlow TensorProto debug string";
+
+  let parameters = (ins AttributeSelfTypeParameter<"", "ShapedType">:$type,
+                        StringRefParameter<"">:$value);
+  let builders = [
+    AttrBuilderWithInferredContext<(ins "ShapedType":$type,
+                                        "StringRef":$value), [{
+      return $_get(type.getContext(), type, value);
+    }]>,
+  ];
+  let extraClassDeclaration = [{
+    using ValueType = StringRef;
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+}
+
 
 #endif

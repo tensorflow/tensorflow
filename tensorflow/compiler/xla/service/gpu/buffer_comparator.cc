@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/str_replace.h"
@@ -25,11 +26,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/compiler/xla/stream_executor/kernel.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
-#include "tensorflow/stream_executor/kernel.h"
-#include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 namespace xla {
 namespace gpu {
@@ -633,7 +634,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
           executor->device_ordinal(), buffer_compare_ptx,
           PtxOptsFromDebugOptions(config.debug_options()));
   if (compiled_ptx_or.ok()) {
-    compiled_ptx = compiled_ptx_or.ConsumeValueOrDie();
+    compiled_ptx = std::move(compiled_ptx_or).value();
   } else {
     static absl::once_flag ptxas_not_found_logged;
     absl::call_once(ptxas_not_found_logged, [&]() {

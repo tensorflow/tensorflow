@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/kernel.h"
 
+#include <algorithm>
 #include <map>
+#include <memory>
 #include <set>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -391,6 +395,10 @@ struct OpData {
   std::vector<std::unique_ptr<OpNode>> nodes;
   std::vector<int> subgraph_inputs;
   std::vector<int> subgraph_outputs;
+  std::set<int>
+      disable_reusing_buffer_tensors;  // A list of input tensor indexes which
+                                       // input buffer should not be reused by
+                                       // tensorflow::Tensor.
   OpDataInfo shared_info;
 };
 
@@ -407,9 +415,9 @@ tensorflow::Status DelegateKernel::ExecuteOpKernelRunner(
   TF_RETURN_IF_ERROR(node_data->BuildOpKernelInputs(
       op_data_->shared_info.buffer_map, run_state));
 
-  run_state->params.inputs = &run_state->input_tf_tensor_values;
+  run_state->params.inputs = run_state->input_tf_tensor_values;
   run_state->params.op_kernel = op_kernel_runner.op_kernel();
-  run_state->params.input_alloc_attrs = &op_kernel_runner.input_alloc_attrs();
+  run_state->params.input_alloc_attrs = op_kernel_runner.input_alloc_attrs();
   run_state->params.output_attr_array =
       op_kernel_runner.output_alloc_attrs().data();
   run_state->params.function_library =
@@ -453,15 +461,38 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   for (auto tensor_index : TfLiteIntArrayView(params->input_tensors)) {
     op_data_->subgraph_inputs.push_back(tensor_index);
   }
+  std::set<int> subgraph_inputs(op_data_->subgraph_inputs.begin(),
+                                op_data_->subgraph_inputs.end());
 
   op_data_->nodes.reserve(params->nodes_to_replace->size);
 
   CHECK(params->nodes_to_replace);
   tensorflow::Status status;
+
+  // Now we explicitly disable reusing TFLite tensor buffers for certain TF ops,
+  // since those ops might produce results which keep reference of the input
+  // tensors (buffer forwarding).
+  auto check_if_op_reuses_input = [](const string& op_name) {
+    return op_name == "TensorListPushBack" || op_name == "TensorListSetItem" ||
+           op_name == "SparseReshape";
+  };
+
   for (auto node_index : TfLiteIntArrayView(params->nodes_to_replace)) {
     TfLiteNode* node;
     TfLiteRegistration* reg;
     context->GetNodeAndRegistration(context, node_index, &node, &reg);
+
+    op_data_->nodes.emplace_back(new OpNode(node->inputs, node->outputs));
+    OpNode& node_data = *op_data_->nodes.back();
+
+    node_data.set_index(node_index);
+    node_data.set_name("");
+
+    status = node_data.InitializeNodeDef(node->custom_initial_data,
+                                         node->custom_initial_data_size);
+    if (!status.ok()) break;
+    status = node_data.BuildOpKernelRunner(op_data_->eager_context);
+    if (!status.ok()) break;
 
     // For each node handled by this delegate partition, record the mapping
     // information between each input tensor and the node index. The node index
@@ -478,19 +509,12 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
                      node_index);
       }
       (*op_data_->shared_info.tensor_release_map)[tensor_index] = node_id;
+
+      if (subgraph_inputs.count(tensor_index) &&
+          check_if_op_reuses_input(node_data.nodedef().op())) {
+        op_data_->disable_reusing_buffer_tensors.insert(tensor_index);
+      }
     }
-
-    op_data_->nodes.emplace_back(new OpNode(node->inputs, node->outputs));
-    OpNode& node_data = *op_data_->nodes.back();
-
-    node_data.set_index(node_index);
-    node_data.set_name("");
-
-    status = node_data.InitializeNodeDef(node->custom_initial_data,
-                                         node->custom_initial_data_size);
-    if (!status.ok()) break;
-    status = node_data.BuildOpKernelRunner(op_data_->eager_context);
-    if (!status.ok()) break;
   }
 
   TF_LITE_ENSURE_STATUS(ConvertStatus(context, status));
@@ -694,7 +718,9 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
       // to the BufferMap again, because TF already knows about it and its
       // contents are kept automatically up-to-date.
       if (!tensor->data_is_stale || !buffer_map->HasTensor(tensor_index)) {
-        buffer_map->SetFromTfLite(tensor_index, tensor);
+        buffer_map->SetFromTfLite(
+            tensor_index, tensor,
+            !op_data_->disable_reusing_buffer_tensors.count(tensor_index));
       }
     }
   }

@@ -26,28 +26,16 @@ namespace tflite {
 namespace gpu {
 
 ConverterToConvWeights::ConverterToConvWeights(
-    const OperationDef& definition, const WeightsDescription& weights_desc)
-    : GPUOperation(definition), weights_desc_(weights_desc) {
-  code_ = GetConverterToConvWeightsCode(definition_, weights_desc_);
+    const OperationDef& definition, const WeightsDescription& weights_desc,
+    Layout input_layout)
+    : GPUOperation(definition),
+      weights_desc_(weights_desc),
+      input_layout_(input_layout) {
+  code_ = GetConverterToConvWeightsCode();
 }
 
-ConverterToConvWeights::ConverterToConvWeights(
-    ConverterToConvWeights&& operation)
-    : GPUOperation(std::move(operation)),
-      weights_desc_(std::move(operation.weights_desc_)) {}
-
-ConverterToConvWeights& ConverterToConvWeights::operator=(
-    ConverterToConvWeights&& operation) {
-  if (this != &operation) {
-    weights_desc_ = std::move(operation.weights_desc_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
-    const OperationDef& op_def, const WeightsDescription& conv_weights_desc) {
-  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+std::string ConverterToConvWeights::GetConverterToConvWeightsCode() {
+  AddSrcTensor("src_tensor", definition_.src_tensors[0]);
   args_.AddFloat("mask_x");
   args_.AddFloat("mask_y");
   args_.AddFloat("mask_z");
@@ -58,12 +46,13 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
   args_.AddInt("in_ch_x4_groups");
   args_.AddInt("kernel_width");
   args_.AddInt("kernel_height");
+  args_.AddInt("kernel_spatial_size");
 
-  if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialI4O4 ||
-      conv_weights_desc.layout == WeightsLayout::kOICustomSpatialO4I4) {
-    std::vector<int32_t> remap(conv_weights_desc.spatial_remap.size());
+  if (weights_desc_.layout == WeightsLayout::kOICustomSpatialI4O4 ||
+      weights_desc_.layout == WeightsLayout::kOICustomSpatialO4I4) {
+    std::vector<int32_t> remap(weights_desc_.spatial_remap.size());
     for (int i = 0; i < remap.size(); ++i) {
-      remap[i] = conv_weights_desc.spatial_remap[i];
+      remap[i] = weights_desc_.spatial_remap[i];
     }
     BufferDescriptor desc;
     desc.element_type = DataType::INT32;
@@ -81,69 +70,90 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
   c += "  int O = GLOBAL_ID_0;\n";
   c += "  int I = GLOBAL_ID_1;\n";
   c += "  int spatial_linear = GLOBAL_ID_2;\n";
-  c += "  int W = spatial_linear % args.kernel_width;\n";
-  c += "  int H = spatial_linear / args.kernel_width;\n";
   c += "  if (O >= args.out_ch_x4_groups) return;\n";
   c += "  if (I >= args.in_ch_x4_groups) return;\n";
-  c += "  if (H >= args.kernel_height) return;\n";
-  c += "  if (W >= args.kernel_width) return;\n";
-  std::string xc = "W";
-  std::string yc = "H";
-  if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialI4O4 ||
-      conv_weights_desc.layout == WeightsLayout::kOICustomSpatialO4I4) {
+  c += "  if (spatial_linear >= args.kernel_spatial_size) return;\n";
+  if (weights_desc_.layout == WeightsLayout::kOICustomSpatialI4O4 ||
+      weights_desc_.layout == WeightsLayout::kOICustomSpatialO4I4) {
     c += "  int linear_remap = args.spatial_remap.Read(spatial_linear);\n";
-    c += "  int w_remap = linear_remap % args.kernel_width;\n";
-    c += "  int h_remap = linear_remap / args.kernel_width;\n";
-    xc = "w_remap";
-    yc = "h_remap";
+    c += "  int W = linear_remap % args.kernel_width;\n";
+    c += "  int H = linear_remap / args.kernel_width;\n";
+  } else {
+    c += "  int W = spatial_linear % args.kernel_width;\n";
+    c += "  int H = spatial_linear / args.kernel_width;\n";
   }
+  // W and H is src coordinates, spatial_linear is dst coordinate
   c += "  FLT4 v0 = INIT_FLT4(0.0f);\n";
   c += "  FLT4 v1 = INIT_FLT4(0.0f);\n";
   c += "  FLT4 v2 = INIT_FLT4(0.0f);\n";
   c += "  FLT4 v3 = INIT_FLT4(0.0f);\n";
-  // OHWI as BHWC: Read(WHSB) - Read(WHIO)
-  c += "  if (O * 4 < args.out_ch) {\n";
-  c += "    v0 = args.src_tensor.Read(" + xc + ", " + yc + ", I, O * 4);\n";
-  c += "  }\n";
-  c += "  if (O * 4 + 1 < args.out_ch) {\n";
-  c += "    v1 = args.src_tensor.Read(" + xc + ", " + yc + ", I, O * 4 + 1);\n";
-  c += "  }\n";
-  c += "  if (O * 4 + 2 < args.out_ch) {\n";
-  c += "    v2 = args.src_tensor.Read(" + xc + ", " + yc + ", I, O * 4 + 2);\n";
-  c += "  }\n";
-  c += "  if (O * 4 + 3 < args.out_ch) {\n";
-  c += "    v3 = args.src_tensor.Read(" + xc + ", " + yc + ", I, O * 4 + 3);\n";
-  c += "  }\n";
-  c += "  if (I == args.src_tensor.Slices() - 1) {\n";
-  c += "    FLT4 mask = INIT_FLT4v4(args.mask_x, args.mask_y, args.mask_z, "
-       "args.mask_w);\n";
-  c += "    v0 *= mask;\n";
-  c += "    v1 *= mask;\n";
-  c += "    v2 *= mask;\n";
-  c += "    v3 *= mask;\n";
-  c += "  }\n";
-  if (conv_weights_desc.IsI4O4()) {
+  if (input_layout_ == Layout::OHWI) {
+    c += "  if (O * 4 < args.out_ch) {\n";
+    c += "    v0 = args.src_tensor.Read(W, H, I, O * 4);\n";
+    c += "  }\n";
+    c += "  if (O * 4 + 1 < args.out_ch) {\n";
+    c += "    v1 = args.src_tensor.Read(W, H, I, O * 4 + 1);\n";
+    c += "  }\n";
+    c += "  if (O * 4 + 2 < args.out_ch) {\n";
+    c += "    v2 = args.src_tensor.Read(W, H, I, O * 4 + 2);\n";
+    c += "  }\n";
+    c += "  if (O * 4 + 3 < args.out_ch) {\n";
+    c += "    v3 = args.src_tensor.Read(W, H, I, O * 4 + 3);\n";
+    c += "  }\n";
+    c += "  if (I == args.src_tensor.Slices() - 1) {\n";
+    c += "    FLT4 mask = INIT_FLT4v4(args.mask_x, args.mask_y, args.mask_z, "
+         "args.mask_w);\n";
+    c += "    v0 *= mask;\n";
+    c += "    v1 *= mask;\n";
+    c += "    v2 *= mask;\n";
+    c += "    v3 *= mask;\n";
+    c += "  }\n";
+  } else if (input_layout_ == Layout::HWIO) {
+    c += "  if (I * 4 < args.in_ch && O < args.src_tensor.Slices()) {\n";
+    c += "    v0 = args.src_tensor.Read(I * 4, W, O, H);\n";
+    c += "  }\n";
+    c += "  if (I * 4 + 1 < args.in_ch && O < args.src_tensor.Slices()) {\n";
+    c += "    v1 = args.src_tensor.Read(I * 4 + 1, W, O, H);\n";
+    c += "  }\n";
+    c += "  if (I * 4 + 2 < args.in_ch && O < args.src_tensor.Slices()) {\n";
+    c += "    v2 = args.src_tensor.Read(I * 4 + 2, W, O, H);\n";
+    c += "  }\n";
+    c += "  if (I * 4 + 3 < args.in_ch && O < args.src_tensor.Slices()) {\n";
+    c += "    v3 = args.src_tensor.Read(I * 4 + 3, W, O, H);\n";
+    c += "  }\n";
+    c += "  if (O == args.src_tensor.Slices() - 1) {\n";
+    c += "    FLT4 mask = INIT_FLT4v4(args.mask_x, args.mask_y, args.mask_z, "
+         "args.mask_w);\n";
+    c += "    v0 *= mask;\n";
+    c += "    v1 *= mask;\n";
+    c += "    v2 *= mask;\n";
+    c += "    v3 *= mask;\n";
+    c += "  }\n";
+  }
+  const bool need_transpose =
+      (input_layout_ == Layout::HWIO && weights_desc_.IsO4I4()) ||
+      (input_layout_ == Layout::OHWI && weights_desc_.IsI4O4());
+  if (need_transpose) {
     c += "  FLT4 r0 = INIT_FLT4v4(v0.x, v1.x, v2.x, v3.x);\n";
     c += "  FLT4 r1 = INIT_FLT4v4(v0.y, v1.y, v2.y, v3.y);\n";
     c += "  FLT4 r2 = INIT_FLT4v4(v0.z, v1.z, v2.z, v3.z);\n";
     c += "  FLT4 r3 = INIT_FLT4v4(v0.w, v1.w, v2.w, v3.w);\n";
-  } else if (conv_weights_desc.IsO4I4()) {
+  } else {
     c += "  FLT4 r0 = v0;\n";
     c += "  FLT4 r1 = v1;\n";
     c += "  FLT4 r2 = v2;\n";
     c += "  FLT4 r3 = v3;\n";
   }
-  if (conv_weights_desc.layout ==
+  if (weights_desc_.layout ==
           WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4 ||
-      conv_weights_desc.layout ==
+      weights_desc_.layout ==
           WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
     // Writing to 4X Textures 2D
-    AddDstTensor("dst_tensor0", op_def.dst_tensors[0]);
-    AddDstTensor("dst_tensor1", op_def.dst_tensors[1]);
-    AddDstTensor("dst_tensor2", op_def.dst_tensors[2]);
-    AddDstTensor("dst_tensor3", op_def.dst_tensors[3]);
-    c += "  int yc = (H * args.kernel_width + W) * "
-         "args.in_ch_x4_groups + I;\n";
+    AddDstTensor("dst_tensor0", definition_.dst_tensors[0]);
+    AddDstTensor("dst_tensor1", definition_.dst_tensors[1]);
+    AddDstTensor("dst_tensor2", definition_.dst_tensors[2]);
+    AddDstTensor("dst_tensor3", definition_.dst_tensors[3]);
+    c += "  int yc = spatial_linear *  args.in_ch_x4_groups + I;\n";
     c += "  args.dst_tensor0.Write2D(r0, O, yc);\n";
     c += "  args.dst_tensor1.Write2D(r1, O, yc);\n";
     c += "  args.dst_tensor2.Write2D(r2, O, yc);\n";
@@ -151,23 +161,21 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
     c += "}\n";
   } else {
     // Writing to linear buffer
-    AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+    AddDstTensor("dst_tensor", definition_.dst_tensors[0]);
     c += "  int OUTPUT_GROUP_SIZE = " +
-         std::to_string(conv_weights_desc.GetOutputGroupSize()) + ";\n";
+         std::to_string(weights_desc_.GetOutputGroupSize()) + ";\n";
     c += "  int d_index = (O * 4) / (OUTPUT_GROUP_SIZE * 4);\n";
     c += "  int k_index = ((O * 4) % (OUTPUT_GROUP_SIZE * 4)) / 4;\n";
     std::string index;
-    if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialI4O4 ||
-        conv_weights_desc.layout == WeightsLayout::kOICustomSpatialO4I4) {
+    if (weights_desc_.layout == WeightsLayout::kOICustomSpatialI4O4 ||
+        weights_desc_.layout == WeightsLayout::kOICustomSpatialO4I4) {
       index =
-          "((d_index * args.in_ch_x4_groups + I) * args.kernel_height "
-          "+ H) * args.kernel_width + W";
-    } else if (conv_weights_desc.layout ==
-                   WeightsLayout::kOSpatialIOGroupI4O4 ||
-               conv_weights_desc.layout ==
-                   WeightsLayout::kOSpatialIOGroupO4I4) {
+          "(d_index * args.in_ch_x4_groups + I) * args.kernel_spatial_size + "
+          "spatial_linear";
+    } else if (weights_desc_.layout == WeightsLayout::kOSpatialIOGroupI4O4 ||
+               weights_desc_.layout == WeightsLayout::kOSpatialIOGroupO4I4) {
       index =
-          "((d_index * args.kernel_height + H) * args.kernel_width + W) * "
+          "(d_index * args.kernel_spatial_size + spatial_linear) * "
           "args.in_ch_x4_groups + I";
     }
     c += "  int dst_offset = (" + index + ") * OUTPUT_GROUP_SIZE + k_index;\n";
@@ -180,23 +188,38 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
   return c;
 }
 
-absl::Status ConverterToConvWeights::BindArguments(ArgumentsBinder* args) {
-  const int out_group_size = weights_desc_.GetOutputGroupSize();
-  // OHWI as BHWC
-  const int output_channels = src_[0]->Batch();
-  const int input_channels = src_[0]->Channels();
-  const int kernel_width = src_[0]->Width();
-  const int kernel_height = src_[0]->Height();
+OHWI ConverterToConvWeights::GetWeightsSize() const {
+  int output_channels = 0;
+  int input_channels = 0;
+  int kernel_width = 0;
+  int kernel_height = 0;
+  if (input_layout_ == Layout::HWIO) {
+    output_channels = src_[0]->Channels();
+    input_channels = src_[0]->Width();
+    kernel_width = src_[0]->Height();
+    kernel_height = src_[0]->Batch();
+  } else if (input_layout_ == Layout::OHWI) {
+    output_channels = src_[0]->Batch();
+    input_channels = src_[0]->Channels();
+    kernel_width = src_[0]->Width();
+    kernel_height = src_[0]->Height();
+  }
+  return OHWI(output_channels, kernel_height, kernel_width, input_channels);
+}
 
-  const int output_channels_x4_groups =
-      DivideRoundUp(AlignByN(output_channels, 4 * out_group_size), 4);
-  RETURN_IF_ERROR(args->SetInt("out_ch", output_channels));
+absl::Status ConverterToConvWeights::BindArguments(ArgumentsBinder* args) {
+  const auto& weights_shape = GetWeightsSize();
+  const int output_channels_x4_groups = DivideRoundUp(
+      AlignByN(weights_shape.o, 4 * weights_desc_.GetOutputGroupSize()), 4);
+  RETURN_IF_ERROR(args->SetInt("out_ch", weights_shape.o));
   RETURN_IF_ERROR(args->SetInt("out_ch_x4_groups", output_channels_x4_groups));
-  RETURN_IF_ERROR(args->SetInt("in_ch", input_channels));
+  RETURN_IF_ERROR(args->SetInt("in_ch", weights_shape.i));
   RETURN_IF_ERROR(
-      args->SetInt("in_ch_x4_groups", DivideRoundUp(input_channels, 4)));
-  RETURN_IF_ERROR(args->SetInt("kernel_width", kernel_width));
-  RETURN_IF_ERROR(args->SetInt("kernel_height", kernel_height));
+      args->SetInt("in_ch_x4_groups", DivideRoundUp(weights_shape.i, 4)));
+  RETURN_IF_ERROR(args->SetInt("kernel_width", weights_shape.w));
+  RETURN_IF_ERROR(args->SetInt("kernel_height", weights_shape.h));
+  RETURN_IF_ERROR(
+      args->SetInt("kernel_spatial_size", weights_shape.w * weights_shape.h));
   float4 mask = GetMaskForLastPlane(src_[0]->Channels());
   RETURN_IF_ERROR(args->SetFloat("mask_x", mask.x));
   RETURN_IF_ERROR(args->SetFloat("mask_y", mask.y));
@@ -205,23 +228,19 @@ absl::Status ConverterToConvWeights::BindArguments(ArgumentsBinder* args) {
 }
 
 int3 ConverterToConvWeights::GetGridSize() const {
-  // OHWI as BHWC
-  const int output_channels = src_[0]->Batch();
-  const int input_channels = src_[0]->Channels();
-  const int kernel_width = src_[0]->Width();
-  const int kernel_height = src_[0]->Height();
-
+  const auto& weights_shape = GetWeightsSize();
   const int out_group_size = weights_desc_.GetOutputGroupSize();
   const int grid_x =
-      DivideRoundUp(AlignByN(output_channels, 4 * out_group_size), 4);
-  const int grid_y = DivideRoundUp(input_channels, 4);
-  const int grid_z = kernel_width * kernel_height;
+      DivideRoundUp(AlignByN(weights_shape.o, 4 * out_group_size), 4);
+  const int grid_y = DivideRoundUp(weights_shape.i, 4);
+  const int grid_z = weights_shape.w * weights_shape.h;
   return int3(grid_x, grid_y, grid_z);
 }
 
 ConverterToConvWeights CreateConverterToConvWeights(
-    const OperationDef& definition, const WeightsDescription& weights_desc) {
-  return ConverterToConvWeights(definition, weights_desc);
+    const OperationDef& definition, const WeightsDescription& weights_desc,
+    Layout input_layout) {
+  return ConverterToConvWeights(definition, weights_desc, input_layout);
 }
 
 }  // namespace gpu

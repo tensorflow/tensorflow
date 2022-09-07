@@ -20,10 +20,11 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/ir/importexport/mangling.h"
@@ -54,6 +55,7 @@ class ConvertTFQuantOpsToMHLOPass
     registry.insert<mhlo::MhloDialect>();
     registry.insert<tf_type::TFTypeDialect>();
     registry.insert<quant::QuantizationDialect>();
+    registry.insert<quantfork::QuantizationForkDialect>();
   }
 
   void runOnOperation() override;
@@ -88,8 +90,8 @@ struct ReplaceConstDotHybridPattern : public RewritePattern {
       return failure();
 
     // Check whether the rhs operand has constant op.
-    OpaqueElementsAttr opaque_attr;
-    if (!matchPattern(this_op.rhs(), m_Constant(&opaque_attr)))
+    TF::TensorProtoAttr tensor_proto_attr;
+    if (!matchPattern(this_op.rhs(), m_Constant(&tensor_proto_attr)))
       return failure();
 
     // Check whether the rhs_scales operand has constant op.
@@ -117,14 +119,14 @@ struct ReplaceConstDotHybridPattern : public RewritePattern {
     if (quantized_dimension != -1) return failure();
 
     Type rhs_elem_ty;
-    rhs_elem_ty = UniformQuantizedType::get(
+    rhs_elem_ty = quant::UniformQuantizedType::get(
         flags, storage_type, expressed_type, rhs_scales.getValues<float>()[0],
         rhs_zps.getValues<int32_t>()[0], storage_type_min, storage_type_max);
 
     Type rhs_type = getSameShapeTensorType(
         this_op.rhs().getType().cast<TensorType>(), rhs_elem_ty);
 
-    llvm::StringRef mangled_tensor = opaque_attr.getValue();
+    llvm::StringRef mangled_tensor = tensor_proto_attr.getValue();
     absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
     tensorflow::TensorProto tensor_proto;
     tensorflow::Status status =
@@ -139,15 +141,16 @@ struct ReplaceConstDotHybridPattern : public RewritePattern {
     }
 
     auto arr = t.flat<tensorflow::qint8>();
-    auto new_opaque_attr = ElementsAttr(mlir::DenseElementsAttr::get(
+    auto dense_attr = ElementsAttr(mlir::DenseElementsAttr::get(
         getSameShapeTensorType(rhs_type.cast<TensorType>(), storage_type),
         llvm::makeArrayRef(arr.data(), arr.size())));
 
     Value lhs = this_op.lhs();
     rewriter.setInsertionPointAfterValue(this_op.rhs());
     Value rhs = rewriter.create<mhlo::ConstantOp>(rewriter.getUnknownLoc(),
-                                                  rhs_type, new_opaque_attr);
+                                                  rhs_type, dense_attr);
 
+    rewriter.setInsertionPoint(op);
     rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, lhs, rhs,
                                              /*precision_config=*/nullptr);
     return success();

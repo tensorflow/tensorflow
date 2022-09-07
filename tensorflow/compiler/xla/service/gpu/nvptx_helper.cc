@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/cuda_libdevice_path.h"
+#include "tensorflow/tsl/platform/cuda_libdevice_path.h"
 
 namespace xla {
 namespace gpu {
@@ -27,7 +27,7 @@ namespace gpu {
 namespace {
 
 std::vector<std::string> CandidateCudaRoots(const HloModuleConfig& config) {
-  return tensorflow::CandidateCudaRoots(
+  return tsl::CandidateCudaRoots(
       config.debug_options().xla_gpu_cuda_data_dir());
 }
 

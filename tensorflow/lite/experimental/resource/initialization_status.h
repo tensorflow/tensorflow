@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_INITIALIZATION_STATUS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_INITIALIZATION_STATUS_H_
 
+#include <memory>
+#include <unordered_map>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 
@@ -44,6 +47,8 @@ class InitializationStatus : public ResourceBase {
 
   // Returns true if this initialization is done.
   bool IsInitialized() override;
+
+  size_t GetMemoryUsage() override { return 0; }
 
  private:
   // True if the initialization process is done.

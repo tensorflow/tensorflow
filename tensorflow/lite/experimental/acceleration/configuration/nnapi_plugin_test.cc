@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <memory>
+#include <string>
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -65,7 +67,7 @@ class NNAPIPluginTest : public ::testing::Test {
   NNAPIPluginTest() : delegate_(nullptr, [](TfLiteDelegate*) {}) {}
   void SetUp() override {
     nnapi_ = const_cast<NnApi*>(NnApiImplementation());
-    nnapi_mock_ = absl::make_unique<NnApiMock>(nnapi_);
+    nnapi_mock_ = std::make_unique<NnApiMock>(nnapi_);
     nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices =
         [](const ANeuralNetworksModel* model,
            const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
@@ -270,7 +272,7 @@ class NNAPIMultiOpPluginTest : public ::testing::Test {
   NNAPIMultiOpPluginTest() : delegate_(nullptr, [](TfLiteDelegate*) {}) {}
   void SetUp() override {
     nnapi_ = const_cast<NnApi*>(NnApiImplementation());
-    nnapi_mock_ = absl::make_unique<NnApiMock>(nnapi_);
+    nnapi_mock_ = std::make_unique<NnApiMock>(nnapi_);
   }
 
   void CreateDelegate(flatbuffers::Offset<NNAPISettings> nnapi_settings,

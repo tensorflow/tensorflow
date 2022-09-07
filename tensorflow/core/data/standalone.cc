@@ -69,14 +69,14 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
 
   // Instantiate enough of the TF runtime to run `graph` on a single CPU device.
-  auto device_mgr = absl::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
+  auto device_mgr = std::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
       "CPU", params.session_options, "/job:localhost/replica:0/task:0"));
   Device* device = device_mgr->ListDevices()[0];
   // Create a copy of the `FunctionLibraryDefinition` to extend lifetime beyond
   // the lifetime of `graph`.
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  auto flib_def = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), graph_def.library());
-  auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  auto pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, flib_def.get(), OptimizerOptions{},
       /*thread_pool=*/nullptr, /*parent=*/nullptr,
@@ -142,7 +142,7 @@ Status Dataset::MakeIterator(
             std::back_inserter(params.split_providers));
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  ctx = absl::make_unique<IteratorContext>(std::move(params));
+  ctx = std::make_unique<IteratorContext>(std::move(params));
 
   // Create the iterator from the dataset.
   std::unique_ptr<IteratorBase> iterator;
@@ -179,7 +179,7 @@ Dataset::Dataset(DatasetBase* finalized_dataset, DatasetBase* original_dataset,
   finalized_dataset_->Ref();
   original_dataset_->Ref();
   function_handle_cache_ =
-      absl::make_unique<FunctionHandleCache>(pflr_->GetFLR("/device:CPU:0"));
+      std::make_unique<FunctionHandleCache>(pflr_->GetFLR("/device:CPU:0"));
 }
 
 Dataset::~Dataset() {

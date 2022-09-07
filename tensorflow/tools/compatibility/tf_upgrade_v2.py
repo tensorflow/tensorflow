@@ -20,7 +20,6 @@ import functools
 import sys
 
 import pasta
-import six
 
 from tensorflow.tools.compatibility import all_renames_v2
 from tensorflow.tools.compatibility import ast_edits
@@ -44,8 +43,7 @@ class VersionedTFImport(ast_edits.AnalysisResult):
 
   def __init__(self, version):
     self.log_level = ast_edits.INFO
-    self.log_message = ("Not upgrading symbols because `tensorflow." +
-                        six.ensure_str(version) +
+    self.log_message = ("Not upgrading symbols because `tensorflow." + version +
                         "` was directly imported as `tf`.")
 
 
@@ -1759,7 +1757,7 @@ def _rename_if_arg_found_transformer(parent, node, full_name, name, logs,
 
   # All conditions met, insert v1 and log what we did.
   # We must have a full name, so the func is an attribute.
-  new_name = six.ensure_str(full_name).replace("tf.", "tf.compat.v1.", 1)
+  new_name = full_name.replace("tf.", "tf.compat.v1.", 1)
   node.func = ast_edits.full_name_node(new_name)
   logs.append((
       ast_edits.INFO, node.lineno, node.col_offset,
@@ -1787,8 +1785,8 @@ def _iterator_transformer(parent, node, full_name, name, logs):
   # (tf.compat.v1.data), or something which is handled in the rename
   # (tf.data). This transformer only handles the method call to function call
   # conversion.
-  if full_name and (six.ensure_str(full_name).startswith("tf.compat.v1.data") or
-                    six.ensure_str(full_name).startswith("tf.data")):
+  if full_name and (full_name.startswith("tf.compat.v1.data") or
+                    full_name.startswith("tf.data")):
     return
 
   # This should never happen, since we're only called for Attribute nodes.
@@ -2535,7 +2533,7 @@ def _name_scope_transformer(parent, node, full_name, name, logs):
 
 
 def _rename_to_compat_v1(node, full_name, logs, reason):
-  new_name = six.ensure_str(full_name).replace("tf.", "tf.compat.v1.", 1)
+  new_name = full_name.replace("tf.", "tf.compat.v1.", 1)
   return _rename_func(node, full_name, new_name, logs, reason)
 
 

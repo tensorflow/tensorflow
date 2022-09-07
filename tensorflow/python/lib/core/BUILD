@@ -48,11 +48,18 @@ cc_library(
 
 cc_library(
     name = "bfloat16_lib",
-    srcs = ["bfloat16.cc"],
-    hdrs = ["bfloat16.h"],
+    srcs = [
+        "bfloat16.cc",
+        "float8_e4m3b11.cc",
+    ],
+    hdrs = [
+        "bfloat16.h",
+        "float8_e4m3b11.h",
+    ],
     deps = [
         ":numpy_lib",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "@com_google_absl//absl/strings",

@@ -93,9 +93,8 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   schedule.set_sequence(entry_computation, {iter, data, tuple, while_op});
   TF_ASSERT_OK(schedule.Verify());
 
-  EXPECT_EQ(
-      25,
-      HeapSimulator::MinimumMemoryForModule(schedule, size_fn).ValueOrDie());
+  EXPECT_EQ(25,
+            HeapSimulator::MinimumMemoryForModule(schedule, size_fn).value());
 }
 
 TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
@@ -208,14 +207,14 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   memory_by_computation[body_computation] = 16;
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module.get()).ValueOrDie();
+      HloAliasAnalysis::Run(module.get()).value();
 
   // HeapSimulator accounts for subcomputations. The output buffer is aliased,
   // so we don't double count.
   EXPECT_EQ(64, HeapSimulator::MinimumMemoryForComputation(
                     *entry_computation, schedule.sequence(entry_computation),
                     *alias_analysis, size_fn, &memory_by_computation)
-                    .ValueOrDie());
+                    .value());
 }
 
 const char kAlloc[] = "Alloc";
@@ -302,7 +301,7 @@ class HeapSimulatorTracker {
   // simulation over the entire module.
   void RunWholeModule(
       const std::vector<HloInstruction*>& full_module_sequence) {
-    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).ConsumeValueOrDie();
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).value();
 
     // Construct the module sequence grouped by computation.
     HloSchedule schedule(module_.get());
@@ -324,7 +323,7 @@ class HeapSimulatorTracker {
     auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
     result_ = HeapSimulator::Run(std::move(algorithm), *module_, schedule,
                                  *alias_analysis_, size_fn)
-                  .ConsumeValueOrDie();
+                  .value();
   }
 
   HloModule* module() { return module_.get(); }
@@ -386,7 +385,7 @@ class HeapSimulatorTracker {
     auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
 
     alias_analysis_ =
-        HloAliasAnalysis::Run(module_.get(), can_share_buffer).ValueOrDie();
+        HloAliasAnalysis::Run(module_.get(), can_share_buffer).value();
 
     HeapSimulator::Options options;
 
@@ -394,7 +393,7 @@ class HeapSimulatorTracker {
         HeapSimulator::Run(std::move(algorithm), *module_->entry_computation(),
                            HloInstructionSequence(instruction_sequence),
                            *alias_analysis_, zero_size, options)
-            .ConsumeValueOrDie();
+            .value();
   }
 
   std::unique_ptr<HloModule> module_;
@@ -1284,6 +1283,71 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedIII) {
   EXPECT_EQ(30, result.chunk_map.at(buffer_c_).offset);
 }
 
+TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedDifferentSize1) {
+  // space
+  //   ^
+  //   |         +---------------+
+  //   |+------+ +-------b-------+
+  //   ||      |      +-------+
+  //   ||      |      |       | <--- colocate with a
+  //   |+--a---+      +---c---+
+  //   ---------------------> time
+  GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/1);
+  heap.Alloc(buffer_a_, 40);
+  heap.Free(buffer_a_, 40);
+  heap.Alloc(buffer_b_, 20);
+
+  heap.ShareWith(buffer_c_, buffer_a_, 30);
+  heap.Free(buffer_c_, 30);
+  heap.Free(buffer_b_, 20);
+
+  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  EXPECT_EQ(1, results.heap_results.size());
+  const HeapSimulator::HeapResult<HloValue>& result =
+      results.heap_results.at(0);
+  EXPECT_EQ(50, result.heap_size);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
+  EXPECT_EQ(30, result.chunk_map.at(buffer_c_).size);
+
+  EXPECT_EQ(0, result.chunk_map.at(buffer_a_).offset);
+  EXPECT_EQ(30, result.chunk_map.at(buffer_b_).offset);
+  EXPECT_EQ(0, result.chunk_map.at(buffer_c_).offset);
+}
+
+TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedDifferentSize2) {
+  // space
+  //   ^         +-------------+
+  //   |         +-----b-------+
+  //   |              +-------+
+  //   |+------+      |       |
+  //   ||      |      |       |
+  //   ||      |      |       | <--- colocate with a
+  //   |+--a---+      +---c---+
+  //   ---------------------> time
+  GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/1);
+  heap.Alloc(buffer_a_, 40);
+  heap.Free(buffer_a_, 40);
+  heap.Alloc(buffer_b_, 20);
+
+  heap.ShareWith(buffer_c_, buffer_a_, 50);
+  heap.Free(buffer_c_, 50);
+  heap.Free(buffer_b_, 20);
+
+  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  EXPECT_EQ(1, results.heap_results.size());
+  const HeapSimulator::HeapResult<HloValue>& result =
+      results.heap_results.at(0);
+  EXPECT_EQ(70, result.heap_size);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
+  EXPECT_EQ(50, result.chunk_map.at(buffer_c_).size);
+
+  EXPECT_EQ(0, result.chunk_map.at(buffer_a_).offset);
+  EXPECT_EQ(50, result.chunk_map.at(buffer_b_).offset);
+  EXPECT_EQ(0, result.chunk_map.at(buffer_c_).offset);
+}
+
 TEST_F(GlobalDecreasingSizeBestFitHeapTest, ChunkCandidate) {
   // space
   //   ^
@@ -1438,13 +1502,13 @@ TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest, ColocatedII) {
   heap.Free(buffer_b_, 20);
 
   const HeapSimulator::Result<HloValue> result = heap.Finish();
-  EXPECT_EQ(50, result.heap_size);
+  EXPECT_EQ(60, result.heap_size);  // 40 + 20
   EXPECT_EQ(2, result.heap_results.size());
 
   EXPECT_TRUE(result.heap_results[0].chunk_map.contains(buffer_a_));
   EXPECT_TRUE(result.heap_results[0].chunk_map.contains(buffer_c_));
   EXPECT_EQ(30, result.heap_results[0].chunk_map.at(buffer_a_).size);
-  EXPECT_EQ(30, result.heap_results[0].chunk_map.at(buffer_c_).size);
+  EXPECT_EQ(40, result.heap_results[0].chunk_map.at(buffer_c_).size);
   EXPECT_EQ(0, result.heap_results[0].chunk_map.at(buffer_a_).offset);
   EXPECT_EQ(0, result.heap_results[0].chunk_map.at(buffer_c_).offset);
 }

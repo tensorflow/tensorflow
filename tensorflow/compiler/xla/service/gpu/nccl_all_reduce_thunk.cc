@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif
 
 namespace xla {
@@ -139,7 +139,7 @@ namespace impl {
 
 template <typename OpT>
 bool CanImplement(OpT op) {
-  return absl::c_all_of(op.operands(), IsValidOperand) &&
+  return absl::c_all_of(op.getInputs(), IsValidOperand) &&
          NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation())
              .has_value();
 }
@@ -182,7 +182,7 @@ std::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
   PrimitiveType type =
       TypeToShape(block.getArgument(0).getType()).element_type();
   if (type == PRED) {
-    switch (opcode.ValueOrDie()) {
+    switch (opcode.value()) {
       case HloOpcode::kAnd:
         return ReductionKind::MIN;
       case HloOpcode::kOr:

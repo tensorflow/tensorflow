@@ -40,7 +40,10 @@ class LoopScheduleLinearizer : public HloModulePass {
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr)
       : can_share_buffer_(can_share_buffer) {}
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Backend specific function that decides whether an instruction can share

@@ -58,6 +58,27 @@ class Mock2AsTopType(MockSupertypes2With3):
                        for other in others) else Mock2AsTopType(2)
 
 
+class TestAttr:
+  """Helps test attrs collections."""
+
+  def __init__(self, name):
+    self.name = name
+
+
+class TestAttrsClass:
+  """Helps test attrs collections."""
+
+  __attrs_attrs__ = (TestAttr('a'), TestAttr('b'))
+
+  def __init__(self, a, b):
+    self.a = a
+    self.b = b
+
+  def __eq__(self, other):
+    return isinstance(
+        other, TestAttrsClass) and self.a == other.a and self.b == other.b
+
+
 class DefaultTypesTest(test.TestCase):
 
   def testLiteralSupertypes(self):
@@ -77,6 +98,7 @@ class DefaultTypesTest(test.TestCase):
     literal_int = default_types.Literal(1)
     literal_float = default_types.Literal(1.2)
     literal_str = default_types.Literal('a')
+    literal_none = default_types.Literal(None)
 
     self.assertEqual(
         serialization.deserialize(serialization.serialize(literal_bool)),
@@ -90,6 +112,9 @@ class DefaultTypesTest(test.TestCase):
     self.assertEqual(
         serialization.deserialize(serialization.serialize(literal_str)),
         literal_str)
+    self.assertEqual(
+        serialization.deserialize(serialization.serialize(literal_none)),
+        literal_none)
 
   def testListSupertype(self):
     list_a = default_types.List(
@@ -107,6 +132,15 @@ class DefaultTypesTest(test.TestCase):
             MockSupertypes2With3(3), MockSupertypes2With3(3),
             MockSupertypes2With3(3)))
 
+  def testListSerialization(self):
+    list_original = default_types.List(
+        default_types.Literal(1), default_types.Literal(2),
+        default_types.Literal(3))
+
+    self.assertEqual(
+        serialization.deserialize(serialization.serialize(list_original)),
+        list_original)
+
   def testTupleSupertype(self):
     tuple_a = default_types.Tuple(
         MockSupertypes2With3(1), MockSupertypes2With3(2),
@@ -123,12 +157,21 @@ class DefaultTypesTest(test.TestCase):
             MockSupertypes2With3(3), MockSupertypes2With3(3),
             MockSupertypes2With3(3)))
 
+  def testTupleSerialization(self):
+    tuple_original = default_types.Tuple(
+        default_types.Literal(1), default_types.Literal(2),
+        default_types.Literal(3))
+
+    self.assertEqual(
+        serialization.deserialize(serialization.serialize(tuple_original)),
+        tuple_original)
+
   def testNamedTupleSupertype(self):
     named_tuple_type = collections.namedtuple('MyNamedTuple', 'x y z')
-    tuple_a = default_types.NamedTuple(
+    tuple_a = default_types.NamedTuple.from_type_and_attributes(
         named_tuple_type, (MockSupertypes2With3(1), MockSupertypes2With3(2),
                            MockSupertypes2With3(3)))
-    tuple_b = default_types.NamedTuple(
+    tuple_b = default_types.NamedTuple.from_type_and_attributes(
         named_tuple_type, (MockSupertypes2With3(2), MockSupertypes2With3(2),
                            MockSupertypes2With3(2)))
 
@@ -136,9 +179,25 @@ class DefaultTypesTest(test.TestCase):
     self.assertIsNone(tuple_a.most_specific_common_supertype([tuple_b]))
     self.assertEqual(
         tuple_b.most_specific_common_supertype([tuple_a]),
-        default_types.NamedTuple(
+        default_types.NamedTuple.from_type_and_attributes(
             named_tuple_type, (MockSupertypes2With3(3), MockSupertypes2With3(3),
                                MockSupertypes2With3(3))))
+
+  def testAttrsSupertype(self):
+    attrs_a = default_types.Attrs.from_type_and_attributes(
+        TestAttrsClass, (MockSupertypes2With3(1), MockSupertypes2With3(2),
+                         MockSupertypes2With3(3)))
+    attrs_b = default_types.Attrs.from_type_and_attributes(
+        TestAttrsClass, (MockSupertypes2With3(2), MockSupertypes2With3(2),
+                         MockSupertypes2With3(2)))
+
+    self.assertEqual(attrs_a, attrs_a.most_specific_common_supertype([]))
+    self.assertIsNone(attrs_a.most_specific_common_supertype([attrs_b]))
+    self.assertEqual(
+        attrs_b.most_specific_common_supertype([attrs_a]),
+        default_types.Attrs.from_type_and_attributes(
+            TestAttrsClass, (MockSupertypes2With3(3), MockSupertypes2With3(3),
+                             MockSupertypes2With3(3))))
 
   def testDictTypeSubtype(self):
     dict_type = default_types.Dict
@@ -247,6 +306,7 @@ class DefaultTypesTest(test.TestCase):
     self.assertEqual(
         serialization.deserialize(serialization.serialize(ref_original)),
         ref_original)
+
 
 if __name__ == '__main__':
   test.main()

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/conditional_code_motion.h"
 
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -70,9 +71,9 @@ ENTRY main {
   ROOT result = (bf16[2,512,364]{2,1,0}, f32[2,512,364]{2,1,0}) tuple(get-first-index, get-first-index.2)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Tuple(op::Convert(), op::GetTupleElement())));
@@ -119,9 +120,9 @@ HloModule RemoveDotOpOut
       ROOT conditional = (f32[2], bf16[2], s32[]) conditional(pred.1, arg_tuple.11, arg_tuple.11), true_computation=on_true, false_computation=on_false
     }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  ASSERT_FALSE(pass.Run(&*module).value());
 }
 
 TEST_F(ConditionalCodeMotionTest, MoveConvertOutConditionalRoot) {
@@ -155,9 +156,9 @@ ENTRY main {
   ROOT conditional = (bf16[2,512,364]{2,1,0}) conditional(pred.1, arg_tuple.11, arg_tuple.22), true_computation=on_true, false_computation=on_false
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Tuple(op::Convert())));
@@ -196,9 +197,9 @@ ENTRY main {
   ROOT result = (bf16[2,512,364]{2,1,0}) tuple(get-first-index)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Tuple(op::Convert())));
@@ -237,9 +238,9 @@ ENTRY main {
   ROOT result = (bf16[2,512,364]{2,1,0}, (bf16[2,512,364]{2,1,0})) tuple(get-first-index, conditional)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  ASSERT_FALSE(pass.Run(&*module).value());
 }
 
 TEST_F(ConditionalCodeMotionTest, MoveConvertOut) {
@@ -273,9 +274,9 @@ ENTRY main {
   ROOT result = (bf16[2,512,364]{2,1,0}) tuple(add.1)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
 
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
@@ -342,9 +343,9 @@ ENTRY main {
   ROOT result = f32[] add(get-first-index, get-second-index)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
 
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
@@ -411,9 +412,9 @@ ENTRY main {
   ROOT result = f32[] add(get-tuple-element.3, get-tuple-element.4)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
 
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
@@ -479,9 +480,9 @@ ENTRY main {
   ROOT result = f32[] add(get-first-index, get-first-index)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   // After hoisting the adds out of the branches, we expect the true branch to
@@ -571,11 +572,11 @@ ENTRY main {
     false_computation=on_false
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
   // If there is no instruction after the conditional, there is no benefit to
   // move
-  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  ASSERT_FALSE(pass.Run(&*module).value());
 }
 
 TEST_F(ConditionalCodeMotionTest, LayoutMisMatchCannotMovedOut) {
@@ -628,9 +629,9 @@ ENTRY main {
 }
 )";
 
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  ASSERT_FALSE(pass.Run(&*module).value());
 }
 
 TEST_F(ConditionalCodeMotionTest, MoveCrossModuleAllReduceOut) {
@@ -703,9 +704,9 @@ ENTRY main {
   ROOT result = (f32[3,3,128,128]) tuple(add.1)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   CHECK(conditional != nullptr);
@@ -790,9 +791,9 @@ ENTRY main {
    ROOT result = (f32[3,3,128,128]) tuple(convert.2)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  ASSERT_FALSE(pass.Run(&*module).value());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   CHECK(conditional != nullptr);
@@ -840,9 +841,9 @@ ENTRY main {
   ROOT pow.1 = f32[10] power(get-first-index, get-first-index)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   const HloComputation* on_true = conditional->branch_computation(0);
@@ -886,9 +887,9 @@ ENTRY main {
   ROOT tuple.3 = (f32[10], f32[10]) tuple(pow.1, get-first-index.2)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(op::Conditional()),
                               op::GetTupleElement(op::Conditional())));
@@ -917,9 +918,9 @@ ENTRY main {
   ROOT pow.1 = f32[10] power(get-first-index, get-first-index)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   const HloComputation* on_true = conditional->branch_computation(0);
@@ -956,9 +957,9 @@ ENTRY main {
   ROOT pow.1 = f32[10] power(conditional, conditional)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   const HloComputation* on_true = conditional->branch_computation(0);
@@ -997,9 +998,9 @@ ENTRY main {
   ROOT pow.1 = f32[10] power(get-first-index, get-first-index)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   const HloComputation* on_true = conditional->branch_computation(0);
@@ -1031,9 +1032,9 @@ ENTRY main {
   ROOT pow.1 = f32[10] power(conditional, conditional)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   const HloComputation* on_true = conditional->branch_computation(0);
@@ -1087,9 +1088,9 @@ ENTRY main {
                  get-second-index)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
   VLOG(1) << module->ToString();
 
   const HloInstruction* conditional =
@@ -1146,9 +1147,9 @@ ENTRY %f32_8_3_2__1-1.32 (idxs.1: s32[2], single_io.2: f32[8,3,2], repeated_io_0
   ROOT %tuple.16 = (f32[1,3,2]{1,2,0}) tuple(f32[1,3,2]{1,2,0} %copy.2)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
   HloInstruction* root = module->entry_computation()->root_instruction();
   // Copy, tuple, gtes are all gone.
   EXPECT_THAT(root, op::Conditional());
@@ -1224,9 +1225,9 @@ ENTRY main {
   ROOT result = (f32[3,3,128,128]) tuple(add.1)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   const HloComputation* on_true = conditional->branch_computation(0);
@@ -1267,9 +1268,9 @@ ENTRY main {
   ROOT pow.1 = f32[10] power(conditional, tuple.2)
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  ASSERT_FALSE(pass.Run(&*module).value());
 }
 
 TEST_F(ConditionalCodeMotionTest, MultipleIndependentMoveIns) {
@@ -1329,9 +1330,9 @@ ENTRY main {
   ROOT %tuple.3200 = (bf16[], s32[]) tuple(%multiply.4667, s32[] %arg.2)
   }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional.3");
   CHECK(conditional != nullptr);
@@ -1390,8 +1391,8 @@ ENTRY main {
                 << "; flip_start = " << flip_start
                 << "; flip_stride = " << flip_stride
                 << "; search_config=" << search_config;
-        auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
-        bool opt_result = pass.Run(&*module).ValueOrDie();
+        auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+        bool opt_result = pass.Run(&*module).value();
         // Turning off the first/second decision will disable moving out;
         // Turning off the following decision will again disable moving in.
         if (flip_start < 2 && max_flip > 1 && flip_stride == 1) {
@@ -1407,7 +1408,7 @@ ENTRY main {
         HloInstruction* root = module->entry_computation()->root_instruction();
         switch (flip_start) {
           case 0:
-            ABSL_FALLTHROUGH_INTENDED;
+            [[fallthrough]];
           case 1:
             // After flipping the corresponding decisions,
             // instructions has been moved inside the conditionals.
@@ -1518,8 +1519,8 @@ ENTRY main {
                 << "; flip_start = " << flip_start
                 << "; flip_stride = " << flip_stride
                 << "; search_config=" << search_config;
-        auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
-        bool opt_result = pass.Run(&*module).ValueOrDie();
+        auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+        bool opt_result = pass.Run(&*module).value();
         // Turning off the first/second decision will disable moving out;
         // Turning off the following decision will again disable moving in.
         if (flip_start < 2 && max_flip > 1 && flip_stride == 1) {
@@ -1535,7 +1536,7 @@ ENTRY main {
         HloInstruction* root = module->entry_computation()->root_instruction();
         switch (flip_start) {
           case 0:
-            ABSL_FALLTHROUGH_INTENDED;
+            [[fallthrough]];
           case 1:
             // After flipping the corresponding decisions,
             // instructions has been moved inside the conditionals.
@@ -1685,9 +1686,9 @@ ENTRY main {
   ROOT conditional = (bf16[2,512,364]{2,1,0}, bf16[2,512,364]{2,1,0}) conditional(pred.1, arg_tuple.11, arg_tuple.22), true_computation=on_true, false_computation=on_false
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  ASSERT_FALSE(pass.Run(&*module).value());
   VLOG(2) << "module:\n" << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
@@ -1726,9 +1727,9 @@ ENTRY main {
   ROOT conditional = (f32[2,512,364]{2,1,0}, bf16[2,512,364]{2,1,0}) conditional(pred.1, arg_tuple.11, arg_tuple.22), true_computation=on_true, false_computation=on_false
 }
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  ASSERT_FALSE(pass.Run(&*module).value());
   VLOG(2) << "module:\n" << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
@@ -1791,9 +1792,9 @@ ENTRY %xla_computation_unknown.45 (parameter.3: u8[], parameter.4: u8[], paramet
 }
 
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  pass.Run(&*module).ValueOrDie();
+  pass.Run(&*module).value();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
 }

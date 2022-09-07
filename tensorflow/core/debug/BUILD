@@ -192,7 +192,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/platform/default/build_config:platformlib",
+        "//tensorflow/tsl/platform/default/build_config:platformlib",
     ],
 )
 

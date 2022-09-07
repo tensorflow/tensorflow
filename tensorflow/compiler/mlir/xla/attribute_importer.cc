@@ -17,8 +17,11 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -106,6 +109,23 @@ mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
       arrayref(dnums.output_spatial_dimensions()));
 }
 
+mlir::ArrayAttr ConvertCustomCallOutputOperandAliasing(
+    const std::vector<std::pair<xla::ShapeIndex,
+                                std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
+    mlir::Builder* builder) {
+  auto arrayref = [](absl::Span<const int64_t> array) {
+    return llvm::ArrayRef<int64_t>{array.data(), array.size()};
+  };
+  std::vector<mlir::Attribute> attrs;
+  for (auto& aliasing : aliaInfo) {
+    auto attr = mlir::mhlo::OutputOperandAliasAttr::get(
+        builder->getContext(), arrayref(aliasing.first), aliasing.second.first,
+        arrayref(aliasing.second.second));
+    attrs.push_back(attr);
+  }
+  return builder->getArrayAttr(attrs);
+}
+
 StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type) {
   switch (type) {
     case FftType::FFT:
@@ -163,11 +183,9 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     if (shape_and_layout.IsTuple())
       return tensorflow::errors::Unimplemented(
           "Layout support for nested tuples is not implemented.");
-    const xla::Layout& xla_layout = shape_and_layout.layout();
-
     // XLA can have invalid layout for certain values (such as token types).
     // These are imported as empty layout in MHLO.
-    if (xla_layout.format() == xla::Format::INVALID_FORMAT) {
+    if (!shape_and_layout.IsArray()) {
       layouts.push_back(builder->getIndexTensorAttr({}));
       continue;
     }
@@ -176,8 +194,12 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     // currently. The layout has to be dense, and only specify the order of
     // dimensions. Sparse, tiled layout or non-default memory space fields
     // cannot be expressed in MHLO layout yet.
-    if (xla_layout.format() != xla::Format::DENSE)
-      return tensorflow::errors::Unimplemented("Unexpected layout format");
+    if (!xla::LayoutUtil::IsDenseArray(shape_and_layout)) {
+      return tensorflow::errors::Unimplemented(
+          "Only dense arrays are supported.");
+    }
+
+    const xla::Layout& xla_layout = shape_and_layout.layout();
     if (!xla_layout.tiles().empty())
       return tensorflow::errors::Unimplemented(
           "Tiled layout is not supported yet");

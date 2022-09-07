@@ -1,9 +1,4 @@
-package(
-    default_visibility = [
-        "//tensorflow:internal",
-    ],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 py_binary(
     name = "micro_benchmarks",

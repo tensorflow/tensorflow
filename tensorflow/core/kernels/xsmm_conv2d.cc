@@ -31,13 +31,12 @@ void dummy_xsmm_conv2d_ensure_file_is_not_empty();
 #include <omp.h>
 #endif
 
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-
 #include "include/libxsmm_cpuid.h"
 #include "include/libxsmm_malloc.h"
 #include "src/libxsmm_main.h"  // TODO(bsteiner): API to avoid incl. header from src/
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 
 #define CHECK_LIBXSMM(CONDITION_OK, MESSAGE) \
   if (!(CONDITION_OK)) VLOG(0) << (MESSAGE)

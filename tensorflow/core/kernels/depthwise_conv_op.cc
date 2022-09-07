@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <type_traits>
+#include <vector>
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/padding.h"
@@ -300,6 +302,23 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
                                               /*num_dims=*/4, data_format_));
 
+    // CPU/GPU kernel currently ignores dilations, so all must be 1.
+    std::vector<int32_t> dilations;
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations));
+    bool unit_dilations = true;
+    for (int32_t dilation : dilations) {
+      if (dilation != 1) {
+        unit_dilations = false;
+      }
+    }
+    OP_REQUIRES(context, unit_dilations,
+                errors::Unimplemented(
+                    "Current kernel implementation does not support "
+                    "dilations, received [",
+                    Eigen::Map<Eigen::Matrix<int32_t, 1, Eigen::Dynamic>>(
+                        dilations.data(), dilations.size()),
+                    "]"));
+
     cudnn_use_autotune_ = CudnnUseAutotune();
     dtype_ = DataTypeToEnum<T>::value;
 #if CUDNN_VERSION >= 8000
@@ -474,7 +493,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
   bool use_cudnn_grouped_conv_;
 
  private:
-  std::vector<int32> strides_;
+  std::vector<int32_t> strides_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;

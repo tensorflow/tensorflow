@@ -65,7 +65,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
 
     // If the attribute is missing or empty, set the element count to 0 and
     // return NULL.
-    if (!attr.hasValue() || attr.getValue().empty()) {
+    if (!attr.has_value() || attr.getValue().empty()) {
       Value zero = rewriter->create<LLVM::ConstantOp>(
           loc, size_ty, rewriter->getIntegerAttr(size_ty, 0));
       Value null_ptr = rewriter->create<LLVM::NullOp>(loc, element_ptr_ty);
@@ -133,7 +133,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     Type llvmInt32Type = IntegerType::get(rewriter.getContext(), 32);
     Value output_index = rewriter.create<LLVM::ConstantOp>(
         loc, llvmInt32Type,
-        rewriter.getI32IntegerAttr(tf_alloc_op.output_index().hasValue()
+        rewriter.getI32IntegerAttr(tf_alloc_op.output_index().has_value()
                                        ? tf_alloc_op.output_index().getValue()
                                        : -1));
 
@@ -154,7 +154,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
                                     output_index,
                                     candidates_count_and_ptr.first,
                                     candidates_count_and_ptr.second}))
-            .getResult(0);
+            .getResult();
 
     MemRefDescriptor memRefDescriptor = CreateMemRefDescriptor(
         loc, rewriter, memref_type, allocated_byte_ptr, sizes);
@@ -322,11 +322,10 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
   LogicalResult matchAndRewrite(
       JITExecuteOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    // The TF context must be known for a successful lowering. Also, we support
-    // only one result.
-    if (adaptor.ctx() == nullptr || op.operands().empty() ||
-        op.getNumResults() != 1)
+    // The TF context must be known for a successful lowering.
+    if (adaptor.ctx() == nullptr || op.operands().empty()) {
       return failure();
+    }
 
     // Allocate result on stack.
     auto loc = op.getLoc();
@@ -478,7 +477,10 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
     mlir::Operation *op = null_memref_op.getOperation();
 
     auto shaped_result_type = null_memref_op.getType().cast<BaseMemRefType>();
-    unsigned address_space = shaped_result_type.getMemorySpaceAsInt();
+    auto mem_space =
+        shaped_result_type.getMemorySpace().dyn_cast_or_null<IntegerAttr>();
+    unsigned address_space =
+        static_cast<unsigned>(mem_space ? mem_space.getInt() : 0);
 
     Type elem_type = shaped_result_type.getElementType();
     Type llvm_elem_type = type_converter.convertType(elem_type);

@@ -62,10 +62,12 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -77,8 +79,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
 
 #if !defined(PLATFORM_GOOGLE)
 #if GOOGLE_CUDA
@@ -441,7 +441,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
                             tf_device_id_.value());
   }
 
-  executor_ = executor_status.ValueOrDie();
+  executor_ = executor_status.value();
 
   stream_ = StreamGroupFactory::Global().GetOrCreate(
       tf_device_id_, 0, executor_, options.config.gpu_options());
@@ -1089,7 +1089,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
   int64_t available_memory = 0;
   se::StreamExecutor* se = DeviceIdUtil::ExecutorForPlatformDeviceId(
                                GPUMachineManager(), platform_device_id)
-                               .ValueOrDie();
+                               .value();
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
     return errors::Unknown("Failed to query available memory for GPU ",
                            platform_device_id.value());
@@ -1257,7 +1257,7 @@ Status BaseGPUDeviceFactory::GetDeviceDetails(
     return desc_status.status();
   }
 
-  auto desc = desc_status.ConsumeValueOrDie();
+  auto desc = std::move(desc_status).value();
   (*details)["device_name"] = desc->name();
 #if GOOGLE_CUDA
   (*details)["compute_capability"] = desc->cuda_compute_capability().ToString();
@@ -1577,7 +1577,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   if (!desc_status.ok()) {
     return desc_status.status();
   }
-  auto desc = desc_status.ConsumeValueOrDie();
+  auto desc = std::move(desc_status).value();
 
   std::vector<TfDeviceId> peer_gpu_ids;
   peer_gpu_ids.reserve(num_tf_gpus);
@@ -1633,10 +1633,10 @@ GetPeerAccessMap(se::Platform* platform,
     for (PlatformDeviceId platform_gpu_j : visible_gpu_order) {
       se::StreamExecutor* from =
           DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_gpu_i)
-              .ValueOrDie();
+              .value();
       se::StreamExecutor* to =
           DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_gpu_j)
-              .ValueOrDie();
+              .value();
       (*map)[{platform_gpu_i, platform_gpu_j}] =
           from->CanEnablePeerAccessTo(to);
     }
@@ -1688,7 +1688,7 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     if (!desc_status.ok()) {
       return desc_status.status();
     }
-    auto desc = desc_status.ConsumeValueOrDie();
+    auto desc = std::move(desc_status).value();
     int numa_node = desc->numa_node();
     if (numa_node < 0) {
       // For some reason the StreamExecutor couldn't get the NUMA
@@ -1763,7 +1763,7 @@ static int GetDefaultMinGPUMultiprocessorCount(
       continue;
     }
 
-    auto description = description_status.ConsumeValueOrDie();
+    auto description = std::move(description_status).value();
     max_count = std::max(max_count, description->core_count());
   }
 
@@ -1854,10 +1854,10 @@ Status BaseGPUDeviceFactory::EnablePeerAccess(
       // We have already validated that ExecutorForDevice() calls return OK.
       se::StreamExecutor* from =
           DeviceIdUtil::ExecutorForPlatformDeviceId(gpu_manager, platform_gpu_i)
-              .ValueOrDie();
+              .value();
       se::StreamExecutor* to =
           DeviceIdUtil::ExecutorForPlatformDeviceId(gpu_manager, platform_gpu_j)
-              .ValueOrDie();
+              .value();
 
       if (from->CanEnablePeerAccessTo(to)) {
         ++possible_peer_count;
@@ -1897,7 +1897,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       return description_status.status();
     }
 
-    auto description = description_status.ConsumeValueOrDie();
+    auto description = std::move(description_status).value();
 #if GOOGLE_CUDA
     VLOG(1) << "Found device " << i << " with properties: "
             << "\npciBusID: " << description->pci_bus_id()
@@ -1967,7 +1967,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       continue;
     }
 
-    auto desc = description_status.ConsumeValueOrDie();
+    auto desc = std::move(description_status).value();
 
 #if GOOGLE_CUDA
     // Only GPUs with no less than the minimum supported compute capability is

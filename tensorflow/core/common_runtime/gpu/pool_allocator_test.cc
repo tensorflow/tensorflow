@@ -26,13 +26,12 @@ namespace {
 
 TEST(PoolAllocatorTest, ZeroSizeBuffers) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(GpuPlatformName())
-          .ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName(GpuPlatformName()).value();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
       new DeviceHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
-              .ValueOrDie(),
+              .value(),
           0 /*numa_node*/, {}, {}),
       new NoopRounder, "pool");
 
@@ -46,13 +45,12 @@ TEST(PoolAllocatorTest, ZeroSizeBuffers) {
 
 TEST(PoolAllocatorTest, ZeroSizePool) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(GpuPlatformName())
-          .ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName(GpuPlatformName()).value();
   PoolAllocator pool(
       0 /*pool_size_limit*/, false /*auto_resize*/,
       new DeviceHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
-              .ValueOrDie(),
+              .value(),
           0 /*numa_node*/, {}, {}),
       new NoopRounder, "pool");
 
@@ -81,13 +79,12 @@ TEST(PoolAllocatorTest, ZeroSizePool) {
 
 TEST(PoolAllocatorTest, Alignment) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(GpuPlatformName())
-          .ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName(GpuPlatformName()).value();
   PoolAllocator pool(
       0 /*pool_size_limit*/, false /*auto_resize*/,
       new DeviceHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
-              .ValueOrDie(),
+              .value(),
           0 /*numa_node*/, {}, {}),
       new NoopRounder, "pool");
   for (int i = 0; i < 16; ++i) {
@@ -144,11 +141,9 @@ TEST(PoolAllocatorTest, CudaHostAllocator) {
         free_size += size;
       };
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(GpuPlatformName())
-          .ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName(GpuPlatformName()).value();
   DeviceHostAllocator* sub_allocator = new DeviceHostAllocator(
-      platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
-          .ValueOrDie(),
+      platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0)).value(),
       0 /*numa_node*/, {alloc_visitor}, {free_visitor});
   PoolAllocator pool(2 /*pool_size_limit*/, false /*auto_resize*/,
                      sub_allocator, new NoopRounder, "pool");
@@ -248,13 +243,12 @@ TEST(PoolAllocatorTest, Pow2Rounder) {
 
 TEST(PoolAllocatorTest, Name) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(GpuPlatformName())
-          .ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName(GpuPlatformName()).value();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
       new DeviceHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
-              .ValueOrDie(),
+              .value(),
           0 /*numa_node*/, {}, {}),
       new NoopRounder, "pool");
   EXPECT_EQ("pool", pool.Name());

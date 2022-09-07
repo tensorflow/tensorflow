@@ -17,4 +17,8 @@ tf_class {
     name: "MAX_PARALLELISM"
     mtype: "<enum \'AutotuneAlgorithm\'>"
   }
+  member {
+    name: "STAGE_BASED"
+    mtype: "<enum \'AutotuneAlgorithm\'>"
+  }
 }

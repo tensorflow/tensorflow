@@ -27,7 +27,9 @@ include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 def LiftMatMul : Pat<
   (TF_MatMulOp:$res $a, $b, $transpose_a, $transpose_b),
   (LiftAsFunctionCall<"composite_matmul_fn">
-     (ArgumentList $a, $b),
-     (ResultList $res),
-     (AttributeList $transpose_a, $transpose_b)),
-  [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
+    (ArgumentList $a, $b),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"transpose_a"> $transpose_a),
+      (NamedAttr<"transpose_b"> $transpose_b))),
+  [(IsNotInLiftedFunc $res), (IsConstTensor $b)], (addBenefit 1)>;

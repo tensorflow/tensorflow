@@ -84,7 +84,12 @@ class Lockable {
   // RAII type that will release the exclusive lock when it is destroyed.
   using Lock = std::unique_ptr<T, std::function<void(T*)>>;
 
-  explicit Lockable(T value = T()) : value_(std::move(value)) {}
+  Lockable() = default;
+  explicit Lockable(T value) : value_(std::move(value)) {}
+  Lockable(const Lockable&) = delete;
+  Lockable(Lockable&&) = delete;
+  Lockable& operator=(const Lockable&) = delete;
+  Lockable& operator=(Lockable&&) = delete;
 
   Lock Acquire() {
     absl::MutexLock lock(&mutex_);

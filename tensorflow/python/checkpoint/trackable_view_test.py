@@ -26,19 +26,18 @@ class TrackableViewTest(test.TestCase):
     leaf = base.Trackable()
     root._track_trackable(leaf, name="leaf")
     (current_name,
-     current_dependency), = trackable_view.TrackableView(object).children(
-         root, object).items()
+     current_dependency), = trackable_view.TrackableView.children(root).items()
     self.assertIs(leaf, current_dependency)
     self.assertEqual("leaf", current_name)
 
-  def test_all_nodes(self):
+  def test_descendants(self):
     root = base.Trackable()
     leaf = base.Trackable()
     root._track_trackable(leaf, name="leaf")
-    all_nodes = trackable_view.TrackableView(root).all_nodes()
-    self.assertIs(2, len(all_nodes))
-    self.assertIs(root, all_nodes[0])
-    self.assertIs(leaf, all_nodes[1])
+    descendants = trackable_view.TrackableView(root).descendants()
+    self.assertIs(2, len(descendants))
+    self.assertIs(root, descendants[0])
+    self.assertIs(leaf, descendants[1])
 
 
 if __name__ == "__main__":

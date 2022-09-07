@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/hash.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
@@ -65,7 +65,7 @@ std::vector<std::string> GetDeviceIdToIdentifierMap() {
     StatusOr<string> device_identifier_or_status =
         DeviceIdToIdentifierHelper(device_id);
     if (device_identifier_or_status.ok()) {
-      map[device_id] = device_identifier_or_status.ValueOrDie();
+      map[device_id] = device_identifier_or_status.value();
     } else {
       map[device_id] = "Unknown Graphics Device";
     }

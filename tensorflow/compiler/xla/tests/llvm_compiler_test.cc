@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 
 #include <memory>
+#include <utility>
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -23,10 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -82,7 +83,7 @@ class LLVMCompilerTest : public ::testing::Test {
     StatusOr<std::unique_ptr<Backend>> backend_or_status =
         Backend::CreateBackend(backend_options);
     ASSERT_IS_OK(backend_or_status.status());
-    backend_ = backend_or_status.ConsumeValueOrDie();
+    backend_ = std::move(backend_or_status).value();
   }
 
   ~LLVMCompilerTest() override {}
@@ -152,7 +153,7 @@ class LLVMCompilerTest : public ::testing::Test {
  private:
   Platform* FindPlatform() {
     auto status_or_platform = PlatformUtil::GetPlatform(platform_name_);
-    return status_or_platform.ok() ? status_or_platform.ValueOrDie() : nullptr;
+    return status_or_platform.ok() ? status_or_platform.value() : nullptr;
   }
 
   std::string platform_name_;

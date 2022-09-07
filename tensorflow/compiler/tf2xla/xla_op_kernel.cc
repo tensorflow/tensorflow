@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -281,7 +282,7 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
     *out = true;
     return OkStatus();
   }
-  Tensor dynamism = dynamism_or_status.ValueOrDie();
+  Tensor dynamism = dynamism_or_status.value();
 
   Tensor temp(dynamism.dtype());
   TensorShape tensor_shape({});
@@ -322,11 +323,11 @@ Status XlaOpKernelContext::ResolveInputDynamismReshaped(
     *dynamism_literal =
         true_literal
             .Broadcast(xla::ShapeUtil::MakeShape(xla::PRED, new_dims), {})
-            .ValueOrDie();
+            .value();
 
     return OkStatus();
   }
-  Tensor dynamism = dynamism_or_status.ValueOrDie();
+  Tensor dynamism = dynamism_or_status.value();
 
   Tensor temp(dynamism.dtype());
   if (!temp.CopyFrom(dynamism, TensorShape(new_dims))) {
@@ -443,6 +444,16 @@ Status XlaOpKernelContext::ConstantInputAsShape(int index, TensorShape* shape,
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
   std::vector<int64_t> dims;
   TF_RETURN_IF_ERROR(LiteralToInt64Vector(literal, &dims));
+
+  int64_t num_elements = 1;
+  for (auto i = dims.begin(); i != dims.end(); ++i) {
+    num_elements = MultiplyWithoutOverflow(num_elements, *i);
+    if (num_elements < 0)
+      return errors::InvalidArgument(
+          "The total elements specified by orig_input_shape is too large.",
+          "Encountered overflow after multiplying", *i,
+          ", result: ", num_elements);
+  }
   *shape = TensorShape(dims);
   return OkStatus();
 }
@@ -508,7 +519,7 @@ StatusOr<Tensor> XlaOpKernelContext::ConstantInputTensor(
                             " operator as a compile-time constant.");
     return status;
   }
-  std::optional<Tensor> constant = constant_or_status.ValueOrDie();
+  std::optional<Tensor> constant = constant_or_status.value();
   if (!constant.has_value()) {
     return errors::InvalidArgument(
         "Input ", index, " to node `", context_->op_kernel().name(),
@@ -698,8 +709,7 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
     return shape_or_status.status();
   }
   TensorShape shape;
-  TF_RETURN_IF_ERROR(
-      XLAShapeToTensorShape(shape_or_status.ValueOrDie(), &shape));
+  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(shape_or_status.value(), &shape));
 
   TF_RETURN_IF_ERROR(variable->SetTypeAndShape(type, shape));
 

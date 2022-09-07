@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/transpose_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -50,7 +51,7 @@ absl::Status TransposeIntTest(TestExecutionEnvironment* env) {
     GPUOperation operation = CreateTranspose(op_def, attr);
     RETURN_IF_ERROR(env->ExecuteGPUOperation(
         {&src_0}, {&dst},
-        absl::make_unique<GPUOperation>(std::move(operation))));
+        std::make_unique<GPUOperation>(std::move(operation))));
     tflite::gpu::Tensor<BHWC, T> dst_tensor;
     dst.DownloadData(&dst_tensor);
     if (dst_tensor.data != ref_tensor.data) {
@@ -92,7 +93,7 @@ absl::Status TransposeUintTest(TestExecutionEnvironment* env) {
     GPUOperation operation = CreateTranspose(op_def, attr);
     RETURN_IF_ERROR(env->ExecuteGPUOperation(
         {&src_0}, {&dst},
-        absl::make_unique<GPUOperation>(std::move(operation))));
+        std::make_unique<GPUOperation>(std::move(operation))));
     tflite::gpu::Tensor<BHWC, T> dst_tensor;
     dst.DownloadData(&dst_tensor);
     if (dst_tensor.data != ref_tensor.data) {
@@ -130,7 +131,7 @@ absl::Status TransposeTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateTranspose(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 1, 3, 2), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({half(1.0f), half(4.0f), half(2.0f),
                                      half(5.0f), half(3.0f), half(6.0f)},

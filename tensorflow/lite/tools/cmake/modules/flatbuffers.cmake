@@ -23,7 +23,7 @@ OverridableFetchContent_Declare(
   flatbuffers
   GIT_REPOSITORY https://github.com/google/flatbuffers
   # Sync with tensorflow/third_party/flatbuffers/workspace.bzl
-  GIT_TAG v2.0.5
+  GIT_TAG v2.0.6
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/flatbuffers"
@@ -41,7 +41,6 @@ add_definitions(-DNOMINMAX=1)
 add_subdirectory(
   "${flatbuffers_SOURCE_DIR}"
   "${flatbuffers_BINARY_DIR}"
-  EXCLUDE_FROM_ALL
 )
 remove_definitions(-DNOMINMAX)
 

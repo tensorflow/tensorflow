@@ -35,8 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -67,7 +67,7 @@ class HloDataflowAnalysisTest : public HloTestBase,
     EXPECT_TRUE(flatten.Run(module_.get()).ok());
     analysis_ =
         HloDataflowAnalysis::Run(*module_, ssa_form, bitcast_defines_value)
-            .ConsumeValueOrDie();
+            .value();
     return *analysis_;
   }
 
@@ -2067,7 +2067,7 @@ std::unique_ptr<HloDataflowAnalysis> RunAnalysis(
   return HloDataflowAnalysis::Run(module, /*ssa_form=*/false,
                                   /*bitcast_defines_value=*/false,
                                   can_share_buffer)
-      .ConsumeValueOrDie();
+      .value();
 }
 
 using DoesNotUseOperandBufferTest = HloTestBase;

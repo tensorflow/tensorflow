@@ -30,9 +30,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
-class CLArguments;
-}
 
 class ArgumentsBinder {
  public:
@@ -137,15 +134,12 @@ class Arguments : public ArgumentsBinder {
 
   absl::Status ResolveSelectorsPass(
       const GpuInfo& gpu_info,
-      const std::map<std::string, std::string>& linkables,
       std::string* code) const;
 
-  absl::Status ResolveSelector(
+  absl::Status ResolveLinkingPass(
       const GpuInfo& gpu_info,
       const std::map<std::string, std::string>& linkables,
-      const std::string& object_name, const std::string& selector,
-      const std::vector<std::string>& function_args,
-      const std::vector<std::string>& template_args, std::string* result) const;
+      std::string* code) const;
 
   void ResolveObjectNames(const std::string& object_name,
                           const std::vector<std::string>& member_names,
@@ -161,8 +155,6 @@ class Arguments : public ArgumentsBinder {
 
   absl::Status ResolveKernelGlobalSpaceBuffers(const GpuInfo& gpu_info,
                                                std::string* code);
-
-  friend class cl::CLArguments;
 
   static constexpr char kArgsPrefix[] = "args.";
 

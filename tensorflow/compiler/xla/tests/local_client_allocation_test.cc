@@ -52,9 +52,8 @@ XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
   // deallocation happen on the right allocator.
   ExecutableRunOptions options;
   options.set_allocator(allocator);
-  std::optional<ScopedShapedBuffer> result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {},
-                          DefaultExecutableBuildOptions(), options);
+  std::optional<ScopedShapedBuffer> result = ExecuteLocallyOrDie(
+      builder.Build().value(), {}, DefaultExecutableBuildOptions(), options);
 
   LiteralTestUtil::ExpectR1Near<float>(
       {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(*result), error_spec_);
@@ -76,7 +75,7 @@ XLA_TEST_F(LocalClientAllocationTest, RunOnDevices) {
   auto x = ConstantR1<float>(&builder, {0.0f, 1.0f, 2.0f});
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   Add(x, y);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   TestAllocator* allocator = GetOrCreateAllocator(local_client_->platform());
   for (int d = 0; d < local_client_->device_count(); ++d) {

@@ -23,8 +23,6 @@ import time
 import warnings
 
 from absl import logging
-import six
-from six import PY2
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
@@ -158,7 +156,7 @@ class Optimize(enum.Enum):
 
 # TODO(b/198099651): move converter implementation out of lite.py
 @_tf_export("lite.RepresentativeDataset")
-class RepresentativeDataset(object):
+class RepresentativeDataset:
   """Representative dataset used to optimize the model.
 
   This is a generator function that provides a small dataset to calibrate or
@@ -182,7 +180,7 @@ class RepresentativeDataset(object):
 
 
 @_tf_export("lite.TargetSpec")
-class TargetSpec(object):
+class TargetSpec:
   """Specification of target device used to optimize the model.
 
   Attributes:
@@ -229,7 +227,7 @@ class TargetSpec(object):
     self._experimental_supported_accumulation_type = None
 
 
-class QuantizationMode(object):
+class QuantizationMode:
   """QuantizationMode determines the quantization type from user options."""
 
   def __init__(self,
@@ -510,7 +508,7 @@ class QuantizationMode(object):
     return False
 
 
-class TFLiteConverterBase(object):
+class TFLiteConverterBase:
   """Converter subclass to share functionality between V1 and V2 converters."""
 
   # Stores the original model type temporarily to transmit the information
@@ -561,6 +559,9 @@ class TFLiteConverterBase(object):
     self.experimental_new_dynamic_range_quantizer = True
     # Experimental flag to enable low-bit QAT in 8 bit.
     self._experimental_low_bit_qat = False
+    # Experimental flag to add all TF ops (including custom TF ops) to the
+    # converted model as flex ops.
+    self._experimental_allow_all_select_tf_ops = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -676,6 +677,8 @@ class TFLiteConverterBase(object):
             self._experimental_preserve_assert_op,
         "guarantee_all_funcs_one_use":
             self._experimental_guarantee_all_funcs_one_use,
+        "allow_all_select_tf_ops":
+            self._experimental_allow_all_select_tf_ops,
     }
 
     if self.saved_model_dir:
@@ -1662,7 +1665,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
       (default True)
     experimental_enable_resource_variables: Experimental flag, subject to
-      change. Enables 
+      change. Enables
       [resource variables](https://tensorflow.org/guide/migrate/tf1_vs_tf2#resourcevariables_instead_of_referencevariables)
       to be converted by this converter. This is only allowed if the
       from_saved_model interface is used. (default True)
@@ -1684,7 +1687,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
 
   # Converting a Jax model to a TensorFlow Lite model.
   converter = tf.lite.TFLiteConverter.experimental_from_jax([func], [[
-      ('input1', input1), ('input2', input2)])
+      ('input1', input1), ('input2', input2)]])
   tflite_model = converter.convert()
   ```
   """
@@ -1887,7 +1890,6 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     self.dump_graphviz_video = False
     self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
-    self._experimental_allow_all_select_tf_ops = False
     self._metadata.environment.apiVersion = 1
 
   def __setattr__(self, name, value):
@@ -2064,7 +2066,6 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video,
         "conversion_summary_dir": self.conversion_summary_dir,
-        "allow_all_select_tf_ops": self._experimental_allow_all_select_tf_ops,
     })
 
     self._validate_quantized_input_stats(converter_kwargs, quant_mode)
@@ -2660,10 +2661,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
             print("Ignore 'tcmalloc: large alloc' warnings.")
 
             if not isinstance(file_content, str):
-              if PY2:
-                file_content = six.ensure_binary(file_content, "utf-8")
-              else:
-                file_content = six.ensure_text(file_content, "utf-8")
+              file_content = file_content.decode("utf-8")
             graph_def = _graph_pb2.GraphDef()
             _text_format.Merge(file_content, graph_def)
           except (_text_format.ParseError, DecodeError):
@@ -2809,7 +2807,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
 
 
 @_tf_export(v1=["lite.TocoConverter"])
-class TocoConverter(object):
+class TocoConverter:
   """Convert a TensorFlow model into `output_format`.
 
   This class has been deprecated. Please use `lite.TFLiteConverter` instead.

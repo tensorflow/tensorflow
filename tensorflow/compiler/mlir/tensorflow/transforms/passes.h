@@ -269,6 +269,17 @@ CreatePrepareTpuComputationForTfExportPass();
 // Rewrites ops that require quantized inputs or outputs to ops that allow
 // non-quantized inputs and outputs.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerQuantizedPass();
+
+// Reorders ops so ops of the same dialect are next to each other.
+std::unique_ptr<Pass> CreateOrderByDialectPass();
+
+// Groups ops into functions that only contain one dialect.
+std::unique_ptr<Pass> CreateGroupByDialectPass();
+
+// Populates the supplied passmanager with the passes required to run the
+// CPU/GPU bridge.
+void CreateTFXLABridgePipeline(OpPassManager& pm);
+
 }  // namespace TF
 
 namespace tf_executor {
@@ -276,6 +287,9 @@ namespace tf_executor {
 // Creates a pass to chain control outputs of while loop body.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorConvertControlToDataOutputsPass();
+
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFExecutorCheckControlDependenciesPass();
 
 // Creates a pass to merge IslandOps from TFExecutor dialect.
 std::unique_ptr<OperationPass<func::FuncOp>>

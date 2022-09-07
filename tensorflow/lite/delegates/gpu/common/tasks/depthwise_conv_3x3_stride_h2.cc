@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
@@ -28,8 +29,6 @@ std::string GetKernelDepthWiseConv3x3StrideH2(const GpuInfo& gpu_info,
                                               const OperationDef& definition,
                                               bool weights_are_buffer,
                                               bool local_mem_uploads) {
-  const auto src_tensor_type = definition.src_tensors[0].storage_type;
-
   std::string c = "MAIN_FUNCTION($0) {\n";
   if (definition.dst_tensors[0].HasAxis(Axis::BATCH)) {
     c += "  int linear_id = GLOBAL_ID_0;\n";
@@ -104,12 +103,6 @@ std::string GetKernelDepthWiseConv3x3StrideH2(const GpuInfo& gpu_info,
     c += "  y4 = clamp(y4, 0, args.src_tensor.Height() - 1);\n";
   }
 
-  if (src_tensor_type == TensorStorageType::BUFFER &&
-      gpu_info.SupportsPointersInKernels()) {
-    c += "  __global FLT4* src_loc = "
-         "args.src_tensor.GetPtrWithSliceOffset(S);\n";
-  }
-
   if (local_mem_uploads || weights_are_buffer) {
     const bool use_direct_buffer =
         !local_mem_uploads && !gpu_info.SupportsPointersInKernels();
@@ -151,22 +144,9 @@ std::string GetKernelDepthWiseConv3x3StrideH2(const GpuInfo& gpu_info,
     }
 
     const std::string yc = "y" + std::to_string(y);
-    if (src_tensor_type == TensorStorageType::BUFFER &&
-        gpu_info.SupportsPointersInKernels()) {
-      c += "    s0 = src_loc[args.src_tensor.GetWHOffset(x0, " + yc + ")]" +
-           s0_check + ";\n";
-      c += "    s1 = src_loc[args.src_tensor.GetWHOffset(x1, " + yc + ")]" +
-           s1_check + ";\n";
-      c += "    s2 = src_loc[args.src_tensor.GetWHOffset(x2, " + yc + ")]" +
-           s2_check + ";\n";
-    } else {
-      c +=
-          "    s0 = args.src_tensor.Read(x0, " + yc + ", S)" + s0_check + ";\n";
-      c +=
-          "    s1 = args.src_tensor.Read(x1, " + yc + ", S)" + s1_check + ";\n";
-      c +=
-          "    s2 = args.src_tensor.Read(x2, " + yc + ", S)" + s2_check + ";\n";
-    }
+    c += "    s0 = args.src_tensor.Read(x0, " + yc + ", S)" + s0_check + ";\n";
+    c += "    s1 = args.src_tensor.Read(x1, " + yc + ", S)" + s1_check + ";\n";
+    c += "    s2 = args.src_tensor.Read(x2, " + yc + ", S)" + s2_check + ";\n";
   };
   read_3x_line(0);
   c += "    r0 += TO_ACCUM_TYPE(" + W[0] + " * s0);\n";

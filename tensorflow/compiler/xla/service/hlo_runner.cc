@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -39,7 +39,7 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   backend_options.set_platform(platform);
   backend_options.set_intra_op_parallelism_threads(
       intra_op_parallelism_threads);
-  backend_ = Backend::CreateBackend(backend_options).ConsumeValueOrDie();
+  backend_ = Backend::CreateBackend(backend_options).value();
   device_shape_representation_fn_ = [this](const Shape& shape) {
     return backend_->compiler()->DefaultDeviceShapeRepresentation(shape);
   };
@@ -280,7 +280,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
           (*device_assignment)(i / num_partitions, i % num_partitions);
       pool->Schedule([this, device, &options, i]() {
         se::StreamExecutor* executor =
-            backend().stream_executor(device).ValueOrDie();
+            backend().stream_executor(device).value();
         VLOG(1) << "Starting infeed on device " << device;
         for (int64_t step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
@@ -302,7 +302,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
           (*device_assignment)(i / num_partitions, i % num_partitions);
       pool->Schedule([this, device, &options, i]() {
         se::StreamExecutor* executor =
-            backend().stream_executor(device).ValueOrDie();
+            backend().stream_executor(device).value();
         VLOG(1) << "Starting outfeed on device " << device;
         for (int64_t step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
@@ -377,7 +377,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
             if (!thread_result.ok()) {
               return thread_result.status();
             }
-            results.push_back(std::move(thread_result).ValueOrDie());
+            results.push_back(std::move(thread_result).value());
           }
         }
         return results;
@@ -435,7 +435,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
           if (!thread_result.ok()) {
             return thread_result.status();
           }
-          results.push_back(std::move(thread_result).ValueOrDie());
+          results.push_back(std::move(thread_result).value());
         }
         return results;
       },
@@ -487,7 +487,7 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
 
 Backend& HloRunner::backend() {
   if (!backend_) {
-    backend_ = Backend::CreateDefaultBackend().ConsumeValueOrDie();
+    backend_ = Backend::CreateDefaultBackend().value();
     VLOG(1) << "Executing on platform " << backend().platform()->Name();
   }
   return *backend_;

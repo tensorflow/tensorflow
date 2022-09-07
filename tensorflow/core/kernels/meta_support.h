@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_QUANTIZATION_KERNELS_META_SUPPORT_H_
-#define TENSORFLOW_CONTRIB_QUANTIZATION_KERNELS_META_SUPPORT_H_
+#ifndef TENSORFLOW_CORE_KERNELS_META_SUPPORT_H_
+#define TENSORFLOW_CORE_KERNELS_META_SUPPORT_H_
 
 #include "meta/multi_thread_gemm.h"
 #include "meta/multi_thread_transform.h"
@@ -109,4 +109,4 @@ void Clamp(OpKernelContext* context, const quint8* input, int input_count,
 }  // namespace meta
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_QUANTIZATION_KERNELS_META_SUPPORT_H_
+#endif  // TENSORFLOW_CORE_KERNELS_META_SUPPORT_H_

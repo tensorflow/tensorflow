@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_MOCK_CUPTI_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_MOCK_CUPTI_H_
+#ifndef TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_MOCK_CUPTI_H_
+#define TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_MOCK_CUPTI_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -165,4 +165,4 @@ class MockCupti : public tensorflow::profiler::CuptiInterface {
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_MOCK_CUPTI_H_
+#endif  // TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_MOCK_CUPTI_H_

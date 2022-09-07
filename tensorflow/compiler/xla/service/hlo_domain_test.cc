@@ -179,6 +179,41 @@ ENTRY entry {
   EXPECT_FALSE(HasDomainEdge(module.get(), "e", "d"));
 }
 
+TEST_F(HloDomainTest, CheckDomainWithCallInliningDomain) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+%fn {
+  arg = f32[4] parameter(0)
+}
+
+ENTRY entry {
+  p = f32[4] parameter(0), sharding={maximal device=0}
+  domain.0 = f32[4] domain(p), domain={kind="sharding", entry={}, exit={maximal device=0}}
+  a = f32[4] call(domain.0), to_apply=fn
+  domain.1 = f32[4] domain(a), domain={kind="sharding", entry={maximal device=0}, exit={}}
+  ROOT b = f32[4] copy(domain.1), sharding={maximal device=0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LOG(INFO) << "Original module:\n" << module->ToString();
+
+  CallInliner call_inliner(/*single_call_site=*/false,
+                           /*update_domain=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
+  EXPECT_TRUE(inlined);
+
+  // Instruction "a" has been inlined and no longer exists.
+  EXPECT_EQ(nullptr, FindInstruction(module.get(), "a"));
+  // Inlined instruction "arg" which is a domain instruction, which should have
+  // been removed since its user and operand share the same sharding.
+  EXPECT_EQ(nullptr, FindInstruction(module.get(), "arg"));
+  // Verify there's no domain between "b" and "p" which share the same sharding.
+  EXPECT_FALSE(HasDomainEdge(module.get(), "b", "p"));
+}
+
 TEST_F(HloDomainTest, CheckDomainLinks) {
   const char* const hlo_string = R"(
 HloModule Module

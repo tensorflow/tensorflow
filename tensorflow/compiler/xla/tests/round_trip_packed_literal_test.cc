@@ -39,8 +39,8 @@ class RoundTripPackedLiteralTest : public ClientLibraryTestBase {
   // Sends the literal to the server and retrieves it back.
   Literal RoundTripToServer(const Literal& original) {
     std::unique_ptr<GlobalData> data =
-        client_->TransferToServer(original).ConsumeValueOrDie();
-    return client_->Transfer(*data).ConsumeValueOrDie();
+        client_->TransferToServer(original).value();
+    return client_->Transfer(*data).value();
   }
 };
 
@@ -59,8 +59,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR1F32Length2) {
   std::unique_ptr<tensorflow::RandomAccessFile> f;
   TF_CHECK_OK(tensorflow::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
-  Literal actual =
-      reader.Read(ShapeUtil::MakeShape(F32, {2})).ConsumeValueOrDie();
+  Literal actual = reader.Read(ShapeUtil::MakeShape(F32, {2})).value();
   EXPECT_TRUE(reader.IsExhausted());
 
   EXPECT_EQ(42.0, actual.Get<float>({0}));
@@ -87,8 +86,8 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
   std::unique_ptr<tensorflow::RandomAccessFile> f;
   TF_CHECK_OK(tensorflow::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
-  Literal actual = reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout)
-                       .ConsumeValueOrDie();
+  Literal actual =
+      reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout).value();
   EXPECT_TRUE(reader.IsExhausted());
 
   EXPECT_EQ(42.0f, actual.Get<float>({0, 0}));
@@ -120,8 +119,8 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
   std::unique_ptr<tensorflow::RandomAccessFile> f;
   TF_CHECK_OK(tensorflow::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
-  Literal actual = reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout)
-                       .ConsumeValueOrDie();
+  Literal actual =
+      reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout).value();
   EXPECT_TRUE(reader.IsExhausted());
 
   EXPECT_EQ(42.0f, actual.Get<float>({0, 0}));

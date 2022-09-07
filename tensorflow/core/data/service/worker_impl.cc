@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "grpcpp/create_channel.h"
 #include "absl/algorithm/container.h"
@@ -163,7 +164,7 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
   worker_address_ = worker_address;
   transfer_address_ = transfer_address;
 
-  dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
+  dispatcher_ = std::make_unique<DataServiceDispatcherClient>(
       config_.dispatcher_address(), config_.protocol());
   TF_RETURN_IF_ERROR(dispatcher_->Initialize());
 
@@ -190,15 +191,13 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
 }
 
 void DataServiceWorkerImpl::Stop() {
-  std::vector<std::shared_ptr<Task>> tasks;
+  absl::flat_hash_map<int64_t, std::shared_ptr<Task>> tasks;
   {
     mutex_lock l(mu_);
     cancelled_ = true;
-    for (const auto& entry : tasks_) {
-      tasks.push_back(entry.second);
-    }
+    tasks.swap(tasks_);
   }
-  for (auto& task : tasks) {
+  for (const auto& [task_id, task] : tasks) {
     StopTask(*task);
   }
   // At this point there are no outstanding requests in this RPC handler.
@@ -296,7 +295,7 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
             << task->task_def.task_id();
     return OkStatus();
   }
-  task = absl::make_unique<Task>(task_def);
+  task = std::make_unique<Task>(task_def);
   VLOG(3) << "Began processing for task " << task_def.task_id()
           << " with processing mode "
           << task_def.processing_mode_def().DebugString();
@@ -320,7 +319,7 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
                       MakeDataset(dataset_def, task.task_def));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<standalone::Iterator> iterator,
                       MakeDatasetIterator(*dataset, task.task_def));
-  auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
+  auto task_iterator = std::make_unique<StandaloneTaskIterator>(
       std::move(dataset), std::move(iterator));
   TF_RETURN_IF_ERROR(TaskRunner::Create(
       config_, task.task_def, std::move(task_iterator), task.task_runner));
@@ -381,7 +380,7 @@ DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
     std::vector<std::unique_ptr<SplitProvider>> split_providers;
     split_providers.reserve(task_def.num_split_providers());
     for (int i = 0; i < task_def.num_split_providers(); ++i) {
-      split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
+      split_providers.push_back(std::make_unique<DataServiceSplitProvider>(
           config_.dispatcher_address(), config_.protocol(),
           task_def.iteration_id(), i, config_.dispatcher_timeout_ms()));
     }

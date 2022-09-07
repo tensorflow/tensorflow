@@ -50,11 +50,16 @@ class DrawBoundingBoxOpTest(test.TestCase):
     image[height - 1, 0:width, 0:depth] = color
     return image
 
-  def _testDrawBoundingBoxColorCycling(self, img, colors=None):
+  def _testDrawBoundingBoxColorCycling(self,
+                                       img,
+                                       dtype=dtypes.float32,
+                                       colors=None):
     """Tests if cycling works appropriately.
 
     Args:
       img: 3-D numpy image on which to draw.
+      dtype: image dtype (float, half).
+      colors: color table.
     """
     color_table = colors
     if colors is None:
@@ -82,7 +87,7 @@ class DrawBoundingBoxOpTest(test.TestCase):
       bboxes = math_ops.cast(bboxes, dtypes.float32)
       bboxes = array_ops.expand_dims(bboxes, 0)
       image = ops.convert_to_tensor(image)
-      image = image_ops_impl.convert_image_dtype(image, dtypes.float32)
+      image = image_ops_impl.convert_image_dtype(image, dtype)
       image = array_ops.expand_dims(image, 0)
       image = image_ops.draw_bounding_boxes(image, bboxes, colors=colors)
       with self.cached_session(use_gpu=False) as sess:
@@ -117,6 +122,14 @@ class DrawBoundingBoxOpTest(test.TestCase):
     colors = np.asarray([[0.5, 0, 0.5, 1], [0.5, 0.5, 0, 1], [0.5, 0, 0, 1],
                          [0, 0, 0.5, 1]])
     self._testDrawBoundingBoxColorCycling(image, colors=colors)
+
+  def testDrawBoundingBoxHalf(self):
+    """Test if RGBA color cycling works correctly with provided colors."""
+    image = np.zeros([10, 10, 4], "float32")
+    colors = np.asarray([[0.5, 0, 0.5, 1], [0.5, 0.5, 0, 1], [0.5, 0, 0, 1],
+                         [0, 0, 0.5, 1]])
+    self._testDrawBoundingBoxColorCycling(
+        image, dtype=dtypes.half, colors=colors)
 
 
 if __name__ == "__main__":

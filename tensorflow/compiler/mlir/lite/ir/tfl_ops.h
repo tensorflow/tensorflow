@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_IR_TFL_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_IR_TFL_OPS_H_
 
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -34,16 +33,22 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_dialect.h.inc"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_enums.h.inc"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #define GET_ATTRDEF_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_attrdefs.h.inc"
-#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.h.inc"
 
 namespace mlir {
 namespace TFL {
 
 typedef TFLDialect TensorFlowLiteDialect;
+
+// The Control type is a token-like value that models control dependencies
+class ControlType : public Type::TypeBase<ControlType, Type, TypeStorage> {
+ public:
+  using Base::Base;
+};
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.h.inc"
 

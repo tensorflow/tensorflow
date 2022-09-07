@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -172,6 +175,106 @@ TEST_F(HloModuleTest, CloneHasFusion) {
       EXPECT_EQ((*origin)->name() + ".copy", (*copied)->name());
     }
   }
+}
+
+TEST_F(HloModuleTest, CloneCustomCallComputationToApply) {
+  const char* const hlo_string = R"(
+HloModule a_module
+
+add_s32 {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY entry () -> s32[] {
+  %c1 = s32[] constant(1)
+  %c2 = s32[] constant(2)
+  ROOT %custom-call =
+    s32[] custom-call(s32[] %c1, %c2),
+    custom_call_target="foo",
+    backend_config="this string is opaque",
+    to_apply=add_s32
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloModule> cloned_module = module->Clone();
+  HloComputation* cloned_computation =
+      cloned_module->GetComputationWithName("add_s32.clone");
+  HloInstruction* cloned_custom_call =
+      cloned_module->entry_computation()->GetInstructionWithName("custom-call");
+
+  EXPECT_TRUE(cloned_computation->IsCustomCallComputation());
+  EXPECT_EQ(cloned_computation->CustomCallInstruction(), cloned_custom_call);
+}
+
+TEST_F(HloModuleTest, CloneCustomCallComputationCalledComputations) {
+  const char* const hlo_string = R"(
+HloModule a_module
+
+add_s32_0 {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+add_s32_1 {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY entry () -> s32[] {
+  %c1 = s32[] constant(1)
+  %c2 = s32[] constant(2)
+  ROOT %custom-call =
+    s32[] custom-call(s32[] %c1, %c2),
+    custom_call_target="foo",
+    backend_config="this string is opaque",
+    called_computations={%add_s32_0, %add_s32_1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloModule> cloned_module = module->Clone();
+  HloComputation* cloned_computation_0 =
+      cloned_module->GetComputationWithName("add_s32_0.clone");
+  HloComputation* cloned_computation_1 =
+      cloned_module->GetComputationWithName("add_s32_1.clone");
+  HloInstruction* cloned_custom_call =
+      cloned_module->entry_computation()->GetInstructionWithName("custom-call");
+
+  EXPECT_TRUE(cloned_computation_0->IsCustomCallComputation());
+  EXPECT_EQ(cloned_computation_0->CustomCallInstruction(), cloned_custom_call);
+  EXPECT_TRUE(cloned_computation_1->IsCustomCallComputation());
+  EXPECT_EQ(cloned_computation_1->CustomCallInstruction(), cloned_custom_call);
+}
+
+TEST_F(HloModuleTest, CloneFusionComputation) {
+  const char* const hlo_string = R"(
+HloModule a_module
+
+fused_computation () -> s32[] {
+  ROOT %result = s32[] parameter(0)
+}
+
+ENTRY main {
+  %c = s32[] constant(1)
+  ROOT %fusion = s32[] fusion(%c), kind=kLoop, calls=fused_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloModule> cloned_module = module->Clone();
+  HloComputation* cloned_computation =
+      cloned_module->GetComputationWithName("fused_computation.clone");
+  HloInstruction* cloned_fusion_instr =
+      cloned_module->entry_computation()->GetInstructionWithName("fusion");
+
+  EXPECT_TRUE(cloned_computation->IsFusionComputation());
+  EXPECT_EQ(cloned_computation->FusionInstruction(), cloned_fusion_instr);
 }
 
 TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
@@ -334,7 +437,8 @@ ENTRY ReduceR3ToR2.v3 {
   EXPECT_NE(module->unique_id(), module_copy->unique_id());
 
   // Verify that the computations and instructions all have the same unique id.
-  auto computation_copy_it = module_copy->computations().begin();
+  auto computation_copy = module_copy->computations();
+  auto computation_copy_it = computation_copy.begin();
   for (const HloComputation* computation_orig : module->computations()) {
     const HloComputation* computation_copy = *computation_copy_it++;
     EXPECT_EQ(computation_orig->unique_id(), computation_copy->unique_id())
@@ -424,8 +528,9 @@ TEST_F(HloModuleTest, OneComputationAllAllowed) {
   auto computation = module->AddEntryComputation(CreateConstantComputation());
 
   absl::flat_hash_set<HloComputation*> allowList = {computation};
-  EXPECT_THAT(module->MakeComputationPostOrder(allowList),
-              ::testing::ElementsAre(computation));
+  EXPECT_THAT(
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList),
+      ::testing::ElementsAre(computation));
 }
 
 TEST_F(HloModuleTest, OneComputationAllFiltered) {
@@ -434,9 +539,10 @@ TEST_F(HloModuleTest, OneComputationAllFiltered) {
   module->AddEntryComputation(CreateConstantComputation());
 
   absl::flat_hash_set<HloComputation*> allowList = {};
-  module->MakeComputationPostOrder(allowList);
-  EXPECT_THAT(module->MakeComputationPostOrder(allowList),
-              ::testing::IsEmpty());
+  module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList);
+  EXPECT_THAT(
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList),
+      ::testing::IsEmpty());
 }
 
 TEST_F(HloModuleTest, DiamondComputationsPostOrderAllAllowed) {
@@ -453,7 +559,8 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrderAllAllowed) {
 
   absl::flat_hash_set<HloComputation*> allowList = {computation1, computation2,
                                                     computation3, computation4};
-  auto post_order = module->MakeComputationPostOrder(allowList);
+  auto post_order =
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList);
   EXPECT_THAT(post_order,
               ::testing::UnorderedElementsAre(computation1, computation2,
                                               computation3, computation4));
@@ -474,7 +581,8 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrderMiddleFiltered) {
       CreateCallComputation({computation2, computation3}));
 
   absl::flat_hash_set<HloComputation*> allowList = {computation1, computation4};
-  auto post_order = module->MakeComputationPostOrder(allowList);
+  auto post_order =
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList);
   EXPECT_THAT(post_order,
               ::testing::UnorderedElementsAre(computation1, computation4));
 }
@@ -492,9 +600,62 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrderAllFiltered) {
       CreateCallComputation({computation2, computation3}));
 
   absl::flat_hash_set<HloComputation*> allowList = {};
-  auto post_order = module->MakeComputationPostOrder(allowList);
-  EXPECT_THAT(module->MakeComputationPostOrder(allowList),
-              ::testing::IsEmpty());
+  auto post_order =
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList);
+  EXPECT_THAT(
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList),
+      ::testing::IsEmpty());
+}
+
+TEST_F(HloModuleTest, TwoComputationsFilterexecution_threads) {
+  // Create a module with two computations with different execution_threads and
+  // ensure thread name filtering can return proper computations.
+  HloComputation::Builder builder(TestName());
+  constexpr char kParallelThreadName[] = "parallel_thread";
+  // Create a call instruction containing a single binary operation.
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.1f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+  auto module = CreateNewVerifiedModule();
+  auto* main_thread_computation = module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* async_done,
+      main_thread_computation->CreateAsyncInstructions(
+          add, {ShapeUtil::MakeScalarShape(U32)}, kParallelThreadName));
+  auto* parallel_thread_computation = async_done->async_wrapped_computation();
+
+  EXPECT_THAT(
+      module->MakeComputationPostOrder({HloInstruction::kMainExecutionThread}),
+      ::testing::ElementsAre(main_thread_computation));
+  EXPECT_THAT(module->MakeComputationPostOrder(),
+              ::testing::ElementsAre(parallel_thread_computation,
+                                     main_thread_computation));
+  EXPECT_THAT(module->MakeComputationPostOrder({kParallelThreadName}),
+              ::testing::ElementsAre(parallel_thread_computation));
+  // Test that computations(execution_thread) return the expected values.
+  int num_all_computations = 0;
+  for ([[maybe_unused]] const HloComputation* comp :
+       module->computations(/*execution_threads=*/{})) {
+    ++num_all_computations;
+  }
+  EXPECT_EQ(num_all_computations, 2);
+  int num_main_computations = 0;
+  for (const HloComputation* comp :
+       module->computations({HloInstruction::kMainExecutionThread})) {
+    ++num_main_computations;
+    EXPECT_EQ(comp->execution_thread(), HloInstruction::kMainExecutionThread);
+  }
+  EXPECT_EQ(num_main_computations, 1);
+  int num_parallel_computations = 0;
+  for (const HloComputation* comp :
+       module->computations({kParallelThreadName})) {
+    ++num_parallel_computations;
+    EXPECT_EQ(comp->execution_thread(), kParallelThreadName);
+  }
+  EXPECT_EQ(num_parallel_computations, 1);
 }
 
 }  // namespace

@@ -86,6 +86,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
@@ -111,6 +112,7 @@ gentbl_cc_library(
     td_file = "transforms/tf_legalize_patterns.td",
     deps = [
         ":tosa_ops_td_files",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:FuncTdFiles",
     ],
@@ -135,6 +137,7 @@ cc_library(
         ":legalize_common",
         ":passes_header",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineTransforms",
@@ -162,6 +165,7 @@ gentbl_cc_library(
     deps = [
         ":tosa_ops_td_files",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
     ],
 )
@@ -186,6 +190,7 @@ cc_library(
         ":passes_header",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineTransforms",
         "@llvm-project//mlir:Dialect",

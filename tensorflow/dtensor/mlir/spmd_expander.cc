@@ -122,8 +122,7 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
     auto local_expanded_shape_or_status = GetShapeOfValue(output_value);
     if (!local_expanded_shape_or_status.ok()) continue;
 
-    const auto local_expanded_shape =
-        local_expanded_shape_or_status.ValueOrDie();
+    const auto local_expanded_shape = local_expanded_shape_or_status.value();
     const auto& layout = std::get<1>(output_and_layout);
     const auto expected_global_shape =
         layout->GlobalShapeFromLocalShape(local_expanded_shape);

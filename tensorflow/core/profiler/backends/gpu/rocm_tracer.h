@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_ROCM_TRACER_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_ROCM_TRACER_H_
+#ifndef TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_ROCM_TRACER_H_
+#define TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_ROCM_TRACER_H_
 
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/roctracer_wrapper.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/rocm/roctracer_wrapper.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -391,4 +391,4 @@ class RocmTracer {
 
 }  // namespace profiler
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_ROCM_TRACER_H_
+#endif  // TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_ROCM_TRACER_H_

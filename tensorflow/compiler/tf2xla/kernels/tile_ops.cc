@@ -98,7 +98,7 @@ class TileOp : public XlaOpKernel {
     auto result_or = BroadcastTo(ctx->Input("input"), output_dims);
 
     OP_REQUIRES_OK(ctx, result_or.status());
-    auto result = result_or.ValueOrDie();
+    auto result = result_or.value();
     if (!all_multiples_are_static) {
       // Some values of multiples are unknown at compile time, this is a dynamic
       // tile op. We need to call set dimension size.

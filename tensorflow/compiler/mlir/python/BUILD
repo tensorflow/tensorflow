@@ -25,7 +25,7 @@ cc_library(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:tfe_context_internal",
-        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",

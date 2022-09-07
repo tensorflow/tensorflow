@@ -143,8 +143,8 @@ tf_cuda_library(
         "//conditions:default": [
             "//tensorflow/core/common_runtime/eager:tensor_handle",
             "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-            "//tensorflow/stream_executor:platform",
-            "//tensorflow/stream_executor/cuda:cuda_driver",
+            "//tensorflow/compiler/xla/stream_executor:platform",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
             "//tensorflow/c:tf_tensor",
             "//tensorflow/c:tf_tensor_internal",
         ],

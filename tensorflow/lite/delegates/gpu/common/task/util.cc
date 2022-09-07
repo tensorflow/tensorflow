@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -59,6 +60,9 @@ std::string GetGlslConversion(const GpuInfo& gpu_info, DataType src_type,
         need_explicit_conversion = false;
       }
       break;
+    case DataType::BOOL:
+      need_explicit_conversion = true;
+      break;
     default:
       break;
   }
@@ -96,28 +100,6 @@ std::string MemoryTypeToMetalType(MemoryType type) {
       return "threadgroup";
   }
   return "";
-}
-
-std::string GetXStrideCorrected(const std::string& src_x,
-                                const std::string& batch_size,
-                                const std::string& stride_x,
-                                const std::string& padding_x) {
-  // int p0 = src_x / batch_size;\n";
-  // int b0 = src_x % batch_size;\n";
-  // return p0 * stride_x * batch_size + b0 + padding_x;\n";
-  return absl::Substitute("((($0) / $1) * $2 * $1 + (($0) % $1) + $3)", src_x,
-                          batch_size, stride_x, padding_x);
-}
-
-std::string GetXStrideCorrectedV2(const std::string& src_x,
-                                  const std::string& batch_size,
-                                  const std::string& stride_x,
-                                  const std::string& padding_x) {
-  // int p0 = src_x / batch_size;\n";
-  // int b0 = src_x % batch_size;\n";
-  // return (p0 * stride_x + padding_x) * batch_size + b0;\n";
-  return absl::Substitute("(((($0) / $1) * $2 + $3) * $1 + ($0) % $1)", src_x,
-                          batch_size, stride_x, padding_x);
 }
 
 float4 GetMaskForLastPlane(int channels) {
@@ -255,18 +237,36 @@ std::string GetOneValue(const GpuInfo& gpu_info, DataType data_type,
   }
 }
 
-std::string GetTypeConvertion(const GpuInfo& gpu_info, DataType src_type,
+std::string GetTypeConversion(const GpuInfo& gpu_info, DataType src_type,
                               DataType dst_type, int vec_size) {
   if (src_type != dst_type) {
     if (gpu_info.IsApiOpenCl()) {
-      return "convert_" + ToCLDataType(dst_type, vec_size);
+      if (dst_type == DataType::BOOL && vec_size != 1) {
+        // In OpenCL for bool4 we are using uchar4
+        // From OpenCL specification for "Relational and Equality Operators":
+        //   "These functions shall return a 0 if the specified relation is
+        //   false and a -1 (i.e. all bits set) if the specified relation is
+        //   true for vector argument types."
+        // (convert_uchar4((value) != 0) & (uchar4)(1))
+        return "(convert_" + ToCLDataType(DataType::UINT8, vec_size) +
+               "(($0) != " + GetZeroValue(gpu_info, src_type, vec_size) +
+               ") & " + GetOneValue(gpu_info, DataType::UINT8, vec_size) + ")";
+      } else {
+        return "convert_" + ToCLDataType(dst_type, vec_size) + "($0)";
+      }
     } else if (gpu_info.IsApiMetal()) {
-      return ToMetalDataType(dst_type, vec_size);
+      return ToMetalDataType(dst_type, vec_size) + "($0)";
     } else if (gpu_info.IsGlsl()) {
-      return GetGlslConversion(gpu_info, src_type, dst_type, vec_size);
+      const std::string conversion =
+          GetGlslConversion(gpu_info, src_type, dst_type, vec_size);
+      if (!conversion.empty()) {
+        return conversion + "($0)";
+      } else {
+        return "$0";
+      }
     }
   }
-  return "";
+  return "$0";
 }
 
 }  // namespace gpu

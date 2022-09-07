@@ -25,6 +25,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -58,12 +60,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace xla {
 
@@ -403,10 +404,11 @@ enum class EvalErrorDetail : uint32_t {
   kDynamicValueDependence = 0,
 };
 
-Status MakeEvalErrorDueToParamOrInfeed() {
+Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
   Status error = tensorflow::errors::FailedPrecondition(
-      "Failed to evaluate instruction since it depends on infeed or "
-      "parameters to its parent computation.");
+      "Failed to evaluate instruction (", eval_instruction.name(),
+      ") since it depends on infeed or parameters to its parent computation (",
+      eval_instruction.parent()->name(), ").");
   std::string error_payload;
   error_payload.resize(sizeof(EvalErrorDetail));
   absl::little_endian::Store32(
@@ -417,13 +419,12 @@ Status MakeEvalErrorDueToParamOrInfeed() {
 }
 
 std::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
-  std::optional<tensorflow::StringPiece> error_detail =
-      error.GetPayload(kEvalErrorDetailUrl);
+  auto error_detail = error.GetPayload(kEvalErrorDetailUrl);
   if (!error_detail.has_value() && error_detail->empty()) {
     return std::nullopt;
   }
   return static_cast<EvalErrorDetail>(
-      absl::little_endian::Load32(error_detail->data()));
+      absl::little_endian::Load32(error_detail->Flatten().data()));
 }
 
 // A convenience wrapper to compute the while loop's argument's init value at
@@ -820,7 +821,7 @@ StatusOr<Literal> HloEvaluator::Evaluate(
     }
   }
   if (!result.IsKnown()) {
-    return MakeEvalErrorDueToParamOrInfeed();
+    return MakeEvalErrorDueToParamOrInfeed(*computation.root_instruction());
   }
   return result.Clone();
 }
@@ -838,7 +839,7 @@ StatusOr<Literal> HloEvaluator::Evaluate(
                        recursively_evaluate_nonconstant_operands));
   const Literal& result = GetEvaluatedLiteralFor(instruction);
   if (!result.IsKnown()) {
-    return MakeEvalErrorDueToParamOrInfeed();
+    return MakeEvalErrorDueToParamOrInfeed(*instruction);
   }
   return result.Clone();
 }
@@ -853,7 +854,7 @@ bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result,
     return false;
   }
 
-  *result = result_or.ConsumeValueOrDie();
+  *result = std::move(result_or).value();
   return true;
 }
 
@@ -2454,8 +2455,15 @@ static StatusOr<std::reference_wrapper<const Literal>> ReshapedGatherIndices(
   std::vector<int64_t> new_shape(start_indices.shape().dimensions().begin(),
                                  start_indices.shape().dimensions().end());
   new_shape.push_back(1);
-  TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
-                      start_indices.Reshape(new_shape));
+  if (start_indices.shape().is_dynamic()) {
+    // TODO(b/243182930): If we add support for dynamic reshape, remove this
+    // check and the call to ToStatic().
+    TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
+                        start_indices.ToStatic().Reshape(new_shape));
+  } else {
+    TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
+                        start_indices.Reshape(new_shape));
+  }
   return std::cref(*reshaped_start_indices);
 }
 
@@ -2929,7 +2937,7 @@ Status HloEvaluator::HandleScatter(HloInstruction* hlo) {
     }
     Literal updated_result =
         embedded_evaluator.Evaluate(*scatter->to_apply(), to_apply_args)
-            .ConsumeValueOrDie();
+            .value();
     // Clear visit states so that the we can use the evaluate again on the
     // same computation.
     embedded_evaluator.ResetVisitStates();
@@ -3337,7 +3345,7 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
       StatusOr<Literal> result =
           TryParseAndEvaluateWhileInductionVar(while_hlo);
       if (result.ok()) {
-        lcv = result.ConsumeValueOrDie();
+        lcv = std::move(result).value();
         break;
       } else {
         return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",
@@ -3517,14 +3525,14 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
               compare_status = lhs.status();
               return false;
             }
-            literals.push_back(std::move(lhs.ValueOrDie()));
+            literals.push_back(std::move(lhs.value()));
             auto rhs = ExtractFromIndexPositions(literals_to_sort[i], {b},
                                                  /*extract_as_scalar=*/true);
             if (!rhs.ok()) {
               compare_status = rhs.status();
               return false;
             }
-            literals.push_back(std::move(rhs.ValueOrDie()));
+            literals.push_back(std::move(rhs.value()));
           }
           std::vector<const Literal*> literal_ptrs;
           absl::c_transform(literals, std::back_inserter(literal_ptrs),
@@ -3539,7 +3547,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
             compare_status = computed_result.status();
             return false;
           }
-          return computed_result.ValueOrDie().Get<bool>({});
+          return computed_result.value().Get<bool>({});
         };
         if (Cast<HloSortInstruction>(sort)->is_stable()) {
           std::stable_sort(indices_to_sort.begin(), indices_to_sort.end(),
@@ -3839,7 +3847,7 @@ Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {
 }
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
-  VLOG(2) << "About to visit HLO: " << hlo->ToString();
+  VLOG(3) << "About to visit HLO: " << hlo->ToString();
   if (!enable_partial_evaluation_) {
     for (HloInstruction* operand : hlo->mutable_operands()) {
       if (!IsAlreadyEvaluated(operand) ||
@@ -3854,14 +3862,20 @@ Status HloEvaluator::Preprocess(HloInstruction* hlo) {
 }
 
 Status HloEvaluator::Postprocess(HloInstruction* hlo) {
-  VLOG(2) << "Finished visiting " << hlo->ToString()
+  VLOG(3) << "Finished visiting " << hlo->ToString()
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
   // Out of convenience the literal may have been produced with a different
   // layout. Relayout as indicated by the HLO instruction.
-  if (!Layout::Equal().MinorToMajorOnly()(
-          GetEvaluatedLiteralFor(hlo).shape().layout(),
-          hlo->shape().layout())) {
-    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo->shape());
+  auto evaluated_shape = GetEvaluatedLiteralFor(hlo).shape();
+  xla::Shape hlo_shape = hlo->shape();
+  if (hlo_shape.IsArray() && !hlo_shape.has_layout()) {
+    *hlo_shape.mutable_layout() =
+        LayoutUtil::GetDefaultLayoutForShape(hlo_shape);
+  }
+  if (evaluated_shape.has_layout() && hlo_shape.has_layout() &&
+      !Layout::Equal().MinorToMajorOnly()(evaluated_shape.layout(),
+                                          hlo_shape.layout())) {
+    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo_shape);
   }
   return OkStatus();
 }

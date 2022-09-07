@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
+#include <fenv.h>  // NOLINT
+
 #include <algorithm>
 #include <bitset>
 #include <cmath>
@@ -39,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
@@ -256,8 +259,17 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <typename NativeT,
             typename std::enable_if_t<!is_complex_v<NativeT>>* = nullptr>
   Status HandleRoundNearestEven(HloInstruction* round) {
-    // TODO(b/228138251): Add support for rounding to nearest even.
-    return UnsupportedTypeError(round);
+    // Saves current rounding direction.
+    int curr_direction = fegetround();
+    fesetround(FE_TONEAREST);
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[round],
+        ElementWiseUnaryOp(round, [](ElementwiseT elem_operand) {
+          return std::nearbyint(elem_operand);
+        }));
+    // Restores default rounding direction.
+    fesetround(curr_direction);
+    return OkStatus();
   }
 
   template <typename NativeT,
@@ -1115,17 +1127,17 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     }
     if (rhs_same) {
       return HandleConvolutionWithLiterals(
-          conv, lhs_literal.Convert(result_shape.element_type()).ValueOrDie(),
+          conv, lhs_literal.Convert(result_shape.element_type()).value(),
           rhs_literal);
     }
     if (lhs_same) {
       return HandleConvolutionWithLiterals(
           conv, lhs_literal,
-          rhs_literal.Convert(result_shape.element_type()).ValueOrDie());
+          rhs_literal.Convert(result_shape.element_type()).value());
     }
     return HandleConvolutionWithLiterals(
-        conv, lhs_literal.Convert(result_shape.element_type()).ValueOrDie(),
-        rhs_literal.Convert(result_shape.element_type()).ValueOrDie());
+        conv, lhs_literal.Convert(result_shape.element_type()).value(),
+        rhs_literal.Convert(result_shape.element_type()).value());
   }
 
   Status HandleDot(HloInstruction* dot) override {
@@ -1183,9 +1195,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const PrimitiveType native_ty =
         primitive_util::NativeToPrimitiveType<NativeT>();
     Literal lhs_literal =
-        parent_->GetEvaluatedLiteralFor(lhs).Convert(native_ty).ValueOrDie();
+        parent_->GetEvaluatedLiteralFor(lhs).Convert(native_ty).value();
     Literal rhs_literal =
-        parent_->GetEvaluatedLiteralFor(rhs).Convert(native_ty).ValueOrDie();
+        parent_->GetEvaluatedLiteralFor(rhs).Convert(native_ty).value();
     const int64_t contracted_dimension_size =
         lhs->shape().dimensions(lhs_contracting_dimension);
     Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
@@ -1199,7 +1211,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     Literal result(ShapeUtil::MakeShape(native_ty, dot->shape().dimensions()));
     result.PopulateR2FromArray2D(*result_array);
     parent_->evaluated_[dot] =
-        std::move(result).Convert(dot->shape().element_type()).ValueOrDie();
+        std::move(result).Convert(dot->shape().element_type()).value();
     return OkStatus();
   }
 
@@ -1238,7 +1250,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       }
     }
 
-    absl::InlinedVector<int64_t, InlineRank()> contracting_dim_sizes;
+    DimensionVector contracting_dim_sizes;
     contracting_dim_sizes.reserve(dnums.lhs_contracting_dimensions_size());
     DimensionVector lhs_contracting_dims;
     DimensionVector rhs_contracting_dims;
@@ -1323,16 +1335,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     if (lhs_same) {
       return HandleDotSlowPathWithLiterals(
           dot, lhs_literal,
-          rhs_literal.Convert(dot->shape().element_type()).ValueOrDie());
+          rhs_literal.Convert(dot->shape().element_type()).value());
     }
     if (rhs_same) {
       return HandleDotSlowPathWithLiterals(
-          dot, lhs_literal.Convert(dot->shape().element_type()).ValueOrDie(),
+          dot, lhs_literal.Convert(dot->shape().element_type()).value(),
           rhs_literal);
     }
     return HandleDotSlowPathWithLiterals(
-        dot, lhs_literal.Convert(dot->shape().element_type()).ValueOrDie(),
-        rhs_literal.Convert(dot->shape().element_type()).ValueOrDie());
+        dot, lhs_literal.Convert(dot->shape().element_type()).value(),
+        rhs_literal.Convert(dot->shape().element_type()).value());
   }
 
   Status HandlePad(HloInstruction* pad) override {
@@ -1549,8 +1561,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           }
 
           Literal computed_result =
-              embedded_evaluator.Evaluate(*computation, arg_literals)
-                  .ConsumeValueOrDie();
+              embedded_evaluator.Evaluate(*computation, arg_literals).value();
           // Clear visit states so that the we can use the evaluate again on
           // the same computation.
           embedded_evaluator.ResetVisitStates();
@@ -1707,7 +1718,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 embedded_evaluator
                     .Evaluate(*select,
                               {&selected_val_literal, &curr_val_literal})
-                    .ConsumeValueOrDie();
+                    .value();
             bool selected = !computed_result.Get<bool>({});
             if (selected) {
               selected_val = curr_val;
@@ -1730,7 +1741,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                   embedded_evaluator
                       .Evaluate(*scatter,
                                 {&source_literal_scatter, &scattered_literal})
-                      .ConsumeValueOrDie();
+                      .value();
               result.Set(operand_index, computed_result.Get<ReturnT>({}));
               // Clear visit states so that the we can use the evaluator again
               // on the same computation.
@@ -1828,8 +1839,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                       << "\n";
               args.push_back(&curr_val_literal_vec.back());
             }
-            computed_result[0] = embedded_evaluator.Evaluate(*function, args)
-                                     .ConsumeValueOrDie();
+            computed_result[0] =
+                embedded_evaluator.Evaluate(*function, args).value();
             VLOG(2) << "Computed result:" << computed_result[0].ToString()
                     << "\n";
             // Clear visit states so that the we can use the evaluate again

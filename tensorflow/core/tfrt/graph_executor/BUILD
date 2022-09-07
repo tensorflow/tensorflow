@@ -8,6 +8,7 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//smartass/brain/inference/...",
         "//tensorflow/core/tfrt/saved_model/...",
         "//tensorflow/core/tfrt/tfrt_session/...",
     ],
@@ -34,6 +35,7 @@ cc_library(
     tags = ["no_oss"],
     deps = [
         ":graph_execution_options",
+        "//learning/brain/experimental/tfrt/native_lowering/saved_model:saved_model_translate",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_request_context",
@@ -79,16 +81,14 @@ tf_cc_test(
         "//tensorflow/cc:array_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:const_op",
-        "//tensorflow/cc:functional_ops",
-        "//tensorflow/cc:while_loop",
         "//tensorflow/core:test",
         "//tensorflow/core/framework:graph_proto_cc",
-        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/grappler/utils:grappler_test",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "//tensorflow/core/tfrt/tpu:tpu_resources",
         "@com_google_googletest//:gtest_main",
     ],
 )

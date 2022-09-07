@@ -543,7 +543,7 @@ def _is_statically_shaped(element_spec):
       if spec.shape.rank > 0 and spec.shape.as_list()[0] is None:
         return False
     else:
-      for component in nest.flatten(spec._component_specs):  # pylint: disable=protected-access
+      for component in spec._flat_tensor_specs:  # pylint: disable=protected-access
         if not component.shape.is_fully_defined():
           return False
   return True

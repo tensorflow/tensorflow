@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <math.h>
 
+#include <algorithm>
+
 #include <gmock/gmock.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"

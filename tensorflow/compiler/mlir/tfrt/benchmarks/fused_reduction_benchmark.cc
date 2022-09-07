@@ -64,7 +64,7 @@ auto EigenFusedReduction1D() {
     auto out = output.tensor<float, 0>();
     out.setZero();
 
-    if (device.hasValue()) {
+    if (device.has_value()) {
       out.device(*device) = (lhs.abs() + rhs.exp()).sum(dims_to_reduce);
     } else {
       out = (lhs.abs() + rhs.exp()).prod(dims_to_reduce);

@@ -19,6 +19,7 @@ pytype_strict_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":default_types",
+        ":serialization",
         ":util",
         "//tensorflow/python/types",
     ],

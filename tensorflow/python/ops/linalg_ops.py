@@ -394,7 +394,8 @@ def eig(tensor, name=None):
     name: string, optional name of the operation.
 
   Returns:
-    e: Eigenvalues. Shape is `[..., N]`. Sorted in non-decreasing order.
+    e: Eigenvalues. Shape is `[..., N]`. The eigenvalues are not necessarily
+       ordered.
     v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
       matrices contain eigenvectors of the corresponding matrices in `tensor`
   """
@@ -752,11 +753,12 @@ def norm(tensor,
             axis=-1)
         result = array_ops.transpose(matrix_2_norm, perm=perm_after)
       else:
+        # NOTE: we unfortunately cannot use tf.math.reduce_euclidean_norm, since
+        # this introduces a new op that is not supported in XLA, and breaks
+        # many existing TPU workloads (e.g. ResNet).
         result = math_ops.sqrt(
             math_ops.reduce_sum(
                 tensor * math_ops.conj(tensor), axis, keepdims=True))
-        # TODO(rmlarsen): Replace with the following, once gradients are defined
-        # result = math_ops.reduce_euclidean_norm(tensor, axis, keepdims=True)
     else:
       result = math_ops.abs(tensor)
       if ord == 1:

@@ -19,6 +19,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -58,9 +59,9 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace {
@@ -640,6 +641,7 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                               .AttrConstraint("data_format", "NHWC"),         \
                           Conv2DBackpropFilterOp<CPUDevice, T>);
 
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
@@ -760,7 +762,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     OP_REQUIRES_OK(
         ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
                                   se::blas::Transpose::kTranspose, n, m, k,
-                                  a_ptr, n, b_ptr, m, &c_ptr, n));
+                                  a_ptr, n, b_ptr, m, &c_ptr, n,
+                                  se::blas::kDefaultComputePrecision));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -785,7 +788,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     OP_REQUIRES_OK(
         ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
                                   se::blas::Transpose::kTranspose, n, m, k,
-                                  b_ptr, n, a_ptr, m, &c_ptr, n));
+                                  b_ptr, n, a_ptr, m, &c_ptr, n,
+                                  se::blas::kDefaultComputePrecision));
     return;
   }
 
@@ -827,13 +831,12 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       << "Negative row or col paddings: (" << common_padding_rows << ", "
       << common_padding_cols << ")";
 
-#if GOOGLE_CUDA
-  const bool compute_in_nhwc = ComputeInNhwcEnabled(DataTypeToEnum<T>::value,
-                                                    stream, /*is_conv2d=*/true);
-#else
-  // fast NHWC implementation is a CUDA only feature
-  const bool compute_in_nhwc = false;
-#endif
+  // The Tensor Core in NVIDIA Volta+ GPUs supports efficient convolution with
+  // fp16 in NHWC data layout. In all other configurations it's more efficient
+  // to run computation in NCHW data format.
+  const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
+                               stream->GetCudaComputeCapability().IsAtLeast(
+                                   se::CudaComputeCapability::VOLTA);
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects the preferred layout and
@@ -957,9 +960,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   auto input_ptr = AsDeviceMemory(transformed_input.template flat<T>().data(),
                                   transformed_input.template flat<T>().size());
 
-  static int64_t ConvolveBackwardFilterScratchSize = GetDnnWorkspaceLimit(
-      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
-  );
+  static int64_t ConvolveBackwardFilterScratchSize =
+      GetDnnWorkspaceLimitOrDefault();
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();
   ConvParameters conv_parameters = {
@@ -989,7 +991,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       filter_desc, filter_backprop_ptr, conv_desc, output_desc,
       out_backprop_ptr, ConvolveBackwardFilterScratchSize);
   OP_REQUIRES_OK(ctx, entry_or.status());
-  auto autotune_entry = entry_or.ConsumeValueOrDie();
+  auto autotune_entry = std::move(entry_or).value();
 
   DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize, ctx);
   Status cudnn_launch_status = LaunchAutotunedConv(

@@ -36,10 +36,11 @@ class GpuDevice : public PjRtStreamExecutorDevice {
 
   absl::string_view device_vendor();
 
-  std::string ToString() const override;
+  absl::string_view ToString() const override;
 
  private:
   std::string device_vendor_;
+  std::string to_string_;
 };
 
 struct GpuAllocatorConfig {

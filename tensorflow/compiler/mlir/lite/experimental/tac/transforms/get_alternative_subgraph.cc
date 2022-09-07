@@ -157,7 +157,8 @@ void AlternativeSubgraphPass::GetAlternativeGraphForFunc(
   }
 
   auto current_inference_type = GetInferenceTypeAnnotation(func);
-  if (!current_inference_type.hasValue() || current_inference_type == UNKNOWN) {
+  if (!current_inference_type.has_value() ||
+      current_inference_type == UNKNOWN) {
     func.emitError(
         "cannot find inference type annotation or unknown inference type "
         "specified for current "
@@ -226,7 +227,7 @@ func::FuncOp AlternativeSubgraphPass::GetAlternativeViewForSpec(
   func::FuncOp cloned_func = func.clone();
   cloned_func.setPrivate();
   auto interface_name = GetInterFaceName(func);
-  if (!interface_name.hasValue()) {
+  if (!interface_name.has_value()) {
     func.emitError("the func op does not have interface_name");
     return nullptr;
   }

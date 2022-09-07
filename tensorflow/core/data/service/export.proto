@@ -10,7 +10,7 @@ import "tensorflow/core/protobuf/service_config.proto";
 // Next tag: 4
 message DispatcherStateExport {
   message Iteration {
-    int64 dataset_id = 1;
+    string dataset_id = 1;
     int64 iteration_id = 2;
     IterationKeyDef iteration_key = 3;
     ProcessingModeDef processing_mode = 4;

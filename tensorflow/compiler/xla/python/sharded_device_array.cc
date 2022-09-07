@@ -75,7 +75,13 @@ void ShardedDeviceArray::Delete() {
   if (is_deleted_) {
     return;
   }
-  for (xla::PjRtBuffer* pjrt_buffer : GetPjRtBuffers().ConsumeValueOrDie()) {
+  // We can't inline this expression into the for loop! Here, .value()
+  // returns an rvalue reference to the Span embedded in the StatusOr.
+  // Binding the reference would extend the lifetime of the Span itself,
+  // but not of the StatusOr, causing stack-use-after-scope errors. Also see
+  // https://en.cppreference.com/w/cpp/language/range-for#Temporary_range_expression
+  auto buffers = GetPjRtBuffers().value();
+  for (xla::PjRtBuffer* pjrt_buffer : buffers) {
     pjrt_buffer->Delete();
   }
   device_buffers_ = std::nullopt;
@@ -123,6 +129,19 @@ PyObject* ShardedDeviceArray::type_ = nullptr;
       ShardedDeviceArray(aval, std::move(sharding_spec),
                          std::move(device_buffers), indices, weak_type);
   return py::reinterpret_borrow<ShardedDeviceArray::object>(obj);
+}
+
+/*static*/ ShardedDeviceArray::object ShardedDeviceArray::Make(
+    py::object aval, ShardingSpec sharding_spec,
+    const xla::PyShardedBuffer& sharded_buffer, py::object indices,
+    bool weak_type) {
+  int num_devices = sharded_buffer.num_devices();
+  py::list device_buffers(num_devices);
+  for (int i = 0; i < num_devices; ++i) {
+    device_buffers[i] = sharded_buffer.GetPyBuffer(i);
+  }
+  return Make(std::move(aval), std::move(sharding_spec),
+              std::move(device_buffers), std::move(indices), weak_type);
 }
 
 bool ShardedDeviceArray::IsShardedDeviceArray(py::handle handle) {
@@ -214,9 +233,20 @@ py::handle ShardedDeviceArray::AsHandle() {
   m.attr("ShardedDeviceArray") = type;
 
   type.attr("make") = def_static([](py::object aval, ShardingSpec sharding_spec,
-                                    py::list device_buffers, py::object indices,
-                                    bool weak_type) {
-    return ShardedDeviceArray::Make(aval, sharding_spec, device_buffers,
+                                    py::object sharded_buffer_or_device_buffers,
+                                    py::object indices, bool weak_type) {
+    // Overloads this "make" method to accept either a list of PyBuffers or a
+    // PyShardedBuffer.
+    if (py::isinstance<py::list>(sharded_buffer_or_device_buffers)) {
+      return ShardedDeviceArray::Make(
+          aval, sharding_spec,
+          std::move(sharded_buffer_or_device_buffers).cast<py::list>(), indices,
+          weak_type);
+    }
+
+    return ShardedDeviceArray::Make(aval, sharding_spec,
+                                    std::move(sharded_buffer_or_device_buffers)
+                                        .cast<xla::PyShardedBuffer>(),
                                     indices, weak_type);
   });
   type.attr("aval") =

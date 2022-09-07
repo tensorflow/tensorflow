@@ -1568,6 +1568,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     def tpu_function(args, kwargs):
       """TF Function used to replicate the user computation."""
+      logging.vlog(1,
+                   "`TPUStrategy.run` is called with [args: %s] [kwargs: %s]",
+                   args, kwargs)
+
       if kwargs is None:
         kwargs = {}
 

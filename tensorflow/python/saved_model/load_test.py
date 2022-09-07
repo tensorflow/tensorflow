@@ -28,6 +28,7 @@ import weakref
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python.checkpoint import checkpoint
+from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -36,6 +37,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -800,7 +802,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     def get_gradient(obj):
       with backprop.GradientTape() as t:
-        x = constant_op.constant(2.)
+        x = constant_op.constant(2., dtype=dtype)
         y = obj.g(x)
         self.assertAllClose(y, obj.weight * 2.)
         self.assertAllEqual(t.watched_variables(), [obj.weight])
@@ -850,7 +852,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float32)
 
   def test_restored_func_with_captured_var_backprop_float64(self, cycles):
-    self.skipTest("b/144573917")
     self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float64)
 
   def test_callable(self, cycles):
@@ -1168,18 +1169,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       v.assign_add(1)
       capture.assign_sub(1)
 
-    @def_function.function(input_signature=[
-        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
-    ])
-    def func_with_input_signature(v):
-      v.assign_add(5)
-      capture.assign_sub(5)
-      return 1
-
     vsave = variables.Variable(1)
     root = autotrackable.AutoTrackable()
     root.f = func.get_concrete_function(vsave)
-    root.f_sig = func_with_input_signature.get_concrete_function()
     root.capture = capture
 
     self.assertEqual(1, vsave.numpy())
@@ -1187,24 +1179,17 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(2, vsave.numpy())
     self.assertEqual(-1, capture.numpy())
 
-    root.f_sig(vsave)
-    self.assertEqual(7, vsave.numpy())
-    self.assertEqual(-6, capture.numpy())
-
     imported = cycle(root, cycles)
 
     vload = variables.Variable(1)
     imported.f(vload)
     self.assertEqual(2, vload.numpy())
+    self.assertEqual(-2, imported.capture.numpy())
     imported.f(v=vload)
     self.assertEqual(3, vload.numpy())
-    self.assertEqual(-8, imported.capture.numpy())
+    self.assertEqual(-3, imported.capture.numpy())
 
-    imported.f_sig(v=vload)
-    self.assertEqual(8, vload.numpy())
-    self.assertEqual(-13, imported.capture.numpy())
-
-    self.assertEqual(-6, capture.numpy())
+    self.assertEqual(-1, capture.numpy())
 
   def test_function_and_component(self, cycles):
 
@@ -1956,7 +1941,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     options = load_options.LoadOptions(experimental_io_device="/job:localhost")
     self.assertEqual("/job:localhost", options.experimental_io_device)
 
-  def test_load_custom_saveable_object(self, cycles):
+  def _custom_saveable_object(self, cycles):
     if context.is_tfrt_enabled():
       self.skipTest("Disable due to b/190539415.")
     root = autotrackable.AutoTrackable()
@@ -1975,6 +1960,19 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = cycle(root, cycles)
     self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
     self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
+
+    if not saveable_compat.force_checkpoint_conversion_enabled():
+      self.assertEqual({"table"},
+                       imported.table._self_saveable_object_factories.keys())
+
+  def test_load_custom_saveable_object(self, cycles):
+    self._custom_saveable_object(cycles)
+
+  def test_load_custom_saveable_object_ckpt_conversion(self, cycles):
+    # Tests custom saveable object with checkpoint conversion enabled (forces
+    # Trackable-based checkpoint implementation).
+    saveable_compat.force_checkpoint_conversion()
+    self._custom_saveable_object(cycles)
 
   def test_load_resource_with_dependency(self, cycles):
     # Test with StaticHashTable, which has a _initializer attribute that tracks
@@ -2546,6 +2544,53 @@ class DeferredInitModuleVariablesTest(test.TestCase):
         options=load_options.LoadOptions(experimental_skip_checkpoint=True))
     self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
                         [3, 1])
+
+
+class _TestModel(module.Module):
+
+  def __init__(self, rows, cols):
+    super().__init__()
+    self.rows = rows
+    self.cols = cols
+    self.table = None
+
+  def __call__(self, x):
+    with ops.device("/cpu:0"):
+      self.table = variables.Variable(
+          constant_op.constant(1., shape=[self.rows, self.cols]))
+      x = math_ops.matmul(self.table, x)
+      x = math_ops.reduce_sum(x, axis=0)
+    return x
+
+
+class SavedModelLoadMemoryTests(test.TestCase):
+
+  @test_util.run_gpu_only
+  def test_no_oom_loading_large_tenor(self):
+    if not config.get_soft_device_placement():
+      self.skipTest("This test only works for soft device placement is on")
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    ncols = 16
+    nrows = 32
+    model = _TestModel(rows=nrows, cols=ncols)
+    x = array_ops.zeros(shape=(ncols, 2), dtype=dtypes.float32)
+    y = model(x)
+    save.save(
+        model,
+        save_dir,
+        options=save_options.SaveOptions(
+            experimental_variable_policy=save_options.VariablePolicy
+            .SAVE_VARIABLE_DEVICES),
+    )
+    loaded_on_cpu = load.load(
+        export_dir=save_dir,
+        options=load_options.LoadOptions(
+            experimental_variable_policy=save_options.VariablePolicy
+            .SAVE_VARIABLE_DEVICES),
+    )
+    loaded_on_gpu = load.load(export_dir=save_dir)
+    self.assertTrue("CPU" in loaded_on_cpu.table.device)
+    self.assertTrue("GPU" in loaded_on_gpu.table.device)
 
 
 if __name__ == "__main__":

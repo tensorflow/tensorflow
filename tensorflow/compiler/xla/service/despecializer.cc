@@ -29,8 +29,10 @@ Despecializer::Despecializer() : pipeline_("despecializer") {
   pipeline_.AddPass<BFloat16MixedPrecisionRemoval>();
 }
 
-StatusOr<bool> Despecializer::Run(HloModule* module) {
-  return pipeline_.Run(module);
+StatusOr<bool> Despecializer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return pipeline_.Run(module, execution_threads);
 }
 
 }  // namespace xla

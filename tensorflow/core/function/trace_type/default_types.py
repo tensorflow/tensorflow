@@ -39,11 +39,12 @@ class Literal(trace.TraceType, serialization.Serializable):
     return self if all(self == other for other in types) else None
 
   @classmethod
-  def type_proto(cls) -> Type[default_types_pb2.SerializedLiteral]:
+  def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedLiteral]:
     return default_types_pb2.SerializedLiteral
 
   @classmethod
-  def from_proto(cls, proto: default_types_pb2.SerializedLiteral) -> "Literal":
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedLiteral) -> "Literal":
     if proto.HasField("bool_value"):
       return Literal(proto.bool_value)
 
@@ -56,9 +57,12 @@ class Literal(trace.TraceType, serialization.Serializable):
     if proto.HasField("str_value"):
       return Literal(proto.str_value)
 
+    if proto.HasField("none_value"):
+      return Literal(None)
+
     raise ValueError("Malformed Literal proto can not be deserialized")
 
-  def to_proto(self) -> default_types_pb2.SerializedLiteral:
+  def experimental_as_proto(self) -> default_types_pb2.SerializedLiteral:
     if isinstance(self.value, bool):
       return default_types_pb2.SerializedLiteral(bool_value=self.value)
 
@@ -70,6 +74,10 @@ class Literal(trace.TraceType, serialization.Serializable):
 
     if isinstance(self.value, str):
       return default_types_pb2.SerializedLiteral(str_value=self.value)
+
+    if self.value is None:
+      return default_types_pb2.SerializedLiteral(
+          none_value=default_types_pb2.SerializedLiteral.NoneValue())
 
     raise ValueError("Can not serialize Literal of type " +
                      type(self.value).__name__)
@@ -133,104 +141,51 @@ class Weakref(trace.TraceType):
     return f"{self.__class__.__name__}(ref={self._ref!r})"
 
 
-class OrderedCollection(trace.TraceType):
-  """Represents an ordered collection of TraceType objects.
+class Tuple(trace.TraceType, serialization.Serializable):
+  """Represents a tuple of TraceType objects."""
 
-  Attributes:
-    collection_type: Python type for the collection (list, tuple etc.)
-    components: A corresponding sequence of TraceTypes to the values in the
-      collection.
-  """
-
-  def __init__(self, collection_type: Type[Any],
-               components: PythonTuple[trace.TraceType]):
-    self.collection_type = collection_type
+  def __init__(self, *components: trace.TraceType):
     self.components = components
 
-  def _shallow_equal(self, other):
-    return (isinstance(other, OrderedCollection) and
-            self.collection_type == other.collection_type and
-            len(self.components) == len(other.components))
-
-  def _supertype_components(
-      self, others: Sequence["OrderedCollection"]
-  ) -> Optional[Sequence[trace.TraceType]]:
-    """Helper that generates a list of per-component supertypes or None."""
-    new_components = []
-    for i, component in enumerate(self.components):
-      common = component.most_specific_common_supertype(
-          [other.components[i] for other in others])
-      if common is None:
-        return None
-      else:
-        new_components.append(common)
-    return new_components
-
   def is_subtype_of(self, other: trace.TraceType) -> bool:
-    """See base class."""
-    if not self._shallow_equal(other):
+    if (not isinstance(other, Tuple) or
+        len(self.components) != len(other.components)):
       return False
 
     return all(
         self_component.is_subtype_of(other_component) for self_component,
         other_component in zip(self.components, other.components))
 
-  def __eq__(self, other) -> bool:
-    if not isinstance(other, trace.TraceType):
-      return NotImplemented
-
-    if not self._shallow_equal(other):
-      return False
-
-    return self.components == other.components
-
-  def __hash__(self) -> int:
-    return hash((self.collection_type, self.components))
-
-  def __repr__(self):
-    return (f"{self.__class__.__name__}(collection_type="
-            f"{self.collection_type!r}, components={self.components!r})")
-
-
-class List(OrderedCollection):
-  """Represents a list of TraceType objects."""
-
-  def __init__(self, *components: trace.TraceType):
-    super().__init__(list, components)
-
   def most_specific_common_supertype(
-      self, types: Sequence[trace.TraceType]) -> Optional["List"]:
+      self, others: Sequence[trace.TraceType]) -> Optional["Tuple"]:
     """See base class."""
-    if not all(self._shallow_equal(other) for other in types):
+    if not all(
+        isinstance(other, Tuple) and
+        len(self.components) == len(other.components) for other in others):
       return None
 
-    new_components = self._supertype_components(types)
+    supertyped_components = []
+    for i, component in enumerate(self.components):
+      supertyped_component = component.most_specific_common_supertype(
+          [other.components[i] for other in others])
+      if supertyped_component is None:
+        return None
+      supertyped_components.append(supertyped_component)
 
-    return None if new_components is None else List(*new_components)
+    return Tuple(*supertyped_components)
 
-  def _placeholder_value(self) -> Any:
-    components = [
-        component._placeholder_value()  # pylint: disable=protected-access
-        for component in self.components
-    ]
-    return list(components)
+  @classmethod
+  def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedTuple]:
+    return default_types_pb2.SerializedTuple
 
+  @classmethod
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedTuple) -> "Tuple":
+    return Tuple(*[serialization.deserialize(c) for c in proto.components])
 
-class Tuple(OrderedCollection):
-  """Represents a tuple of TraceType objects."""
-
-  def __init__(self, *components: trace.TraceType):
-    super().__init__(tuple, components)
-
-  def most_specific_common_supertype(
-      self, types: Sequence[trace.TraceType]) -> Optional["Tuple"]:
-    """See base class."""
-    if not all(self._shallow_equal(other) for other in types):
-      return None
-
-    new_components = self._supertype_components(types)
-
-    return None if new_components is None else Tuple(*new_components)
+  def experimental_as_proto(self) -> default_types_pb2.SerializedTuple:
+    return default_types_pb2.SerializedTuple(
+        components=[serialization.serialize(c) for c in self.components])
 
   def _placeholder_value(self) -> Any:
     components = [
@@ -239,40 +194,265 @@ class Tuple(OrderedCollection):
     ]
     return tuple(components)
 
+  def __eq__(self, other: Any) -> bool:
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
 
-class NamedTuple(OrderedCollection):
-  """Represents a NamedTuple of TraceType objects."""
+    if not isinstance(other, Tuple):
+      return False
 
-  def __init__(self, collection_type: Type[object],
-               attributes: PythonTuple[trace.TraceType]):
-    super().__init__(collection_type, attributes)
+    return self.components == other.components
+
+  def __hash__(self) -> int:
+    return hash(self.components)
+
+  def __repr__(self):
+    return f"Tuple(components={self.components!r})"
+
+
+class List(trace.TraceType, serialization.Serializable):
+  """Represents a list of TraceType objects."""
+
+  def __init__(self, *components: trace.TraceType):
+    self.components_tuple = Tuple(*components)
+
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    if not isinstance(other, List):
+      return False
+
+    return self.components_tuple.is_subtype_of(other.components_tuple)
 
   def most_specific_common_supertype(
-      self, types: Sequence[trace.TraceType]) -> Optional["NamedTuple"]:
+      self, others: Sequence[trace.TraceType]) -> Optional["Tuple"]:
     """See base class."""
-    if not all(self._shallow_equal(other) for other in types):
+    if not all(isinstance(other, List) for other in others):
       return None
 
-    new_components = self._supertype_components(types)
+    supertyped_components_tuple = self.components_tuple.most_specific_common_supertype(
+        [other.components_tuple for other in others])
 
-    return None if new_components is None else type(self)(self.collection_type,
-                                                          tuple(new_components))
+    if supertyped_components_tuple is None:
+      return None
+
+    return List(*supertyped_components_tuple.components)
+
+  @classmethod
+  def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedList]:
+    return default_types_pb2.SerializedList
+
+  @classmethod
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedList) -> "List":
+    return List(
+        *Tuple.experimental_from_proto(proto.components_tuple).components)
+
+  def experimental_as_proto(self) -> default_types_pb2.SerializedList:
+    return default_types_pb2.SerializedList(
+        components_tuple=self.components_tuple.experimental_as_proto())
 
   def _placeholder_value(self) -> Any:
-    components = [
-        component._placeholder_value()  # pylint: disable=protected-access
-        for component in self.components
+    return list(self.components_tuple._placeholder_value())  # pylint: disable=protected-access
+
+  def __eq__(self, other: Any) -> bool:
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    if not isinstance(other, List):
+      return False
+
+    return self.components_tuple == other.components_tuple
+
+  def __hash__(self) -> int:
+    return hash(self.components_tuple)
+
+  def __repr__(self):
+    return f"List(components={self.components_tuple.components!r})"
+
+
+class NamedTuple(trace.TraceType, serialization.Serializable):
+  """Represents a NamedTuple of TraceType objects."""
+
+  def __init__(self,
+               type_name: str,
+               attribute_names: PythonTuple[str],
+               attributes: PythonTuple[trace.TraceType],
+               placeholder_type: Optional[Type[Any]] = None):
+    self.type_name = type_name
+    self.attribute_names = attribute_names
+    self.attributes = Tuple(*attributes)
+    self._placeholder_type = placeholder_type
+
+  @classmethod
+  def from_type_and_attributes(
+      cls, named_tuple_type: Any,
+      attributes: PythonTuple[trace.TraceType]) -> "NamedTuple":
+    return NamedTuple(named_tuple_type.__name__, named_tuple_type._fields,
+                      attributes, named_tuple_type)
+
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    if not isinstance(other, NamedTuple):
+      return False
+
+    return (self.type_name == other.type_name and
+            self.attribute_names == other.attribute_names and
+            self.attributes.is_subtype_of(other.attributes))
+
+  def most_specific_common_supertype(
+      self, others: Sequence[trace.TraceType]) -> Optional["NamedTuple"]:
+    """See base class."""
+    if not all(
+        isinstance(other, NamedTuple) and self.type_name == other.type_name and
+        self.attribute_names == other.attribute_names for other in others):
+      return None
+
+    supertyped_attributes = self.attributes.most_specific_common_supertype(
+        [other.attributes for other in others])
+
+    if supertyped_attributes is None:
+      return None
+
+    return NamedTuple(self.type_name, self.attribute_names,
+                      supertyped_attributes.components, self._placeholder_type)
+
+  @classmethod
+  def experimental_type_proto(
+      cls) -> Type[default_types_pb2.SerializedNamedTuple]:
+    return default_types_pb2.SerializedNamedTuple
+
+  @classmethod
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedNamedTuple) -> "NamedTuple":
+    return NamedTuple(
+        proto.type_name, tuple(proto.attribute_names),
+        Tuple.experimental_from_proto(proto.attributes).components)
+
+  def experimental_as_proto(self) -> default_types_pb2.SerializedNamedTuple:
+    return default_types_pb2.SerializedNamedTuple(
+        type_name=self.type_name,
+        attribute_names=list(self.attribute_names),
+        attributes=self.attributes.experimental_as_proto())
+
+  def _placeholder_value(self) -> Any:
+    if self._placeholder_type is None:
+      # We don't need to trace after serialization so it is not needed but we
+      # can generate a placeholder type using the description if ever needed.
+      raise ValueError("Can not generate placeholder value for NamedTuple with"
+                       " unspecified placeholder_type. Note: placeholder_type "
+                       "is lost during serialization.")
+    attribute_placeholders = [
+        attribute._placeholder_value()  # pylint: disable=protected-access
+        for attribute in self.attributes.components
     ]
-    return self.collection_type(*components)
+    return self._placeholder_type(*attribute_placeholders)
+
+  def __hash__(self) -> int:
+    return hash((self.type_name, self.attribute_names, self.attributes))
+
+  def __eq__(self, other: Any) -> bool:
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    if not isinstance(other, NamedTuple):
+      return False
+
+    return (self.type_name == other.type_name and
+            self.attribute_names == other.attribute_names and
+            self.attributes == other.attributes)
+
+  def __repr__(self):
+    return (f"NamedTuple(type_name={self.type_name}, "
+            f"attribute_names={self.attribute_names}, "
+            f"attributes={self.attributes.components})")
 
 
-class Attrs(NamedTuple):
-  """Represents a class annotated by attr.s.
+class Attrs(trace.TraceType):
+  """Represents a class annotated by attr.s."""
 
-  Each attr.s class has a fixed, ordered set of attributes. Therefore, we only
-  need to consider the class type and the underlying attributes. Extra
-  metadata including attribute names can be ignored.
-  """
+  def __init__(self,
+               type_name: str,
+               attribute_names: PythonTuple[str],
+               attributes: PythonTuple[trace.TraceType],
+               placeholder_type: Optional[Type[Any]] = None):
+    self.named_attributes = NamedTuple(type_name, attribute_names, attributes)
+    self._placeholder_type = placeholder_type
+
+  @classmethod
+  def from_type_and_attributes(
+      cls, attrs_type: Any,
+      attributes: PythonTuple[trace.TraceType]) -> "Attrs":
+    return Attrs(attrs_type.__name__,
+                 tuple(attr.name for attr in attrs_type.__attrs_attrs__),
+                 attributes, attrs_type)
+
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    if not isinstance(other, Attrs):
+      return False
+
+    return self.named_attributes.is_subtype_of(other.named_attributes)
+
+  def most_specific_common_supertype(
+      self, others: Sequence[trace.TraceType]) -> Optional["Attrs"]:
+    """See base class."""
+    if not all(isinstance(other, Attrs) for other in others):
+      return None
+
+    supertyped_attributes = self.named_attributes.most_specific_common_supertype(
+        [other.named_attributes for other in others])
+
+    if supertyped_attributes is None:
+      return None
+
+    return Attrs(self.named_attributes.type_name,
+                 self.named_attributes.attribute_names,
+                 supertyped_attributes.attributes.components,
+                 self._placeholder_type)
+
+  @classmethod
+  def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedAttrs]:
+    return default_types_pb2.SerializedAttrs
+
+  @classmethod
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedAttrs) -> "Attrs":
+    return Attrs(
+        proto.named_attributes.type_name,
+        tuple(proto.named_attributes.attribute_names),
+        Tuple.experimental_from_proto(
+            proto.named_attributes.attributes).components)
+
+  def experimental_as_proto(self) -> default_types_pb2.SerializedAttrs:
+    return default_types_pb2.SerializedAttrs(
+        named_attributes=self.named_attributes.experimental_as_proto())
+
+  def _placeholder_value(self) -> Any:
+    if self._placeholder_type is None:
+      # We don't need to trace after serialization so it is not needed but we
+      # can generate a placeholder type using the description if ever needed.
+      raise ValueError("Can not generate placeholder value for Attrs with"
+                       " unspecified placeholder_type. Note: placeholder_type "
+                       "is lost during serialization.")
+    attribute_placeholders = [
+        attribute._placeholder_value()  # pylint: disable=protected-access
+        for attribute in self.named_attributes.attributes.components
+    ]
+    return self._placeholder_type(*attribute_placeholders)
+
+  def __hash__(self) -> int:
+    return hash(self.named_attributes)
+
+  def __eq__(self, other: Any) -> bool:
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    if not isinstance(other, Attrs):
+      return False
+
+    return self.named_attributes == other.named_attributes
+
+  def __repr__(self):
+    return (f"Attrs(type_name={self.named_attributes.type_name}, "
+            f"attribute_names={self.named_attributes.attribute_names}, "
+            f"attributes={self.named_attributes.attributes.components})")
 
 
 class Dict(trace.TraceType, serialization.Serializable):
@@ -322,19 +502,20 @@ class Dict(trace.TraceType, serialization.Serializable):
     return Dict(new_mapping)
 
   @classmethod
-  def type_proto(cls) -> Type[default_types_pb2.SerializedDict]:
+  def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedDict]:
     return default_types_pb2.SerializedDict
 
   @classmethod
-  def from_proto(cls, proto: default_types_pb2.SerializedDict) -> "Dict":
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedDict) -> "Dict":
     return Dict({
-        Literal.from_proto(k).value: serialization.deserialize(v)
+        Literal.experimental_from_proto(k).value: serialization.deserialize(v)
         for k, v in zip(proto.keys, proto.values)
     })
 
-  def to_proto(self) -> default_types_pb2.SerializedDict:
+  def experimental_as_proto(self) -> default_types_pb2.SerializedDict:
     return default_types_pb2.SerializedDict(
-        keys=[Literal(k).to_proto() for k in self.mapping.keys()],
+        keys=[Literal(k).experimental_as_proto() for k in self.mapping.keys()],
         values=[serialization.serialize(v) for v in self.mapping.values()])
 
   def _placeholder_value(self) -> Any:
@@ -389,19 +570,20 @@ class Reference(trace.TraceType, serialization.Serializable):
     return None
 
   @classmethod
-  def type_proto(cls) -> Type[default_types_pb2.SerializedReference]:
+  def experimental_type_proto(
+      cls) -> Type[default_types_pb2.SerializedReference]:
     return default_types_pb2.SerializedReference
 
   @classmethod
-  def from_proto(cls,
-                 proto: default_types_pb2.SerializedReference) -> "Reference":
+  def experimental_from_proto(
+      cls, proto: default_types_pb2.SerializedReference) -> "Reference":
     return Reference(
         serialization.deserialize(proto.base),
-        Literal.from_proto(proto.identifier).value)
+        Literal.experimental_from_proto(proto.identifier).value)
 
-  def to_proto(self) -> default_types_pb2.SerializedReference:
+  def experimental_as_proto(self) -> default_types_pb2.SerializedReference:
     return default_types_pb2.SerializedReference(
-        identifier=Literal(self.identifier).to_proto(),
+        identifier=Literal(self.identifier).experimental_as_proto(),
         base=serialization.serialize(self.base))
 
   def _placeholder_value(self) -> Any:
@@ -421,3 +603,11 @@ class Reference(trace.TraceType, serialization.Serializable):
   def __repr__(self):
     return (f"{self.__class__.__name__}(base={self.base!r}, "
             f"identifier={self.identifier!r})")
+
+serialization.register_serializable(Literal)
+serialization.register_serializable(Tuple)
+serialization.register_serializable(List)
+serialization.register_serializable(NamedTuple)
+serialization.register_serializable(Attrs)
+serialization.register_serializable(Dict)
+serialization.register_serializable(Reference)

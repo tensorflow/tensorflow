@@ -83,7 +83,6 @@ RUN apt-get update && apt-get install -y \
 RUN python3 -m pip --no-cache-dir install \
     Pillow \
     h5py \
-    keras_preprocessing \
     tb-nightly \
     matplotlib \
     mock \

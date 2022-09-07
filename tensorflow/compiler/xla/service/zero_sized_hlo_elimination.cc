@@ -23,13 +23,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
-StatusOr<bool> ZeroSizedHloElimination::Run(HloModule* module) {
+StatusOr<bool> ZeroSizedHloElimination::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
       if (instruction->HasSideEffect() || !instruction->shape().IsArray() ||
           instruction->opcode() == HloOpcode::kConstant) {

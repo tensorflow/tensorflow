@@ -71,9 +71,9 @@ dependencies {
     // Other dependencies
 
     // Import the Task Vision Library dependency (NNAPI is included)
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.4.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-vision'
     // Import the GPU delegate plugin Library for GPU inference
-    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin'
 }
 ```
 
@@ -140,7 +140,7 @@ let options = ImageClassifierOptions(modelPath: modelPath)
 // Configure any additional options:
 // options.classificationOptions.maxResults = 3
 
-let classifier = try ImageClassifier.imageClassifier(options: options)
+let classifier = try ImageClassifier.classifier(options: options)
 
 // Convert the input image to MLImage.
 // There are other sources for MLImage. For more details, please see:
@@ -148,7 +148,7 @@ let classifier = try ImageClassifier.imageClassifier(options: options)
 guard let image = UIImage (named: "sparrow.jpg"), let mlImage = MLImage(image: image) else { return }
 
 // Run inference
-let classificationResults = try classifier.classify(gmlImage: mlImage)
+let classificationResults = try classifier.classify(mlImage: mlImage)
 ```
 
 #### Objective C
@@ -224,8 +224,14 @@ for more options to configure `ImageClassifier`.
 ```c++
 // Initialization
 ImageClassifierOptions options;
-options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_path);
 std::unique_ptr<ImageClassifier> image_classifier = ImageClassifier::CreateFromOptions(options).value();
+
+// Create input frame_buffer from your inputs, `image_data` and `image_dimension`.
+// See more information here: tensorflow_lite_support/cc/task/vision/utils/frame_buffer_common_utils.h
+
+std::unique_ptr<FrameBuffer> frame_buffer = CreateFromRgbRawBuffer(
+      image_data, image_dimension);
 
 // Run inference
 const ClassificationResult result = image_classifier->Classify(*frame_buffer).value();

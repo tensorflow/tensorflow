@@ -722,6 +722,17 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
     // The Py_NotImplemented returned from PyArray_FromArrayAttr is not
     // Py_INCREF'ed, so we don't want the Safe_PyObjectPtr to Py_DECREF it.
     array.release();
+
+    // Try __array_interface__ objects (such as PIL Image).
+    array = make_safe(PyArray_FromInterface(obj));
+    if (array == nullptr) {
+      return nullptr;
+    }
+    if (array.get() == Py_NotImplemented) {
+      array.release();
+    } else {
+      obj = array.get();
+    }
   } else {
     // PyArray_FromArrayAttr ensures that `array` is a PyArrayObject, so all
     // we have to do is replace `obj` with it and continue.

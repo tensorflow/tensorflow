@@ -45,10 +45,9 @@ func.func @func(%arg0: memref<4x4xf32>, %arg1: memref<4x4xf32>) {
   %c5 = arith.constant 5 : index
   %c6 = arith.constant 6 : index
 
-  // CHECK: call @[[LAUNCH:[_a-z]+]](%[[C1]], %[[C2]], %[[C3]], %[[C4]],
+  // CHECK: call @[[LAUNCH:[_a-z.]+]](%[[C1]], %[[C2]], %[[C3]], %[[C4]],
   // CHECK-SAME: %[[C5]], %[[C6]], %[[ARG0]], %[[ARG1]])
   // CHECK-DAG: kernel = "main"
-  // CHECK-DAG: ptx = "kernel binary"
   gpu.launch_func  @gpu_module::@main
     blocks in (%c1, %c2, %c3)
     threads in (%c4, %c5, %c6)

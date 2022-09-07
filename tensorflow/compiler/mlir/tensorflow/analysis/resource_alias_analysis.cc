@@ -459,7 +459,11 @@ bool ResourceAliasAnalysisInfo::PropagateInputToOutput(const Value& operand,
          "A resource-type output does not have the corresponding "
          "resource-type input.");
   bool change = false;
-  for (int64_t id : operand_it->second)
+  // Copy ID set because function `AddValueUniqueIDMapping` below is not
+  // guaranteed to preserve pointer stability (see b/243813657).
+  const llvm::SmallSet<int64_t, 8> id_set = operand_it->second;
+  assert(operand != result);
+  for (int64_t id : id_set)
     change = AddValueUniqueIDMapping(result, id) || change;
   return change;
 }
@@ -548,7 +552,7 @@ void ResourceAliasAnalysisInfo::AnalyzeFunctionalCaseOrIfOp(
 
     const bool all_passthrough_args_known = llvm::all_of(
         passthrough_args, [](const llvm::Optional<int>& passthrough_arg) {
-          return passthrough_arg.hasValue();
+          return passthrough_arg.has_value();
         });
     if (all_passthrough_args_known) {
       for (const auto& passthrough_arg : passthrough_args) {

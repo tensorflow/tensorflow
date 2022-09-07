@@ -103,7 +103,7 @@ MatrixTriangularSolveOp::Broadcast(xla::XlaOp lhs, const TensorShape& lhs_shape,
     xla::XlaOp error = rhs.builder()->ReportError(rhs_output.status());
     return {error, error};
   }
-  return {lhs_output.ValueOrDie(), rhs_output.ValueOrDie()};
+  return {lhs_output.value(), rhs_output.value()};
 }
 
 REGISTER_XLA_OP(Name("MatrixTriangularSolve"), MatrixTriangularSolveOp);

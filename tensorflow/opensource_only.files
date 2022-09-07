@@ -5,10 +5,13 @@ tensorflow/api_template_v1.__init__:.py
 tensorflow/compat_template.__init__:.py
 tensorflow/compat_template_v1.__init__:.py
 tensorflow/compiler/mlir/glob_lit_test.bzl:
-tensorflow/compiler/mlir/hlo/WORKSPACE:
 tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.bzl:
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
-tensorflow/core/platform/default/build_config/BUILD:
+tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
+tensorflow/compiler/xla/mlir_hlo/stablehlo/LICENSE:
+tensorflow/compiler/xla/stream_executor/build_defs.bzl:
+tensorflow/core/tfrt/mla/mla_test_utils.h:
+tensorflow/core/tfrt/mla/mla_utils.h:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
 tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
@@ -61,6 +64,7 @@ tensorflow/lite/delegates/gpu/cl/serialization_generated.h:
 tensorflow/lite/delegates/gpu/common/gpu_model_generated.h:
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h:
 tensorflow/lite/delegates/hexagon/hexagon_nn/BUILD:
+tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl:
 tensorflow/lite/ios/BUILD:
@@ -146,6 +150,7 @@ tensorflow/tools/toolchains/win_1803/py36/BUILD:
 tensorflow/tools/toolchains/win_1803/py37/BUILD:
 tensorflow/tools/toolchains/win_1803/py38/BUILD:
 tensorflow/tools/toolchains/win_1803/py39/BUILD:
+tensorflow/tsl/platform/default/build_config/BUILD:
 tensorflow/virtual_root_template_v1.__init__:.py
 tensorflow/virtual_root_template_v2.__init__:.py
 third_party/BUILD:
@@ -165,6 +170,7 @@ third_party/clang_toolchain/download_clang.bzl:
 third_party/codegen.BUILD:
 third_party/common.bzl:
 third_party/compute_library/BUILD:
+third_party/compute_library/build_defs.bzl:
 third_party/coremltools.BUILD:
 third_party/cub.BUILD:
 third_party/curl.BUILD:

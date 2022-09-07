@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/Transforms/Transforms.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
 namespace mlir {
@@ -23,11 +23,11 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_FUSEINNERPARALLELLOOPSPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct FuseInnerParallelLoopsPass
-    : FuseInnerParallelLoopsPassBase<FuseInnerParallelLoopsPass> {
+    : impl::FuseInnerParallelLoopsPassBase<FuseInnerParallelLoopsPass> {
   void runOnOperation() override {
     getOperation().walk([](mlir::scf::ParallelOp op) {
       mlir::scf::naivelyFuseParallelOps(op.getRegion());

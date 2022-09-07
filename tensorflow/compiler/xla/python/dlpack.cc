@@ -288,7 +288,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
           "Buffer synchronization failed converting to DLPack tensor: %s",
           buffer_or.status().ToString());
     }
-    pack->external_reference = buffer_or.ConsumeValueOrDie();
+    pack->external_reference = std::move(buffer_or).value();
     if (!pack->external_reference) {
       return InvalidArgument(
           "Cannot convert deleted/invalid buffer to DLPack tensor.");

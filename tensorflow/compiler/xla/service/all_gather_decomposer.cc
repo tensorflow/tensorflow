@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -80,9 +80,11 @@ Status DecomposeAllGather(HloAllGatherInstruction* ag, HloComputation* comp) {
   return OkStatus();
 }
 
-StatusOr<bool> AllGatherDecomposer::Run(HloModule* module) {
+StatusOr<bool> AllGatherDecomposer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (auto comp : module->MakeNonfusionComputations()) {
+  for (auto comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto hlo : comp->MakeInstructionPostOrder()) {
       if (hlo->opcode() != HloOpcode::kAllGather) {
         continue;

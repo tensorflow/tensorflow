@@ -60,7 +60,7 @@ dependencies {
 ```
 
 To use nightly snapshots, make sure that you have added
-[Sonatype snapshot repository](./build_android#use_nightly_snapshots).
+[Sonatype snapshot repository](../android/lite_build.md#use_nightly_snapshots).
 
 Once you've added the dependency, the necessary delegate for handling the
 graph's TensorFlow ops should be automatically installed for graphs that require
@@ -83,8 +83,9 @@ android {
 #### Building the Android AAR
 
 For reducing the binary size or other advanced cases, you can also build the
-library manually. Assuming a <a href="android.md">working TensorFlow Lite build
-environment</a>, build the Android AAR with select TensorFlow ops as follows:
+library manually. Assuming a
+[working TensorFlow Lite build environment](../android/quickstart.md), build the
+Android AAR with select TensorFlow ops as follows:
 
 ```sh
 sh tensorflow/lite/tools/build_aar.sh \
@@ -138,7 +139,7 @@ dependencies {
 
 #### Using CocoaPods
 
-We provide nightly prebuilt select TF ops CocoaPods for `armv7` and `arm64`,
+TensorFlow Lite provides nightly prebuilt select TF ops CocoaPods for `arm64`,
 which you can depend on alongside the `TensorFlowLiteSwift` or
 `TensorFlowLiteObjC` CocoaPods.
 
@@ -183,7 +184,7 @@ framework cannot be built for `i386` architecture, so you need to explicitly
 provide the list of target architectures excluding `i386`.
 
 ```sh
-bazel build -c opt --config=ios --ios_multi_cpus=armv7,arm64,x86_64 \
+bazel build -c opt --config=ios --ios_multi_cpus=arm64,x86_64 \
   //tensorflow/lite/ios:TensorFlowLiteSelectTfOps_framework
 ```
 

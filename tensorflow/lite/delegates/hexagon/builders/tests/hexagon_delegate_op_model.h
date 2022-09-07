@@ -32,7 +32,9 @@ limitations under the License.
 namespace tflite {
 class SingleOpModelWithHexagon : public SingleOpModel {
  public:
-  SingleOpModelWithHexagon() : delegate_(nullptr, [](TfLiteDelegate*) {}) {}
+  SingleOpModelWithHexagon() : delegate_(nullptr, [](TfLiteDelegate*) {}) {
+    SetBypassDefaultDelegates();
+  }
 
   void ApplyDelegateAndInvoke() {
     static const char kDelegateName[] = "TfLiteHexagonDelegate";

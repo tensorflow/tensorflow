@@ -334,6 +334,17 @@ def _TensorStridedSliceUpdateGrad(op, grad):  # pylint:disable=missing-function-
              grad, begin, end, strides)
   dx = Apply(array_ops.tensor_strided_slice_update,
              grad, begin, end, strides, array_ops.zeros_like(dy))
+
+  # The value is potentially broadcast to the shape of the strided slice, so we
+  # may need to adjust dy.
+  slice_shape = array_ops.shape(dy, out_type=begin.dtype)
+  value_shape = array_ops.shape(op.inputs[4], out_type=slice_shape.dtype)
+
+  _, reduction_axes = gen_array_ops.broadcast_gradient_args(
+      slice_shape, value_shape)
+  dy_reshaped = math_ops.reduce_sum(dy, axis=reduction_axes, keepdims=True)
+  dy = array_ops.reshape(dy_reshaped, value_shape)
+
   return dx, None, None, None, dy
 
 
@@ -1158,8 +1169,8 @@ def _TensorScatterMinOrMaxGrad(op, grad):
   x_indicators = math_ops.cast(math_ops.equal(x, output), grad.dtype)
   y_output = array_ops.gather_nd(output, indices)
   y_indicators = math_ops.cast(math_ops.equal(y, y_output), grad.dtype)
-  ys_indicators = array_ops.scatter_nd(indices, y_indicators,
-                                       array_ops.shape(x))
+  ys_indicators = array_ops.scatter_nd(
+      indices, y_indicators, array_ops.shape(x, out_type=indices.dtype))
   indicators = x_indicators + ys_indicators  # All elements are >= 1.
   # If there are multiple minimum or maximum elements then the gradient will be
   # divided between them.

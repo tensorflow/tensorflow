@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -141,7 +141,7 @@ void GatherFusionInstructions(
 TuplePointsToAnalysis::Run(const HloModule* module) {
   auto logical_buffer_analysis = LogicalBufferAnalysis::Run(module);
   std::unique_ptr<TuplePointsToAnalysis> analysis(new TuplePointsToAnalysis(
-      module, logical_buffer_analysis.ConsumeValueOrDie()));
+      module, std::move(logical_buffer_analysis).value()));
   TF_RETURN_IF_ERROR(analysis->Analyze());
   return std::move(analysis);
 }
@@ -508,7 +508,6 @@ Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
   return OkStatus();
 }
 
-
 Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   auto ccall = Cast<HloCustomCallInstruction>(custom_call);
   PointsToSet& points_to_set = CreateEmptyPointsToSet(custom_call);
@@ -731,7 +730,7 @@ bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(
     // Iterate through all users of all buffer aliases of the buffer in the
     // points-to set of fusion parameter at 'index'.
     // Return false if any uses are detected at 'index', returns true otherwise.
-    const LogicalBuffer* buffer = GetBufferDefinedAt(*it, index).ValueOrDie();
+    const LogicalBuffer* buffer = GetBufferDefinedAt(*it, index).value();
     for (const BufferAlias& alias : GetBufferAliases(*buffer)) {
       for (HloInstruction* alias_user : alias.instruction()->users()) {
         if (DoesNotUseOperandBuffer(alias.instruction(), alias.index(),

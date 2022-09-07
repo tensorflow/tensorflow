@@ -35,6 +35,7 @@ visibility = [
     "//learning/brain/tfrt:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
     "//tensorflow_models/google:__subpackages__",
+    "//learning/brain/google/data:__subpackages__",
 ]
 
 package(
@@ -231,7 +232,6 @@ py_library(
         ":tensor_util",
         ":type_spec",
         "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/python/client:_pywrap_debug_events_writer",
         "//tensorflow/python/client:_pywrap_events_writer",
         "//tensorflow/python/eager:context",
@@ -325,6 +325,7 @@ py_library(
     deps = [
         ":_dtypes",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/lib/core:_pywrap_bfloat16",
         "//tensorflow/python/types:doc_typealias",
@@ -487,7 +488,6 @@ py_library(
         "//tensorflow/core/config:flags_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 
@@ -936,7 +936,6 @@ py_library(
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 
@@ -969,6 +968,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":composite_tensor",
+        ":composite_tensor_gradient",
         ":dtypes",
         ":tensor_conversion_registry",
         ":tensor_shape",
@@ -976,6 +976,16 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
+    ],
+)
+
+tf_py_test(
+    name = "indexed_slices_test",
+    srcs = ["indexed_slices_test.py"],
+    deps = [
+        ":composite_tensor_gradient",
+        "//tensorflow/python:ops",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -998,6 +1008,7 @@ py_library(
         ":constant_op",
         ":dtypes",
         ":errors",
+        ":indexed_slices",
         ":ops",
         ":tensor_spec",
         ":tensor_util",
@@ -1013,7 +1024,9 @@ py_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -1206,10 +1219,6 @@ py_library(
     srcs = ["composite_tensor_gradient.py"],
     deps = [
         ":composite_tensor",
-        ":for_generated_wrappers",
-        ":indexed_slices",
-        "//tensorflow/python/eager:backprop_util",
-        "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
 )
@@ -1262,6 +1271,7 @@ py_library(
     deps = [
         ":dtypes",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/util",
@@ -1277,6 +1287,8 @@ pytype_library(
         ":composite_tensor",
         ":dtypes",
         ":tensor_shape",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
@@ -1310,6 +1322,9 @@ py_library(
         ":dtypes",
         ":tensor_shape",
         ":type_spec",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],
@@ -1391,7 +1406,6 @@ py_library(
         "//tensorflow/python/util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 
@@ -1854,6 +1868,7 @@ tf_py_test(
         ":for_generated_wrappers",
         ":test_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1870,6 +1885,7 @@ tf_py_test(
         ":test_lib",
         ":type_spec",
         ":type_utils",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],
@@ -2042,6 +2058,7 @@ tf_py_test(
         ":test_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],

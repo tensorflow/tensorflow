@@ -78,7 +78,7 @@ tensorflow::Status SimpleDevice::MakeTensorFromProto(
 LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
                                 tensorflow::ResourceMgr *resource_mgr, TFOp op,
                                 ArrayRef<ElementsAttr> operands,
-                                SmallVectorImpl<Attribute> &results) {
+                                SmallVectorImpl<TypedAttr> &results) {
   assert(cpu_device && "cpu device can't be null");
   assert(resource_mgr && "ResourceMgr can't be null");
 
@@ -122,7 +122,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
   tensorflow::OpKernelContext::Params params;
   params.device = cpu_device;
   params.frame_iter = tensorflow::FrameAndIter(0, 0);
-  params.inputs = &input_tensor_values;
+  params.inputs = input_tensor_values;
   params.op_kernel = op_kernel.get();
   params.resource_manager = resource_mgr;
 
@@ -149,13 +149,12 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
     }
 
     tensorflow::StatusOr<ElementsAttr> attr_or =
-        ConvertTensor(*(op_context.mutable_output(i)), builder,
-                      cast<TFGraphDialect>(op->getDialect()));
+        ConvertTensor(*(op_context.mutable_output(i)), builder);
     if (!attr_or.status().ok()) {
       VLOG(3) << attr_or.status().error_message();
       return failure();
     }
-    results.push_back(attr_or.ValueOrDie());
+    results.push_back(attr_or.value());
   }
 
   return success();

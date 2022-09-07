@@ -45,6 +45,10 @@ load_context = LazyLoader(
     "tensorflow.python.keras.saving.saved_model.load_context"
 )
 
+TRACKABLE_RESOURCE_METHODS = [
+    "_create_resource", "_initialize", "_destroy_resource"
+]
+
 
 # Variable used in PSStrategy TF 1, TF2 and CentralStorageStrategy.
 class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
@@ -613,7 +617,6 @@ class DistributedTable(lookup_ops.StaticHashTable):
       if dispatch_context:
         remote_value = self._distributed_table._values[  # pylint: disable=protected-access
             dispatch_context.worker_index]
-        dispatch_context.maybe_rebuild_remote_values(remote_value)
         ret = dispatch_context.maybe_get_remote_value(remote_value)
         return ret
 
@@ -701,6 +704,11 @@ class LocalResourceRestoreContext(object):
 class RestoredDistributedTable(DistributedTable):
   """A restored and distributed StaticHashTable for ParameterServerStrategy."""
 
+  def __init__(self, strategy, wrapped_creator):
+    # Wait for all resource functions to have been set before building the table
+    self._has_resource_functions = threading.Condition()
+    super().__init__(strategy, wrapped_creator)
+
   def resource_handle_call_time_value(self):
     """Returns a closure to run for a resource handle at call time and its spec.
 
@@ -734,7 +742,6 @@ class RestoredDistributedTable(DistributedTable):
           remote_value = self._distributed_table._values[  # pylint: disable=protected-access
               dispatch_context.worker_index]
 
-        dispatch_context.maybe_rebuild_remote_values(remote_value)
         ret = dispatch_context.maybe_get_remote_value(remote_value)
         return ret
 
@@ -745,7 +752,7 @@ class RestoredDistributedTable(DistributedTable):
     return closure, tensor_spec.TensorSpec(shape=(), dtype=dtypes.resource)
 
   def __setattr__(self, name, value):
-    if name in ["_create_resource", "_initialize", "_destroy_resource"]:
+    if name in TRACKABLE_RESOURCE_METHODS:
       # When a StaticHashTable is loaded with `tf.saved_model.load`, it becomes
       # a RestoredResource with dummy `_create_resource`, `_initialize`, and
       # `_destroy_resource" methods. Similarly, when loaded with
@@ -761,6 +768,10 @@ class RestoredDistributedTable(DistributedTable):
       if not hasattr(self, "_restored_function"):
         self._restored_function = {}
       self._restored_function[name] = value
+      if all(method in self._restored_function
+             for method in TRACKABLE_RESOURCE_METHODS):
+        with self._has_resource_functions:
+          self._has_resource_functions.notify_all()
       return self._coordinator_instance.__setattr__(name, value)
     else:
       return super(RestoredDistributedTable, self).__setattr__(name, value)
@@ -784,6 +795,13 @@ class RestoredDistributedTable(DistributedTable):
 
         def create_copy():
           new_table = self._wrapped_creator()
+          # Wait until all resource functions are available before setting them
+          # on new_table.
+          with self._has_resource_functions:
+            while not hasattr(self, "_restored_function") or any(
+                method not in self._restored_function
+                for method in TRACKABLE_RESOURCE_METHODS):
+              self._has_resource_functions.wait()
 
           if hasattr(self, "_restored_function"):
             with with_local_resource_restore_context(new_table):

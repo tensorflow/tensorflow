@@ -2,6 +2,6 @@
 
 // CHECK: conversion requires module with `main`
 func.func @non_main() {
-  %0 = "mhlo.constant"() {value = opaque<"mhlo", "0x0123456789ABCDEF"> : tensor<4xf32>} : () -> tensor<4xf32>
+  %0 = "mhlo.constant"() {value = dense_resource<__elided__> : tensor<4xf32>} : () -> tensor<4xf32>
   func.return
 }

@@ -155,6 +155,7 @@ TEST_F(CallGraphTest, ParallelComputation) {
   EXPECT_EQ(5, entry_node.callsites().size());
   EXPECT_EQ(1, entry_node.callees().size());
   EXPECT_TRUE(entry_node.caller_callsites().empty());
+  EXPECT_TRUE(call_graph->GetComputationCallers(entry_computation).empty());
   EXPECT_TRUE(entry_node.callers().empty());
 
   const CallGraphNode& map_node = call_graph->GetNode(map_computation);
@@ -164,6 +165,7 @@ TEST_F(CallGraphTest, ParallelComputation) {
   EXPECT_TRUE(map_node.callsites().empty());
   EXPECT_TRUE(map_node.callees().empty());
   EXPECT_EQ(5, map_node.caller_callsites().size());
+  EXPECT_EQ(5, call_graph->GetComputationCallers(map_computation).size());
   EXPECT_EQ(1, map_node.callers().size());
 }
 
@@ -189,6 +191,7 @@ TEST_F(CallGraphTest, SequentialComputations) {
   EXPECT_EQ(3, entry_node.callsites().size());
   EXPECT_EQ(1, entry_node.callees().size());
   EXPECT_TRUE(entry_node.caller_callsites().empty());
+  EXPECT_TRUE(call_graph->GetComputationCallers(entry_computation).empty());
   EXPECT_TRUE(entry_node.callers().empty());
 
   const CallGraphNode& called_node = call_graph->GetNode(called_computation);
@@ -197,6 +200,7 @@ TEST_F(CallGraphTest, SequentialComputations) {
   EXPECT_TRUE(called_node.callsites().empty());
   EXPECT_TRUE(called_node.callees().empty());
   EXPECT_EQ(3, called_node.caller_callsites().size());
+  EXPECT_EQ(3, call_graph->GetComputationCallers(called_computation).size());
   EXPECT_EQ(1, called_node.callers().size());
 }
 

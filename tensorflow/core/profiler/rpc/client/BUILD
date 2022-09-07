@@ -118,10 +118,6 @@ cc_library(
 tf_cc_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.cc"],
-    tags = [
-        "no_windows",  # TODO(b/236272855): Fails on Windows RBE (C++)
-        "notap",  # TODO(b/173824689)
-    ],
     deps = [
         ":profiler_client",
         ":profiler_client_impl",  # for oss
@@ -154,10 +150,6 @@ cc_library(
 tf_cc_test(
     name = "remote_profiler_session_manager_test",
     srcs = ["remote_profiler_session_manager_test.cc"],
-    tags = [
-        "no_windows",  # TODO(b/236272855): Fails on Windows RBE (C++)
-        "notap",  # TODO(b/188564813): Flaky test.
-    ],
     deps = [
         ":profiler_client_impl",  # for oss
         ":profiler_client_test_util",

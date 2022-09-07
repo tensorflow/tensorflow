@@ -40,10 +40,10 @@ class HloLiveRangeTest : public HloTestBase {
   ~HloLiveRangeTest() override {}
 
   void Analyze(const HloSchedule& schedule) {
-    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).ValueOrDie();
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).value();
     hlo_live_range_ = HloLiveRange::Run(schedule, *alias_analysis_,
                                         module_->entry_computation())
-                          .ValueOrDie();
+                          .value();
   }
 
   std::unique_ptr<HloModule> module_;
@@ -332,6 +332,11 @@ TEST_F(HloLiveRangeTest, While) {
   Analyze(schedule);
 
   CheckSchedule();
+
+  // Check that there are no gaps in the live-ranges of buffer-sharing values.
+  EXPECT_EQ(LiveRangeAt(iter).end, LiveRangeAt(cond_iter).start);
+  EXPECT_EQ(LiveRangeAt(cond_iter).end, LiveRangeAt(body_iter).start);
+  EXPECT_EQ(LiveRangeAt(body_iter).end, LiveRangeAt(body_iter_next).start);
 }
 
 TEST_F(HloLiveRangeTest, AsyncCall) {

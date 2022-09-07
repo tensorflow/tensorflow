@@ -478,6 +478,9 @@ CoordinationServiceImpl::CoordinationServiceImpl(
 }
 
 CoordinationServiceImpl::~CoordinationServiceImpl() {
+  // Service object must be destroyed to clear all pending RPCs before shutting
+  // down the RPC service.
+  coord_service_ = nullptr;
   coord_rpc_service_->Shutdown();
 }
 
@@ -527,6 +530,11 @@ void DistributedRuntimeService::Shutdown() {
     server_->Shutdown();
     server_->Wait();
   }
+
+  // Explicitly destroy coordination service before the gRPC server. This clears
+  // all pending RPCs before the gRPC server is destroyed.
+  coord_impl_ = nullptr;
+  server_ = nullptr;
 }
 
 }  // namespace xla

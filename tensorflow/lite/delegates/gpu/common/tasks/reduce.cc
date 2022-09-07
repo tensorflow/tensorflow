@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
@@ -212,7 +213,7 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
     }
   };
 
-  auto accum_type = GetAccumType(op_def.src_tensors[0].data_type);
+  auto accum_type = GetAccumType(op_def.src_tensors[0].GetDataType());
   const std::string accum_type_decl =
       GetTypeDeclaration(gpu_info, accum_type, 4);
   std::string read_as_template;
@@ -454,13 +455,10 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
       c += "  reducer.x = min(reducer.x, reducer.w);\n";
     }
   }
-  const std::string conversion = GetTypeConvertion(
-      gpu_info, accum_type, op_def.src_tensors[0].data_type, 4);
-  if (conversion.empty()) {
-    c += "  args.src_tensor::type result = reducer;\n";
-  } else {
-    c += "  args.src_tensor::type result = " + conversion + "(reducer);\n";
-  }
+  const std::string conversion = GetTypeConversion(
+      gpu_info, accum_type, op_def.src_tensors[0].GetDataType(), 4);
+  c += "  args.src_tensor::type result = " +
+       absl::Substitute(conversion, "reducer") + ";\n";
   std::string dst_coordinates;
   for (const auto& a : all_axis) {
     if (op_def.dst_tensors[0].HasAxis(a)) {

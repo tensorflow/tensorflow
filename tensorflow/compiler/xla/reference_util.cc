@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/reference_util.h"
 
 #include <array>
+#include <cmath>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -28,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -465,12 +469,12 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   dim2.set_base_dilation(lhs_dilation.second);
   *window.add_dimensions() = dim2;
 
-  const Shape& shape =
+  const Shape shape =
       ShapeInference::InferConvolveShape(
           lhs_literal.shape(), rhs_literal.shape(),
           /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
           /*preferred_element_type=*/std::nullopt)
-          .ConsumeValueOrDie();
+          .value();
 
   HloInstruction* lhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
@@ -488,8 +492,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   auto computation = module.AddEntryComputation(b.Build());
 
   HloEvaluator evaluator;
-  Literal result_literal =
-      evaluator.Evaluate(*computation, {}).ConsumeValueOrDie();
+  Literal result_literal = evaluator.Evaluate(*computation, {}).value();
 
   CHECK_EQ(result_literal.shape().rank(), 4);
   auto result =

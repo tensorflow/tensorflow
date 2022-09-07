@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 
+#include <vector>
+
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -23,20 +25,30 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+using ::testing::UnorderedElementsAre;
+
 TEST(TpuXPlaneUtilsTest, GetTensorCoreXPlanesFromXSpace) {
   XSpace xspace;
 
-  FindOrAddMutablePlaneWithName(&xspace, TpuPlaneName(0));
-  FindOrAddMutablePlaneWithName(&xspace, TpuPlaneName(1));
-
-  XPlane* p3 =
-      FindOrAddMutablePlaneWithName(&xspace, TpuPlaneName(2) + "Postfix");
+  XPlane* p1 = FindOrAddMutablePlaneWithName(&xspace, TpuPlaneName(0));
+  XPlane* p2 = FindOrAddMutablePlaneWithName(&xspace, TpuPlaneName(1));
+  FindOrAddMutablePlaneWithName(&xspace, TpuPlaneName(2) + "Postfix");
 
   std::vector<const XPlane*> xplanes = FindTensorCorePlanes(xspace);
 
-  ASSERT_EQ(xplanes.size(), 2);
-  ASSERT_NE(xplanes[0], p3);
-  ASSERT_NE(xplanes[1], p3);
+  EXPECT_THAT(xplanes, UnorderedElementsAre(p1, p2));
+}
+
+TEST(TpuXPlaneUtilsTest, GetMutableTensorCoreXPlanesFromXSpace) {
+  XSpace xspace;
+  XPlane* p1 = FindOrAddMutablePlaneWithName(&xspace, TpuPlaneName(0));
+  XPlane* p2 = FindOrAddMutablePlaneWithName(&xspace, TpuPlaneName(1));
+
+  FindOrAddMutablePlaneWithName(&xspace, TpuPlaneName(2) + "Postfix");
+
+  std::vector<XPlane*> xplanes = FindMutableTensorCorePlanes(&xspace);
+
+  EXPECT_THAT(xplanes, UnorderedElementsAre(p1, p2));
 }
 
 }  // namespace

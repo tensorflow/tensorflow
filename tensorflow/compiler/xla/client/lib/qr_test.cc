@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 namespace {
 
@@ -37,7 +37,7 @@ using QrTest = xla::ClientLibraryTestBase;
 
 XLA_TEST_F(QrTest, Simple) {
   // Test fails with TensorFloat-32 enabled
-  tensorflow::enable_tensor_float_32_execution(false);
+  tsl::enable_tensor_float_32_execution(false);
 
   xla::Array2D<float> data({
       {4, 6, 8, 10},
@@ -80,7 +80,7 @@ XLA_TEST_F(QrTest, Simple) {
 
 XLA_TEST_F(QrTest, ZeroDiagonal) {
   // Test fails with TensorFloat-32 enabled
-  tensorflow::enable_tensor_float_32_execution(false);
+  tsl::enable_tensor_float_32_execution(false);
   xla::XlaBuilder builder(TestName());
 
   xla::Array2D<float> a_vals({
@@ -107,7 +107,7 @@ XLA_TEST_F(QrTest, ZeroDiagonal) {
 
 XLA_TEST_F(QrTest, SimpleBatched) {
   // Test fails with TensorFloat-32 enabled
-  tensorflow::enable_tensor_float_32_execution(false);
+  tsl::enable_tensor_float_32_execution(false);
   xla::XlaBuilder builder(TestName());
 
   xla::Array3D<float> a_vals({
@@ -136,7 +136,7 @@ XLA_TEST_F(QrTest, SimpleBatched) {
 }
 
 XLA_TEST_F(QrTest, SubnormalComplex) {
-  tensorflow::enable_tensor_float_32_execution(false);
+  tsl::enable_tensor_float_32_execution(false);
 
   // Verifies that we don't get NaNs in the case that the norm of a complex
   // number would be denormal but its imaginary value is not exactly 0.

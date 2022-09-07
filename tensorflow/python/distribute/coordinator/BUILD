@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow/tsl/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -183,6 +183,9 @@ tf_py_test(
     name = "watchdog_test",
     srcs = ["watchdog_test.py"],
     python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(b/239433962)
+    ],
     deps = [
         ":watchdog",
         "//tensorflow/python/eager:test",

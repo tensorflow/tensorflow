@@ -809,7 +809,7 @@ void TFE_GetConfigKeyValue(TFE_Context* ctx, const char* key,
   status->status = status_or_value.status();
   if (!status_or_value.ok()) return;
 
-  const std::string& value_string = status_or_value.ValueOrDie();
+  const std::string& value_string = status_or_value.value();
   void* data = tensorflow::port::Malloc(value_string.length());
   value_string.copy(static_cast<char*>(data), value_string.length(), 0);
   value_buf->data = data;
