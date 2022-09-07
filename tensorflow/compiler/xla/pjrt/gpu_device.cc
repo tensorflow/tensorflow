@@ -410,7 +410,7 @@ GpuDevice::GpuDevice(int id,
                                process_index());
 }
 
-absl::string_view GpuDevice::device_vendor() { return device_vendor_; }
+absl::string_view GpuDevice::device_vendor() const { return device_vendor_; }
 
 absl::string_view GpuDevice::ToString() const { return to_string_; }
 
