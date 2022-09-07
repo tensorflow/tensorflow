@@ -331,7 +331,9 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
-    ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
+    ]) + if_static([
+        "//tensorflow/tsl/platform:tensor_float_32_utils",
+    ]),
     alwayslink = True,
 )
 
@@ -449,7 +451,7 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:tensor_float_32_utils",
+        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "//tensorflow/core/util:determinism",
         "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/stream_executor:event",

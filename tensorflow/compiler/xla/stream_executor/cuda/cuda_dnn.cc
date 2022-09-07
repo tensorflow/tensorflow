@@ -49,10 +49,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/use_cudnn.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 // clang-format off
 #include "third_party/gpus/cudnn/cudnn.h"
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
@@ -923,7 +923,7 @@ static bool IsTensorMathEnabled(Stream* stream, dnn::DataType input_type) {
 #if CUDNN_VERSION < 8000
     return false;
 #else
-    if (!tensorflow::tensor_float_32_execution_enabled()) {
+    if (!tsl::tensor_float_32_execution_enabled()) {
       return false;
     }
 #endif
@@ -1290,7 +1290,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     // TODO(csigg): Minimal support cuDNN version is 7.3, clean up.
     bool allow_tensor_ops = data_type == CUDNN_DATA_HALF;
     if (data_type == CUDNN_DATA_FLOAT)
-      allow_tensor_ops = tensorflow::tensor_float_32_execution_enabled();
+      allow_tensor_ops = tsl::tensor_float_32_execution_enabled();
     bool use_tensor_ops =
         algorithm_config.algorithm().has_value()
             ? algorithm_config.algorithm()->tensor_ops_enabled()
