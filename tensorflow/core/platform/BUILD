@@ -146,6 +146,7 @@ cc_library(
     deps = [
         ":logging",
         ":mutex",
+        "//tensorflow/tsl/platform:blocking_counter",
     ],
 )
 

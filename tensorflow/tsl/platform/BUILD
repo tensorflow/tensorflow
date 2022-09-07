@@ -55,6 +55,15 @@ cc_library(
 )
 
 cc_library(
+    name = "blocking_counter",
+    hdrs = ["blocking_counter.h"],
+    deps = [
+        ":logging",
+        ":mutex",
+    ],
+)
+
+cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
     compatible_with = get_compatible_with_portable(),
@@ -351,6 +360,7 @@ filegroup(
         "base64.cc",
         "base64.h",
         "bfloat16.h",
+        "blocking_counter.h",
         "byte_order.h",
         "casts.h",
         "cpu_info.cc",
@@ -489,6 +499,7 @@ cc_library(
 filegroup(
     name = "lib_internal_public_hdrs",
     srcs = [
+        "blocking_counter.h",
         "demangle.h",
         "host_info.h",
         "intrusive_ptr.h",
