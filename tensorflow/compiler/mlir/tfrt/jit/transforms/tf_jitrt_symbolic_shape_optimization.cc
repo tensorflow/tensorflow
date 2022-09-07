@@ -126,7 +126,7 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
     }
   }
   // If the output is the same as one of the inputs just return that.
-  if (llvm::is_splat(shape_and_rank_for_dim) &&
+  if (llvm::all_equal(shape_and_rank_for_dim) &&
       shape_and_rank_for_dim[0].first) {
     return shape_and_rank_for_dim[0].first;
   }
