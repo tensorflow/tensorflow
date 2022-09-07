@@ -671,7 +671,7 @@ static Status ExecuteJitRt(const std::string& module_name,
   runtime::DiagnosticEngine diagnostic_engine;
   std::string diagnostic;
   diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
-    llvm::raw_string_ostream(diagnostic) << d.str();
+    llvm::raw_string_ostream(diagnostic) << d.status().message();
     return mlir::success();
   });
 

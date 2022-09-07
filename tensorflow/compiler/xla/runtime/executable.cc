@@ -356,7 +356,7 @@ Status Executable::ReturnResults(const ResultConverter& results,
     const Type* type = signature_.result(i);
     const Type* runtime_type = runtime_signature_.result(i);
     void* ret = &call_frame->results[results_memory_layout_.offsets[i]];
-    bool res = mlir::succeeded(results.ReturnValue(i, type, runtime_type, ret));
+    bool res = succeeded(results.ReturnValue(i, type, runtime_type, ret));
     converted = converted && res;
   }
 

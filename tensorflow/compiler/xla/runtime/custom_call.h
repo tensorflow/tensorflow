@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/Support/Compiler.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
+#include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/map_by_type.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
@@ -769,28 +770,28 @@ class CustomCallHandler : public CustomCall {
       // individual argument decoding will check the actual type.
       if (internal::HasRemainingArgs<Ts...>::value) {
         if (LLVM_UNLIKELY(num_args < kNumArgs - 1))
-          return diagnostic->EmitError()
-                 << "Wrong number of arguments: expected at least "
-                 << (kNumArgs - 1) << " got " << num_args;
+          return diagnostic->EmitError(InvalidArgument(
+              "Wrong number of arguments: expected at least %d got %d",
+              kNumArgs - 1, num_args));
       } else {
         if (LLVM_UNLIKELY(num_args != kNumArgs))
-          return diagnostic->EmitError()
-                 << "Wrong number of arguments: expected " << kNumArgs
-                 << " got " << num_args;
+          return diagnostic->EmitError(
+              InvalidArgument("Wrong number of arguments: expected %d got %d",
+                              kNumArgs, num_args));
       }
 
       // Check that we have enough attributes passed to the custom call. Each
       // individual attribute decoding will check the name and the type.
       if (LLVM_UNLIKELY(num_attrs < attrs_.size()))
-        return diagnostic->EmitError()
-               << "Wrong number of attributes: expected at least "
-               << attrs_.size() << " got " << num_attrs;
+        return diagnostic->EmitError(InvalidArgument(
+            "Wrong number of attributes: expected at least %d got %d",
+            attrs_.size(), num_attrs));
 
       // Check that the number of returns matches the signature. The return
       // decoding will check the actual type.
       if (LLVM_UNLIKELY(num_rets != kNumRets)) {
-        return diagnostic->EmitError() << "Wrong number of returns: expected "
-                                       << kNumRets << " got " << num_rets;
+        return diagnostic->EmitError(InvalidArgument(
+            "Wrong number of returns: expected %d got %d", kNumRets, num_rets));
       }
     }
 
@@ -822,8 +823,8 @@ class CustomCallHandler : public CustomCall {
             offsets, args, rets, attrs_, attrs_idx_, attrs, values_,
             user_data))...};
     if (LLVM_UNLIKELY(!all_decoded))
-      return diagnostic->EmitError() << "Failed to decode all custom call "
-                                        "arguments, attributes and returns";
+      return diagnostic->EmitError(
+          InvalidArgument("Failed to decode all custom call operands"));
 
     // Custom call returns logical result to signal failures.
     if constexpr (kIsLogicalErr) {
@@ -833,7 +834,7 @@ class CustomCallHandler : public CustomCall {
     // Custom call returns detailed error to signal failures.
     if constexpr (kIsStatusErr) {
       if (auto st = fn_(std::move(*std::get<Is>(fn_args))...); !st.ok()) {
-        return diagnostic->EmitError() << st.message();
+        return diagnostic->EmitError(std::move(st));
       }
       return success();
     }
@@ -1009,7 +1010,7 @@ XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(double);
     LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Result<T>> Decode( \
         TypeID type_id, void* value) {                               \
       if (!CustomCall::Isa<T>(checks, type_id)) {                    \
-        return mlir::failure();                                      \
+        return failure();                                            \
       }                                                              \
                                                                      \
       return Result<T>(reinterpret_cast<T*>(value));                 \

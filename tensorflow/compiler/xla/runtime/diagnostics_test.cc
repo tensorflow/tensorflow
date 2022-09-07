@@ -19,24 +19,27 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "llvm/Support/raw_ostream.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace runtime {
+
+using absl::InternalError;
 
 TEST(DiagnosticEngineTest, Basic) {
   std::string message;
 
   DiagnosticEngine engine;
   engine.AddHandler([&](Diagnostic& diagnostic) {
-    llvm::raw_string_ostream(message) << diagnostic.str();
-    return mlir::success();
+    message += diagnostic.status().message();
+    return success();
   });
 
   {  // Check that diagnostic is reported when InFlightDiagnostic is destructed.
-    InFlightDiagnostic diagnostic = engine.Emit(DiagnosticSeverity::kError);
-    diagnostic << "Oops";
+    InFlightDiagnostic diagnostic = engine.EmitError(InternalError("Oops"));
+    EXPECT_EQ(message, "");
+    (void)diagnostic;
   }
 
   EXPECT_EQ(message, "Oops");

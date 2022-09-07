@@ -96,7 +96,7 @@ static absl::Status CompileAndExecute(std::string_view module,
 static DiagnosticEngine CollectDiagnostic(std::string* error) {
   DiagnosticEngine diagnostic_engine;
   diagnostic_engine.AddHandler([=](Diagnostic& diagnostic) -> LogicalResult {
-    error->append(diagnostic.str());
+    error->append(diagnostic.status().message());
     return success();
   });
   return diagnostic_engine;
@@ -305,9 +305,7 @@ TEST(CustomCallTest, ArgTypeCheck) {
   auto status = CompileAndExecute(wrong_type, /*args=*/{}, opts);
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.message(), "custom call 'test.custom_call' failed");
-  EXPECT_EQ(
-      error,
-      "Failed to decode all custom call arguments, attributes and returns");
+  EXPECT_EQ(error, "Failed to decode all custom call operands");
 }
 
 //===----------------------------------------------------------------------===//

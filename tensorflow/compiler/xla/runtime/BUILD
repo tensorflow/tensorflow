@@ -89,6 +89,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":diagnostics",
+        ":errors",
         ":logical_result",
         ":map_by_type",
         ":type_id",
@@ -135,6 +136,7 @@ cc_library(
     deps = [
         ":logical_result",
         "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -146,7 +148,7 @@ tf_cc_test(
         ":diagnostics",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -155,6 +157,8 @@ cc_library(
     hdrs = ["errors.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
     ],
 )

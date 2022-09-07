@@ -18,11 +18,19 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace xla {
 namespace runtime {
+
+template <typename... Args>
+absl::Status InvalidArgument(const absl::FormatSpec<Args...>& format,
+                             const Args&... args) {
+  return absl::InvalidArgumentError(absl::StrFormat(format, args...));
+}
 
 // TODO(ezhulenev): Replace all uses of llvm errors inside the runtime with ABSL
 // types: Error -> Status, Expected -> StatusOr.
