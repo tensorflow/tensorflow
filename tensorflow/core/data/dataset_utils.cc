@@ -60,9 +60,13 @@ static mutex* get_dataset_experiment_registry_lock() {
   return &dataset_experiment_registry_lock;
 }
 
-static absl::flat_hash_map<string, int64_t>* get_dataset_experiments() {
-  static absl::flat_hash_map<string, int64_t>* experiments =
-      new absl::flat_hash_map<string, int64_t>;
+static absl::flat_hash_map<string,
+                           DatasetExperimentRegistry::ExperimentSelector>*
+get_dataset_experiments() {
+  static absl::flat_hash_map<
+      string, DatasetExperimentRegistry::ExperimentSelector>* experiments =
+      new absl::flat_hash_map<string,
+                              DatasetExperimentRegistry::ExperimentSelector>;
   return experiments;
 }
 
@@ -458,14 +462,15 @@ bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match) {
 }
 
 absl::flat_hash_set<string> GetExperiments() {
-  return GetExperiments(port::JobName(),
+  return GetExperiments(tsl::port::JobName(), tsl::port::TaskId(),
                         [](const tstring& str) { return Hash64(str); });
 }
 
 absl::flat_hash_set<string> GetExperiments(
-    const string& job_name, std::function<uint64(const string&)> hash_func) {
+    const string& job_name, int64_t task_id,
+    std::function<uint64_t(const string&)> hash_func) {
   absl::flat_hash_set<string> experiments;
-  if (job_name.empty()) {
+  if (job_name.empty() || task_id < 0) {
     return experiments;
   }
 
@@ -482,8 +487,7 @@ absl::flat_hash_set<string> GetExperiments(
   }
 
   // Identify opted out experiments.
-  absl::flat_hash_map<string, int64_t> live_experiments =
-      DatasetExperimentRegistry::Experiments();
+  auto live_experiments = DatasetExperimentRegistry::Experiments();
   absl::flat_hash_set<string> opt_outs;
   if (opt_outs_raw == "all") {
     for (const auto& pair : live_experiments) {
@@ -517,12 +521,12 @@ absl::flat_hash_set<string> GetExperiments(
     return experiments;
   }
   // Stochastically include live experiments unless they are opted out.
-  for (const auto& pair : live_experiments) {
-    auto& experiment = pair.first;
-    if ((hash_func(strings::StrCat(job_name, experiment)) % 100 <
-         pair.second) &&
-        !opt_outs.contains(experiment)) {
-      experiments.insert(experiment);
+  for (const auto& [experiment_name, experiment_selector] : live_experiments) {
+    if (experiment_selector.job_selector(hash_func, experiment_name,
+                                         job_name) &&
+        experiment_selector.task_selector(task_id) &&
+        !opt_outs.contains(experiment_name)) {
+      experiments.insert(experiment_name);
     }
   }
 
@@ -891,27 +895,50 @@ int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
 
 // static
 void DatasetExperimentRegistry::Register(const string& experiment,
-                                         int64_t rollout_pct) {
+                                         JobSelector job_selector,
+                                         TaskSelector task_selector) {
   mutex_lock l(*get_dataset_experiment_registry_lock());
-  get_dataset_experiments()->insert(std::make_pair(experiment, rollout_pct));
+  get_dataset_experiments()->insert(
+      std::make_pair(experiment, DatasetExperimentRegistry::ExperimentSelector{
+                                     job_selector, task_selector}));
 }
 
 // static
-absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
+absl::flat_hash_map<string, DatasetExperimentRegistry::ExperimentSelector>
+DatasetExperimentRegistry::Experiments() {
   mutex_lock l(*get_dataset_experiment_registry_lock());
   return *get_dataset_experiments();
 }
 
 namespace {
 
-REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations", 0);
-REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization", 0);
-REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt, 0);
-REGISTER_DATASET_EXPERIMENT("inject_prefetch", 100);
-REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
-REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch", 0);
-REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length", 0);
-REGISTER_DATASET_EXPERIMENT("stage_based_autotune", 0);
+// Select `rollout_pct` percent of jobs at random. `hash_func` takes a string
+// and returns a uint64 between 0 and 1.
+template <int64_t rollout_pct>
+bool RandomJobSamplePercentage(std::function<uint64_t(const string&)> hash_func,
+                               const std::string& experiment_name,
+                               const std::string& job_name) {
+  return hash_func(strings::StrCat(job_name, experiment_name)) % 100 <
+         rollout_pct;
+}
+bool AllTasks(int64_t task_id) { return true; }
+
+REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("inject_prefetch", RandomJobSamplePercentage<100>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
+                            RandomJobSamplePercentage<0>, AllTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

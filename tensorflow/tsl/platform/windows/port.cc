@@ -59,6 +59,8 @@ string JobName() {
 
 int64_t JobUid() { return -1; }
 
+int64_t TaskId() { return -1; }
+
 int NumSchedulableCPUs() {
   SYSTEM_INFO system_info;
   GetSystemInfo(&system_info);

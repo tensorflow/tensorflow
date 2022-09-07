@@ -86,6 +86,8 @@ string JobName() {
 
 int64_t JobUid() { return -1; }
 
+int64_t TaskId() { return -1; }
+
 int NumSchedulableCPUs() {
 #if defined(__linux__) && !defined(__ANDROID__)
   for (int ncpus = 1024; ncpus < std::numeric_limits<int>::max() / 2;
