@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 #include <atomic>
 
-#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
+namespace tsl {
 
-namespace tensorflow {
+// Whether TensorFloat-32 should be used where supported.
+static std::atomic<bool> tensor_float_32_enabled{true};
 
 void enable_tensor_float_32_execution(bool enabled) {
-  tsl::enable_tensor_float_32_execution(enabled);
+  tensor_float_32_enabled = enabled;
 }
 
-bool tensor_float_32_execution_enabled() {
-  return tsl::tensor_float_32_execution_enabled();
-}
+bool tensor_float_32_execution_enabled() { return tensor_float_32_enabled; }
 
-}  // namespace tensorflow
+}  // namespace tsl

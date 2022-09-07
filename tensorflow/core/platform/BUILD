@@ -1126,7 +1126,9 @@ cc_library(
     srcs = ["tensor_float_32_utils.cc"],
     hdrs = ["tensor_float_32_utils.h"],
     copts = tf_copts(),
-    alwayslink = 1,
+    deps = [
+        "//tensorflow/tsl/platform:tensor_float_32_utils",
+    ],
 )
 
 cc_library(
@@ -1157,7 +1159,10 @@ alias(
 
 filegroup(
     name = "tensor_float_32_hdr",
-    srcs = ["tensor_float_32_utils.h"],
+    srcs = [
+        "tensor_float_32_utils.h",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr",
+    ],
     compatible_with = get_compatible_with_portable(),
 )
 

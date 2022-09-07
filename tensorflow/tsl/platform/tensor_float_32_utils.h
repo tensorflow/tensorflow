@@ -13,20 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
+#ifndef TENSORFLOW_TSL_PLATFORM_TENSOR_FLOAT_32_UTILS_H_
+#define TENSORFLOW_TSL_PLATFORM_TENSOR_FLOAT_32_UTILS_H_
 
-#include <atomic>
+namespace tsl {
 
-#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
+void enable_tensor_float_32_execution(bool enabled);
 
-namespace tensorflow {
+bool tensor_float_32_execution_enabled();
 
-void enable_tensor_float_32_execution(bool enabled) {
-  tsl::enable_tensor_float_32_execution(enabled);
-}
+}  // namespace tsl
 
-bool tensor_float_32_execution_enabled() {
-  return tsl::tensor_float_32_execution_enabled();
-}
-
-}  // namespace tensorflow
+#endif  // TENSORFLOW_TSL_PLATFORM_TENSOR_FLOAT_32_UTILS_H_

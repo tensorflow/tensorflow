@@ -9,6 +9,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_copts",
     "tf_cuda_library",
 )
 load(
@@ -731,4 +732,24 @@ tf_cuda_library(
     deps = [
         "//tensorflow/tsl/platform/default/build_config:stream_executor",
     ],
+)
+
+cc_library(
+    name = "tensor_float_32_utils",
+    srcs = ["tensor_float_32_utils.cc"],
+    hdrs = ["tensor_float_32_utils.h"],
+    copts = tf_copts(),
+    alwayslink = 1,
+)
+
+filegroup(
+    name = "tensor_float_32_hdr",
+    srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "tensor_float_32_hdr_lib",
+    hdrs = [":tensor_float_32_hdr"],
+    compatible_with = get_compatible_with_portable(),
 )
