@@ -2436,7 +2436,10 @@ name=None))
       Dataset: The `Dataset` containing the elements of this dataset for which
           `predicate` is `True`.
     """
-    return FilterDataset(self, predicate, name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> filter_op ->
+    # dataset_ops).
+    from tensorflow.python.data.ops import filter_op  # pylint: disable=g-import-not-at-top
+    return filter_op.filter(self, predicate, name)
 
   def apply(self, transformation_func):
     """Applies a transformation function to this dataset.
@@ -4158,7 +4161,10 @@ class DatasetV1(DatasetV2):
       Dataset: The `Dataset` containing the elements of this dataset for which
           `predicate` is `True`.
     """
-    return FilterDataset(self, predicate, use_legacy_function=True)
+    # Loaded lazily due to a circular dependency (dataset_ops -> filter_op ->
+    # dataset_ops).
+    from tensorflow.python.data.ops import filter_op  # pylint: disable=g-import-not-at-top
+    return filter_op.FilterDataset(self, predicate, use_legacy_function=True)
 
   @functools.wraps(DatasetV2.apply)
   def apply(self, transformation_func):
@@ -5640,42 +5646,6 @@ class ParallelInterleaveDataset(UnaryDataset):
 
   def _transformation_name(self):
     return "Dataset.interleave()"
-
-
-class FilterDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that filters its input according to a predicate function."""
-
-  def __init__(self,
-               input_dataset,
-               predicate,
-               use_legacy_function=False,
-               name=None):
-    """See `Dataset.filter()` for details."""
-    self._input_dataset = input_dataset
-    wrapped_func = structured_function.StructuredFunctionWrapper(
-        predicate,
-        self._transformation_name(),
-        dataset=input_dataset,
-        use_legacy_function=use_legacy_function)
-    if not wrapped_func.output_structure.is_compatible_with(
-        tensor_spec.TensorSpec([], dtypes.bool)):
-      raise ValueError(f"Invalid `predicate`. `predicate` must return a "
-                       f"`tf.bool` scalar tensor, but its return type is "
-                       f"{wrapped_func.output_structure}.")
-    self._predicate = wrapped_func
-    self._name = name
-    variant_tensor = gen_dataset_ops.filter_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        other_arguments=self._predicate.function.captured_inputs,
-        predicate=self._predicate.function,
-        **self._common_args)
-    super(FilterDataset, self).__init__(input_dataset, variant_tensor)
-
-  def _functions(self):
-    return [self._predicate]
-
-  def _transformation_name(self):
-    return "Dataset.filter()"
 
 
 class PrefetchDataset(UnaryUnchangedStructureDataset):

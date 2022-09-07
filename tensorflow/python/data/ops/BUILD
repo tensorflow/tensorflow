@@ -27,6 +27,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":counter_op",
+        ":filter_op",
         ":from_tensor_slices_op",
         ":iterator_ops",
         ":load_ops",
@@ -63,6 +64,11 @@ py_library(
         "//tensorflow/python/trackable:resource",
         "//third_party/py/numpy",
     ],
+)
+
+py_library(
+    name = "filter_op",
+    srcs = ["filter_op.py"],
 )
 
 py_library(
