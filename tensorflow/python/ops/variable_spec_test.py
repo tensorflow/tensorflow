@@ -246,6 +246,37 @@ class VariableSpecTest(test.TestCase, parameterized.TestCase):
     spec8 = resource_variable_ops.VariableSpec([1, 3], dtypes.float32, False, 2)
     self.assertNotEqual(spec8, spec4)
 
+  def testisSubtypeOf(self):
+    spec = resource_variable_ops.VariableSpec([1, 3], dtypes.float32, False, 1)
+    spec2 = resource_variable_ops.VariableSpec(None, dtypes.float32, False, 1)
+    self.assertTrue(spec.is_subtype_of(spec2))
+    self.assertFalse(spec2.is_subtype_of(spec))
+    spec3 = resource_variable_ops.VariableSpec(None, dtypes.float32, False)
+    with self.assertRaises(NotImplementedError):
+      spec.is_subtype_of(spec3)
+    with self.assertRaises(NotImplementedError):
+      spec3.is_subtype_of(spec)
+
+  def testMostSpecificCommonSupertype(self):
+    spec = resource_variable_ops.VariableSpec([1, 3], dtypes.float32, False, 1)
+    spec2 = resource_variable_ops.VariableSpec([1, 2], dtypes.float32, False, 1)
+    spec3 = spec.most_specific_common_supertype([spec2])
+    expected_spec = resource_variable_ops.VariableSpec(
+        [1, None], dtypes.float32, False, 1)
+    self.assertEqual(spec3, expected_spec)
+
+    spec4 = resource_variable_ops.VariableSpec([1, 3], dtypes.float32, False)
+    spec5 = resource_variable_ops.VariableSpec([1, 2], dtypes.float32, False)
+    spec6 = spec4.most_specific_common_supertype([spec5])
+    expected_spec = resource_variable_ops.VariableSpec(
+        [1, None], dtypes.float32, False)
+    self.assertEqual(spec6, expected_spec)
+
+    with self.assertRaises(NotImplementedError):
+      spec.most_specific_common_supertype([spec4])
+    with self.assertRaises(NotImplementedError):
+      spec4.most_specific_common_supertype([spec])
+
 
 if __name__ == "__main__":
   test.main()
