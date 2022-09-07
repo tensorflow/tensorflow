@@ -198,6 +198,7 @@ cc_library(
 xla_test(
     name = "math_test",
     srcs = ["math_test.cc"],
+    tags = ["no_rocm"], # TODO (#2516) Disable due to LLVM ERROR
     deps = [
         ":constants",
         ":math",
