@@ -30,9 +30,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
-class CLArguments;
-}
 
 class ArgumentsBinder {
  public:
@@ -158,8 +155,6 @@ class Arguments : public ArgumentsBinder {
 
   absl::Status ResolveKernelGlobalSpaceBuffers(const GpuInfo& gpu_info,
                                                std::string* code);
-
-  friend class cl::CLArguments;
 
   static constexpr char kArgsPrefix[] = "args.";
 
