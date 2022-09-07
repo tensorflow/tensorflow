@@ -340,6 +340,7 @@ exports_files(
         "test.h",
         "bfloat16.h",
         "logging.h",
+        "rocm_rocdl_path.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -511,6 +512,12 @@ cc_library(
     testonly = 1,
     textual_hdrs = ["resource_loader.h"],
     deps = tf_testing_deps("resource_loader"),
+)
+
+cc_library(
+    name = "rocm_rocdl_path",
+    textual_hdrs = ["rocm_rocdl_path.h"],
+    deps = tf_platform_deps("rocm_rocdl_path"),
 )
 
 filegroup(

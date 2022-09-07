@@ -365,7 +365,7 @@ cc_library(
 cc_library(
     name = "rocm_rocdl_path",
     srcs = ["rocm_rocdl_path.cc"],
-    hdrs = ["//tensorflow/core/platform:rocm_rocdl_path.h"],
+    hdrs = ["//tensorflow/tsl/platform:rocm_rocdl_path.h"],
     compatible_with = [],
     tags = [
         "manual",
@@ -373,9 +373,9 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:types",
         "@local_config_rocm//rocm:rocm_headers",
     ],
 )

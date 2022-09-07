@@ -640,7 +640,9 @@ cc_library(
 cc_library(
     name = "rocm_rocdl_path",
     textual_hdrs = ["rocm_rocdl_path.h"],
-    deps = tf_platform_deps("rocm_rocdl_path"),
+    deps = [
+        "//tensorflow/tsl/platform:rocm_rocdl_path",
+    ],
 )
 
 cc_library(
