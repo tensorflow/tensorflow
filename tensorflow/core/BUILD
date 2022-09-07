@@ -1690,14 +1690,7 @@ tf_cuda_library(
         "//tensorflow/core/util:framework_internal_impl_srcs",
         "//tensorflow/core/util:memmapped_file_system_srcs",
         "//tensorflow/core/util/sparse:framework_internal_impl_group",
-    ] + glob(
-        [
-        ],
-        exclude = [
-            "**/*test*",
-            "**/*main.cc",
-        ],
-    ),
+    ],
     hdrs = [":framework_internal_public_headers"],
     copts = tf_copts(),
     linkopts = select({
