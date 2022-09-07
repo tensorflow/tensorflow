@@ -72,6 +72,7 @@ cc_library(
 #         ":lmhlo_to_gpu_binary",
 #         "//tensorflow/compiler/mlir/xla:attribute_exporter",
 #         "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
+#         "//tensorflow/compiler/xla/mlir/transforms/gpu:passes",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
 #         "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
