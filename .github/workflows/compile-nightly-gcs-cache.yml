@@ -20,7 +20,6 @@ on:
 name: Compile nightly brach with the bazel public remote GCS cache 
 jobs: 
   compile-nigihtly-with-gcs-cache:
-    needs: docker
     runs-on: ubuntu-latest
     container: tensorflow/build:latest-python3.10
     steps:
