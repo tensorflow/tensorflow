@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
@@ -42,8 +44,14 @@ namespace runtime {
 struct TestOpts {
   DynamicCustomCallRegistry dynamic_custom_calls;
   DirectCustomCallRegistry direct_custom_calls;
-  TypeIDNameRegistry::RegistrationFn types;
   DiagnosticEngine diagnostic_engine;
+
+  // Register type id names fro non-canonical types.
+  TypeIDNameRegistry::RegistrationFn types;
+
+  // Encoding for non-canonical custom call operands.
+  std::function<void(CustomCallArgEncodingSet&)> populate_arg_encodings;
+  std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
 };
 
 static absl::StatusOr<JitExecutable> Compile(std::string_view module,
@@ -54,11 +62,15 @@ static absl::StatusOr<JitExecutable> Compile(std::string_view module,
       ToSymbolsBinding(test_opts.direct_custom_calls, test_opts.types);
 
   opts.compiler.register_dialects = [&](mlir::DialectRegistry& registry) {
+    registry.insert<TestlibDialect>();
     RegisterDefaultXlaRuntimeDialects(registry);
   };
 
   opts.compiler.create_compilation_pipeline = [&](mlir::PassManager& pm) {
     CompilationPipelineOptions copts;
+    copts.populate_type_id_names = test_opts.types;
+    copts.populate_arg_encodings = test_opts.populate_arg_encodings;
+    copts.populate_attr_encodings = test_opts.populate_attr_encodings;
     CreateDefaultXlaRuntimeCompilationPipeline(pm, copts);
   };
 
@@ -260,7 +272,7 @@ TEST(CustomCallTest, ScalarRets) {
 
 TEST(CustomCallTest, ArgSizeCheck) {
   // Try to pass two argument to a custom call that expects one.
-  absl::string_view wrong_type = R"(
+  absl::string_view module = R"(
     func.func private @custom_call(%arg0: i32, %arg1: i32)
       attributes { rt.custom_call = "test.custom_call" }
 
@@ -277,7 +289,7 @@ TEST(CustomCallTest, ArgSizeCheck) {
   opts.dynamic_custom_calls.Register(I32NoOp());
   opts.diagnostic_engine = CollectDiagnostic(&error);
 
-  auto status = CompileAndExecute(wrong_type, /*args=*/{}, opts);
+  auto status = CompileAndExecute(module, /*args=*/{}, opts);
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.message(), "custom call 'test.custom_call' failed");
   EXPECT_EQ(error, "Wrong number of arguments: expected 1 got 2");
@@ -285,7 +297,7 @@ TEST(CustomCallTest, ArgSizeCheck) {
 
 TEST(CustomCallTest, ArgTypeCheck) {
   // Try to pass `i64` argument to a custom call that expects `i32`.
-  absl::string_view wrong_type = R"(
+  absl::string_view module = R"(
     func.func private @custom_call(%arg1: i64)
       attributes { rt.custom_call = "test.custom_call" }
 
@@ -302,10 +314,105 @@ TEST(CustomCallTest, ArgTypeCheck) {
   opts.dynamic_custom_calls.Register(I32NoOp());
   opts.diagnostic_engine = CollectDiagnostic(&error);
 
-  auto status = CompileAndExecute(wrong_type, /*args=*/{}, opts);
+  auto status = CompileAndExecute(module, /*args=*/{}, opts);
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.message(), "custom call 'test.custom_call' failed");
   EXPECT_EQ(error, "Failed to decode all custom call operands");
+}
+
+// Register custom call attribute decoding for `testlib.enum_type`.
+XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(EnumType);
+
+TEST(CustomCallTest, EnumAttr) {
+  absl::string_view module = R"(
+    func.func private @custom_call()
+      attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      call @custom_call() { enum = #testlib.enum_type<Baz> }: () -> ()
+      return
+    }
+  )";
+
+  std::vector<EnumType> enums;
+
+  auto type_id_name = [](TypeIDNameRegistry& registry) {
+    registry.Register<Tagged<EnumType>>("__type_id_testlib_enum");
+  };
+
+  auto encode = [](CustomCallAttrEncodingSet& encoding) {
+    encoding.Add<EnumAttrEncoding<EnumTypeAttr, EnumType>>();
+  };
+
+  auto handler = [&](EnumType value) -> LogicalResult {
+    enums.push_back(value);
+    return success();
+  };
+
+  TestOpts opts;
+  opts.types = type_id_name;
+  opts.populate_attr_encodings = encode;
+  opts.dynamic_custom_calls.Register(
+      CustomCall::Bind("test.custom_call").Attr<EnumType>("enum").To(handler));
+
+  EXPECT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
+  ASSERT_EQ(enums.size(), 1);
+  EXPECT_EQ(enums.front(), EnumType::Baz);
+}
+
+// Map enum defined by MLIR to a custom enum class.
+enum class MyEnumType : uint32_t { kFoo, kBar, kBaz };
+
+MyEnumType FromEnumType(EnumType value) {
+  switch (value) {
+    case EnumType::Foo:
+      return MyEnumType::kFoo;
+    case EnumType::Bar:
+      return MyEnumType::kBar;
+    case EnumType::Baz:
+      return MyEnumType::kBaz;
+  }
+}
+
+XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(MyEnumType);
+
+TEST(CustomCallTest, MappedEnumAttr) {
+  absl::string_view module = R"(
+    func.func private @custom_call()
+      attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      call @custom_call() { enum = #testlib.enum_type<Baz> }: () -> ()
+      return
+    }
+  )";
+
+  std::vector<MyEnumType> enums;
+
+  auto type_id_name = [](TypeIDNameRegistry& registry) {
+    registry.Register<Tagged<MyEnumType>>("__type_id_my_enum");
+  };
+
+  auto encode = [](CustomCallAttrEncodingSet& encoding) {
+    encoding.Add<EnumAttrEncoding<EnumTypeAttr, EnumType, MyEnumType>>(
+        FromEnumType);
+  };
+
+  auto handler = [&](MyEnumType value) -> LogicalResult {
+    enums.push_back(value);
+    return success();
+  };
+
+  TestOpts opts;
+  opts.types = type_id_name;
+  opts.populate_attr_encodings = encode;
+  opts.dynamic_custom_calls.Register(CustomCall::Bind("test.custom_call")
+                                         .Attr<MyEnumType>("enum")
+                                         .To(handler));
+
+  EXPECT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
+  ASSERT_EQ(enums.size(), 1);
+  EXPECT_EQ(enums.front(), MyEnumType::kBaz);
 }
 
 //===----------------------------------------------------------------------===//
