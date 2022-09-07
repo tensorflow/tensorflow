@@ -19,7 +19,9 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/mlir/transforms/memref:passes",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:passes",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MlirOptLib",
     ],
 )

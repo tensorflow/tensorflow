@@ -12,7 +12,8 @@ tf_cc_binary(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/mlir/transforms/gpu:passes",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MlirOptLib",
     ],
 )
