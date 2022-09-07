@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
-namespace tensorflow {
+namespace tsl {
 
 bool ParseProtoUnlimited(protobuf::MessageLite* proto,
                          const string& serialized) {
@@ -27,4 +27,4 @@ bool ParseProtoUnlimited(protobuf::MessageLite* proto, const void* serialized,
   return proto->ParseFromArray(serialized, size);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

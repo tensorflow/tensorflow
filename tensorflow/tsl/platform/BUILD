@@ -19,6 +19,7 @@ load(
     "tf_logging_deps",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
+    "tf_protobuf_deps",
     "tf_resource_deps",
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
@@ -71,6 +72,19 @@ cc_library(
         ":types",
         "@double_conversion//:double-conversion",
     ],
+)
+
+cc_library(
+    name = "protobuf",
+    srcs = [
+        "protobuf.cc",
+        "protobuf_util.cc",
+    ],
+    hdrs = ["protobuf.h"],
+    deps = [
+        ":platform",
+        ":types",
+    ] + tf_protobuf_deps(),
 )
 
 cc_library(
@@ -184,6 +198,7 @@ filegroup(
         "net.h",
         "numa.h",
         "prefetch.h",
+        "protobuf.h",
         "resource.h",
         "stack_frame.h",
         "stacktrace.h",
@@ -216,6 +231,7 @@ filegroup(
         "macros.h",
         "platform.h",
         "prefetch.h",
+        "protobuf.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -244,6 +260,9 @@ filegroup(
         "platform.h",
         "platform_strings_computed.h",
         "prefetch.h",
+        "protobuf.cc",
+        "protobuf.h",
+        "protobuf_util.cc",
         "raw_coding.h",
         "regexp.h",
         "resource.h",
@@ -331,6 +350,7 @@ filegroup(
         "init_main.h",
         "macros.h",
         "platform.h",
+        "protobuf.h",
         "stringpiece.h",
     ],
     compatible_with = get_compatible_with_portable(),

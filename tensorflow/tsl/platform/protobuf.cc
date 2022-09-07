@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
-namespace tensorflow {
+namespace tsl {
 
 const char* kProtobufInt64Typename = "::tensorflow::protobuf_int64";
 const char* kProtobufUint64Typename = "::tensorflow::protobuf_uint64";
@@ -55,4 +55,4 @@ void TStringOutputStream::BackUp(int count) {
 
 int64_t TStringOutputStream::ByteCount() const { return target_->size(); }
 
-}  // namespace tensorflow
+}  // namespace tsl

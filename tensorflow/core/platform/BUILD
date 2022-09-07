@@ -23,7 +23,6 @@ load(
     "tf_kernel_tests_linkstatic",
     "tf_platform_alias",
     "tf_platform_deps",
-    "tf_protobuf_deps",
     "tf_testing_deps",  # @unused
     "tf_windows_aware_platform_deps",
 )
@@ -529,15 +528,12 @@ cc_library(
 
 cc_library(
     name = "protobuf",
-    srcs = [
-        "protobuf.cc",
-        "protobuf_util.cc",
-    ],
     hdrs = ["protobuf.h"],
     deps = [
         ":platform",
         ":types",
-    ] + tf_protobuf_deps(),
+        "//tensorflow/tsl/platform:protobuf",
+    ],
 )
 
 cc_library(
@@ -1843,9 +1839,7 @@ filegroup(
         "path.h",
         "platform.h",
         "prefetch.h",
-        "protobuf.cc",
         "protobuf.h",
-        "protobuf_util.cc",
         "ram_file_system.h",
         "raw_coding.h",
         "refcount.h",
