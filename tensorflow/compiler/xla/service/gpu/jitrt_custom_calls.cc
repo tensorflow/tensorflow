@@ -119,7 +119,7 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 // -------------------------------------------------------------------------- //
 
 // Populate mapping from XLA (SE) enums/structs type id to symbol names.
-void PopulateXlaTypeIdNames(TypeIDNameRegistry& registry) {
+void PopulateXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
   registry.Register<Tagged<se::dnn::ActivationMode>>(
       "__type_id_se_dnn_activation");
   registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
@@ -2194,47 +2194,47 @@ static bool PartitionId(runtime::ExecutionContext* ctx, void** args,
 
 // -------------------------------------------------------------------------- //
 
-DirectCustomCallRegistry JitRtGpuCustomCalls() {
-  DirectCustomCallRegistry reg;
-
-  reg.Register("xla.gpu.fft", &xla::gpu::Fft);
-  reg.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);
-  reg.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
-  reg.Register("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
-  reg.Register("xla.gpu.gemm", &xla::gpu::Gemm);
-  reg.Register("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
-  reg.Register("xla.gpu.cublas.lt.matmul.bias", &xla::gpu::CublasLtMatmulBias);
+void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
+  registry.Register("xla.gpu.fft", &xla::gpu::Fft);
+  registry.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);
+  registry.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
+  registry.Register("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
+  registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);
+  registry.Register("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
+  registry.Register("xla.gpu.cublas.lt.matmul.bias",
+                    &xla::gpu::CublasLtMatmulBias);
 
   auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
-  reg.Register(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
-  reg.Register(conv("backward.input"), &ConvFn<CudnnConvKind::kBackwardInput>);
-  reg.Register(conv("backward.filter"),
-               &ConvFn<CudnnConvKind::kBackwardFilter>);
-  reg.Register(conv("forward.fused"),
-               &ConvFusedFn<CudnnConvKind::kForwardActivation>);
-  reg.Register(conv("forward.fused.side_input"),
-               &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
+  registry.Register(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
+  registry.Register(conv("backward.input"),
+                    &ConvFn<CudnnConvKind::kBackwardInput>);
+  registry.Register(conv("backward.filter"),
+                    &ConvFn<CudnnConvKind::kBackwardFilter>);
+  registry.Register(conv("forward.fused"),
+                    &ConvFusedFn<CudnnConvKind::kForwardActivation>);
+  registry.Register(conv("forward.fused.side_input"),
+                    &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
 
-  reg.Register("xla.gpu.memcpy.d2d",
-               &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
-  reg.Register("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
-  reg.Register("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
-  reg.Register("xla.gpu.memset", &MemsetFn);
-  reg.Register("xla.gpu.infeed", &xla::gpu::Infeed);
-  reg.Register("xla.gpu.outfeed", &xla::gpu::Outfeed);
-  reg.Register("xla.gpu.custom_call", &xla::gpu::CustomCall);
+  registry.Register("xla.gpu.memcpy.d2d",
+                    &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
+  registry.Register("xla.gpu.memcpy.h2d",
+                    &MemcpyFn<MemcpyDirection::kHostToDevice>);
+  registry.Register("xla.gpu.memcpy.d2h",
+                    &MemcpyFn<MemcpyDirection::kDeviceToHost>);
+  registry.Register("xla.gpu.memset", &MemsetFn);
+  registry.Register("xla.gpu.infeed", &xla::gpu::Infeed);
+  registry.Register("xla.gpu.outfeed", &xla::gpu::Outfeed);
+  registry.Register("xla.gpu.custom_call", &xla::gpu::CustomCall);
 
   // Collective operations.
-  reg.Register("xla.gpu.all_gather", &xla::gpu::AllGather);
-  reg.Register("xla.gpu.all_reduce", &xla::gpu::AllReduce);
-  reg.Register("xla.gpu.all_reduce_done", &xla::gpu::AllReduceDone);
-  reg.Register("xla.gpu.all_reduce_start", &xla::gpu::AllReduceStart);
-  reg.Register("xla.gpu.all_to_all", &xla::gpu::AllToAll);
-  reg.Register("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
-  reg.Register("xla.gpu.partition_id", &xla::gpu::PartitionId);
-  reg.Register("xla.gpu.replica_id", &xla::gpu::ReplicaId);
-
-  return reg;
+  registry.Register("xla.gpu.all_gather", &xla::gpu::AllGather);
+  registry.Register("xla.gpu.all_reduce", &xla::gpu::AllReduce);
+  registry.Register("xla.gpu.all_reduce_done", &xla::gpu::AllReduceDone);
+  registry.Register("xla.gpu.all_reduce_start", &xla::gpu::AllReduceStart);
+  registry.Register("xla.gpu.all_to_all", &xla::gpu::AllToAll);
+  registry.Register("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
+  registry.Register("xla.gpu.partition_id", &xla::gpu::PartitionId);
+  registry.Register("xla.gpu.replica_id", &xla::gpu::ReplicaId);
 }
 
 }  // namespace gpu

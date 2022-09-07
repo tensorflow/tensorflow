@@ -142,8 +142,11 @@ XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(
 namespace xla {
 namespace gpu {
 
+// Populate custom calls implementing XLA GPU runtime API.
+void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry);
+
 // Populate mapping from XLA (SE) enums/structs type id to symbol names.
-void PopulateXlaTypeIdNames(runtime::TypeIDNameRegistry& registry);
+void PopulateXlaGpuTypeIdNames(runtime::TypeIDNameRegistry& registry);
 
 // Populate encoding from LMHLO attributes to XLA(SE) enums and structs.
 void PopulateLmhloToXlaAttrEncoding(
@@ -233,8 +236,6 @@ class JitRtAsyncCollectiveSupport {
   // Store done events for the AllReduceDone to wait on.
   llvm::SmallDenseMap<int64_t, se::Event> done_events_ ABSL_GUARDED_BY(mutex_);
 };
-
-xla::runtime::DirectCustomCallRegistry JitRtGpuCustomCalls();
 
 }  // namespace gpu
 }  // namespace xla

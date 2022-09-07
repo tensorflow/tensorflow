@@ -100,7 +100,7 @@ class GpuExecutable::JitRtExecutable {
     runtime::CompilationPipelineOptions copts;
 
     // Populate mapping from XLA (SE) enums/structs type id to symbol names.
-    copts.populate_type_id_names = PopulateXlaTypeIdNames;
+    copts.populate_type_id_names = PopulateXlaGpuTypeIdNames;
 
     // For passing LMHLO attributes as XLA (SE) enums/structs to custom calls.
     copts.populate_attr_encodings = PopulateLmhloToXlaAttrEncoding;
@@ -116,7 +116,7 @@ class GpuExecutable::JitRtExecutable {
 
     // Register XLA Gpu runtime custom calls with the linker.
     opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
-        JitRtGpuCustomCalls(), PopulateXlaTypeIdNames);
+        PopulateXlaGpuCustomCalls, PopulateXlaGpuTypeIdNames);
 
     // We just use the default compilation pipeline provided by the XLA runtime.
     // Alternatively instead of having a separate JitRtProgram (LMHLO lowered to
@@ -1112,8 +1112,8 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   runtime::FunctionType signature(std::move(args), /*results=*/{});
   runtime::FunctionType rt_signature(std::move(rt_args), /*results=*/{});
 
-  auto symbol_map =
-      runtime::ToSymbolsBinding(JitRtGpuCustomCalls(), PopulateXlaTypeIdNames);
+  auto symbol_map = runtime::ToSymbolsBinding(PopulateXlaGpuCustomCalls,
+                                              PopulateXlaGpuTypeIdNames);
 
   // Load JitRt executable from an object file, and link it with Gpu runtime
   // intrinsics implementing Gpu custom calls.

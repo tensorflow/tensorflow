@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/executable.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -43,8 +44,6 @@ using absl::StrCat;
 using absl::StrFormat;
 
 using llvm::dyn_cast;
-using llvm::orc::MangleAndInterner;
-using llvm::orc::SymbolMap;
 
 // ExecutionContext encapsulates all the data that is required to implement XLA
 // Runtime <-> XLA Executable integration API.
@@ -74,26 +73,30 @@ struct ExecutionContext {
 //===----------------------------------------------------------------------===//
 
 ExecutionEngine::SymbolsBinding ToSymbolsBinding(
-    DirectCustomCallRegistry custom_calls,
-    TypeIDNameRegistry::RegistrationFn types) {
-  return [=](MangleAndInterner mangle) {
-    SymbolMap symbol_map;
+    std::function<void(DirectCustomCallRegistry&)> custom_calls,
+    std::function<void(TypeIDNameRegistry&)> types) {
+  return [=](llvm::orc::MangleAndInterner mangle) {
+    llvm::orc::SymbolMap symbol_map;
 
-    // Always register canonical custom call types with the registry.
-    TypeIDNameRegistry registry;
-    PopulateCustomCallTypeIdNames(registry);
-    if (types) types(registry);
+    DirectCustomCallRegistry custom_call_registry;
+    if (custom_calls) custom_calls(custom_call_registry);
+
+    TypeIDNameRegistry type_registry;
+    if (types) types(type_registry);
+
+    // Always register canonical custom call types.
+    PopulateCustomCallTypeIdNames(type_registry);
 
     // Register direct custom calls.
     using DirectCustomCall = DirectCustomCallRegistry::DirectCustomCall;
-    custom_calls.ForEach([&](std::string_view name,
-                             DirectCustomCall custom_call) {
+    custom_call_registry.ForEach([&](std::string_view name,
+                                     DirectCustomCall custom_call) {
       symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
           llvm::pointerToJITTargetAddress(custom_call), llvm::JITSymbolFlags());
     });
 
     // Register type id symbols.
-    registry.ForEach([&](std::string_view name, TypeID type_id) {
+    type_registry.ForEach([&](std::string_view name, TypeID type_id) {
       auto type_id_ptr =
           reinterpret_cast<std::uintptr_t>(type_id.getAsOpaquePointer());
       symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
@@ -109,7 +112,7 @@ ExecutionEngine::SymbolsBinding ToSymbolsBinding(
 // Register XLA runtime symbols with XLA execution engine.
 //===----------------------------------------------------------------------===//
 
-static SymbolMap RuntimeApiSymbolMap(MangleAndInterner);
+static llvm::orc::SymbolMap RuntimeApiSymbolMap(llvm::orc::MangleAndInterner);
 
 //===----------------------------------------------------------------------===//
 // Construct a symbols binding for XLA executable.
@@ -448,8 +451,8 @@ mlir::LogicalResult Executable::Call(ExecutionContext* ctx,
 // Register XLA runtime symbols with XLA execution engine.
 //===----------------------------------------------------------------------===//
 
-SymbolMap RuntimeApiSymbolMap(MangleAndInterner mangle) {
-  SymbolMap symbol_map;
+llvm::orc::SymbolMap RuntimeApiSymbolMap(llvm::orc::MangleAndInterner mangle) {
+  llvm::orc::SymbolMap symbol_map;
 
   auto bind = [&](std::string_view name, auto symbol_ptr) {
     symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(

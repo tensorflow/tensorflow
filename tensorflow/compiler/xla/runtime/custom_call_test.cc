@@ -43,16 +43,15 @@ namespace runtime {
 //===----------------------------------------------------------------------===//
 
 struct TestOpts {
-  DynamicCustomCallRegistry dynamic_custom_calls;
-  DirectCustomCallRegistry direct_custom_calls;
-  DiagnosticEngine diagnostic_engine;
-
-  // Register type id names fro non-canonical types.
-  TypeIDNameRegistry::RegistrationFn types;
+  std::function<void(DynamicCustomCallRegistry&)> dynamic_custom_calls;
+  std::function<void(DirectCustomCallRegistry&)> direct_custom_calls;
+  std::function<void(TypeIDNameRegistry&)> types;
 
   // Encoding for non-canonical custom call operands.
   std::function<void(CustomCallArgEncodingSet&)> populate_arg_encodings;
   std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
+
+  DiagnosticEngine diagnostic_engine;
 };
 
 static absl::StatusOr<JitExecutable> Compile(std::string_view module,
@@ -93,8 +92,13 @@ static absl::Status CompileAndExecute(std::string_view module,
   auto initialized = executable->InitializeCallFrame(args, &call_frame);
   if (!initialized.ok()) return initialized;
 
+  // Register all dynamic custom calls.
+  DynamicCustomCallRegistry dynamic_custom_calls;
+  if (test_opts.dynamic_custom_calls)
+    test_opts.dynamic_custom_calls(dynamic_custom_calls);
+
   Executable::ExecuteOpts execute_opts;
-  execute_opts.custom_call_registry = &test_opts.dynamic_custom_calls;
+  execute_opts.custom_call_registry = &dynamic_custom_calls;
   execute_opts.diagnostic_engine = &test_opts.diagnostic_engine;
   execute_opts.async_task_runner =
       reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
@@ -116,10 +120,11 @@ static DiagnosticEngine CollectDiagnostic(std::string* error) {
 }
 
 // No-Op custom call with a single `i32` argument.
-static std::unique_ptr<CustomCall> I32NoOp() {
-  return CustomCall::Bind("test.custom_call").Arg<int32_t>().To([](int32_t) {
-    return success();
-  });
+static void I32NoOp(DynamicCustomCallRegistry& registry) {
+  registry.Register(
+      CustomCall::Bind("test.custom_call").Arg<int32_t>().To([](int32_t) {
+        return success();
+      }));
 }
 
 //===----------------------------------------------------------------------===//
@@ -153,7 +158,9 @@ TEST(CustomCallTest, DirectCustomCall) {
   )";
 
   TestOpts opts;
-  opts.direct_custom_calls.Register("test.custom_call", CustomCallFn);
+  opts.direct_custom_calls = [&](DirectCustomCallRegistry& registry) {
+    registry.Register("test.custom_call", CustomCallFn);
+  };
 
   ASSERT_EQ(custom_call_counter, 0);
   ASSERT_TRUE(CompileAndExecute(module, {}, opts).ok());
@@ -189,13 +196,15 @@ TEST(CustomCallTest, ScalarArgs) {
   };
 
   TestOpts opts;
-  opts.dynamic_custom_calls.Register(CustomCall::Bind("test.custom_call")
-                                         .Arg<bool>()
-                                         .Arg<int32_t>()
-                                         .Arg<int64_t>()
-                                         .Arg<float>()
-                                         .Arg<double>()
-                                         .To(f));
+  opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Arg<bool>()
+                          .Arg<int32_t>()
+                          .Arg<int64_t>()
+                          .Arg<float>()
+                          .Arg<double>()
+                          .To(f));
+  };
 
   ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
 
@@ -246,21 +255,23 @@ TEST(CustomCallTest, ScalarRets) {
   };
 
   TestOpts opts;
-  opts.dynamic_custom_calls.Register(CustomCall::Bind("test.custom_call_result")
-                                         .Ret<bool>()
-                                         .Ret<int32_t>()
-                                         .Ret<int64_t>()
-                                         .Ret<float>()
-                                         .Ret<double>()
-                                         .To(f_result));
+  opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call_result")
+                          .Ret<bool>()
+                          .Ret<int32_t>()
+                          .Ret<int64_t>()
+                          .Ret<float>()
+                          .Ret<double>()
+                          .To(f_result));
 
-  opts.dynamic_custom_calls.Register(CustomCall::Bind("test.custom_call")
-                                         .Arg<bool>()
-                                         .Arg<int32_t>()
-                                         .Arg<int64_t>()
-                                         .Arg<float>()
-                                         .Arg<double>()
-                                         .To(f));
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Arg<bool>()
+                          .Arg<int32_t>()
+                          .Arg<int64_t>()
+                          .Arg<float>()
+                          .Arg<double>()
+                          .To(f));
+  };
 
   ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
 
@@ -287,7 +298,7 @@ TEST(CustomCallTest, ArgSizeCheck) {
   std::string error = "";
 
   TestOpts opts;
-  opts.dynamic_custom_calls.Register(I32NoOp());
+  opts.dynamic_custom_calls = I32NoOp;
   opts.diagnostic_engine = CollectDiagnostic(&error);
 
   auto status = CompileAndExecute(module, /*args=*/{}, opts);
@@ -312,7 +323,7 @@ TEST(CustomCallTest, ArgTypeCheck) {
   std::string error = "";
 
   TestOpts opts;
-  opts.dynamic_custom_calls.Register(I32NoOp());
+  opts.dynamic_custom_calls = I32NoOp;
   opts.diagnostic_engine = CollectDiagnostic(&error);
 
   auto status = CompileAndExecute(module, /*args=*/{}, opts);
@@ -335,6 +346,13 @@ TEST(CustomCallTest, EnumAttr) {
     }
   )";
 
+  std::vector<EnumType> enums;
+
+  auto handler = [&](EnumType value) -> LogicalResult {
+    enums.push_back(value);
+    return success();
+  };
+
   auto types = [](TypeIDNameRegistry& registry) {
     registry.Register<Tagged<EnumType>>("__type_id_testlib_enum");
   };
@@ -343,18 +361,16 @@ TEST(CustomCallTest, EnumAttr) {
     encoding.Add<EnumAttrEncoding<EnumTypeAttr, EnumType>>();
   };
 
-  std::vector<EnumType> enums;
-
-  auto handler = [&](EnumType value) -> LogicalResult {
-    enums.push_back(value);
-    return success();
+  auto custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Attr<EnumType>("enum")
+                          .To(handler));
   };
 
   TestOpts opts;
   opts.types = types;
   opts.populate_attr_encodings = attrs;
-  opts.dynamic_custom_calls.Register(
-      CustomCall::Bind("test.custom_call").Attr<EnumType>("enum").To(handler));
+  opts.dynamic_custom_calls = custom_calls;
 
   EXPECT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
   ASSERT_EQ(enums.size(), 1);
@@ -388,6 +404,13 @@ TEST(CustomCallTest, MappedEnumAttr) {
     }
   )";
 
+  std::vector<MyEnumType> enums;
+
+  auto handler = [&](MyEnumType value) -> LogicalResult {
+    enums.push_back(value);
+    return success();
+  };
+
   auto types = [](TypeIDNameRegistry& registry) {
     registry.Register<Tagged<MyEnumType>>("__type_id_my_enum");
   };
@@ -397,19 +420,16 @@ TEST(CustomCallTest, MappedEnumAttr) {
         FromEnumType);
   };
 
-  std::vector<MyEnumType> enums;
-
-  auto handler = [&](MyEnumType value) -> LogicalResult {
-    enums.push_back(value);
-    return success();
+  auto custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Attr<MyEnumType>("enum")
+                          .To(handler));
   };
 
   TestOpts opts;
   opts.types = types;
   opts.populate_attr_encodings = attrs;
-  opts.dynamic_custom_calls.Register(CustomCall::Bind("test.custom_call")
-                                         .Attr<MyEnumType>("enum")
-                                         .To(handler));
+  opts.dynamic_custom_calls = custom_calls;
 
   EXPECT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
   ASSERT_EQ(enums.size(), 1);
@@ -442,6 +462,17 @@ TEST(CustomCallTest, StructAttr) {
     }
   )";
 
+  int64_t rank = 0;
+  std::vector<int64_t> a;
+  std::vector<int64_t> b;
+
+  auto handler = [&](PairOfDims value) -> LogicalResult {
+    rank = value.rank;
+    a.assign(value.a.begin(), value.a.end());
+    b.assign(value.b.begin(), value.b.end());
+    return success();
+  };
+
   auto types = [](TypeIDNameRegistry& registry) {
     registry.Register<Tagged<PairOfDims>>("__type_id_pair_of_dims");
   };
@@ -454,23 +485,16 @@ TEST(CustomCallTest, StructAttr) {
                       .Add("b", &PairOfDimsAttr::getB));
   };
 
-  int64_t rank = 0;
-  std::vector<int64_t> a;
-  std::vector<int64_t> b;
-
-  auto handler = [&](PairOfDims value) -> LogicalResult {
-    rank = value.rank;
-    a.assign(value.a.begin(), value.a.end());
-    b.assign(value.b.begin(), value.b.end());
-    return success();
+  auto custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Attr<PairOfDims>("dims")
+                          .To(handler));
   };
 
   TestOpts opts;
   opts.types = types;
   opts.populate_attr_encodings = attrs;
-  opts.dynamic_custom_calls.Register(CustomCall::Bind("test.custom_call")
-                                         .Attr<PairOfDims>("dims")
-                                         .To(handler));
+  opts.dynamic_custom_calls = custom_calls;
 
   EXPECT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
   EXPECT_EQ(rank, 2);
@@ -495,13 +519,16 @@ static constexpr RuntimeChecks none = RuntimeChecks::kNone;
 static void BenchmarkCustomCall(
     State& state, std::string_view module, ArgumentsRef args,
     std::string_view name, DirectCustomCall custom_call,
-    TypeIDNameRegistry::RegistrationFn types = {},
+    std::function<void(TypeIDNameRegistry&)> types = {},
     std::function<void(CustomCallAttrEncodingSet&)> attrs = {}) {
-  // Wrap benchmarked custom call into a direct custom call registry.
   TestOpts opts;
-  opts.direct_custom_calls.Register(name, custom_call);
   opts.types = std::move(types);
   opts.populate_attr_encodings = std::move(attrs);
+
+  // Wrap benchmarked custom call into a direct custom call registry.
+  opts.direct_custom_calls = [&](DirectCustomCallRegistry& registry) {
+    registry.Register(name, custom_call);
+  };
 
   absl::StatusOr<JitExecutable> jit_executable = Compile(module, opts);
   CHECK(jit_executable.ok()) << jit_executable.status();
