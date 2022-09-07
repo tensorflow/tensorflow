@@ -694,6 +694,11 @@ cc_library(
         "//conditions:default": [
             ":arena_planner",
         ],
+    }) + select({
+        ":tensorflow_profiler_config": [
+            ":tensorflow_profiler_logger_shim",
+        ],
+        "//conditions:default": [],
     }),
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
