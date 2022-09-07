@@ -1,4 +1,3 @@
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -666,29 +665,10 @@ tf_cc_test(
     ],
 )
 
-# If false, PjRtCApiClient will raise an error on methods unimplemented in the PJRT C API. If
-# true, PjRtCApiClient and related classes will assume the wrapper impl is being used and call
-# directly into the wrapped C++ PJRT client. This can be useful for testing, but is generally not
-# safe to use across library boundaries.
-bool_flag(
-    name = "pjrt_c_api_bypass",
-    build_setting_default = True,
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "pjrt_c_api_bypass_enabled",
-    flag_values = {":pjrt_c_api_bypass": "True"},
-)
-
 cc_library(
     name = "pjrt_c_api_client",
     srcs = ["pjrt_c_api_client.cc"],
     hdrs = ["pjrt_c_api_client.h"],
-    defines = select({
-        ":pjrt_c_api_bypass_enabled": ["PJRT_C_API_BYPASS"],
-        "//conditions:default": [],
-    }),
     deps = [
         ":pjrt_client",
         ":pjrt_future",

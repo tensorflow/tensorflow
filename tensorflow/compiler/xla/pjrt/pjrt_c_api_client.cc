@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 
 namespace xla {
+bool kPjRtCApiBypass = false;
 
 // Helper macros
 
@@ -310,27 +311,27 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
     const PjRtLoadedExecutable& executable) const {
-#ifdef PJRT_C_API_BYPASS
-  return wrapped_->SerializeExecutable(
-      *PjRtCApiExecutable::GetWrapped(&executable));
-#endif  // PJRT_C_API_BYPASS
+  if (kPjRtCApiBypass) {
+    return wrapped_->SerializeExecutable(
+        *PjRtCApiExecutable::GetWrapped(&executable));
+  }
   return Unimplemented("PJRT C API does not support SerializeExecutable");
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
                                       CompileOptions options) {
-#ifdef PJRT_C_API_BYPASS
-  return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
-#endif  // PJRT_C_API_BYPASS
+  if (kPjRtCApiBypass) {
+    return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
+  }
   return Unimplemented("PJRT C API does not support DeserializeExecutable");
 }
 
 StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
     PjRtBuffer* buffer) {
-#ifdef PJRT_C_API_BYPASS
-  return wrapped_->UnsafeBufferPointer(PjRtCApiBuffer::GetWrapped(buffer));
-#endif  // PJRT_C_API_BYPASS
+  if (kPjRtCApiBypass) {
+    return wrapped_->UnsafeBufferPointer(PjRtCApiBuffer::GetWrapped(buffer));
+  }
   return Unimplemented("PJRT C API does not support UnsafeBufferPointer");
 }
 
@@ -668,21 +669,22 @@ PjRtCApiExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
-#ifdef PJRT_C_API_BYPASS
-  std::vector<PjRtBuffer*> wrapped_args =
-      PjRtCApiBuffer::GetWrappedVector(argument_handles);
+  if (kPjRtCApiBypass) {
+    std::vector<PjRtBuffer*> wrapped_args =
+        PjRtCApiBuffer::GetWrappedVector(argument_handles);
 
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> out,
-                      wrapped()->ExecuteSharded(
-                          wrapped_args, PjRtCApiDevice::GetWrapped(device),
-                          options, returned_future, fill_future));
+    TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> out,
+                        wrapped()->ExecuteSharded(
+                            wrapped_args, PjRtCApiDevice::GetWrapped(device),
+                            options, returned_future, fill_future));
 
-  for (std::unique_ptr<PjRtBuffer>& buffer : out) {
-    buffer = std::make_unique<PjRtCApiBuffer>(
-        client_, new PJRT_Buffer{std::move(buffer), client_->pjrt_c_client()});
+    for (std::unique_ptr<PjRtBuffer>& buffer : out) {
+      buffer = std::make_unique<PjRtCApiBuffer>(
+          client_,
+          new PJRT_Buffer{std::move(buffer), client_->pjrt_c_client()});
+    }
+    return out;
   }
-  return out;
-#endif  // PJRT_C_API_BYPASS
   return Unimplemented("PJRT C API does not support ExecuteSharded");
 }
 
@@ -691,21 +693,22 @@ PjRtCApiExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
-#ifdef PJRT_C_API_BYPASS
-  std::vector<PjRtBuffer*> wrapped_args =
-      PjRtCApiBuffer::GetWrappedVector(argument_handles);
+  if (kPjRtCApiBypass) {
+    std::vector<PjRtBuffer*> wrapped_args =
+        PjRtCApiBuffer::GetWrappedVector(argument_handles);
 
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> out,
-                      wrapped()->ExecutePortable(
-                          wrapped_args, PjRtCApiDevice::GetWrapped(device),
-                          options, returned_future, fill_future));
+    TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> out,
+                        wrapped()->ExecutePortable(
+                            wrapped_args, PjRtCApiDevice::GetWrapped(device),
+                            options, returned_future, fill_future));
 
-  for (std::unique_ptr<PjRtBuffer>& buffer : out) {
-    buffer = std::make_unique<PjRtCApiBuffer>(
-        client_, new PJRT_Buffer{std::move(buffer), client_->pjrt_c_client()});
+    for (std::unique_ptr<PjRtBuffer>& buffer : out) {
+      buffer = std::make_unique<PjRtCApiBuffer>(
+          client_,
+          new PJRT_Buffer{std::move(buffer), client_->pjrt_c_client()});
+    }
+    return out;
   }
-  return out;
-#endif  // PJRT_C_API_BYPASS
   return Unimplemented("PJRT C API does not support ExecutePortable");
 }
 
@@ -929,9 +932,15 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
     return std::unique_ptr<PjRtBuffer>(
         std::make_unique<PjRtCApiBuffer>(client_, args.dst_buffer));
   } else {
-    // TODO(b/239735405) Copying across different clients where `dst_device` is
-    // not a PjRtCApiDevice raises an error.
-    return wrapped_->CopyToDevice(dst_device);
+    if (kPjRtCApiBypass) {
+      // TODO(b/239735405) Copying across different clients where `dst_device`
+      // is not a PjRtCApiDevice raises an error.
+      return wrapped_->CopyToDevice(dst_device);
+    }
+    return Unimplemented(
+        "PjRtCApiBuffer::CopyToDevice does not support cross-platform device "
+        "transfers, got destination device: %s",
+        dst_device->ToString());
   }
 }
 
