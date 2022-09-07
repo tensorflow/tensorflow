@@ -430,8 +430,9 @@ absl::Status Arguments::Compile(
     const GpuInfo& gpu_info,
     const std::map<std::string, std::string>& linkables, std::string* code) {
   RETURN_IF_ERROR(AddObjectsScalarArgs(gpu_info));
+  RETURN_IF_ERROR(ResolveLinkingPass(gpu_info, linkables, code));
   RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, code));
-  RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, linkables, code));
+  RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, code));
   GetActiveArguments(*code);
   RETURN_IF_ERROR(ResolveKernelGlobalSpaceBuffers(gpu_info, code));
   return absl::OkStatus();
@@ -481,7 +482,6 @@ absl::Status Arguments::ResolveConstExpr(const GpuInfo& gpu_info,
 
 absl::Status Arguments::ResolveSelectorsPass(
     const GpuInfo& gpu_info,
-    const std::map<std::string, std::string>& linkables,
     std::string* code) const {
   std::string result;
   size_t position = 0;
@@ -513,12 +513,16 @@ absl::Status Arguments::ResolveSelectorsPass(
       RETURN_IF_ERROR(ParseArgsInsideBrackets(
           *code, next_position, &close_bracket_pos, &function_args));
       for (auto& arg : function_args) {
-        RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, {}, &arg));
+        RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, &arg));
       }
       std::string patch;
-      RETURN_IF_ERROR(ResolveSelector(gpu_info, linkables, object_name,
-                                      selector_name, function_args,
-                                      template_args, &patch));
+      GPUObjectDescriptor* desc_ptr;
+      RETURN_IF_ERROR(GetDescriptor(object_name, &desc_ptr));
+      auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
+      RETURN_IF_ERROR(desc_ptr->PerformSelector(
+          gpu_info, selector_name, function_args, template_args, &patch));
+      ResolveObjectNames(object_name, names, &patch);
+
       code->replace(arg_pos, close_bracket_pos - arg_pos, patch);
       position = arg_pos + patch.size();
     } else {
@@ -529,57 +533,105 @@ absl::Status Arguments::ResolveSelectorsPass(
   return absl::OkStatus();
 }
 
-absl::Status Arguments::ResolveSelector(
+absl::Status Arguments::ResolveLinkingPass(
     const GpuInfo& gpu_info,
     const std::map<std::string, std::string>& linkables,
-    const std::string& object_name, const std::string& selector,
-    const std::vector<std::string>& function_args,
-    const std::vector<std::string>& template_args, std::string* result) const {
-  GPUObjectDescriptor* desc_ptr;
-  RETURN_IF_ERROR(GetDescriptor(object_name, &desc_ptr));
-  auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
-  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
-  std::vector<std::string> function_args_new = function_args;
-  if (tensor_desc && !linkables.empty() && selector == "Write") {
-    auto it = linkables.find(object_name);
-    if (it != linkables.end() && !it->second.empty()) {
-      if (desc_ptr->GetAccess() != AccessType::WRITE &&
-          desc_ptr->GetAccess() != AccessType::READ_WRITE) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Object with name - ", object_name, " should have Write access."));
-      }
-      std::string value_name, x_coord, y_coord, z_coord, s_coord, b_coord;
-      RETURN_IF_ERROR(tensor_desc->GetLinkingContextFromWriteSelector(
-          function_args_new, &value_name, &x_coord, &y_coord, &z_coord,
-          &s_coord, &b_coord));
-      const std::string new_value_name = value_name + "_final";
-      const std::string out_var_declaration =
-          "\n" + GetTypeDeclaration(gpu_info, tensor_desc->GetDataType(), 4) +
-          " " + new_value_name + ";\n";
-      *result = "{  // elementwise code with input:" + value_name +
-                absl::Substitute(it->second, out_var_declaration) + "\n";
-      *result = absl::StrReplaceAll(*result, {{"\n", "\n  "}});
-      ReplaceAllWords("in_value", value_name, result);
-      ReplaceAllWords("out_value", new_value_name, result);
-      ReplaceAllWords("X_COORD", x_coord, result);
-      ReplaceAllWords("Y_COORD", y_coord, result);
-      ReplaceAllWords("Z_COORD", z_coord, result);
-      ReplaceAllWords("S_COORD", s_coord, result);
-      ReplaceAllWords("B_COORD", b_coord, result);
-      function_args_new[0] = new_value_name;
-      RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, result));
-      RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, {}, result));
+    std::string* code) const {
+  std::map<std::string, std::string> useful_linkables;
+  for (const auto& linkable : linkables) {
+    if (!linkable.second.empty()) {
+      useful_linkables[linkable.first] = linkable.second;
     }
   }
-  std::string patch;
-  RETURN_IF_ERROR(desc_ptr->PerformSelector(
-      gpu_info, selector, function_args_new, template_args, &patch));
-  ResolveObjectNames(object_name, names, &patch);
-  if (result->empty()) {
-    *result += patch;
-  } else {
-    // result has elementwise code
-    *result += "// write result to tensor\n  " + patch + ";\n}";
+  if (useful_linkables.empty()) {
+    return absl::OkStatus();
+  }
+  for (size_t position = code->find(kArgsPrefix); position != std::string::npos;
+       position = code->find(kArgsPrefix, position)) {
+    const size_t args_pos = position;
+    position += strlen(kArgsPrefix);
+    const std::string object_name = GetNextWord(*code, position);
+    position += object_name.size();
+    auto linkable = useful_linkables.find(object_name);
+    if (linkable == useful_linkables.end()) {
+      continue;
+    }
+    GPUObjectDescriptor* desc_ptr;
+    RETURN_IF_ERROR(GetDescriptor(object_name, &desc_ptr));
+    const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
+    if (!tensor_desc) {
+      return absl::NotFoundError("Linker object must be a Tensor.");
+    }
+    char next = (*code)[position];
+    position += 1;
+    if (next != '.') {
+      continue;
+    }
+    const std::string selector_name = GetNextWord(*code, position);
+    position += selector_name.size();
+    if (selector_name != "Write") {
+      continue;
+    }
+    next = (*code)[position];
+    std::vector<std::string> template_args;
+    if (next == '<') {
+      size_t close_bracket_pos;
+      RETURN_IF_ERROR(ParseArgsInsideBrackets(
+          *code, position, &close_bracket_pos, &template_args));
+      position = close_bracket_pos;
+      next = (*code)[position];
+    }
+    if (next != '(') {
+      return absl::NotFoundError(absl::StrCat("Expected ( after ", object_name,
+                                              ".", selector_name, " call"));
+    }
+    std::vector<std::string> function_args;
+    size_t close_bracket_pos;
+    RETURN_IF_ERROR(ParseArgsInsideBrackets(*code, position, &close_bracket_pos,
+                                            &function_args));
+
+    std::string value_name, x_coord, y_coord, z_coord, s_coord, b_coord;
+    RETURN_IF_ERROR(tensor_desc->GetLinkingContextFromWriteSelector(
+        function_args, &value_name, &x_coord, &y_coord, &z_coord, &s_coord,
+        &b_coord));
+    const std::string new_value_name = value_name + "_final";
+    const std::string out_var_declaration =
+        GetTypeDeclaration(gpu_info, tensor_desc->GetDataType(), 4) + " " +
+        new_value_name + ";\n";
+    std::string prefix;
+    size_t space_pos = args_pos - 1;
+    while (space_pos >= 0 &&
+           ((*code)[space_pos] == ' ' || (*code)[space_pos] == '\t')) {
+      prefix += (*code)[space_pos];
+      space_pos -= 1;
+    }
+    function_args[0] = new_value_name;
+    std::string write_code = kArgsPrefix + object_name + ".Write";
+    if (!template_args.empty()) {
+      write_code += std::string("<") + template_args[0];
+      for (int i = 1; i < template_args.size(); ++i) {
+        write_code += ", " + template_args[i];
+      }
+      write_code += ">";
+    }
+    write_code += std::string("(") + function_args[0];
+    for (int i = 1; i < function_args.size(); ++i) {
+      write_code += ", " + function_args[i];
+    }
+    write_code += ")";
+    std::string patch =
+        "{\n" + absl::Substitute(linkable->second, out_var_declaration) + "\n" +
+        write_code + ";\n}";
+    patch = absl::StrReplaceAll(patch, {{"\n", "\n" + prefix},
+                                        {"in_value", value_name},
+                                        {"out_value", new_value_name},
+                                        {"X_COORD", x_coord},
+                                        {"Y_COORD", y_coord},
+                                        {"Z_COORD", z_coord},
+                                        {"S_COORD", s_coord},
+                                        {"B_COORD", b_coord}});
+    code->replace(args_pos, close_bracket_pos - args_pos, patch);
+    position = args_pos + patch.size();
   }
   return absl::OkStatus();
 }
