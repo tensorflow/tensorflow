@@ -1619,6 +1619,7 @@ cc_library(
         ":constraint_fusion_pass",
         ":convert_to_signless_pass",
         ":copy_removal",
+        ":detensorize_scf_ops",
         ":expand_hlo_tuples",
         ":generic_host_to_llvm",
         ":gml_st_compose_set_ops",
@@ -1899,6 +1900,25 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "detensorize_scf_ops",
+    srcs = ["lib/Transforms/detensorize_scf_ops.cc"],
+    hdrs = ["include/mlir-hlo/Transforms/passes.h"],
+    deps = [
+        ":MhloPassIncGen",
+        ":mlir_hlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 

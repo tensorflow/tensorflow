@@ -109,6 +109,10 @@ std::unique_ptr<OperationPass<>> createCollapseParallelLoopsTo1DPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createTileLoopsPass(
     ArrayRef<int64_t> tileSizes = {}, ArrayRef<int64_t> unrollFactors = {});
 
+// Detensorizes loop-carried variables and block arguments of scf.while, scf.for
+// and scf.if.
+std::unique_ptr<OperationPass<func::FuncOp>> createDetensorizeScfOpsPass();
+
 namespace hlo {
 std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
 
