@@ -149,40 +149,6 @@ absl::Status ParseArgsInsideBrackets(const std::string& text,
   return absl::OkStatus();
 }
 
-std::string DataTypeToGlType(DataType data_type, int vec_size,
-                             bool explicit_f16) {
-  if (data_type == DataType::FLOAT32) {
-    if (vec_size == 1) {
-      return "float";
-    } else {
-      return "vec" + std::to_string(vec_size);
-    }
-  } else if (data_type == DataType::FLOAT16) {
-    if (vec_size == 1) {
-      return explicit_f16 ? "float16_t" : "float";
-    } else {
-      if (explicit_f16) {
-        return "f16vec" + std::to_string(vec_size);
-      } else {
-        return "vec" + std::to_string(vec_size);
-      }
-    }
-  } else if (data_type == DataType::INT32) {
-    if (vec_size == 1) {
-      return "int";
-    } else {
-      return "ivec" + std::to_string(vec_size);
-    }
-  } else if (data_type == DataType::UINT32) {
-    if (vec_size == 1) {
-      return "uint";
-    } else {
-      return "uvec" + std::to_string(vec_size);
-    }
-  }
-  return "unsupported_type";
-}
-
 absl::Status BufferToKernelLanguage(const GpuInfo& gpu_info,
                                     const std::string& buffer_name,
                                     const BufferDescriptor* buffer_desc,
@@ -194,15 +160,14 @@ absl::Status BufferToKernelLanguage(const GpuInfo& gpu_info,
       buffer_desc->size /
       (buffer_desc->element_size * SizeOf(buffer_desc->element_type));
   if (gpu_info.IsGlsl()) {
-    const std::string gl_type =
-        DataTypeToGlType(buffer_desc->element_type, buffer_desc->element_size,
-                         gpu_info.IsGlslSupportsExplicitFp16());
-    *result = "const ";
-    if (buffer_desc->element_type == DataType::FLOAT16 &&
-        !gpu_info.IsGlslSupportsExplicitFp16()) {
-      *result += "mediump ";
-    }
-    *result += gl_type + " " + buffer_name + "_buffer[] = " + gl_type + "[](\n";
+    const std::string glsl_type = ToGlslShaderDataType(
+        buffer_desc->element_type, buffer_desc->element_size,
+        /*add_precision*/ false, gpu_info.IsGlslSupportsExplicitFp16());
+    const std::string glsl_type_with_precision = ToGlslShaderDataType(
+        buffer_desc->element_type, buffer_desc->element_size,
+        /*add_precision*/ true, gpu_info.IsGlslSupportsExplicitFp16());
+    *result = "const " + glsl_type_with_precision + " " + buffer_name +
+              "_buffer[] = " + glsl_type + "[](\n";
   } else if (gpu_info.IsApiMetal()) {
     const std::string metal_type =
         ToMetalDataType(buffer_desc->element_type, buffer_desc->element_size);
