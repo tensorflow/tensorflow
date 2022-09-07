@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_DEPTHWISE_CONV_PLUS_1X1_CONV_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_DEPTHWISE_CONV_PLUS_1X1_CONV_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_THIN_POINTWISE_FUSER_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_THIN_POINTWISE_FUSER_H_
 
 #include <map>
 #include <set>
@@ -29,7 +29,7 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-absl::Status TryDepthwiseConvPlus1x1Conv(
+absl::Status TryThinPointwiseFuser(
     const GpuInfo& gpu_info, CalculationsPrecision precision,
     const GraphFloat32& graph, NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
@@ -38,4 +38,4 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_DEPTHWISE_CONV_PLUS_1X1_CONV_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_THIN_POINTWISE_FUSER_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/common/tasks/special/depthwise_conv_plus_1x1_conv.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/special/thin_pointwise_fuser.h"
 
 #include <algorithm>
 #include <cstring>
@@ -767,7 +767,7 @@ Node* GetNextLinearNode(const GraphFloat32& graph, NodeId current_node) {
   return consumers[0];
 }
 
-absl::Status TryDepthwiseConvPlus1x1Conv(
+absl::Status TryThinPointwiseFuser(
     const GpuInfo& gpu_info, CalculationsPrecision precision,
     const GraphFloat32& graph, NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
