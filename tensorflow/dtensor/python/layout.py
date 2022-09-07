@@ -208,7 +208,6 @@ class Mesh(object):
           f'Dimension {dim_name} not defined in mesh: {self._dim_dict.keys()}')
     return self._dim_dict[dim_name]
 
-  # TODO(b/168730933): Define a nicer mesh ID.
   def __hash__(self):
     return hash(self.as_proto().SerializeToString(deterministic=True))
 
