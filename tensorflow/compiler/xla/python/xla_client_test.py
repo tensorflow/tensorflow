@@ -2829,6 +2829,80 @@ def TestFactory(xla_backend,
 
   tests.append(ExecutePortableTest)
 
+  class ExecuteShardedOverloadTest(ComputationTest):
+
+    def testExecuteShardedOverloadEmptyInput(self):
+      c = self._NewComputation()
+      ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], np.float32))
+      options = xla_client.CompileOptions()
+      options.num_replicas = 1
+      compiled_c = self.backend.compile(c.build(), compile_options=options)
+
+      results = compiled_c.execute_sharded_on_local_devices([])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], list)
+      self.assertLen(results[0], 1)
+      results[0][0].block_until_ready()
+      self.assertIsInstance(results[0][0], xla_client.Buffer)
+
+      results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens([])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], list)
+      self.assertLen(results[0], 1)
+      results[0][0].block_until_ready()
+      self.assertIsInstance(results[0][0], xla_client.Buffer)
+
+    def testExecuteShardedOverloadBufferInput(self):
+      arg = np.arange(12, dtype=np.int16).reshape(3, 4)
+      c = self._NewComputation()
+      ops.Parameter(c, 0, xla_client.shape_from_pyval(arg))
+
+      options = xla_client.CompileOptions()
+      options.num_replicas = 1
+      compiled_c = self.backend.compile(c.build(), compile_options=options)
+
+      buffer = self.backend.buffer_from_pyval(arg)
+
+      results = compiled_c.execute_sharded_on_local_devices([[buffer]])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], list)
+      self.assertLen(results[0], 1)
+      results[0][0].block_until_ready()
+      self.assertIsInstance(results[0][0], xla_client.Buffer)
+
+      results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens(
+          [[buffer]])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], list)
+      self.assertLen(results[0], 1)
+      results[0][0].block_until_ready()
+      self.assertIsInstance(results[0][0], xla_client.Buffer)
+
+    def testExecuteShardedOverloadShardedBufferInput(self):
+      arg = np.arange(12, dtype=np.int16).reshape(3, 4)
+      c = self._NewComputation()
+      ops.Parameter(c, 0, xla_client.shape_from_pyval(arg))
+
+      options = xla_client.CompileOptions()
+      options.num_replicas = 1
+      compiled_c = self.backend.compile(c.build(), compile_options=options)
+
+      sharded_buffer = xla_client.ShardedBuffer.create_sharded_buffer(
+          [self.backend.buffer_from_pyval(arg)])
+
+      results = compiled_c.execute_sharded_on_local_devices([sharded_buffer])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], xla_client.ShardedBuffer)
+      results[0].block_until_ready()
+
+      results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens(
+          [sharded_buffer])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], xla_client.ShardedBuffer)
+      results[0].block_until_ready()
+
+  tests.append(ExecuteShardedOverloadTest)
+
   return tests
 
 
