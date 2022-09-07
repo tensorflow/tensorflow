@@ -159,7 +159,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   };
   static constexpr auto gemm = [](auto gemm) {
     return m::Op(gemm)
-        .WithCustomCallTarget(kCublasLtMatmulCallTarget)
+        .WithCustomCallTarget({kGemmCallTarget, kCublasLtMatmulCallTarget})
         .WithOneUser();
   };
   static constexpr auto gemm_bf16 = [](auto gemm) {
@@ -167,6 +167,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         .WithCustomCallTarget({kGemmCallTarget, kCublasLtMatmulCallTarget})
         .WithOneUser()
         .WithElementType(BF16);
+  };
+  static constexpr auto gemm_cublaslt = [](auto gemm) {
+    return m::Op(gemm)
+        .WithCustomCallTarget(kCublasLtMatmulCallTarget)
+        .WithOneUser();
   };
   static constexpr auto slice = [](auto capture, auto operand) {
     return m::Slice(capture, operand).WithOneUser();
@@ -242,8 +247,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleAdd(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm, *existing_slice;
     // Attempt to elide broadcast and fuse addition of a vector bias into GEMM.
-    if (Match(instr,
-              m::AddAnyOrder(gemm(&existing_gemm), broadcast_bias(&bias)))) {
+    if (Match(instr, m::AddAnyOrder(gemm_cublaslt(&existing_gemm),
+                                    broadcast_bias(&bias)))) {
       TF_ASSIGN_OR_RETURN(bool was_fused,
                           FuseVectorBiasAdd(instr, bias, existing_gemm));
       if (was_fused) return OkStatus();
@@ -251,9 +256,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Attempt to elide broadcast and fuse addition of a vector bias into GEMM
     // when slicing is applied to the result.
-    if (Match(instr,
-              m::AddAnyOrder(slice(&existing_slice, gemm(&existing_gemm)),
-                             broadcast_bias(&bias)))) {
+    if (Match(instr, m::AddAnyOrder(
+                         slice(&existing_slice, gemm_cublaslt(&existing_gemm)),
+                         broadcast_bias(&bias)))) {
       TF_ASSIGN_OR_RETURN(
           bool was_fused,
           FuseVectorBiasAdd(instr, bias, existing_gemm, existing_slice));
@@ -268,7 +273,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     //   bitcast(add(gemm(a, b), bitcast(broadcast(bias)))) ->
     //   bitcast(gemm(a, b, bitcast(broadcast(bias)))) (FuseMatrixBiasAdd)
     //
-    if (Match(instr, m::AddAnyOrder(bitcast(gemm(&existing_gemm)),
+    if (Match(instr, m::AddAnyOrder(bitcast(gemm_cublaslt(&existing_gemm)),
                                     broadcast_bias(&bias)))) {
       TF_ASSIGN_OR_RETURN(
           HloInstruction * new_add,
@@ -324,7 +329,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleMaximum(HloInstruction *instr) override {
     HloInstruction *existing_gemm, *existing_slice;
     // Attempt to elide maximum and fuse ReLU activation into GEMM.
-    if (Match(instr, m::MaximumAnyOrder(gemm(&existing_gemm), zeros()))) {
+    if (Match(instr,
+              m::MaximumAnyOrder(gemm_cublaslt(&existing_gemm), zeros()))) {
       TF_ASSIGN_OR_RETURN(bool was_fused,
                           FuseReluActivation(instr, existing_gemm));
       if (was_fused) {
@@ -333,8 +339,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
     // Attempt to elide maximum and bitcast and fuse ReLU activation into
     // *batched* GEMM.
-    if (Match(instr,
-              m::MaximumAnyOrder(bitcast(gemm(&existing_gemm)), zeros()))) {
+    if (Match(instr, m::MaximumAnyOrder(bitcast(gemm_cublaslt(&existing_gemm)),
+                                        zeros()))) {
       TF_ASSIGN_OR_RETURN(bool was_fused,
                           FuseReluActivation(instr, existing_gemm));
       if (was_fused) {
@@ -343,9 +349,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
     // Attempt to elide maximum and fuse ReLU activation into GEMM when slicing
     // is applied to the result.
-    if (Match(instr,
-              m::MaximumAnyOrder(slice(&existing_slice, gemm(&existing_gemm)),
-                                 zeros()))) {
+    if (Match(instr, m::MaximumAnyOrder(
+                         slice(&existing_slice, gemm_cublaslt(&existing_gemm)),
+                         zeros()))) {
       TF_ASSIGN_OR_RETURN(
           bool was_fused,
           FuseReluActivation(instr, existing_gemm, existing_slice));
