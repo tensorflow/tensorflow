@@ -736,6 +736,7 @@ tf_cuda_cc_test(
     deps = [
         ":cuda_activation",
         ":cuda_gpu_executor",
+        "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:kernel",
@@ -743,7 +744,6 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/tsl/platform/default/build_config:stream_executor_cuda",
     ],
 )

@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {

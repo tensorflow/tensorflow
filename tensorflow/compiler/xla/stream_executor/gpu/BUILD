@@ -330,9 +330,9 @@ cc_library(
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
+        "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
     ]),
 )

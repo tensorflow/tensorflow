@@ -22,10 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/precompiled_kernels.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {

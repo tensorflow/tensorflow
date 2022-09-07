@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/util/ptr_util.h"
 

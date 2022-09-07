@@ -37,10 +37,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {

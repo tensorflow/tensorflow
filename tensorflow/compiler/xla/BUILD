@@ -604,7 +604,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/compiler/xla/stream_executor",
         "@com_google_absl//absl/strings",
     ],
 )
