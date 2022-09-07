@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -334,15 +335,15 @@ TEST(CustomCallTest, EnumAttr) {
     }
   )";
 
-  std::vector<EnumType> enums;
-
-  auto type_id_name = [](TypeIDNameRegistry& registry) {
+  auto types = [](TypeIDNameRegistry& registry) {
     registry.Register<Tagged<EnumType>>("__type_id_testlib_enum");
   };
 
-  auto encode = [](CustomCallAttrEncodingSet& encoding) {
+  auto attrs = [](CustomCallAttrEncodingSet& encoding) {
     encoding.Add<EnumAttrEncoding<EnumTypeAttr, EnumType>>();
   };
+
+  std::vector<EnumType> enums;
 
   auto handler = [&](EnumType value) -> LogicalResult {
     enums.push_back(value);
@@ -350,8 +351,8 @@ TEST(CustomCallTest, EnumAttr) {
   };
 
   TestOpts opts;
-  opts.types = type_id_name;
-  opts.populate_attr_encodings = encode;
+  opts.types = types;
+  opts.populate_attr_encodings = attrs;
   opts.dynamic_custom_calls.Register(
       CustomCall::Bind("test.custom_call").Attr<EnumType>("enum").To(handler));
 
@@ -387,16 +388,16 @@ TEST(CustomCallTest, MappedEnumAttr) {
     }
   )";
 
-  std::vector<MyEnumType> enums;
-
-  auto type_id_name = [](TypeIDNameRegistry& registry) {
+  auto types = [](TypeIDNameRegistry& registry) {
     registry.Register<Tagged<MyEnumType>>("__type_id_my_enum");
   };
 
-  auto encode = [](CustomCallAttrEncodingSet& encoding) {
+  auto attrs = [](CustomCallAttrEncodingSet& encoding) {
     encoding.Add<EnumAttrEncoding<EnumTypeAttr, EnumType, MyEnumType>>(
         FromEnumType);
   };
+
+  std::vector<MyEnumType> enums;
 
   auto handler = [&](MyEnumType value) -> LogicalResult {
     enums.push_back(value);
@@ -404,8 +405,8 @@ TEST(CustomCallTest, MappedEnumAttr) {
   };
 
   TestOpts opts;
-  opts.types = type_id_name;
-  opts.populate_attr_encodings = encode;
+  opts.types = types;
+  opts.populate_attr_encodings = attrs;
   opts.dynamic_custom_calls.Register(CustomCall::Bind("test.custom_call")
                                          .Attr<MyEnumType>("enum")
                                          .To(handler));
@@ -413,6 +414,68 @@ TEST(CustomCallTest, MappedEnumAttr) {
   EXPECT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
   ASSERT_EQ(enums.size(), 1);
   EXPECT_EQ(enums.front(), MyEnumType::kBaz);
+}
+
+// Structure corresponding to the MLIR attribute.
+struct PairOfDims {
+  int64_t rank;
+  llvm::ArrayRef<int64_t> a;
+  llvm::ArrayRef<int64_t> b;
+};
+
+// Register aggregate attribute decoding.
+XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
+    PairOfDims, AggregateMember<int64_t>("rank"),
+    AggregateMember<llvm::ArrayRef<int64_t>>("a"),
+    AggregateMember<llvm::ArrayRef<int64_t>>("b"));
+
+TEST(CustomCallTest, StructAttr) {
+  absl::string_view module = R"(
+    func.func private @custom_call()
+      attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      call @custom_call() {
+        dims = #testlib.pair_of_dims<2, [1, 1], [2, 2]>
+      }: () -> ()
+      return
+    }
+  )";
+
+  auto types = [](TypeIDNameRegistry& registry) {
+    registry.Register<Tagged<PairOfDims>>("__type_id_pair_of_dims");
+  };
+
+  auto attrs = [](CustomCallAttrEncodingSet& encoding) {
+    encoding.Add<AggregateAttrEncoding<PairOfDimsAttr, PairOfDims>>(
+        encoding, AggregateAttrDef<PairOfDimsAttr>()
+                      .Add("rank", &PairOfDimsAttr::getRank)
+                      .Add("a", &PairOfDimsAttr::getA)
+                      .Add("b", &PairOfDimsAttr::getB));
+  };
+
+  int64_t rank = 0;
+  std::vector<int64_t> a;
+  std::vector<int64_t> b;
+
+  auto handler = [&](PairOfDims value) -> LogicalResult {
+    rank = value.rank;
+    a.assign(value.a.begin(), value.a.end());
+    b.assign(value.b.begin(), value.b.end());
+    return success();
+  };
+
+  TestOpts opts;
+  opts.types = types;
+  opts.populate_attr_encodings = attrs;
+  opts.dynamic_custom_calls.Register(CustomCall::Bind("test.custom_call")
+                                         .Attr<PairOfDims>("dims")
+                                         .To(handler));
+
+  EXPECT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
+  EXPECT_EQ(rank, 2);
+  EXPECT_EQ(a, std::vector<int64_t>(2, 1));
+  EXPECT_EQ(b, std::vector<int64_t>(2, 2));
 }
 
 //===----------------------------------------------------------------------===//
@@ -429,14 +492,16 @@ static constexpr RuntimeChecks all = RuntimeChecks::kDefault;
 static constexpr RuntimeChecks types = RuntimeChecks::kTypes;
 static constexpr RuntimeChecks none = RuntimeChecks::kNone;
 
-static void BenchmarkCustomCall(State& state, std::string_view module,
-                                ArgumentsRef args, std::string_view name,
-                                DirectCustomCall custom_call,
-                                TypeIDNameRegistry::RegistrationFn types = {}) {
+static void BenchmarkCustomCall(
+    State& state, std::string_view module, ArgumentsRef args,
+    std::string_view name, DirectCustomCall custom_call,
+    TypeIDNameRegistry::RegistrationFn types = {},
+    std::function<void(CustomCallAttrEncodingSet&)> attrs = {}) {
   // Wrap benchmarked custom call into a direct custom call registry.
   TestOpts opts;
   opts.direct_custom_calls.Register(name, custom_call);
   opts.types = std::move(types);
+  opts.populate_attr_encodings = std::move(attrs);
 
   absl::StatusOr<JitExecutable> jit_executable = Compile(module, opts);
   CHECK(jit_executable.ok()) << jit_executable.status();
@@ -812,6 +877,61 @@ static void BM_I32AttrX12Types(State& s) { I32AttrX12<types>(s); }
 BENCHMARK(BM_I32AttrX12All);
 BENCHMARK(BM_I32AttrX12Types);
 BENCHMARK(BM_I32AttrX12None);
+
+//===----------------------------------------------------------------------===//
+// Custom call with a single PairOfDims attribute.
+//===----------------------------------------------------------------------===//
+
+template <CustomCall::RuntimeChecks checks>
+static bool AggregateAttrX1(ExecutionContext* ctx, void** args, void** attrs,
+                            void** rets) {
+  static auto* handler = CustomCall::Bind("test.custom_call")
+                             .Attr<PairOfDims>("attr0")
+                             .To<checks>([](PairOfDims attr0) {
+                               benchmark::DoNotOptimize(attr0);
+                               return success();
+                             })
+                             .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+template <CustomCall::RuntimeChecks checks>
+static void AggregateAttrX1(State& state) {
+  absl::string_view module = R"(
+    func.func private @custom_call()
+      attributes { rt.direct_custom_call = "test.custom_call" }
+
+    func.func @test() {
+      call @custom_call() {
+        attr0 = #testlib.pair_of_dims<2, [1, 1], [2, 2]>
+      }: () -> ()
+      return
+    }
+  )";
+
+  auto types = [](TypeIDNameRegistry& registry) {
+    registry.Register<Tagged<PairOfDims>>("__type_id_pair_of_dims");
+  };
+
+  auto attrs = [](CustomCallAttrEncodingSet& encoding) {
+    encoding.Add<AggregateAttrEncoding<PairOfDimsAttr, PairOfDims>>(
+        encoding, AggregateAttrDef<PairOfDimsAttr>()
+                      .Add("rank", &PairOfDimsAttr::getRank)
+                      .Add("a", &PairOfDimsAttr::getA)
+                      .Add("b", &PairOfDimsAttr::getB));
+  };
+
+  BenchmarkCustomCall(state, module, {}, "test.custom_call",
+                      &AggregateAttrX1<checks>, types, attrs);
+}
+
+static void BM_AggregateAttrX1All(State& s) { AggregateAttrX1<all>(s); }
+static void BM_AggregateAttrX1None(State& s) { AggregateAttrX1<none>(s); }
+static void BM_AggregateAttrX1Types(State& s) { AggregateAttrX1<types>(s); }
+
+BENCHMARK(BM_AggregateAttrX1All);
+BENCHMARK(BM_AggregateAttrX1Types);
+BENCHMARK(BM_AggregateAttrX1None);
 
 }  // namespace runtime
 }  // namespace xla
