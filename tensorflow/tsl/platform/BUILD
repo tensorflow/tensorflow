@@ -58,6 +58,21 @@ cc_library(
 )
 
 cc_library(
+    name = "numbers",
+    srcs = ["numbers.cc"],
+    hdrs = ["numbers.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":str_util",
+        ":stringpiece",
+        ":stringprintf",
+        ":types",
+        "@double_conversion//:double-conversion",
+    ],
+)
+
+cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],
     deps = [
@@ -223,6 +238,8 @@ filegroup(
         "macros.h",
         "mem.h",
         "numa.h",
+        "numbers.cc",
+        "numbers.h",
         "platform.h",
         "platform_strings_computed.h",
         "prefetch.h",

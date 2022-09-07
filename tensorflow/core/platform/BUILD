@@ -448,16 +448,11 @@ py_test(
 
 cc_library(
     name = "numbers",
-    srcs = ["numbers.cc"],
     hdrs = ["numbers.h"],
     deps = [
-        ":logging",
-        ":macros",
-        ":str_util",
         ":stringpiece",
-        ":stringprintf",
         ":types",
-        "@double_conversion//:double-conversion",
+        "//tensorflow/tsl/platform:numbers",
     ],
 )
 
@@ -1838,7 +1833,6 @@ filegroup(
         "mem.h",
         "mutex.h",
         "numa.h",
-        "numbers.cc",
         "numbers.h",
         "path.cc",
         "path.h",

@@ -12,7 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/tsl/platform/numbers.h"
 
 #include <ctype.h>
 #include <float.h>
@@ -22,17 +22,18 @@ limitations under the License.
 #include <algorithm>
 #include <cinttypes>
 #include <cmath>
+#include <cstdint>
 #include <locale>
 #include <unordered_map>
 
 #include "double-conversion/double-conversion.h"
-#include "tensorflow/core/platform/str_util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/stringprintf.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/str_util.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/stringprintf.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 
 namespace {
 
@@ -129,7 +130,7 @@ StringToFloatConverter() {
 namespace strings {
 
 size_t FastInt32ToBufferLeft(int32_t i, char* buffer) {
-  uint32 u = i;
+  uint32_t u = i;
   size_t length = 0;
   if (i < 0) {
     *buffer++ = '-';
@@ -143,7 +144,7 @@ size_t FastInt32ToBufferLeft(int32_t i, char* buffer) {
   return length;
 }
 
-size_t FastUInt32ToBufferLeft(uint32 i, char* buffer) {
+size_t FastUInt32ToBufferLeft(uint32_t i, char* buffer) {
   char* start = buffer;
   do {
     *buffer++ = ((i % 10) + '0');
@@ -155,7 +156,7 @@ size_t FastUInt32ToBufferLeft(uint32 i, char* buffer) {
 }
 
 size_t FastInt64ToBufferLeft(int64_t i, char* buffer) {
-  uint64 u = i;
+  uint64_t u = i;
   size_t length = 0;
   if (i < 0) {
     *buffer++ = '-';
@@ -166,7 +167,7 @@ size_t FastInt64ToBufferLeft(int64_t i, char* buffer) {
   return length;
 }
 
-size_t FastUInt64ToBufferLeft(uint64 i, char* buffer) {
+size_t FastUInt64ToBufferLeft(uint64_t i, char* buffer) {
   char* start = buffer;
   do {
     *buffer++ = ((i % 10) + '0');
@@ -269,11 +270,11 @@ bool safe_strto64(StringPiece str, int64_t* value) {
   return true;
 }
 
-bool safe_strtou64(StringPiece str, uint64* value) {
+bool safe_strtou64(StringPiece str, uint64_t* value) {
   SkipSpaces(&str);
   if (!isdigit(SafeFirstChar(str))) return false;
 
-  uint64 result = 0;
+  uint64_t result = 0;
   do {
     int digit = SafeFirstChar(str) - '0';
     if ((kuint64max - digit) / 10 < result) {
@@ -290,7 +291,7 @@ bool safe_strtou64(StringPiece str, uint64* value) {
   return true;
 }
 
-bool safe_strto32(StringPiece str, int32* value) {
+bool safe_strto32(StringPiece str, int32_t* value) {
   SkipSpaces(&str);
 
   int64_t vmax = kint32max;
@@ -316,11 +317,11 @@ bool safe_strto32(StringPiece str, int32* value) {
 
   if (!str.empty()) return false;
 
-  *value = static_cast<int32>(result * sign);
+  *value = static_cast<int32_t>(result * sign);
   return true;
 }
 
-bool safe_strtou32(StringPiece str, uint32* value) {
+bool safe_strtou32(StringPiece str, uint32_t* value) {
   SkipSpaces(&str);
   if (!isdigit(SafeFirstChar(str))) return false;
 
@@ -336,7 +337,7 @@ bool safe_strtou32(StringPiece str, uint32* value) {
   SkipSpaces(&str);
   if (!str.empty()) return false;
 
-  *value = static_cast<uint32>(result);
+  *value = static_cast<uint32_t>(result);
   return true;
 }
 
@@ -416,7 +417,7 @@ bool StringToFp(const std::string& s, Fprint* fp) {
   }
 }
 
-StringPiece Uint64ToHexString(uint64 v, char* buf) {
+StringPiece Uint64ToHexString(uint64_t v, char* buf) {
   static const char* hexdigits = "0123456789abcdef";
   const int num_byte = 16;
   buf[num_byte] = '\0';
@@ -427,8 +428,8 @@ StringPiece Uint64ToHexString(uint64 v, char* buf) {
   return StringPiece(buf, num_byte);
 }
 
-bool HexStringToUint64(const StringPiece& s, uint64* result) {
-  uint64 v = 0;
+bool HexStringToUint64(const StringPiece& s, uint64_t* result) {
+  uint64_t v = 0;
   if (s.empty()) {
     return false;
   }
@@ -561,4 +562,4 @@ std::string HumanReadableElapsedTime(double seconds) {
 }
 
 }  // namespace strings
-}  // namespace tensorflow
+}  // namespace tsl
