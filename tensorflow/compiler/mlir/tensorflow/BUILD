@@ -392,6 +392,27 @@ cc_library(
 )
 
 cc_library(
+    name = "mlprogram",
+    srcs = [
+        "transforms/mlprogram.cc",
+    ],
+    hdrs = [
+        "transforms/mlprogram.h",
+    ],
+    deps = [
+        ":compile_mlir_util",
+        ":tensorflow_passes",
+        ":tf_saved_model_passes",
+        "//tensorflow/compiler/mlir/xla:legalize_tf",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "tensorflow_attributes",
     hdrs = [
         "ir/tf_attributes.h",
@@ -2611,17 +2632,11 @@ cc_library(
     srcs = ["utils/mlprogram_util.cc"],
     hdrs = ["utils/mlprogram_util.h"],
     deps = [
-        ":compile_mlir_util_no_tf_dialect_passes",
-        ":import_model",
-        ":tensorflow_passes",
-        ":tf_saved_model_passes",
-        "//tensorflow/cc/saved_model:loader",
-        "//tensorflow/cc/saved_model:tag_constants",
-        "//tensorflow/compiler/mlir/xla:legalize_tf",
+        ":mlprogram",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 
