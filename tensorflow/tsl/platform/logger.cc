@@ -13,15 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/logger.h"
+#include "tensorflow/tsl/platform/logger.h"
 
 #include "absl/base/call_once.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
+// TODO(aminim): remove after env migration
+using tensorflow::Env;
+using tensorflow::Thread;
+using tensorflow::ThreadOptions;
 
 class DefaultLogger : public Logger {
  private:
@@ -101,4 +105,4 @@ struct AsyncSingletonImpl {
     return nullptr;
   }
 }
-}  // namespace tensorflow
+}  // namespace tsl

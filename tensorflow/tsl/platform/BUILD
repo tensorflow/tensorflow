@@ -320,6 +320,7 @@ filegroup(
         "errors.h",
         "fingerprint.h",
         "init_main.h",
+        "logger.h",
         "mem.h",
         "net.h",
         "numa.h",
@@ -799,6 +800,20 @@ cc_library(
         ":byte_order",
         "//third_party/eigen3",
     ],
+)
+
+cc_library(
+    name = "logger",
+    srcs = ["logger.cc"],
+    hdrs = ["logger.h"],
+    deps = [
+        ":logging",
+        ":protobuf",
+        "//tensorflow/core/platform:env",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/synchronization",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(

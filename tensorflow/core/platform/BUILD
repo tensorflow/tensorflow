@@ -356,12 +356,12 @@ cc_library(
 
 cc_library(
     name = "logger",
-    srcs = ["logger.cc"],
     hdrs = ["logger.h"],
     deps = [
         ":env",
         ":logging",
         ":protobuf",
+        "//tensorflow/tsl/platform:logger",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/synchronization",
     ],
