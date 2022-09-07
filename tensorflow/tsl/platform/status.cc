@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 #include <stdio.h>
 
@@ -27,16 +27,39 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stacktrace.h"
-#include "tensorflow/core/platform/str_util.h"
-#include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/status.pb.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/str_util.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/stringprintf.h"
 
-namespace tensorflow {
+using tensorflow::TFAddLogSink;
+using tensorflow::TFLogEntry;
+using tensorflow::TFLogSink;
 
+namespace tsl {
+namespace error {
+// TODO(aminim): figure out the protobuf migration story
+using tensorflow::error::ABORTED;
+using tensorflow::error::ALREADY_EXISTS;
+using tensorflow::error::CANCELLED;
+using tensorflow::error::DATA_LOSS;
+using tensorflow::error::DEADLINE_EXCEEDED;
+using tensorflow::error::FAILED_PRECONDITION;
+using tensorflow::error::INTERNAL;
+using tensorflow::error::INVALID_ARGUMENT;
+using tensorflow::error::NOT_FOUND;
+using tensorflow::error::OK;
+using tensorflow::error::OUT_OF_RANGE;
+using tensorflow::error::PERMISSION_DENIED;
+using tensorflow::error::RESOURCE_EXHAUSTED;
+using tensorflow::error::UNAUTHENTICATED;
+using tensorflow::error::UNAVAILABLE;
+using tensorflow::error::UNIMPLEMENTED;
+using tensorflow::error::UNKNOWN;
+}  // namespace error
 namespace {
 
 // Log sink is used to collect recent warning and error log messages to be
@@ -101,12 +124,11 @@ namespace errors {
 static constexpr const char kStackTraceProtoUrl[] =
     "type.googleapis.com/tensorflow.StackTracePayload";
 
-void SetStackTrace(::tensorflow::Status& status,
-                   std::vector<StackFrame> stack_trace) {
+void SetStackTrace(::tsl::Status& status, std::vector<StackFrame> stack_trace) {
   status.SetStackTrace(stack_trace);
 }
 
-std::vector<StackFrame> GetStackTrace(const ::tensorflow::Status& status) {
+std::vector<StackFrame> GetStackTrace(const ::tsl::Status& status) {
   return status.GetStackTrace();
 }
 
@@ -149,9 +171,9 @@ void Status::MaybeAddSourceLocation(SourceLocation loc) {
   state_->source_locations.push_back(loc);
 }
 
-Status::Status(tensorflow::error::Code code, absl::string_view msg,
+Status::Status(tsl::error::Code code, absl::string_view msg,
                SourceLocation loc) {
-  assert(code != tensorflow::error::OK);
+  assert(code != tsl::error::OK);
   state_ = std::make_unique<State>();
   state_->code = code;
   state_->msg = std::string(msg);
@@ -185,55 +207,55 @@ const std::string& Status::empty_string() {
 
 std::string error_name(error::Code code) {
   switch (code) {
-    case tensorflow::error::OK:
+    case tsl::error::OK:
       return "OK";
       break;
-    case tensorflow::error::CANCELLED:
+    case tsl::error::CANCELLED:
       return "CANCELLED";
       break;
-    case tensorflow::error::UNKNOWN:
+    case tsl::error::UNKNOWN:
       return "UNKNOWN";
       break;
-    case tensorflow::error::INVALID_ARGUMENT:
+    case tsl::error::INVALID_ARGUMENT:
       return "INVALID_ARGUMENT";
       break;
-    case tensorflow::error::DEADLINE_EXCEEDED:
+    case tsl::error::DEADLINE_EXCEEDED:
       return "DEADLINE_EXCEEDED";
       break;
-    case tensorflow::error::NOT_FOUND:
+    case tsl::error::NOT_FOUND:
       return "NOT_FOUND";
       break;
-    case tensorflow::error::ALREADY_EXISTS:
+    case tsl::error::ALREADY_EXISTS:
       return "ALREADY_EXISTS";
       break;
-    case tensorflow::error::PERMISSION_DENIED:
+    case tsl::error::PERMISSION_DENIED:
       return "PERMISSION_DENIED";
       break;
-    case tensorflow::error::UNAUTHENTICATED:
+    case tsl::error::UNAUTHENTICATED:
       return "UNAUTHENTICATED";
       break;
-    case tensorflow::error::RESOURCE_EXHAUSTED:
+    case tsl::error::RESOURCE_EXHAUSTED:
       return "RESOURCE_EXHAUSTED";
       break;
-    case tensorflow::error::FAILED_PRECONDITION:
+    case tsl::error::FAILED_PRECONDITION:
       return "FAILED_PRECONDITION";
       break;
-    case tensorflow::error::ABORTED:
+    case tsl::error::ABORTED:
       return "ABORTED";
       break;
-    case tensorflow::error::OUT_OF_RANGE:
+    case tsl::error::OUT_OF_RANGE:
       return "OUT_OF_RANGE";
       break;
-    case tensorflow::error::UNIMPLEMENTED:
+    case tsl::error::UNIMPLEMENTED:
       return "UNIMPLEMENTED";
       break;
-    case tensorflow::error::INTERNAL:
+    case tsl::error::INTERNAL:
       return "INTERNAL";
       break;
-    case tensorflow::error::UNAVAILABLE:
+    case tsl::error::UNAVAILABLE:
       return "UNAVAILABLE";
       break;
-    case tensorflow::error::DATA_LOSS:
+    case tsl::error::DATA_LOSS:
       return "DATA_LOSS";
       break;
     default:
@@ -307,7 +329,7 @@ Status FromAbslStatus(const absl::Status& s) {
   if (s.ok()) {
     return Status();
   }
-  Status converted(static_cast<tensorflow::error::Code>(s.code()), s.message());
+  Status converted(static_cast<tsl::error::Code>(s.code()), s.message());
   s.ForEachPayload(
       [&converted](absl::string_view key, const absl::Cord& value) {
         converted.SetPayload(key, std::string(value));
@@ -316,23 +338,21 @@ Status FromAbslStatus(const absl::Status& s) {
   return converted;
 }
 
-absl::Status ToAbslStatus(const ::tensorflow::Status& s) {
+absl::Status ToAbslStatus(const ::tsl::Status& s) {
   if (s.ok()) {
     return absl::OkStatus();
   }
 
   absl::Status converted(static_cast<absl::StatusCode>(s.code()),
                          s.error_message());
-  s.ForEachPayload(
-      [&converted](tensorflow::StringPiece key, tensorflow::StringPiece value) {
-        converted.SetPayload(key, absl::Cord(value));
-      });
+  s.ForEachPayload([&converted](tsl::StringPiece key, tsl::StringPiece value) {
+    converted.SetPayload(key, absl::Cord(value));
+  });
 
   return converted;
 }
 
-std::string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
-                                      const char* msg) {
+std::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v, const char* msg) {
   std::string r("Non-OK-status: ");
   r += msg;
   r += " status: ";
@@ -412,7 +432,7 @@ std::unordered_map<std::string, std::string> StatusGroup::GetPayloads() const {
 }
 
 Status MakeStatus(
-    tensorflow::error::Code code, absl::string_view message,
+    tsl::error::Code code, absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
   Status status(code, message);
   for (const auto& payload : payloads) {
@@ -462,12 +482,11 @@ Status StatusGroup::as_summary_status() const {
         strings::Printf("%zu root error(s) found.", non_derived_.size()));
 
     int index = 0;
-    auto code = tensorflow::error::CANCELLED;
+    auto code = tsl::error::CANCELLED;
     for (const auto& s : non_derived_) {
       // NOTE: Avoid using CANCELLED as the code of summary status if the group
       // contains other error code.
-      if (code == tensorflow::error::CANCELLED &&
-          s.code() != tensorflow::error::CANCELLED) {
+      if (code == tsl::error::CANCELLED && s.code() != tsl::error::CANCELLED) {
         code = s.code();
       }
       fmt.emplace_back(strings::StrCat("  (", index, ") ", MakeString(s)));
@@ -529,4 +548,4 @@ void StatusGroup::AttachLogMessages() {
   StatusLogSink::GetInstance()->GetMessages(&recent_logs_);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

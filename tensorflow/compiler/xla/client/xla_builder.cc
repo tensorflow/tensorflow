@@ -566,7 +566,7 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
 Status XlaBuilder::GetCurrentStatus() const {
   if (!first_error_.ok()) {
     std::string backtrace;
-    first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
+    first_error_backtrace_.Dump(tsl::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
   return OkStatus();

@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace internal_statusor {
 
 void Helper::HandleInvalidStatusCtorArg(Status* status) {
   const char* kMessage =
       "An OK status is not a valid constructor argument to StatusOr<T>";
   LOG(ERROR) << kMessage;
-  // Fall back to tensorflow::error::INTERNAL.
-  *status = ::tensorflow::errors::Internal(kMessage);
+  // Fall back to tsl::error::INTERNAL.
+  *status = ::tsl::errors::Internal(kMessage);
 }
 
 void Helper::Crash(const Status& status) {
@@ -35,4 +35,4 @@ void Helper::Crash(const Status& status) {
 }
 
 }  // namespace internal_statusor
-}  // namespace tensorflow
+}  // namespace tsl

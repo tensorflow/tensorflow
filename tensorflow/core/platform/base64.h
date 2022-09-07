@@ -20,40 +20,12 @@ limitations under the License.
 
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/tsl/platform/base64.h"
 
 namespace tensorflow {
 
-/// \brief Converts data into web-safe base64 encoding.
-///
-/// See https://en.wikipedia.org/wiki/Base64
-template <typename T>
-Status Base64Encode(StringPiece source, bool with_padding, T* encoded);
-template <typename T>
-Status Base64Encode(StringPiece source,
-                    T* encoded);  // with_padding=false.
-
-/// \brief Converts data from web-safe base64 encoding.
-///
-/// See https://en.wikipedia.org/wiki/Base64
-template <typename T>
-Status Base64Decode(StringPiece data, T* decoded);
-
-// Explicit instantiations defined in base64.cc.
-extern template Status Base64Decode<std::string>(StringPiece data,
-                                                 std::string* decoded);
-extern template Status Base64Encode<std::string>(StringPiece source,
-                                                 std::string* encoded);
-extern template Status Base64Encode<std::string>(StringPiece source,
-                                                 bool with_padding,
-                                                 std::string* encoded);
-
-extern template Status Base64Decode<tstring>(StringPiece data,
-                                             tstring* decoded);
-extern template Status Base64Encode<tstring>(StringPiece source,
-                                             tstring* encoded);
-extern template Status Base64Encode<tstring>(StringPiece source,
-                                             bool with_padding,
-                                             tstring* encoded);
+using tsl::Base64Decode;  // NOLINT
+using tsl::Base64Encode;  // NOLINT
 
 }  // namespace tensorflow
 

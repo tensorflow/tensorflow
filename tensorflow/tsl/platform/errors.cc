@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 #include <errno.h>
 #include <string.h>
 
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/strcat.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace errors {
 
 namespace {
@@ -30,7 +30,7 @@ error::Code ErrnoToCode(int err_number) {
   error::Code code;
   switch (err_number) {
     case 0:
-      code = error::OK;
+      code = error::Code::OK;
       break;
     case EINVAL:        // Invalid argument
     case ENAMETOOLONG:  // Filename too long
@@ -181,68 +181,68 @@ Status IOError(const string& context, int err_number) {
 }
 
 bool IsAborted(const Status& status) {
-  return status.code() == tensorflow::error::Code::ABORTED;
+  return status.code() == tsl::error::Code::ABORTED;
 }
 
 bool IsAlreadyExists(const Status& status) {
-  return status.code() == tensorflow::error::Code::ALREADY_EXISTS;
+  return status.code() == tsl::error::Code::ALREADY_EXISTS;
 }
 
 bool IsCancelled(const Status& status) {
-  return status.code() == tensorflow::error::Code::CANCELLED;
+  return status.code() == tsl::error::Code::CANCELLED;
 }
 
 bool IsDataLoss(const Status& status) {
-  return status.code() == tensorflow::error::Code::DATA_LOSS;
+  return status.code() == tsl::error::Code::DATA_LOSS;
 }
 
 bool IsDeadlineExceeded(const Status& status) {
-  return status.code() == tensorflow::error::Code::DEADLINE_EXCEEDED;
+  return status.code() == tsl::error::Code::DEADLINE_EXCEEDED;
 }
 
 bool IsFailedPrecondition(const Status& status) {
-  return status.code() == tensorflow::error::Code::FAILED_PRECONDITION;
+  return status.code() == tsl::error::Code::FAILED_PRECONDITION;
 }
 
 bool IsInternal(const Status& status) {
-  return status.code() == tensorflow::error::Code::INTERNAL;
+  return status.code() == tsl::error::Code::INTERNAL;
 }
 
 bool IsInvalidArgument(const Status& status) {
-  return status.code() == tensorflow::error::Code::INVALID_ARGUMENT;
+  return status.code() == tsl::error::Code::INVALID_ARGUMENT;
 }
 
 bool IsNotFound(const Status& status) {
-  return status.code() == tensorflow::error::Code::NOT_FOUND;
+  return status.code() == tsl::error::Code::NOT_FOUND;
 }
 
 bool IsOutOfRange(const Status& status) {
-  return status.code() == tensorflow::error::Code::OUT_OF_RANGE;
+  return status.code() == tsl::error::Code::OUT_OF_RANGE;
 }
 
 bool IsPermissionDenied(const Status& status) {
-  return status.code() == tensorflow::error::Code::PERMISSION_DENIED;
+  return status.code() == tsl::error::Code::PERMISSION_DENIED;
 }
 
 bool IsResourceExhausted(const Status& status) {
-  return status.code() == tensorflow::error::Code::RESOURCE_EXHAUSTED;
+  return status.code() == tsl::error::Code::RESOURCE_EXHAUSTED;
 }
 
 bool IsUnauthenticated(const Status& status) {
-  return status.code() == tensorflow::error::Code::UNAUTHENTICATED;
+  return status.code() == tsl::error::Code::UNAUTHENTICATED;
 }
 
 bool IsUnavailable(const Status& status) {
-  return status.code() == tensorflow::error::Code::UNAVAILABLE;
+  return status.code() == tsl::error::Code::UNAVAILABLE;
 }
 
 bool IsUnimplemented(const Status& status) {
-  return status.code() == tensorflow::error::Code::UNIMPLEMENTED;
+  return status.code() == tsl::error::Code::UNIMPLEMENTED;
 }
 
 bool IsUnknown(const Status& status) {
-  return status.code() == tensorflow::error::Code::UNKNOWN;
+  return status.code() == tsl::error::Code::UNKNOWN;
 }
 
 }  // namespace errors
-}  // namespace tensorflow
+}  // namespace tsl

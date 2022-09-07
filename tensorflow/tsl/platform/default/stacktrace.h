@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_STACKTRACE_H_
 
 // clang-format off
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/tsl/platform/platform.h"
 // clang-format on
 
 #if !defined(IS_MOBILE_PLATFORM) && (defined(__clang__) || defined(__GNUC__))
@@ -36,7 +36,7 @@ limitations under the License.
 #include <string>
 #include "tensorflow/core/platform/abi.h"
 
-namespace tensorflow {
+namespace tsl {
 
 // Function to create a pretty stacktrace.
 inline std::string CurrentStackTrace() {
@@ -96,6 +96,6 @@ class SavedStackTrace {
   void* stack_[32];
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_STACKTRACE_H_

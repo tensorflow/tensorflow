@@ -22,11 +22,11 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/platform/mutex.h"
 
 #pragma comment(lib, "dbghelp.lib")
 
-namespace tensorflow {
+namespace tsl {
 
 // We initialize the Symbolizer on first call:
 // https://docs.microsoft.com/en-us/windows/win32/debug/initializing-the-symbol-handler
@@ -68,7 +68,7 @@ std::string CurrentStackTrace() {
   void* trace[kMaxStackFrames];
   int num_frames = CaptureStackBackTrace(0, kMaxStackFrames, trace, NULL);
 
-  static mutex mu(tensorflow::LINKER_INITIALIZED);
+  static mutex mu(tsl::LINKER_INITIALIZED);
 
   std::string stacktrace;
   for (int i = 0; i < num_frames; ++i) {
@@ -98,4 +98,4 @@ std::string CurrentStackTrace() {
   return stacktrace;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

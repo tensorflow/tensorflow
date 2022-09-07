@@ -45,7 +45,7 @@ static void LogError(const Status& status, const char* filename, int line,
   if (ABSL_PREDICT_TRUE(log_severity != tensorflow::NUM_SEVERITIES)) {
     std::string stack_trace;
     if (should_log_stack_trace) {
-      stack_trace = absl::StrCat("\n", tensorflow::CurrentStackTrace());
+      stack_trace = absl::StrCat("\n", tsl::CurrentStackTrace());
     }
     switch (log_severity) {
       case tensorflow::INFO:

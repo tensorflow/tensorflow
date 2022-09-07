@@ -1064,7 +1064,7 @@ class XlaBuilder {
   Status first_error_;
 
   // The saved stack trace from the point at which the first error occurred.
-  tensorflow::SavedStackTrace first_error_backtrace_;
+  tsl::SavedStackTrace first_error_backtrace_;
 
   // The instructions of this computation.
   // Use a deque so pointers into this are stable, for example the return

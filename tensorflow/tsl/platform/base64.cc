@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/base64.h"
+#include "tensorflow/tsl/platform/base64.h"
 
 #include <cstring>
 #include <memory>
 
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/tsl/platform/stringpiece.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 // This array must have signed type.
 // clang-format off
@@ -208,4 +208,4 @@ template Status Base64Encode<tstring>(StringPiece source, tstring* encoded);
 template Status Base64Encode<tstring>(StringPiece source, bool with_padding,
                                       tstring* encoded);
 
-}  // namespace tensorflow
+}  // namespace tsl

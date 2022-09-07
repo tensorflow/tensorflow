@@ -213,7 +213,7 @@ tensorflow::EagerExecutor::~EagerExecutor
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
 
 [//tensorflow/c:tf_status_helper] # tfe
-tensorflow::Set_TF_Status_from_Status
+tsl::Set_TF_Status_from_Status
 
 [//tensorflow/core/common_runtime/eager:context] # tfe
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts

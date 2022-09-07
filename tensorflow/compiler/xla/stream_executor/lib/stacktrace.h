@@ -22,7 +22,7 @@ limitations under the License.
 namespace stream_executor {
 namespace port {
 
-using tensorflow::CurrentStackTrace;
+using tsl::CurrentStackTrace;  // NOLINT
 
 }  // namespace port
 }  // namespace stream_executor

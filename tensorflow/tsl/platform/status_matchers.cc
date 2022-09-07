@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 #include <ostream>
 #include <string>
 
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/status.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace testing {
 namespace internal_status {
 
@@ -63,4 +63,4 @@ bool StatusIsMatcherCommonImpl::MatchAndExplain(
 
 }  // namespace internal_status
 }  // namespace testing
-}  // namespace tensorflow
+}  // namespace tsl
