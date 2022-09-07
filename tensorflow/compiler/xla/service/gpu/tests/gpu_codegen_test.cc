@@ -68,7 +68,7 @@ std::string GpuCodegenTest::MakePlatformSpecificLlvm(absl::string_view input) {
         is_built_with_rocm_ ? "@llvm.amdgcn.s.barrier" : "@llvm.nvvm.barrier0"},
        {"SHUFFLE", is_built_with_rocm_ ? "i32 @llvm.amdgcn.ds.bpermute"
                                        : "float @llvm.nvvm.shfl.sync.down.f32"},
-       {"TIDX", is_built_with_rocm_ ? "llvm.amdgcn.workitem.id.x"
+       {"TIDX", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
                                     : "@llvm.nvvm.read.ptx.sreg.tid.x"}});
 }
 

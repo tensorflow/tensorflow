@@ -29,25 +29,6 @@ namespace {
 
 class GpuKernelTilingTest : public GpuCodegenTest {
  protected:
-<<<<<<< HEAD
-  GpuKernelTilingTest() {}
-
-  std::string MakePlatformSpecific(absl::string_view input) {
-    return absl::StrReplaceAll(
-        input,
-        {{"KERNEL_ANNOTATION",
-          is_built_with_rocm_ ? "amdgpu_kernel void" : "void"},
-         {"BARRIER", is_built_with_rocm_ ? "@llvm.amdgcn.s.barrier"
-                                         : "@llvm.nvvm.barrier0"},
-         {"SHUFFLE", is_built_with_rocm_
-                         ? "i32 @llvm.amdgcn.ds.bpermute"
-                         : "float @llvm.nvvm.shfl.sync.down.f32"},
-         {"TIDX", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
-                                      : "@llvm.nvvm.read.ptx.sreg.tid.x"}});
-  }
-
-=======
->>>>>>> google_upstream/master
   // Most tests in this file want to skip layout assignment, but a few need it
   // enabled.
   HloModuleConfig ConfigWithLayoutAssignment() {
@@ -514,8 +495,7 @@ TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {
   // a write condition based on the logical thread ID (two writes per warp).
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-<<<<<<< HEAD
-          .ValueOrDie();
+          .value();
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
@@ -527,10 +507,6 @@ TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {
 ; CHECK: br i1 %[[LOGICAL_T2]],
 )"
                                          : R"(
-=======
-          .value();
-  auto expected_ir = R"(
->>>>>>> google_upstream/master
 ; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 15
@@ -566,8 +542,7 @@ TEST_F(GpuKernelTilingTest, RowReductionFourRowsPerWarp) {
   // a write condition based on the logical thread ID (four writes per warp).
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-<<<<<<< HEAD
-          .ValueOrDie();
+          .value();
   auto expected_ir =  is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
@@ -579,10 +554,6 @@ TEST_F(GpuKernelTilingTest, RowReductionFourRowsPerWarp) {
 ; CHECK: br i1 %[[LOGICAL_T2]],
 )"
                                          : R"(
-=======
-          .value();
-  auto expected_ir = R"(
->>>>>>> google_upstream/master
 ; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 7
