@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/denormal.h"
+#include "tensorflow/tsl/platform/denormal.h"
 
 #include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/tsl/platform/platform.h"
 
 // If we're on gcc 4.8 or older, there's a known bug that prevents the use of
 // intrinsics when the architecture is not defined in the flags. See
@@ -45,7 +45,7 @@ limitations under the License.
 #define ARM_FPCR_FZ (1 << 24)
 #endif
 
-namespace tensorflow {
+namespace tsl {
 namespace port {
 
 bool DenormalState::operator==(const DenormalState& other) const {
@@ -157,4 +157,4 @@ ScopedDontFlushDenormal::ScopedDontFlushDenormal() {
 }
 
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl

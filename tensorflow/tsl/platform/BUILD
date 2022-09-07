@@ -70,6 +70,18 @@ cc_library(
 )
 
 cc_library(
+    name = "denormal",
+    srcs = ["denormal.cc"],
+    hdrs = ["denormal.h"],
+    deps = [
+        ":macros",
+        ":platform",
+        ":platform_port",
+        "//tensorflow/core/platform:platform_port",
+    ],
+)
+
+cc_library(
     name = "errors",
     srcs = ["errors.cc"],
     hdrs = ["errors.h"],
@@ -366,6 +378,8 @@ filegroup(
         "cpu_info.cc",
         "cpu_info.h",
         "demangle.h",
+        "denormal.cc",
+        "denormal.h",
         "dynamic_annotations.h",
         "errors.cc",
         "errors.h",
@@ -501,6 +515,7 @@ filegroup(
     srcs = [
         "blocking_counter.h",
         "demangle.h",
+        "denormal.h",
         "host_info.h",
         "intrusive_ptr.h",
         "platform.h",

@@ -230,13 +230,10 @@ cc_library(
 
 cc_library(
     name = "denormal",
-    srcs = ["denormal.cc"],
     hdrs = ["denormal.h"],
     deps = [
         ":macros",
-        ":platform",
-        ":platform_port",
-        "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform:denormal",
     ],
 )
 
@@ -1711,6 +1708,7 @@ filegroup(
         "tensor_coding.h",
         "tracing.h",
         "unbounded_work_queue.h",
+        "//tensorflow/tsl/platform:lib_internal_public_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -1810,7 +1808,6 @@ filegroup(
         "cpu_info.h",
         ":ctstring",
         "demangle.h",
-        "denormal.cc",
         "denormal.h",
         "dynamic_annotations.h",
         "env.cc",
