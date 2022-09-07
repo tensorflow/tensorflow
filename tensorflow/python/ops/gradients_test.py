@@ -1250,6 +1250,28 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertIsInstance(grad2, ragged_tensor.RaggedTensor)
       self.assertAllEqual(grad2, [[4.], [4., 4.]])
 
+  @test_util.enable_quantized_dtypes_training
+  def testCustomGradientQuantizedDtypeTraining(self):
+    with context.eager_mode():
+      @custom_gradient.custom_gradient
+      def F(x):
+        out = x
+
+        def Grad(*grad):
+          return grad
+
+        return out, Grad
+
+      x = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.qint8)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        out = F(x)
+        result = tape.gradient(out, x)
+
+      self.assertAllEqual(out, [[1, 2], [3, 4]])
+      self.assertAllEqual(result, [[1, 1], [1, 1]])
+      self.assertEqual(result.dtype, dtypes.qint8)
+
   def testCustomGradientWithCapture(self):
     with ops.Graph().as_default():
       x = constant(3.)

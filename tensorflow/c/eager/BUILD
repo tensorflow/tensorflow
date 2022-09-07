@@ -1003,6 +1003,8 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
     ],
 )
 

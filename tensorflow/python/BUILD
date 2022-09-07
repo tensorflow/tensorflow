@@ -4148,6 +4148,7 @@ cc_library(
     visibility = ["//tensorflow/python/framework/experimental:__pkg__"],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/core/config:flags_headers",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
@@ -4191,6 +4192,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/py/numpy:headers",
         "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/core/config:flags_headers",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
