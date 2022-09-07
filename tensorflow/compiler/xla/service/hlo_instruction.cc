@@ -3427,6 +3427,12 @@ bool HloInstruction::IsCustomCall(absl::string_view target) const {
   return opcode() == HloOpcode::kCustomCall && custom_call_target() == target;
 }
 
+bool HloInstruction::IsCustomCall(
+    absl::Span<const absl::string_view> targets) const {
+  return opcode() == HloOpcode::kCustomCall &&
+         absl::c_linear_search(targets, custom_call_target());
+}
+
 bool HloInstruction::IsInputFusion() const {
   return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kInput;
 }

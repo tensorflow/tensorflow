@@ -1549,6 +1549,7 @@ class HloInstruction {
   bool IsFusible() const;
 
   bool IsCustomCall(absl::string_view target) const;
+  bool IsCustomCall(absl::Span<const absl::string_view> targets) const;
 
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.
