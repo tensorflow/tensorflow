@@ -35,7 +35,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Compiler.h"
-#include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
@@ -726,10 +725,10 @@ class CustomCallHandler : public CustomCall {
       std::is_invocable_r_v<LogicalResult, Fn, FnArgType<Ts>...>;
 
   // Custom call can signal error together with a detailed error message.
-  static constexpr bool kIsDetailedErr =
-      std::is_invocable_r_v<llvm::Error, Fn, FnArgType<Ts>...>;
+  static constexpr bool kIsStatusErr =
+      std::is_invocable_r_v<absl::Status, Fn, FnArgType<Ts>...>;
 
-  static_assert(kIsLogicalErr || kIsDetailedErr,
+  static_assert(kIsLogicalErr || kIsStatusErr,
                 "incompatible custom call handler types");
 
  public:
@@ -827,13 +826,15 @@ class CustomCallHandler : public CustomCall {
                                         "arguments, attributes and returns";
 
     // Custom call returns logical result to signal failures.
-    if constexpr (kIsLogicalErr)
+    if constexpr (kIsLogicalErr) {
       return fn_(std::move(*std::get<Is>(fn_args))...);
+    }
 
     // Custom call returns detailed error to signal failures.
-    if constexpr (kIsDetailedErr) {
-      if (auto err = fn_(std::move(*std::get<Is>(fn_args))...))
-        return diagnostic->EmitError() << std::move(err);
+    if constexpr (kIsStatusErr) {
+      if (auto st = fn_(std::move(*std::get<Is>(fn_args))...); !st.ok()) {
+        return diagnostic->EmitError() << st.message();
+      }
       return success();
     }
 
