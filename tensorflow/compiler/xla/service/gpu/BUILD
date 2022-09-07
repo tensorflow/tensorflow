@@ -2012,7 +2012,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
-        "//tensorflow/core/platform:rocm_rocdl_path",
+        "//tensorflow/tsl/platform:rocm_rocdl_path",
     ]),
 )
 

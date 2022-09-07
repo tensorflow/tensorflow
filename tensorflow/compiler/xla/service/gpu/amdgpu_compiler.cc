@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
-#include "tensorflow/core/platform/rocm_rocdl_path.h"
+#include "tensorflow/tsl/platform/rocm_rocdl_path.h"
 
 namespace xla {
 namespace gpu {
@@ -55,7 +55,7 @@ std::string GetROCDLDir(const HloModuleConfig& config) {
   if (!datadir.empty()) {
     potential_rocdl_dirs.push_back(datadir);
   }
-  potential_rocdl_dirs.push_back(tensorflow::RocdlRoot());
+  potential_rocdl_dirs.push_back(tsl::RocdlRoot());
 
   // Tries all potential ROCDL directories in the order they are inserted.
   // Returns the first directory that exists in the file system.
