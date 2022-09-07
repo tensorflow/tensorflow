@@ -245,7 +245,7 @@ ENTRY entry_computation {
   broadcast = f32[6]{0} broadcast(add), dimensions={}
   ROOT %fusion = f32[2]{0} fusion(broadcast), kind=kLoop, calls=%fused_computation
 })")
-                    .ValueOrDie();
+                    .value();
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   InstructionFusionForTesting instruction_fusion;
   HloInstruction* broadcast = fusion->mutable_operand(0);
