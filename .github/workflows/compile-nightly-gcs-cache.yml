@@ -25,9 +25,10 @@ jobs:
     steps:
       -
         name: Checkout tensorflow nightly branch sources
-        run: |
-          git clone -b nightly --single-branch --depth 1  https://github.com/tensorflow/tensorflow.git /tf/tensorflow
-          cd /tf/tensorflow
+        uses: actions/checkout@v3
+        with:
+          ref: nightly
+          path: /tf/tensorflow
       -
         name: Configure and build TF CPU with GCS remote cache
         working-directory: /tf/tensorflow
