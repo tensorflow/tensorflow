@@ -31,12 +31,15 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/device_propagation.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -2555,8 +2558,13 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
 namespace {
 
 bool XlaBroadcastTypeSupported(const DataType dtype) {
-  return (dtype == DT_FLOAT || dtype == DT_BFLOAT16 || dtype == DT_INT32 ||
-          dtype == DT_BOOL);
+  // Supported data types: types that map to XLA types that are <= 4 bytes.
+  xla::PrimitiveType xla_type;
+  auto status_or_type = DataTypeToPrimitiveType(dtype, &xla_type);
+  if (!status_or_type.ok()) {
+    return false;
+  }
+  return xla::ShapeUtil::ByteSizeOfPrimitiveType(xla_type) <= 4;
 }
 
 bool XlaBroadcastKindSupported(
@@ -2672,7 +2680,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
     arg->set_requires_xla_broadcast(
         params_info.NumReplicas() > 1 &&
         EnableXlaParamBroadcast(enable_xla_param_broadcast_, mpmd, params_info,
-                                i, arg_shape.handle_type /*arg.dtype?*/));
+                                i, arg_shape.handle_type));
 
     // As long as the argument is not a per-replica one, it should have the same
     // value for all replicas. For clarity, we keep the (redundant) checks for
@@ -3037,17 +3045,22 @@ xla::StatusOr<Node*> CreateTpuExecuteDummyArg(const TensorShape& var_shape,
   init_val_def.set_device(host_cpu_device);
   TensorProto tensor_proto;
   tensor_proto.set_dtype(dtype);
+  const absl::flat_hash_set<DataType> kSupportedIntTypes = {
+      DT_INT32, DT_INT16, DT_UINT16, DT_INT8, DT_UINT8, DT_QINT8, DT_QUINT8};
   if (dtype == DT_FLOAT) {
     tensor_proto.add_float_val(0.0f);
-  } else if (dtype == DT_BFLOAT16) {
-    tensor_proto.add_half_val(0);
-  } else if (dtype == DT_INT32) {
+  } else if (kSupportedIntTypes.contains(dtype)) {
     tensor_proto.add_int_val(0);
+  } else if (dtype == DT_BFLOAT16 || dtype == DT_HALF) {
+    tensor_proto.add_half_val(0);
+  } else if (dtype == DT_UINT32) {
+    tensor_proto.add_uint32_val(0);
   } else if (dtype == DT_BOOL) {
     tensor_proto.add_bool_val(false);
   } else {
     return errors::Internal(
-        "Unable to create zero-init dummy arg tensor for type ", dtype);
+        "Unable to create zero-init dummy arg tensor for variable ",
+        var_read->name(), " of type ", dtype);
   }
   TensorShape scalar_shape({});
   scalar_shape.AsProto(tensor_proto.mutable_tensor_shape());
@@ -3200,7 +3213,7 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
                            params_info.NumDistributedArgs() +
                            params_info.NumBroadcastArgs();
     DataType dtype = read->output_type(0);
-    bool use_xla_broadcast =
+    const bool use_xla_broadcast =
         EnableXlaParamBroadcast(enable_xla_param_broadcast, mpmd, params_info,
                                 orig_arg_num, dtype) &&
         replica_id != 0;
