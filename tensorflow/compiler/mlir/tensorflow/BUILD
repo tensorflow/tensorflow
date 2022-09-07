@@ -2640,23 +2640,6 @@ cc_library(
     ],
 )
 
-tf_cc_test(
-    name = "mlprogram_util_test",
-    size = "small",
-    srcs = ["utils/mlprogram_util_test.cc"],
-    data = [
-        "//tensorflow/cc/saved_model:saved_model_test_files",
-    ],
-    deps = [
-        ":mlprogram_util",
-        ":tensorflow_types",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:path",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
 build_test(
     name = "tensorflow_build_test",
     targets = [
