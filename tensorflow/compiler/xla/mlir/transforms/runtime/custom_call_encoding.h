@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
@@ -104,6 +105,15 @@ class CustomCallArgEncodingSet {
     return *this;
   }
 
+  template <typename... Ts, typename Arg, typename... Args,
+            typename = std::enable_if_t<sizeof...(Ts) != 0>>
+  CustomCallArgEncodingSet &Add(Arg arg, Args... args) {
+    (encodings_.emplace_back(std::make_unique<Ts>(std::forward<Arg>(arg),
+                                                  std::forward<Args...>(args))),
+     ...);
+    return *this;
+  }
+
  private:
   std::vector<std::unique_ptr<CustomCallArgEncoding>> encodings_;
 };
@@ -144,6 +154,15 @@ class CustomCallRetEncodingSet {
   template <typename... Ts, typename = std::enable_if_t<sizeof...(Ts) != 0>>
   CustomCallRetEncodingSet &Add() {
     (encodings_.emplace_back(std::make_unique<Ts>()), ...);
+    return *this;
+  }
+
+  template <typename... Ts, typename Arg, typename... Args,
+            typename = std::enable_if_t<sizeof...(Ts) != 0>>
+  CustomCallRetEncodingSet &Add(Arg arg, Args... args) {
+    (encodings_.emplace_back(std::make_unique<Ts>(std::forward<Arg>(arg),
+                                                  std::forward<Args...>(args))),
+     ...);
     return *this;
   }
 
@@ -519,12 +538,26 @@ class ScalarArgEncoding : public CustomCallArgEncoding {
                                   mlir::Value, mlir::Value) const final;
 };
 
-// Encodes `!rt.opaque` arguments.
+// Encodes custom call arguments passed as an opaque LLVM pointer (!llvm.ptr)
+// using a custom type id. Default constructed encoding encodes `!rt.opaque`
+// arguments using a `void*` type id.
 class OpaqueArgEncoding : public CustomCallArgEncoding {
  public:
+  OpaqueArgEncoding();  // encodes `!rt.opaque` with `void*` type id
+  OpaqueArgEncoding(std::function<bool(mlir::Value)> match, TypeID type_id);
+
   mlir::LogicalResult Match(mlir::Value, mlir::Value) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
                                   mlir::Value, mlir::Value) const final;
+
+  template <typename T>
+  static auto Match() {
+    return [](mlir::Value value) { return value.getType().isa<T>(); };
+  }
+
+ private:
+  std::function<bool(mlir::Value)> match_;
+  TypeID type_id_;
 };
 
 // Encodes MemRef arguments according to the (Strided)MemrefView ABI.
@@ -560,12 +593,26 @@ class ScalarRetEncoding : public CustomCallRetEncoding {
                                   mlir::Type, mlir::Type) const final;
 };
 
-// Encodes `!rt.opaque` arguments.
+// Encodes custom call results returned as an opaque LLVM pointer (!llvm.ptr)
+// using a custom type id. Default constructed encoding encodes `!rt.opaque`
+// results using a `void*` type id.
 class OpaqueRetEncoding : public CustomCallRetEncoding {
  public:
+  OpaqueRetEncoding();  // encodes `!rt.opaque` with `void*` type id
+  OpaqueRetEncoding(std::function<bool(mlir::Type)> match, TypeID type_id);
+
   mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
                                   mlir::Type, mlir::Type) const final;
+
+  template <typename T>
+  static auto Match() {
+    return [](mlir::Type type) { return type.isa<T>(); };
+  }
+
+ private:
+  std::function<bool(mlir::Type)> match_;
+  TypeID type_id_;
 };
 
 //===----------------------------------------------------------------------===//

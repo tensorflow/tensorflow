@@ -51,7 +51,8 @@ void CreateDefaultXlaRuntimeCompilationPipeline(
   // Convert runtime operations and custom calls to LLVM dialect.
   ConvertRuntimeToLLvmOpts rt_to_llvm_opts = {
       opts.populate_type_id_names, opts.populate_type_conversions,
-      opts.populate_arg_encodings, opts.populate_attr_encodings};
+      opts.populate_arg_encodings, opts.populate_ret_encodings,
+      opts.populate_attr_encodings};
   pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
   // Convert everythinG else to LLVM dialect.

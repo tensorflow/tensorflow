@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
@@ -48,7 +49,9 @@ struct TestOpts {
   std::function<void(TypeIDNameRegistry&)> types;
 
   // Encoding for non-canonical custom call operands.
+  std::function<void(mlir::TypeConverter&)> populate_type_conversions;
   std::function<void(CustomCallArgEncodingSet&)> populate_arg_encodings;
+  std::function<void(CustomCallRetEncodingSet&)> populate_ret_encodings;
   std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
 
   DiagnosticEngine diagnostic_engine;
@@ -70,7 +73,9 @@ static absl::StatusOr<JitExecutable> Compile(std::string_view module,
     CompilationPipelineOptions copts;
     copts.populate_type_id_names = test_opts.types;
     copts.populate_arg_encodings = test_opts.populate_arg_encodings;
+    copts.populate_ret_encodings = test_opts.populate_ret_encodings;
     copts.populate_attr_encodings = test_opts.populate_attr_encodings;
+    copts.populate_type_conversions = test_opts.populate_type_conversions;
     CreateDefaultXlaRuntimeCompilationPipeline(pm, copts);
   };
 
@@ -284,14 +289,14 @@ TEST(CustomCallTest, ScalarRets) {
 
 TEST(CustomCallTest, OpaqueArgsAndRets) {
   absl::string_view module = R"(
-    func.func private @create() -> (!rt.opaque)
-      attributes { rt.custom_call = "test.create" }
+    func.func private @make() -> (!rt.opaque)
+      attributes { rt.custom_call = "test.make" }
 
     func.func private @use(%arg0: !rt.opaque)
       attributes { rt.custom_call = "test.use" }
 
     func.func @test() {
-      %0 = call @create() : () -> (!rt.opaque)
+      %0 = call @make() : () -> (!rt.opaque)
       call @use(%0) : (!rt.opaque) -> ()
       return
     }
@@ -300,7 +305,7 @@ TEST(CustomCallTest, OpaqueArgsAndRets) {
   // We'll pass around an opaque pointer to this string in our custom calls.
   std::string message = "";
 
-  auto create = [&](Result<void*> res) {
+  auto make = [&](Result<void*> res) {
     res.Set(&message);
     return success();
   };
@@ -313,8 +318,80 @@ TEST(CustomCallTest, OpaqueArgsAndRets) {
 
   TestOpts opts;
   opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
-    registry.Register(CustomCall::Bind("test.create").Ret<void*>().To(create));
+    registry.Register(CustomCall::Bind("test.make").Ret<void*>().To(make));
     registry.Register(CustomCall::Bind("test.use").Arg<void*>().To(use));
+  };
+
+  ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
+
+  EXPECT_EQ(message, "foo");
+}
+
+// Instead of passing a pointer to value of underlying type we pass it wrapped
+// into a typed reference, for example this would allow to automatically cast
+// type-erased `AsyncValue *` to typed `AsyncValuePtr<T>`.
+struct ValueRef {
+  std::string* value = nullptr;
+};
+
+// Register decoding for `ValueRef` (!testlib.value) arguments and results.
+XLA_RUNTIME_REGISTER_OPAQUE_ARG_DECODING(ValueRef, std::string*);
+XLA_RUNTIME_REGISTER_OPAQUE_RET_DECODING(ValueRef, std::string*);
+
+TEST(CustomCallTest, CustomArgsAndRets) {
+  absl::string_view module = R"(
+    func.func private @make() -> (!testlib.value)
+      attributes { rt.custom_call = "test.make" }
+
+    func.func private @use(%arg0: !testlib.value)
+      attributes { rt.custom_call = "test.use" }
+
+    func.func @test() {
+      %0 = call @make() : () -> (!testlib.value)
+      call @use(%0) : (!testlib.value) -> ()
+      return
+    }
+  )";
+
+  // Our `!testlib.value` type at run time will be just a pointer to a string,
+  // and it will be encoded similar to the `!rt.opaque` test above.
+  std::string message = "";
+
+  auto make = [&](Result<ValueRef> res) {
+    res.Set(&message);
+    return success();
+  };
+
+  auto use = [&](ValueRef arg0) {
+    (*arg0.value) += "foo";
+    return success();
+  };
+
+  // Give a unique name to the `!testlib.value` type.
+  auto types = [](TypeIDNameRegistry& registry) {
+    registry.Register<Tagged<ValueRef>>("__type_id_testlib_value");
+  };
+
+  // Encoding for custom calls taking `!testlib.value` arguments.
+  auto args = [&](CustomCallArgEncodingSet& encoding) {
+    encoding.Add<OpaqueArgEncoding>(OpaqueArgEncoding::Match<ValueType>(),
+                                    TypeID::get<Tagged<ValueRef>>());
+  };
+
+  // Encoding for custom calls returning `!testlib.value`.
+  auto rets = [&](CustomCallRetEncodingSet& encoding) {
+    encoding.Add<OpaqueRetEncoding>(OpaqueRetEncoding::Match<ValueType>(),
+                                    TypeID::get<Tagged<ValueRef>>());
+  };
+
+  TestOpts opts;
+  opts.types = types;
+  opts.populate_arg_encodings = args;
+  opts.populate_ret_encodings = rets;
+  opts.populate_type_conversions = AddTestlibTypeConversions;
+  opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.make").Ret<ValueRef>().To(make));
+    registry.Register(CustomCall::Bind("test.use").Arg<ValueRef>().To(use));
   };
 
   ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());

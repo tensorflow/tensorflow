@@ -42,6 +42,7 @@ struct CompilationPipelineOptions {
   // structs) to the custom calls, and decode them into dialect-specific runtime
   // values in the custom call handlers (see custom_call_to_llvm.h for details).
   std::function<void(CustomCallArgEncodingSet&)> populate_arg_encodings;
+  std::function<void(CustomCallRetEncodingSet&)> populate_ret_encodings;
   std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
 };
 

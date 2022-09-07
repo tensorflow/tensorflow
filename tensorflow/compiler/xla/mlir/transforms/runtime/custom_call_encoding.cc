@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
@@ -853,20 +855,30 @@ FailureOr<EncodedArg> ScalarArgEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
+static bool IsOpaqueValue(Value value) {
+  return value.getType().isa<OpaqueType>();
+}
+
+OpaqueArgEncoding::OpaqueArgEncoding()
+    : OpaqueArgEncoding(IsOpaqueValue, TypeID::get<Tagged<void *>>()) {}
+
+OpaqueArgEncoding::OpaqueArgEncoding(std::function<bool(Value)> match,
+                                     TypeID type_id)
+    : match_(std::move(match)), type_id_(type_id) {}
+
 LogicalResult OpaqueArgEncoding::Match(Value value, Value converted) const {
-  return success(value.getType().isa<OpaqueType>());
+  if (auto ptr = converted.getType().dyn_cast<LLVM::LLVMPointerType>())
+    return success(match_(value));
+  return failure();
 }
 
 FailureOr<EncodedArg> OpaqueArgEncoding::Encode(Globals &g,
                                                 ImplicitLocOpBuilder &b,
                                                 Value value,
                                                 Value converted) const {
-  assert(converted.getType().isa<LLVM::LLVMPointerType>());
-
   Encoded encoded;
-  encoded.type_id = PackTypeId(g, b, TypeID::get<Tagged<void *>>());
+  encoded.type_id = PackTypeId(g, b, type_id_);
   encoded.value = PackValue(b, converted);
-
   return encoded;
 }
 
@@ -987,8 +999,19 @@ FailureOr<EncodedRet> ScalarRetEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
+static bool IsOpaqueType(Type type) { return type.isa<OpaqueType>(); }
+
+OpaqueRetEncoding::OpaqueRetEncoding()
+    : OpaqueRetEncoding(IsOpaqueType, TypeID::get<Tagged<void *>>()) {}
+
+OpaqueRetEncoding::OpaqueRetEncoding(std::function<bool(Type)> match,
+                                     TypeID type_id)
+    : match_(std::move(match)), type_id_(type_id) {}
+
 LogicalResult OpaqueRetEncoding::Match(Type type, Type converted) const {
-  return success(type.isa<OpaqueType>());
+  if (auto ptr = converted.dyn_cast<LLVM::LLVMPointerType>())
+    return success(match_(type));
+  return failure();
 }
 
 FailureOr<EncodedRet> OpaqueRetEncoding::Encode(Globals &g,
@@ -996,7 +1019,7 @@ FailureOr<EncodedRet> OpaqueRetEncoding::Encode(Globals &g,
                                                 Type value,
                                                 Type converted) const {
   Encoded encoded;
-  encoded.type_id = PackTypeId(g, b, TypeID::get<Tagged<void *>>());
+  encoded.type_id = PackTypeId(g, b, type_id_);
 
   Type ptr = LLVM::LLVMPointerType::get(converted);
   Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
