@@ -87,6 +87,33 @@ bool NeedsBroadcast(const TensorDescriptor& desc, const BHWC& shape) {
   return needs_broadcast;
 }
 
+std::string GetStringWithoutComments(const std::string& code) {
+  std::string result;
+  result.reserve(code.size());
+  for (size_t i = 0; i < code.size(); ++i) {
+    // skip long comment /*...*/
+    if (code[i] == '/' && i + 1 < code.size() && code[i + 1] == '*') {
+      i = i + 3;
+      for (; i < code.size() && (code[i - 1] != '*' && code[i] != '/'); ++i) {
+      }
+      continue;
+    }
+    // skip short comment //...
+    if (code[i] == '/' && i + 1 < code.size() && code[i + 1] == '/') {
+      i = i + 2;
+      for (; i < code.size() && code[i] != '\n'; ++i) {
+      }
+      if (i != code.size()) {
+        // i is '\n'
+        result.push_back(code[i]);
+      }
+      continue;
+    }
+    result.push_back(code[i]);
+  }
+  return result;
+}
+
 }  // namespace
 
 DataType OperationDef::GetDataType() const {
@@ -416,6 +443,7 @@ absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
 
     code_ = GetElementWiseCode(definition_);
   }
+  code_ = GetStringWithoutComments(code_);
   RETURN_IF_ERROR(args_.Compile(
       gpu_info, {{dst_tensors_names_[0], elementwise_code_}}, &code_));
   CalculateConstArgsSize();
