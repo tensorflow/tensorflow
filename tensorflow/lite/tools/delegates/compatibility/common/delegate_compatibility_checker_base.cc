@@ -31,7 +31,7 @@ namespace tools {
 
 absl::Status DelegateCompatibilityCheckerBase::checkModelCompatibilityOffline(
     tflite::FlatBufferModel* model_buffer, proto::CompatibilityResult* result) {
-  auto model = tflite::GetModel(model_buffer);
+  auto model = model_buffer->GetModel();
   auto subgraphs = model->subgraphs();
   for (int i = 0; i < subgraphs->Length(); ++i) {
     const tflite::SubGraph* subgraph = subgraphs->Get(i);
