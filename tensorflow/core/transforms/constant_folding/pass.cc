@@ -3576,9 +3576,9 @@ void ConstantFolding::runOnOperation() {
   // operation creation.
 
   GraphFuncOp func = getOperation();
-  Operation *return_op = func.getBody()->getTerminator();
+  TFOp return_op = func.getBody()->getTerminator();
   DenseSet<Operation *> unfoldable_ops;
-  for (Value v : return_op->getOperands())
+  for (Value v : return_op.getControlOperands())
     unfoldable_ops.insert(v.getDefiningOp());
 
   // The max iteration is the same as the max default iteration in
