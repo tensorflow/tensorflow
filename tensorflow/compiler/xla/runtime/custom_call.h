@@ -283,25 +283,6 @@ inline CustomCallBinding<> CustomCall::Bind(std::string callee) {
 template <typename T>
 class Result;
 
-#define XLA_RUNTIME_REGISTER_SCALAR_RESULT(T)          \
-  template <>                                          \
-  struct Result<T> {                                   \
-   public:                                             \
-    explicit Result(T* storage) : storage_(storage) {} \
-    void Set(T value) { *storage_ = value; }           \
-                                                       \
-   private:                                            \
-    T* storage_;                                       \
-  };  // namespace runtime
-
-XLA_RUNTIME_REGISTER_SCALAR_RESULT(bool);
-XLA_RUNTIME_REGISTER_SCALAR_RESULT(int32_t);
-XLA_RUNTIME_REGISTER_SCALAR_RESULT(int64_t);
-XLA_RUNTIME_REGISTER_SCALAR_RESULT(float);
-XLA_RUNTIME_REGISTER_SCALAR_RESULT(double);
-
-#undef XLA_RUNTIME_REGISTER_SCALAR_RESULT
-
 // Custom call arguments decoding must be defined by specializing this template.
 //
 // Example: decoding for the `MyType` arguments
@@ -885,7 +866,8 @@ template <CustomCall::RuntimeChecks checks, typename Fn, typename... Ts>
 constexpr int64_t CustomCallHandler<checks, Fn, Ts...>::kNumRets;
 
 //===----------------------------------------------------------------------===//
-// Custom arguments attributes decoding.
+// Custom arguments decoding.
+//===----------------------------------------------------------------------===//
 
 // A view into the memref argument. Corresponds to the MemrefDesc, however it
 // doesn't own the sizes/strides vectors, and cheap to pass around. Memrefs with
@@ -1002,7 +984,45 @@ XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(int64_t);
 XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(float);
 XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(double);
 
+// Register opaque argument decoding as a scalar decoding.
+XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(void*);
+
 #undef XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING
+
+template <CustomCall::RuntimeChecks checks>
+struct CustomCallArgDecoding<Eigen::half, checks> {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Eigen::half> Decode(
+      TypeID type_id, void* value) {
+    if (!CustomCall::Isa<Eigen::half>(checks, type_id)) {
+      return failure();
+    }
+
+    auto* src = reinterpret_cast<uint16_t*>(value);
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(uint16_t));
+    return Eigen::numext::bit_cast<Eigen::half>(*src);
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Custom call results decoding.
+//===----------------------------------------------------------------------===//
+
+#define XLA_RUNTIME_REGISTER_SCALAR_RESULT(T)          \
+  template <>                                          \
+  struct Result<T> {                                   \
+   public:                                             \
+    explicit Result(T* storage) : storage_(storage) {} \
+    void Set(T value) { *storage_ = value; }           \
+                                                       \
+   private:                                            \
+    T* storage_;                                       \
+  };  // namespace runtime
+
+XLA_RUNTIME_REGISTER_SCALAR_RESULT(bool);
+XLA_RUNTIME_REGISTER_SCALAR_RESULT(int32_t);
+XLA_RUNTIME_REGISTER_SCALAR_RESULT(int64_t);
+XLA_RUNTIME_REGISTER_SCALAR_RESULT(float);
+XLA_RUNTIME_REGISTER_SCALAR_RESULT(double);
 
 #define XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(T)                  \
   template <CustomCall::RuntimeChecks checks>                        \
@@ -1023,24 +1043,16 @@ XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(int64_t);
 XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(float);
 XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(double);
 
+// Register opaque result decoding as a scalar decoding.
+XLA_RUNTIME_REGISTER_SCALAR_RESULT(void*);
+XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(void*);
+
+#undef XLA_RUNTIME_REGISTER_SCALAR_RESULT
 #undef XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING
-
-template <CustomCall::RuntimeChecks checks>
-struct CustomCallArgDecoding<Eigen::half, checks> {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Eigen::half> Decode(
-      TypeID type_id, void* value) {
-    if (!CustomCall::Isa<Eigen::half>(checks, type_id)) {
-      return failure();
-    }
-
-    auto* src = reinterpret_cast<uint16_t*>(value);
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(uint16_t));
-    return Eigen::numext::bit_cast<Eigen::half>(*src);
-  }
-};
 
 //===----------------------------------------------------------------------===//
 // Custom call attributes decoding.
+//===----------------------------------------------------------------------===//
 
 template <CustomCall::RuntimeChecks checks>
 struct CustomCallAttrDecoding<std::string_view, checks> {

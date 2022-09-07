@@ -282,6 +282,46 @@ TEST(CustomCallTest, ScalarRets) {
   EXPECT_EQ(f64, 42.0);
 }
 
+TEST(CustomCallTest, OpaqueArgsAndRets) {
+  absl::string_view module = R"(
+    func.func private @create() -> (!rt.opaque)
+      attributes { rt.custom_call = "test.create" }
+
+    func.func private @use(%arg0: !rt.opaque)
+      attributes { rt.custom_call = "test.use" }
+
+    func.func @test() {
+      %0 = call @create() : () -> (!rt.opaque)
+      call @use(%0) : (!rt.opaque) -> ()
+      return
+    }
+  )";
+
+  // We'll pass around an opaque pointer to this string in our custom calls.
+  std::string message = "";
+
+  auto create = [&](Result<void*> res) {
+    res.Set(&message);
+    return success();
+  };
+
+  auto use = [&](void* arg0) {
+    std::string* str = reinterpret_cast<std::string*>(arg0);
+    (*str) += "foo";
+    return success();
+  };
+
+  TestOpts opts;
+  opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.create").Ret<void*>().To(create));
+    registry.Register(CustomCall::Bind("test.use").Arg<void*>().To(use));
+  };
+
+  ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
+
+  EXPECT_EQ(message, "foo");
+}
+
 TEST(CustomCallTest, ArgSizeCheck) {
   // Try to pass two argument to a custom call that expects one.
   absl::string_view module = R"(

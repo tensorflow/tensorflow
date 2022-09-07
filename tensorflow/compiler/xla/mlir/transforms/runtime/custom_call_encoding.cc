@@ -24,11 +24,14 @@ limitations under the License.
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
@@ -850,6 +853,25 @@ FailureOr<EncodedArg> ScalarArgEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
+LogicalResult OpaqueArgEncoding::Match(Value value, Value converted) const {
+  return success(value.getType().isa<OpaqueType>());
+}
+
+FailureOr<EncodedArg> OpaqueArgEncoding::Encode(Globals &g,
+                                                ImplicitLocOpBuilder &b,
+                                                Value value,
+                                                Value converted) const {
+  assert(converted.getType().isa<LLVM::LLVMPointerType>());
+
+  Encoded encoded;
+  encoded.type_id = PackTypeId(g, b, TypeID::get<Tagged<void *>>());
+  encoded.value = PackValue(b, converted);
+
+  return encoded;
+}
+
+//===----------------------------------------------------------------------===//
+
 LogicalResult MemrefArgEncoding::Match(Value value, Value converted) const {
   return success(value.getType().isa<MemRefType>());
 }
@@ -945,8 +967,8 @@ Value MemrefArgEncoding::EncodeMemRef(ImplicitLocOpBuilder &b,
 // Custom call results encodings.
 //===----------------------------------------------------------------------===//
 
-LogicalResult ScalarRetEncoding::Match(Type value, Type converted) const {
-  return success(IsSupportedScalarType(value));
+LogicalResult ScalarRetEncoding::Match(Type type, Type converted) const {
+  return success(IsSupportedScalarType(type));
 }
 
 FailureOr<EncodedRet> ScalarRetEncoding::Encode(Globals &g,
@@ -955,6 +977,26 @@ FailureOr<EncodedRet> ScalarRetEncoding::Encode(Globals &g,
                                                 Type converted) const {
   Encoded encoded;
   encoded.type_id = PackTypeId(g, b, ScalarRuntimeTypeId(converted));
+
+  Type ptr = LLVM::LLVMPointerType::get(converted);
+  Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
+  encoded.value = b.create<LLVM::AllocaOp>(ptr, one, 0);
+
+  return encoded;
+}
+
+//===----------------------------------------------------------------------===//
+
+LogicalResult OpaqueRetEncoding::Match(Type type, Type converted) const {
+  return success(type.isa<OpaqueType>());
+}
+
+FailureOr<EncodedRet> OpaqueRetEncoding::Encode(Globals &g,
+                                                ImplicitLocOpBuilder &b,
+                                                Type value,
+                                                Type converted) const {
+  Encoded encoded;
+  encoded.type_id = PackTypeId(g, b, TypeID::get<Tagged<void *>>());
 
   Type ptr = LLVM::LLVMPointerType::get(converted);
   Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
@@ -977,13 +1019,13 @@ CustomCallAttrEncodingSet DefaultAttrEncodings() {
 
 CustomCallArgEncodingSet DefaultArgEncodings() {
   CustomCallArgEncodingSet encodings;
-  encodings.Add<ScalarArgEncoding, MemrefArgEncoding>();
+  encodings.Add<ScalarArgEncoding, OpaqueArgEncoding, MemrefArgEncoding>();
   return encodings;
 }
 
 CustomCallRetEncodingSet DefaultRetEncodings() {
   CustomCallRetEncodingSet encodings;
-  encodings.Add<ScalarRetEncoding>();
+  encodings.Add<ScalarRetEncoding, OpaqueRetEncoding>();
   return encodings;
 }
 

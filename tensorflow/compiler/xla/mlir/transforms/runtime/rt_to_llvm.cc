@@ -157,6 +157,7 @@ class RuntimeTypeConverter : public TypeConverter {
     addConversion([](Type type) { return type; });
     addConversion(ConvertExecutionContextType);
     addConversion(ConvertStatusType);
+    addConversion(ConvertOpaqueType);
   }
 
   static llvm::Optional<Type> ConvertExecutionContextType(
@@ -166,6 +167,10 @@ class RuntimeTypeConverter : public TypeConverter {
 
   static llvm::Optional<Type> ConvertStatusType(StatusType type) {
     return IntegerType::get(type.getContext(), 1);
+  }
+
+  static llvm::Optional<Type> ConvertOpaqueType(OpaqueType type) {
+    return LLVM::LLVMPointerType::get(type.getContext());
   }
 };
 
@@ -550,6 +555,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   llvm_converter.addConversion(
       RuntimeTypeConverter::ConvertExecutionContextType);
   llvm_converter.addConversion(RuntimeTypeConverter::ConvertStatusType);
+  llvm_converter.addConversion(RuntimeTypeConverter::ConvertOpaqueType);
 
   // TODO(ezhulenev): We should combine AsyncToLLVM and RtToLLVM into a single
   // pass that composed from `rt` and `async` patterns, because they both

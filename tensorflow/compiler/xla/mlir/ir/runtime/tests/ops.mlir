@@ -45,3 +45,16 @@ func.func @direct_custom_call(%ctx: !rt.execution_context) {
   %status = rt.custom_call direct %ctx["f32_reduce"] () : () -> ()
   return
 }
+
+// CHECK-LABEL: func @opaque_arg(
+// CHECK:  %[[CTX:.*]]: !rt.execution_context,
+// CHECK:   %[[ARG:.*]]: !rt.opaque
+// CHECK: ) -> !rt.opaque
+func.func @opaque_arg(%ctx: !rt.execution_context,
+                      %arg0: !rt.opaque) -> !rt.opaque {
+  // CHECK: rt.custom_call
+  // CEHCK-SAME: (%[[ARG]]) : (!rt.opaque) -> (!rt.opaque)
+  %status, %result = rt.custom_call %ctx["test"] (%arg0)
+    : (!rt.opaque) -> (!rt.opaque)
+  return %result : !rt.opaque
+}

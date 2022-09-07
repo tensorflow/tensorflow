@@ -511,7 +511,7 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
 // Custom call arguments encoding.
 //===----------------------------------------------------------------------===//
 
-// Encodes scalar operands.
+// Encodes scalar arguments.
 class ScalarArgEncoding : public CustomCallArgEncoding {
  public:
   mlir::LogicalResult Match(mlir::Value, mlir::Value) const final;
@@ -519,7 +519,15 @@ class ScalarArgEncoding : public CustomCallArgEncoding {
                                   mlir::Value, mlir::Value) const final;
 };
 
-// Encodes MemRef operands according to the (Strided)MemrefView ABI.
+// Encodes `!rt.opaque` arguments.
+class OpaqueArgEncoding : public CustomCallArgEncoding {
+ public:
+  mlir::LogicalResult Match(mlir::Value, mlir::Value) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+                                  mlir::Value, mlir::Value) const final;
+};
+
+// Encodes MemRef arguments according to the (Strided)MemrefView ABI.
 class MemrefArgEncoding : public CustomCallArgEncoding {
  public:
   mlir::LogicalResult Match(mlir::Value, mlir::Value) const final;
@@ -546,6 +554,14 @@ class MemrefArgEncoding : public CustomCallArgEncoding {
 
 // Encodes scalar operands.
 class ScalarRetEncoding : public CustomCallRetEncoding {
+ public:
+  mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+                                  mlir::Type, mlir::Type) const final;
+};
+
+// Encodes `!rt.opaque` arguments.
+class OpaqueRetEncoding : public CustomCallRetEncoding {
  public:
   mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
