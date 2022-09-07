@@ -386,6 +386,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
+        "//tensorflow/tsl/platform",
     ],
 )
 
