@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/path.h"
+#include "tensorflow/tsl/platform/path.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -29,12 +29,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/scanner.h"
-#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/strcat.h"
 
-namespace tensorflow {
+namespace tsl {
+// TODO(aminim): remove after scanner migration.
+namespace strings {
+using tensorflow::strings::Scanner;
+}
 namespace io {
 namespace internal {
 namespace {
@@ -228,36 +232,36 @@ string CleanPath(StringPiece unclean_path) {
   return path;
 }
 
-void ParseURI(StringPiece remaining, StringPiece* scheme, StringPiece* host,
+void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
               StringPiece* path) {
   // 0. Parse scheme
   // Make sure scheme matches [a-zA-Z][0-9a-zA-Z.]*
   // TODO(keveman): Allow "+" and "-" in the scheme.
   // Keep URI pattern in TensorBoard's `_parse_event_files_spec` updated
   // accordingly
-  if (!strings::Scanner(remaining)
+  if (!strings::Scanner(uri)
            .One(strings::Scanner::LETTER)
            .Many(strings::Scanner::LETTER_DIGIT_DOT)
            .StopCapture()
            .OneLiteral("://")
-           .GetResult(&remaining, scheme)) {
+           .GetResult(&uri, scheme)) {
     // If there's no scheme, assume the entire string is a path.
-    *scheme = StringPiece(remaining.data(), 0);
-    *host = StringPiece(remaining.data(), 0);
-    *path = remaining;
+    *scheme = StringPiece(uri.data(), 0);
+    *host = StringPiece(uri.data(), 0);
+    *path = uri;
     return;
   }
 
   // 1. Parse host
-  if (!strings::Scanner(remaining).ScanUntil('/').GetResult(&remaining, host)) {
+  if (!strings::Scanner(uri).ScanUntil('/').GetResult(&uri, host)) {
     // No path, so the rest of the URI is the host.
-    *host = remaining;
+    *host = uri;
     *path = StringPiece();  // empty path
     return;
   }
 
   // 2. The rest is the path
-  *path = remaining;
+  *path = uri;
 }
 
 string CreateURI(StringPiece scheme, StringPiece host, StringPiece path) {
@@ -368,4 +372,4 @@ bool GetTestUndeclaredOutputsDir(string* dir) {
 }
 
 }  // namespace io
-}  // namespace tensorflow
+}  // namespace tsl

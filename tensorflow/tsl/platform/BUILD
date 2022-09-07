@@ -138,6 +138,22 @@ cc_library(
 )
 
 cc_library(
+    name = "path",
+    srcs = ["path.cc"],
+    hdrs = ["path.h"],
+    deps = [
+        ":logging",
+        ":mutex",
+        ":strcat",
+        ":stringpiece",
+        ":types",
+        "//tensorflow/core/platform:scanner",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "protobuf",
     srcs = [
         "protobuf.cc",
@@ -324,6 +340,7 @@ filegroup(
         "mem.h",
         "net.h",
         "numa.h",
+        "path.h",
         "prefetch.h",
         "protobuf.h",
         "resource.h",
@@ -394,6 +411,8 @@ filegroup(
         "numa.h",
         "numbers.cc",
         "numbers.h",
+        "path.cc",
+        "path.h",
         "platform.h",
         "platform_strings_computed.h",
         "prefetch.h",

@@ -460,16 +460,11 @@ cc_library(
 
 cc_library(
     name = "path",
-    srcs = ["path.cc"],
     hdrs = ["path.h"],
     deps = [
-        ":logging",
-        ":mutex",
-        ":scanner",
-        ":strcat",
         ":stringpiece",
         ":types",
-        "@com_google_absl//absl/algorithm:container",
+        "//tensorflow/tsl/platform:path",
     ],
     alwayslink = True,
 )
@@ -1829,7 +1824,6 @@ filegroup(
         "mutex.h",
         "numa.h",
         "numbers.h",
-        "path.cc",
         "path.h",
         "platform.h",
         "prefetch.h",
