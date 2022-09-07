@@ -220,8 +220,8 @@ class RestoredFunction(def_function.Function):
   def _list_all_concrete_functions_for_serialization(self):
     return self.concrete_functions
 
-  def _defun_with_scope(self, scope):
-    func = super(RestoredFunction, self)._defun_with_scope(scope)
+  def _compiler_with_scope(self, scope):
+    func = super(RestoredFunction, self)._compiler_with_scope(scope)
     func._function_spec = self._function_spec  # pylint: disable=protected-access
     return func
 

@@ -15,8 +15,9 @@
 # pylint: disable=unidiomatic-typecheck
 """API for defining graph functions with some additional eager semantics.
 
-def_function.function wraps the function concept in function.py ("defun") to
-allow initializing `tf.Variable`s with subgraphs of the function. For example:
+def_function.function wraps the PolymorphicCompiler concept in
+polymorphic_function.py to allow initializing `tf.Variable`s with subgraphs of
+the function. For example:
 
 ```python
 class M(tf.Module):
@@ -40,13 +41,13 @@ class M(tf.Module):
     return self.v_opinit + self.v_arginit + x
 ```
 
-These patterns with "defun" throw an error asking the user to put the variable's
-initializer in a lambda. With tf.function they work with eager semantics either
-by lifting the subgraph out of the function and using it to initialize the
-variable, or by initializing variables on the first call to the function (if
-they weren't already initialized by something else, e.g. a checkpoint API). The
-latter requires tf.conds, and is not well supported by TF-XLA, so we only do it
-when necessary.
+These patterns with using "PolymorphicCompiler" directly throw an error asking
+the user to put the variable's initializer in a lambda. With tf.function they
+work with eager semantics either by lifting the subgraph out of the function and
+using it to initialize the variable, or by initializing variables on the first
+call to the function (if they weren't already initialized by something else,
+e.g. a checkpoint API). The latter requires tf.conds, and is not well supported
+by TF-XLA, so we only do it when necessary.
 
 Since these patterns are relatively common in layer libraries, we expose the
 wrapper in this file as `tf.function`. The function concept in function.py is an
@@ -202,8 +203,9 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
   Instances of this variable, when created, build a graph which runs their
   initializer inside a tf.cond(is_initialized) block.
 
-  This can only be created inside a defun called from (eventually) eager
-  mode. That is, non-function-building graphs are not supported.
+  This can only be created inside a PolymorphicCompiler called from
+  (eventually) eager mode. That is, non-function-building graphs are not
+  supported.
   """
 
   def __init__(self,
@@ -367,8 +369,8 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         def not_assign_fn():
           return ops.convert_to_tensor(0)
         # Note: this cond is always guaranteed to run because we're inside a
-        # defun which will insert automatic control dependencies. It will only
-        # execute assign_fn if lifting failed.
+        # PolymorphicCompiler which will insert automatic control dependencies.
+        # It will only execute assign_fn if lifting failed.
         graph = ops.get_default_graph()
 
         # Capture the handle ahead of time in order to avoid querying the shape
@@ -649,8 +651,8 @@ class Function(core.GenericFunction, trackable.Trackable):
 
     return self._python_function
 
-  def _defun_with_scope(self, scope):
-    """Creates a defun wrapped inside a variable creator scope."""
+  def _compiler_with_scope(self, scope):
+    """Creates a PolymorphicCompiler wrapped inside a variable creator scope."""
 
     weak_wrapped_fn = None
     compile_with_xla = self._jit_compile
@@ -679,7 +681,7 @@ class Function(core.GenericFunction, trackable.Trackable):
 
     weak_wrapped_fn = weakref.ref(wrapped_fn)
 
-    return self._defun(tf_decorator.make_decorator(
+    return self._compiler(tf_decorator.make_decorator(
         self._python_function,
         wrapped_fn))
 
@@ -705,8 +707,8 @@ class Function(core.GenericFunction, trackable.Trackable):
             monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
     return attributes
 
-  def _defun(self, fn):
-    """Returns a defun generated from the input function."""
+  def _compiler(self, fn):
+    """Returns a PolymorphicCompiler generated from the input function."""
     attributes = {}
 
     if self._implements is not None:
@@ -722,14 +724,21 @@ class Function(core.GenericFunction, trackable.Trackable):
         attributes.update(_noinline=True)
     if not attributes:
       attributes = None
-    return polymorphic_function.defun_with_attributes(
+
+    try:
+      name = fn.__name__
+    except AttributeError:
+      name = "function"
+
+    return polymorphic_function.PolymorphicCompiler(
         fn,
+        name,
         input_signature=self.input_signature,
         attributes=attributes,
         autograph=self._autograph,
         jit_compile=self._jit_compile,
         reduce_retracing=self._reduce_retracing,
-        experimental_autograph_options=self._experimental_autograph_options,
+        autograph_options=self._experimental_autograph_options,
         experimental_follow_type_hints=self._experimental_follow_type_hints)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
@@ -760,7 +769,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       return v
 
     self._created_variables = created_variables
-    self._stateful_fn = self._defun_with_scope(variable_capturing_scope)
+    self._stateful_fn = self._compiler_with_scope(variable_capturing_scope)
     self._stateful_fn._name = self._name  # pylint: disable=protected-access
     # Force the definition of the function for these arguments
     self._lifted_initializer_graph = lifted_initializer_graph
@@ -778,7 +787,7 @@ class Function(core.GenericFunction, trackable.Trackable):
           "https://www.tensorflow.org/guide/function#creating_tfvariables "
           "for more information.")
 
-    self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
+    self._stateless_fn = self._compiler_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
 
   def _clone(self, python_function):
@@ -992,8 +1001,9 @@ class Function(core.GenericFunction, trackable.Trackable):
     canon_args, canon_kwds, filtered_flat_args = (
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
             args, kwds))
-    return polymorphic_function.defun(fn_with_cond)(canon_args, canon_kwds,
-                                                    filtered_flat_args)
+    return polymorphic_function.PolymorphicCompiler(
+        fn_with_cond, "fn_with_cond")(canon_args, canon_kwds,
+                                      filtered_flat_args)
 
   def experimental_get_compiler_ir(self, *args, **kwargs):
     # Implements GenericFunction.experimental_get_compiler_ir
@@ -1056,10 +1066,6 @@ class Function(core.GenericFunction, trackable.Trackable):
     var_is_initialized = _evaluate_var_is_initialized(
         [v for v, _ in initializers])
 
-    # Note: using defun here avoids an infinite recursion.
-    # Most of the code in this function runs eagerly with init_scope, where
-    # autograph is not necessary.
-    @polymorphic_function.defun(autograph=False)
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
 
@@ -1080,7 +1086,12 @@ class Function(core.GenericFunction, trackable.Trackable):
         v.assign(op_map[init], read_value=False)
 
     with ops.init_scope():
-      return initialize_variables.get_concrete_function()()
+      # Note: using PolymorphicCompiler here avoids an infinite recursion.
+      # Most of the code in this function runs eagerly with init_scope, where
+      # autograph is not necessary.
+      return polymorphic_function.PolymorphicCompiler(
+          initialize_variables, "initialize_variables",
+          autograph=False).get_concrete_function()()
 
   def get_initialization_function(self, *args, **kwargs):
     """Returns a `ConcreteFunction` which initializes this function's variables.
@@ -1114,15 +1125,15 @@ class Function(core.GenericFunction, trackable.Trackable):
       initializers = []
       self._initialize(args, kwargs, add_initializers_to=initializers)
 
-    # Note: using defun here avoids an infinite recursion.
-    @polymorphic_function.defun
     def initialize_variables():
       for v, init in initializers:
         v.assign(
             lift_to_graph.lift_to_graph([init], ops.get_default_graph())[init],
             read_value=False)
 
-    return initialize_variables.get_concrete_function()
+    # Note: using PolymorphicCompiler here avoids an infinite recursion.
+    return polymorphic_function.PolymorphicCompiler(
+        initialize_variables, "initialize_variables").get_concrete_function()
 
   def _list_all_concrete_functions(self):
     """Returns all concrete functions."""
@@ -1224,14 +1235,14 @@ class Function(core.GenericFunction, trackable.Trackable):
     return concrete
 
   def __get__(self, instance, owner):
-    """Makes it possible to defun instance methods."""
+    """Makes it possible to decorate instance methods."""
     del owner
     # `instance` here is the instance that this `Function` was accessed through
     # e.g., for
     #
     #   class Foo:
     #
-    #     @function.defun
+    #     @tf.function
     #     def bar(self):
     #       ...
     #

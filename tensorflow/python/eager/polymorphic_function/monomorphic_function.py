@@ -146,55 +146,8 @@ class _InterpolateFunctionError(object):
     return False
 
 
+# TODO(b/232961485): Remove after quarantined `add_function_callback` removed.
 _function_callbacks = set()
-
-
-# TODO(b/232961485): Remove this API in favour of the graph transformation API.
-def add_function_callback(function_callback):
-  """Add a callback function for Function creation.
-
-  The callback function has the signature:
-
-    `def function_callback(function, name, graph, inputs, outputs):`
-
-  where:
-  - `function`: _EagerDefinedFunction being created before finalizing the graph.
-      Do not modify the function directly but instead modify the graph.
-  - `name`: name of the function.
-  - `graph`: Graph of the function.
-  - `inputs`: `tuple` of tensors used as inputs to the function.
-  - `outputs`: `tuple` of tensors used as outputs from the function.
-
-  The callback is at the top of the `_EagerDefinedFunction` construction, giving
-  callback an opportunity to make the last edits to the graph. Do not make
-  changes to `graph, inputs`, and `outputs` manually, but, instead, set the
-  `graph` as the default then define ops.
-
-  Repeated registration of the same callback function is idempotent.
-  After a callback is added, it can be removed with the
-  `remove_function_callback()` method.
-
-  Args:
-    function_callback: The callback to add.
-  """
-  _function_callbacks.add(function_callback)
-
-
-def remove_function_callback(function_callback):
-  """Remove an already-added function callback.
-
-  See the doc string of `add_function_callback()` for more information.
-
-  Args:
-    function_callback: The callback to remove.
-  """
-  _function_callbacks.remove(function_callback)
-
-
-def clear_function_callbacks():
-  """Clear all function callbacks, if any have been regisered."""
-  _function_callbacks.clear()
-
 
 _FORWARD_PREFIX = "__forward_"
 _BACKWARD_PREFIX = "__backward_"

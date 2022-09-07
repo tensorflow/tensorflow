@@ -41,3 +41,14 @@ py_library(
         ":monomorphic_function",
     ],
 )
+
+py_library(
+    name = "quarantine",
+    srcs = ["quarantine.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow/python/eager:__pkg__"],
+    deps = [
+        ":monomorphic_function",
+        ":polymorphic_function",
+    ],
+)

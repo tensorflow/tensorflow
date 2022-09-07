@@ -25,21 +25,23 @@ from tensorflow.python.eager.polymorphic_function.monomorphic_function import _I
 
 # Function Classes
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import ConcreteFunction
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import Function
+from tensorflow.python.eager.polymorphic_function.polymorphic_function import PolymorphicCompiler as Function
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _EagerDefinedFunction
 
 # Utilities
 from tensorflow.python.eager.polymorphic_function.polymorphic_function import TfMethodTarget
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _inference_name
 
-# Function Callback Modification API
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import add_function_callback
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import clear_function_callbacks
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import remove_function_callback
+# TODO(b/244360504): Remove in favor of graph transformation API.
+# QUARANTINED - Function Callback Modification API
+from tensorflow.python.eager.polymorphic_function.quarantine import add_function_callback
+from tensorflow.python.eager.polymorphic_function.quarantine import clear_function_callbacks
+from tensorflow.python.eager.polymorphic_function.quarantine import remove_function_callback
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _function_callbacks
 
-# Defun API
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import defun
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import defun_with_attributes
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import register
+# TODO(b/244360686): Remove in favor of tf.function.
+# QUARANTINED - Defun API
+from tensorflow.python.eager.polymorphic_function.quarantine import defun
+from tensorflow.python.eager.polymorphic_function.quarantine import defun_with_attributes
+from tensorflow.python.eager.polymorphic_function.quarantine import register
 
