@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/example/feature_util.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -49,6 +50,18 @@ TEST(GetFeatureValuesInt64Test, ReadsASingleValueFromFeature) {
   EXPECT_EQ(42, values.Get(0));
 }
 
+TEST(GetFeatureValuesInt64Test, ReadsASingleValueFromSequenceExampleContext) {
+  SequenceExample example;
+  (*example.mutable_context()->mutable_feature())["tag"]
+      .mutable_int64_list()
+      ->add_value(42);
+
+  auto tag = GetFeatureValues<protobuf_int64>("tag", example);
+
+  ASSERT_EQ(1, tag.size());
+  EXPECT_EQ(42, tag.Get(0));
+}
+
 TEST(GetFeatureValuesInt64Test, WritesASingleValue) {
   Example example;
 
@@ -66,6 +79,15 @@ TEST(GetFeatureValuesInt64Test, WritesASingleValueToFeature) {
 
   ASSERT_EQ(1, feature.int64_list().value_size());
   EXPECT_EQ(42, feature.int64_list().value(0));
+}
+
+TEST(GetFeatureValuesInt64Test, WritesASingleValueToSequenceExample) {
+  SequenceExample example;
+
+  GetFeatureValues<protobuf_int64>("tag", &example)->Add(42);
+
+  ASSERT_EQ(1, example.context().feature().at("tag").int64_list().value_size());
+  EXPECT_EQ(42, example.context().feature().at("tag").int64_list().value(0));
 }
 
 TEST(GetFeatureValuesInt64Test, CheckUntypedFieldExistence) {
@@ -128,6 +150,18 @@ TEST(GetFeatureValuesFloatTest, ReadsASingleValue) {
   EXPECT_NEAR(3.14, tag.Get(0), kTolerance);
 }
 
+TEST(GetFeatureValuesFloatTest, ReadsASingleValueFromSequenceExample) {
+  SequenceExample example;
+  (*example.mutable_context()->mutable_feature())["tag"]
+      .mutable_float_list()
+      ->add_value(3.14);
+
+  auto tag = GetFeatureValues<float>("tag", example);
+
+  ASSERT_EQ(1, tag.size());
+  EXPECT_NEAR(3.14, tag.Get(0), kTolerance);
+}
+
 TEST(GetFeatureValuesFloatTest, WritesASingleValueToFeature) {
   Feature feature;
 
@@ -146,6 +180,16 @@ TEST(GetFeatureValuesFloatTest, WritesASingleValue) {
             example.features().feature().at("tag").float_list().value_size());
   EXPECT_NEAR(3.14,
               example.features().feature().at("tag").float_list().value(0),
+              kTolerance);
+}
+
+TEST(GetFeatureValuesFloatTest, WritesASingleValueToSequenceExample) {
+  SequenceExample example;
+
+  GetFeatureValues<float>("tag", &example)->Add(3.14);
+
+  ASSERT_EQ(1, example.context().feature().at("tag").float_list().value_size());
+  EXPECT_NEAR(3.14, example.context().feature().at("tag").float_list().value(0),
               kTolerance);
 }
 
@@ -199,6 +243,18 @@ TEST(GetFeatureValuesStringTest, ReadsASingleValue) {
   EXPECT_EQ("FOO", tag.Get(0));
 }
 
+TEST(GetFeatureValuesStringTest, ReadsASingleValueFromSequenceExample) {
+  SequenceExample example;
+  (*example.mutable_context()->mutable_feature())["tag"]
+      .mutable_bytes_list()
+      ->add_value("FOO");
+
+  auto tag = GetFeatureValues<std::string>("tag", example);
+
+  ASSERT_EQ(1, tag.size());
+  EXPECT_EQ("FOO", tag.Get(0));
+}
+
 TEST(GetFeatureValuesStringTest, WritesASingleValueToFeature) {
   Feature feature;
 
@@ -217,6 +273,15 @@ TEST(GetFeatureValuesStringTest, WritesASingleValue) {
             example.features().feature().at("tag").bytes_list().value_size());
   EXPECT_EQ("FOO",
             example.features().feature().at("tag").bytes_list().value(0));
+}
+
+TEST(GetFeatureValuesStringTest, WritesASingleValueSequenceExample) {
+  SequenceExample example;
+
+  *GetFeatureValues<std::string>("tag", &example)->Add() = "FOO";
+
+  ASSERT_EQ(1, example.context().feature().at("tag").bytes_list().value_size());
+  EXPECT_EQ("FOO", example.context().feature().at("tag").bytes_list().value(0));
 }
 
 TEST(GetFeatureValuesStringTest, CheckTypedFieldExistence) {
