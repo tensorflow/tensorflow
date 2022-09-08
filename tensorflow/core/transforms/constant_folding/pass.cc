@@ -23,6 +23,8 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -243,6 +245,25 @@ static FailureOr<TFOp> ReplaceOpWithIdentity(OpBuilder &builder, TFOp owner,
   if (!owner.device().empty())
     TFOp(identity_op).setRequestedDevice(owner.deviceAttr());
   return TFOp(identity_op);
+}
+
+static FailureOr<TFOp> ReplaceOpWithNoOp(OpBuilder &builder, TFOp op) {
+  OperationState state(op->getLoc(), "tfg.NoOp");
+  // Op may not have non-control results
+  if (TFOp(op)->getNumResults() > 1) return failure();
+
+  state.addTypes({ControlType::get(builder.getContext())});
+
+  for (Value value : op->getOperands()) {
+    Value control = GetControlDependency(builder, value);
+    if (!llvm::is_contained(state.operands, control))
+      state.addOperands(control);
+  }
+
+  TFOp noop_op = builder.create(state);
+  noop_op.setName(op.nameAttr());
+  if (!op.device().empty()) noop_op.setRequestedDevice(op.device());
+  return noop_op;
 }
 
 static FailureOr<TFOp> ReplaceOpWithConstant(OpBuilder &builder, Operation *op,
@@ -3356,6 +3377,67 @@ class ConstantPushDownAdd : public ConstantPushDownBase<ConstantPushDownAdd> {
   }
 };
 
+// This implementation is mapped with
+// ConstantFolding::RemoveRedundantVariableUpdates in
+// grappler/optimizers/constant_folding.cc
+class RemoveRedundantVariableUpdates
+    : public FolderPatternBase<RemoveRedundantVariableUpdates> {
+ public:
+  explicit RemoveRedundantVariableUpdates(OpPropertyHelper &helper)
+      : FolderPatternBase<RemoveRedundantVariableUpdates>(MatchAnyOpTypeTag(),
+                                                          helper) {}
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    static const auto *kVariableReadOps =
+        new absl::flat_hash_set<std::string>{"AssignAddVariableOp",
+                                             "AssignSubVariableOp",
+                                             "AssignAdd",
+                                             "AssignSub",
+                                             "ScatterAdd",
+                                             "ScatterSub",
+                                             "ScatterMul",
+                                             "ScatterDiv",
+                                             "ScatterNdAdd",
+                                             "ScatterNdSub",
+                                             "ScatterNdMul",
+                                             "ScatterNdDiv",
+                                             "ResourceScatterAdd",
+                                             "ResourceScatterSub",
+                                             "ResourceScatterMul",
+                                             "ResourceScatterDiv",
+                                             "ResourceScatterNdAdd",
+                                             "ResourceScatterNdSub",
+                                             "ResourceScatterNdMul",
+                                             "ResourceScatterNdDiv"};
+    StringRef op_name = op->getName().stripDialect();
+    if (kVariableReadOps == nullptr ||
+        kVariableReadOps->find({op_name.data(), op_name.size()}) ==
+            kVariableReadOps->end())
+      return failure();
+    const int value_index = op_name.contains("Scatter") ? 2 : 1;
+    Operation *delta_op = op->getOpOperand(value_index).get().getDefiningOp();
+    if (delta_op == nullptr) return failure();
+    const bool is_add_or_sub =
+        op_name.contains("Add") || op_name.contains("Sub");
+    if ((is_add_or_sub && helper_.IsZeros(delta_op)) ||
+        (!is_add_or_sub && helper_.IsOnes(delta_op))) {
+      if (op_name.contains("Variable") || op_name.contains("Resource")) {
+        FailureOr<TFOp> no_op = ReplaceOpWithNoOp(rewriter, op);
+        if (failed(no_op)) return failure();
+        rewriter.replaceOp(op, (*no_op)->getResults());
+        return success();
+      } else {
+        FailureOr<TFOp> identity =
+            ReplaceOpWithIdentity(rewriter, op, /*idx*/ 0);
+        if (failed(identity)) return failure();
+        rewriter.replaceOp(op, (*identity)->getResults());
+        return success();
+      }
+    }
+    return failure();
+  }
+};
+
 // This implementation is mapped with ConstantFolding::SimplifyCase in
 // grappler/optimizers/constant_folding.cc
 class SimplifyCaseOp : public FolderPatternBase<SimplifyCaseOp> {
@@ -3518,11 +3600,11 @@ void RegisterPatterns(::mlir::RewritePatternSet &patterns,
       RemoveReverse, SimplifyStridedSlice, SimplifyTileOp, SimplifySqueezeOp,
       SimplifySliceOp, RemoveTransposeOp, RemoveRandomShuffleOp,
       RemoveShuffleOp, SimplifyPackOp, SimplifyReductionOp, SimplifyPadOp,
-      SimplifyPadV2Op, RemoveSplitOp, RemoveSplitVOp, MaterializeFillNode,
-      MaterializeConstantValuedNode, MaterializeShapeOp, MaterializeRankOp,
-      MaterializeSizeOp, MaterializeTensorArraySizeV3Op, MergeConcatOp,
-      SimplifyCaseOp, SimplifySelectOp,
-      SimplifySelectV2Op>::type>::Register(patterns, helper);
+      SimplifyPadV2Op, RemoveRedundantVariableUpdates, RemoveSplitOp,
+      RemoveSplitVOp, MaterializeFillNode, MaterializeConstantValuedNode,
+      MaterializeShapeOp, MaterializeRankOp, MaterializeSizeOp,
+      MaterializeTensorArraySizeV3Op, MergeConcatOp, SimplifyCaseOp,
+      SimplifySelectOp, SimplifySelectV2Op>::type>::Register(patterns, helper);
 }
 }  // namespace
 
