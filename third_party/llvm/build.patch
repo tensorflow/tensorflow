@@ -44,3 +44,16 @@ index eec592dee5e5..7939ba627b1d 100644
          "//conditions:default": [
              "BLAKE3_NO_AVX2",
              "BLAKE3_NO_AVX512",
+
+diff --git a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+index 244e93910880..fd5d24ff7f9a 100644
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -22,6 +22,7 @@ package(
+ licenses(["notice"])
+ 
+ exports_files(["LICENSE.TXT"])
++exports_files(["run_lit.sh"])
+ 
+ filegroup(
+     name = "c_headers",
