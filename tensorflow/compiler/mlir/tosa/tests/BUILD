@@ -6,6 +6,9 @@ package(licenses = ["notice"])
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
+    size_override = {
+        "tf-to-tosa-pipeline.mlir": "medium",
+    },
     test_file_exts = ["mlir"],
 )
 
