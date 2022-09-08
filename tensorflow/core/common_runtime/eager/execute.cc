@@ -389,8 +389,8 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
                    const char* attr_name, bool* value) {
   Status status = op->Attrs().Get(attr_name, value);
   if (status.ok()) {
-    VLOG(2) << "Caller explicitly specifies "
-            << (attr_name ? "=true " : "=false, ") << op->DebugString();
+    VLOG(2) << "Caller explicitly specifies " << attr_name
+            << (value ? "=true " : "=false, ") << op->DebugString();
     return OkStatus();
   }
 
@@ -402,8 +402,8 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
 
   status = GetNodeAttr(AttrSlice(&function_def->attr()), attr_name, value);
   if (status.ok()) {
-    VLOG(2) << "Function definition explicitly specifies "
-            << (attr_name ? "=true" : "=false");
+    VLOG(2) << "Function definition explicitly specifies " << attr_name
+            << (value ? "=true" : "=false");
     return OkStatus();
   }
   return status;
