@@ -62,6 +62,16 @@ std::string GetOneValue(const GpuInfo& gpu_info, DataType data_type,
 std::string GetTypeConversion(const GpuInfo& gpu_info, DataType src_type,
                               DataType dst_type, int vec_size);
 
+std::string GetNextWord(const std::string& code, size_t first_position);
+
+size_t FindEnclosingBracket(const std::string& text, size_t first_pos,
+                            char bracket);
+
+absl::Status ParseArgsInsideBrackets(const std::string& text,
+                                     size_t open_bracket_pos,
+                                     size_t* close_bracket_pos,
+                                     std::vector<std::string>* args);
+
 }  // namespace gpu
 }  // namespace tflite
 

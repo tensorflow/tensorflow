@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
-#include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -121,7 +120,6 @@ class Arguments : public ArgumentsBinder {
   }
 
   absl::Status Compile(const GpuInfo& gpu_info,
-                       const std::map<std::string, std::string>& linkables,
                        std::string* code);
 
   absl::Status ResolveConstExprPass(const GpuInfo& gpu_info,
@@ -134,11 +132,6 @@ class Arguments : public ArgumentsBinder {
 
   absl::Status ResolveSelectorsPass(
       const GpuInfo& gpu_info,
-      std::string* code) const;
-
-  absl::Status ResolveLinkingPass(
-      const GpuInfo& gpu_info,
-      const std::map<std::string, std::string>& linkables,
       std::string* code) const;
 
   void ResolveObjectNames(const std::string& object_name,

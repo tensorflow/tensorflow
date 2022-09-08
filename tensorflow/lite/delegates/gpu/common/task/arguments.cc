@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
 namespace tflite {
@@ -56,16 +55,6 @@ void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
     str->replace(position, old_word.size(), new_word);
     position = str->find(old_word, position + new_word.size());
   }
-}
-
-std::string GetNextWord(const std::string& code, size_t first_position) {
-  size_t pos = first_position;
-  char t = code[pos];
-  while (IsWordSymbol(t)) {
-    pos++;
-    t = code[pos];
-  }
-  return code.substr(first_position, pos - first_position);
 }
 
 bool HasWord(const std::string& word, const std::string& text) {
@@ -93,60 +82,6 @@ std::string RenameArg(const std::vector<std::string>& object_names,
     }
   }
   return arg_name + postfix;
-}
-
-size_t FindEnclosingBracket(const std::string& text, size_t first_pos,
-                            char bracket) {
-  const std::map<char, char> brackets = {
-      {'(', ')'},
-      {'{', '}'},
-      {'[', ']'},
-      {'<', '>'},
-  };
-  char b_open = bracket;
-  auto it = brackets.find(b_open);
-  if (it == brackets.end()) {
-    return -1;
-  }
-  char b_close = it->second;
-  size_t pos = first_pos;
-  int opened = 1;
-  int closed = 0;
-  while (opened != closed && pos < text.size()) {
-    if (text[pos] == b_open) {
-      opened++;
-    } else if (text[pos] == b_close) {
-      closed++;
-    }
-    pos++;
-  }
-  if (opened == closed) {
-    return pos;
-  } else {
-    return -1;
-  }
-}
-
-absl::Status ParseArgsInsideBrackets(const std::string& text,
-                                     size_t open_bracket_pos,
-                                     size_t* close_bracket_pos,
-                                     std::vector<std::string>* args) {
-  *close_bracket_pos =
-      FindEnclosingBracket(text, open_bracket_pos + 1, text[open_bracket_pos]);
-  if (*close_bracket_pos == -1) {
-    return absl::NotFoundError("Not found enclosing bracket");
-  }
-  std::string str_args = text.substr(open_bracket_pos + 1,
-                                     *close_bracket_pos - open_bracket_pos - 2);
-  std::vector<absl::string_view> words = absl::StrSplit(str_args, ',');
-  args->reserve(words.size());
-  for (const auto& word : words) {
-    absl::string_view arg = absl::StripAsciiWhitespace(word);
-    if (!arg.empty()) {
-      args->push_back(std::string(arg));
-    }
-  }
-  return absl::OkStatus();
 }
 
 absl::Status BufferToKernelLanguage(const GpuInfo& gpu_info,
@@ -391,11 +326,8 @@ void Arguments::SetStateValueForAllObjects(const std::string& key,
   }
 }
 
-absl::Status Arguments::Compile(
-    const GpuInfo& gpu_info,
-    const std::map<std::string, std::string>& linkables, std::string* code) {
+absl::Status Arguments::Compile(const GpuInfo& gpu_info, std::string* code) {
   RETURN_IF_ERROR(AddObjectsScalarArgs(gpu_info));
-  RETURN_IF_ERROR(ResolveLinkingPass(gpu_info, linkables, code));
   RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, code));
   RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, code));
   GetActiveArguments(*code);
@@ -494,109 +426,6 @@ absl::Status Arguments::ResolveSelectorsPass(
       position = arg_pos + strlen(kArgsPrefix);
     }
     next_position = code->find(kArgsPrefix, position);
-  }
-  return absl::OkStatus();
-}
-
-absl::Status Arguments::ResolveLinkingPass(
-    const GpuInfo& gpu_info,
-    const std::map<std::string, std::string>& linkables,
-    std::string* code) const {
-  std::map<std::string, std::string> useful_linkables;
-  for (const auto& linkable : linkables) {
-    if (!linkable.second.empty()) {
-      useful_linkables[linkable.first] = linkable.second;
-    }
-  }
-  if (useful_linkables.empty()) {
-    return absl::OkStatus();
-  }
-  for (size_t position = code->find(kArgsPrefix); position != std::string::npos;
-       position = code->find(kArgsPrefix, position)) {
-    const size_t args_pos = position;
-    position += strlen(kArgsPrefix);
-    const std::string object_name = GetNextWord(*code, position);
-    position += object_name.size();
-    auto linkable = useful_linkables.find(object_name);
-    if (linkable == useful_linkables.end()) {
-      continue;
-    }
-    GPUObjectDescriptor* desc_ptr;
-    RETURN_IF_ERROR(GetDescriptor(object_name, &desc_ptr));
-    const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
-    if (!tensor_desc) {
-      return absl::NotFoundError("Linker object must be a Tensor.");
-    }
-    char next = (*code)[position];
-    position += 1;
-    if (next != '.') {
-      continue;
-    }
-    const std::string selector_name = GetNextWord(*code, position);
-    position += selector_name.size();
-    if (selector_name != "Write") {
-      continue;
-    }
-    next = (*code)[position];
-    std::vector<std::string> template_args;
-    if (next == '<') {
-      size_t close_bracket_pos;
-      RETURN_IF_ERROR(ParseArgsInsideBrackets(
-          *code, position, &close_bracket_pos, &template_args));
-      position = close_bracket_pos;
-      next = (*code)[position];
-    }
-    if (next != '(') {
-      return absl::NotFoundError(absl::StrCat("Expected ( after ", object_name,
-                                              ".", selector_name, " call"));
-    }
-    std::vector<std::string> function_args;
-    size_t close_bracket_pos;
-    RETURN_IF_ERROR(ParseArgsInsideBrackets(*code, position, &close_bracket_pos,
-                                            &function_args));
-
-    std::string value_name, x_coord, y_coord, z_coord, s_coord, b_coord;
-    RETURN_IF_ERROR(tensor_desc->GetLinkingContextFromWriteSelector(
-        function_args, &value_name, &x_coord, &y_coord, &z_coord, &s_coord,
-        &b_coord));
-    const std::string new_value_name = value_name + "_final";
-    const std::string out_var_declaration =
-        GetTypeDeclaration(gpu_info, tensor_desc->GetDataType(), 4) + " " +
-        new_value_name + ";\n";
-    std::string prefix;
-    size_t space_pos = args_pos - 1;
-    while (space_pos >= 0 &&
-           ((*code)[space_pos] == ' ' || (*code)[space_pos] == '\t')) {
-      prefix += (*code)[space_pos];
-      space_pos -= 1;
-    }
-    function_args[0] = new_value_name;
-    std::string write_code = kArgsPrefix + object_name + ".Write";
-    if (!template_args.empty()) {
-      write_code += std::string("<") + template_args[0];
-      for (int i = 1; i < template_args.size(); ++i) {
-        write_code += ", " + template_args[i];
-      }
-      write_code += ">";
-    }
-    write_code += std::string("(") + function_args[0];
-    for (int i = 1; i < function_args.size(); ++i) {
-      write_code += ", " + function_args[i];
-    }
-    write_code += ")";
-    std::string patch =
-        "{\n" + absl::Substitute(linkable->second, out_var_declaration) + "\n" +
-        write_code + ";\n}";
-    patch = absl::StrReplaceAll(patch, {{"\n", "\n" + prefix},
-                                        {"in_value", value_name},
-                                        {"out_value", new_value_name},
-                                        {"X_COORD", x_coord},
-                                        {"Y_COORD", y_coord},
-                                        {"Z_COORD", z_coord},
-                                        {"S_COORD", s_coord},
-                                        {"B_COORD", b_coord}});
-    code->replace(args_pos, close_bracket_pos - args_pos, patch);
-    position = args_pos + patch.size();
   }
   return absl::OkStatus();
 }
