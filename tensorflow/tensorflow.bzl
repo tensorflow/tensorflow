@@ -2649,6 +2649,11 @@ def gpu_py_test(
 def cuda_py_test(*args, **kwargs):
     gpu_py_test(*args, **kwargs)
 
+register_extension_info(
+    extension = gpu_py_test,
+    label_regex_for_dep = "{extension_name}_cpu",
+)
+
 def py_tests(
         name,
         srcs,

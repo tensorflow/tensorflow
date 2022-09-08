@@ -1088,7 +1088,10 @@ cuda_py_test(
     size = "small",
     srcs = ["config_test.py"],
     python_version = "PY3",
-    tags = ["no_pip"],  # test_ops are not available in pip.
+    tags = [
+        "multi_gpu",
+        "no_pip",
+    ],  # test_ops are not available in pip.
     deps = [
         ":config",
         ":constant_op",
@@ -1107,6 +1110,28 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python/util",
+    ] + tf_additional_xla_deps_py(),
+)
+
+cuda_py_test(
+    name = "config_vgpu_test",
+    size = "small",
+    srcs = ["config_vgpu_test.py"],
+    python_version = "PY3",
+    shard_count = 10,  # use a large number to ensure no 2 tests run in the same process.
+    tags = [
+        "multi_gpu",
+        "no_pip",
+    ],  # test_ops are not available in pip.
+    deps = [
+        ":config",
+        ":constant_op",
+        ":errors",
+        ":ops",
+        ":test_lib",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/platform:client_testlib",
     ] + tf_additional_xla_deps_py(),
 )
 
