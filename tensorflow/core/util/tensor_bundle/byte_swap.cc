@@ -14,13 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
-
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
@@ -110,34 +108,6 @@ Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
 }
 
 }  // namespace
-
-Status ByteSwapArray(char* array, size_t bytes_per_elem, int array_len) {
-  if (bytes_per_elem == 1) {
-    // No-op
-    return OkStatus();
-  } else if (bytes_per_elem == 2) {
-    auto array_16 = reinterpret_cast<uint16_t*>(array);
-    for (int i = 0; i < array_len; i++) {
-      array_16[i] = BYTE_SWAP_16(array_16[i]);
-    }
-    return OkStatus();
-  } else if (bytes_per_elem == 4) {
-    auto array_32 = reinterpret_cast<uint32_t*>(array);
-    for (int i = 0; i < array_len; i++) {
-      array_32[i] = BYTE_SWAP_32(array_32[i]);
-    }
-    return OkStatus();
-  } else if (bytes_per_elem == 8) {
-    auto array_64 = reinterpret_cast<uint64_t*>(array);
-    for (int i = 0; i < array_len; i++) {
-      array_64[i] = BYTE_SWAP_64(array_64[i]);
-    }
-    return OkStatus();
-  } else {
-    return errors::Unimplemented("Byte-swapping of ", bytes_per_elem,
-                                 "-byte values not supported.");
-  }
-}
 
 Status ByteSwapTensor(Tensor* t) {
   char* buff = const_cast<char*>((t->tensor_data().data()));

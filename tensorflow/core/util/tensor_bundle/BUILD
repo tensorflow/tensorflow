@@ -25,6 +25,8 @@ package(
 filegroup(
     name = "mobile_srcs",
     srcs = [
+        "byte_swap_array.cc",
+        "byte_swap_array.h",
         "byte_swap.cc",
         "byte_swap.h",
         "naming.cc",
@@ -78,10 +80,23 @@ cc_library(
 )
 
 cc_library(
+    name = "byteswaparray",
+    srcs = ["byte_swap_array.cc"],
+    hdrs = ["byte_swap_array.h"],
+    deps = [
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
+cc_library(
     name = "byteswap",
     srcs = ["byte_swap.cc"],
     hdrs = ["byte_swap.h"],
-    deps = ["//tensorflow/core:framework"],
+    deps = [
+        ":byteswaparray",
+        "//tensorflow/core:framework",
+    ],
 )
 
 tf_cc_test(

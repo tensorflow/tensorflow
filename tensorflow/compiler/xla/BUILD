@@ -502,7 +502,7 @@ cc_library(
         ":util",
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core/util/tensor_bundle:byteswap",
+        "//tensorflow/core/util/tensor_bundle:byteswaparray",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
