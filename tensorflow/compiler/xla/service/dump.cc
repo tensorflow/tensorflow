@@ -482,6 +482,10 @@ static std::vector<std::string> DumpHloModuleImpl(
       dumped_file_paths.push_back(*path);
     }
   }
+  if (!dumped_file_paths.empty()) {
+    LOG_FIRST_N(INFO, 1) << "HloModule dump enabled with path prefix: "
+                         << prefix << ", suffix: " << suffix;
+  }
   return dumped_file_paths;
 }
 
