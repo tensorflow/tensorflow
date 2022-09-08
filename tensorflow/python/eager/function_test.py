@@ -441,6 +441,33 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
+  def testReduceTracingWithNestedTFFunction(self):
+    v = resource_variable_ops.ResourceVariable([1., 2.])
+
+    @def_function.function(reduce_retracing=True)
+    def inner_test_fn(x):
+      x.assign_add([2., 2.])
+      return x
+
+    @def_function.function(reduce_retracing=True)
+    def test_fn(x):
+      x.assign_add([1., 1.])
+      return inner_test_fn(x)
+
+    with backprop.GradientTape() as tape:
+      y = test_fn(v)
+
+    grad = tape.gradient(y, v)
+    self.assertAllEqual(y, [4., 5.])
+    self.assertAllEqual(grad, [1., 1.])
+
+    with backprop.GradientTape() as tape:
+      y = test_fn(v)
+
+    grad = tape.gradient(y, v)
+    self.assertAllEqual(y, [7., 8.])
+    self.assertAllEqual(grad, [1., 1.])
+
   def testInputShapeRelaxationOnInstanceMethod(self):
     # Test that reduce_retracing is passed during
     # instance method bounding.

@@ -241,6 +241,7 @@ class FuncGraph(ops.Graph):
     self.control_captures = object_identity.ObjectIdentitySet()
     self.structured_input_signature = structured_input_signature
     self.structured_outputs = structured_outputs
+    self._resource_tensor_inputs = object_identity.ObjectIdentitySet()
     self._weak_variables = []
     self._watched_variables = object_identity.ObjectIdentityWeakSet()
     self.is_control_flow_graph = False
@@ -323,6 +324,11 @@ class FuncGraph(ops.Graph):
 
   def watch_variable(self, v):
     """Marks the variable v as accessed while building this graph."""
+    # Don't watch `v` if it is one of ResourceVariable input arguments.
+    if (isinstance(v, resource_variable_ops.ResourceVariable) and
+        v.handle in self._resource_tensor_inputs):
+      return
+
     while self is not None and isinstance(self, FuncGraph):
       self._watched_variables.add(v)
       self = self.outer_graph
@@ -1177,6 +1183,14 @@ def func_graph_from_py_func(name,
       kwargs = {}
     func_args = _get_defun_inputs_from_args(args, arg_names)
     func_kwargs = _get_defun_inputs_from_kwargs(kwargs)
+
+    for arg in nest.flatten([func_args, func_kwargs], expand_composites=True):
+      if isinstance(arg, ops.Tensor) and arg.dtype == dtypes.resource:
+        func_graph._resource_tensor_inputs.add(arg)  # pylint: disable=protected-access
+      # TODO(b/209081027): Remove this after ResourceVariable subclasses
+      # CompositeTensor and we can expand ResourceVariable.
+      elif isinstance(arg, resource_variable_ops.ResourceVariable):
+        func_graph._resource_tensor_inputs.add(arg.handle)  # pylint: disable=protected-access
 
     signature_context = trace_type.InternalTracingContext()
     # Convert all Tensors into TensorSpecs before saving the structured inputs.
