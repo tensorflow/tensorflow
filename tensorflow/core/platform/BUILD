@@ -547,11 +547,11 @@ cc_library(
 
 cc_library(
     name = "random",
-    srcs = ["random.cc"],
     hdrs = ["random.h"],
     deps = [
         ":mutex",
         ":types",
+        "//tensorflow/tsl/platform:random",
     ],
 )
 
@@ -1879,7 +1879,6 @@ filegroup(
         "platform_strings_computed.h",
         "png.h",
         "protobuf_internal.h",
-        "random.cc",
         "random.h",
         "subprocess.h",
         "test_benchmark.h",

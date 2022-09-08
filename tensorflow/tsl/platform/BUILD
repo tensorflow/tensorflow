@@ -343,6 +343,7 @@ filegroup(
         "path.h",
         "prefetch.h",
         "protobuf.h",
+        "random.h",
         "resource.h",
         "stack_frame.h",
         "stacktrace.h",
@@ -448,6 +449,8 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "fingerprint.h",
+        "random.cc",
+        "random.h",
         "test_benchmark.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -674,6 +677,16 @@ cc_library(
     name = "protobuf_compiler",
     hdrs = ["protobuf_compiler.h"],
     deps = tf_protobuf_compiler_deps(),
+)
+
+cc_library(
+    name = "random",
+    srcs = ["random.cc"],
+    hdrs = ["random.h"],
+    deps = [
+        ":mutex",
+        ":types",
+    ],
 )
 
 cc_library(

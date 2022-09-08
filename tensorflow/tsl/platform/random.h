@@ -13,17 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_RANDOM_H_
-#define TENSORFLOW_CORE_PLATFORM_RANDOM_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_RANDOM_H_
+#define TENSORFLOW_TSL_PLATFORM_RANDOM_H_
 
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/random.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace random {
-using tsl::random::New64;             // NOLINT
-using tsl::random::New64DefaultSeed;  // NOLINT
-}  // namespace random
-}  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_RANDOM_H_
+// Return a 64-bit random value.  Different sequences are generated
+// in different processes.
+uint64 New64();
+
+// Return a 64-bit random value. Uses
+// std::mersenne_twister_engine::default_seed as seed value.
+uint64 New64DefaultSeed();
+
+}  // namespace random
+}  // namespace tsl
+
+#endif  // TENSORFLOW_TSL_PLATFORM_RANDOM_H_
