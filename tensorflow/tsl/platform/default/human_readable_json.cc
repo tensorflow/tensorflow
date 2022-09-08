@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/human_readable_json.h"
+#include "tensorflow/tsl/platform/human_readable_json.h"
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/strcat.h"
 
-namespace tensorflow {
+namespace tsl {
 
 Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result,
                                 bool ignore_accuracy_loss) {
@@ -32,7 +32,7 @@ Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result,
       protobuf::util::MessageToJsonString(proto, result, json_options);
   if (!status.ok()) {
     // Convert error_msg google::protobuf::StringPiece to
-    // tensorflow::StringPiece.
+    // tsl::StringPiece.
     auto error_msg = status.message();
     return errors::Internal(
         strings::StrCat("Could not convert proto to JSON string: ",
@@ -52,7 +52,7 @@ Status HumanReadableJsonToProto(const string& str, protobuf::Message* proto) {
   auto status = protobuf::util::JsonStringToMessage(str, proto);
   if (!status.ok()) {
     // Convert error_msg google::protobuf::StringPiece to
-    // tensorflow::StringPiece.
+    // tsl::StringPiece.
     auto error_msg = status.message();
     return errors::Internal(
         strings::StrCat("Could not convert JSON string to proto: ",
@@ -66,4 +66,4 @@ Status HumanReadableJsonToProto(const string& str,
   return errors::Internal("Cannot parse JSON protos on Android");
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

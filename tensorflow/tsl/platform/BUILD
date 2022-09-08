@@ -490,6 +490,7 @@ filegroup(
 exports_files(
     [
         "host_info.h",
+        "human_readable_json.h",
         "bfloat16.h",
         "cpu_info.h",
         "cpu_info.cc",
@@ -881,6 +882,12 @@ cc_library(
         ":stringpiece",
         ":types",
     ],
+)
+
+cc_library(
+    name = "human_readable_json",
+    textual_hdrs = ["human_readable_json.h"],
+    deps = tf_platform_deps("human_readable_json"),
 )
 
 cc_library(

@@ -337,7 +337,9 @@ cc_library(
 cc_library(
     name = "human_readable_json",
     textual_hdrs = ["human_readable_json.h"],
-    deps = tf_platform_deps("human_readable_json"),
+    deps = [
+        "//tensorflow/tsl/platform:human_readable_json",
+    ],
 )
 
 cc_library(
