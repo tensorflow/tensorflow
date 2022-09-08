@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/tsl/platform/scanner.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace strings {
 
 void Scanner::ScanUntilImpl(char end_ch, bool escaped) {
@@ -56,4 +56,4 @@ bool Scanner::GetResult(StringPiece* remaining, StringPiece* capture) {
 }
 
 }  // namespace strings
-}  // namespace tensorflow
+}  // namespace tsl

@@ -428,6 +428,8 @@ filegroup(
         "raw_coding.h",
         "regexp.h",
         "resource.h",
+        "scanner.cc",
+        "scanner.h",
         "setround.cc",
         "setround.h",
         "snappy.h",
@@ -930,6 +932,7 @@ filegroup(
     srcs = [
         "bfloat16.h",
         "raw_coding.h",
+        "scanner.h",
         "str_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -1019,6 +1022,17 @@ cc_library(
     hdrs = ["tensor_float_32_utils.h"],
     copts = tf_copts(),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "scanner",
+    srcs = ["scanner.cc"],
+    hdrs = ["scanner.h"],
+    deps = [
+        ":macros",
+        ":str_util",
+        ":stringpiece",
+    ],
 )
 
 filegroup(

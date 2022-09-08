@@ -656,12 +656,9 @@ cc_library(
 
 cc_library(
     name = "scanner",
-    srcs = ["scanner.cc"],
     hdrs = ["scanner.h"],
     deps = [
-        ":macros",
-        ":str_util",
-        ":stringpiece",
+        "//tensorflow/tsl/platform:scanner",
     ],
 )
 
@@ -1836,7 +1833,6 @@ filegroup(
         "refcount.h",
         "resource.h",
         "regexp.h",
-        "scanner.cc",
         "scanner.h",
         "setround.h",
         "snappy.h",
