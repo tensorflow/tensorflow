@@ -433,6 +433,25 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "ignore_errors_test",
+    size = "small",
+    srcs = ["ignore_errors_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:ignore_errors_op",
+        "//tensorflow/python/data/ops:options",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
     name = "interleave_test",
     size = "small",
     srcs = ["interleave_test.py"],

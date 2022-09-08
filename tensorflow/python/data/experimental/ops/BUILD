@@ -100,8 +100,6 @@ py_library(
     srcs = ["error_ops.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
     ],

@@ -82,6 +82,10 @@ tf_class {
     argspec: "args=[\'self\', \'key_func\', \'reduce_func\', \'window_size\', \'window_size_func\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "ignore_errors"
+    argspec: "args=[\'self\', \'log_warning\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "interleave"
     argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
