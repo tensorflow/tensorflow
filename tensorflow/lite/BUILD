@@ -128,7 +128,6 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
 STABLE_FRAMEWORK_LIB_IMPL_HDRS = [
     "core/subgraph.h",
     "signature_runner.h",
-    "core/impl/interpreter.h",
 ]
 
 exports_files(
@@ -472,6 +471,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/impl:headers",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
@@ -491,7 +491,7 @@ cc_library(
 # that includes 'framework_stable' as a subset.
 cc_library(
     name = "framework_experimental",
-    srcs = ["core/impl/interpreter.h"],
+    srcs = [],
     hdrs = FRAMEWORK_LIB_HDRS,
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
@@ -513,6 +513,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/impl:headers",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
@@ -585,6 +586,7 @@ cc_library(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/impl:headers",
         "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qs8",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qu8",
@@ -601,6 +603,18 @@ cc_library(
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 
+cc_library(
+    name = "signature_runner_header",
+    hdrs = ["signature_runner.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//tensorflow/lite/core/impl:__subpackages__"],
+    deps = [
+        "//tensorflow/lite:subgraph",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/internal:signature_def",
+    ],
+)
+
 # The key parts of the C++ API, including experimental APIs.
 #
 # This target has restricted visibility; for a public target that exposes
@@ -608,7 +622,6 @@ cc_library(
 cc_library(
     name = "cc_api_experimental",
     srcs = [
-        "core/impl/interpreter.h",
         "interpreter_experimental.cc",
         "signature_runner.cc",
     ],
@@ -647,6 +660,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/impl:headers",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
@@ -665,7 +679,6 @@ cc_library(
     name = "subgraph",
     srcs = [
         "core/subgraph.cc",
-        "interpreter_options.h",
     ],
     hdrs = [
         "core/subgraph.h",
@@ -673,11 +686,13 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
+        "//tensorflow/lite/core/impl:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",
     ],
     deps = [
         ":allocation",
         ":graph_info",
+        ":interpreter_options_header",
         ":kernel_api",
         ":macros",
         ":memory_planner",
@@ -704,6 +719,17 @@ cc_library(
         "//conditions:default": [],
     }),
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
+)
+
+cc_library(
+    name = "interpreter_options_header",
+    hdrs = [
+        "interpreter_options.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/lite/core/impl:__subpackages__",
+    ],
 )
 
 cc_library(
