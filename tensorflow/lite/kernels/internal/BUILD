@@ -293,8 +293,11 @@ cc_library(
         "optimized/integer_ops/sub.h",
         "optimized/integer_ops/transpose_conv.h",
         "optimized/optimized_ops.h",
+        "optimized/optimized_ops_utils.h",
+        "optimized/reduce.h",
         "optimized/resize_bilinear.h",
         "optimized/sparse_ops/fully_connected.h",
+        "reduce_common.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
@@ -305,6 +308,7 @@ cc_library(
         ":cppmath",
         ":cpu_check",
         ":quantization_util",
+        ":reduce_utils",
         ":reference_base",
         ":strided_slice_logic",
         ":tensor",
@@ -315,6 +319,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
+        "//tensorflow/lite/kernels:kernel_util",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
@@ -560,10 +565,12 @@ cc_library(
         "reference/process_broadcast_shapes.h",
         "reference/quantize.h",
         "reference/reduce.h",
+        "reduce_common.h",
         "reference/requantize.h",
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/select.h",
         "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
@@ -666,6 +673,7 @@ cc_library(
         "reference/requantize.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/select.h",
         "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
@@ -835,6 +843,15 @@ cc_library(
         ":tensor_utils",
         "//tensorflow/lite/c:common",
     ],
+)
+
+cc_library(
+    name = "reduce_utils",
+    hdrs = [
+        "optimized/reduce_utils.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
 )
 
 # Audio support classes imported directly from TensorFlow.
@@ -1215,6 +1232,16 @@ cc_test(
     deps = [
         ":avx2_quantization_utils",
         ":common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "reduce_utils_test",
+    srcs = ["optimized/reduce_utils_test.cc"],
+    deps = [
+        ":common",
+        ":reduce_utils",
         "@com_google_googletest//:gtest_main",
     ],
 )

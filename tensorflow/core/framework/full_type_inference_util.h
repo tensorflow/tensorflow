@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_INFERENCE_UTIL1_H_
-#define TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_INFERENCE_UTIL1_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_INFERENCE_UTIL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_INFERENCE_UTIL_H_
 
 #include <functional>
 #include <string>
@@ -138,4 +138,4 @@ FullTypeDef ShardTensor(const FullTypeDef& t);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_INFERENCE_UTIL1_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_INFERENCE_UTIL_H_

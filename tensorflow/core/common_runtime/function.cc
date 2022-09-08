@@ -483,9 +483,9 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
                        ? ProcessFunctionLibraryRuntime::kDefaultFLRDevice
                        : device_->name()),
       next_handle_(0),
-      items_(absl::make_unique<
+      items_(std::make_unique<
              absl::flat_hash_map<Handle, std::unique_ptr<Item>>>()),
-      function_handle_cache_(absl::make_unique<FunctionHandleCache>(this)),
+      function_handle_cache_(std::make_unique<FunctionHandleCache>(this)),
       parent_(parent) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
     return base_lib_def_->LookUpOpDef(op, sig);
@@ -935,7 +935,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   }
   const FunctionLibraryDefinition* lib_def =
       flr->GetFunctionLibraryDefinition();
-  auto g = absl::make_unique<Graph>(lib_def);
+  auto g = std::make_unique<Graph>(lib_def);
   CopyGraph(*fbody->graph, g.get());
 
   PruneFunctionBody(fbody->fdef, g.get());
@@ -1282,7 +1282,7 @@ Status FunctionLibraryRuntimeImpl::PrepareRunSync(
 
   if (run_opts->create_rendezvous) {
     *out_rendezvous =
-        absl::make_unique<PrivateIntraProcessRendezvous>(device_mgr_);
+        std::make_unique<PrivateIntraProcessRendezvous>(device_mgr_);
     run_opts->rendezvous = out_rendezvous->get();
     run_opts->create_rendezvous = false;
   }

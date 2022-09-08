@@ -41,8 +41,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import server_lib
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -100,7 +100,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   the cluster to make progress.
 
   Note that the coordinator is not one of the training workers. Instead, it
-  creates resources such as variables and datasets, dispatchs `tf.function`s,
+  creates resources such as variables and datasets, dispatches `tf.function`s,
   saves checkpoints and so on. In addition to workers, parameter servers and
   the coordinator, an optional evaluator can be run on the side that
   periodically reads the checkpoints saved by the coordinator and runs

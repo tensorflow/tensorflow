@@ -42,9 +42,9 @@ absl::InlinedVector<int, 5> ConvertCompileTimeConstArgumentsToConst(
       // If we can infer the constant values of an inner computation's argument,
       // replace them with constants. If that fails, we fallback to infer the
       // bounds of the argument.
-      StatusOr<absl::optional<Tensor>> maybe_constant =
+      StatusOr<std::optional<Tensor>> maybe_constant =
           expression.ResolveConstant(ctx->compiler()->client());
-      StatusOr<absl::optional<Tensor>> bounds =
+      StatusOr<std::optional<Tensor>> bounds =
           expression.ResolveConstant(ctx->compiler()->client(), false,
                                      xla::ValueInferenceMode::kUpperBound);
       if ((maybe_constant.ok() && maybe_constant->has_value()) ||
@@ -54,20 +54,19 @@ absl::InlinedVector<int, 5> ConvertCompileTimeConstArgumentsToConst(
         bool all_values_are_static = false;
         if (values_are_dynamic.ok()) {
           xla::Literal literal =
-              HostTensorToLiteral(values_are_dynamic.ValueOrDie()).ValueOrDie();
+              HostTensorToLiteral(values_are_dynamic.value()).value();
           all_values_are_static = literal.IsAll(0);
         }
 
         if (all_values_are_static) {
           arg->kind = XlaCompiler::Argument::kConstant;
           arg->type = expression.dtype();
-          arg->constant_value = std::move(maybe_constant.ValueOrDie().value());
-          arg->shape = expression.GetShape().ValueOrDie();
+          arg->constant_value = std::move(maybe_constant.value().value());
+          arg->shape = expression.GetShape().value();
           resolved_constant_idxs.push_back(i);
         } else {
-          arg->value_bound.emplace(std::move(bounds.ValueOrDie().value()));
-          arg->value_dynamism.emplace(
-              std::move(values_are_dynamic.ValueOrDie()));
+          arg->value_bound.emplace(std::move(bounds.value().value()));
+          arg->value_dynamism.emplace(std::move(values_are_dynamic.value()));
         }
       }
     }

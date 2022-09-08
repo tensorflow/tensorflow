@@ -170,7 +170,7 @@ Status PluggableDevice::Init(const SessionOptions& options) {
     return errors::Internal("Failed to get StreamExecutor for device",
                             tf_device_id_.value());
   }
-  executor_ = executor_status.ValueOrDie();
+  executor_ = executor_status.value();
 
   em_ = EventMgrFactory::Singleton()->GetEventMgr(executor_,
                                                   options.config.gpu_options());
@@ -237,7 +237,7 @@ Status PluggableDevice::Init(const SessionOptions& options) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Allocator* PluggableDevice::GetAllocator(AllocatorAttributes attr) {
@@ -322,8 +322,8 @@ Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
     StatusCallback done) {
   if (alloc_attrs.on_host()) {
     *to = from;
-    done(Status::OK());
-    return Status::OK();
+    done(OkStatus());
+    return OkStatus();
   } else {
     if (!DMAHelper::CanUseDMA(&from)) {
       Status err = errors::Internal("PluggableDevice copy from non-DMA ",
@@ -355,7 +355,7 @@ Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
 
     device_context_->CopyCPUTensorToDevice(
         &from, this, copy, std::move(wrapped_done), false /*sync_dst_compute*/);
-    return Status::OK();
+    return OkStatus();
   }
 }
 

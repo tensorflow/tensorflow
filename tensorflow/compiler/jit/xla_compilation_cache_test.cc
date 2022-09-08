@@ -113,7 +113,7 @@ void BM_BuildSignature(::testing::benchmark::State& state) {
     StatusOr<XlaCompilationCache::Signature> s =
         XlaCompilationCache::BuildSignature(fn, args);
     CHECK(s.ok());
-    XlaCompilationCache::Signature sig = std::move(s.ValueOrDie());
+    XlaCompilationCache::Signature sig = std::move(s.value());
   }
 }
 BENCHMARK(BM_BuildSignature)->Arg(0)->Arg(1)->Arg(2)->Arg(5)->Arg(10);

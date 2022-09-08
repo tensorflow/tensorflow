@@ -1,6 +1,5 @@
 # copybara:uncomment_begin(oss-unused)
 # load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
-# load("//net/grpc/python:py_grpc_library.bzl", "py_grpc_library")
 # load("//net/grpc:cc_grpc_library.bzl", "cc_grpc_library")
 # copybara:uncomment_end
 
@@ -67,7 +66,7 @@ tf_proto_library(
     srcs = ["autotuning.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/stream_executor:dnn_proto"],
+    protodeps = ["//tensorflow/compiler/xla/stream_executor:dnn_proto"],
 )
 
 tf_proto_library(
@@ -76,7 +75,7 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/stream_executor:dnn_proto",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
     ],
 )
 
@@ -124,8 +123,8 @@ tf_proto_library(
     srcs = ["eager_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
     cc_stubby_versions = ["2"],
+    create_grpc_library = True,
     create_service = True,
     protodeps = tf_additional_all_protos(),
 )
@@ -135,8 +134,8 @@ tf_proto_library(
     srcs = ["coordination_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
     cc_stubby_versions = ["2"],
+    create_grpc_library = True,
     create_service = True,
     protodeps = ["//tensorflow/compiler/xla/pjrt/distributed:protocol_proto"] +
                 tf_additional_all_protos(),
@@ -184,6 +183,7 @@ exports_files(
         "transport_options.proto",
         "distributed_runtime_payloads.proto",
         "core_platform_payloads.proto",
+        "fingerprint.proto",
     ],
 )
 
@@ -217,6 +217,7 @@ tf_proto_library(
         "transport_options.proto",
         "distributed_runtime_payloads.proto",
         "core_platform_payloads.proto",
+        "fingerprint.proto",
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,

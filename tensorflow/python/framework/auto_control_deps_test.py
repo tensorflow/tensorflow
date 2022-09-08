@@ -98,13 +98,16 @@ class AutomaticControlDependenciesTest(test.TestCase):
     # A function with two identical ops, should cause a data race in most
     # conditions.
     var_values = set()
-    for _ in range(1000):
+    for _ in range(10000):
       self.evaluate(f())
       var_values.add(
           self.evaluate(
               resource_variable_ops.read_variable_op(v.handle, dtypes.int32)))
     # With regular control dependencies, the function should always run the
     # first assign first, and the value 1 should never be seen.
+    # With run_independently, assign 1 and 2 are run in parallel. Thus, when f
+    # is run large number of times, we see both 1 and 2 values assigned to
+    # variable v.
     self.assertSetEqual(var_values, set((1, 2)))
 
   def testIndependentOpsInLoop(self):
@@ -896,6 +899,29 @@ class AutomaticControlDependenciesTest(test.TestCase):
       return inner(var.handle, var.handle)
 
     self.assertEqual(self.evaluate(outer()), 2.0)
+
+  def testManualControlDepMonitoringAttrNotAdded(self):
+    with context.graph_mode(), self.cached_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      self.evaluate(variables.global_variables_initializer())
+      with acd.AutomaticControlDependencies():
+        read_op1 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        read_op2 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        assign_op = gen_resource_variable_ops.assign_variable_op(
+            v.handle, v + 1)
+      # Writes should have control deps automatically added from "all" reads
+      # since last write or start of the code block.
+      self.assertIn(read_op1, assign_op.control_inputs)
+      self.assertIn(read_op2, assign_op.control_inputs)
+      # But, we shouldn't add the monitoring attribute in this case.
+      with self.assertRaises(ValueError):
+        assign_op.get_attr("_has_manual_control_dependencies")
+      with self.assertRaises(ValueError):
+        read_op1.get_attr("_has_manual_control_dependencies")
+      with self.assertRaises(ValueError):
+        read_op2.get_attr("_has_manual_control_dependencies")
 
 
 if __name__ == "__main__":

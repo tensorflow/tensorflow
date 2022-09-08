@@ -28,12 +28,22 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.training.summary_io import SummaryWriterCache
+
+
+# API label for cell names used in TF1 async checkpoint metrics.
+_ASYNC_CHECKPOINT_V1 = "async_checkpoint_v1"
+
+
+def _get_duration_microseconds(start_time_seconds, end_time_seconds) -> int:
+  """Returns the duration between start and end time in microseconds."""
+  return max(int((end_time_seconds - start_time_seconds) * 1000000), 0)
 
 
 class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
@@ -172,24 +182,38 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
         l.after_save(session, step)
 
       end_time = time.time()
+      metrics.AddAsyncCheckpointWriteDuration(
+          api_label=_ASYNC_CHECKPOINT_V1,
+          microseconds=_get_duration_microseconds(start_time, end_time))
       logging.info("Checkpoint actual writing time: (%.3f sec)",
                    end_time - start_time)
       logging.info("Checkpoint finished for %d into %s.", step, self._save_path)
 
+    # Keep track of time when training is blocked by save
+    blocking_start_time = time.time()
+    def end_of_blocking_time():
+      metrics.AddCheckpointWriteDuration(
+          api_label=_ASYNC_CHECKPOINT_V1,
+          microseconds=_get_duration_microseconds(blocking_start_time,
+                                                  time.time()))
+
     if not asynchronous:
       self._last_checkpoint_step = step
       _save_fn()
+      end_of_blocking_time()
       return
 
     if self._save_thread is not None:
       self._save_thread.join(timeout=0.1)
       if self._save_thread.is_alive():
         logging.info("Saver thread still in progress, skipping checkpoint.")
+        end_of_blocking_time()
         return
 
     self._last_checkpoint_step = step
     self._save_thread = threading.Thread(target=_save_fn)
     self._save_thread.start()
+    end_of_blocking_time()
 
   def _get_saver(self):
     if self._saver is not None:

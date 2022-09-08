@@ -216,7 +216,9 @@ class SliceR1Test : public ClientLibraryTestBase,
     // This can't be an std::vector, since you can't grab a Span of a
     // vector<bool>.
     absl::InlinedVector<NativeT, 1> input(spec.input_dim0);
-    std::iota(input.begin(), input.end(), NativeT());
+    for (size_t i = 0; i < input.size(); ++i) {
+      input[i] = static_cast<NativeT>(i);
+    }
     auto literal = LiteralUtil::CreateR1<NativeT>(input);
 
     XlaBuilder builder(TestName());
@@ -285,10 +287,7 @@ XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S64)) {
   Run<int64_t>(GetParam());
 }
 
-// TODO(b/232452122): Uses `operator++()` on bool, not supported in C++17
-// Note: Clang allows this (but is undefined behavior), only GCC has issues
-// See https://godbolt.org/z/1cEfcf3ad
-// XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
+XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
 
 // Tests for R1 slice ops.
 // The format for each testcase is {input size, start, limit, stride}.

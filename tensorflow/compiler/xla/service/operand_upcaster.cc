@@ -20,22 +20,22 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<absl::optional<Shape>> MaybeInferShape(
+StatusOr<std::optional<Shape>> MaybeInferShape(
     const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kDot:
       return ShapeInference::InferDotOpShape(
           instruction->operand(0)->shape(), instruction->operand(1)->shape(),
           instruction->dot_dimension_numbers(),
-          /*preferred_element_type=*/absl::nullopt);
+          /*preferred_element_type=*/std::nullopt);
     case HloOpcode::kConvolution:
       return ShapeInference::InferConvolveShape(
           instruction->operand(0)->shape(), instruction->operand(1)->shape(),
           instruction->feature_group_count(), instruction->batch_group_count(),
           instruction->window(), instruction->convolution_dimension_numbers(),
-          /*preferred_element_type=*/absl::nullopt);
+          /*preferred_element_type=*/std::nullopt);
     default:
-      return absl::optional<Shape>(absl::nullopt);
+      return std::optional<Shape>(std::nullopt);
   }
 }
 
@@ -47,7 +47,7 @@ bool OperandUpcaster::InstructionMatchesPattern(HloInstruction* instruction) {
       !status_or_inferred_shape->has_value()) {
     return false;
   }
-  const Shape& inferred_shape = status_or_inferred_shape.ValueOrDie().value();
+  const Shape& inferred_shape = status_or_inferred_shape.value().value();
   if (inferred_shape.element_type() == instruction->shape().element_type() &&
       absl::c_all_of(instruction->operands(),
                      [&](const HloInstruction* operand) {

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_CLUSTERING_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_CLUSTERING_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TF_JITRT_CLUSTERING_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TF_JITRT_CLUSTERING_H_
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -30,8 +30,9 @@ namespace tensorflow {
 enum class JitRtClusteringTier : uint8_t {
   kCwise = 0x1,
   kTranspose = 0x2,
-  kMetadata = 0x4,    // shape, reshape, ...
-  kReductions = 0x8,  // all, any, min, max, mean, prod, sum
+  kMetadata = 0x4,        // shape, reshape, ...
+  kReductions = 0x8,      // all, any, min, max, mean, prod, sum
+  kGatherScatter = 0x10,  // gather, scatter, gather_v2,...
 
   // Only cwise operations (unary, binary, ternary).
   kTier0 = kCwise,
@@ -80,4 +81,4 @@ mlir::LogicalResult VerifyCluster(const mlir::TFDevice::Cluster& cluster);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_CLUSTERING_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TF_JITRT_CLUSTERING_H_

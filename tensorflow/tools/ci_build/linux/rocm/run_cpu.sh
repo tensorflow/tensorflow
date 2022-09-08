@@ -33,7 +33,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test \
       -k \
-      --test_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-no_rocm,-benchmark-test,-v1only \
+      --test_tag_filters=-no_oss,-oss_serial,-gpu,-multi_gpu,-tpu,-no_rocm,-benchmark-test,-v1only \
       --jobs=${N_BUILD_JOBS} \
       --local_test_jobs=${N_BUILD_JOBS} \
       --test_timeout 600,900,2400,7200 \

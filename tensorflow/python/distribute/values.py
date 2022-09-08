@@ -34,8 +34,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saving import saveable_object
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.types import distribute as ds_types
 from tensorflow.python.types import trace
@@ -1749,6 +1749,11 @@ class PerWorkerResource():
                     "_strategy", "local_resource"):
       return getattr(self.local_resource(), name)
     return super(PerWorkerResource, self).__getattribute__(name)
+
+  def __setattr__(self, name, value):
+    if name not in ("_strategy", "_host_to_resources"):
+      return setattr(self.local_resource(), name, value)
+    return super(PerWorkerResource, self).__setattr__(name, value)
 
   def local_resource(self):
     """Returns the resource on the local worker."""

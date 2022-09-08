@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+#include <utility>
+
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -29,17 +31,17 @@ WhileThunk::WhileThunk(
     std::unique_ptr<ThunkSequence> body_thunk_sequence)
     : Thunk(Kind::kWhile, thunk_info),
       condition_result_buffer_index_(condition_result_buffer_index),
-      condition_thunk_sequence_(absl::make_unique<SequentialThunk>(
-          ThunkInfo(), std::move(*condition_thunk_sequence))),
-      body_thunk_sequence_(absl::make_unique<SequentialThunk>(
-          ThunkInfo(), std::move(*body_thunk_sequence))) {}
+      condition_thunk_sequence_(std::make_unique<SequentialThunk>(
+          ThunkInfo(thunk_info.op), std::move(*condition_thunk_sequence))),
+      body_thunk_sequence_(std::make_unique<SequentialThunk>(
+          ThunkInfo(thunk_info.op), std::move(*body_thunk_sequence))) {}
 
 Status WhileThunk::Initialize(const GpuExecutable& executable,
                               se::StreamExecutor* executor) {
   TF_RETURN_IF_ERROR(
       condition_thunk_sequence_->Initialize(executable, executor));
   TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable, executor));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -73,7 +75,7 @@ Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Invoke thunk sequence for while 'body' computation.
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

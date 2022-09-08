@@ -88,6 +88,8 @@ DataType ToDataType(TfLiteType type) {
       return DataType::INT8;
     case kTfLiteUInt8:
       return DataType::UINT8;
+    case kTfLiteBool:
+      return DataType::BOOL;
     default:
       return DataType::UNKNOWN;
   }

@@ -42,13 +42,13 @@ class TestFileSystem : public NullFileSystem {
       const string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override {
     result->reset(new TestRandomAccessFile);
-    return Status::OK();
+    return OkStatus();
   }
   // Always return size of 10
   Status GetFileSize(const string& fname, TransactionToken* token,
                      uint64* file_size) override {
     *file_size = 10;
-    return Status::OK();
+    return OkStatus();
   }
 };
 

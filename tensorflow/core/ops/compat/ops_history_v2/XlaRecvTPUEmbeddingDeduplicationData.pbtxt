@@ -1,0 +1,12 @@
+op 	 {
+  name: "XlaRecvTPUEmbeddingDeduplicationData"
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}

@@ -58,6 +58,7 @@ void PopulateSymbolNode(const OpMetrics& op_metrics, Node* node) {
           LayoutDimensionSemantics_Name(dimension.semantics())));
     }
   }
+  xla.set_computation_primitive_size(op_metrics.computation_primitive_size());
 }
 
 // Sort the children and only keep the top K children.
@@ -292,7 +293,8 @@ void OpProfileBuilder::AddOp(const OpMetrics& op_metrics) {
   }
 
   for (auto* node : all_paths) {
-    CombineOpMetrics(op_metrics, &metrics_[node]);
+    // Per program combiner does not need to update OpMetrics.num_cores
+    CombineOpMetrics(op_metrics, &metrics_[node], /*update_num_cores=*/false);
   }
 }
 

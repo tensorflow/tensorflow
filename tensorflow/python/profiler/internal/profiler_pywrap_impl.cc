@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/python/profiler/internal/profiler_pywrap_impl.h"
 
+#include <string>
+#include <variant>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
@@ -57,7 +60,7 @@ tensorflow::Status ValidateHostPortPair(absl::string_view host_port) {
     return tensorflow::errors::InvalidArgument(
         "Could not interpret \"", host_port, "\" as a host-port pair.");
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status ValidateOptions(
@@ -82,7 +85,7 @@ tensorflow::Status ValidateOptions(
         "to the local profiler duration.");
   }
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 // Receives a comma delimited list of service_addresses and adds them to
@@ -123,7 +126,8 @@ void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
 // RemoteProfilerSessionManagerOptions.
 RemoteProfilerSessionManagerOptions GetOptionsLocked(
     absl::string_view logdir,
-    const absl::flat_hash_map<std::string, absl::variant<int>>& opts) {
+    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
+        opts) {
   RemoteProfilerSessionManagerOptions options;
   *options.mutable_profiler_options() =
       tensorflow::ProfilerSession::DefaultOptions();
@@ -143,19 +147,19 @@ RemoteProfilerSessionManagerOptions GetOptionsLocked(
   for (const auto& kw : opts) {
     absl::string_view key = kw.first;
     if (key == "host_tracer_level") {
-      int value = absl::get<int>(kw.second);
+      int value = std::get<int>(kw.second);
       options.mutable_profiler_options()->set_host_tracer_level(value);
       VLOG(1) << "host_tracer_level set to " << value;
     } else if (key == "device_tracer_level") {
-      int value = absl::get<int>(kw.second);
+      int value = std::get<int>(kw.second);
       options.mutable_profiler_options()->set_device_tracer_level(value);
       VLOG(1) << "device_tracer_level set to " << value;
     } else if (key == "python_tracer_level") {
-      int value = absl::get<int>(kw.second);
+      int value = std::get<int>(kw.second);
       options.mutable_profiler_options()->set_python_tracer_level(value);
       VLOG(1) << "python_tracer_level set to " << value;
     } else if (key == "delay_ms") {
-      int value = absl::get<int>(kw.second);
+      int value = std::get<int>(kw.second);
       options.set_delay_ms(value);
       VLOG(1) << "delay_ms was set to " << value;
     } else {
@@ -170,7 +174,8 @@ RemoteProfilerSessionManagerOptions GetOptionsLocked(
     absl::string_view service_addresses, absl::string_view logdir,
     absl::string_view worker_list, bool include_dataset_ops,
     int32_t duration_ms,
-    const absl::flat_hash_map<std::string, absl::variant<int>>& opts,
+    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
+        opts,
     bool* is_cloud_tpu_session) {
   auto options = GetOptionsLocked(logdir, opts);
 
@@ -213,7 +218,8 @@ RemoteProfilerSessionManagerOptions GetOptionsLocked(
 tensorflow::Status Trace(
     const char* service_addr, const char* logdir, const char* worker_list,
     bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
-    const absl::flat_hash_map<std::string, absl::variant<int>>& options) {
+    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
+        options) {
   // TPU capture is true if the user sets worker_list.
   bool is_cloud_tpu_session = false;
   RemoteProfilerSessionManagerOptions opts =
@@ -225,7 +231,7 @@ tensorflow::Status Trace(
     TF_RETURN_IF_ERROR(tensorflow::profiler::Trace(logdir, num_tracing_attempts,
                                                    opts, is_cloud_tpu_session));
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status Monitor(const char* service_addr, int duration_ms,
@@ -237,12 +243,13 @@ tensorflow::Status Monitor(const char* service_addr, int duration_ms,
         service_addr, duration_ms, monitoring_level, display_timestamp,
         result));
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status ProfilerSessionWrapper::Start(
     const char* logdir,
-    const absl::flat_hash_map<std::string, absl::variant<int>>& options) {
+    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
+        options) {
   auto opts = GetOptionsLocked(logdir, options);
   session_ = tensorflow::ProfilerSession::Create(opts.profiler_options());
   logdir_ = logdir;
@@ -257,12 +264,12 @@ tensorflow::Status ProfilerSessionWrapper::Stop(tensorflow::string* result) {
     tensorflow::profiler::ConvertXSpaceToTraceEventsString(xspace, result);
     TF_RETURN_IF_ERROR(status);
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status ProfilerSessionWrapper::ExportToTensorBoard() {
   if (!session_ || logdir_.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   tensorflow::profiler::XSpace xspace;
   tensorflow::Status status;

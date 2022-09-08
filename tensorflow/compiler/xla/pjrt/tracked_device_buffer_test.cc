@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace {
@@ -40,7 +40,7 @@ StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(const Shape& shape,
                 client->backend().transfer_manager()->GetByteSizeRequirement(
                     subshape)));
         device_buffers.push_back(device_memory.Release());
-        return Status::OK();
+        return OkStatus();
       }));
   return std::make_shared<TrackedDeviceBuffer>(
       client->backend().memory_allocator(), /*device_ordinal=*/0,

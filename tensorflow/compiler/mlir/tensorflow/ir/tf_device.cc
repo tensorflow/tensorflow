@@ -142,8 +142,8 @@ bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 LogicalResult ParallelExecuteOp::verify() {
   ParallelExecuteOp op = *this;
   const auto& regions = op.getOperation()->getRegions();
-  if (regions.size() < 2) {
-    return op.emitOpError() << "must have at least two regions.";
+  if (regions.empty()) {
+    return op.emitOpError() << "must have at least one region.";
   }
 
   int output_index = 0;
@@ -177,7 +177,7 @@ LogicalResult ParallelExecuteOp::verify() {
 // static
 void ParallelExecuteOp::build(OpBuilder& builder, OperationState& state,
                               int num_regions, TypeRange output_types) {
-  DCHECK_GE(num_regions, 2);
+  DCHECK_GE(num_regions, 1);
   for (int i = 0; i < num_regions; ++i) {
     Region* region = state.addRegion();
     region->push_back(new Block);
@@ -354,9 +354,7 @@ ParseResult ReplicateOp::parse(OpAsmParser& parser, OperationState& result) {
   if (!result.attributes.get(kOperandSegmentSizesAttr)) {
     int32_t num_replicated_inputs = replicated_inputs.size() * n;
     int32_t num_packed_inputs = packed_inputs.size();
-    auto attr = DenseIntElementsAttr::get(
-        VectorType::get({2}, parser.getBuilder().getI32Type()),
-        {num_replicated_inputs, num_packed_inputs});
+    auto attr = parser.getBuilder().getDenseI32ArrayAttr({num_replicated_inputs, num_packed_inputs});
     result.addAttribute(kOperandSegmentSizesAttr, attr);
   }
 
@@ -388,7 +386,7 @@ void ReplicateOp::print(OpAsmPrinter& p) {
   //     %b as %block_arg1: type
   const int32_t n = this->n();
   const int32_t num_replicated_inputs =
-      (*operand_segment_sizes().value_begin<APInt>()).getSExtValue();
+      operand_segment_sizes()[0];
   const int32_t num_replicated_block_args = num_replicated_inputs / n;
 
   if (getNumOperands()) {
@@ -441,7 +439,7 @@ void BuildReplicateOp(
   DCHECK_GE(n, 2);
   state->addAttribute("n", builder->getI32IntegerAttr(n));
 
-  if (devices.hasValue()) state->addAttribute("devices", devices.getValue());
+  if (devices.has_value()) state->addAttribute("devices", devices.getValue());
 
   Region* region = state->addRegion();
   region->push_back(new Block);
@@ -466,8 +464,7 @@ void BuildReplicateOp(
   int32_t num_replicated_inputs = replicated_inputs.size() * n;
   int32_t num_packed_inputs = packed_inputs.size();
   auto operand_segment_sizes =
-      DenseIntElementsAttr::get(VectorType::get({2}, builder->getI32Type()),
-                                {num_replicated_inputs, num_packed_inputs});
+      builder->getDenseI32ArrayAttr({num_replicated_inputs, num_packed_inputs});
   state->addAttribute(kOperandSegmentSizesAttr, operand_segment_sizes);
 
   for (const auto& output_type : replica_output_types)
@@ -481,7 +478,7 @@ LogicalResult ReplicateOp::verify() {
   int32_t n = op.n();
 
   // Check number of devices, if set, matches `n`.
-  if (op.devices().hasValue()) {
+  if (op.devices().has_value()) {
     for (auto device_attr : op.devices().getValue().getValue()) {
       auto device_list = device_attr.getValue().dyn_cast_or_null<ArrayAttr>();
       if (!device_list)
@@ -506,9 +503,9 @@ LogicalResult ReplicateOp::verify() {
 
   auto operand_segment_sizes = op.operand_segment_sizes();
   const int32_t num_replicated_inputs =
-      operand_segment_sizes.getValues<APInt>()[0].getSExtValue();
+      operand_segment_sizes[0];
   const int32_t num_packed_inputs =
-      operand_segment_sizes.getValues<APInt>()[1].getSExtValue();
+      operand_segment_sizes[1];
 
   if (num_replicated_inputs % n != 0)
     return op.emitOpError()

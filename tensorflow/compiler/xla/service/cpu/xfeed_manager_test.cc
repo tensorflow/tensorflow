@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -45,10 +45,10 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
     CHECK(!done_called_);
     done_called_ = true;
     TF_ASSERT_OK(shape.status());
-    EXPECT_EQ(expect_shape_match_, ShapeUtil::Equal(shape_, shape.ValueOrDie()))
+    EXPECT_EQ(expect_shape_match_, ShapeUtil::Equal(shape_, shape.value()))
         << "want " << ShapeUtil::HumanString(shape_) << " "
         << (expect_shape_match_ ? "==" : "!=") << " "
-        << ShapeUtil::HumanString(shape.ValueOrDie());
+        << ShapeUtil::HumanString(shape.value());
   }
 
   const Shape& shape() const { return shape_; }

@@ -21,7 +21,6 @@ import random
 import time
 
 import numpy as np
-import six
 
 from google.protobuf.any_pb2 import Any
 
@@ -31,6 +30,7 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -62,14 +62,13 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.summary import summary
+from tensorflow.python.trackable import base as trackable_base
 from tensorflow.python.training import adam
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training import saver_test_utils
-from tensorflow.python.training.tracking import base as trackable_base
 from tensorflow.python.util import compat
 
 
@@ -104,7 +103,7 @@ class SaverTest(test.TestCase):
               "v2": v2.saveable
           }, restore_sequentially=True)
       val = save.save(sess, save_path)
-      self.assertTrue(isinstance(val, six.string_types))
+      self.assertIsInstance(val, str)
       self.assertEqual(save_path, val)
 
     # Start a second session.  In that session the parameter nodes
@@ -334,7 +333,7 @@ class SaverTest(test.TestCase):
 
         # Save the initialized values in the file at "save_path"
         val = save.save(sess, save_path1)
-        self.assertTrue(isinstance(val, six.string_types))
+        self.assertIsInstance(val, str)
         self.assertEqual(save_path1, val)
 
       self.assertEqual(
@@ -399,7 +398,7 @@ class SaverTest(test.TestCase):
 
       # Save the initialized values in the file at "save_path"
       val = save.save(sess, save_path)
-      self.assertTrue(isinstance(val, six.string_types))
+      self.assertIsInstance(val, str)
       self.assertEqual(save_path, val)
 
       with self.cached_session() as sess:
@@ -486,7 +485,7 @@ class SaverTest(test.TestCase):
 
       # Save the initialized values in the file at "save_path"
       val = save.save(sess, save_path)
-      self.assertTrue(isinstance(val, six.string_types))
+      self.assertIsInstance(val, str)
       self.assertEqual(save_path, val)
 
     # Start a second session.  In that session the variables
@@ -1811,7 +1810,7 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
       # Save the initialized values in the file at "save_path"
       # Use a variable name map to set the saved tensor names
       val = save.save(sess, save_path)
-      self.assertTrue(isinstance(val, six.string_types))
+      self.assertIsInstance(val, str)
       self.assertEqual(save_path, val)
 
       # Verify that the original names are not in the Saved file

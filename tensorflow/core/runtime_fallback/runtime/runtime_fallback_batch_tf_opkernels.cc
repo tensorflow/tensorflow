@@ -104,7 +104,7 @@ thread::ThreadPool* GetOrCreateBatchThreadsPool() {
       return nullptr;
     }
     static serving::BoundedExecutor* executor =
-        status_or_executor.ValueOrDie().release();
+        status_or_executor.value().release();
     return new thread::ThreadPool(executor);
   }();
   return shared_thread_pool;
@@ -209,7 +209,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
                          std::unique_ptr<BatchTask>* output) const override {
     const tfrt::ExecutionContext* exec_ctx = nullptr;
     TF_RETURN_IF_ERROR(GetTfrtExecutionContext(c, &exec_ctx));
-    *output = absl::make_unique<FallbackBatchTask>(*exec_ctx);
+    *output = std::make_unique<FallbackBatchTask>(*exec_ctx);
     return OkStatus();
   }
 
@@ -554,7 +554,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     done(statusor.status());
     return;
   }
-  auto req_ctx = std::move(statusor).ValueOrDie();
+  auto req_ctx = std::move(statusor).value();
 
   int64_t id = req_ctx->id();
   tensorflow::profiler::TraceMeProducer activity(

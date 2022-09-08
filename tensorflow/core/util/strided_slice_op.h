@@ -25,11 +25,11 @@ namespace tensorflow {
 
 struct StridedSliceShapeSpec {
   // Begin mask canonlized in dense form.
-  int32 begin_dense_mask;
+  int32_t begin_dense_mask;
   // End mask canonlized in dense form.
-  int32 end_dense_mask;
+  int32_t end_dense_mask;
   // Shrink axis mask canonlized in dense form.
-  int32 shrink_axis_dense_mask;
+  int32_t shrink_axis_dense_mask;
   // output_to_sparse_mapping[i] represents output[i]'s the corresponding dim
   // index in the begin_tensor. If
   // output_to_sparse_mapping[i] is -1, it means the dimension doesn't show up
@@ -83,6 +83,66 @@ Status ValidateStridedSliceOp(
     gtl::InlinedVector<int64_t, 4>* begin, gtl::InlinedVector<int64_t, 4>* end,
     gtl::InlinedVector<int64_t, 4>* strides,
     StridedSliceShapeSpec* shape_spec = nullptr);
+
+// Simple class for determining if it is possible to broadcast a tensor to a
+// strided slice.  Modelled after tensorflow::BCast, but with a few key
+// differences:
+// - the input_shape must be broadcastable to output_shape
+//   (i.e. the slice shape does not grow).
+// - does not allow reducing or flattening dimensions, since we cannot apply
+//   these simplications to the destination slice.
+// - allows for remapping dimensions, required in order to associate the input
+//   with correct dimensions in the full (unsliced) destination tensor.
+class StridedSliceAssignBCast {
+ public:
+  using Vec = gtl::InlinedVector<int64_t, 4>;
+
+  StridedSliceAssignBCast(const Vec& input_shape, const Vec& output_shape);
+
+  // Remaps broadcast, resize, and output dimensions via the provided map.
+  // Negative values in the map correspond to dimensions being removed.
+  // Unmapped dimensions are set to 1.
+  //
+  // This is to support remapping slice -> processing dimensions.  To relate
+  // the sliced output dimensions back to processing dimensions (i.e. those
+  // relative to the original unsliced input), we need to remove any axes
+  // that were added via the `new_axis_mask`, and add back any axes that were
+  // removed via the `shrink_axis_mask`.  For example, an expression like
+  //
+  // >>> t = tf.zeros([3, 3])
+  // >>> t[2, tf.newaxis, 0:2, tf.newaxis] = tf.ones([1, 3, 1])
+  //       ^                                          ^  ^  ^
+  //       |__ shrink axis                 new axis __|  |  |__ new axis
+  //                                                     |_____ dim 1 of t
+  //
+  // would have `new_axis_mask = 0b1010` and `shrink_axis_mask = 0b0001`. The
+  // slice has shape [1, 3, 1], but the original input tensor `t` has shape
+  // [3, 3]. To remap the slice dimensions back to the input dimensions, the
+  // mapping would use `num_dims = 2`, `dimension_map = {-1, 1, -1}`. This
+  // removes the two new axes added for the slice, maps the middle slice
+  // dimension to input dimension 1, and leaves input dimension 0 to have a
+  // default size of 1 to add back the shrink axis.
+  //
+  // Returns false if the remapping fails.
+  bool RemapDimensions(int64_t num_dims, const Vec& dimension_map);
+
+  bool IsValid() const { return valid_; }
+
+  bool IsBroadcastingRequired() const { return broadcasting_required_; }
+
+  const Vec& reshape() const { return reshape_; }
+
+  const Vec& bcast() const { return bcast_; }
+
+  const Vec& result_shape() const { return result_shape_; }
+
+ private:
+  bool valid_ = true;
+  bool broadcasting_required_ = false;
+  Vec reshape_;
+  Vec bcast_;
+  Vec result_shape_;
+};
 
 }  // namespace tensorflow
 

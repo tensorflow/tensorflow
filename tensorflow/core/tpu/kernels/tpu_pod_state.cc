@@ -63,7 +63,7 @@ ConstructCacheService(ResourceMgr* rmgr, int serving_port,
   TF_RETURN_IF_ERROR(server_builder.status());
 
   auto cache_service = absl::make_unique<TpuCompilationCacheService>(
-      server_builder.ValueOrDie().get(), compilation_cache);
+      server_builder.value().get(), compilation_cache);
   cache_service->SetMemoryQuota(1ul << 31);  // 2GB
   cache_service->Start();
   return cache_service;

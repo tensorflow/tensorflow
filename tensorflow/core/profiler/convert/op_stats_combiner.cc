@@ -125,7 +125,10 @@ void CombineOpStats(
     OpMetricsDbCombiner* hlo_metrics_db_complete_steps_only_combiner,
     std::vector<OpMetricsDbCombiner>* hlo_metrics_db_per_step_combiners) {
   // Combine host_metrics_db.
-  host_op_metrics_db_combiner->Combine(src.host_op_metrics_db());
+  // Host OpMetricsDb does not need to update the number of cores a certain op
+  // occurs.
+  host_op_metrics_db_combiner->Combine(src.host_op_metrics_db(),
+                                       /*update_num_cores=*/false);
   // Combine device_metrics_db.
   device_op_metrics_db_combiner->Combine(src.device_op_metrics_db());
 
@@ -156,6 +159,12 @@ void CombineOpStats(
   // Combine the mapping from core ID to details.
   CombineCoreIdMap(src_host_id, src.core_id_to_details(),
                    dst->mutable_core_id_to_details());
+
+  // Combine performance counter result.
+  dst->mutable_performance_counter_result()
+      ->set_matrix_unit_utilization_percent(
+          dst->performance_counter_result().matrix_unit_utilization_percent() +
+          src.performance_counter_result().matrix_unit_utilization_percent());
 }
 
 }  // namespace
@@ -244,6 +253,13 @@ void CombineAllOpStats(const std::vector<OpStatsInfo>& all_op_stats_info,
   // keeps only the top kernel reports with long kernel duration.
   SortAndKeepTopKDurationKernelReportsInDb(
       combined_op_stats->mutable_kernel_stats_db());
+
+  // Process performance counter results.
+  combined_op_stats->mutable_performance_counter_result()
+      ->set_matrix_unit_utilization_percent(
+          combined_op_stats->performance_counter_result()
+              .matrix_unit_utilization_percent() /
+          all_op_stats_info.size());
 }
 
 }  // namespace profiler

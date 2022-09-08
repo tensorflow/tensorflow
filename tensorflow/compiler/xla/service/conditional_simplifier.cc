@@ -603,7 +603,9 @@ static bool InstructionCallsChannelInstructions(
   return false;
 }
 
-StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
+StatusOr<bool> ConditionalSimplifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       3, "ConditionalSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
@@ -612,7 +614,7 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
   // we don't have to worry about mutating the lists of computations or
   // instructions as we iterate.
   std::vector<HloInstruction*> conditional_ops;
-  for (auto* comp : module->computations()) {
+  for (auto* comp : module->computations(execution_threads)) {
     for (auto* instr : comp->MakeInstructionPostOrder()) {
       if (instr->opcode() == HloOpcode::kConditional) {
         // Verifier wants a single send/recv with a given channel. This pass

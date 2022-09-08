@@ -65,7 +65,7 @@ class StringWritableFile : public WritableFile {
   string& str_;
 };
 
-TEST(Dump, TexualIrToFileSuccess) {
+TEST(Dump, TextualIrToFileSuccess) {
   Graph graph(OpRegistry::Global());
   Node* node;
   TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
@@ -79,7 +79,7 @@ TEST(Dump, TexualIrToFileSuccess) {
   TF_ASSERT_OK(ReadFileToString(Env::Default(), ret, &actual));
 }
 
-TEST(Dump, TexualIrWithOptions) {
+TEST(Dump, TextualIrWithOptions) {
   Graph graph(OpRegistry::Global());
   Node* node;
   TF_ASSERT_OK(NodeBuilder("A", "Placeholder")

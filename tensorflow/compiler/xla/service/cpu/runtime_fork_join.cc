@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
                                      void*, int64_t*, uint64_t*);
@@ -105,7 +105,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
   // Collect all error messages (if any).
   std::vector<std::pair<int32_t, absl::string_view>> error_messages;
   for (int32_t i = 0; i < num_partitions; ++i) {
-    absl::optional<absl::string_view> msg =
+    std::optional<absl::string_view> msg =
         xla::CustomCallStatusGetMessage(&statuses[i]);
     if (msg) {
       error_messages.emplace_back(i, *msg);

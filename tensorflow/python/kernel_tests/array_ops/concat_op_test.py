@@ -20,6 +20,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -150,9 +151,9 @@ class ConcatOpTest(test.TestCase):
                               cur_offset + params[p[i]].shape[concat_dim])
       cur_offset += params[p[i]].shape[concat_dim]
       if dtype == dtype_feed:
-        self.assertAllEqual(result[ind], params[p[i]])
+        self.assertAllEqual(result[tuple(ind)], params[p[i]])
       else:
-        self.assertAllClose(result[ind], params[p[i]], 0.01)
+        self.assertAllClose(result[tuple(ind)], params[p[i]], 0.01)
 
   @test_util.run_deprecated_v1
   def testRandom(self):
@@ -186,6 +187,14 @@ class ConcatOpTest(test.TestCase):
     # A non-scalar tensor for shape should throw ValueError.
     with self.assertRaises(ValueError):
       array_ops.concat(1, constant_op.constant(0, shape=[1]))
+
+  def testScalars(self):
+    arr = ops.convert_to_tensor([0.2, 0.3])
+    outs = []
+    for i in range(arr.shape[0]):
+      outs.append(arr[i]**2)
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      _ = array_ops.concat(outs, axis=0)
 
   def _testGradientsSimple(self, dtype):
     # Test both positive and negative concat axis.
@@ -554,7 +563,7 @@ class ConcatOpTest(test.TestCase):
           index[concat_dim] = slice(cur_offset,
                                     cur_offset + params[p[i]].shape[concat_dim])
           cur_offset += params[p[i]].shape[concat_dim]
-          self.assertAllEqual(result[index], params[p[i]])
+          self.assertAllEqual(result[tuple(index)], params[p[i]])
 
   def testConcatEmpty(self):
     with test_util.use_gpu():

@@ -66,6 +66,10 @@ bool IsConstantValueOf(Value value, T raw_value) {
   return false;
 }
 
+// Returns true if `op` is placed on GPU device, and false if it's on other
+// devices or the device is not specified.
+bool IsOnGpuDevice(mlir::Operation *op);
+
 }  // namespace TF
 }  // namespace mlir
 

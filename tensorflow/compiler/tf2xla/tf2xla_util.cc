@@ -675,7 +675,7 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
     if (edge->IsControlEdge()) continue;
     const Node* possible_match = out_edges ? edge->dst() : edge->src();
     TF_ASSIGN_OR_RETURN(
-        absl::optional<xla::OpSharding> sharding,
+        std::optional<xla::OpSharding> sharding,
         ParseShardingFromDevice(
             *possible_match,
             /*num_cores_per_replica=*/std::numeric_limits<int32>::max(),
@@ -916,7 +916,7 @@ StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def) {
 
 StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
                                   DataType dtype, const Node* input,
-                                  absl::optional<string> requested_device) {
+                                  std::optional<string> requested_device) {
   // Create identity node.
   NodeDef ndef;
   ndef.set_name(node_name);

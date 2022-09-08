@@ -66,7 +66,7 @@ void FakeSession::BuildDeviceManager() {
   auto device =
       tensorflow::DeviceFactory::NewDevice("CPU", {}, kDeviceNamePrefix);
   device_mgr_ =
-      absl::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
+      std::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
 }
 
 void FakeSession::InitVariables() {
@@ -76,10 +76,10 @@ void FakeSession::InitVariables() {
   auto container = device->resource_manager()->default_container();
 
   // Create 2 resources and initialize them with dummy values.
-  (void)device->resource_manager()->Create(
-      container, "var1", new tensorflow::Var(tensorflow::DataType::DT_FLOAT));
-  (void)device->resource_manager()->Create(
-      container, "var2", new tensorflow::Var(tensorflow::DataType::DT_FLOAT));
+  TF_CHECK_OK(device->resource_manager()->Create(
+      container, "var1", new tensorflow::Var(tensorflow::DataType::DT_FLOAT)));
+  TF_CHECK_OK(device->resource_manager()->Create(
+      container, "var2", new tensorflow::Var(tensorflow::DataType::DT_FLOAT)));
 }
 
 Status FakeSession::Create(const tensorflow::GraphDef& graph) {

@@ -16,18 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_
 
+#include <optional>
+#include <ostream>
 #include <string>
 #include <type_traits>
 
-#include "absl/base/attributes.h"
-#include "absl/base/macros.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/bfloat16.h"
 
 namespace xla {
 
@@ -157,7 +155,7 @@ class Comparison {
 
   // Gets the inverse of the given comparison if it exists (e.g. >= turns to <).
   // Returns optional value because not all inversions may be supported.
-  absl::optional<Comparison> Inverse() const;
+  std::optional<Comparison> Inverse() const;
 
   // Returns a string version of this comparison, e.g., ".GT.F32.TOTALORDER"
   std::string ToString(std::string prefix1 = ".", std::string prefix2 = ".",
@@ -252,4 +250,5 @@ auto LessThanByKey(KeyFn&& key_fn) {
 }
 
 }  // namespace xla
+
 #endif  // TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_

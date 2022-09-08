@@ -20,7 +20,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "third_party/tensorrt/NvInferPlugin.h"
+
 #endif
 
 namespace tensorflow {
@@ -58,6 +60,8 @@ namespace tensorrt {
 Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
                           const nvinfer1::ICudaEngine* cuda_engine,
                           int* binding_index) {
+  tensorflow::profiler::TraceMe activity(
+      "GetTrtBindingIndex", tensorflow::profiler::TraceMeLevel::kInfo);
   // If the engine has been built for K profiles, the first getNbBindings() / K
   // bindings are used by profile number 0, the following getNbBindings() / K
   // bindings are used by profile number 1 etc.

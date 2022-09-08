@@ -184,14 +184,13 @@ struct RuntimeFallbackOpHandlerTraits {
       if (!expected_device) {
         return tfrt::AsyncValueRef<tfrt::RCReference<tfrt::Device>>(
             tfrt::MakeErrorAsyncValueRef(
-                exec_ctx.host(), tfrt::StrCat(expected_device.takeError())));
+                tfrt::StrCat(expected_device.takeError())));
       }
       return std::move(expected_device.get());
     }
 
     auto result_device =
-        tfrt::MakeUnconstructedAsyncValueRef<tfrt::RCReference<tfrt::Device>>(
-            exec_ctx.host());
+        tfrt::MakeUnconstructedAsyncValueRef<tfrt::RCReference<tfrt::Device>>();
 
     result_tensor_av.AndThen([result_tensor_av_ref = result_tensor_av.CopyRef(),
                               result_device = result_device.CopyRef(),

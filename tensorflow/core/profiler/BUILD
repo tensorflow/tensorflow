@@ -51,7 +51,7 @@ tf_proto_library(
     srcs = ["profiler_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
+    create_grpc_library = True,
     make_default_target_header_only = True,
     protodeps = [
         ":profiler_options_proto",
@@ -66,7 +66,7 @@ tf_proto_library(
     srcs = ["profiler_analysis.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
+    create_grpc_library = True,
     make_default_target_header_only = True,
     protodeps = [":profiler_service_proto"],
     use_grpc_namespace = True,
@@ -88,7 +88,10 @@ tf_proto_library(
 
 cc_library(
     name = "profiler_impl",
-    visibility = ["//tensorflow:__pkg__"],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/core/profiler/backends/cpu:annotation_stack_impl",
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",

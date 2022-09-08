@@ -16,26 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DIAGNOSTICS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DIAGNOSTICS_H_
 
-#include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
-
-namespace stream_executor {
-namespace cuda {
-
-// e.g. DriverVersion{346, 3, 4}
-using DriverVersion = gpu::DriverVersion;
-
-// Converts a parsed driver version to string form.
-std::string DriverVersionToString(DriverVersion version);
-
-// Converts a parsed driver version or status value to natural string form.
-std::string DriverVersionStatusToString(port::StatusOr<DriverVersion> version);
-
-// Converts a string of a form like "331.79" to a DriverVersion{331, 79}.
-port::StatusOr<DriverVersion> StringToDriverVersion(const std::string& value);
-
-using Diagnostician = gpu::Diagnostician;
-
-}  // namespace cuda
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DIAGNOSTICS_H_

@@ -33,6 +33,7 @@ __version__ = str(get_version())
 __git_version__ = str(get_git_version())
 __compiler_version__ = str(get_compiler_version())
 __cxx11_abi_flag__ = get_cxx11_abi_flag()
+__cxx_version__ = get_cxx_version()
 __monolithic_build__ = get_monolithic_build()
 
 # User getters to hold attributes rather than pybind11's m.attr due to

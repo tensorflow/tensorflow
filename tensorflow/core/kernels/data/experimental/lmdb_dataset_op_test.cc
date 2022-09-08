@@ -45,13 +45,13 @@ class LMDBDatasetParams : public DatasetParams {
 
   Status GetInputNames(std::vector<string>* input_names) const override {
     *input_names = {LMDBDatasetOp::kFileNames};
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attributes) const override {
     *attributes = {{LMDBDatasetOp::kOutputTypes, output_dtypes_},
                    {LMDBDatasetOp::kOutputShapes, output_shapes_}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override { return LMDBDatasetOp::kDatasetType; }

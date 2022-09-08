@@ -590,11 +590,11 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
   function_def_name_ = name;
 
   FunctionDef fdef;
-  auto lookup = [this](const Node* node) -> absl::optional<string> {
+  auto lookup = [this](const Node* node) -> std::optional<string> {
     if (control_output_nodes_.contains(node->name())) {
       return absl::make_optional(node->name());
     }
-    return absl::nullopt;
+    return std::nullopt;
   };
   // Verify that the graph has well-formed control flow structure.
   std::vector<ControlFlowInfo> dummy;
@@ -1180,7 +1180,7 @@ Status EncapsulateSubgraphsPass::Run(
   }
 
   std::unique_ptr<DeviceMgr> device_mgr =
-      absl::make_unique<StaticDeviceMgr>(std::move(devices));
+      std::make_unique<StaticDeviceMgr>(std::move(devices));
   const auto* config = &options.session_options->config;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(

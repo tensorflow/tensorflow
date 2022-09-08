@@ -17,15 +17,16 @@ limitations under the License.
 
 #include <atomic>
 
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
+
 namespace tensorflow {
 
-// Whether TensorFloat-32 should be used where supported.
-static std::atomic<bool> tensor_float_32_enabled{true};
-
 void enable_tensor_float_32_execution(bool enabled) {
-  tensor_float_32_enabled = enabled;
+  tsl::enable_tensor_float_32_execution(enabled);
 }
 
-bool tensor_float_32_execution_enabled() { return tensor_float_32_enabled; }
+bool tensor_float_32_execution_enabled() {
+  return tsl::tensor_float_32_execution_enabled();
+}
 
 }  // namespace tensorflow

@@ -68,7 +68,7 @@ tensorflow::Status ExecuteFunction(
 
 Status VerifySupportedSignature(TaggedValue signature) {
   if (signature.type() == TaggedValue::Type::TENSOR_SPEC) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (signature.type() == TaggedValue::Type::TUPLE) {
     for (const auto& t : signature.tuple()) {
@@ -76,7 +76,7 @@ Status VerifySupportedSignature(TaggedValue signature) {
         break;
       }
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   return tensorflow::errors::Unimplemented(
       "Only functions with inputs/outputs containing a single tensor or a tuple"
@@ -85,7 +85,7 @@ Status VerifySupportedSignature(TaggedValue signature) {
 
 Status VerifySupportedArgs(TaggedValue args) {
   if (args.type() == TaggedValue::Type::TENSOR) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (args.type() == TaggedValue::Type::TUPLE) {
     for (const auto& t : args.tuple()) {
@@ -93,7 +93,7 @@ Status VerifySupportedArgs(TaggedValue args) {
         break;
       }
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   return tensorflow::errors::Unimplemented(
       "Only functions with inputs/outputs containing a single tensor or a tuple"
@@ -106,7 +106,7 @@ Status Function::RegisterTrace(AbstractFunctionPtr fn,
   TF_RETURN_IF_ERROR(VerifySupportedSignature(input_signature));
   TF_RETURN_IF_ERROR(VerifySupportedSignature(output_signature));
   concrete_fns_.push_back({fn, input_signature, output_signature});
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 bool Match(TaggedValue signature, TaggedValue value) {

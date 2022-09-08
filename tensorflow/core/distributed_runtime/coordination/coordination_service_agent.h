@@ -98,7 +98,7 @@ class CoordinationServiceAgent {
   // Wait for all tasks to be up and registered. The call blocks until all tasks
   // in the cluster are up, or some error occurs.
   // Possible service errors:
-  //   - FailedPrecondition: Agent is not in RUNNING state.
+  //   - FailedPrecondition: Agent is not in CONNECTED state.
   //   - InvalidArgument: Unexpected task request
   virtual Status WaitForAllTasks(
       const CoordinationServiceDeviceInfo& local_devices) = 0;
@@ -108,23 +108,18 @@ class CoordinationServiceAgent {
 
   // State transition in coordination service agent:
   //
-  //                 Init              Connect         SetError
-  //   UNINITIALIZED ---> DISCONNECTED ------> RUNNING -------> ERROR
+  //                 Init              Connect           SetError
+  //   UNINITIALIZED ---> DISCONNECTED ------> CONNECTED -------> ERROR
   //                           ^                                  |
   //                           |__________________________________|
   //                                         Reset
-  enum class TaskState {
-    UNINITIALIZED,
-    DISCONNECTED,
-    RUNNING,
-    ERROR,
-  };
 
   // Get task associated with this agent.
   virtual StatusOr<CoordinatedTask> GetOwnTask() = 0;
 
   // Get status of a remote task.
-  virtual StatusOr<TaskState> GetTaskStatus(const CoordinatedTask& task) = 0;
+  virtual StatusOr<CoordinatedTaskState> GetTaskStatus(
+      const CoordinatedTask& task) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
   // Note that the error payload will set `is_reported_error` to true, to
@@ -252,6 +247,9 @@ class CoordinationServiceAgent {
   virtual Status CancelBarrier(const std::string& barrier_id) = 0;
   virtual void CancelBarrierAsync(const std::string& barrier_id,
                                   StatusCallback done) = 0;
+
+  // Get unowned Env* that the agent was initialized with.
+  virtual StatusOr<Env*> GetEnv() = 0;
 
  protected:
   // Set the service agent to error status and invoke the error callback.

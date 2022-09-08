@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/mlir/sparse_expander.h"
+#include "tensorflow/dtensor/mlir/sparse_expansions/dynamic_enqueue_sparse_expander.h"
 #include "tensorflow/dtensor/mlir/sparse_expansions/matmul_sparse_expander.h"
 
 namespace tensorflow {
@@ -23,5 +24,9 @@ namespace dtensor {
 // MatMul
 REGISTER_SPARSE(MatMul, TF::MatMulOp, MatMulSparseExpander);
 
+// Embedding Enqueue
+REGISTER_SPARSE(EmbeddingEnqueue,
+                TF::DynamicEnqueueTPUEmbeddingArbitraryTensorBatchOp,
+                DynamicEnqueueSparseExpander);
 }  // namespace dtensor
 }  // namespace tensorflow

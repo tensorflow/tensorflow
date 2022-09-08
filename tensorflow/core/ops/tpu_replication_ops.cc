@@ -44,7 +44,7 @@ REGISTER_OP("TPUReplicatedInput")
     .Attr("N: int >= 1")
     .Attr("T: type")
     .Attr("is_mirrored_variable: bool = false")
-    // Index of the input. If is_mirrored_variable is true, this is ignored.
+    // `index` attribute is unused
     .Attr("index: int = -1")
     // All inputs are packed into one input
     .Attr("is_packed: bool = false")
@@ -68,7 +68,7 @@ REGISTER_OP("TPUReplicatedInput")
             // The return value of MergeInputHandleShapesAndTypes indicates
             // the shape was refined, not that there was an error.
             // TODO(phawkins): there seems to be no way to discover errors.
-            (void)c->MergeInputHandleShapesAndTypes(i, *shapes_and_types);
+            (void)!c->MergeInputHandleShapesAndTypes(i, *shapes_and_types);
           } else {
             shapes_and_types = c->input_handle_shapes_and_types(i);
           }
@@ -77,7 +77,7 @@ REGISTER_OP("TPUReplicatedInput")
           c->set_output_handle_shapes_and_types(0, *shapes_and_types);
         }
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TPUReplicatedOutput")
@@ -89,7 +89,7 @@ REGISTER_OP("TPUReplicatedOutput")
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->input(0));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TPUCompilationResult")

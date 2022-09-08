@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -234,7 +234,7 @@ class ShapeTree {
     for (const Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, node.second));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ForEachMutableElementWithStatus(
@@ -242,7 +242,7 @@ class ShapeTree {
     for (Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, &node.second));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Maps each element to generate a new tree with the same shape.

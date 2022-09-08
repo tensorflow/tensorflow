@@ -407,7 +407,6 @@ TF::_XlaHostComputeMlirOp CreateHostCompute(
       loc, device_output_types, inputs.getArrayRef(),
       builder.getStringAttr(args_communication_key),
       builder.getStringAttr(retvals_communication_key),
-      /*tpu_core=*/builder.getI64IntegerAttr(0),
       /*host_mlir_module=*/builder.getStringAttr(serialized_func_module));
   return host_compute;
 }
@@ -801,11 +800,6 @@ void TPUExtractOutsideCompilation::runOnOperation() {
   module.walk([&](tf_device::ClusterOp tpu_cluster) {
     if (HasOutsideCompilationNested(tpu_cluster.getOperation())) {
       std::string host_device;
-      if (tensorflow::HasModelParallelism(tpu_cluster)) {
-        tpu_cluster.emitOpError(
-            "outside compilation is not supported with model parallelism.");
-        return signalPassFailure();
-      }
       if (failed(tensorflow::GetHostDeviceOutsideComputation(
               devices, tpu_cluster, &host_device)))
         return signalPassFailure();

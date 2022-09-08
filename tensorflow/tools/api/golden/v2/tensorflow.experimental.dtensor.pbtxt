@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DTensorDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DVariable"
     mtype: "<class \'tensorflow.python.ops.variables.VariableMetaclass\'>"
   }
@@ -25,6 +29,10 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member_method {
+    name: "barrier"
+    argspec: "args=[\'mesh\', \'barrier_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "call_with_layout"
     argspec: "args=[\'fn\', \'layout\'], varargs=args, keywords=kwargs, defaults=None"
   }
@@ -42,7 +50,7 @@ tf_module {
   }
   member_method {
     name: "create_distributed_mesh"
-    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'num_global_devices\', \'num_clients\', \'client_id\', \'device_type\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'None\', \'None\', \'CPU\'], "
+    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'local_devices\', \'device_type\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'None\'], "
   }
   member_method {
     name: "create_mesh"

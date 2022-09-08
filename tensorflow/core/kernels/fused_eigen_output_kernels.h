@@ -40,6 +40,8 @@ enum class FusedComputationType {
   kBiasAddWithRelu6,
   kBiasAddWithElu,
   kBiasAddWithLeakyRelu,
+  kBiasAddWithGeluApproximate,
+  kBiasAddWithGeluExact,
   kFusedBatchNorm,
   kFusedBatchNormWithRelu,
   kFusedBatchNormWithRelu6,

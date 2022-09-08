@@ -54,8 +54,14 @@ std::string CudnnConvKindToString(CudnnConvKind kind);
 // after a GemmRewriter lowering pass.
 bool IsCublasGemm(const HloInstruction& hlo);
 
+// Matrix multiplication that calls into cublasLt.
+bool IsCublasLtMatmul(const HloInstruction& hlo);
+
 // A call to cuBLAS general matrix multiplication API.
 extern const char* const kGemmCallTarget;
+
+// A call to cuBLAS Lt API matrix multiplication.
+extern const char* const kCublasLtMatmulCallTarget;
 
 // A call to cuBLAS for a triangular solve.
 //

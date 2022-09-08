@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -49,7 +51,7 @@ class RemoteMgrTest : public ::testing::Test {
     devices.push_back(
         DeviceFactory::NewDevice("CPU", {}, "/job:worker/replica:0/task:0"));
     remote_device_ = devices.back().get();
-    auto device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+    auto device_mgr = std::make_unique<StaticDeviceMgr>(std::move(devices));
     tensorflow::Rendezvous* rendezvous =
         new tensorflow::IntraProcessRendezvous(device_mgr.get());
     ctx_ = new tensorflow::EagerContext(

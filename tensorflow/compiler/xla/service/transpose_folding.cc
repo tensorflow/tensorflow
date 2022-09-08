@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -189,7 +189,9 @@ TransposeFolding::TransposeFolding(
           std::move(dot_can_fold_transpose_operand)),
       transposable_conv_operands_(std::move(transposable_conv_operands)) {}
 
-StatusOr<bool> TransposeFolding::Run(HloModule* module) {
+StatusOr<bool> TransposeFolding::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Modifying the graph while traversing is dangerous, so we find all folding
   // opportunities before actually folding them.
   std::vector<InstructionOperandsPair> foldable_dots;
@@ -201,7 +203,7 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
       // Don't fold dots with a 1D operand.
       if ((instruction->operand(0)->shape().rank() < 2) ||
           (instruction->operand(1)->shape().rank() < 2)) {
-        return Status::OK();
+        return OkStatus();
       }
 
       OperandIndices operand_indices;
@@ -230,10 +232,10 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
         foldable_convolutions.emplace_back(instruction, operand_indices);
       }
     }
-    return Status::OK();
+    return OkStatus();
   });
 
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     TF_RETURN_IF_ERROR(comp->Accept(&visit_fn));
   }
 

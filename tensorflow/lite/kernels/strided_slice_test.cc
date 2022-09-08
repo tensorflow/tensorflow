@@ -15,6 +15,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>

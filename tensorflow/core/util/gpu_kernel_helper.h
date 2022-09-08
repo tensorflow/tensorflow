@@ -414,6 +414,96 @@ __device__ OutType lower_bound(Iterator first, OutType count, T val) {
 namespace cuda_helper = gpu_helper;
 #endif
 
+// For int division, we can substitute the fast multiplication for slow
+// division. For detailed information see:
+//   https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
+//
+// Warning: This implementation only works when the divisor is [1, INT32_MAX]
+//          and the numerator has to be [0, INT32_MAX]. This is enough for our
+//          purpose for computing integer indices.
+// Basics: the typical int division can be written as:
+//   n / d = (m * n) / 2^(32 + s)
+// where 'n' is the numerator and 'd' is the divisor. For a given 'd', we
+// need to find a magic number 'm' and a shift 's'. See update_magic().
+struct FastDividerUint32 {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC FastDividerUint32(uint32_t d)
+      : divisor(d) {
+    assert(divisor >= 1 && divisor <= INT32_MAX);
+    update_magic();
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void update_magic() {
+    // (1). The shift 's' is calculated by log2ceil(d).
+#if defined(__CUDA_ARCH__)
+    shift = 32 - __clz(divisor - 1);
+#else
+    for (shift = 0; shift < 32; shift++) {
+      if ((1U << shift) >= divisor) break;
+    }
+#endif
+
+    // (2). The magic number 'm' is calculated by:
+    //   m = 2^(32 + s) / d + 1
+    // Note, the digit '1' is to round up 'm * n', which will be rounded down
+    // later by dividing two. In practice, 'm' is a 33-bit value. To fit the
+    // 32-bit range, we introduce:
+    //   magic = m - 2^32
+    //         = 2^(32 + s) / d - 2^32 + 1
+    //         = 2^32 * 2^s / d - 2^32 * d / d + 1
+    //         = (2^32 * (2^s - d)) / d + 1, where 'magic' will be in 32-bit.
+    uint64_t m = (0x100000000ull * ((0x1ull << shift) - divisor)) / divisor + 1;
+    magic = static_cast<uint32_t>(m);
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC FastDividerUint32& operator=(
+      uint32_t d) {
+    assert(divisor >= 1 && divisor <= INT32_MAX);
+    this->divisor = d;
+    update_magic();
+    return *this;
+  }
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC operator uint32_t() const {
+    return divisor;
+  }
+
+  uint32_t divisor;
+  uint32_t magic;
+  uint32_t shift;
+};
+
+EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC uint32_t
+operator/(const uint32_t n, const FastDividerUint32& fdiv) {
+  // (3). We use the 32-bit 'magic' instead of 'm' in the formula:
+  //   n / d = (m * n) / 2^(32 + s)
+  //         = (magic + 2^32) * n / 2^(32 + s)
+  //         = (magic * n) / 2^(32 + s) + n / 2^s
+  //         = (magic * n) / 2^32 / 2^s + n / 2^s
+  //         = (magic * n / 2^32 + n) / 2^s
+#if defined(__CUDA_ARCH__)
+  uint32_t q = __umulhi(n, fdiv.magic);
+#else
+  uint32_t q =
+      static_cast<uint32_t>((static_cast<uint64_t>(n) * fdiv.magic) >> 32);
+#endif
+  return (n + q) >> fdiv.shift;
+}
+
+EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC uint32_t
+operator%(const uint32_t n, const FastDividerUint32& fdiv) {
+  return n - (n / fdiv) * fdiv.divisor;
+}
+
+EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC uint32_t
+operator/(const int n, const FastDividerUint32& fdiv) {
+  return static_cast<uint32_t>(n) / fdiv;
+}
+
+EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC uint32_t
+operator%(const int n, const FastDividerUint32& fdiv) {
+  return static_cast<uint32_t>(n) % fdiv;
+}
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -16,16 +16,18 @@
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LMHLO_TO_GPU_LMHLO_TO_GPU_BINARY_H_
 
 #include <memory>
+#include <string>
 
 #include "mlir/Pass/Pass.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk.h"
 
 namespace tensorflow {
 
-// Creates a pass that lowers lmhlo.fusion ops to a gpu.module with a binary
-// device code attribute plus a gpu.launch_func.
-std::unique_ptr<mlir::Pass> createConvertLmhloToGpuBinaryPass();
-
-void registerConvertLmhloToGpuBinaryPass();
+// Creates a pass that lowers kernel-launching lmhlo ops to a gpu.module with a
+// gpu.launch_func. Pass in the corresponding thunk sequence to lower
+// gpu.memcpy, gpu.memset, gpu.launch_func ops from.
+std::unique_ptr<mlir::Pass> createConvertLmhloToGpuBinaryPass(
+    xla::gpu::ThunkSequence* thunk_sequence);
 
 }  // namespace tensorflow
 

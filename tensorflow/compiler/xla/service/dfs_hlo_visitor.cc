@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -63,12 +63,12 @@ void DfsHloVisitorBase<HloInstructionPtr>::SetVisited(
 
 template <typename HloInstructionPtr>
 Status DfsHloVisitorBase<HloInstructionPtr>::Preprocess(HloInstructionPtr) {
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename HloInstructionPtr>
 Status DfsHloVisitorBase<HloInstructionPtr>::Postprocess(HloInstructionPtr) {
-  return Status::OK();
+  return OkStatus();
 }
 
 // Explicit instantiations.

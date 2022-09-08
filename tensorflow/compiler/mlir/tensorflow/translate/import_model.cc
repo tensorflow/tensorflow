@@ -90,6 +90,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -129,7 +130,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -138,9 +138,7 @@ static inline absl::string_view StringRefToView(llvm::StringRef ref) {
 namespace tensorflow {
 
 constexpr size_t kNumThreadToConvertSignatures = 10;
-
-const char kImportModelDefaultGraphFuncName[] = "main";
-const char kOutputShapesAttrName[] = "_output_shapes";
+constexpr absl::string_view kOutputShapesAttrName = "_output_shapes";
 
 using mlir::NamedAttrList;
 using mlir::TensorType;
@@ -815,7 +813,7 @@ Status ImporterBase::GetInputOutputNodes(
 // TODO(jpienaar): Remove this post shape inference on import flag is removed.
 Status ImporterBase::AddNodesToShapeRefiner(
     std::unordered_map<string, Node*>* node_name_map) {
-  shape_refiner_ = absl::make_unique<ShapeRefiner>(graph_->versions(),
+  shape_refiner_ = std::make_unique<ShapeRefiner>(graph_->versions(),
                                                    graph_->op_registry());
   // Some operations (for example "TPUExecute") don't have shape inference
   // function defined, so we should set this to false for adding nodes with
@@ -911,7 +909,7 @@ Status ImporterBase::AddNodesToShapeRefiner(
         return OkStatus();
       }
 
-      for (auto shape : llvm::enumerate(list.shape())) {
+      for (const auto& shape : llvm::enumerate(list.shape())) {
         auto* node_context = shape_refiner_->GetContext(node);
         shape_inference::ShapeHandle handle;
         Status status =
@@ -1511,7 +1509,7 @@ Status ImporterBase::PrepareConvert(const Graph& graph,
     graph_def = std::make_unique<GraphDef>();
     graph.ToGraphDef(graph_def.get());
   }
-  graph_ = absl::make_unique<Graph>(graph.flib_def());
+  graph_ = std::make_unique<Graph>(graph.flib_def());
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.add_default_attributes = true;
@@ -1929,16 +1927,14 @@ mlir::Operation* ImporterBase::CreateOperation(
       [&](const NameRangeMap& arg_ranges,
           const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
           llvm::StringRef attr_name) {
-        std::vector<mlir::Attribute> values;
+        std::vector<int32_t> values;
         values.reserve(args.size());
         for (const auto& arg : args) {
           auto range = arg_ranges.at(arg.name());
           values.push_back(
-              island_builder.getI32IntegerAttr(range.second - range.first));
+              range.second - range.first);
         }
-        auto attr_type =
-            mlir::VectorType::get(args.size(), builder_.getIntegerType(32));
-        auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
+        auto attr_value = mlir::DenseI32ArrayAttr::get(inner_op->getContext(), values);
         inner_op->setAttr(attr_name, attr_value);
       };
 
@@ -2507,8 +2503,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
   // Record version info.
   PopulateTfVersions(module.get(), graph.versions());
 
-  const auto& graph_func_name = specs.graph_func_name.empty()
-                                    ? kImportModelDefaultGraphFuncName
+  const llvm::StringRef& graph_func_name =
+      specs.graph_func_name.empty() ? kImportModelDefaultGraphFuncName
                                     : specs.graph_func_name;
   TF_RETURN_IF_ERROR(importer.ImporterBase::Convert(graph_func_name, func_type,
                                                     arg_nodes, ret_nodes,
@@ -3493,7 +3489,7 @@ Status CreateSavedModelIR(
           builder.getUnknownLoc(),
           builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
           value_attr,
-          /*type=*/mlir::TypeAttr::get(value_attr.Attribute::getType()),
+          /*type=*/mlir::TypeAttr::get(value_attr.getType()),
           /*is_mutable=*/nullptr);
       op->setAttr(
           "tf_saved_model.exported_names",
@@ -3704,7 +3700,7 @@ class SavedModelSignatureDefImporterLite {
   // handled in SavedModelSignatureDefImporter.
   static StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
       SavedModelMLIRImportInput& input,
-      absl::optional<absl::Span<const std::string>> exported_names,
+      std::optional<absl::Span<const std::string>> exported_names,
       mlir::MLIRContext* context, bool import_restore = true,
       bool unconditionally_use_set_output_shapes = false) {
     SavedModelSignatureDefImporterLite importer(
@@ -3716,7 +3712,7 @@ class SavedModelSignatureDefImporterLite {
  private:
   SavedModelSignatureDefImporterLite(
       SavedModelMLIRImportInput& input,
-      absl::optional<absl::Span<const std::string>> exported_names,
+      std::optional<absl::Span<const std::string>> exported_names,
       mlir::MLIRContext* context, bool import_restore,
       bool unconditionally_use_set_output_shapes)
       : input_(input),
@@ -3764,7 +3760,7 @@ class SavedModelSignatureDefImporterLite {
  private:
   SavedModelMLIRImportInput& input_;
   absl::flat_hash_set<std::string> original_func_tf_names_;
-  absl::optional<absl::Span<const std::string>> exported_names_;
+  std::optional<absl::Span<const std::string>> exported_names_;
   mlir::OwningOpRef<mlir::ModuleOp> module_;
   absl::Mutex symbol_table_mu_;
   mlir::SymbolTable symbol_table_ ABSL_GUARDED_BY(symbol_table_mu_);
@@ -4113,7 +4109,7 @@ class SavedModelSignatureDefImporter {
   // the given meta graph to an MLIR Module.
   static StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
       const SavedModelBundle& bundle,
-      absl::optional<absl::Span<const std::string>> exported_names,
+      std::optional<absl::Span<const std::string>> exported_names,
       mlir::MLIRContext* context, tensorflow::MLIRImportOptions options,
       bool lift_varhandle_ops_to_args = true) {
     // debug_info might not be loaded with loader_lite.
@@ -4269,7 +4265,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlir(
     const SavedModelBundle& saved_model, absl::Span<std::string> exported_names,
     mlir::MLIRContext* context, MLIRImportOptions options,
     bool lift_variables) {
-  absl::optional<absl::Span<const std::string>> optional_exported_names;
+  std::optional<absl::Span<const std::string>> optional_exported_names;
   // TODO(b/187062560): Change ConvertSavedModelV1ToMlir() to take an optional
   // `exported_names` so that it can be configured to import only restore/init
   // graphs.
@@ -4280,7 +4276,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlir(
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlirLite(
     const MetaGraphDef& meta_graph_def, const GraphDebugInfo& debug_info,
-    absl::optional<absl::Span<const std::string>> exported_names,
+    std::optional<absl::Span<const std::string>> exported_names,
     mlir::MLIRContext* context, MLIRImportOptions options) {
   TF_ASSIGN_OR_RETURN(auto input, SimpleSavedModelMLIRImportInput::Create(
                                       options, &meta_graph_def, debug_info));
@@ -4291,7 +4287,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlirLite(
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlirLite(
     SavedModelMLIRImportInput& input,
-    absl::optional<absl::Span<const std::string>> exported_names,
+    std::optional<absl::Span<const std::string>> exported_names,
     mlir::MLIRContext* context, bool unconditionally_use_set_output_shapes) {
   return SavedModelSignatureDefImporterLite::Convert(
       input, exported_names, context,

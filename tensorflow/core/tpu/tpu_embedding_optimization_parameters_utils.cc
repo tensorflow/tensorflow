@@ -121,49 +121,49 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
   switch (params.parameters_case()) {
     case OptimizationAlgorithm::kAdagrad:
       *count = 1;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kAdagradMomentum:
       *count = 2;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kBoundedAdagrad:
       *count = 1;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kStochasticGradientDescent:
       *count = 0;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kFtrl:
       *count = 2;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kAdam:
       *count = 2;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kMomentum:
       *count = 1;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kRmsProp:
       *count = 2;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kCenteredRmsProp:
       *count = 3;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kMdlAdagradLight:
       *count = 3;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kAdadelta:
       *count = 2;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kProximalAdagrad:
       *count = 1;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kOnlineYogi:
       *count = 2;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kProximalYogi:
       *count = 2;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kFrequencyEstimator:
       *count = 1;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::kUserDefinedProgram: {
       const xla::ProgramShapeProto& program_shape =
           params.user_defined_program().program().host_program_shape();
@@ -182,11 +182,11 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
 
       *count = num_outputs - 1;
 
-      return Status::OK();
+      return OkStatus();
     }
     case OptimizationAlgorithm::kAssign:
       *count = 0;
-      return Status::OK();
+      return OkStatus();
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return errors::InvalidArgument("No optimization algorithm specified");
   }
@@ -201,7 +201,7 @@ Status GetGradientAccumulationSupport(const OptimizationParameters& params,
   *support = auxiliary_parameter_count + 1 <= kMaxAuxiliaryParameterCount
                  ? GradientAccumulationSupport::kSupported
                  : GradientAccumulationSupport::kNotSupported;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status UseGradientAccumulation(const OptimizationParameters& params,
@@ -245,7 +245,7 @@ Status UseGradientAccumulation(const OptimizationParameters& params,
       break;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetOptimizationAlgorithmStateVariables(
@@ -386,7 +386,7 @@ Status GetOptimizationAlgorithmStateVariables(
         "does not support gradient accumulation because it "
         "already has too many other accumulators");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
@@ -438,7 +438,7 @@ Status LoadOpShapeFunction::operator()(
     TF_RETURN_IF_ERROR(c->Merge(parameter_shape, accumulator_j_shape, &merged));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RetrieveOpShapeFunction::operator()(
@@ -460,7 +460,7 @@ Status RetrieveOpShapeFunction::operator()(
     c->set_output(j, c->MakeShape(std::vector<shape_inference::DimensionHandle>(
                          2, c->UnknownDim())));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tpu

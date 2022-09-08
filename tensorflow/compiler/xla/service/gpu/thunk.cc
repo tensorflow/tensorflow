@@ -39,6 +39,8 @@ Thunk::ExecuteParams::ExecuteParams(
       return "kConvolution";
     case Thunk::kCopy:
       return "kCopy";
+    case Thunk::kCublasLtMatmul:
+      return "kCublasLtMatmul";
     case Thunk::kCustomCall:
       return "kCustomCall";
     case Thunk::kNcclAllGather:
@@ -55,6 +57,8 @@ Thunk::ExecuteParams::ExecuteParams(
       return "kNcclAllToAll";
     case Thunk::kFft:
       return "kFft";
+    case Thunk::kFor:
+      return "kFor";
     case Thunk::kGemm:
       return "kGemm";
     case Thunk::kInfeed:

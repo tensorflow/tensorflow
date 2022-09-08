@@ -71,7 +71,27 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "experimental_as_proto"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_from_proto"
+    argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_type_proto"
+    argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "is_compatible_with"
     argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_subtype_of"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "most_specific_common_supertype"
+    argspec: "args=[\'self\', \'types\'], varargs=None, keywords=None, defaults=None"
   }
 }

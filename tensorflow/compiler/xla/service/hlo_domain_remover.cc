@@ -30,7 +30,8 @@ class HloDomainRemover::RunContext {
   RunContext(HloModule* module, HloDomainRemover* remover)
       : module_(module), remover_(remover) {}
 
-  StatusOr<bool> Run();
+  StatusOr<bool> Run(
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
  private:
   // Verifies the consistency of the domain, and normalizes the instructions
@@ -54,13 +55,14 @@ Status HloDomainRemover::RunContext::VerifyAndNormalizeDomain(
     VLOG(2) << "Applying domain-less normalization";
     TF_RETURN_IF_ERROR(remover_->normalizer_(domain, nullptr));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-StatusOr<bool> HloDomainRemover::RunContext::Run() {
+StatusOr<bool> HloDomainRemover::RunContext::Run(
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(4) << "Processing metadata domain: '" << remover_->kind_ << "'";
   int64_t removed_domains = 0;
-  for (HloComputation* computation : module_->computations()) {
+  for (HloComputation* computation : module_->computations(execution_threads)) {
     // First create the domain instruction sets. A domain instruction set is
     // the set of instructions whose edges never cross a kDomain instruction.
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDomainMap> domain_map,
@@ -118,9 +120,11 @@ StatusOr<int64_t> HloDomainRemover::RemoveExitDomains(
   return removed_domains;
 }
 
-StatusOr<bool> HloDomainRemover::Run(HloModule* module) {
+StatusOr<bool> HloDomainRemover::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   RunContext run_context(module, this);
-  return run_context.Run();
+  return run_context.Run(execution_threads);
 }
 
 }  // namespace xla

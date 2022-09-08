@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -38,7 +37,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
     const ExecutionOptions* execution_options, int default_num_replicas,
-    absl::optional<int> num_threads = absl::nullopt,
+    std::optional<int> num_threads = std::nullopt,
     const AotCompilationOptions* aot_options = nullptr);
 
 typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;

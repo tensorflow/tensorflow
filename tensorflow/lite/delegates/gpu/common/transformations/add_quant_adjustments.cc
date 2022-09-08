@@ -112,7 +112,7 @@ class AddQuantAdjustments : public NodeTransformation {
 };
 
 std::unique_ptr<NodeTransformation> NewAddQuantAdjustments() {
-  return absl::make_unique<AddQuantAdjustments>();
+  return std::make_unique<AddQuantAdjustments>();
 }
 
 }  // namespace gpu

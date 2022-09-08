@@ -167,8 +167,8 @@ VariableInputLockHolder MaybeLockVariableInputMutexesInOrder(
   std::sort(acquire_order.begin(), acquire_order.end(),
             [&mutexes](int a, int b) { return mutexes[a] < mutexes[b]; });
 
-  auto locks = absl::make_unique<std::vector<mutex_lock>>();
-  auto shared_locks = absl::make_unique<std::vector<tf_shared_lock>>();
+  auto locks = std::make_unique<std::vector<mutex_lock>>();
+  auto shared_locks = std::make_unique<std::vector<tf_shared_lock>>();
   locks->reserve(acquire_order.size());
 
   for (auto acquire : acquire_order) {

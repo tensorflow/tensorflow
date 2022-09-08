@@ -51,13 +51,13 @@ using ReduceScatterKey =
 // and the same reduction operation.
 Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
   if (to_combine.size() < 2) {
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Combined " << to_combine.size() << " reduce-scatter ops";
 
   HloComputation& computation = *to_combine.back()->parent();
   HloComputation* reduction = to_combine[0]->to_apply();
-  absl::optional<ReductionKind> first_reduction_kind =
+  std::optional<ReductionKind> first_reduction_kind =
       MatchReductionComputation(reduction);
   TF_RET_CHECK(first_reduction_kind);
 
@@ -70,7 +70,7 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
     VLOG(1) << "Set element: " << hlo->ToString();
     TF_RET_CHECK(hlo->opcode() == HloOpcode::kReduceScatter);
     TF_RET_CHECK(hlo->operands().size() == 1);
-    absl::optional<ReductionKind> reduction_kind =
+    std::optional<ReductionKind> reduction_kind =
         MatchReductionComputation(hlo->to_apply());
     TF_RET_CHECK(reduction_kind);
     TF_RET_CHECK(*reduction_kind == *first_reduction_kind);
@@ -105,7 +105,7 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
     TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
         to_combine[i], std::move(replace_with)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -114,7 +114,9 @@ ReduceScatterCombiner::ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
     : combine_threshold_in_bytes_(combine_threshold_in_bytes),
       combine_threshold_count_(combine_threshold_count) {}
 
-StatusOr<bool> ReduceScatterCombiner::Run(HloModule* module) {
+StatusOr<bool> ReduceScatterCombiner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running ReduceScatterCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
@@ -132,17 +134,21 @@ StatusOr<bool> ReduceScatterCombiner::Run(HloModule* module) {
   }
 
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&domain_map](const HloInstruction* instruction)
-        -> absl::optional<ReduceScatterKey> {
+        -> std::optional<ReduceScatterKey> {
       auto* rs = DynCast<HloReduceScatterInstruction>(instruction);
-      absl::optional<AllReduceKey> key =
+      std::optional<AllReduceKey> key =
           GetAllReduceKey(instruction, domain_map.get());
 
       if (!rs || !key) {
-        return absl::nullopt;
+        return std::nullopt;
+      }
+      if (!MatchReductionComputation(rs->to_apply())) {
+        return std::nullopt;
       }
       return ReduceScatterKey{std::move(*key), rs->scatter_dimension()};
     };

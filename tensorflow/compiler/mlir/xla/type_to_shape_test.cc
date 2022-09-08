@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 
 #include <iostream>
+#include <utility>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -118,13 +119,24 @@ TEST(TypeToShapeTest, ConvertMemRefTypeToTypes) {
 }
 
 TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
-  MLIRContext context;
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::mhlo::MhloDialect>();
   Builder b(&context);
 
   EXPECT_THAT(
       TypeToShape(RankedTensorType::get({8, 128}, b.getF32Type())).ToProto(),
       EqualsProto(
           ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}).ToProto()));
+
+  llvm::SmallVector<int64_t, 4> bounds = {8, mlir::ShapedType::kDynamicSize};
+  auto extensions = mlir::mhlo::TypeExtensionsAttr::get(&context, bounds);
+  EXPECT_THAT(
+      TypeToShape(RankedTensorType::get({mlir::ShapedType::kDynamicSize, 128},
+                                        b.getF32Type(), extensions))
+          .ToProto(),
+      EqualsProto(
+          ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}, {true, false})
+              .ToProto()));
 
   // Shape cannot represent dynamic shapes.
   // TODO(b/115638799): Update once Shape can support dynamic shapes.
@@ -139,46 +151,6 @@ TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
       EqualsProto(Shape().ToProto()));
 }
 
-TEST(TypeToShapeTest, ConvertWithShapeRepresentationFn) {
-  tensorflow::DataType captured_dtype;
-  tensorflow::TensorShape captured_tensor_shape;
-
-  // A dummy shape representation function that does nothing other than
-  // capturing arguments passed to it.
-  auto test_shape_representation_fn = [&](const tensorflow::TensorShape& shape,
-                                          tensorflow::DataType dtype) {
-    captured_tensor_shape = shape;
-    captured_dtype = dtype;
-    return xla::Shape();
-  };
-
-  MLIRContext context;
-  Builder b(&context);
-  StatusOr<Shape> status_or_shape;
-
-  // Non-fully-defined shape.
-  status_or_shape =
-      TypeToShape(RankedTensorType::get({-1, 2, 3}, b.getF32Type()),
-                  test_shape_representation_fn);
-  EXPECT_EQ(status_or_shape.status().code(),
-            tensorflow::errors::Code::INVALID_ARGUMENT);
-
-  // Scalar Int32 Tensor, using fast memory.
-  status_or_shape =
-      TypeToShape(b.getIntegerType(32), test_shape_representation_fn);
-  EXPECT_TRUE(status_or_shape.ok());
-  EXPECT_EQ(captured_dtype, tensorflow::DataType::DT_INT32);
-  EXPECT_EQ(captured_tensor_shape, tensorflow::TensorShape());
-
-  // Ranked Float32 Tensor, not using fast memory.
-  status_or_shape =
-      TypeToShape(RankedTensorType::get({1, 2, 3}, b.getF32Type()),
-                  test_shape_representation_fn);
-  EXPECT_TRUE(status_or_shape.ok());
-  EXPECT_EQ(captured_dtype, tensorflow::DataType::DT_FLOAT);
-  EXPECT_EQ(captured_tensor_shape, tensorflow::TensorShape({1, 2, 3}));
-}
-
 TEST(TypeToShapeTest, ConvertMemRefToShape) {
   Shape shape = ShapeUtil::MakeShapeWithLayout(PrimitiveType::F32, {10, 20, 30},
                                                {2, 0, 1});
@@ -188,7 +160,7 @@ TEST(TypeToShapeTest, ConvertMemRefToShape) {
   StatusOr<mlir::Type> mlir_type =
       ConvertShapeToType<MemRefType>(shape, builder);
   ASSERT_TRUE(mlir_type.ok());
-  mlir::Type type = mlir_type.ConsumeValueOrDie();
+  mlir::Type type = std::move(mlir_type).value();
   Shape converted = TypeToShape(type);
   EXPECT_TRUE(ShapeUtil::Equal(
       converted, ShapeUtil::MakeShapeWithLayout(PrimitiveType::F32,
@@ -205,7 +177,7 @@ TEST(TypeToShapeTest, ConvertMemRefToShape2) {
   StatusOr<mlir::Type> mlir_type =
       ConvertShapeToType<MemRefType>(shape, builder);
   ASSERT_TRUE(mlir_type.ok());
-  mlir::Type type = mlir_type.ConsumeValueOrDie();
+  mlir::Type type = std::move(mlir_type).value();
   Shape converted = TypeToShape(type);
   EXPECT_TRUE(ShapeUtil::Equal(
       converted, ShapeUtil::MakeShapeWithLayout(PrimitiveType::C64,

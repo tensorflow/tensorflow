@@ -58,7 +58,7 @@ Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
     return OkStatus();
   }
 
-  int device_count = platform.ValueOrDie()->VisibleDeviceCount();
+  int device_count = platform.value()->VisibleDeviceCount();
   if (device_count <= 0) {
     return OkStatus();
   }
@@ -116,18 +116,18 @@ Status XlaGpuDeviceFactory::CreateDevices(
 
   string allowed_gpus =
       session_options.config.gpu_options().visible_device_list();
-  absl::optional<std::set<int>> gpu_ids =
-      ParseVisibleDeviceList(allowed_gpus).ValueOrDie();
+  std::optional<std::set<int>> gpu_ids =
+      ParseVisibleDeviceList(allowed_gpus).value();
   if (!gpu_ids) {
     gpu_ids.emplace();
     // Fill the gpu_ids set with all devices if config string is empty.
-    for (int i = 0; i < platform.ValueOrDie()->VisibleDeviceCount(); ++i) {
+    for (int i = 0; i < platform.value()->VisibleDeviceCount(); ++i) {
       gpu_ids->insert(i);
     }
   }
   for (int i : *gpu_ids) {
     XlaDevice::Options options;
-    options.platform = platform.ValueOrDie();
+    options.platform = platform.value();
     options.device_name_prefix = name_prefix;
     options.device_name = DEVICE_XLA_GPU;
     options.device_ordinal = i;
@@ -137,7 +137,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
         UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
     options.shape_determination_fns = {shape_representation_fns};
-    auto device = absl::make_unique<XlaDevice>(session_options, options);
+    auto device = std::make_unique<XlaDevice>(session_options, options);
 
     Status status = device->UseAcceleratorDeviceInfo();
     if (!status.ok()) {

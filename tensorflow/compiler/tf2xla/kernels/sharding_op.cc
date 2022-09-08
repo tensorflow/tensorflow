@@ -42,7 +42,7 @@ class ShardingOp : public XlaOpKernel {
       // The builder might create a broadcast from a constant, so we clear
       // sharding for the input.
       xla::XlaScopedShardingAssignment no_sharding(ctx->builder(),
-                                                   absl::nullopt);
+                                                   std::nullopt);
       input = ctx->Input(0);
     }
     auto shape_or = ctx->builder()->GetShape(input);
@@ -51,7 +51,7 @@ class ShardingOp : public XlaOpKernel {
     ctx->SetOutput(
         0, xla::CustomCall(
                ctx->builder(), /*call_target_name=*/"Sharding", {input},
-               shape_or.ValueOrDie(),
+               shape_or.value(),
                /*opaque=*/
                xla::sharding_op_util::EncodeAttributes(unspecified_dims_)));
   }

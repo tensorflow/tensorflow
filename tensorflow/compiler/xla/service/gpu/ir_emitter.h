@@ -94,7 +94,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
 
-  Status FinishVisit(HloInstruction* root) override { return Status::OK(); }
+  Status FinishVisit(HloInstruction* root) override { return OkStatus(); }
 
   llvm::IRBuilder<>* builder() { return &b_; }
 
@@ -151,8 +151,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       llvm::Value* source_address, llvm::Type* element_type);
 
   GpuElementalIrEmitter::NestedComputer GetNestedComputer() {
-    return std::bind(&IrEmitter::ComputeNestedElement, this,
-                     std::placeholders::_1, std::placeholders::_2);
+    return [&](const HloComputation& computation,
+               absl::Span<llvm::Value* const> parameter_elements) {
+      return ComputeNestedElement(computation, parameter_elements);
+    };
   }
 
   StatusOr<std::vector<llvm::Value*>> ComputeNestedElement(

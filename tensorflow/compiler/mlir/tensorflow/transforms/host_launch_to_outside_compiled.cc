@@ -67,7 +67,7 @@ void HoistOpsAndAnnotateWithOutsideCompilation(tf_device::LaunchOp launch) {
 
 void HostLaunchToOutsideCompiledPass::runOnOperation() {
   auto traverse_op = [&](Operation* op, tf_device::ClusterOp tpu_cluster,
-                         absl::optional<std::string> host_device) {
+                         std::optional<std::string> host_device) {
     // Hoist launch.
     if (tf_device::LaunchOp launch = dyn_cast<tf_device::LaunchOp>(op)) {
       StringAttr device_attr = launch->getAttrOfType<StringAttr>(kDeviceAttr);
@@ -79,19 +79,6 @@ void HostLaunchToOutsideCompiledPass::runOnOperation() {
   };
 
   ModuleOp module = getOperation();
-  // If there is model parallelism, we return early since
-  // GetHostDeviceOutsideComputation will fail and an error should have been
-  // returned in an earlier pass.
-  // TODO(b/186420116): Remove this check once outside compilation and model
-  // parallelism work together.
-  auto result = module.walk([&](tf_device::ClusterOp tpu_cluster) {
-    if (tensorflow::HasModelParallelism(tpu_cluster)) {
-      return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
-  });
-  if (result.wasInterrupted()) return;
-
   if (failed(TFTPU::WalkReachableFromTpuCluster(module, traverse_op)))
     return signalPassFailure();
 }

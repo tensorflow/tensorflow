@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -223,13 +223,6 @@ class IrArray {
   // base_ptr is a pointer type pointing to the first element(lowest address)
   // of the array.
   IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape);
-
-  // This constructor is deprecated.  getPointerElementType() cannot be used
-  // when pointers are opaque.  Use the other constructor which explicitly
-  // pass in the pointee type.
-  IrArray(llvm::Value* base_ptr, Shape shape)
-      : IrArray(base_ptr, base_ptr->getType()->getPointerElementType(), shape) {
-  }
 
   // Default implementations of copying and moving.
   IrArray(IrArray&& other) = default;

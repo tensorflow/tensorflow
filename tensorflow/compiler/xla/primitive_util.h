@@ -19,10 +19,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PRIMITIVE_UTIL_H_
 
 #include <string>
+#include <tuple>
 #include <type_traits>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"

@@ -158,13 +158,13 @@ void BatchFunctionFallback(tfrt::Argument<Chain> in_op_chain,
   for (const auto& arg : args) {
     th_args.push_back(arg.CopyRef());
   }
-  auto exec_ctx_ptr = absl::make_unique<tfrt::ExecutionContext>(exec_ctx);
+  auto exec_ctx_ptr = std::make_unique<tfrt::ExecutionContext>(exec_ctx);
   // Pass in a ExecutionContext pointer as the last argument.
   {
     auto dht = tfrt::MakeAvailableAsyncValueRef<DenseHostTensor>(
-        host, DenseHostTensor::CreateUninitialized<int64_t>(
-                  tfrt::TensorShape({}), host)
-                  .getValue());
+        DenseHostTensor::CreateUninitialized<int64_t>(tfrt::TensorShape({}),
+                                                      host)
+            .getValue());
     auto view = MutableDHTArrayView<int64_t>(&*dht);
     *view.begin() = reinterpret_cast<int64_t>(exec_ctx_ptr.get());
     th_args.emplace_back(host->GetHostDeviceRef(), dht->metadata(),

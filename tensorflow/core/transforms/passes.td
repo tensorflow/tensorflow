@@ -302,9 +302,15 @@ def Remapper : Pass<"tfg-remapper"> {
               x
   }];
   let options = [
-    Option<"enable_mkl_patterns_", "enable-mkl-patterns", "bool",
+    Option<"enable_onednn_patterns_", "enable-onednn-patterns", "bool",
     /*default=*/"false",
-    "Enable the MKL related patterns.">,
+    "Enable the oneDNN related patterns.">,
+    Option<"verify_pdll_patterns_only_", "verify-pdll-patterns-only", "bool",
+    /*default=*/"false",
+    "Only enable PDLL patterns.">,
+    Option<"xla_auto_clustering_", "xla-auto-clustering", "bool",
+    /*default=*/"false",
+    "Sets XLA auto clustering flag.">,
   ];
   let constructor = "CreateRemapperPass()";
 }
@@ -431,7 +437,7 @@ def ShapeInference : Pass<"tfg-shape-inference"> {
   let constructor = "CreateShapeInferencePass()";
 }
 
-def ConstantFoldingPass : Pass<"tfg-constant-folding"> {
+def ConstantFoldingPass : Pass<"tfg-constant-folding", "GraphFuncOp"> {
   let summary = "constant-folding on tfg";
   let description = [{
     This pass will fold operations into constants and do full/partial propagte
@@ -440,9 +446,6 @@ def ConstantFoldingPass : Pass<"tfg-constant-folding"> {
 
   let constructor = "CreateConstantFoldingPass()";
   let options = [
-   ListOption<"nodes_to_preserve_", "nodes-to-preserve", "std::string",
-              "Comma separated list of ops that won't be optimized.",
-              "llvm::cl::ZeroOrMore">,
    ListOption<"feeds_", "feeds", "std::string",
               "Comma separated list of feed ops.", "llvm::cl::ZeroOrMore">,
    ListOption<"fetches_", "fetches", "std::string",
@@ -454,14 +457,17 @@ def ConstantFoldingPass : Pass<"tfg-constant-folding"> {
    Option<"fold_quantization_emulation_",
           "fold-quantization-emulation", "bool",
           /*default=*/"true",
-          "Determine if we should fold quantization emulation ops">
+          "Determine if we should fold quantization emulation ops">,
+   Option<"pattern_category_", "pattern-category", "int", /*default=*/"0",
+          "Select the pattern kind that we would like to run:"
+          "0 = all patterns, 1 = folder patterns, 2 = propagation patterns">
   ];
 }
 
 def LiftLegacyCall : Pass<"tfg-lift-legacy-call", "ModuleOp"> {
   let summary = "Tag legacy calls with symbol references to add symbol uses";
   let description = [{
-    A legacy function call is when an operation's name refers to a function in 
+    A legacy function call is when an operation's name refers to a function in
     the function library. For example,
 
     ```
@@ -493,4 +499,47 @@ def LiftLegacyCall : Pass<"tfg-lift-legacy-call", "ModuleOp"> {
 def CSEPass : Pass<"tfg-cse", "GraphFuncOp"> {
   let summary = "Common sub-expression elimination, ignoring op names";
   let constructor = "CreateCSEPass()";
+}
+
+def NameCompress : Pass<"tfg-name-compress", "GraphFuncOp"> {
+  let summary = "Compress the graph by shortening names";
+  let description = [{
+    This pass will rename operations, function arguments, results, and control
+    results to have "compressed" names, reducing the size of the graph. Only
+    operations in funtions can be safely renamed, and names need only be unique
+    in the scope of the function.
+    
+    This pass also assigns unique names to arguments, results, control results,
+    and operations without names.
+  }];
+  let constructor = "CreateNameCompressPass()";
+}
+
+def StripDefaultAttrs : Pass<"tfg-strip-default-attrs"> {
+  let summary = "Removes default-valued attributes from the graph";
+  let description = [{
+    This pass reduces the size of graphs by removing operation attributes equal
+    to their default values. This pass requires the TensorFlow registry
+    interface to inject an instance of the operation registry.
+
+    Note that removing default-valued attributes may render some pass inoperable
+    if they expect default-valued attributes to be present.
+
+    This pass is the opposite of `tfg-add-default-attrs`, which adds missing
+    default-valued attributes.
+  }];
+  let constructor = "CreateStripDefaultAttrsPass()";
+}
+
+def AddDefaultAttrs : Pass<"tfg-add-default-attrs"> {
+  let summary = "Add default-valued attributes to the graph";
+  let description = [{
+    This pass adds missing attributes with default values to the graph. This
+    pass requires the TensorFlow registry interface to inject an instance of the
+    operation registry.
+
+    This pass is the opposite of `tfg-strip-default-attrs`, which removes
+    default-valued attributes equal to their default values.
+  }];
+  let constructor = "CreateAddDefaultAttrsPass()";
 }

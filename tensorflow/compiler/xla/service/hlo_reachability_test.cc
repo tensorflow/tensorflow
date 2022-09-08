@@ -217,7 +217,7 @@ TEST_F(HloReachabilityTest, ReplaceInstructions) {
       p0 = f32[28,28]{1,0} parameter(0)
       ROOT add = f32[28,28]{1,0} add(p0, p0)
     })")
-                    .ValueOrDie();
+                    .value();
   auto computation = module->entry_computation();
   auto reachability = HloReachabilityMap::Build(computation);
   auto* add = module->entry_computation()->root_instruction();

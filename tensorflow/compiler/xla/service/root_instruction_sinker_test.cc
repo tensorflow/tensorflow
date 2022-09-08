@@ -58,7 +58,7 @@ TEST_F(RootInstructionSinkerTest, TupleNoChange) {
       module->entry_computation()->root_instruction()->while_body();
   int num_body_instructions = while_body->instruction_count();
   RootInstructionSinker sinker;
-  EXPECT_FALSE(sinker.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(sinker.Run(module.get()).value());
   EXPECT_EQ(module->entry_computation()
                 ->root_instruction()
                 ->while_body()
@@ -99,7 +99,7 @@ TEST_F(RootInstructionSinkerTest, Tuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   RootInstructionSinker sinker;
-  EXPECT_TRUE(sinker.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(sinker.Run(module.get()).value());
   auto while_body =
       module->entry_computation()->root_instruction()->while_body();
   const auto& sequence = module->schedule().sequence(while_body);
@@ -129,7 +129,7 @@ TEST_F(RootInstructionSinkerTest, NontupleNoChange) {
       module->entry_computation()->root_instruction()->called_computations()[0];
   int num_instructions = called_computation->instruction_count();
   RootInstructionSinker sinker;
-  EXPECT_FALSE(sinker.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(sinker.Run(module.get()).value());
   EXPECT_EQ(module->entry_computation()
                 ->root_instruction()
                 ->called_computations()[0]
@@ -156,7 +156,7 @@ TEST_F(RootInstructionSinkerTest, Nontuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   RootInstructionSinker sinker;
-  EXPECT_TRUE(sinker.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(sinker.Run(module.get()).value());
   auto called_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
   const auto& sequence = module->schedule().sequence(called_computation);

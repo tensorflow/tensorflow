@@ -33,9 +33,9 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace mlir {
 namespace TFL {
@@ -120,7 +120,7 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
 
   pm.addInstrumentation(
       std::make_unique<ErrorCollectorInstrumentation>(&context));
-  EXPECT_EQ(succeeded(pm.run(module.ValueOrDie().get())), true);
+  EXPECT_EQ(succeeded(pm.run(module.value().get())), true);
 
   auto collected_errors =
       ErrorCollector::GetErrorCollector()->CollectedErrors();
@@ -148,7 +148,7 @@ TEST(ErrorCollectorTest, TessFailurePass) {
 
   pm.addInstrumentation(
       std::make_unique<ErrorCollectorInstrumentation>(&context));
-  EXPECT_EQ(succeeded(pm.run(module.ValueOrDie().get())), false);
+  EXPECT_EQ(succeeded(pm.run(module.value().get())), false);
 
   auto collected_errors =
       ErrorCollector::GetErrorCollector()->CollectedErrors();

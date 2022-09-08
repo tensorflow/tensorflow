@@ -80,7 +80,7 @@ GPUDebugAllocator::GPUDebugAllocator(Allocator* allocator,
     : base_allocator_(allocator) {
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)
-                     .ValueOrDie();
+                     .value();
 }
 
 GPUDebugAllocator::~GPUDebugAllocator() { delete base_allocator_; }
@@ -159,7 +159,7 @@ GPUNanResetAllocator::GPUNanResetAllocator(Allocator* allocator,
     : base_allocator_(allocator) {
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)
-                     .ValueOrDie();
+                     .value();
 }
 
 GPUNanResetAllocator::~GPUNanResetAllocator() { delete base_allocator_; }

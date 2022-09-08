@@ -17,10 +17,6 @@ limitations under the License.
 #if defined(_MSC_VER)
 #include <chrono>  // NOLINT(build/c++11)
 #include <thread>  // NOLINT(build/c++11)
-#elif defined(__EMSCRIPTEN__)
-#include <emscripten/emscripten.h>
-#elif defined(_WIN32)
-#include <windows.h>
 #else
 #include <sys/time.h>
 #include <time.h>
@@ -35,7 +31,7 @@ namespace time {
 uint64_t NowMicros() {
   return static_cast<uint64_t>(
       std::chrono::duration_cast<std::chrono::microseconds>(
-          std::chrono::system_clock::now().time_since_epoch())
+          std::chrono::steady_clock::now().time_since_epoch())
           .count());
 }
 
@@ -47,15 +43,7 @@ void SleepForMicros(uint64_t micros) {
 
 uint64_t NowMicros() {
   struct timespec ts;
-#ifdef __MACH__
-  return clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1e3;
-#elif __EMSCRIPTEN__
-  ts = emscripten_get_now();
-#elif _WIN32
-  QueryPerformanceCounter(&ts);
-#else
   clock_gettime(CLOCK_MONOTONIC, &ts);
-#endif
   return static_cast<uint64_t>(ts.tv_sec) * 1e6 +
          static_cast<uint64_t>(ts.tv_nsec) / 1e3;
 }

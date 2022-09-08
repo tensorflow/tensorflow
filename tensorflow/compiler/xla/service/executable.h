@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
@@ -129,7 +129,7 @@ class ExecutionInput {
  private:
   void SetHostShape(xla::Shape host_shape) {
     if (shape() != host_shape) {
-      host_shape_ = absl::make_unique<Shape>(std::move(host_shape));
+      host_shape_ = std::make_unique<Shape>(std::move(host_shape));
     }
   }
 
@@ -308,7 +308,7 @@ class Executable {
   virtual Status PopulateExecutionProfile(
       ExecutionProfile* execution_profile,
       HloExecutionProfile* hlo_execution_profile, se::Stream* stream) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
@@ -370,7 +370,9 @@ class Executable {
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
     hlo_proto_ = std::move(hlo_proto);
   }
-  bool dumping_snapshot() const { return hlo_proto_ != nullptr; }
+  bool dumping_snapshot() const {
+    return module_config().debug_options().xla_dump_hlo_snapshots();
+  }
   HloProto const* hlo_proto() const { return hlo_proto_.get(); }
 
   std::string& debug_info() { return debug_info_; }

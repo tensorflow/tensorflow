@@ -19,12 +19,12 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-#include "tensorflow/stream_executor/stream.h"
 
 namespace tensorflow {
 
@@ -47,16 +47,14 @@ Status RangeInit(const Eigen::GpuDevice& d, const T start, const T delta,
                          size, out);
 }
 
-}  // namespace detail
-
 // Computes keys_out = sorted(keys_in), and indices_out = argsort(keys_in).
 // If keys_out is not required, it can be set to nullptr.
 // If indices_in is nullptr, the range of input indices [0, size) will be used.
-template <typename Tkey, typename Tindex>
-Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
-                    Tkey* keys_out,            // Optional
-                    const Tindex* indices_in,  // Optional
-                    Tindex* indices_out, int num_bits = sizeof(Tkey) * 8) {
+template <bool Descending, typename Tkey, typename Tindex>
+Status GpuRadixSortImpl(OpKernelContext* context, int size, const Tkey* keys_in,
+                        Tkey* keys_out,            // Optional
+                        const Tindex* indices_in,  // Optional
+                        Tindex* indices_out, int num_bits = sizeof(Tkey) * 8) {
   if (size == 0) return OkStatus();
   if (num_bits == 0) {
     // Workaround for CUB failing when begin_bit = end_bit = 0 (e.g., when all
@@ -110,9 +108,16 @@ Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
   Tensor temp_storage;
   size_t temp_storage_bytes = 0;
   const auto& cu_stream = GetGpuStream(context);
-  auto err = gpuprim::DeviceRadixSort::SortPairs(
-      nullptr, temp_storage_bytes, keys_in, keys_out, indices_in, indices_out,
-      size, /*begin_bit=*/0, /*end_bit=*/num_bits, cu_stream);
+  gpuError_t err;
+  if constexpr (Descending) {
+    err = gpuprim::DeviceRadixSort::SortPairsDescending(
+        nullptr, temp_storage_bytes, keys_in, keys_out, indices_in, indices_out,
+        size, /*begin_bit=*/0, /*end_bit=*/num_bits, cu_stream);
+  } else {
+    err = gpuprim::DeviceRadixSort::SortPairs(
+        nullptr, temp_storage_bytes, keys_in, keys_out, indices_in, indices_out,
+        size, /*begin_bit=*/0, /*end_bit=*/num_bits, cu_stream);
+  }
   if (err != 0) {
     return errors::Internal(
         "Failed to launch gpuprim::DeviceRadixSort::SortPairs to calculate "
@@ -124,10 +129,17 @@ Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
       DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
       &temp_storage));
   // Sort indices by keys.
-  err = gpuprim::DeviceRadixSort::SortPairs(
-      temp_storage.flat<int8>().data(), temp_storage_bytes, keys_in, keys_out,
-      indices_in, indices_out, size, /*begin_bit=*/0, /*end_bit=*/num_bits,
-      cu_stream);
+  if constexpr (Descending) {
+    err = gpuprim::DeviceRadixSort::SortPairsDescending(
+        temp_storage.flat<int8>().data(), temp_storage_bytes, keys_in, keys_out,
+        indices_in, indices_out, size, /*begin_bit=*/0, /*end_bit=*/num_bits,
+        cu_stream);
+  } else {
+    err = gpuprim::DeviceRadixSort::SortPairs(
+        temp_storage.flat<int8>().data(), temp_storage_bytes, keys_in, keys_out,
+        indices_in, indices_out, size, /*begin_bit=*/0, /*end_bit=*/num_bits,
+        cu_stream);
+  }
   if (err != 0) {
     return errors::Internal(
         "Failed to launch gpuprim::DeviceRadixSort::SortPairs, "
@@ -135,6 +147,28 @@ Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
         temp_storage_bytes, "status: ", cudaGetErrorString(err));
   }
   return OkStatus();
+}
+
+}  // namespace detail
+
+template <typename Tkey, typename Tindex>
+Status GpuRadixSort(OpKernelContext* context, int size, const Tkey* keys_in,
+                    Tkey* keys_out,            // Optional
+                    const Tindex* indices_in,  // Optional
+                    Tindex* indices_out, int num_bits = sizeof(Tkey) * 8) {
+  return detail::GpuRadixSortImpl</*Descending=*/false>(
+      context, size, keys_in, keys_out, indices_in, indices_out, num_bits);
+}
+
+template <typename Tkey, typename Tindex>
+Status GpuRadixSortDescending(OpKernelContext* context, int size,
+                              const Tkey* keys_in,
+                              Tkey* keys_out,            // Optional
+                              const Tindex* indices_in,  // Optional
+                              Tindex* indices_out,
+                              int num_bits = sizeof(Tkey) * 8) {
+  return detail::GpuRadixSortImpl</*Descending=*/true>(
+      context, size, keys_in, keys_out, indices_in, indices_out, num_bits);
 }
 
 template <typename InputIteratorT, typename OutputIteratorT>

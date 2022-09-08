@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -84,7 +85,7 @@ absl::Status Winograd4x4To36TileX6Test(TestExecutionEnvironment* env) {
           CreateWinograd4x4To36TileX6(env->GetGpuInfo(), op_def, padding);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<Winograd4x4To36TileX6>(std::move(operation)),
+          std::make_unique<Winograd4x4To36TileX6>(std::move(operation)),
           BHWC(1, 36, 1, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
     }
@@ -153,7 +154,7 @@ absl::Status Winograd36To4x4Tile4x1Test(TestExecutionEnvironment* env) {
           CreateWinograd36To4x4Tile4x1(env->GetGpuInfo(), op_def, biases);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<Winograd36To4x4Tile4x1>(std::move(operation)),
+          std::make_unique<Winograd36To4x4Tile4x1>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
     }
@@ -218,7 +219,7 @@ absl::Status Winograd4x4To36Test(TestExecutionEnvironment* env) {
       Winograd4x4To36 operation =
           CreateWinograd4x4To36(op_def, padding, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Winograd4x4To36>(std::move(operation)),
+          src_tensor, std::make_unique<Winograd4x4To36>(std::move(operation)),
           BHWC(1, 36, 1, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
     }
@@ -285,7 +286,7 @@ absl::Status Winograd36To4x4Test(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       Winograd36To4x4 operation = CreateWinograd36To4x4(op_def, biases);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Winograd36To4x4>(std::move(operation)),
+          src_tensor, std::make_unique<Winograd36To4x4>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
     }

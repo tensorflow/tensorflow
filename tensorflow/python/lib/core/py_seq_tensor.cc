@@ -114,7 +114,7 @@ PyObject* ZeroDimArrayToScalar(PyObject* obj, ConverterState* state) {
 // REQUIRES: PySequence_Check(seq) && PySequence_Length(seq) > 0.
 Status SampleElementFromSequence(PyObject* seq, PyObject** elem) {
   *elem = PySequence_GetItem(seq, 0);
-  if (*elem != nullptr) return Status::OK();
+  if (*elem != nullptr) return OkStatus();
   // seq may implement the sequence protocol (i.e., implement __getitem__)
   // but may legitimately not have a 0-th element (__getitem__(self, 0)
   // raises a KeyError). For example:
@@ -142,7 +142,7 @@ Status SampleElementFromSequence(PyObject* seq, PyObject** elem) {
                                    Py_TYPE(seq)->tp_name,
                                    " object since it is an empty sequence");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 tstring PyRepr(PyObject* obj);
@@ -205,7 +205,7 @@ Status InferShapeAndType(PyObject* obj, ConverterState* state) {
                                      ") with an unsupported type (",
                                      PyRepr(PyType(obj)), ") to a Tensor.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -308,7 +308,7 @@ struct Converter {
     }
     *h = tensorflow::wrap(tensorflow::unwrap(ctx)->CreateLocalHandle(t));
     t->Release();
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -722,6 +722,17 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
     // The Py_NotImplemented returned from PyArray_FromArrayAttr is not
     // Py_INCREF'ed, so we don't want the Safe_PyObjectPtr to Py_DECREF it.
     array.release();
+
+    // Try __array_interface__ objects (such as PIL Image).
+    array = make_safe(PyArray_FromInterface(obj));
+    if (array == nullptr) {
+      return nullptr;
+    }
+    if (array.get() == Py_NotImplemented) {
+      array.release();
+    } else {
+      obj = array.get();
+    }
   } else {
     // PyArray_FromArrayAttr ensures that `array` is a PyArrayObject, so all
     // we have to do is replace `obj` with it and continue.

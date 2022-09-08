@@ -22,6 +22,8 @@ import warnings
 import weakref
 
 from tensorflow.python.autograph.lang import directives
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
@@ -70,10 +72,8 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import constants as sm_constants
 from tensorflow.python.saved_model import loader_impl as sm_loader
-from tensorflow.python.training import checkpoint_management
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import py_checkpoint_reader
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import keras_export
@@ -2845,7 +2845,10 @@ def concat(tensors, axis=0):
   """Concats `tensor`s along `axis`."""
   if isinstance(tensors[0], sparse_tensor.SparseTensor):
     return sparse_ops.sparse_concat_v2(axis=axis, sp_inputs=tensors)
-  return array_ops.concat(tensors, axis=axis)
+  elif _is_scalar(tensors[0]):
+    return array_ops.stack(tensors, axis=axis)
+  else:
+    return array_ops.concat(tensors, axis=axis)
 
 
 def _is_tpu_multi_host(strategy):

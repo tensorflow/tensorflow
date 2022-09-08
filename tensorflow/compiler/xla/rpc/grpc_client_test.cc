@@ -28,10 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/rpc/grpc_stub.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/net.h"
 
 #if defined(PLATFORM_WINDOWS)
 // This is not used on windows, but we define it here to make the test simpler

@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_EXECUTOR_API_H_
 #define TENSORFLOW_CORE_TPU_TPU_EXECUTOR_API_H_
 
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/core/tpu/libtftpu.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 
 namespace tensorflow {
 namespace tpu {

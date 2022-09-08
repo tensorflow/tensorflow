@@ -151,7 +151,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleCollectivePermute(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
-  Status HandleSort(HloInstruction* sort) override;
+  Status HandleSort(HloInstruction* hlo) override;
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleReduceWindow(HloInstruction* reduce_window) override;
@@ -187,7 +187,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   BufferAllocation::Slice GetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index = {}) const {
-    return assignment_.GetUniqueSlice(&hlo, index).ConsumeValueOrDie();
+    return assignment_.GetUniqueSlice(&hlo, index).value();
   }
 
  private:

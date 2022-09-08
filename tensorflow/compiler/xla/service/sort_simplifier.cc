@@ -104,7 +104,7 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
   }
   HloModule* module = sort->GetModule();
   HloComputation* new_compare = module->AddEmbeddedComputation(
-      comparator->CloneWithReplacements(std::move(replacements)));
+      comparator->CloneWithReplacements(&replacements));
   new_sort->set_to_apply(new_compare);
 
   // Map from original get-tuple-element tuple index to new HLO instruction
@@ -135,13 +135,15 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
 }
 }  // namespace
 
-StatusOr<bool> SortSimplifier::Run(HloModule* module) {
+StatusOr<bool> SortSimplifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "HLO module before SortSimplifier:";
   XLA_VLOG_LINES(2, module->ToString());
 
   bool changed = false;
   std::vector<HloInstruction*> sort_instrs;
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(sort_instrs),
                     [](const HloInstruction* instr) {
                       return instr->opcode() == HloOpcode::kSort;

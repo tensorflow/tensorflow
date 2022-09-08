@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 
+#include <memory>
+
 #include "absl/base/thread_annotations.h"
-#include "tensorflow/core/platform/logging.h"
+#include "absl/synchronization/mutex.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace cpu {

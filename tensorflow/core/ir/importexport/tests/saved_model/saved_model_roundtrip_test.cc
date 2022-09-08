@@ -47,7 +47,7 @@ void RunRoundTrip(const std::string& input_file) {
       mlir::tfg::ImportSavedModelToMlir(&context, debug_info, original_model);
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
-      std::move(module_ref_status.ValueOrDie());
+      std::move(module_ref_status.value());
 
   tensorflow::SavedModel final_model;
   auto status = mlir::tfg::ExportMlirToSavedModel(*module_ref, original_model,

@@ -42,15 +42,15 @@ class BufRendezvousTest : public ::testing::Test {
     attrs.set_name(name);
     attrs.set_device_type(type);
     attrs.set_incarnation(incarnation);
-    return absl::make_unique<FakeDevice>(attrs);
+    return std::make_unique<FakeDevice>(attrs);
   }
 
   void InitializeDevice(const string& device, const string& type,
                         const uint64 incarnation) {
     std::vector<std::unique_ptr<Device>> devices;
     devices.push_back(NewDevice(device, type, incarnation));
-    dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
-    br_ = absl::make_unique<BufRendezvous>(123, dev_mgr_.get());
+    dev_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
+    br_ = std::make_unique<BufRendezvous>(123, dev_mgr_.get());
   }
 
   BufRendezvousTest()

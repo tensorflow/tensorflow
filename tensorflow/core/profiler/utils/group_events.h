@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -47,7 +48,6 @@ struct InterThreadConnectInfo {
 
 struct GroupMetadata {
   std::string name;
-  std::string model_id;  // inference only.
   absl::flat_hash_set<int64_t> parents;
   absl::flat_hash_set<int64_t> children;
 };
@@ -59,8 +59,7 @@ using GroupMetadataMap =
 // pointers, a tree of EventNode is formed.
 class EventNode {
  public:
-  // REQUIRED: raw_event should not be nullptr, visitor must wrap raw_event.
-  EventNode(XEventVisitor visitor, XEvent* raw_event);
+  explicit EventNode(XEventVisitor visitor) : visitor_(std::move(visitor)) {}
 
   EventNode(const EventNode& event_node) = delete;
   EventNode& operator=(const EventNode&) = delete;
@@ -92,7 +91,7 @@ class EventNode {
   void SetIsEager(bool is_eager);
 
   // Returns true if this event is part of eagerly executed op.
-  bool IsEager();
+  bool IsEager() const;
 
   bool IsNestedIn(EventNode* parent);
 
@@ -115,7 +114,6 @@ class EventNode {
   XStat* FindOrAddStatByType(int64_t stat_type);
 
   XEventVisitor visitor_;
-  XEvent* raw_event_;
   std::vector<EventNode*> parents_;
   std::vector<EventNode*> children_;
   absl::optional<int64_t> group_id_;
@@ -126,8 +124,7 @@ class EventNode {
 };
 
 using EventNodeMap =
-    absl::flat_hash_map<int64_t /*event_type*/,
-                        std::vector<std::unique_ptr<EventNode>>>;
+    absl::flat_hash_map<int64_t /*event_type*/, std::deque<EventNode>>;
 
 using EventList = std::vector<EventNode*>;
 
@@ -206,9 +203,6 @@ class EventForest {
   // Processes the worker thread by connecting a FunctionRun with the following
   // eager ops (e.g., for Keras callback).
   void ProcessWorker();
-
-  // Adds model ids to group_metadata_map for inference profiles.
-  void ProcessModelIds();
 
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;

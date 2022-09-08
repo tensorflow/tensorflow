@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -63,7 +64,7 @@ TEST_F(LogisticExpanderTest, ExpandWithTanh) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kLogistic);
   LogisticExpander logistic_expander(LogisticExpansionType::kTanh);
-  ASSERT_TRUE(logistic_expander.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(logistic_expander.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::AddAnyOrder(
@@ -90,7 +91,7 @@ TEST_F(LogisticExpanderTest, ExpandWithEXP) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kLogistic);
   LogisticExpander logistic_expander(LogisticExpansionType::kExp);
-  ASSERT_TRUE(logistic_expander.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(logistic_expander.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Divide(

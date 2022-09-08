@@ -24,13 +24,13 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -93,7 +93,7 @@ TEST(ConvertTypeToTensorTypeTest, ConvertStringTensor) {
   Tt.setValues({"one", "two", "three", "four"});
   auto value_or_status = ConvertTensor(tensor, &b);
   ASSERT_TRUE(value_or_status.ok());
-  auto attr = value_or_status.ValueOrDie();
+  auto attr = value_or_status.value();
 
   EXPECT_TRUE(attr.isa<mlir::DenseStringElementsAttr>());
   auto string_attr = attr.cast<mlir::DenseStringElementsAttr>();
@@ -116,7 +116,7 @@ class ConvertTensorTest : public ::testing::Test {
 
     auto value_or = ConvertTensor(tensor, &b);
     TF_ASSERT_OK(value_or.status());
-    auto attr = value_or.ValueOrDie();
+    auto attr = value_or.value();
 
     EXPECT_EQ(attr.getType().getElementType(), expected_ty);
 

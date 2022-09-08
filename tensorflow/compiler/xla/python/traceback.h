@@ -29,19 +29,26 @@ namespace xla {
 // Represents a Python traceback.
 class Traceback {
  public:
-  // Require GIL.
+  // Require GIL. Creates a Traceback object that requires destructor to be
+  // invoked with GIL held as well.
   static std::shared_ptr<Traceback> Get();
+
+  // Safely destroy the traceback object regardless of whether GIL is held or
+  // not.
+  static void SafeDestroy(Traceback traceback);
 
   // Require GIL.
   static bool enabled() { return enabled_; }
   // Require GIL.
   static void SetEnabled(bool enabled);
 
-  Traceback() = default;
+  // Require GIL.
+  Traceback();
+  // Require GIL.
   ~Traceback();
 
   Traceback(const Traceback&) = delete;
-  Traceback(Traceback&&) = delete;
+  Traceback(Traceback&& other);
   Traceback& operator=(const Traceback&) = delete;
   Traceback& operator=(Traceback&&) = delete;
 

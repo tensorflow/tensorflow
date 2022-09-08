@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 /// \file
 /// Main abstraction controlling the tflite interpreter.
-/// See context.h for the API for defining operations (TfLiteRegistration).
+/// See c/common.h for the API for defining operations (TfLiteRegistration).
 #ifndef TENSORFLOW_LITE_INTERPRETER_H_
 #define TENSORFLOW_LITE_INTERPRETER_H_
 
@@ -41,8 +41,8 @@ limitations under the License.
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/interpreter_options.h"
-#include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
+#include "tensorflow/lite/profiling/root_profiler.h"
 #include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
@@ -601,13 +601,25 @@ class Interpreter {
 
   /// Sets the profiler to tracing execution. The caller retains ownership
   /// of the profiler and must ensure its validity.
+  /// Previously registered profilers will be unregistered.
+  /// If `profiler` is nullptr, all previously installed profilers will be
+  /// removed.
   /// WARNING: This is an experimental API and subject to change.
   void SetProfiler(Profiler* profiler);
 
   /// Same as SetProfiler except this interpreter takes ownership
   /// of the provided profiler.
+  /// Previously registered profilers will be unregistered.
+  /// If `profiler` is nullptr, all previously installed profilers will be
+  /// removed.
   /// WARNING: This is an experimental API and subject to change.
   void SetProfiler(std::unique_ptr<Profiler> profiler);
+
+  /// Adds the profiler to tracing execution. The caller retains ownership
+  /// of the profiler and must ensure its validity.
+  /// nullptr `profiler` will be ignored.
+  /// WARNING: This is an experimental API and subject to change.
+  void AddProfiler(Profiler* profiler);
 
   /// Gets the profiler used for op tracing.
   /// WARNING: This is an experimental API and subject to change.
@@ -713,12 +725,11 @@ class Interpreter {
   const Subgraph& primary_subgraph() const {
     return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
   }
+#endif  // DOXYGEN_SKIP
 
   /// WARNING: Experimental interface, subject to change
-  // Get the error reporter associated with this interpreter.
+  /// Get the error reporter associated with this interpreter.
   ErrorReporter* error_reporter() const { return error_reporter_; }
-
-#endif  // DOXYGEN_SKIP
 
  private:
   friend class InterpreterBuilder;
@@ -839,12 +850,9 @@ class Interpreter {
       std::unique_ptr<TfLiteDelegate, std::function<void(TfLiteDelegate*)>>>
       owned_delegates_;
 
-  // Profiler that has been installed and is owned by this interpreter instance.
-  // Useful if client profiler ownership is burdensome.
-  std::unique_ptr<Profiler> owned_profiler_;
-
-  // Points to the installed Profiler instance.
-  Profiler* installed_profiler_ = nullptr;
+  // A root profiler that holds a list of attached profiler implementations.
+  // will be nullptr if there's no child profiler registered.
+  std::unique_ptr<profiling::RootProfiler> root_profiler_;
 
   bool allow_buffer_handle_output_ = false;
 

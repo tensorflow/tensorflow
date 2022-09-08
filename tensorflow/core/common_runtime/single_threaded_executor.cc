@@ -322,8 +322,6 @@ class SingleThreadedExecutorImpl : public Executor {
     params.collective_executor = args.collective_executor;
     params.stack_trace = args.stack_trace;
     params.slice_reader_cache = nullptr;  // TODO(mrry): Too severe?
-    params.inputs = &node_inputs;
-    params.input_alloc_attrs = &input_alloc_attrs;
 
     Args::Runner runner_copy = args.runner;
     params.runner = &runner_copy;
@@ -437,6 +435,8 @@ class SingleThreadedExecutorImpl : public Executor {
         }
         input_alloc_attrs[j] = input_alloc_attrs_[input_start_index + j];
       }
+      params.inputs = node_inputs;
+      params.input_alloc_attrs = input_alloc_attrs;
       params.op_kernel = kernel_state.kernel;
       params.output_attr_array = kernel_state.output_alloc_attrs.data();
       OpKernelContext ctx(&params, num_outputs);
@@ -592,7 +592,7 @@ static SingleThreadedExecutorRegistrar registrar;
 
 Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
                                  const Graph& graph, Executor** executor) {
-  auto impl = absl::make_unique<SingleThreadedExecutorImpl>(params);
+  auto impl = std::make_unique<SingleThreadedExecutorImpl>(params);
   TF_RETURN_IF_ERROR(impl->Initialize(graph));
   *executor = impl.release();
   return OkStatus();

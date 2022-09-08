@@ -20,8 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -32,7 +32,7 @@ namespace gpu {
 //
 // On ROCm platform, it comprises of se::RocmComputeCapability.
 using GpuVersion =
-    absl::variant<se::CudaComputeCapability, se::RocmComputeCapability>;
+    std::variant<se::CudaComputeCapability, se::RocmComputeCapability>;
 }  // namespace gpu
 }  // namespace xla
 

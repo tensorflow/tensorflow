@@ -49,48 +49,27 @@ export TF_NEED_TENSORRT=0
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="CPU"
 
-# Get the default test targets for bazel.
+# Get the default test targets for bazel
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
-# Set python version string
-py_ver=$(python -c 'import sys; print(str(sys.version_info.major)+str(sys.version_info.minor))')
+# Get the skip test list for arm
+source tensorflow/tools/ci_build/build_scripts/ARM_SKIP_TESTS.sh
 
 # Export optional variables for running pip_new.sh
-export TF_BUILD_FLAGS="--config=mkl_aarch64 --copt=-mtune=generic --copt=-march=armv8-a \
-    --copt=-O3 --copt=-fopenmp --copt=-flax-vector-conversions --linkopt=-lgomp"
+export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-mtune=generic --copt=-march=armv8-a \
+    --copt=-O3 --copt=-flax-vector-conversions"
 export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
-    --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --test_lang_filters=py \
-    --define=no_tensorflow_py_deps=true --verbose_failures=true --test_keep_going"
-export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
-    -//tensorflow/lite/... \
-    -//tensorflow/compiler/mlir/lite/tests:const-fold.mlir.test \
-    -//tensorflow/compiler/mlir/lite/tests:prepare-tf.mlir.test \
-    -//tensorflow/python:nn_grad_test \
-    -//tensorflow/python:dequantize_op_test \
-    -//tensorflow/python:quantized_ops_test \
-    -//tensorflow/python/client:session_list_devices_test \
-    -//tensorflow/python/data/experimental/kernel_tests/service:cross_trainer_cache_test \
-    -//tensorflow/python/data/kernel_tests:iterator_test_cpu \
-    -//tensorflow/python/eager:forwardprop_test \
-    -//tensorflow/python/framework:node_file_writer_test \
-    -//tensorflow/python/grappler:memory_optimizer_test \
-    -//tensorflow/python/kernel_tests/linalg:linear_operator_householder_test \
-    -//tensorflow/python/kernel_tests/linalg:linear_operator_inversion_test \
-    -//tensorflow/python/kernel_tests/linalg:linear_operator_block_diag_test \
-    -//tensorflow/python/kernel_tests/linalg:linear_operator_block_lower_triangular_test \
-    -//tensorflow/python/kernel_tests/linalg:linear_operator_kronecker_test \
-    -//tensorflow/python/kernel_tests/math_ops:batch_matmul_op_test \
-    -//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
-    -//tensorflow/python/kernel_tests/nn_ops:conv2d_backprop_filter_grad_test \
-    -//tensorflow/python/kernel_tests/nn_ops:conv3d_backprop_filter_v2_grad_test \
-    -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
-    -//tensorflow/python/ops/parallel_for:math_test \
-    -//tensorflow/python/training:server_lib_test"
+    --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --define=no_tensorflow_py_deps=true \
+    --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium --verbose_failures=true --test_keep_going"
+export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} ${ARM_SKIP_TESTS}"
 export TF_PIP_TESTS="test_pip_virtualenv_clean"
-export TF_TEST_FILTER_TAGS="-no_oss,-oss_serial,-no_oss_py${py_ver},-gpu,-tpu,-benchmark-test,-v1only,-no_aarch64,-requires-gpu"
-export IS_NIGHTLY=0 # This variable is not used, but is required to be set
+export TF_TEST_FILTER_TAGS="-no_oss,-oss_serial,-v1only,-benchmark-test,-no_aarch64"
 export TF_PIP_TEST_ROOT="pip_test"
 export TF_AUDITWHEEL_TARGET_PLAT="manylinux2014"
+
+if [ ${IS_NIGHTLY} == 1 ]; then
+  ./tensorflow/tools/ci_build/update_version.py --nightly
+fi
 
 source tensorflow/tools/ci_build/builds/pip_new.sh
 

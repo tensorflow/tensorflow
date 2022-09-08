@@ -20,9 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/data/service/common.h"
+#include "tensorflow/core/data/service/cross_trainer_cache.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/logging_utils.h"
-#include "tensorflow/core/data/service/multi_trainer_cache.h"
 #include "tensorflow/core/data/service/thread_safe_buffer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
@@ -76,17 +76,16 @@ Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
           cardinality,
           ". Consider adding a `.repeat()` transformation to the dataset.");
     }
-    out = absl::make_unique<RoundRobinTaskRunner>(std::move(iterator),
-                                                  task_def.num_consumers(),
-                                                  task_def.worker_address());
+    out = std::make_unique<RoundRobinTaskRunner>(std::move(iterator),
+                                                 task_def.num_consumers(),
+                                                 task_def.worker_address());
   } else if (task_def.use_cross_trainer_cache()) {
-    // TODO(b/221104308): Add a validation to check enough RAM is available.
     const size_t max_cache_size_bytes =
         worker_config.cross_trainer_cache_size_bytes() > 0
             ? worker_config.cross_trainer_cache_size_bytes()
             : kDefaultCrossTrainerCacheSizeBytes;
-    out = std::make_unique<CachingTaskRunner>(
-        std::move(iterator), /*max_cache_size_bytes=*/max_cache_size_bytes);
+    out = std::make_unique<CachingTaskRunner>(std::move(iterator),
+                                              max_cache_size_bytes);
   } else {
     out = std::make_unique<FirstComeFirstServedTaskRunner>(std::move(iterator));
   }
@@ -135,7 +134,7 @@ FirstComeFirstServedTaskRunner::GetNextFromInputIterator()
     TF_LOCKS_EXCLUDED(mu_) {
   GetElementResult result;
   std::vector<Tensor> element;
-  bool end_of_task;
+  bool end_of_task = false;
   result.skip = false;
   {
     mutex_lock l(mu_);
@@ -158,8 +157,8 @@ CachingTaskRunner::CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
                                      size_t max_cache_size_bytes)
     : fcfs_task_runner_(std::move(iterator)),
       cache_(max_cache_size_bytes,
-             absl::make_unique<GetElementResultSequence>(fcfs_task_runner_)) {
-  LOG(INFO) << "Initialized tf.data service multi-trainer cache with "
+             std::make_unique<GetElementResultSequence>(fcfs_task_runner_)) {
+  LOG(INFO) << "Initialized tf.data service cross-trainer cache with "
             << FormatBytes(max_cache_size_bytes) << " of memory.";
 }
 
@@ -181,6 +180,11 @@ StatusOr<GetElementResult>
 CachingTaskRunner::GetElementResultSequence::GetNext() {
   GetElementResult result;
   TF_RETURN_IF_ERROR(fcfs_task_runner_.GetNext(result));
+  if (result.end_of_sequence) {
+    return errors::InvalidArgument(
+        "Cross-trainer caching requires the input dataset to be infinite. "
+        "However, it reached the end of sequence.");
+  }
   return result;
 }
 
@@ -190,10 +194,10 @@ size_t CachingTaskRunner::GetElementResultSequence::GetElementSizeBytes(
 }
 
 void CachingTaskRunner::Cancel() {
-  VLOG(2) << "Cancelling tf.data service multi-trainer cache task.";
+  VLOG(2) << "Cancelling tf.data service cross-trainer cache task.";
   if (!cache_.IsCancelled()) {
     cache_.Cancel(errors::Cancelled(
-        "tf.data service multi-trainer cache task is cancelled."));
+        "tf.data service cross-trainer cache task is cancelled."));
   }
   fcfs_task_runner_.Cancel();
 }
@@ -376,7 +380,7 @@ void PrefetchThread::Run() {
       return;
     }
     mutex_lock l(mu_);
-    buffer_.push_back(absl::make_unique<Element>(std::move(element), index_++));
+    buffer_.push_back(std::make_unique<Element>(std::move(element), index_++));
     cv_.notify_all();
   }
 }

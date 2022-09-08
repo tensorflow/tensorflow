@@ -32,6 +32,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
+        "//tensorflow/core/protobuf:coordination_service_cc_grpc_proto",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core:platform_base",

@@ -41,8 +41,8 @@ StatusOr<std::vector<PrimitiveType>> GetOperandTypes(
     absl::Span<const XlaOp> init_values) {
   std::vector<PrimitiveType> op_types;
   auto num_operands = operands.size();
-  auto operands_shapes = builder->GetOperandShapes(operands).ValueOrDie();
-  auto init_values_shapes = builder->GetOperandShapes(init_values).ValueOrDie();
+  auto operands_shapes = builder->GetOperandShapes(operands).value();
+  auto init_values_shapes = builder->GetOperandShapes(init_values).value();
   for (int i = 0; i < num_operands; ++i) {
     const auto& op_shape = operands_shapes[i];
     const auto& init_shape = init_values_shapes[i];
@@ -111,7 +111,7 @@ XlaOp AggregateToTopKBuilder(XlaBuilder* builder,
                              absl::Span<const XlaOp> init_values, int64_t top_k,
                              int64_t reduction_dim,
                              const XlaComputation& comparator) {
-  auto operands_shapes = builder->GetOperandShapes(operands).ValueOrDie();
+  auto operands_shapes = builder->GetOperandShapes(operands).value();
   int64_t rank = operands_shapes[0].rank();
   int64_t num_operands = operands.size();
 
@@ -120,7 +120,7 @@ XlaOp AggregateToTopKBuilder(XlaBuilder* builder,
     if (!status_or_optypes.ok()) {
       return builder->ReportError(status_or_optypes.status());
     }
-    auto op_types = status_or_optypes.ConsumeValueOrDie();
+    auto op_types = status_or_optypes.value();
 
     auto reduction_computation =
         BuildReductionComputation(builder, op_types, comparator);
@@ -166,13 +166,13 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                         operands.size(), init_values.size()));
   }
   auto num_operands = operands.size();
-  auto operands_shapes = builder->GetOperandShapes(operands).ValueOrDie();
-  auto init_values_shapes = builder->GetOperandShapes(init_values).ValueOrDie();
+  auto operands_shapes = builder->GetOperandShapes(operands).value();
+  auto init_values_shapes = builder->GetOperandShapes(init_values).value();
   auto status_or_optypes = GetOperandTypes(builder, operands, init_values);
   if (!status_or_optypes.ok()) {
     return builder->ReportError(status_or_optypes.status());
   }
-  auto op_types = status_or_optypes.ConsumeValueOrDie();
+  auto op_types = status_or_optypes.value();
   int64_t rank = operands_shapes[0].rank();
   if (reduction_dim < 0 || reduction_dim >= rank) {
     return builder->ReportError(
@@ -202,7 +202,7 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 
   int64_t approx_output_size, log2_reduction;
   std::tie(approx_output_size, log2_reduction) =
-      status_or_approx_output_size.ValueOrDie();
+      status_or_approx_output_size.value();
 
   if (log2_reduction == 0) {
     if (aggregate_to_topk) {
@@ -256,7 +256,7 @@ XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                          const XlaComputation& comparator, float recall_target,
                          bool aggregate_to_topk,
                          int64_t reduction_input_size_override) {
-  auto operands_shapes = builder->GetOperandShapes(operands).ValueOrDie();
+  auto operands_shapes = builder->GetOperandShapes(operands).value();
   int64_t rank = operands_shapes[0].rank();
   uint64_t n = operands_shapes[0].dimensions(reduction_dim);
   // Align the output size with ApproxTopK.
@@ -266,7 +266,7 @@ XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   if (!status_or_approx_output_size.ok()) {
     return builder->ReportError(status_or_approx_output_size.status());
   }
-  auto output_size = status_or_approx_output_size.ConsumeValueOrDie().first;
+  auto output_size = status_or_approx_output_size.value().first;
   return AggregateToTopKBuilder(builder, operands, init_values, output_size,
                                 reduction_dim, comparator);
 }

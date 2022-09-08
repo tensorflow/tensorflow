@@ -31,9 +31,9 @@ from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import registration
-from tensorflow.python.training.tracking import asset
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import resource
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable import resource
 
 
 @registration.register_tf_serializable()
@@ -102,8 +102,7 @@ class ExportedConcreteFunction(trackable.Trackable):
 
   def __call__(self, *args, **kwargs):
     _, _, filtered_flat_args = (
-        self.function._function_spec.canonicalize_function_inputs(*args,
-                                                                  **kwargs))
+        self.function._function_spec.canonicalize_function_inputs(args, kwargs))
     export_captures = _map_captures_to_created_tensors(
         self.function.graph.captures, self.tensor_map, self.function)
     return self.function._call_flat(filtered_flat_args, export_captures)

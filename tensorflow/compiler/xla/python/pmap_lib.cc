@@ -42,8 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace jax {
 
@@ -158,7 +158,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
     TF_RET_CHECK(xla::PyBuffer::IsPyBuffer(per_device_pybuffers[0]));
     for (py::handle per_device_pybuffer : per_device_pybuffers) {
       xla::PjRtBuffer* buf =
-          xla::PyBuffer::AsPyBuffer(per_device_pybuffer).ValueOrDie()->buffer();
+          xla::PyBuffer::AsPyBuffer(per_device_pybuffer).value()->buffer();
       per_device_buffers.push_back(buf);
     }
   }
@@ -282,11 +282,23 @@ class PmapFunction {
         return signature_or_error.status();
       }
       arguments.signature.dynamic_arg_signatures.push_back(
-          std::move(signature_or_error).ValueOrDie());
+          std::move(signature_or_error).value());
     }
-    arguments.signature.global_extra_jit_context =
-        global_state.extra_jit_context;
-    arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
+    try {
+      py::object pxla_module = py::module::import("jax").attr("config");
+      py::object sda = py::getattr(pxla_module, "_trace_context", py::none());
+      if (!sda.is_none()) {
+        arguments.signature.thread_local_extra_jit_context = sda();
+      }
+    } catch (const py::error_already_set& e) {
+      // Ignore; jax may not be present.
+    }
+    if (!arguments.signature.thread_local_extra_jit_context.has_value()) {
+      arguments.signature.thread_local_extra_jit_context =
+          tls.extra_jit_context;
+      arguments.signature.global_extra_jit_context =
+          global_state.extra_jit_context;
+    }
     return xla::Status();
   }
 
@@ -421,7 +433,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
       it;
   bool inserted;
   std::tie(it, inserted) = executables_.try_emplace(
-      arguments.signature, absl::make_unique<PmapCacheEntry>());
+      arguments.signature, std::make_unique<PmapCacheEntry>());
   PmapCacheEntry& cache_entry = *(it->second);
 
   if (!cache_entry.compilation_complete.HasBeenNotified()) {
@@ -542,7 +554,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
       cache_entry.out_pytree_def.Unflatten(flat_sharded_device_arrays);
 
   // If there is a post-hook function, call it with the inputs and the outputs.
-  absl::optional<py::object> post_hook = GetPostHook();
+  std::optional<py::object> post_hook = GetPostHook();
   if (post_hook) {
     (*post_hook)(this->AsPyHandle(), args, kwargs, out);
   }
@@ -680,7 +692,7 @@ PyObject* JaxPmapFunction_tp_call(PyObject* self, PyObject* args,
       PyErr_SetString(PyExc_ValueError, out.status().ToString().c_str());
       return nullptr;
     }
-    return out.ValueOrDie().release().ptr();
+    return out.value().release().ptr();
   } catch (py::error_already_set& e) {
     e.restore();
     return nullptr;

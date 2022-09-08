@@ -5,6 +5,7 @@ package_group(
     name = "internal",
     packages = [
         "//tensorflow/core/runtime_fallback/...",
+        "//tensorflow/compiler/mlir/tfrt/tests/tfrt_fallback/...",
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/tfrt/...",

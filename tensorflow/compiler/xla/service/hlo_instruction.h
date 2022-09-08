@@ -25,6 +25,8 @@ limitations under the License.
 #include <iosfwd>
 #include <list>
 #include <memory>
+#include <optional>
+#include <ostream>
 #include <set>
 #include <string>
 #include <tuple>
@@ -35,7 +37,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -56,8 +57,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -293,7 +294,7 @@ class HloPrintOptions {
   //   ROOT %async-done = f32[20]{0} custom-call-done(%async-update),
   //                                                    custom_call_target="foo"
   // }
-  HloPrintOptions& set_syntax_sugar_async_op(bool value) {
+  HloPrintOptions& set_syntax_sugar_async_ops(bool value) {
     syntax_sugar_async_ops_ = value;
     return *this;
   }
@@ -505,6 +506,8 @@ class HloInstruction {
     kCustom,
   };
 
+  inline static constexpr char kMainExecutionThread[] = "main";
+
   virtual ~HloInstruction() { DetachFromOperandsAndUsers(); }
 
   // Detaches an instruction from its operands and users. That is, remove the
@@ -512,6 +515,7 @@ class HloInstruction {
   void DetachFromOperandsAndUsers();
 
   // Adds a derived instruciton to the parent compuation of this instruction.
+  // Also update setup the new instruction as a derived instruction.
   HloInstruction* AddInstruction(
       std::unique_ptr<HloInstruction> derived_instruction);
 
@@ -624,13 +628,19 @@ class HloInstruction {
   // Creates an asynchronous start, update, and done op.
   static std::unique_ptr<HloInstruction> CreateAsyncStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      HloComputation* async_computation);
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt,
+      absl::string_view async_execution_thread = kMainExecutionThread);
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
       const Shape& shape, HloInstruction* operand,
-      HloComputation* async_computation);
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt,
+      absl::string_view async_execution_thread = kMainExecutionThread);
   static std::unique_ptr<HloInstruction> CreateAsyncDone(
       const Shape& shape, HloInstruction* operand,
-      HloComputation* async_computation);
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt,
+      absl::string_view async_execution_thread = kMainExecutionThread);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -642,7 +652,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCompare(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       Comparison::Direction direction,
-      absl::optional<Comparison::Type> type = absl::nullopt);
+      std::optional<Comparison::Type> type = std::nullopt);
 
   static std::unique_ptr<HloInstruction> CreateTriangularSolve(
       const Shape& shape, HloInstruction* a, HloInstruction* b,
@@ -674,7 +684,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t all_gather_dimension,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Creates an all-gather-start op, which concats the operands of all
   // participants
@@ -687,7 +697,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t all_gather_dimension,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Creates a cross replica reduction op.
   //
@@ -706,7 +716,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Creates a reduce-scatter operation which reduces its inputs across the
   // given replica groups and then scatters the reduced data across the N
@@ -715,7 +725,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids,
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids,
       int64_t scatter_dimension);
 
   // Creates an asynchronous cross replica reduction op.
@@ -735,7 +745,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id, bool use_global_device_ids);
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // An all-to-all op takes N array operands of the same shape and scatters them
   // to N replicas.  Each replica gathers the results into a tuple.
@@ -766,8 +776,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const absl::optional<int64_t>& channel_id,
-      const absl::optional<int64_t>& split_dimension = absl::nullopt);
+      const std::optional<int64_t>& channel_id,
+      const std::optional<int64_t>& split_dimension = std::nullopt);
 
   // Creates a communication instruction that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
@@ -777,28 +787,28 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const absl::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id);
 
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* input, HloInstruction* output,
       HloInstruction* input_start_indices, HloInstruction* output_start_indices,
       absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
       absl::Span<const std::vector<int64_t>> slice_sizes,
-      const absl::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id);
 
   // Creates a communication instruction that initiates the start of
   // CollectivePermute.
   static std::unique_ptr<HloInstruction> CreateCollectivePermuteStart(
       const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const absl::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id);
 
   static std::unique_ptr<HloInstruction> CreateCollectivePermuteStart(
       const Shape& shape, HloInstruction* input, HloInstruction* output,
       HloInstruction* input_start_indices, HloInstruction* output_start_indices,
       absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
       absl::Span<const std::vector<int64_t>> slice_sizes,
-      const absl::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id);
 
   // Creates an instruction that returns a U32 replica ID.
   static std::unique_ptr<HloInstruction> CreateReplicaId(
@@ -854,7 +864,7 @@ class HloInstruction {
   // Creates an asynchronous receive instruction with the given channel id,
   // which allocates resources to receive data of the given shape from a unique
   // send instruction in another computation that has the same channel id.  If
-  // is_host_transfer is true, then this Send operation transfers data from the
+  // is_host_transfer is true, then this Recv operation transfers data from the
   // host.
   static std::unique_ptr<HloInstruction> CreateRecv(
       const Shape& shape, HloInstruction* token, int64_t channel_id,
@@ -1083,10 +1093,13 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateFusion(
       const Shape& shape, FusionKind fusion_kind,
       absl::Span<HloInstruction* const> operands,
-      HloComputation* fusion_computation);
+      HloComputation* fusion_computation, absl::string_view prefix = "");
 
   // Creates a call instruction that applies the given computation on the given
   // operands. "shape" is the resultant shape.
+  static std::unique_ptr<HloInstruction> CreateCall(
+      const Shape& shape, HloInstruction* called_computation_root);
+
   static std::unique_ptr<HloInstruction> CreateCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* computation);
@@ -1158,6 +1171,12 @@ class HloInstruction {
 
   static std::unique_ptr<HloInstruction> CreateAddDependency(
       HloInstruction* data_operand, HloInstruction* token_operand);
+
+  // Returns true if `execution_thread` is included in the
+  // `execution_threads_set`.
+  static bool IsThreadIncluded(
+      absl::string_view execution_thread,
+      const absl::flat_hash_set<absl::string_view>& execution_threads_set);
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
@@ -1530,6 +1549,7 @@ class HloInstruction {
   bool IsFusible() const;
 
   bool IsCustomCall(absl::string_view target) const;
+  bool IsCustomCall(absl::Span<const absl::string_view> targets) const;
 
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.
@@ -1544,9 +1564,9 @@ class HloInstruction {
     return sharding_ ? *sharding_ : default_;
   }
   // Returns the sharding unique device, if any.
-  absl::optional<int64_t> sharding_unique_device() const {
+  std::optional<int64_t> sharding_unique_device() const {
     if (sharding_ == nullptr) {
-      return absl::optional<int64_t>();
+      return std::optional<int64_t>();
     }
     return sharding_->UniqueDevice();
   }
@@ -1666,7 +1686,7 @@ class HloInstruction {
   // dimensions.
   //
   // Precondition: this op must be a reshape.
-  std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
+  std::optional<ShapeUtil::ShapeEqualityDescriptor>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
   // Gets the string identifier for this instruction.
@@ -1724,7 +1744,7 @@ class HloInstruction {
 
   Status set_backend_config(const tensorflow::protobuf::Message& proto) {
     backend_config_ = proto;
-    return Status::OK();
+    return OkStatus();
   }
 
   bool has_backend_config() const { return !backend_config_.empty(); }
@@ -1858,8 +1878,8 @@ class HloInstruction {
   const std::vector<int64_t>& fft_length() const;
 
   // Delegates to HloChannelInstruction::channel_id.
-  absl::optional<int64_t> channel_id() const;
-  void set_channel_id(const absl::optional<int64_t>& channel_id);
+  std::optional<int64_t> channel_id() const;
+  void set_channel_id(const std::optional<int64_t>& channel_id);
 
   // Returns the dimension sizes or numbers associated with this instruction.
   virtual absl::Span<const int64_t> dimensions() const {
@@ -1908,6 +1928,11 @@ class HloInstruction {
   // Delegate to HloConstantInstruction::RelayoutConstant.
   void RelayoutConstant(const Layout& new_layout,
                         const ShapeIndex& shape_index = {});
+
+  // Delegates to
+  // HloCallableInstruction::AppendInstructionIntoCalledComputation.
+  HloInstruction* AppendInstructionIntoCalledComputation(
+      HloInstruction* instruction_to_append, bool add_output = false);
 
   // Delegates to HloFusionInstruction::AddFusionOperand.
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);
@@ -1974,8 +1999,8 @@ class HloInstruction {
       const std::vector<bool>& parameter_replicated_at_leaf_buffers);
 
   // Delegates to HloParameterInstruction::parameter_replicated_at_leaf_buffers.
-  const absl::optional<std::vector<bool>>&
-  parameter_replicated_at_leaf_buffers() const;
+  const std::optional<std::vector<bool>>& parameter_replicated_at_leaf_buffers()
+      const;
 
   // Delegates to HloGetTupleElementInstruction::tuple_index.
   int64_t tuple_index() const;
@@ -2111,6 +2136,24 @@ class HloInstruction {
   // Delagates to HloAsyncInstruction::async_wrapped_opcode().
   HloOpcode async_wrapped_opcode() const;
 
+  // Delegates to HloAsyncInstruction::async_group_id().
+  std::optional<int64_t> async_group_id() const;
+
+  // Delegates to HloAsyncInstruction::set_async_group_id().
+  void set_async_group_id(std::optional<int64_t> async_group_id);
+
+  // Delegates to HloAsyncInstruction::async_execution_thread().
+  absl::string_view async_execution_thread() const;
+
+  // Delegates to HloAsyncInstruction::set_async_execution_thread().
+  void set_async_execution_thread(absl::string_view async_execution_thread);
+
+  // Delegates to
+  // HloCallableInstruction::RecursivelySetComputationsThreadName().
+  void set_called_computations_execution_thread(
+      absl::string_view async_execution_thread,
+      bool skip_async_execution_thread_overwrite);
+
   // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
   bool is_cross_program_prefetch() const;
 
@@ -2124,6 +2167,10 @@ class HloInstruction {
 
   // Delegates to HloCholeskyInstruction::cholesky_options().
   const CholeskyOptions& cholesky_options() const;
+
+  // Delegates to HloCustomCallInstruction::output_to_operand_aliasing().
+  const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
+  custom_call_output_operand_aliasing() const;
 
   // Appends operand to the list of operands and adds this instruction as a user
   // of the operand.
@@ -2235,7 +2282,7 @@ class HloInstruction {
   // NOTE: For all instructions other than kFusion, being elementwise on one of
   // the operands is equivalent to being elementwise on all the operands.
   virtual bool IsElementwiseImpl(
-      const absl::optional<int64_t>& operand_idx) const;
+      const std::optional<int64_t>& operand_idx) const;
 
   // Prints an operand to a string. Accessed by friend class HloInstruction.
   virtual std::string OperandsToStringWithCanonicalNameMap(

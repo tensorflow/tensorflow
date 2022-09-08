@@ -15,21 +15,36 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+using ::testing::Property;
+using ::testing::SizeIs;
+using ::testing::UnorderedElementsAre;
+
+#if defined(PLATFORM_GOOGLE)
+using ::testing::EqualsProto;
+using ::testing::proto::IgnoringRepeatedFieldOrdering;
+#endif
 
 XEvent CreateEvent(int64_t offset_ps, int64_t duration_ps) {
   XEvent event;
@@ -318,6 +333,240 @@ TEST(XPlaneUtilsTest, MergeXPlaneTest) {
     CheckXEvent(line.events(0), dst_plane, "event1", "display1", 1, 2, 1);
     CheckXEvent(line.events(1), dst_plane, "event2", "", 3, 4, 1);
   }
+}
+
+TEST(XPlaneUtilsTest, FindPlanesWithPrefix) {
+  XSpace xspace;
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:0");
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:1");
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:2");
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:3");
+  XPlane* p4 = FindOrAddMutablePlaneWithName(&xspace, "test-do-not-include:0");
+
+  std::vector<const XPlane*> xplanes =
+      FindPlanesWithPrefix(xspace, "test-prefix");
+  ASSERT_EQ(4, xplanes.size());
+  for (const XPlane* plane : xplanes) {
+    ASSERT_NE(p4, plane);
+  }
+}
+
+TEST(XplaneUtilsTest, FindMutablePlanesWithPrefix) {
+  XSpace xspace;
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:0");
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:1");
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:2");
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:3");
+  XPlane* p4 = FindOrAddMutablePlaneWithName(&xspace, "test-do-not-include:0");
+
+  std::vector<XPlane*> xplanes =
+      FindMutablePlanesWithPrefix(&xspace, "test-prefix");
+  ASSERT_EQ(4, xplanes.size());
+  for (XPlane* plane : xplanes) {
+    ASSERT_NE(p4, plane);
+  }
+}
+
+TEST(XplaneUtilsTest, FindPlanesWithPredicate) {
+  XSpace xspace;
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:0");
+  XPlane* p1 = FindOrAddMutablePlaneWithName(&xspace, "test-prefix:1");
+
+  std::vector<const XPlane*> xplanes = FindPlanes(
+      xspace,
+      [](const XPlane& xplane) { return xplane.name() == "test-prefix:1"; });
+  ASSERT_EQ(1, xplanes.size());
+  ASSERT_EQ(p1, xplanes[0]);
+}
+
+TEST(XplaneUtilsTest, FindMutablePlanesWithPredicate) {
+  XSpace xspace;
+  FindOrAddMutablePlaneWithName(&xspace, "test-prefix:0");
+  XPlane* p1 = FindOrAddMutablePlaneWithName(&xspace, "test-prefix:1");
+
+  std::vector<XPlane*> xplanes = FindMutablePlanes(
+      &xspace, [](XPlane& xplane) { return xplane.name() == "test-prefix:1"; });
+  ASSERT_EQ(1, xplanes.size());
+  ASSERT_EQ(p1, xplanes[0]);
+}
+
+TEST(XplaneUtilsTest, TestAggregateXPlanes) {
+  XPlane xplane;
+  XPlaneBuilder builder(&xplane);
+  XEventMetadata* event_metadata1 = builder.GetOrCreateEventMetadata(1);
+  event_metadata1->set_name("EventMetadata1");
+  XEventMetadata* event_metadata2 = builder.GetOrCreateEventMetadata(2);
+  event_metadata2->set_name("EventMetadata2");
+  XEventMetadata* event_metadata3 = builder.GetOrCreateEventMetadata(3);
+  event_metadata3->set_name("EventMetadata3");
+  XEventMetadata* event_metadata4 = builder.GetOrCreateEventMetadata(4);
+  event_metadata4->set_name("EventMetadata4");
+
+  XLineBuilder line = builder.GetOrCreateLine(1);
+  line.SetName(kTensorFlowOpLineName);
+  XEventBuilder event1 = line.AddEvent(*event_metadata1);
+  event1.SetOffsetNs(0);
+  event1.SetDurationNs(5);
+  XEventBuilder event3 = line.AddEvent(*event_metadata3);
+  event3.SetOffsetNs(0);
+  event3.SetDurationNs(2);
+  XEventBuilder event2 = line.AddEvent(*event_metadata2);
+  event2.SetOffsetNs(5);
+  event2.SetDurationNs(5);
+  XEventBuilder event4 = line.AddEvent(*event_metadata2);
+  event4.SetOffsetNs(10);
+  event4.SetDurationNs(5);
+  XEventBuilder event5 = line.AddEvent(*event_metadata4);
+  event5.SetOffsetNs(15);
+  event5.SetDurationNs(6);
+  XEventBuilder event6 = line.AddEvent(*event_metadata1);
+  event6.SetOffsetNs(15);
+  event6.SetDurationNs(4);
+  XEventBuilder event7 = line.AddEvent(*event_metadata3);
+  event7.SetOffsetNs(15);
+  event7.SetDurationNs(3);
+
+  XPlane aggregated_xplane;
+  AggregateXPlane(xplane, aggregated_xplane);
+
+// Protobuf matchers are unavailable in OSS (b/169705709)
+#if defined(PLATFORM_GOOGLE)
+  ASSERT_THAT(aggregated_xplane,
+              IgnoringRepeatedFieldOrdering(EqualsProto(
+                  R"pb(lines {
+                         id: 1
+                         name: "TensorFlow Ops"
+                         events {
+                           metadata_id: 1
+                           duration_ps: 9000
+                           stats { metadata_id: 1 int64_value: 4000 }
+                           stats { metadata_id: 2 int64_value: 4000 }
+                           num_occurrences: 2
+                         }
+                         events {
+                           metadata_id: 3
+                           duration_ps: 5000
+                           stats { metadata_id: 1 int64_value: 2000 }
+                           num_occurrences: 2
+                         }
+                         events {
+                           metadata_id: 2
+                           duration_ps: 10000
+                           stats { metadata_id: 1 int64_value: 5000 }
+                           num_occurrences: 2
+                         }
+                         events {
+                           metadata_id: 4
+                           duration_ps: 6000
+                           stats { metadata_id: 2 int64_value: 2000 }
+                           num_occurrences: 1
+                         }
+                       }
+                       event_metadata {
+                         key: 1
+                         value { id: 1 name: "EventMetadata1" }
+                       }
+                       event_metadata {
+                         key: 2
+                         value { id: 2 name: "EventMetadata2" }
+                       }
+                       event_metadata {
+                         key: 3
+                         value { id: 3 name: "EventMetadata3" }
+                       }
+                       event_metadata {
+                         key: 4
+                         value { id: 4 name: "EventMetadata4" }
+                       }
+                       stat_metadata {
+                         key: 1
+                         value { id: 1 name: "min_duration_ps" }
+                       }
+                       stat_metadata {
+                         key: 2
+                         value { id: 2 name: "self_duration_ps" }
+                       }
+                  )pb")));
+#endif
+}
+
+TEST(XPlanuUtilsTest, TestInstantEventDoesNotFail) {
+  XPlane xplane;
+  XPlaneBuilder xplane_builder(&xplane);
+  XEventMetadata* event_metadata1 = xplane_builder.GetOrCreateEventMetadata(1);
+  XEventMetadata* event_metadata2 = xplane_builder.GetOrCreateEventMetadata(2);
+
+  XLineBuilder line = xplane_builder.GetOrCreateLine(1);
+  line.SetName(kTensorFlowOpLineName);
+  XEventBuilder event1 = line.AddEvent(*event_metadata1);
+  XEventBuilder event2 = line.AddEvent(*event_metadata2);
+
+  event1.SetOffsetNs(1);
+  event1.SetDurationNs(0);
+  event2.SetOffsetNs(1);
+  event2.SetDurationNs(0);
+
+  XPlane aggregated_xplane;
+  AggregateXPlane(xplane, aggregated_xplane);
+
+  EXPECT_THAT(aggregated_xplane.lines(),
+              UnorderedElementsAre(Property(&XLine::events, SizeIs(2))));
+}
+
+TEST(XplaneutilsTest, TestEventMetadataStatsAreCopied) {
+  XPlane xplane;
+  XPlaneBuilder xplane_builder(&xplane);
+  XEventMetadata* event_metadata = xplane_builder.GetOrCreateEventMetadata(1);
+
+  XStatsBuilder<XEventMetadata> stats(event_metadata, &xplane_builder);
+  stats.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
+      "TestFunction");
+  XLineBuilder line = xplane_builder.GetOrCreateLine(1);
+  line.SetName(kTensorFlowOpLineName);
+  XEventBuilder event = line.AddEvent(*event_metadata);
+  event.SetDurationNs(0);
+  event.SetOffsetNs(0);
+
+  XPlane aggregated_xplane;
+  AggregateXPlane(xplane, aggregated_xplane);
+
+  XPlaneVisitor visitor = CreateTfXPlaneVisitor(&aggregated_xplane);
+
+  XEventMetadataVisitor metadata_visitor(&visitor, visitor.GetEventMetadata(1));
+  std::optional<XStatVisitor> stat = metadata_visitor.GetStat(StatType::kTfOp);
+
+  ASSERT_TRUE(stat.has_value());
+  EXPECT_EQ(stat->Name(), "tf_op");
+  EXPECT_EQ(stat->StrOrRefValue(), "TestFunction");
+}
+
+TEST(XplaneutilsTest, TestEventMetadataStatsAreCopiedForRefValue) {
+  XPlane xplane;
+  XPlaneBuilder xplane_builder(&xplane);
+  XEventMetadata* event_metadata = xplane_builder.GetOrCreateEventMetadata(1);
+
+  XStatsBuilder<XEventMetadata> stats(event_metadata, &xplane_builder);
+  stats.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
+      *xplane_builder.GetOrCreateStatMetadata("TestFunction"));
+  XLineBuilder line = xplane_builder.GetOrCreateLine(1);
+  line.SetName(kTensorFlowOpLineName);
+  XEventBuilder event = line.AddEvent(*event_metadata);
+  event.SetDurationNs(0);
+  event.SetOffsetNs(0);
+
+  XPlane aggregated_xplane;
+  AggregateXPlane(xplane, aggregated_xplane);
+
+  XPlaneVisitor visitor = CreateTfXPlaneVisitor(&aggregated_xplane);
+
+  XEventMetadataVisitor metadata_visitor(&visitor, visitor.GetEventMetadata(1));
+  std::optional<XStatVisitor> stat = metadata_visitor.GetStat(StatType::kTfOp);
+
+  ASSERT_TRUE(stat.has_value());
+  EXPECT_EQ(stat->Name(), "tf_op");
+  EXPECT_EQ(stat->StrOrRefValue(), "TestFunction");
 }
 
 }  // namespace

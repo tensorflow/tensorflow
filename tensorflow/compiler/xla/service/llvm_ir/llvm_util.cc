@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -578,7 +578,7 @@ static Status CreateAndWriteStringToFile(const std::string& directory_name,
       tensorflow::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(text));
   TF_RETURN_IF_ERROR(f->Close());
-  return Status::OK();
+  return OkStatus();
 }
 
 void DumpIrIfEnabled(const HloModule& hlo_module,

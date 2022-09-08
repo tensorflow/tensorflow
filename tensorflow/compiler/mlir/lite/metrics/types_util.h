@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_METRICS_UTIL_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_METRICS_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_METRICS_TYPES_UTIL_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_METRICS_TYPES_UTIL_H_
 
 #include <functional>
+#include <string>
 
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
@@ -66,4 +67,4 @@ tflite::metrics::ConverterErrorData NewConverterErrorData(
 
 }  // namespace TFL
 }  // namespace mlir
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_METRICS_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_METRICS_TYPES_UTIL_H_

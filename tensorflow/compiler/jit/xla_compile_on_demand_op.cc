@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
@@ -91,9 +93,9 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   run_options.set_rng_seed(GetXLARandomSeed());
 
   StatusOr<xla::ExecutionOutput> run_result =
-      executable->Run(execution_inputs.ConsumeValueOrDie(), run_options);
+      executable->Run(std::move(execution_inputs).value(), run_options);
   TF_RETURN_IF_ERROR(run_result.status());
-  xla::ExecutionOutput execution_output = run_result.ConsumeValueOrDie();
+  xla::ExecutionOutput execution_output = std::move(run_result).value();
   StatusOr<std::vector<VariableInfo>> variable_infos =
       GatherVariableInfo(ctx, *result, 0);
   TF_RETURN_IF_ERROR(variable_infos.status());

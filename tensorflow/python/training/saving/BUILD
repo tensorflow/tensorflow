@@ -1,6 +1,8 @@
 # Description:
 #   Low-level utilities for reading and writing checkpoints.
 
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -45,11 +47,31 @@ py_library(
     srcs = ["saveable_object_util.py"],
     srcs_version = "PY3",
     deps = [
+        ":saveable_object",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
-        "//tensorflow/python/training/tracking:base",
-        "//tensorflow/python/training/tracking:trackable_utils",
+        "//tensorflow/python/checkpoint:saveable_compat",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:python_state",
+        "//tensorflow/python/trackable:trackable_utils",
+        "//tensorflow/python/types",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
+    ],
+)
+
+tf_py_test(
+    name = "saveable_object_util_test",
+    srcs = ["saveable_object_util_test.py"],
+    deps = [
+        ":saveable_object_util",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:resource",
     ],
 )

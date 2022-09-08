@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-
+#include "tensorflow/core/util/dump_graph.h"
 using tensorflow::Status;
 using tensorflow::errors::InvalidArgument;
 
@@ -110,6 +110,12 @@ Status TFGGrapplerOptimizer::Optimize(
     tensorflow::grappler::Cluster* cluster,
     const tensorflow::grappler::GrapplerItem& item,
     tensorflow::GraphDef* optimized_graph) {
+  if (VLOG_IS_ON(4)) {
+    tensorflow::DumpGraphDefToFile(
+        absl::StrCat("tfg_before_graph_", item.id, "_",
+                     std::hash<std::string>()(name())),
+        item.graph);
+  }
   VLOG(5) << "TFG Before Graph: \n" << item.graph.DebugString();
 
   // Import the GraphDef to TFG.
@@ -153,6 +159,12 @@ Status TFGGrapplerOptimizer::Optimize(
   metrics.ReportAndStop();
   *optimized_graph = std::move(graphdef);
 
+  if (VLOG_IS_ON(4)) {
+    tensorflow::DumpGraphDefToFile(
+        absl::StrCat("tfg_after_graph_", item.id, "_",
+                     std::hash<std::string>()(name())),
+        *optimized_graph);
+  }
   if (VLOG_IS_ON(5)) {
     VLOG(5) << "TFG After Graph: \n"
             << optimized_graph->DebugString() << "\nMLIR module: \n";

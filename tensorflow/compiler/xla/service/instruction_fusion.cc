@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
@@ -38,7 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -55,9 +54,10 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
   // We are always willing to duplicate a widening type-conversion instruction
   // if it means we can fuse the convert into a consumer.  This allows the
   // consumer to read less memory, which is almost always a performance win.
-  return instruction.opcode() == HloOpcode::kConvert &&
-         ShapeUtil::ByteSizeOf(instruction.operand(0)->shape()) <
-             ShapeUtil::ByteSizeOf(instruction.shape());
+  return (instruction.opcode() == HloOpcode::kConvert &&
+          ShapeUtil::ByteSizeOf(instruction.operand(0)->shape()) <
+              ShapeUtil::ByteSizeOf(instruction.shape())) ||
+         instruction.opcode() == HloOpcode::kBroadcast;
 }
 }  // namespace
 
@@ -483,17 +483,20 @@ class ReversePostOrderFusionQueue : public FusionQueue {
 }  // namespace
 
 std::vector<HloComputation*> InstructionFusion::GetFusionComputations(
-    HloModule* module) {
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Use sorted computations because fusion configuration is order-sensitive.
-  return module->MakeNonfusionComputationsSorted();
+  return module->MakeNonfusionComputationsSorted(execution_threads);
 }
 
 std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
     HloComputation* computation) {
-  return absl::make_unique<ReversePostOrderFusionQueue>(computation);
+  return std::make_unique<ReversePostOrderFusionQueue>(computation);
 }
 
-StatusOr<bool> InstructionFusion::Run(HloModule* module) {
+StatusOr<bool> InstructionFusion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   int64_t fuse_count = 0;
   std::vector<std::vector<bool>>* fusion_config = nullptr;
@@ -507,7 +510,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool dump_fusion =
       module->config().debug_options().xla_dump_fusion_visualization();
 
-  for (auto* computation : GetFusionComputations(module)) {
+  for (auto* computation : GetFusionComputations(module, execution_threads)) {
     CHECK(!computation->IsFusionComputation());
     std::unique_ptr<HloReachabilityMap> reachability =
         HloReachabilityMap::Build(computation);
@@ -715,6 +718,9 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
         HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
     TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
+  fusion_instruction->set_called_computations_execution_thread(
+      computation->execution_thread(),
+      /*skip_async_execution_thread_overwrite=*/false);
   return fusion_instruction;
 }
 
@@ -816,9 +822,8 @@ namespace {
 
 // Extracts instruction from the fusion that satisfies filter. If no or multiple
 // instructions in the fusion satisfy filter, returns nullptr.
-const HloInstruction* ExtractInstruction(
-    const HloInstruction* hlo,
-    const std::function<bool(const HloInstruction*)>& filter) {
+const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
+                                         const HloPredicate& filter) {
   if (filter(hlo)) {
     return hlo;
   }
@@ -862,24 +867,23 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
   // Recursively check if the instruction or its users (or their users) are
   // non-elementwise with the exception of the DUS. We have already verified
   // that the slice and DUS are compatible since their indices match.
-  std::function<bool(const HloInstruction*)>
-      has_nonelementwise_uses_except_dus =
-          [&](const HloInstruction* instruction) {
-            auto record_and_return = [&](bool val) {
-              nonelementwise_memo[instruction] = val;
-              return val;
-            };
-            auto nonelementwise_memo_it = nonelementwise_memo.find(instruction);
-            if (nonelementwise_memo_it != nonelementwise_memo.end()) {
-              return nonelementwise_memo_it->second;
-            }
-            if (instruction != dus && !instruction->IsElementwise() &&
-                instruction->opcode() != HloOpcode::kParameter) {
-              return record_and_return(true);
-            }
-            return record_and_return(absl::c_any_of(
-                instruction->users(), has_nonelementwise_uses_except_dus));
-          };
+  HloPredicate has_nonelementwise_uses_except_dus =
+      [&](const HloInstruction* instruction) {
+        auto record_and_return = [&](bool val) {
+          nonelementwise_memo[instruction] = val;
+          return val;
+        };
+        auto nonelementwise_memo_it = nonelementwise_memo.find(instruction);
+        if (nonelementwise_memo_it != nonelementwise_memo.end()) {
+          return nonelementwise_memo_it->second;
+        }
+        if (instruction != dus && !instruction->IsElementwise() &&
+            instruction->opcode() != HloOpcode::kParameter) {
+          return record_and_return(true);
+        }
+        return record_and_return(absl::c_any_of(
+            instruction->users(), has_nonelementwise_uses_except_dus));
+      };
   for (int i = 0; i < consumer->operand_count(); ++i) {
     if (consumer->operand(i) == producer &&
         has_nonelementwise_uses_except_dus(consumer->fused_parameter(i))) {
@@ -931,11 +935,11 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
       };
 
       auto get_constant_operand =
-          [](const HloInstruction* operand) -> absl::optional<int> {
+          [](const HloInstruction* operand) -> std::optional<int> {
         if (operand->IsConstant()) {
           return operand->literal().GetFirstInteger();
         }
-        return absl::nullopt;
+        return std::nullopt;
       };
       // A common special case is a slice or dynamic-slice and a
       // dynamic-update-slice that use the same indices. This pattern is safe.

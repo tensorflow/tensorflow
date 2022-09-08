@@ -113,7 +113,7 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
   Status ListPhysicalDevices(std::vector<string>* devices) override {
     devices->push_back("/physical_device:CPU:0");
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
@@ -136,7 +136,7 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
           ProcessState::singleton()->GetCPUAllocator(numa_node)));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 REGISTER_LOCAL_DEVICE_FACTORY("CPU", GPUCompatibleCPUDeviceFactory, 70);

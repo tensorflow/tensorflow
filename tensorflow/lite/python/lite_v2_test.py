@@ -22,8 +22,6 @@ import sys
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import range
-from six.moves import zip
 import tensorflow as tf
 
 # Force loaded shared object symbols to be globally visible. This is needed so
@@ -62,7 +60,7 @@ from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.saved_model.loader_impl import parse_saved_model
 from tensorflow.python.saved_model.save import save
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 # Only run jax related tests when we can import jax.
 DISABLE_JAX_TEST = False
@@ -136,10 +134,39 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
+  def testStringInput(self):
+
+    class Model(tf.Module):
+
+      @tf.function
+      def __call__(self, x):
+        return x
+
+    root = Model()
+    concrete_func = root.__call__.get_concrete_function(
+        tf.constant([str(x) for x in range(11)]))
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
+    tflite_model = converter.convert()
+    input_data = tf.constant([str(x) for x in range(11)],
+                             shape=(11,),
+                             dtype=tf.dtypes.string)
+    # Check values from converted model.
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    my_signature = interpreter.get_signature_runner()
+
+    with self.assertRaises(ValueError) as error:
+      _ = my_signature(x=input_data)
+    self.assertIn('Passed in value type is not a numpy array, got type ',
+                  str(error.exception))
+
+  @test_util.run_v2_only
   def testModelWithoutInputs(self):
 
     def _get_random_number_gen():
-      root = tracking.AutoTrackable()
+      root = autotrackable.AutoTrackable()
 
       @tf.function(input_signature=[])
       def func():
@@ -236,7 +263,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def _getIntegerQuantizeModel(self, num_filters=16):
     np.random.seed(0)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[1, 5, 5, 3], dtype=tf.float32)])
@@ -569,7 +596,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     concrete_func = root.f.get_concrete_function(input_data)
 
     converter = lite.TFLiteConverterV2.from_concrete_functions(
-        [concrete_func], trackable_obj=tracking.AutoTrackable())
+        [concrete_func], trackable_obj=autotrackable.AutoTrackable())
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -735,7 +762,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testGraphDebugInfo(self):
     """Test a concrete function has debug info captured."""
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = tf.Variable(3.)
     root.f = tf.function(lambda x: root.v1 * x)
     input_data = tf.constant(1., shape=[1])
@@ -750,7 +777,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def _getIntegerQuantizationModelWithFlexOp(self):
     np.random.seed(0)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(input_signature=[
         tf.TensorSpec(shape=[3, 3, 3, 3, 3], dtype=tf.float32)
@@ -849,7 +876,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def _getIntegerQuantizationModelWithUnsupportedOps(self):
     np.random.seed(0)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(input_signature=[
         tf.TensorSpec(shape=[3], dtype=tf.float32),
@@ -1659,10 +1686,36 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual([1, 5, -1], list(actual_value))
 
   @test_util.run_v2_only
+  def testReduceSumWithInt16Quant(self):
+    """Test a model with quantized int16 reduce sum op."""
+    inp = tf.keras.Input([3, 3], 3, name='x')
+    m = tf.keras.Model(inp, tf.reduce_sum(inp, axis=-1))
+
+    converter = tf.lite.TFLiteConverter.from_keras_model(m)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet
+        .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+    ]
+    converter.inference_input_type = tf.int16
+    converter.inference_output_type = tf.int16
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    inputs = {
+        i.name: np.random.normal(size=i.shape).astype(np.float32)
+        for i in m.inputs
+    }
+    converter.representative_dataset = lambda: [inputs]
+    content = converter.convert()
+
+    interpreter = tf.lite.Interpreter(model_content=content)
+    runner = interpreter.get_signature_runner('serving_default')
+    y = runner(x=np.array([[1, 1, 1], [2, 2, 2], [3, 3, 3]]).astype(np.int16))
+    self.assertEqual([3, 6, 9], list(list(y.values())[0]))
+
+  @test_util.run_v2_only
   def testConstModel(self):
     """Test a basic model with functions to make sure functions are inlined."""
     input_data = tf.constant(1., shape=[1])
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = tf.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data)
 
@@ -2170,7 +2223,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def testGraphDebugInfo(self):
     """Test a SavedModel has debug info captured."""
     input_data = tf.constant(1., shape=[1])
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = tf.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data)
     options = save_options.SaveOptions(save_debug_info=True)
@@ -2280,10 +2333,48 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
 
     self.assertLen(output_details[0]['shape_signature'], 3)
-    self.assertAllClose(expected_value, actual_value, atol=1e-5)
+    self.assertAllClose(expected_value, actual_value, atol=1e-1)
     self.assertEqual(
         list(output_details[0]['shape_signature']),
         list(model.layers[-1].output_shape))
+
+  @test_util.run_v2_only
+  def testKerasConv2DTransposedWithMismatchQuantizedAxes(self):
+
+    class QuantConv2DTransposed(tf.keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.kernel = self.add_weight('kernel', [3, 3, input_shape[-1], 24])
+
+      def call(self, inputs):
+        filters = tf.quantization.fake_quant_with_min_max_vars_per_channel(
+            self.kernel,
+            -3.0 * tf.ones([24]),
+            3.0 * tf.ones([24]),
+            narrow_range=True)
+        filters = tf.transpose(filters, (0, 1, 3, 2))
+        return tf.nn.conv2d_transpose(inputs, filters, [*inputs.shape[:-1], 24],
+                                      1)
+
+    inp = tf.keras.Input(shape=(6, 8, 48), batch_size=1)
+    x = tf.quantization.fake_quant_with_min_max_vars(
+        inp, -3.0, 3.0, narrow_range=True)
+    x = QuantConv2DTransposed()(x)
+    x = tf.quantization.fake_quant_with_min_max_vars(
+        x, -3.0, 3.0, narrow_range=True)
+
+    model = tf.keras.Model(inp, x)
+
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'keras_conv2d_transpose')
+    model.save(saved_model_dir)
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+
+    with self.assertRaises(convert.ConverterError) as error:
+      _ = converter.convert()
+    self.assertIn('mismatched quantized axes of input and output',
+                  str(error.exception))
 
   def _createModelWithInputShape(self, shape):
     """Create a simple SavedModel with a certain shape."""
@@ -3314,7 +3405,7 @@ class GrapplerTest(lite_v2_test_util.ModelTest):
       y_broadcast = tf.broadcast_to(y_const, [3, 3])
       return tf.matmul(x, y_broadcast)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     concrete_func = root.f.get_concrete_function(input_data)
 
@@ -3381,7 +3472,7 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
       mult = tf.matmul(fill, input_tensor)
       return tf.matmul(mult, const_tensor)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = model
     concrete_func = root.f.get_concrete_function()
 
@@ -4190,7 +4281,7 @@ class SparsityTest(lite_v2_test_util.ModelTest):
 
   def _getSparsificableModel(self, matrix_b_values):
     np.random.seed(0)
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[16, 4], dtype=tf.float32)])

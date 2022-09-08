@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/fill_spmd_expander.h"
 
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
@@ -65,7 +65,7 @@ StatusOr<mlir::Operation*> FillSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto int_type = mlir::RankedTensorType::get(
       static_cast<int64>(shard_values.size()), builder.getIntegerType(32));
   auto int_attr = mlir::DenseIntElementsAttr::get(int_type, shard_values);
-  auto target_type_attr = mlir::hlo::ConvertElementsAttr(
+  auto target_type_attr = mlir::hlo::convertElementsAttr(
       int_attr,
       original_fill.dims().getType().cast<mlir::TensorType>().getElementType());
 

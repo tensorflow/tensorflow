@@ -18,8 +18,6 @@
 
 import abc
 
-import six
-
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
@@ -37,8 +35,8 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import slot_creator
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -92,8 +90,7 @@ def _var_key(var):
   # pylint: enable=protected-access
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _OptimizableVariable(object):
+class _OptimizableVariable(metaclass=abc.ABCMeta):
   """Interface for abstracting over variables in the optimizers."""
 
   @abc.abstractmethod
@@ -1202,7 +1199,8 @@ class Optimizer(
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      new_slot_variable = slot_creator.create_slot(var, val, op_name)
+      new_slot_variable = slot_creator.create_slot(
+          var, val, op_name, copy_xla_sharding=True)
       self._restore_slot_variable(
           slot_name=slot_name, variable=var,
           slot_variable=new_slot_variable)
@@ -1228,7 +1226,7 @@ class Optimizer(
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
       new_slot_variable = slot_creator.create_slot_with_initializer(
-          var, initializer, shape, dtype, op_name)
+          var, initializer, shape, dtype, op_name, copy_xla_sharding=True)
       self._restore_slot_variable(
           slot_name=slot_name, variable=var,
           slot_variable=new_slot_variable)

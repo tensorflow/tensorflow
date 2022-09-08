@@ -28,9 +28,10 @@ using shape_inference::ShapeHandle;
 namespace {
 
 static Status StatelessRandomPermuteShape(InferenceContext* c) {
-  ShapeHandle index_shape, seed_shape, max_index_shape;
+  ShapeHandle index_shape, seed_shape, max_index_shape, rounds_shape;
 
   // Basic constraints but unknown ranks will not raise errors here.
+  // index, seed and max_index can be scalars or vectors (when batching).
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &index_shape));
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &seed_shape));
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 2, &seed_shape));
@@ -57,7 +58,7 @@ static Status StatelessRandomPermuteShape(InferenceContext* c) {
       (index_rank == 0 && seed_rank == 1 && max_index_rank == 0);
   if (output_is_scalar) {
     c->set_output(0, c->Scalar());
-    return Status::OK();
+    return OkStatus();
   }
 
   if (!c->FullyDefined(index_shape) || !c->FullyDefined(seed_shape) ||
@@ -67,7 +68,7 @@ static Status StatelessRandomPermuteShape(InferenceContext* c) {
     if (output_is_vector) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Shape is fully defined and the output is a vector.
@@ -94,7 +95,7 @@ static Status StatelessRandomPermuteShape(InferenceContext* c) {
                                    "].");
   }
   c->set_output(0, c->Vector(num_outputs));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("RandomIndexShuffle")
@@ -102,6 +103,7 @@ REGISTER_OP("RandomIndexShuffle")
     .Input("seed: Tseed")
     .Input("max_index: dtype")
     .Output("output: dtype")
+    .Attr("rounds: int = 4")
     .Attr("dtype: {int32, uint32, int64, uint64}")
     .Attr("Tseed: {int32, uint32, int64, uint64}")
     .SetShapeFn(StatelessRandomPermuteShape);

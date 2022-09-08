@@ -16,10 +16,10 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
@@ -250,9 +250,19 @@ SubgraphWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
           tensor_name_offset = fbb->CreateString(tensor->name);
         }
 
-        tensors.push_back(CreateTensor(
-            *fbb, ExportVector<int32_t>(fbb, shape), type, buffer_index,
-            tensor_name_offset, quantization_params, tensor->is_variable));
+        flatbuffers::Offset<flatbuffers::Vector<int32_t>>
+            shape_signature_offset = 0;
+        if (tensor->dims_signature != nullptr) {
+          TfLiteIntArrayView shape_signature_view(tensor->dims_signature);
+          std::vector<int32_t> shape_signature(shape_signature_view.begin(),
+                                               shape_signature_view.end());
+          shape_signature_offset = ExportVector<int32_t>(fbb, shape_signature);
+        }
+
+        tensors.push_back(CreateTensor(*fbb, ExportVector<int32_t>(fbb, shape),
+                                       type, buffer_index, tensor_name_offset,
+                                       quantization_params, tensor->is_variable,
+                                       /*sparsity=*/0, shape_signature_offset));
       }
     }
   }
@@ -344,7 +354,7 @@ TfLiteStatus SubgraphWriter::RegisterCustomWriter(
 TfLiteStatus SubgraphWriter::CheckInputOutput(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const std::vector<int>& execution_plan) {
-  absl::flat_hash_set<int> known_tensors(inputs.begin(), inputs.end());
+  std::unordered_set<int> known_tensors(inputs.begin(), inputs.end());
   known_tensors.insert(subgraph_->variables().begin(),
                        subgraph_->variables().end());
   // Scan execution plan and confirm input tensors are known before each node
@@ -453,6 +463,7 @@ TfLiteStatus ModelWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs_as_vector;
+  subgraphs_as_vector.reserve(subgraph_writers_.size());
   for (auto& subgraph_writer : subgraph_writers_) {
     subgraphs_as_vector.push_back(subgraph_writer.PopulateAndGetOffset(
         &builder, subgraph_writer.subgraph_->GetName()));

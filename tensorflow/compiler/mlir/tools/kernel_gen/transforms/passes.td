@@ -128,25 +128,6 @@ def FuseInnerParallelLoopsPass
   }];
 }
 
-def VectorizationPass : Pass<"vectorization", "mlir::func::FuncOp"> {
-  let summary = "Pass to create vectorized operations for CPU.";
-  let constructor = "transforms::CreateVectorizationPass()";
-  let description = [{
-    Takes linalg loops on buffers and vectorizes the loads/stores and operations
-    in between. This is intended for the CPU backend.
-  }];
-}
-
-def VectorizationCleanupPass : Pass<"vectorization-cleanup", "mlir::func::FuncOp"> {
-  let summary = "Pass to remove dead code in VectorizationPass.";
-  let constructor = "transforms::CreateVectorizationCleanupPass()";
-  let description = [{
-    VectorizationPass creates some memory transfers that are unneeded but cannot
-    be safely removed by current generic infrastructure. This removes the
-    specific operations.
-  }];
-}
-
 def CopyCleanupPass : Pass<"copy-cleanup", "mlir::func::FuncOp"> {
   let summary = "Pass to remove copies which are consumed by a GenericOp.";
   let constructor = "transforms::CreateCopyCleanupPass()";

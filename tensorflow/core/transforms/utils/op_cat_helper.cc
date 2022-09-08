@@ -81,8 +81,8 @@ bool SplatElementsAttrHasValue(SplatElementsAttr attr, float v) {
 
 bool OpCatHelper::IsAggregate(TFOp op) {
   if (dialect_->IsAdd(op)) {
-    // TODO(chiahungduan): type != tensorflow::DT_INVALID
-    return !op->getAttrOfType<TypeAttr>("T").getValue().isa<StringType>();
+    auto attr = op->getAttrOfType<TypeAttr>("T");
+    return !attr || !attr.getValue().isa<StringType>();
   }
   const tensorflow::OpDef *op_def = nullptr;
   tensorflow::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(
@@ -92,8 +92,8 @@ bool OpCatHelper::IsAggregate(TFOp op) {
 
 bool OpCatHelper::IsCommutative(TFOp op) {
   if (dialect_->IsAdd(op)) {
-    // TODO(chiahungduan): type != tensorflow::DT_INVALID
-    return !op->getAttrOfType<TypeAttr>("T").getValue().isa<StringType>();
+    auto attr = op->getAttrOfType<TypeAttr>("T");
+    return !attr || !attr.getValue().isa<StringType>();
   }
   const tensorflow::OpDef *op_def = nullptr;
   tensorflow::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(

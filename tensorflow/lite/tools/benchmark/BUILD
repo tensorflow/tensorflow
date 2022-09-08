@@ -69,7 +69,7 @@ cc_binary(
 # As with most target binaries that use flex, this should be built with the
 # `--config=monolithic` build flag, e.g.,
 #    bazel build --config=monolithic --config=android_arm64 \
-#        -c opt --cxxopt='--std=c++14' :benchmark_model_plus_flex
+#        -c opt --cxxopt='--std=c++17' :benchmark_model_plus_flex
 tf_cc_binary(
     name = "benchmark_model_plus_flex",
     srcs = [
@@ -184,6 +184,7 @@ cc_library(
         ":benchmark_model_lib",
         ":benchmark_params",
         ":benchmark_utils",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/tools:logging",
         "@com_google_absl//absl/memory",
         "//tensorflow/core/util:stats_calculator_portable",

@@ -17,8 +17,8 @@
 import os
 
 import numpy as np
-import six
 
+from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.feature_column import feature_column_lib as fc
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,7 +30,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import warm_starting_util as ws_util
-from tensorflow.python.training.tracking import util as tracking_util
 
 ones = init_ops.ones_initializer
 norms = init_ops.truncated_normal_initializer
@@ -108,7 +107,7 @@ class WarmStartingUtilTest(test.TestCase):
     return cols_to_vars
 
   def _assert_cols_to_vars(self, cols_to_vars, cols_to_expected_values, sess):
-    for col, expected_values in six.iteritems(cols_to_expected_values):
+    for col, expected_values in cols_to_expected_values.items():
       for i, var in enumerate(cols_to_vars[col]):
         self.assertAllClose(expected_values[i], var.eval(sess))
 

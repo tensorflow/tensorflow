@@ -304,7 +304,10 @@ def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
 //===----------------------------------------------------------------------===//
 
 def TFFramework_JITExecuteOp : TFFramework_Op<"jit_execute", [
-    AttrSizedOperandSegments]> {
+    AttrSizedOperandSegments,
+    MemoryEffects<[MemAlloc<DefaultResource>]>,
+    DeclareOpInterfaceMethods<AllocationOpInterface,
+        ["buildDealloc", "buildClone"]>]> {
   let summary = "Executes a JIT-compiled function through the TF framework";
   let description = [{
     The op takes an optional TF context, so that it can be added at a later
@@ -322,17 +325,12 @@ def TFFramework_JITExecuteOp : TFFramework_Op<"jit_execute", [
     Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$operands
   );
   let results = (outs
-    Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$results
-  );
-
-  let builders = [
-    OpBuilder<(ins "Optional<Value>":$ctx, "Value":$callable,
-        "ValueRange":$operands)>
-  ];
+    Res<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]> , "",
+        [MemAlloc<DefaultResource>]>:$result);
 
   let assemblyFormat = [{
     (`ctx` `(` $ctx^ `)`)? $callable `(` $operands `)` attr-dict
-        `:` type($operands) `->` type($results)
+        `:` type($operands) `->` type($result)
   }];
 }
 

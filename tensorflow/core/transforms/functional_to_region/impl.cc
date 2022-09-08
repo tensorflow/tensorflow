@@ -224,8 +224,8 @@ static bool ArePreservedAttrsEmpty(DictionaryAttr func_attrs,
 
 // Determine if the region attributes are empty.
 static bool AreRegionAttrsEmpty(RegionAttr attrs) {
-  return ArePreservedAttrsEmpty(attrs.getAttrs(), attrs.getArg_attrs(),
-                                attrs.getRes_attrs());
+  return ArePreservedAttrsEmpty(attrs.getAttrs(), attrs.getArgAttrs(),
+                                attrs.getResAttrs());
 }
 
 // Preserve certain attributes of a function so that they can be used later if

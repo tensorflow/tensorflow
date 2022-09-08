@@ -120,14 +120,6 @@ class DelegatingTrackableMixin(object):
   def _handle_deferred_dependencies(self, name, trackable):  # pylint: disable=redefined-outer-name
     return self._trackable._handle_deferred_dependencies(name, trackable)
 
-  def _restore_from_checkpoint_position(self, checkpoint_position):
-    return self._trackable._restore_from_checkpoint_position(
-        checkpoint_position)
-
-  def _single_restoration_from_checkpoint_position(self, *args, **kwargs):
-    return self._trackable._single_restoration_from_checkpoint_position(
-        *args, **kwargs)
-
   def _gather_saveables_for_checkpoint(self, *args, **kwargs):
     return self._trackable._gather_saveables_for_checkpoint(*args, **kwargs)
 

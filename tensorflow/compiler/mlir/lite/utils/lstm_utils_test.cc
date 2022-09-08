@@ -96,7 +96,7 @@ class LstmUtilsTest : public ::testing::Test {
     context_->loadDialect<arith::ArithmeticDialect, mlir::func::FuncDialect,
                           tensor::TensorDialect, mlir::TF::TensorFlowDialect,
                           TensorFlowLiteDialect>();
-    builder_ = std::unique_ptr<mlir::Builder>(new Builder(context_.get()));
+    builder_ = std::make_unique<mlir::Builder>(context_.get());
     fused_lstm_func_ = createLstmCompositeFunc(builder_.get(), false, false);
     fused_lstm_func_cifg_ =
         createLstmCompositeFunc(builder_.get(), false, true);

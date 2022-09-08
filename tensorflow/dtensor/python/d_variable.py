@@ -14,6 +14,7 @@
 # ==============================================================================
 """DTensor variable and saveable."""
 
+import contextlib
 import functools
 
 from tensorflow.dtensor.python import api
@@ -25,8 +26,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saving import saveable_object
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -150,8 +151,46 @@ class DVariable(resource_variable_ops.ResourceVariable):
     # Variables by default use the current device scope for placement. This
     # wrapper has them follow the initial value's placement instead (which will
     # be the DTensor device if the initial value has a layout).
+
+    # Pop layout from kwargs since keras make_variable may pass a 'layout'
+    # keyword argument. We need to pop it because we are passing kwargs to
+    # super class constructor.
+    layout = kwargs.pop('layout', None)
+    shape = kwargs.get('shape', None)
+
     if callable(initial_value):
-      initial_value = initial_value()
+      unwrapped = initial_value
+      if issubclass(type(initial_value), functools.partial):
+        unwrapped = initial_value.func
+
+      # If wrapped is a CheckpointInitialValueCallable, this means that
+      # we are creating a Variable during a checkpoint restore.
+      # Thus the restore will happen now through this callable
+      # and we will create the DVariable with the restored dtensor.
+      if issubclass(type(unwrapped), trackable.CheckpointInitialValueCallable):
+        if not shape or not layout:
+          raise ValueError('Expected shape and layout to be not None.')
+
+        # CheckpointInitialValueCallable will call an eager tf.RestoreV2,
+        # which does not have any shape information or layout information
+        # attached. Thus we will do two things to have them correctly specified:
+        #
+        # The default layout scope allows us to correctly specify the output
+        # layout of the tf.RestoreV2 that will be called
+        #
+        # Passing shard_info with the correct shape allows the tf.RestoreV2
+        # ShapeInference to extract the shape.
+        initial_value = api.call_with_layout(
+            initial_value,
+            layout,
+            shard_info=trackable.ShardInfo(
+                shape=shape, offset=[0] * len(shape)))
+      else:
+        initial_value = initial_value()
+
+    # When the initial value came from a Checkpoint restoration, fetch tensor.
+    if isinstance(initial_value, trackable.CheckpointInitialValue):
+      initial_value = initial_value.wrapped_value
 
     initial_value = ops.convert_to_tensor(initial_value, dtype=dtype)
     variable_device = initial_value.device
@@ -169,8 +208,6 @@ class DVariable(resource_variable_ops.ResourceVariable):
     #     # translate that into a placement for the eager VarHandleOp.
     #     variable_device = _dtensor_device().name
     with ops.device(variable_device):
-      super(DVariable, self).__init__(
-          initial_value, *args, dtype=dtype, **kwargs)
       # If initial tensor assigned to DVariable is DTensor, record the layout of
       # the resource so that this can be queried.
       self.layout = None
@@ -183,6 +220,10 @@ class DVariable(resource_variable_ops.ResourceVariable):
           # is called within DTensor device scope or not.
           self.layout = None
           pass
+      mesh = self.layout.mesh if self.layout else None
+      with api.run_on(mesh) if mesh else contextlib.nullcontext():
+        super(DVariable, self).__init__(
+            initial_value, *args, dtype=dtype, **kwargs)
 
   @property
   def save_as_bf16(self):

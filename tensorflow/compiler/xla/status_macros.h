@@ -18,12 +18,13 @@ limitations under the License.
 
 #include <memory>
 #include <ostream>  // NOLINT
+#include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status.h"
 
 namespace xla {
 namespace status_macros {
@@ -67,8 +68,10 @@ class MakeErrorStream {
 
     // Implicit cast operators to Status and StatusOr.
     // Exactly one of these must be called exactly once before destruction.
+    // NOLINTNEXTLINE(google-explicit-constructor)
     operator Status() { return wrapped_error_stream_->GetStatus(); }
     template <typename T>
+    // NOLINTNEXTLINE(google-explicit-constructor)
     operator xla::StatusOr<T>() {
       return wrapped_error_stream_->GetStatus();
     }
@@ -182,11 +185,11 @@ class StatusAdaptorForMacros {
 }  // namespace status_macros
 }  // namespace xla
 
-#define TF_RET_CHECK(condition)                                           \
-  while (ABSL_PREDICT_FALSE(!(condition)))                                \
-  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,          \
-                                             tensorflow::error::INTERNAL) \
-      .with_log_stack_trace()                                             \
+#define TF_RET_CHECK(condition)                                             \
+  while (ABSL_PREDICT_FALSE(!(condition)))                                  \
+  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,            \
+                                             ::tensorflow::error::INTERNAL) \
+      .with_log_stack_trace()                                               \
       .add_ret_check_failure(#condition)
 
 #endif  // TENSORFLOW_COMPILER_XLA_STATUS_MACROS_H_

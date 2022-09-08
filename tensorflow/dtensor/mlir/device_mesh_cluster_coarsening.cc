@@ -59,8 +59,8 @@ mlir::LogicalResult ShouldMergeClusters(mlir::tf_device::ClusterOp cluster_a,
   if (!mesh_b_or_status.ok())
     return cluster_b.emitOpError(mesh_b_or_status.status().error_message());
 
-  auto mesh_a = mesh_a_or_status.ValueOrDie();
-  auto mesh_b = mesh_b_or_status.ValueOrDie();
+  auto mesh_a = mesh_a_or_status.value();
+  auto mesh_b = mesh_b_or_status.value();
   if (!mesh_a || !mesh_b) {
     return !mesh_a ? cluster_a.emitOpError(kMissingMeshAttributeErrorMessage)
                    : cluster_b.emitOpError(kMissingMeshAttributeErrorMessage);
@@ -247,7 +247,7 @@ mlir::LogicalResult ClusterDeviceClusterOpsInBlock(mlir::OpBuilder* builder,
   llvm::Optional<mlir::tf_device::ClusterOp> current_cluster;
   for (mlir::tf_device::ClusterOp cluster :
        llvm::make_early_inc_range(block_ops)) {
-    if (!current_cluster.hasValue()) {
+    if (!current_cluster.has_value()) {
       current_cluster = cluster;
       continue;
     }

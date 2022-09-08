@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
 
-#include "tensorflow/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -24,14 +24,14 @@ Status MemzeroThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_);
   params.stream->ThenMemZero(&dest_data, dest_data.size());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Memset32BitValueThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_);
   params.stream->ThenMemset32(&dest_data, value_, dest_data.size());
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

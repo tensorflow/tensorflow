@@ -54,6 +54,7 @@ TfLiteStatus ResourceVariable::AssignFrom(const TfLiteTensor* tensor) {
 
   // Copy primitive parameters.
   memset(&tensor_, 0, sizeof(tensor_));
+  tensor_.name = "ResourceVariable";
   tensor_.allocation_type = kTfLiteDynamic;
   tensor_.type = tensor->type;
   tensor_.params = tensor->params;
@@ -86,8 +87,7 @@ void CreateResourceVariableIfNotAvailable(ResourceMap* resources,
   if (resources->count(resource_id) != 0) {
     return;
   }
-  resources->emplace(resource_id,
-                     std::unique_ptr<ResourceVariable>(new ResourceVariable()));
+  resources->emplace(resource_id, std::make_unique<ResourceVariable>());
 }
 
 ResourceVariable* GetResourceVariable(ResourceMap* resources, int resource_id) {

@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_SIMPLE_SELECTORS_H_
 
 #include <memory>
+#include <set>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -38,10 +40,12 @@ std::unique_ptr<GPUOperation> SelectPReLU(const PReLUAttributes& attr,
                                           const OperationDef& op_def);
 
 std::unique_ptr<GPUOperation> SelectPooling(const Pooling2DAttributes& attr,
+                                            const GpuInfo& gpu_info,
                                             const OperationDef& op_def);
 
 std::unique_ptr<GPUOperation> SelectMaxUnpooling(
-    const MaxUnpooling2DAttributes& attr, const OperationDef& op_def);
+    const MaxUnpooling2DAttributes& attr, const GpuInfo& gpu_info,
+    const OperationDef& op_def);
 
 void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
                int dst_channels, std::unique_ptr<GPUOperation>* ptr);
@@ -82,7 +86,8 @@ std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
                                            const OperationDef& op_def,
                                            const GpuInfo& gpu_info);
 
-void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
+void SelectSoftmax(const GpuInfo& gpu_info, const BHWC& shape,
+                   const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr);
 
 void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
@@ -93,8 +98,8 @@ void SelectDepthToSpace(const SpaceToDepthAttributes& attr,
                         const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr);
 
-void SelectSplit(const SplitAttributes& attr, const std::vector<int>& channels,
-                 const OperationDef& op_def,
+void SelectSplit(const SplitAttributes& attr, const GpuInfo& gpu_info,
+                 const std::vector<int>& channels, const OperationDef& op_def,
                  std::unique_ptr<GPUOperation>* ptr);
 
 std::unique_ptr<GPUOperation> SelectTile(const OperationDef& op_def,
@@ -117,6 +122,15 @@ std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(
 
 void SelectCast(const OperationDef& op_def, const GpuInfo& gpu_info,
                 std::unique_ptr<GPUOperation>* ptr);
+
+void SelectCumsum(const OperationDef& op_def, const CumsumAttributes& attr,
+                  std::unique_ptr<GPUOperation>* ptr);
+
+void SelectOneHot(const OperationDef& op_def, const OneHotAttributes& attr,
+                  std::unique_ptr<GPUOperation>* ptr);
+
+void SelectSelectV2(const OperationDef& op_def, const SelectV2Attributes& attr,
+                    std::unique_ptr<GPUOperation>* ptr);
 
 }  // namespace gpu
 }  // namespace tflite

@@ -43,4 +43,10 @@ message CoordinationServiceConfig {
   // find out about the disconnecte agent via stale heartbeats. Used for
   // testing.
   bool agent_destruction_without_shutdown = 8;
+
+  // The list of jobs which are recoverable. If a task in this list fails,
+  // it will not propagate error to other tasks.
+  // If empty, no jobs will be recoverable and every task failure will cause
+  // error propagation to other tasks.
+  repeated string recoverable_jobs = 9;
 }

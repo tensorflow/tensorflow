@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -37,6 +38,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using ::testing::SizeIs;
+
 class PartitioningUtilsTest : public ::testing::Test {
  public:
   void SetUp() override {
@@ -48,7 +51,7 @@ class PartitioningUtilsTest : public ::testing::Test {
                                           &devices));
     device0_ = devices[0].get();
     device1_ = devices[1].get();
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+    device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
 
     for (auto d : device_mgr_->ListDevices()) {
       device_set_.AddDevice(d);
@@ -119,7 +122,7 @@ class PartitioningUtilsTest : public ::testing::Test {
 };
 
 TEST_F(PartitioningUtilsTest, GraphWithoutAssignedDevicesFails) {
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   SwapGraph(graph.get());
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
@@ -129,7 +132,7 @@ TEST_F(PartitioningUtilsTest, GraphWithoutAssignedDevicesFails) {
 }
 
 TEST_F(PartitioningUtilsTest, OneDevice) {
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   SwapGraph(graph.get(), true);
   int num_nodes = graph->num_op_nodes();
 
@@ -145,7 +148,7 @@ TEST_F(PartitioningUtilsTest, OneDevice) {
 }
 
 TEST_F(PartitioningUtilsTest, TwoDevices) {
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   TwoDeviceSwapGraph(graph.get());
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
@@ -164,7 +167,7 @@ TEST_F(PartitioningUtilsTest, TwoDevices) {
 TEST_F(PartitioningUtilsTest, InsertTransferOpsWithOneDevice) {
   // A graph with three nodes that are on the same device.
   // x(_Arg, device0) -> id_x(Identity, device0) -> ret_x(_Retval, device0)
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   Scope scope = Scope::NewRootScope().WithDevice(device0_->name());
 
   auto x = ops::_Arg(scope.WithOpName("x"), DT_FLOAT, 0);
@@ -207,7 +210,7 @@ TEST_F(PartitioningUtilsTest, InsertTransferOpsWithOneDevice) {
 TEST_F(PartitioningUtilsTest, InsertTransferOpsWithTwoDevices) {
   // A graph with three nodes that are on two devices.
   // x(_Arg, device0) -> id_x(Identity, device1) -> ret_x(_Retval, device0)
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   Scope scope = Scope::NewRootScope();
   Scope scope1 = scope.WithDevice(device0_->name());
   Scope scope2 = scope.WithDevice(device1_->name());
@@ -236,17 +239,44 @@ TEST_F(PartitioningUtilsTest, InsertTransferOpsWithTwoDevices) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Graph> new_graph,
                           InsertTransferOps(device_set_, std::move(graph)));
 
-  // Two pairs of Send/Recv nodes are inserted.
   EXPECT_EQ(new_graph->num_op_nodes(), 7);
   send_count = recv_count = 0;
-  for (const auto* op : new_graph->op_nodes()) {
-    if (op->IsSend())
+
+  auto get_tensor_name_attr = [](const Node* node) -> std::string {
+    auto tensor_name_it = node->def().attr().find("tensor_name");
+    return tensor_name_it->second.s();
+  };
+  absl::flat_hash_map<std::string, std::pair<Node*, Node*>> send_recv_pairs;
+
+  for (auto* op : new_graph->op_nodes()) {
+    if (op->IsSend()) {
       ++send_count;
-    else if (op->IsRecv())
+      send_recv_pairs[get_tensor_name_attr(op)].first = op;
+    } else if (op->IsRecv()) {
       ++recv_count;
+      send_recv_pairs[get_tensor_name_attr(op)].second = op;
+    }
   }
+
+  // Two pairs of Send/Recv nodes are inserted.
   EXPECT_EQ(send_count, 2);
   EXPECT_EQ(recv_count, 2);
+
+  // There is a control edge between each Send/Recv pair.
+  for (const auto& [tensor_name, send_recv_pair] : send_recv_pairs) {
+    ASSERT_TRUE(send_recv_pair.first != nullptr &&
+                send_recv_pair.second != nullptr);
+    std::vector<const Edge*> out_edges(
+        send_recv_pair.first->out_edges().begin(),
+        send_recv_pair.first->out_edges().end());
+    ASSERT_THAT(out_edges, SizeIs(2));
+    for (const Edge* out_edge : out_edges) {
+      if (out_edge->dst() != new_graph->sink_node()) {
+        EXPECT_TRUE(out_edge->IsControlEdge());
+        EXPECT_EQ(out_edge->dst(), send_recv_pair.second);
+      }
+    }
+  }
 }
 
 void CheckRetIndices(const std::vector<int>& expected,
@@ -282,7 +312,7 @@ void CheckIndex(const Node& node, int expected_index) {
 }
 
 TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   SubGraph(graph.get(), DT_FLOAT, {3}, {5});
 
   std::vector<FunctionArgIndex> arg_indices;
@@ -308,7 +338,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
 }
 
 TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsNotOnDevice) {
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   SubGraph(graph.get(), DT_INT32, {3}, {5});
 
   std::vector<FunctionArgIndex> arg_indices;
@@ -326,7 +356,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsNotOnDevice) {
 }
 
 TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsOnDevice) {
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   SubGraph(graph.get(), DT_INT32, {3}, {5});
 
   std::vector<FunctionArgIndex> arg_indices;
@@ -344,7 +374,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsOnDevice) {
 }
 
 TEST_F(PartitioningUtilsTest, UpdateArgsAndRets_Order) {
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   SubGraph(graph.get(), DT_FLOAT, {9, 7, 5, 3, 1}, {2, 4, 6, 8, 10});
 
   const std::map<int, int> sub_indices = {

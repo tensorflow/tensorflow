@@ -14,8 +14,7 @@ py_library(
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
-        "//tensorflow/python/training/tracking",
-        "@six_archive//:six",
+        "//tensorflow/python/trackable:autotrackable",
     ],
 )
 
