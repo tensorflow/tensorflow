@@ -245,9 +245,8 @@ static FailureOr<TFOp> ReplaceOpWithIdentity(OpBuilder &builder, TFOp owner,
   return TFOp(identity_op);
 }
 
-static FailureOr<TFOp> ReplaceOperationWithConstant(OpBuilder &builder,
-                                                    Operation *op,
-                                                    double constant_value) {
+static FailureOr<TFOp> ReplaceOpWithConstant(OpBuilder &builder, Operation *op,
+                                             double constant_value) {
   auto res = (*op->result_type_begin()).cast<ShapedType>();
   Type dtype = GetDataTypeFromOp(builder, op);
   Attribute value_attr;
@@ -261,8 +260,8 @@ static FailureOr<TFOp> ReplaceOperationWithConstant(OpBuilder &builder,
   return ReplaceOpWithConstantTensor(builder, op, const_attr);
 }
 
-static FailureOr<TFOp> ReplaceOperationWithSnapshot(OpBuilder &builder, TFOp op,
-                                                    int idx) {
+static FailureOr<TFOp> ReplaceOpWithSnapshot(OpBuilder &builder, TFOp op,
+                                             int idx) {
   // TODO(chiahungduan): If the graph contains no ops that mutate their
   // inputs, we can use Identity instead of Snapshot.
   // if (!graph_contains_assign_or_inplace_op_)
@@ -290,9 +289,8 @@ static FailureOr<TFOp> ReplaceOperationWithSnapshot(OpBuilder &builder, TFOp op,
   return TFOp(snapshot_op);
 }
 
-static FailureOr<TFOp> ReplaceOperationWithBroadcastTo(OpBuilder &builder,
-                                                       TFOp op,
-                                                       int idx_to_replace) {
+static FailureOr<TFOp> ReplaceOpWithBroadcastTo(OpBuilder &builder, TFOp op,
+                                                int idx_to_replace) {
   ShapedType tensor_type = (*op->result_type_begin()).cast<ShapedType>();
   if (!tensor_type.hasStaticShape()) return failure();
   ElementsAttr const_attr = ConvertShapeToAttr(tensor_type);
@@ -2202,14 +2200,13 @@ class SimplifyArithmeticOp
     if ((is_mul && x_is_one) || (is_add && x_is_zero)) {
       // 1 * y = y or 0 + y = y.
       if (y_matches_output_shape) {
-        FailureOr<TFOp> snapshot_op =
-            ReplaceOperationWithSnapshot(rewriter, op, 1);
+        FailureOr<TFOp> snapshot_op = ReplaceOpWithSnapshot(rewriter, op, 1);
         if (failed(snapshot_op)) return failure();
         rewriter.replaceOp(op, (*snapshot_op)->getResults());
         return success();
       } else if (x_matches_output_shape) {
         FailureOr<TFOp> broadcast_to_op =
-            ReplaceOperationWithBroadcastTo(rewriter, op, 1);
+            ReplaceOpWithBroadcastTo(rewriter, op, 1);
         rewriter.replaceOp(op, (*broadcast_to_op)->getResults());
         return success();
       }
@@ -2255,14 +2252,13 @@ class SimplifyArithmeticOp
         ((is_add || is_sub) && y_is_zero)) {
       // x * 1 = x or x / 1 = x or x +/- 0 = x
       if (x_matches_output_shape) {
-        FailureOr<TFOp> snapshot_op =
-            ReplaceOperationWithSnapshot(rewriter, op, 0);
+        FailureOr<TFOp> snapshot_op = ReplaceOpWithSnapshot(rewriter, op, 0);
         if (failed(snapshot_op)) return failure();
         rewriter.replaceOp(op, (*snapshot_op)->getResults());
         return success();
       } else if (y_matches_output_shape) {
         FailureOr<TFOp> broadcast_to_op =
-            ReplaceOperationWithBroadcastTo(rewriter, op, 0);
+            ReplaceOpWithBroadcastTo(rewriter, op, 0);
         if (failed(broadcast_to_op)) return failure();
         rewriter.replaceOp(op, (*broadcast_to_op)->getResults());
         return success();
@@ -2273,7 +2269,7 @@ class SimplifyArithmeticOp
     // x OR true = true OR y = true.
     if (op_type.hasStaticShape() && dialect_->IsLogicalOr(op) &&
         (y_is_one || x_is_one)) {
-      FailureOr<TFOp> const_op = ReplaceOperationWithConstant(rewriter, op, 1);
+      FailureOr<TFOp> const_op = ReplaceOpWithConstant(rewriter, op, 1);
       if (failed(const_op)) return failure();
       rewriter.replaceOp(op, (*const_op)->getResults());
       return success();
@@ -2294,8 +2290,7 @@ class SimplifyArithmeticOp
           return failure();
         }
 
-        FailureOr<TFOp> const_op =
-            ReplaceOperationWithConstant(rewriter, op, 0);
+        FailureOr<TFOp> const_op = ReplaceOpWithConstant(rewriter, op, 0);
         if (failed(const_op)) return failure();
 
         rewriter.replaceOp(op, (*const_op)->getResults());
@@ -2310,7 +2305,7 @@ class SimplifyArithmeticOp
           return success();
         } else if (y_matches_output_shape) {
           FailureOr<TFOp> broadcast_to_op =
-              ReplaceOperationWithBroadcastTo(rewriter, op, 0);
+              ReplaceOpWithBroadcastTo(rewriter, op, 0);
           if (failed(broadcast_to_op)) return failure();
           rewriter.replaceOp(op, (*broadcast_to_op)->getResults());
           return success();
@@ -2323,7 +2318,7 @@ class SimplifyArithmeticOp
           return success();
         } else if (x_matches_output_shape) {
           FailureOr<TFOp> broadcast_to_op =
-              ReplaceOperationWithBroadcastTo(rewriter, op, 1);
+              ReplaceOpWithBroadcastTo(rewriter, op, 1);
           if (failed(broadcast_to_op)) return failure();
           rewriter.replaceOp(op, (*broadcast_to_op)->getResults());
           return success();
@@ -3449,7 +3444,7 @@ class SimplifySelectOpBase : public FolderPatternBase<ConcreteType> {
       rewriter.replaceOp(op, identity->getResults());
     } else {
       FailureOr<TFOp> broadcast_to_op =
-          ReplaceOperationWithBroadcastTo(rewriter, op, live_input_idx);
+          ReplaceOpWithBroadcastTo(rewriter, op, live_input_idx);
       if (failed(broadcast_to_op)) return failure();
       rewriter.replaceOp(op, (*broadcast_to_op)->getResults());
     }
