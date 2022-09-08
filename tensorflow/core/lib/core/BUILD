@@ -257,6 +257,7 @@ filegroup(
         "errors.h",
         "notification.h",
         "raw_coding.h",
+        "refcount.h",
         "status.h",
         "stringpiece.h",
         "threadpool.h",
