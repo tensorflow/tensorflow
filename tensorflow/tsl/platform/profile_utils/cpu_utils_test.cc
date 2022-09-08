@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 // This class is designed to get accurate profiles for programs
 
-#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/profile_utils/clock_cycle_profiler.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/profile_utils/cpu_utils.h"
 
-namespace tensorflow {
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/profile_utils/clock_cycle_profiler.h"
+
+namespace tsl {
 namespace profile_utils {
 
 static constexpr bool DBG = false;
@@ -91,4 +92,4 @@ TEST_F(CpuUtilsTest, SimpleUsageOfClockCycleProfiler) {
 }
 
 }  // namespace profile_utils
-}  // namespace tensorflow
+}  // namespace tsl

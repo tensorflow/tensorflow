@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/profile_utils/clock_cycle_profiler.h"
+#include "tensorflow/tsl/platform/profile_utils/clock_cycle_profiler.h"
 
 #include <chrono>
 
-namespace tensorflow {
+namespace tsl {
 
 void ClockCycleProfiler::DumpStatistics(const string& tag) {
   CHECK(!IsStarted());
@@ -34,4 +34,4 @@ void ClockCycleProfiler::DumpStatistics(const string& tag) {
             << ", count = " << count;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

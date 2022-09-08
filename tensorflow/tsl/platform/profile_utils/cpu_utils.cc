@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
+#include "tensorflow/tsl/platform/profile_utils/cpu_utils.h"
 
 #include <fstream>
 #include <limits>
@@ -28,10 +28,10 @@ limitations under the License.
 #endif
 
 #include "absl/base/call_once.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profile_utils {
 
 /* static */ constexpr int64_t CpuUtils::INVALID_FREQUENCY;
@@ -157,4 +157,4 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 }
 
 }  // namespace profile_utils
-}  // namespace tensorflow
+}  // namespace tsl

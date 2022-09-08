@@ -353,6 +353,10 @@ filegroup(
         "stringpiece.h",
         "stringprintf.h",
         "thread_annotations.h",
+        "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/tsl/platform/profile_utils:clock_cycle_profiler.h",
+        "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -452,6 +456,11 @@ filegroup(
         "random.cc",
         "random.h",
         "test_benchmark.h",
+        "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.cc",
+        "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/tsl/platform/profile_utils:cpu_utils.cc",
+        "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
@@ -483,7 +492,12 @@ filegroup(
             "gif.h",
             "jpeg.h",
         ],
-    ),
+    ) + [
+        "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
+        "//tensorflow/tsl/platform/profile_utils:clock_cycle_profiler.h",
+    ],
     compatible_with = get_compatible_with_portable(),
 )
 

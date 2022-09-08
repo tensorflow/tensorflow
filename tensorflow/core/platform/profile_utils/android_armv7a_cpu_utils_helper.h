@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/profile_utils/i_cpu_utils_helper.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
 #if defined(__ANDROID__) && (__ANDROID_API__ >= 21) && \
     (defined(__ARM_ARCH_7A__) || defined(__aarch64__))
@@ -29,36 +30,7 @@ struct perf_event_attr;
 
 namespace tensorflow {
 namespace profile_utils {
-
-// Implementation of CpuUtilsHelper for Android armv7a
-class AndroidArmV7ACpuUtilsHelper : public ICpuUtilsHelper {
- public:
-  AndroidArmV7ACpuUtilsHelper() = default;
-  void ResetClockCycle() final;
-  uint64 GetCurrentClockCycle() final;
-  void EnableClockCycleProfiling() final;
-  void DisableClockCycleProfiling() final;
-  int64 CalculateCpuFrequency() final;
-
- private:
-  static constexpr int INVALID_FD = -1;
-  static constexpr int64 INVALID_CPU_FREQUENCY = -1;
-
-  void InitializeInternal();
-
-  // syscall __NR_perf_event_open with arguments
-  int OpenPerfEvent(perf_event_attr *const hw_event, const pid_t pid,
-                    const int cpu, const int group_fd,
-                    const unsigned long flags);
-
-  int64 ReadCpuFrequencyFile(const int cpu_id, const char *const type);
-
-  bool is_initialized_{false};
-  int fd_{INVALID_FD};
-
-  TF_DISALLOW_COPY_AND_ASSIGN(AndroidArmV7ACpuUtilsHelper);
-};
-
+using tsl::profile_utils::AndroidArmV7ACpuUtilsHelper;  // NOLINT
 }  // namespace profile_utils
 }  // namespace tensorflow
 
