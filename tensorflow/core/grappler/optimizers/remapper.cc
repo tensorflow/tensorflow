@@ -360,16 +360,32 @@ bool IsCpuCompatibleConv3D(const RemapperContext& ctx, const NodeDef* conv3d) {
          IsCpuCompatibleDataFormat(ctx, conv3d);
 }
 
-bool IsGpuCompatibleConv2D(const RemapperContext& ctx, const NodeDef* conv2d) {
+bool IsGpuCompatibleConv2D(const RemapperContext& ctx, const NodeDef* conv2d,
+                           const NodeDef* activation) {
   DCHECK(IsConv2D(*conv2d)) << "Expected Conv2D op";
-  return NodeIsOnGpu(conv2d) && IsGpuCompatibleDataType(conv2d) &&
-         IsGpuCompatibleDataFormat(ctx, conv2d);
+  if (IsRelu(*activation)) {
+    return NodeIsOnGpu(conv2d) && IsGpuCompatibleDataType(conv2d) &&
+           IsGpuCompatibleDataFormat(ctx, conv2d);
+  } else if (IsRelu6(*activation) || IsElu(*activation) ||
+             IsLeakyRelu(*activation)) {
+    DataType dtype = GetDataTypeFromAttr(*conv2d, "T");
+    const string& data_format = conv2d->attr().at(kDataFormat).s();
+    return NodeIsOnGpu(conv2d) && dtype == DT_HALF && data_format == "NHWC";
+  }
+  return false;
 }
 
-bool IsGpuCompatibleMatMul(const RemapperContext& ctx, const NodeDef* matmul) {
+bool IsGpuCompatibleMatMul(const RemapperContext& ctx, const NodeDef* matmul,
+                           const NodeDef* activation) {
   DCHECK(IsMatMul(*matmul)) << "Expected MatMul op";
-  return BlasLtMatmulEnabled() && NodeIsOnGpu(matmul) &&
-         IsGpuCompatibleDataType(matmul);
+  if (activation == nullptr || IsRelu(*activation)) {
+    return BlasLtMatmulEnabled() && NodeIsOnGpu(matmul) &&
+           IsGpuCompatibleDataType(matmul);
+  } else if (IsTanh(*activation) || IsSigmoid(*activation)) {
+    DataType dtype = GetDataTypeFromAttr(*matmul, "T");
+    return NodeIsOnGpu(matmul) && dtype == DT_HALF;
+  }
+  return false;
 }
 
 bool IsCpuCompatibleMatMul(const RemapperContext& ctx, const NodeDef* matmul) {
@@ -398,13 +414,6 @@ bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
   } else {
     return false;
   }
-}
-
-bool IsSupportedActivation(const NodeDef& node) {
-  bool is_default_supported =
-      IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
-  bool is_mkl_specific = IsMKLEnabled() && (IsTanh(node) || IsSigmoid(node));
-  return (is_default_supported || is_mkl_specific);
 }
 
 bool RuntimeFusionEnabled(const Cluster* cluster) {
@@ -451,6 +460,14 @@ bool RuntimeFusionEnabled(const Cluster* cluster) {
   return is_enabled;
 }
 
+bool IsSupportedActivation(const NodeDef& node, const Cluster* cluster) {
+  bool is_default_supported =
+      IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
+  bool is_device_specific = (IsMKLEnabled() || RuntimeFusionEnabled(cluster)) &&
+                            (IsTanh(node) || IsSigmoid(node));
+  return (is_default_supported || is_device_specific);
+}
+
 // Checks if we can rewrite a pattern to the `_FusedConv2D` on GPU device.
 bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithBiasAddAndActivation& matched,
@@ -469,7 +486,7 @@ bool IsGpuCompatible(const RemapperContext& ctx,
 
   // We rely on cuDNN for fused convolution and cublasLt for fused matmul.
   const NodeDef& activation_node = graph->node(matched.activation);
-  if (!IsSupportedActivation(activation_node)) return false;
+  if (!IsSupportedActivation(activation_node, cluster)) return false;
 
   const NodeDef& contraction_node = graph->node(matched.contraction);
   if (IsConv2D(contraction_node)) {
@@ -487,27 +504,39 @@ bool IsGpuCompatible(const RemapperContext& ctx,
                            filter_shape.dim(0).size() != 1 &&  //
                            filter_shape.dim(1).size() != 1;
 
-    // The CuDNN runtime compiled kernels support the activations of relu6,
-    // elu, leakrelu but require the in_channels and out_channels to be even and
-    // fp16 dtype.
-    bool act_requires_fp16 = IsRelu6(activation_node) ||
-                             IsElu(activation_node) ||
-                             IsLeakyRelu(activation_node);
-    DataType dtype = GetDataTypeFromAttr(activation_node, "T");
-    bool is_fp16 = dtype == DT_HALF;
+    // FusedConv2D on GPU will use cuDNN static kernels when the activation is
+    // Relu. For other activations, it will rely on cuDNN runtime funsion
+    // kernels which require 32-bit aligned data access. Here, we check if the
+    // in and out channels of filter are even numbers.
     bool valid_channels = Rank(filter_shape) == 4 &&              //
                           IsKnown(filter_shape.dim(2)) &&         //
                           IsKnown(filter_shape.dim(3)) &&         //
                           filter_shape.dim(2).size() % 2 == 0 &&  //
                           filter_shape.dim(3).size() % 2 == 0;
-    bool is_supported_conv =
-        is_spatial_conv &&
-        (!act_requires_fp16 ||
-         (is_fp16 && valid_channels && RuntimeFusionEnabled(cluster)));
-
-    return is_supported_conv && IsGpuCompatibleConv2D(ctx, &contraction_node);
+    return is_spatial_conv &&
+           (IsRelu(activation_node) ||
+            (RuntimeFusionEnabled(cluster) && valid_channels)) &&
+           IsGpuCompatibleConv2D(ctx, &contraction_node, &activation_node);
   } else if (IsMatMul(contraction_node)) {
-    return IsGpuCompatibleMatMul(ctx, &contraction_node);
+    const std::vector<OpInfo::TensorProperties>& input_props =
+        ctx.graph_properties.GetInputProperties(contraction_node.name());
+    const TensorShapeProto& a_shape =
+        !input_props.empty() ? input_props[0].shape() : TensorShapeProto();
+    const TensorShapeProto& b_shape =
+        !input_props.empty() ? input_props[1].shape() : TensorShapeProto();
+    // FusedMatMul on GPU will use cublasLt when the activation is Relu. For
+    // other activations, it will rely on cuDNN runtime funsion kernels which
+    // require 32-bit aligned data access. Here, we check if the leading dims of
+    // input matrices are even numbers.
+    bool valid_dims = Rank(a_shape) == 2 && Rank(b_shape) == 2 &&
+                      IsKnown(a_shape.dim(1)) &&         //
+                      IsKnown(b_shape.dim(1)) &&         //
+                      a_shape.dim(1).size() % 2 == 0 &&  //
+                      b_shape.dim(1).size() % 2 == 0;
+
+    return (IsRelu(activation_node) ||
+            (RuntimeFusionEnabled(cluster) && valid_dims)) &&
+           IsGpuCompatibleMatMul(ctx, &contraction_node, &activation_node);
   }
 
   return false;
@@ -531,7 +560,7 @@ bool IsGpuCompatible(const RemapperContext& ctx,
   const NodeDef& contraction_node = graph->node(matched.contraction);
   if (!IsMatMul(contraction_node)) return false;
 
-  return IsGpuCompatibleMatMul(ctx, &contraction_node);
+  return IsGpuCompatibleMatMul(ctx, &contraction_node, nullptr);
 }
 
 bool IsGpuCompatible(const RemapperContext& ctx,
@@ -709,7 +738,7 @@ bool FindContractionWithBiasAndActivation(
   if (HasControlFaninOrFanout(*node_view)) return false;
 
   const auto* node_def = node_view->node();
-  if (!IsSupportedActivation(*node_def)) return false;
+  if (!IsSupportedActivation(*node_def, cluster)) return false;
 
   // And input to the activation node must match ContractionWithBiasAdd pattern.
   if (node_view->NumRegularFanins() < 1) return false;
@@ -872,7 +901,7 @@ bool FindConv2DWithBatchNormAndActivation(
 
   // Root of the pattern must be an activation node.
   const auto* node_def = node_view->node();
-  if (!IsSupportedActivation(*node_def)) return false;
+  if (!IsSupportedActivation(*node_def, nullptr)) return false;
 
   // Need to test and enable in Kernel Op before enabling
   // this activation TODO(intel-tf)
@@ -1029,7 +1058,7 @@ bool FindContractionWithBiasAndAddActivation(
   // Root of the pattern must be an activation node.
   const auto* node_def = node_view->node();
   if (node_def == nullptr) return false;
-  if (!IsSupportedActivation(*node_def)) return false;
+  if (!IsSupportedActivation(*node_def, nullptr)) return false;
 
   if (!NodeIsOnCpu(node_def)) return false;
 
@@ -3257,7 +3286,7 @@ bool IsContractionWithAdd(const RemapperContext& ctx, int node_index) {
   }
   // Dealing with the Contraction + Add + Activation  or Contraction +
   // BiasAdd/BiasSemanticAdd + Add + Activation pattern.
-  if (IsSupportedActivation(*node_view->node())) {
+  if (IsSupportedActivation(*node_view->node(), nullptr)) {
     for (int i = 0; i < node_view->NumRegularFanins(); i++) {
       const auto& fanin_i = node_view->GetRegularFanin(i);
       if (is_supported_add(fanin_i.node_view())) return true;
@@ -3398,7 +3427,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
   };
 
   const auto is_act_biasadd_conv_candidate = [&]() -> bool {
-    if (!IsSupportedActivation(*node_def)) return false;
+    if (!IsSupportedActivation(*node_def, cluster)) return false;
 
     if (!RuntimeFusionEnabled(cluster) && !IsRelu(*node_def)) return false;
 
@@ -3489,6 +3518,35 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
                                               node_index);
   };
 
+  // Candidate for a FusedMatmul fusion (MatMul + BiasAdd + Tanh/Sigmoid).
+  const auto is_act_biasadd_matmul_candidate = [&]() -> bool {
+    if (!IsTanh(*node_def) && !IsSigmoid(*node_def)) return false;
+    if (!RuntimeFusionEnabled(cluster)) return false;
+    DataType act_dtype = GetDataTypeFromAttr(*node_def, "T");
+    if (act_dtype != DT_HALF) return false;
+
+    if (node_view->NumRegularFanins() < 1) return false;
+    const auto& relu_fanin_0 = node_view->GetRegularFanin(0);
+    const auto* relu_fanin_0_node_view = relu_fanin_0.node_view();
+    const auto* relu_fanin_0_node_def = relu_fanin_0_node_view->node();
+
+    if (!IsBiasAdd(*relu_fanin_0_node_def) && !IsAdd(*relu_fanin_0_node_def)) {
+      return false;
+    }
+    DataType biasadd_dtype = GetDataTypeFromAttr(*relu_fanin_0_node_def, "T");
+    if (biasadd_dtype != DT_HALF) return false;
+
+    if (relu_fanin_0_node_view->NumRegularFanins() < 1) return false;
+
+    const auto& biasadd_fanin_0 = relu_fanin_0_node_view->GetRegularFanin(0);
+    const auto* biasadd_fanin_0_node_def = biasadd_fanin_0.node_view()->node();
+
+    if (!IsMatMul(*biasadd_fanin_0_node_def)) return false;
+    DataType matmul_dtype = GetDataTypeFromAttr(*biasadd_fanin_0_node_def, "T");
+    if (matmul_dtype != DT_HALF) return false;
+    return true;
+  };
+
   if (IsMKLEnabled())
     return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
            IsContractionWithAdd(ctx, node_index) ||
@@ -3497,7 +3555,8 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
   return is_act_biasadd_conv_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate() ||
          is_batch_norm_grad_fusion_candidate() ||
-         is_matmul_gelu_exact_fusion_candidate();
+         is_matmul_gelu_exact_fusion_candidate() ||
+         is_act_biasadd_matmul_candidate();
 }
 }  // namespace
 

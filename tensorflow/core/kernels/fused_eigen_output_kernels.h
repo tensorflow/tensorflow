@@ -38,6 +38,8 @@ enum class FusedComputationType {
   kBiasAdd,
   kBiasAddWithRelu,
   kBiasAddWithRelu6,
+  kBiasAddWithTanh,
+  kBiasAddWithSigmoid,
   kBiasAddWithElu,
   kBiasAddWithLeakyRelu,
   kBiasAddWithGeluApproximate,
