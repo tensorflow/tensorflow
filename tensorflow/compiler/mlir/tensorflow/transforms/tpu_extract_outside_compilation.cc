@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -54,6 +57,7 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kHostFunctionAttr[] = "host_func";
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
+constexpr char kNoReplicationCluster[] = "__no_replication_cluster";
 
 struct TPUExtractOutsideCompilation
     : public TF::TPUExtractOutsideCompilationPassBase<
@@ -155,6 +159,7 @@ Operation* ApplyXlaHostTransferAttr(Operation* op, OpBuilder& builder) {
 Operation* CreateSendFromHostOp(OpBuilder& builder, Location loc,
                                 ValueRange inputs, Value compilation_key,
                                 Value device_ordinal,
+                                int default_device_ordinal,
                                 llvm::StringRef communication_key) {
   if (device_ordinal)
     return ApplyXlaHostTransferAttr(
@@ -169,7 +174,7 @@ Operation* CreateSendFromHostOp(OpBuilder& builder, Location loc,
           loc, inputs,
           /*dynamic_key=*/compilation_key,
           builder.getStringAttr(communication_key),
-          /*device_ordinal=*/builder.getI64IntegerAttr(0)),
+          /*device_ordinal=*/builder.getI64IntegerAttr(default_device_ordinal)),
       builder);
 }
 
@@ -177,7 +182,7 @@ Operation* CreateSendFromHostOp(OpBuilder& builder, Location loc,
 // present, a tf._XlaRecvAtHostV2 op is created instead.
 Operation* CreateRecvAtHostOp(OpBuilder& builder, Location loc,
                               TypeRange output_types, Value compilation_key,
-                              Value device_ordinal,
+                              Value device_ordinal, int default_device_ordinal,
                               llvm::StringRef communication_key) {
   if (device_ordinal)
     return ApplyXlaHostTransferAttr(
@@ -190,7 +195,7 @@ Operation* CreateRecvAtHostOp(OpBuilder& builder, Location loc,
       builder.create<TF::_XlaRecvAtHostOp>(
           loc, output_types, /*dynamic_key=*/compilation_key,
           builder.getStringAttr(communication_key),
-          /*device_ordinal=*/builder.getI64IntegerAttr(0)),
+          /*device_ordinal=*/builder.getI64IntegerAttr(default_device_ordinal)),
       builder);
 }
 
@@ -506,7 +511,8 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
                    const llvm::SmallSetVector<Value, 4>& external_operands,
                    const llvm::SmallSetVector<Value, 4>& external_outputs,
                    Operation* insertion_point, Value compilation_key,
-                   Value device_ordinal, int& communication_key_index) {
+                   Value device_ordinal, int default_device_ordignal,
+                   int& communication_key_index) {
   OpBuilder builder(insertion_point);
   Operation& op = *clustered_ops.back();
   std::string args_communication_key =
@@ -547,7 +553,7 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
 
   Operation* recv_at_host = CreateRecvAtHostOp(
       builder, op.getLoc(), host_operand_types, compilation_key, device_ordinal,
-      args_communication_key);
+      default_device_ordignal, args_communication_key);
   Block* original_op_block = op.getBlock();
   Operation* after_op = recv_at_host;
   for (Operation* cluster_op : clustered_ops) {
@@ -559,7 +565,7 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
   if (!external_outputs.empty()) {
     CreateSendFromHostOp(builder, op.getLoc(), external_outputs.getArrayRef(),
                          compilation_key, device_ordinal,
-                         retvals_communication_key);
+                         default_device_ordignal, retvals_communication_key);
   }
 
   if (external_operands.empty()) {
@@ -589,7 +595,7 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
 // ensure that duplicate communication between device and host is not added.
 LogicalResult MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
                             Operation* insertion_point, Value compilation_key,
-                            Value device_ordinal,
+                            Value device_ordinal, int default_device_ordignal,
                             int& communication_key_index) {
   // Contains all of the outside compiled operations that should be moved to the
   // host using a single `_XlaHostComputeMlir` op.  This should only contain a
@@ -613,7 +619,7 @@ LogicalResult MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
           GetExternalOutputs(clustered_ops);
       MoveOpsToHost(clustered_ops, external_operands, external_outputs,
                     insertion_point, compilation_key, device_ordinal,
-                    communication_key_index);
+                    default_device_ordignal, communication_key_index);
       clustered_ops.clear();
     }
 
@@ -629,7 +635,7 @@ LogicalResult MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
           GetExternalOperands(tpu_cluster, clustered_ops);
       MoveOpsToHost(clustered_ops, external_operands, external_outputs,
                     insertion_point, compilation_key, device_ordinal,
-                    communication_key_index);
+                    default_device_ordignal, communication_key_index);
       clustered_ops.clear();
     }
   }
@@ -645,6 +651,7 @@ LogicalResult MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
 // `communication_key_index` when creating communication ops.
 LogicalResult DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
                                    Value compilation_key, Value device_ordinal,
+                                   int default_device_ordignal,
                                    int& communication_key_index) {
   auto result = tpu_cluster.GetBody().walk([&](Operation* op) {
     if (auto if_op = llvm::dyn_cast<TF::IfRegionOp>(op)) {
@@ -654,11 +661,13 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
       if (failed(MoveOpsToHost(tpu_cluster, &if_op.then_branch().front(),
                                host_if.then_branch().front().getTerminator(),
                                compilation_key, device_ordinal,
+                               default_device_ordignal,
                                communication_key_index)))
         return WalkResult::interrupt();
       if (failed(MoveOpsToHost(tpu_cluster, &if_op.else_branch().front(),
                                host_if.else_branch().front().getTerminator(),
                                compilation_key, device_ordinal,
+                               default_device_ordignal,
                                communication_key_index)))
         return WalkResult::interrupt();
       MarkOutsideCompiled(host_if.getOperation());
@@ -682,17 +691,20 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
       builder.setInsertionPointToEnd(&cond.front());
       auto recv_condition_at_host = CreateRecvAtHostOp(
           builder, while_op.getLoc(), TypeRange{condition.getType()},
-          compilation_key, device_ordinal, condition_send_recv_key);
+          compilation_key, device_ordinal, default_device_ordignal,
+          condition_send_recv_key);
       builder.create<TF::YieldOp>(while_op.getLoc(),
                                   recv_condition_at_host->getResults());
 
       if (failed(MoveOpsToHost(tpu_cluster, &while_op.cond().front(),
                                recv_condition_at_host, compilation_key,
-                               device_ordinal, communication_key_index)))
+                               device_ordinal, default_device_ordignal,
+                               communication_key_index)))
         return WalkResult::interrupt();
       if (failed(MoveOpsToHost(tpu_cluster, &while_op.body().front(),
                                host_while.body().front().getTerminator(),
                                compilation_key, device_ordinal,
+                               default_device_ordignal,
                                communication_key_index)))
         return WalkResult::interrupt();
       MarkOutsideCompiled(host_while.getOperation());
@@ -715,6 +727,40 @@ void RemoveOutsideCompilation(tf_device::LaunchOp host_launch_op) {
   });
 }
 
+// This method extracts default ordinal or default TPU core associated with a
+// host.
+// If the cluster has replication attribute and it is not empty, then it means
+// it is replicated case and then NO ordinal info is extracted but
+// if it is non replicated cluster and there is a device attr with some
+// non-empty device, then that device's ordinal (0 out of TPU:0 and
+// 1 out of TPU:1) is extracted and the default ordinal is set to this value.
+LogicalResult GetDefaultDeviceOrdinal(tf_device::ClusterOp tpu_cluster,
+                                      int& default_ordinal) {
+  bool has_replication = tpu_cluster->hasAttr(TF::kReplicationInfoAttr);
+
+  std::string replication_info;
+  if (has_replication) {
+    replication_info =
+        tpu_cluster->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr).str();
+  }
+  if (replication_info == kNoReplicationCluster || replication_info.empty()) {
+    has_replication = false;
+  }
+  if (!has_replication && tpu_cluster->hasAttrOfType<StringAttr>(kDeviceAttr) &&
+      !tpu_cluster->getAttrOfType<StringAttr>(kDeviceAttr).str().empty()) {
+    int64_t ordinal = 0;
+    mlir::LogicalResult result = tensorflow::GetDeviceOrdinalFromDeviceString(
+        mlir::UnknownLoc::get(tpu_cluster.getContext()),
+        tpu_cluster->getAttrOfType<StringAttr>(kDeviceAttr).str(), &ordinal);
+    if (succeeded(result)) {
+      default_ordinal = ordinal;
+    } else {
+      return tpu_cluster.emitError()
+             << " could not find ordinal for the given device";
+    }
+  }
+  return success();
+}
 // Creates a `parallel_execute` op with a region for host computation and
 // a region for `tpu_cluster` computation by extracting outside compiled ops to
 // host computation.
@@ -744,11 +790,15 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
   if (tpu_cluster->getParentOfType<tf_device::ReplicateOp>()) {
     device_ordinal = device_ordinal_op.device_ordinal();
   }
-
+  int default_device_ordinal = 0;
+  if (failed(GetDefaultDeviceOrdinal(tpu_cluster, default_device_ordinal))) {
+    return failure();
+  }
   int communication_key_index = 0;
   // Decompose control flow into device and host control flow when outside
   // compilation is included.
   if (failed(DecomposeControlFlow(tpu_cluster, compilation_key, device_ordinal,
+                                  default_device_ordinal,
                                   communication_key_index)))
     return failure();
 
@@ -756,7 +806,7 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
   if (failed(MoveOpsToHost(tpu_cluster, &tpu_cluster.GetBody(),
                            host_launch_op.GetBody().getTerminator(),
                            compilation_key, device_ordinal,
-                           communication_key_index)))
+                           default_device_ordinal, communication_key_index)))
     return failure();
 
   if (communication_key_index == 0) compilation_key_op.erase();
