@@ -188,7 +188,14 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
   }
 
   Status result;
-  for (int64_t i = 0; i < expected.shape().dimensions(dimension); ++i) {
+  int64_t upper_bound = expected.shape().dimensions(dimension);
+  if (expected.shape().is_dynamic_dimension(dimension)) {
+    // If the dimension is dynamic, we only want to check up until the actual
+    // dynamic size specified by the literal.
+    upper_bound = expected.GetDynamicSize(dimension);
+  }
+
+  for (int64_t i = 0; i < upper_bound; ++i) {
     multi_index[dimension] = i;
     if (mismatched != nullptr) {
       result.Update(Equal<NativeT>(expected, actual, multi_index, dimension + 1,

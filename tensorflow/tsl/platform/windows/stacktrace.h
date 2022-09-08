@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_STACKTRACE_H_
-#define TENSORFLOW_CORE_PLATFORM_WINDOWS_STACKTRACE_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_WINDOWS_STACKTRACE_H_
+#define TENSORFLOW_TSL_PLATFORM_WINDOWS_STACKTRACE_H_
 
 #include <string>
 
 #define TF_HAS_STACKTRACE
 
-namespace tensorflow {
+namespace tsl {
 
 // Function to create a pretty stacktrace.
 std::string CurrentStackTrace();
@@ -48,6 +48,6 @@ class SavedStackTrace {
   void* stack_[32];
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PLATFORM_WINDOWS_STACKTRACE_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_WINDOWS_STACKTRACE_H_

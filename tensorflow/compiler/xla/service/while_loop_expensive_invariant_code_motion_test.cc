@@ -63,8 +63,8 @@ ENTRY entry {
 
 TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
        HoistsGroupOfAllowedNonInflating) {
-  auto m = ParseAndReturnVerifiedModule(kModuleWithNonInflatingInvariantDot)
-               .ValueOrDie();
+  auto m =
+      ParseAndReturnVerifiedModule(kModuleWithNonInflatingInvariantDot).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
@@ -84,8 +84,8 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
 
 TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
        HoistsGroupOfAllNonInflating) {
-  auto m = ParseAndReturnVerifiedModule(kModuleWithNonInflatingInvariantDot)
-               .ValueOrDie();
+  auto m =
+      ParseAndReturnVerifiedModule(kModuleWithNonInflatingInvariantDot).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
@@ -105,8 +105,8 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
 
 TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
        DoesNotHoistsUnallowedInstructions) {
-  auto m = ParseAndReturnVerifiedModule(kModuleWithNonInflatingInvariantDot)
-               .ValueOrDie();
+  auto m =
+      ParseAndReturnVerifiedModule(kModuleWithNonInflatingInvariantDot).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
@@ -153,8 +153,8 @@ ENTRY entry {
 )";
 
 TEST_F(WhileLoopExpensiveInvariantCodeMotionTest, DoesNotHoistsInflating) {
-  auto m = ParseAndReturnVerifiedModule(kModuleWithInflatingInvariantDot)
-               .ValueOrDie();
+  auto m =
+      ParseAndReturnVerifiedModule(kModuleWithInflatingInvariantDot).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
@@ -168,8 +168,8 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest, DoesNotHoistsInflating) {
 
 TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
        HoistsGroupOfNonInflatingWithInflatingIntermediate) {
-  auto m = ParseAndReturnVerifiedModule(kModuleWithInflatingInvariantDot)
-               .ValueOrDie();
+  auto m =
+      ParseAndReturnVerifiedModule(kModuleWithInflatingInvariantDot).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
@@ -219,8 +219,7 @@ ENTRY entry {
   ROOT while = while(while_init), condition=condition, body=body
 }
 )";
-  auto m =
-      ParseAndReturnVerifiedModule(kModuleWithDuplicateOperands).ValueOrDie();
+  auto m = ParseAndReturnVerifiedModule(kModuleWithDuplicateOperands).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,

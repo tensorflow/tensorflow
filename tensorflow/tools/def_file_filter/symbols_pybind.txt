@@ -213,7 +213,7 @@ tensorflow::EagerExecutor::~EagerExecutor
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
 
 [//tensorflow/c:tf_status_helper] # tfe
-tensorflow::Set_TF_Status_from_Status
+tsl::Set_TF_Status_from_Status
 
 [//tensorflow/core/common_runtime/eager:context] # tfe
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
@@ -427,7 +427,7 @@ tensorflow::metrics::TrainingTimeSaved
 tensorflow::metrics::CheckpointSize
 
 [//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
-tensorflow::fingerprinting::CreateFingerprintDef
+tensorflow::saved_model::fingerprinting::CreateFingerprintDef
 
 
 [//tensorflow/compiler/jit:flags] # tfe
@@ -436,9 +436,9 @@ tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
 tensorflow::ResetJitCompilerFlags
 
-[//tensorflow/core/platform:tensor_float_32_utils] # tensor_float_32
-tensorflow::enable_tensor_float_32_execution
-tensorflow::tensor_float_32_execution_enabled
+[//tensorflow/tsl/platform:tensor_float_32_utils] # tensor_float_32
+tsl::enable_tensor_float_32_execution
+tsl::tensor_float_32_execution_enabled
 
 [//tensorflow/core/util:determinism] # determinism
 tensorflow::OpDeterminismRequired

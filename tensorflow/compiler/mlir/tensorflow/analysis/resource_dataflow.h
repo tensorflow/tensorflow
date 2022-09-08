@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_ANALYSIS_RESOURCE_ALIAS_DATAFLOW_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_ANALYSIS_RESOURCE_ALIAS_DATAFLOW_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_ANALYSIS_RESOURCE_DATAFLOW_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_ANALYSIS_RESOURCE_DATAFLOW_H_
 
 #include <algorithm>
 #include <vector>
@@ -64,8 +64,15 @@ class ResourceDataflowAnalysis
 
   void visitOperation(Operation *op, ArrayRef<const StateT *> operands,
                       ArrayRef<StateT *> results) override;
+
+  void setToEntryState(StateT *lattice) override {
+    propagateIfChanged(
+        lattice,
+        lattice->join(ResourceConstructingOps::getPessimisticValueState(
+            lattice->getPoint())));
+  }
 };
 
 }  // namespace TF
 }  // namespace mlir
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_ANALYSIS_RESOURCE_ALIAS_DATAFLOW_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_ANALYSIS_RESOURCE_DATAFLOW_H_

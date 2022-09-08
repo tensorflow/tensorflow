@@ -13,15 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_MLIR_RUNTIME_TESTLIB_H_
-#define XLA_MLIR_RUNTIME_TESTLIB_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_TESTS_TESTLIB_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_TESTS_TESTLIB_H_
 
 #include <cstdint>
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 
 // clang-format off
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_dialect.h.inc"
 #include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_enums.h.inc"
 // clang-format on
@@ -32,4 +34,18 @@ limitations under the License.
 #define GET_TYPEDEF_CLASSES
 #include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib_types.h.inc"
 
-#endif  // XLA_MLIR_RUNTIME_TESTLIB_H_
+namespace xla {
+namespace runtime {
+
+inline mlir::Type ConvertValueType(ValueType type) {
+  return mlir::LLVM::LLVMPointerType::get(type.getContext());
+}
+
+inline void AddTestlibTypeConversions(mlir::TypeConverter& converter) {
+  converter.addConversion(ConvertValueType);
+}
+
+}  // namespace runtime
+}  // namespace xla
+
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_TESTS_TESTLIB_H_

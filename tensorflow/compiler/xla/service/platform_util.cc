@@ -25,11 +25,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -182,7 +185,7 @@ PlatformUtil::GetStreamExecutors(
       VLOG(1) << "Started device init " << device_ordinal;
       auto executor_status = platform->ExecutorForDevice(device_ordinal);
       if (executor_status.ok()) {
-        se::StreamExecutor* executor = executor_status.ValueOrDie();
+        se::StreamExecutor* executor = executor_status.value();
         if (IsDeviceSupported(executor)) {
           stream_executors[count] = executor;
         }

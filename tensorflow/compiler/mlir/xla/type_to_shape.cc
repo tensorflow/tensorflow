@@ -182,6 +182,10 @@ Shape TypeToShape(mlir::Type type) {
 
   } else if (type.isa<mlir::mhlo::TokenType>()) {
     return ShapeUtil::MakeTokenShape();
+  } else if (auto bundle_type = type.dyn_cast<mlir::mhlo::AsyncBundleType>()) {
+    auto tuple_type =
+        mlir::TupleType::get(type.getContext(), bundle_type.getTypes());
+    return TypeToShape(tuple_type);
   }
 
   // Return empty XLA shape to signify error. No MLIR Type maps to a empty

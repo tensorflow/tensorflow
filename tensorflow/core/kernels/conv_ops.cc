@@ -761,6 +761,7 @@ class Conv2DOp : public BinaryOp<T> {
 // If we're using the alternative GEMM-based implementation of Conv2D for the
 // CPU implementation, don't register this EigenTensor-based version.
 #if !defined(USE_GEMM_FOR_CONV)
+TF_CALL_bfloat16(REGISTER_CPU);
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
@@ -974,7 +975,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       return;
     }
     functor::PadInput<GPUDevice, T, int, 4>()(
-        ctx->eigen_device<GPUDevice>(), To32Bit(input_param.tensor<T, 4>()),
+        ctx->eigen_device<GPUDevice>(),
+        To32Bit(static_cast<const Tensor&>(input).tensor<T, 4>()),
         {{static_cast<int>(input_pad_top), static_cast<int>(input_pad_left)}},
         {{static_cast<int>(input_pad_bottom),
           static_cast<int>(input_pad_right)}},

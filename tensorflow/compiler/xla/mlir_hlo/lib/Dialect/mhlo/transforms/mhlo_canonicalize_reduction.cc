@@ -17,13 +17,17 @@ limitations under the License.
 // capacity of codegen backend.
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_HLOCANONICALIZEREDUCTIONPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 // All the reduce ops can be divided into following four types:
@@ -112,7 +116,7 @@ namespace {
 //  ```
 
 struct HloCanonicalizeReductionPass
-    : HloCanonicalizeReductionPassBase<HloCanonicalizeReductionPass> {
+    : impl::HloCanonicalizeReductionPassBase<HloCanonicalizeReductionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tensor::TensorDialect>();
   }

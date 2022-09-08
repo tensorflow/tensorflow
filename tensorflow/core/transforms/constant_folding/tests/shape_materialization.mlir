@@ -16,7 +16,7 @@ module {
     %Size, %ctl_6 = Size(%VariableV2_2) name("size") {T = f32, out_type = i32} : (tensor<11x13x!tf_type.f32ref>) -> (tensor<*xi32>)
     // CHECK: , %[[P1_CTRL:.*]] = Const{{.*}} name("p1")
     %Mul, %ctl_7 = Mul(%Size, %Rank) name("p1") {T = i32} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
-    // CHECK: Const [%[[SHAPE_CTRL]], %[[P1_CTRL]]] name("p2")
+    // CHECK: Const{{.*}} name("p2")
     %Mul_8, %ctl_9 = Mul(%Mul, %Shape) name("p2") {T = i32} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     // CHECK: Const [%ArgWithShape.ctl] name("arg_shape") {{.*}} -> (tensor<2xi32>)
     %ArgShape, %ctl_10 = Shape(%ArgWithShape) name("arg_shape") {T = i32, out_type = i32} : (tensor<2x3xi32>) -> (tensor<*xi32>)

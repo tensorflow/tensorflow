@@ -1042,11 +1042,11 @@ class NameBasedSaverStatus(_LoadStatus):
         if all(a[0] is not x for x in self._optionally_restored)
     ]
     if unused_attributes:
-      unused_attribute_strings = [
-          f"\n    {obj}: {attributes}" for obj, attributes in unused_attributes]
+      unused_attribute_string = "".join(
+          f"\n    {obj}: {attributes}" for obj, attributes in unused_attributes)
       raise AssertionError(
           "Some objects had attributes which were not restored: "
-          f"{unused_attribute_strings}")
+          f"{unused_attribute_string}")
     for trackable in util.list_objects(self._object_graph_view):
       # pylint: disable=protected-access
       trackable._maybe_initialize_trackable()
@@ -2304,6 +2304,13 @@ class Checkpoint(autotrackable.AutoTrackable):
     # TrackableSaver. For others, it is executed here.
     if not options.experimental_enable_async_checkpoint and write_done_callback:
       write_done_callback(output)
+
+    # Ensure save operations have completed, only when running in eager runtime
+    # and non-async checkpoint configuration.
+    if context.executing_eagerly(
+    ) and not options.experimental_enable_async_checkpoint:
+      context.async_wait()
+
     end_time = time.time()
 
     # This records the time checkpoint._write() blocks on the main thread.
@@ -2417,17 +2424,10 @@ class Checkpoint(autotrackable.AutoTrackable):
     else:
       checkpoint_number = assign_op.numpy()
 
-    file_path = self._write(
+    return self._write(
         "%s-%d" % (file_prefix, checkpoint_number),
         options=options,
         write_done_callback=_update_checkpoint_state_internal)
-
-    # Ensure save operations have completed, only when running in eager runtime
-    # and non-async checkpoint configuration.
-    if not graph_building and not options.experimental_enable_async_checkpoint:
-      context.async_wait()
-
-    return file_path
 
   def read(self, save_path, options=None):
     """Reads a training checkpoint written with `write`.

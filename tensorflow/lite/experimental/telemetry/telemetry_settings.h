@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_INFO_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_INFO_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_SETTINGS_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_SETTINGS_H_
 
 #include <map>
 #include <string>
@@ -44,4 +44,4 @@ struct TelemetryInterpreterSettings {
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_INFO_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_SETTINGS_H_

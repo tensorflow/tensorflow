@@ -22,7 +22,6 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Transforms/GPUPassDetail.h"
 #include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -43,9 +42,12 @@ limitations under the License.
 
 namespace mlir {
 
+#define GEN_PASS_DEF_GPUFUSIONREWRITEPASS
+#include "mlir-hlo/Transforms/gpu_passes.h.inc"
+
 namespace {
 class GpuFusionRewritePass
-    : public GpuFusionRewritePassBase<GpuFusionRewritePass> {
+    : public impl::GpuFusionRewritePassBase<GpuFusionRewritePass> {
  public:
   explicit GpuFusionRewritePass() = default;
   using Pass::runPipeline;  // Give FusionRewritePattern access.
@@ -336,8 +338,8 @@ ConversionTarget FusionRewritePattern::getRewritableTarget(MLIRContext* ctx) {
       mhlo::AddOp, mhlo::AbsOp, mhlo::CbrtOp, mhlo::CeilOp, mhlo::CosineOp,
       mhlo::DivOp, mhlo::ExpOp, mhlo::Expm1Op, mhlo::FloorOp, mhlo::LogOp,
       mhlo::Log1pOp, mhlo::LogisticOp, mhlo::MulOp, mhlo::NegOp, mhlo::RoundOp,
-      /*unsupported: mhlo::RoundNearestEvenOp,*/ mhlo::RsqrtOp, mhlo::SignOp,
-      mhlo::SineOp, mhlo::SqrtOp, mhlo::SubtractOp, mhlo::TanhOp>();
+      mhlo::RoundNearestEvenOp, mhlo::RsqrtOp, mhlo::SignOp, mhlo::SineOp,
+      mhlo::SqrtOp, mhlo::SubtractOp, mhlo::TanhOp>();
   return target;
 }
 

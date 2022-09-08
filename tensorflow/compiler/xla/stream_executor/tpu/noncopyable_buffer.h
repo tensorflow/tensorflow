@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mem.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -136,8 +136,8 @@ class NoncopyableBuffer {
 
   static OwnedDataPtr AlignedAlloc(size_t size, size_t alignment) {
     return OwnedDataPtr(
-        static_cast<uint8_t*>(port::AlignedMalloc(size, alignment)),
-        port::AlignedFree);
+        static_cast<uint8_t*>(tsl::port::AlignedMalloc(size, alignment)),
+        tsl::port::AlignedFree);
   }
 
  private:

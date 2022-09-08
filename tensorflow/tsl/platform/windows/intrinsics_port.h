@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_INTRINSICS_PORT_H_
-#define TENSORFLOW_CORE_PLATFORM_WINDOWS_INTRINSICS_PORT_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_WINDOWS_INTRINSICS_PORT_H_
+#define TENSORFLOW_TSL_PLATFORM_WINDOWS_INTRINSICS_PORT_H_
 
 #ifdef _MSC_VER
 // the following avx intrinsics are not defined on windows

@@ -20,17 +20,20 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
-#include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Value.h"
 
-using namespace mlir;
+namespace mlir {
+
+#define GEN_PASS_DEF_ALLOCTOARGPASS
+#include "mlir-hlo/Transforms/passes.h.inc"
+
 using ::mlir::func::FuncOp;
 
 namespace {
-class AllocToArgPass : public AllocToArgPassBase<AllocToArgPass> {
+class AllocToArgPass : public impl::AllocToArgPassBase<AllocToArgPass> {
  public:
   using AllocToArgPassBase<AllocToArgPass>::AllocToArgPassBase;
 
@@ -64,3 +67,5 @@ void AllocToArgPass::runOnOperation() {
 std::unique_ptr<OperationPass<func::FuncOp>> hlo::createAllocToArgPass() {
   return std::make_unique<AllocToArgPass>();
 }
+
+}  // namespace mlir

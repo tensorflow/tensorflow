@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_MLIR_RUNTIME_JIT_COMPILER_H_
-#define XLA_MLIR_RUNTIME_JIT_COMPILER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_JIT_COMPILER_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_JIT_COMPILER_H_
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -118,7 +119,7 @@ class JitCompiler {
   static absl::StatusOr<Executable> Compile(
       std::unique_ptr<JitCompiler> compiler,
       std::string_view memory_region_name,
-      llvm::Optional<size_t> specialization = llvm::None);
+      std::optional<size_t> specialization = std::nullopt);
 
   // Specialize compiled module to the arguments:
   //
@@ -139,7 +140,7 @@ class JitCompiler {
 
   const Options& options() const { return opts_; }
 
-  llvm::StringRef name() const {
+  std::string_view name() const {
     return module().getName().value_or("<unknown>");
   }
 
@@ -180,4 +181,4 @@ class JitCompiler {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_MLIR_RUNTIME_JIT_COMPILER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_JIT_COMPILER_H_

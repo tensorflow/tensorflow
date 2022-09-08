@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_MLIR_UTILS_RUNTIME_CONSTRAINTS_H_
-#define XLA_MLIR_UTILS_RUNTIME_CONSTRAINTS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_CONSTRAINTS_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_CONSTRAINTS_H_
 
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -25,12 +26,12 @@ namespace xla {
 namespace runtime {
 
 // Returns arguments constraints inferred from the function signature.
-llvm::Expected<llvm::SmallVector<ArgumentConstraint>> GetArgumentsConstraints(
+absl::StatusOr<llvm::SmallVector<ArgumentConstraint>> GetArgumentsConstraints(
     mlir::func::FuncOp func);
 
 // Resolves argument constraint based on the argument type, if constraint is
 // fully satisfied by the type, returns `kResolved`.
-llvm::Expected<ArgumentConstraint> ResolveArgumentConstraint(
+absl::StatusOr<ArgumentConstraint> ResolveArgumentConstraint(
     ArgumentConstraint constraint, mlir::Type type);
 
 // Returns true iff the value of given type can be sunk into the function body
@@ -47,4 +48,4 @@ inline bool SupportsValueSpecialization(mlir::Type type) {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_MLIR_UTILS_RUNTIME_CONSTRAINTS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_CONSTRAINTS_H_

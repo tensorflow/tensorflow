@@ -701,7 +701,7 @@ StatusOr<mlir::Operation*> ExpandDTensorRestoreV2Op(mlir::Operation* op) {
   for (const auto& layout : input_layouts_attr.getValue().vec()) {
     input_layouts.push_back(
         Layout::FromString(layout.cast<mlir::StringAttr>().getValue().str())
-            .ValueOrDie());
+            .value());
   }
 
   return ExpandRestoreV2OpHelper(
@@ -741,7 +741,7 @@ StatusOr<mlir::Operation*> ExpandRestoreV2Op(mlir::Operation* op) {
   }
 
   for (auto result : op->getResults()) {
-    global_shapes.push_back(GetShapeOfValue(result).ValueOrDie());
+    global_shapes.push_back(GetShapeOfValue(result).value());
   }
 
   // Fetch the layout of each output.

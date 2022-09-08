@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
 namespace {

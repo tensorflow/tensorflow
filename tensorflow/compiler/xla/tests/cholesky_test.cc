@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace {
@@ -221,7 +221,7 @@ class RandomCholeskyTest
 
 XLA_TEST_P(RandomCholeskyTest, Real) {
   // Test fails with TensorFloat-32 enabled
-  tensorflow::enable_tensor_float_32_execution(false);
+  tsl::enable_tensor_float_32_execution(false);
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();
@@ -260,7 +260,7 @@ XLA_TEST_P(RandomCholeskyTest, Real) {
 
 XLA_TEST_P(RandomCholeskyTest, Complex) {
   // Test fails with TensorFloat-32 enabled
-  tensorflow::enable_tensor_float_32_execution(false);
+  tsl::enable_tensor_float_32_execution(false);
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();

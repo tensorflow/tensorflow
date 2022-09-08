@@ -172,7 +172,7 @@ pybind11::tuple PyBuffer::python_shape() const {
 
 pybind11::dtype PyBuffer::python_dtype() const {
   PrimitiveType primitive = buffer()->on_device_shape().element_type();
-  return PrimitiveTypeToDtype(primitive).ValueOrDie();
+  return PrimitiveTypeToDtype(primitive).value();
 }
 
 ClientAndPtr<PjRtDevice> PyBuffer::device() const {
@@ -634,7 +634,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   type.attr("dtype") = property_readonly([](PyBuffer::object self) {
     PrimitiveType primitive =
         self.buf()->buffer()->on_device_shape().element_type();
-    return PrimitiveTypeToDtype(primitive).ValueOrDie();
+    return PrimitiveTypeToDtype(primitive).value();
   });
   type.attr("size") =
       property_readonly([](PyBuffer::object self) -> StatusOr<int64_t> {
@@ -723,16 +723,18 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   type.attr("__module__") = m.attr("__name__");
 
   py::class_<PyShardedBuffer>(m, "ShardedBuffer")
+      .def(py::init(&PyShardedBuffer::CreateFromPyBuffers))
       .def("get_device_buffers", &PyShardedBuffer::GetPyBuffers)
       .def("get_device_buffer", &PyShardedBuffer::GetPyBuffer)
-      .def("__getitem__", &PyShardedBuffer::GetPyBuffer)
       .def("__len__", &PyShardedBuffer::num_devices)
       .def("block_until_ready", &PyShardedBuffer::BlockHostUntilReady)
       .def_static("create_sharded_buffer",
                   &PyShardedBuffer::CreateFromPyBuffers)
       .def_property_readonly("dtype", [](const PyShardedBuffer& self) {
-        return PrimitiveTypeToDtype(self.dtype()).ValueOrDie();
+        return PrimitiveTypeToDtype(self.dtype()).value();
       });
+
+  py::implicitly_convertible<std::vector<PyBuffer::object>, PyShardedBuffer>();
 
   return OkStatus();
 }

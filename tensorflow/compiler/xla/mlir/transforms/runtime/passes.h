@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_MLIR_RUNTIME_RT_PASSES_H_
-#define XLA_MLIR_RUNTIME_RT_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_PASSES_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_PASSES_H_
 
 #include <functional>
 #include <memory>
@@ -44,6 +44,7 @@ CreateConvertToEntrypoint();
 class TypeIDNameRegistry;
 class CustomCallArgEncodingSet;
 class CustomCallAttrEncodingSet;
+class CustomCallRetEncodingSet;
 
 // Extension points for converting `rt` dialect to the LLVM dialect.
 //
@@ -71,6 +72,9 @@ struct ConvertRuntimeToLLvmOpts {
   std::function<void(CustomCallArgEncodingSet&)> populate_arg_encodings;
 
   // Add user-defined attributes type encoding to the custom call lowering.
+  std::function<void(CustomCallRetEncodingSet&)> populate_ret_encodings;
+
+  // Add user-defined attributes type encoding to the custom call lowering.
   std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
 };
 
@@ -85,4 +89,4 @@ CreateConvertRuntimeToLLVMPass(ConvertRuntimeToLLvmOpts opts = {});
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_MLIR_RUNTIME_RT_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_PASSES_H_

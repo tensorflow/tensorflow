@@ -41,10 +41,9 @@ def TfExecutor_Dialect : Dialect {
     last returned value (exceptions are `tf_executor.NextIteration.graph`,
     `tf_executor.NextIteration.sink` and `tf_executor.fetch` which don’t return any
     value).
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }];
 
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
   let cppNamespace = "::mlir::tf_executor";
 }
 

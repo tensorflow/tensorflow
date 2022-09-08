@@ -32,7 +32,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/tsl/platform:stacktrace",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/compiler/xla/stream_executor/platform",

@@ -26,7 +26,7 @@ namespace tensorflow {
 Status ConvertLmhloToJitRt(mlir::ModuleOp module,
                            mlir::StringRef entry_function_name,
                            llvm::ArrayRef<int64_t> buffer_sizes,
-                           GpuBinaryOptions options) {
+                           xla::gpu::ThunkSequence* thunk_sequence) {
   if (!module) {
     return errors::FailedPrecondition("No MLIR module to lower.");
   }
@@ -34,7 +34,7 @@ Status ConvertLmhloToJitRt(mlir::ModuleOp module,
                        mlir::PassManager::Nesting::Implicit);
 
   tensorflow::applyTensorflowAndCLOptions(pm);
-  populateLmhloToJitRtPasses(pm, options);
+  populateLmhloToJitRtPasses(pm, thunk_sequence);
 
   if (pm.run(module).failed()) {
     return errors::Internal(

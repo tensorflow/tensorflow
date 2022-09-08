@@ -67,12 +67,13 @@ class TypeSpec(
 
   Example:
 
-  >>> spec = tf.RaggedTensorSpec(shape=[None, None], dtype=tf.int32)
+  >>> spec = tf.TensorSpec(shape=[None, None], dtype=tf.int32)
   >>> @tf.function(input_signature=[spec])
   ... def double(x):
   ...   return x * 2
-  >>> print(double(tf.ragged.constant([[1, 2], [3]])))
-  <tf.RaggedTensor [[2, 4], [6]]>
+  >>> double(tf.constant([[1, 2], [3, 4]]))
+  <tf.Tensor: shape=(2, 2), dtype=int32,
+      numpy=array([[2, 4], [6, 8]], dtype=int32)>
   """
   # === Subclassing ===
   #

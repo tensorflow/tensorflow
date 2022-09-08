@@ -376,7 +376,7 @@ tensorflow::DataType TensorHandleInterface::DataType() const {
   if (!metadata.hasValue()) {
     LOG(ERROR)
         << "Failed to get DataType due to error metadata: "
-        << value_.get<TensorHandle>().GetAsyncMetadata().GetError().message;
+        << value_.get<TensorHandle>().GetAsyncMetadata().GetError().message();
     return tensorflow::DT_INVALID;
   }
   auto kind = metadata.getValue()->dtype;
@@ -388,7 +388,7 @@ tensorflow::DataType TensorHandleInterface::DataType() const {
 
     if (async_tensor->IsError()) {
       LOG(ERROR) << "Failed to get DataType from an error tensor "
-                 << async_tensor->GetError().message;
+                 << async_tensor->GetError().message();
       return tensorflow::DT_INVALID;
     }
     assert(async_tensor->IsType<tensorflow::tfd::RuntimeFallbackTensor>());
@@ -407,9 +407,9 @@ tensorflow::Status TensorHandleInterface::TensorHandleStatus() const {
     if (!metadata.hasValue()) {
       LOG(ERROR)
           << "Metadata in the tensor handle is an error metadata: "
-          << value_.get<TensorHandle>().GetAsyncMetadata().GetError().message;
+          << value_.get<TensorHandle>().GetAsyncMetadata().GetError().message();
       return tensorflow::errors::Internal(
-          value_.get<TensorHandle>().GetAsyncMetadata().GetError().message);
+          value_.get<TensorHandle>().GetAsyncMetadata().GetError().message());
     }
 
     AsyncValue* async_tensor = value_.get<TensorHandle>().GetAsyncTensor();
@@ -419,8 +419,8 @@ tensorflow::Status TensorHandleInterface::TensorHandleStatus() const {
 
     if (async_tensor->IsError()) {
       LOG(ERROR) << "Async tensor in the tensor handle is an error tensor: "
-                 << async_tensor->GetError().message;
-      return tensorflow::errors::Internal(async_tensor->GetError().message);
+                 << async_tensor->GetError().message();
+      return tensorflow::errors::Internal(async_tensor->GetError().message());
     }
 
     return ::tensorflow::OkStatus();
@@ -554,7 +554,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
   if (target_av->IsError()) {
     *status = tensorflow::Status(
         tensorflow::error::Code::UNKNOWN,
-        StrCat("Cannot resolve tensor: ", target_av->GetError().message));
+        StrCat("Cannot resolve tensor: ", target_av->GetError().message()));
     return nullptr;
   }
   auto host_tensor_ref = target_th.ReleaseTensorRef();
@@ -1078,7 +1078,7 @@ ContextInterface::CopyTensorHandleToDevice(
   if (target_av->IsError()) {
     *status = tensorflow::errors::Internal(
         tfrt::StrCat("Copying to device <", tfrt_device_name.get(),
-                     "> failed: ", target_av->GetError().message));
+                     "> failed: ", target_av->GetError().message()));
     return nullptr;
   }
   return new TensorHandleInterface(Value(target_th.CopyRef()),

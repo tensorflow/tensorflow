@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
@@ -26,6 +25,10 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
+
+#define GEN_PASS_DEF_TESTINFERSHAPEDTYPEMETHODSPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace mhlo {
 namespace {
 
@@ -119,7 +122,7 @@ struct ReifyReturnTypeShapesPattern : public RewritePattern {
 };
 
 struct TestInferShapedTypeMethodsPass
-    : public TestInferShapedTypeMethodsPassBase<
+    : public impl::TestInferShapedTypeMethodsPassBase<
           TestInferShapedTypeMethodsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect>();

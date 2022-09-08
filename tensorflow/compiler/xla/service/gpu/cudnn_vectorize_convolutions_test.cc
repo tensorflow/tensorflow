@@ -59,7 +59,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4) {
                   custom_call_target="__cudnn$convForward",
                   backend_config="{bar: 0}"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -118,7 +118,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4UnsupportedFilterType) {
                   custom_call_target="__cudnn$convForward",
                   backend_config="{bar: 0}"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_FALSE(changed);
 }
@@ -134,7 +134,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4NCHW) {
                   window={size=2x2}, dim_labels=bf01_io01->bf01,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -187,7 +187,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, IncrementAllDnums) {
                   window={size=2x2}, dim_labels=fb01_i01o->fb01,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -240,7 +240,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, FilterDnums) {
                   window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -293,7 +293,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   CudnnVectorizeConvolutions pass({7, 5});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
 
@@ -314,7 +314,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4IfOutputIsS32) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_FALSE(changed);
@@ -333,7 +333,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4IfOutputIsF32) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_FALSE(changed);
@@ -350,7 +350,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo32) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -385,7 +385,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, BiasAndSideInput) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -420,7 +420,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo32) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 0}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -455,7 +455,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32) {
                   custom_call_target="__cudnn$convForward",
                   backend_config="{foo: 42}"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -525,7 +525,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32NCHW) {
                   window={size=2x2}, dim_labels=bf01_io01->bf01,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -593,7 +593,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32VectorDimFirst) {
                   window={size=3x5}, dim_labels=?b01f_?01io->?b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -661,7 +661,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorize4To32) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 0}, module.get()));
   EXPECT_FALSE(changed);
 }

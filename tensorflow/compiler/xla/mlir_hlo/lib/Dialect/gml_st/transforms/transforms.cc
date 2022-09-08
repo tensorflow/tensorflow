@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/Utils/Utils.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -341,6 +342,15 @@ bool hasTransformationAttr(Operation *op) {
   auto marker = op->getAttr(kTransformMarker);
   if (!marker) return false;
   return marker && marker.cast<BoolAttr>().getValue();
+}
+
+constexpr llvm::StringLiteral kOpLabel = "op_label";
+
+bool hasMatchingLabel(Operation *op, StringRef label) {
+  auto opLabelAttr = op->getAttr(kOpLabel);
+  if (!opLabelAttr) return false;
+
+  return opLabelAttr.cast<StringAttr>().getValue() == label;
 }
 
 }  // namespace gml_st

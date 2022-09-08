@@ -311,12 +311,14 @@ Status CopyBatch(CopyBatchParams params,
                  std::function<Status()> allocation_callback,
                  std::vector<Tensor>* out_tensors);
 
-// Computes the set of experiments to apply based on the job name, rollout
-// percentage of registered experiments, and the TF_DATA_EXPERIMENT_OPT_IN and
-// TF_DATA_EXPERIMENT_OPT_OUT environment variables.
+// Computes the set of experiments to apply based on the job name, task id,
+// rollout percentage of registered experiments, and the
+// TF_DATA_EXPERIMENT_OPT_IN and TF_DATA_EXPERIMENT_OPT_OUT environment
+// variables.
 absl::flat_hash_set<string> GetExperiments();
 absl::flat_hash_set<string> GetExperiments(
-    const string& job_name, std::function<uint64(const string&)> hash_func);
+    const std::string& job_name, int64_t task_id,
+    std::function<uint64_t(const string&)> hash_func);
 
 // Logs and records the experiments that will be applied.
 void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments);
@@ -364,32 +366,50 @@ int64 GetAutotuneDefaultParallelism(IteratorContext* ctx);
 // Registry of tf.data experiments.
 class DatasetExperimentRegistry {
  public:
+  using JobSelector = std::function<bool(
+      std::function<uint64_t(const string&)> hash_func,
+      const std::string& experiment_name, const std::string& job_name)>;
+  using TaskSelector = std::function<bool(int64_t task_id)>;
+
+  struct ExperimentSelector {
+    JobSelector job_selector;
+    TaskSelector task_selector;
+  };
+
   // Registers the experiment.
-  static void Register(const string& experiment, int64_t rollout_pct);
+  static void Register(const string& experiment, JobSelector job_selector,
+                       TaskSelector task_selector);
 
   // Returns all registered experiments.
-  static absl::flat_hash_map<string, int64_t> Experiments();
+  static absl::flat_hash_map<string, ExperimentSelector> Experiments();
 };
 
 // Helper class to register a dataset experiment.
 class DatasetExperimentRegistrar {
  public:
-  explicit DatasetExperimentRegistrar(const string& experiment,
-                                      int64_t rollout_pct) {
-    DatasetExperimentRegistry::Register(experiment, rollout_pct);
+  explicit DatasetExperimentRegistrar(
+      const string& experiment,
+      DatasetExperimentRegistry::JobSelector job_selector,
+      DatasetExperimentRegistry::TaskSelector task_selector) {
+    DatasetExperimentRegistry::Register(experiment, job_selector,
+                                        task_selector);
   }
 };
 
 // Macro that can be used to register a dataset experiment.
-#define REGISTER_DATASET_EXPERIMENT(experiment, rollout_pct) \
-  REGISTER_DATASET_OP_NAME_UNIQ_HELPER(__COUNTER__, experiment, rollout_pct)
+#define REGISTER_DATASET_EXPERIMENT(experiment, job_selector, task_selector)  \
+  REGISTER_DATASET_OP_NAME_UNIQ_HELPER(__COUNTER__, experiment, job_selector, \
+                                       task_selector)
 
-#define REGISTER_DATASET_OP_NAME_UNIQ_HELPER(ctr, experiment, rollout_pct) \
-  REGISTER_DATASET_OP_NAME_UNIQ(ctr, experiment, rollout_pct)
+#define REGISTER_DATASET_OP_NAME_UNIQ_HELPER(ctr, experiment, job_selector, \
+                                             task_selector)                 \
+  REGISTER_DATASET_OP_NAME_UNIQ(ctr, experiment, job_selector, task_selector)
 
-#define REGISTER_DATASET_OP_NAME_UNIQ(ctr, experiment, rollout_pct) \
-  static ::tensorflow::data::DatasetExperimentRegistrar             \
-      registrar__body__##ctr##__object(experiment, rollout_pct)
+#define REGISTER_DATASET_OP_NAME_UNIQ(ctr, experiment, job_selector, \
+                                      task_selector)                 \
+  static ::tensorflow::data::DatasetExperimentRegistrar              \
+      registrar__body__##ctr##__object(experiment, job_selector,     \
+                                       task_selector)
 
 }  // namespace data
 }  // namespace tensorflow

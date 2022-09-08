@@ -65,7 +65,7 @@ std::vector<std::string> GetDeviceIdToIdentifierMap() {
     StatusOr<string> device_identifier_or_status =
         DeviceIdToIdentifierHelper(device_id);
     if (device_identifier_or_status.ok()) {
-      map[device_id] = device_identifier_or_status.ValueOrDie();
+      map[device_id] = device_identifier_or_status.value();
     } else {
       map[device_id] = "Unknown Graphics Device";
     }

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
+#include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -221,7 +222,7 @@ tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
   if (auto* dnn = stream_executor->AsDnn()) {
     StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
     if (version_or.ok()) {
-      const auto& version = version_or.ValueOrDie();
+      const auto& version = version_or.value();
       cudnn_version.set_major(version.major_version());
       cudnn_version.set_minor(version.minor_version());
       cudnn_version.set_patch(version.patch());
@@ -252,7 +253,7 @@ void PrintPlatformInfo(const se::Stream* stream) {
   if (dnn) {
     auto dnn_version = dnn->GetVersion();
     if (dnn_version.ok()) {
-      auto v = dnn_version.ValueOrDie();
+      auto v = dnn_version.value();
       LOG(ERROR) << "cudnn version: " << v.major_version() << "."
                  << v.minor_version() << "." << v.patch();
     }
@@ -396,7 +397,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
 
   if (result_or.ok()) {
     absl::MutexLock lock(&autotune_cache_lock);
-    CHECK(autotune_cache.insert({key, result_or.ValueOrDie()}).second);
+    CHECK(autotune_cache.insert({key, result_or.value()}).second);
   }
   return result_or;
 }
@@ -508,7 +509,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
                         absl::StrCat("Scratch allocation failed: ",
                                      scratch_or.status().ToString()));
   }
-  se::DeviceMemoryBase scratch_memory = scratch_or.ValueOrDie();
+  se::DeviceMemoryBase scratch_memory = scratch_or.value();
 
   // Use assignment instead of brace-list to make GCC 4.9 happy.
   RunConvOptions options;
@@ -609,7 +610,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
       const DebugOptions& debug_options =
           instr->GetModule()->config().debug_options();
       CHECK(!debug_options.xla_gpu_crash_on_verification_failures());
-    } else if (!compare_result.ValueOrDie()) {
+    } else if (!compare_result.value()) {
       LOG(ERROR)
           << "Results mismatch between different convolution algorithms. "
              "This is likely a bug/unexpected loss of precision in cudnn.\n"
@@ -933,7 +934,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
     return false;
   }
 
-  auto best_algo = std::move(best_algo_or).ValueOrDie();
+  auto best_algo = std::move(best_algo_or).value();
   VLOG(2) << "Setting cudnn conv to use algorithm "
           << best_algo.conv().algorithm() << " and "
           << NumBytesToString(best_algo.scratch_bytes())

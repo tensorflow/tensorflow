@@ -62,7 +62,7 @@ TEST_F(PreemptNotifierTest, WillBePreemptedAt) {
   // Preempt time should be current timestamp.
   StatusOr<absl::Time> result = preempt_notifier->WillBePreemptedAt();
   TF_CHECK_OK(result.status());
-  absl::Time preempt_time = result.ValueOrDie();
+  absl::Time preempt_time = result.value();
 
   // Make sure that preempt time is approximately correct.
   absl::Duration time_diff = preempt_time - start_time;
@@ -87,7 +87,7 @@ TEST_F(PreemptNotifierTest,
   // Preempt time should be current timestamp.
   StatusOr<absl::Time> result = preempt_notifier->WillBePreemptedAt();
   TF_CHECK_OK(result.status());
-  absl::Time preempt_time = result.ValueOrDie();
+  absl::Time preempt_time = result.value();
 
   // Make sure that preempt time is approximately correct.
   absl::Duration time_diff = preempt_time - start_time;
@@ -126,7 +126,7 @@ TEST_F(PreemptNotifierTest, WillBePreemptedAtAsync_SameResultForAllCallbacks) {
   TF_CHECK_OK(preempt_time.status());
   TF_CHECK_OK(preempt_time_2.status());
   // Make sure that the same preempt time is returned for both calls.
-  EXPECT_EQ(preempt_time.ValueOrDie(), preempt_time_2.ValueOrDie());
+  EXPECT_EQ(preempt_time.value(), preempt_time_2.value());
 }
 
 TEST_F(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
@@ -138,15 +138,14 @@ TEST_F(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
   std::raise(SIGTERM);
   StatusOr<absl::Time> result = preempt_notifier->WillBePreemptedAt();
   TF_CHECK_OK(result.status());
-  absl::Time preempt_time = result.ValueOrDie();
+  absl::Time preempt_time = result.value();
 
   preempt_notifier =
       PreemptionNotifier::CreatePreemptionNotifier("sigterm", env);
 
   // Raise second signal.
   std::raise(SIGTERM);
-  absl::Time preempt_time_2 =
-      preempt_notifier->WillBePreemptedAt().ValueOrDie();
+  absl::Time preempt_time_2 = preempt_notifier->WillBePreemptedAt().value();
 
   // Verify that two different preempt times are recorded.
   EXPECT_NE(preempt_time, preempt_time_2);

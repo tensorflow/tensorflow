@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
@@ -59,7 +58,6 @@ limitations under the License.
 
 namespace mlir {
 namespace {
-
 using bufferization::ToMemrefOp;
 using bufferization::ToTensorOp;
 using gml_st::LoopOp;
@@ -364,8 +362,12 @@ struct BufferizeVectorTransferWriteOp
 }  // namespace
 
 namespace gml_st {
+
+#define GEN_PASS_DEF_TILEDLOOPBUFFERIZEPASS
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
+
 struct TiledLoopBufferizePass
-    : public TiledLoopBufferizePassBase<TiledLoopBufferizePass> {
+    : public impl::TiledLoopBufferizePassBase<TiledLoopBufferizePass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<memref::MemRefDialect>();
   }

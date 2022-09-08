@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/gather_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/identity_n_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/in_top_k_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/io_op_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/matmul_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/meta_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/nullary_spmd_expander.h"
@@ -502,5 +503,9 @@ REGISTER_SPMD(TensorListGetItem, TF::TensorListGetItemOp,
               TensorListGetItemSPMDExpander);
 REGISTER_SPMD(TensorListSetItem, TF::TensorListSetItemOp,
               TensorListSetItemSPMDExpander);
+
+// IO ops
+REGISTER_SPMD(WriteSummary, TF::WriteSummaryOp, IOOpSPMDExpander);
+
 }  // namespace dtensor
 }  // namespace tensorflow

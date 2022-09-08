@@ -56,8 +56,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -2090,9 +2090,8 @@ Status LayoutAssignment::CalculateComputationLayout(
           }
           auto param_layout = InferArrayLayout(operand, index);
           if (param_layout.ok()) {
-            VLOG(5) << index << ":" << param_layout.ValueOrDie().ToString()
-                    << "\n";
-            update->ResetLayout(param_layout.ValueOrDie(), index);
+            VLOG(5) << index << ":" << param_layout.value().ToString() << "\n";
+            update->ResetLayout(param_layout.value(), index);
             change = true;
           }
         });

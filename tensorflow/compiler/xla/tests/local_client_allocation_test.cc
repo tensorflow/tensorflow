@@ -52,9 +52,8 @@ XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
   // deallocation happen on the right allocator.
   ExecutableRunOptions options;
   options.set_allocator(allocator);
-  std::optional<ScopedShapedBuffer> result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {},
-                          DefaultExecutableBuildOptions(), options);
+  std::optional<ScopedShapedBuffer> result = ExecuteLocallyOrDie(
+      builder.Build().value(), {}, DefaultExecutableBuildOptions(), options);
 
   LiteralTestUtil::ExpectR1Near<float>(
       {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(*result), error_spec_);

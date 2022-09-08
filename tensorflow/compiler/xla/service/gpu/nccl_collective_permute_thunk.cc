@@ -62,7 +62,7 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
   }
 
   const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
-      ConvertNx2Attribute(op.getSourceTargetPairs()).ValueOrDie();
+      ConvertNx2Attribute(op.getSourceTargetPairs()).value();
 
   for (const std::pair<int64_t, int64_t>& source_target : source_target_pairs) {
     int64_t source = source_target.first;
@@ -83,7 +83,7 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
     mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
     int64_t partition_count) {
   const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
-      ConvertNx2Attribute(op.getSourceTargetPairs()).ValueOrDie();
+      ConvertNx2Attribute(op.getSourceTargetPairs()).value();
   // Each ID can appear only once as a source and as a target. So if all pairs
   // are identity, all IDs must appear in the list is the size == number of
   // replicas/partitions.
@@ -186,7 +186,7 @@ Status RunCollectivePermute(
   TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
                       ToNcclDataTypeAndCountMultiplier(buffer.element_type));
   ncclDataType_t dtype = dtype_and_multiplier.first;
-  int element_count = buffer.element_count * dtype_and_multiplier.second;
+  int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 

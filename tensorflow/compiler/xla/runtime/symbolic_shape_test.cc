@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
@@ -36,7 +38,7 @@ using SymbolicShape = SymbolicShapesResolver::SymbolicShape;
 // Create a function type with empty results from the operands shapes.
 static FunctionType GetFunctionType(
     llvm::SmallVector<PrimitiveType> dtypes,
-    llvm::SmallVector<llvm::Optional<SymbolicShape>> shapes) {
+    llvm::SmallVector<std::optional<SymbolicShape>> shapes) {
   std::vector<std::unique_ptr<Type>> operands;
   operands.reserve(shapes.size());
 
@@ -82,7 +84,7 @@ TEST(SymbolicShapeResolverTest, UnrankedInputs) {
   // Operands: tensor<*xf32>, tensor<?xi32>, tensor<?x4xi1>
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::PRED};
 
-  auto type = GetFunctionType(dtypes, {llvm::None,
+  auto type = GetFunctionType(dtypes, {std::nullopt,
                                        {{MemrefType::kDynamicSize}},
                                        {{MemrefType::kDynamicSize, 4}}});
 
@@ -282,7 +284,7 @@ TEST(SymbolicShapeResolverTest, ShapeConstrainedInput) {
   auto dtypes = {PrimitiveType::F32, PrimitiveType::S32};
 
   auto type =
-      GetFunctionType(dtypes, {llvm::None, {{MemrefType::kDynamicSize, 4}}});
+      GetFunctionType(dtypes, {std::nullopt, {{MemrefType::kDynamicSize, 4}}});
 
   auto constraints = {ArgumentConstraint::kShape, ArgumentConstraint::kShape};
 

@@ -2586,7 +2586,7 @@ void MklLayoutRewritePass::CopyAttrsAllCheckConstFilter(const Node* orig_node,
 
   bool is_filter_const = false;
   if (HasNodeAttr(orig_node->def(), "is_filter_const")) {
-    GetNodeAttr(orig_node->def(), "is_filter_const", &is_filter_const);
+    (void)GetNodeAttr(orig_node->def(), "is_filter_const", &is_filter_const);
   }
 
   // In case that (1) orig_node does not have attribute 'is_filter_const',

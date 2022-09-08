@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_IMPL_COMMON_H_
-#define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_IMPL_COMMON_H_
+#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_COMMON_H_
+#define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_COMMON_H_
 
 #include <memory>
 #include <vector>
@@ -196,4 +196,4 @@ class TpuCompileOpKernelCommon {
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_IMPL_COMMON_H_
+#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_COMMON_H_

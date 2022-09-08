@@ -276,7 +276,7 @@ StatusOr<std::unique_ptr<se::DeviceMemoryAllocator>> GetGpuDeviceAllocator(
           allocator_config.preallocate);
       if (allocator_or.ok()) {
         LOG(INFO) << "Using CUDA async allocator.";
-        allocator = std::move(allocator_or.ValueOrDie());
+        allocator = std::move(allocator_or.value());
         break;
       }
       LOG(ERROR) << "Failed to initialize CUDA async allocator: "
@@ -381,13 +381,8 @@ Status BuildDistributedDevices(
   for (const auto& device : local_device_states) {
     TF_RET_CHECK(device.second == nullptr);
   }
-  std::vector<GlobalDeviceId> sorted_global_device_ids;
-  sorted_global_device_ids.reserve(gpu_device_ids.size());
-  for (const auto& e : gpu_device_ids) {
-    sorted_global_device_ids.push_back(e.second);
-  }
   gpu_executable_run_options->set_gpu_global_device_ids(
-      std::move(sorted_global_device_ids));
+      std::move(gpu_device_ids));
 #ifdef GOOGLE_CUDA
   auto nccl_id_store = std::make_shared<NcclIdStore>(
       node_id, distributed_client, device_to_node);

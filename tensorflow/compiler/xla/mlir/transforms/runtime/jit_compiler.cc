@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -30,7 +31,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
-#include "tensorflow/compiler/xla/mlir/utils/to_string.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
 namespace xla {
@@ -172,7 +172,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
 /*static*/ absl::StatusOr<Executable> JitCompiler::Compile(
     std::unique_ptr<JitCompiler> compiler, std::string_view memory_region_name,
-    llvm::Optional<size_t> specialization) {
+    std::optional<size_t> specialization) {
   const JitCompiler::Options& opts = compiler->options();
   func::FuncOp entry_func = compiler->entrypoint();
   std::string entrypoint = entry_func.getName().str();
@@ -201,14 +201,12 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   // Get the memory layout for passing function arguments.
   auto arguments_memory_layout =
       Executable::GetArgumentsMemoryLayout(*runtime_signature);
-  if (auto err = arguments_memory_layout.takeError())
-    return InternalError(ToString(std::move(err)));
+  if (!arguments_memory_layout.ok()) return arguments_memory_layout.status();
 
   // Get the memory layout for returning function results.
   auto results_memory_layout =
       Executable::GetResultsMemoryLayout(*runtime_signature);
-  if (auto err = results_memory_layout.takeError())
-    return InternalError(ToString(std::move(err)));
+  if (!results_memory_layout.ok()) return results_memory_layout.status();
 
   // Mark entry function with an attribute, so it can be converted to an Xla
   // entrypoint (see `rt-convert-to-entrypoint` pass).
@@ -223,11 +221,11 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
   // Prepare JIT target machine for code generation.
   auto builder = llvm::orc::JITTargetMachineBuilder::detectHost();
-  if (!builder) return InternalError(ToString(builder.takeError()));
+  if (!builder) return InternalError(toString(builder.takeError()));
 
   auto target_machine = builder->createTargetMachine();
   if (!target_machine)
-    return InternalError(ToString(target_machine.takeError()));
+    return InternalError(toString(target_machine.takeError()));
 
   // Name of the compiled module if available.
   auto module_name = compiler->module().getSymName().value_or("<unknown>");
@@ -263,8 +261,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   // Compile input module to the native function.
   auto engine = ExecutionEngine::CreateFromModule(
       std::move(llvm_ctx), std::move(llvm_module), entrypoint, engine_options);
-  if (auto err = engine.takeError())
-    return InternalError(ToString(std::move(err)));
+  if (!engine.ok()) return engine.status();
 
   // At this point compilation is completed, and all symbols in the LLVM module
   // materialized as addresses (entrypoint is an executable function pointer).
@@ -274,7 +271,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   if (EnablePassTiming()) llvm::reportAndResetTimings();
 
   return Executable(
-      compiler->name().str(), std::move(memory_mapper), std::move(*engine),
+      compiler->name(), std::move(memory_mapper), std::move(*engine),
       std::move(*signature), std::move(*runtime_signature),
       std::move(*arguments_memory_layout), std::move(*results_memory_layout),
       specialization, time_to_compile);

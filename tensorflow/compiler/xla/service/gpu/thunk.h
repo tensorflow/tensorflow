@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
@@ -95,6 +95,9 @@ class Thunk {
   virtual std::string ToStringExtra(int indent) const { return ""; }
   Kind kind() const { return kind_; }
   std::string profile_annotation() const { return profile_annotation_; }
+  // Only valid during compilation, i.e., lowering thunks to kernel-launch
+  // related XLA runtime custom calls). nullptr at runtime. MLIR codegen will
+  // cease the practice of lowering thunks to XLA runtime custom calls.
   mlir::Operation* op() { return op_; }
 
   // Prepares the thunk for execution on the given StreamExecutor.
@@ -126,6 +129,9 @@ class Thunk {
   //
   // Precondition: Initialize(stream->parent()) has been called.
   virtual Status ExecuteOnStream(const ExecuteParams& params) = 0;
+
+  // Clears metadata that is only valid during compile time.
+  virtual void ClearCompileTimeInfo() { op_ = nullptr; }
 
   static absl::string_view KindToString(Thunk::Kind kind);
 

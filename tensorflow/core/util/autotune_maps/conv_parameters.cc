@@ -31,6 +31,10 @@ using ::tensorflow::protobuf::util::MessageDifferencer;
 uint64 ComputeHash(int device_id, const ConvParametersProto& proto) {
   return Hash64Combine(device_id, autotune_maps_utils::HashProto(proto));
 }
+
+uint64 ComputeHash(int device_id, const MatmulParametersProto& proto) {
+  return Hash64Combine(device_id, autotune_maps_utils::HashProto(proto));
+}
 }  // namespace
 
 ConvParameters::ConvParameters(
@@ -78,6 +82,44 @@ bool ConvParameters::operator==(const ConvParameters& other) const {
 }
 
 string ConvParameters::ToString() const { return proto_.DebugString(); }
+
+MatmulParameters::MatmulParameters(
+    DataType ab_dtype, DataType c_dtype, bool trans_a, bool trans_b, uint64_t m,
+    uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
+    stream_executor::dnn::ActivationMode activation_mode, int device_id,
+    int version)
+    : device_id_(device_id) {
+  proto_.set_ab_dtype(ab_dtype);
+  proto_.set_c_dtype(c_dtype);
+
+  proto_.set_trans_a(trans_a);
+  proto_.set_trans_b(trans_a);
+  proto_.set_m(m);
+  proto_.set_n(n);
+  proto_.set_k(k);
+  proto_.set_lda(lda);
+  proto_.set_ldb(ldb);
+  proto_.set_ldc(ldc);
+  proto_.set_activation_mode(activation_mode);
+
+  proto_.set_device_identifier(
+      autotune_maps_utils::DeviceIdToIdentifier(device_id));
+  proto_.set_version(version);
+  hash_code_ = ComputeHash(device_id_, proto_);
+}
+
+MatmulParameters::MatmulParameters(int device_id,
+                                   const MatmulParametersProto& proto)
+    : device_id_(device_id),
+      proto_(proto),
+      hash_code_(ComputeHash(device_id, proto_)) {}
+
+bool MatmulParameters::operator==(const MatmulParameters& other) const {
+  return device_id_ == other.device_id_ &&
+         MessageDifferencer::Equals(this->proto_, other.proto_);
+}
+
+string MatmulParameters::ToString() const { return proto_.DebugString(); }
 
 }  // namespace tensorflow
 

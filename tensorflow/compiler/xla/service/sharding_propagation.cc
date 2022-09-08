@@ -47,8 +47,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -149,10 +149,7 @@ bool IsConvolutionKernelSmall(const HloInstruction* instruction) {
 }
 
 bool IsPassthroughCustomOps(const HloInstruction* hlo) {
-  if (hlo->IsCustomCall("Sharding")) {
-    return true;
-  }
-  if (hlo->IsCustomCall("X64Combine")) {
+  if (hlo->IsCustomCall({"Sharding", "X64Combine"})) {
     return true;
   }
   if (hlo->operand_count() != 1 || !hlo->shape().IsArray() ||
@@ -160,11 +157,9 @@ bool IsPassthroughCustomOps(const HloInstruction* hlo) {
       hlo->operand(0)->shape().rank() != hlo->shape().rank()) {
     return false;
   }
-  return hlo->IsCustomCall("ResizeNearest") ||
-         hlo->IsCustomCall("ResizeBilinear") ||
-         hlo->IsCustomCall("ResizeNearestGrad") ||
-         hlo->IsCustomCall("ResizeBilinearGrad") ||
-         hlo->IsCustomCall("Cholesky");
+  return hlo->IsCustomCall({"ResizeNearest", "ResizeBilinear",
+                            "ResizeNearestGrad", "ResizeBilinearGrad",
+                            "Cholesky"});
 }
 
 // Return the operand which is the most suitable for determining the sharding
@@ -376,8 +371,15 @@ bool SupportSpatialPartitioning(
     case HloOpcode::kReverse:
       return is_spmd;
     case HloOpcode::kCustomCall:
-      return is_spmd && (IsPassthroughCustomOps(instruction) ||
-                         sharding_helper->IsCustomCallShardable(instruction));
+      if (!is_spmd) {
+        return false;
+      }
+      if (auto* partitioner =
+              GetCustomCallPartitioner(instruction->custom_call_target())) {
+        return partitioner->IsCustomCallShardable(instruction);
+      }
+      return (IsPassthroughCustomOps(instruction) ||
+              sharding_helper->IsCustomCallShardable(instruction));
     default:
       return false;
   }
@@ -508,8 +510,7 @@ bool InferGatherParallelShardingFromOperands(
   CHECK(DynCast<HloGatherInstruction>(instruction));
   bool changed = false;
   auto aligned_operand_parallel_dims =
-      hlo_sharding_util::IndexAlignedOperandParallelDims(*instruction,
-                                                         parallel_dims);
+      hlo_sharding_util::IndexAlignedOperandParallelDims(parallel_dims);
   auto output_parallel_dims = hlo_sharding_util::GetGatherOutputParallelDims(
       *instruction, parallel_dims);
   // Infer output sharding from scatter operand sharding.
@@ -543,8 +544,7 @@ bool InferScatterParallelShardingFromOperands(
   CHECK(scatter);
   bool changed = false;
   auto aligned_operand_parallel_dims =
-      hlo_sharding_util::IndexAlignedOperandParallelDims(*instruction,
-                                                         parallel_dims);
+      hlo_sharding_util::IndexAlignedOperandParallelDims(parallel_dims);
   auto update_parallel_dims = hlo_sharding_util::GetScatterUpdateParallelDims(
       *instruction, parallel_dims);
   auto output_parallel_dims = aligned_operand_parallel_dims;
@@ -807,9 +807,17 @@ bool InferShardingFromUsers(
     std::optional<HloSharding> user_sharding =
         ShardingPropagation::GetShardingFromUser(*instruction, *user,
                                                  aggressiveness, is_spmd);
-    if (user_sharding && sharding_helper->IsCustomCallShardable(instruction)) {
-      user_sharding = sharding_helper->PropagateUserSharding(instruction, user,
+    if (user_sharding && instruction->opcode() == HloOpcode::kCustomCall) {
+      if (auto* partitioner =
+              GetCustomCallPartitioner(instruction->custom_call_target())) {
+        if (partitioner->IsCustomCallShardable(instruction)) {
+          user_sharding = partitioner->PropagateUserSharding(instruction, user,
                                                              *user_sharding);
+        }
+      } else if (sharding_helper->IsCustomCallShardable(instruction)) {
+        user_sharding = sharding_helper->PropagateUserSharding(
+            instruction, user, *user_sharding);
+      }
     }
     if (user_sharding) {
       improved_sharding |= MaybeImproveInstructionSharding(
@@ -1613,7 +1621,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
         return hlo_sharding_util::GatherIndexSharding(user.sharding(), &user);
       }
       if (is_spmd) {
-        return hlo_sharding_util::GatherDataOperandShardingFromOutput(
+        return hlo_sharding_util::GatherOperandShardingFromOutput(
             user.sharding(), user);
       }
       return std::nullopt;
@@ -1633,27 +1641,25 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       }
       CHECK_EQ(&instruction, scatter_user.scatter_updates()[0]);
       auto indices = scatter_user.scatter_indices();
-      // Prioritize parallel sharding first as this is how it is in
-      // spmd_partitioner.
+      auto from_indices = IsSpatiallyPartitioned(indices)
+                              ? hlo_sharding_util::ScatterDataSharding(
+                                    indices->sharding(), &scatter_user)
+                              : HloSharding::Replicate();
       if (is_spmd) {
-        auto parallel_update_sharding = hlo_sharding_util::
-            ScatterUpdateShardingFromOutputParallelDimensions(user.sharding(),
-                                                              scatter_user);
-        if (parallel_update_sharding.has_value() &&
-            !parallel_update_sharding->IsTileMaximal()) {
-          return parallel_update_sharding;
-        }
-      }
-      if (IsSpatiallyPartitioned(indices)) {
-        auto from_indices = hlo_sharding_util::ScatterDataSharding(
-            indices->sharding(), &scatter_user);
-        if (!from_indices.IsTileMaximal()) {
-          return from_indices;
-        }
-      }
-      if (is_spmd) {
-        return hlo_sharding_util::ScatterUpdateShardingFromOutput(
+        auto from_output = hlo_sharding_util::ScatterUpdateShardingFromOutput(
             user.sharding(), scatter_user);
+        if (from_output.has_value()) {
+          // Use sharding from output as primary sharding since it prioritize
+          // parallel sharding first as this is how it is in spmd_partitioner.
+          hlo_sharding_util::MergeShardingIfCompatible(
+              from_indices, from_output->NumTiles() + 1, &*from_output);
+          if (!from_output->IsTileMaximal()) {
+            return from_output;
+          }
+        }
+      }
+      if (!from_indices.IsTileMaximal()) {
+        return from_indices;
       }
       return std::nullopt;
     }
@@ -2221,7 +2227,7 @@ bool ShardingPropagation::InferShardingFromOperands(
               hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
                   instruction->operand(0)->sharding(), operand_parallel_dims);
           auto maybe_from_data =
-              hlo_sharding_util::GatherOutputShardingFromDataOperand(
+              hlo_sharding_util::GatherOutputShardingFromOperand(
                   filtered_operand_sharding, *instruction,
                   instruction->gather_slice_sizes(), instruction->shape(),
                   instruction->operand(0)->shape());
@@ -2289,7 +2295,16 @@ bool ShardingPropagation::InferShardingFromOperands(
         return false;
       }
       HloSharding inferred_operand_sharding = HloSharding::Replicate();
-      if (sharding_helper_->IsCustomCallShardable(instruction)) {
+      if (auto* partitioner =
+              GetCustomCallPartitioner(instruction->custom_call_target());
+          partitioner && partitioner->IsCustomCallShardable(instruction)) {
+        if (auto sharding =
+                sharding_helper_->InferShardingFromOperands(instruction)) {
+          inferred_operand_sharding = *sharding;
+        } else {
+          return false;
+        }
+      } else if (sharding_helper_->IsCustomCallShardable(instruction)) {
         if (auto sharding =
                 sharding_helper_->InferShardingFromOperands(instruction)) {
           inferred_operand_sharding = *sharding;

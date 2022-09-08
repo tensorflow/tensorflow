@@ -89,11 +89,12 @@ JitExecutable& CreateJitExecutable(
   // Compile and cache MLIR function.
   auto it = cache->find(key);
   if (it == cache->end()) {
-    llvm::Expected<JitExecutable> jit_executable =
+    absl::StatusOr<JitExecutable> jit_executable =
         JitExecutable::Instantiate(mlir_input, function_name, opts);
-    if (auto err = jit_executable.takeError())
+    if (!jit_executable.ok())
       LOG(FATAL) << "Failed to instantiate JitExecutable from the function: "
-                 << function_name.str() << "; error: " << tfrt::StrCat(err);
+                 << function_name.str()
+                 << "; error: " << jit_executable.status().message();
 
     auto storage = std::make_unique<JitExecutable>(std::move(*jit_executable));
     it = cache->insert_or_assign(key, std::move(storage)).first;
@@ -116,11 +117,13 @@ MemrefDesc TensorToMemrefDesc(const Tensor& tensor) {
     LOG(FATAL) << "Unsupported tensor dtype: " << tensor.dtype();
 
   tfrt::TensorShape shape(dims);
-  return MemrefDesc(shape.GetRank(), dtype, tensor.data(), 0,
-                    [&](auto sizes, auto strides) {
-                      shape.GetDimensions(sizes);
-                      shape.GetStrides(strides);
-                    });
+  return MemrefDesc(
+      shape.GetRank(), dtype, tensor.data(), 0, [&](auto sizes, auto strides) {
+        MutableArrayRef<int64_t> sizes_ref(sizes.data(), sizes.size());
+        MutableArrayRef<int64_t> strides_ref(strides.data(), strides.size());
+        shape.GetDimensions(sizes_ref);
+        shape.GetStrides(strides_ref);
+      });
 }
 
 std::string PrintTensorType(llvm::ArrayRef<int64_t> shape,

@@ -540,7 +540,7 @@ class Dict(trace.TraceType, serialization.Serializable):
     return f"{self.__class__.__name__}(mapping={self.mapping!r})"
 
 
-class Reference(trace.TraceType, serialization.Serializable):
+class Reference(trace.TraceType):
   """Represents a resource with an identifier.
 
   Resource identifiers are useful to denote identical resources, that is,
@@ -569,23 +569,6 @@ class Reference(trace.TraceType, serialization.Serializable):
         return Reference(base_supertype, self.identifier)
     return None
 
-  @classmethod
-  def experimental_type_proto(
-      cls) -> Type[default_types_pb2.SerializedReference]:
-    return default_types_pb2.SerializedReference
-
-  @classmethod
-  def experimental_from_proto(
-      cls, proto: default_types_pb2.SerializedReference) -> "Reference":
-    return Reference(
-        serialization.deserialize(proto.base),
-        Literal.experimental_from_proto(proto.identifier).value)
-
-  def experimental_as_proto(self) -> default_types_pb2.SerializedReference:
-    return default_types_pb2.SerializedReference(
-        identifier=Literal(self.identifier).experimental_as_proto(),
-        base=serialization.serialize(self.base))
-
   def _placeholder_value(self) -> Any:
     return self.base._placeholder_value()  # pylint: disable=protected-access
 
@@ -610,4 +593,3 @@ serialization.register_serializable(List)
 serialization.register_serializable(NamedTuple)
 serialization.register_serializable(Attrs)
 serialization.register_serializable(Dict)
-serialization.register_serializable(Reference)

@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/tsl/platform/bfloat16.h"
 
 namespace xla {
 

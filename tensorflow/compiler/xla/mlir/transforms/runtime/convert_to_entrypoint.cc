@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
+#include <string_view>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -46,7 +48,7 @@ static void ConvertCustomCallOperations(func::FuncOp func, Value exec_ctx) {
   struct CustomCall {
     func::CallOp call;
     func::FuncOp callee;
-    llvm::StringRef target;
+    std::string_view target;
     bool direct;
   };
 
@@ -101,7 +103,8 @@ static void ConvertCustomCallOperations(func::FuncOp func, Value exec_ctx) {
 
     b.create<cf::AssertOp>(
         b.create<IsOkOp>(TypeRange(b.getI1Type()), call.status()),
-        b.getStringAttr("custom call '" + custom_call.target + "' failed"));
+        b.getStringAttr("custom call '" + std::string(custom_call.target) +
+                        "' failed"));
 
     // Forward users of the original results to custom call results.
     auto rets = llvm::zip(custom_call.call.getResults(),
@@ -117,8 +120,11 @@ static void ConvertCustomCallOperations(func::FuncOp func, Value exec_ctx) {
     custom_call.call.erase();
   }
 
-  // Erase all converted custom calls declarations.
-  for (auto func : erase_declarations) sym_table.erase(func);
+  // Erase unused converted custom calls declarations.
+  for (auto func : erase_declarations) {
+    if (SymbolTable::symbolKnownUseEmpty(func, sym_table.getOp()))
+      sym_table.erase(func);
+  }
 }
 
 static void ConvertReturnOperations(func::FuncOp func, Value exec_ctx) {
@@ -144,7 +150,9 @@ static void ConvertReturnOperations(func::FuncOp func, Value exec_ctx) {
 static void ConvertAssertOperations(func::FuncOp func, Value exec_ctx) {
   // Collect all assert operations in the function body.
   llvm::SmallVector<cf::AssertOp> asserts;
-  func.walk([&](cf::AssertOp op) { asserts.push_back(op); });
+  func.walk([&](cf::AssertOp op) {
+    if (op->getParentOp() == func) asserts.push_back(op);
+  });
 
   // Rewrite all asserts to the Runtime API calls.
   for (cf::AssertOp assert : asserts) {
@@ -170,7 +178,7 @@ static void ConvertAssertOperations(func::FuncOp func, Value exec_ctx) {
 }
 
 static Value PrependExecutionContextArgument(func::FuncOp func) {
-  Type new_type = KernelContextType::get(func.getContext());
+  Type new_type = ExecutionContextType::get(func.getContext());
   DictionaryAttr attr = DictionaryAttr::get(func.getContext());
   func.insertArguments({0}, {new_type}, {attr}, {func.getLoc()});
   return func.getArgument(0);

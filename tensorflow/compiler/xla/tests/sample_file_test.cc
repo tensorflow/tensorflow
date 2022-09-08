@@ -35,9 +35,8 @@ class SampleFileTest : public HloTestBase {
  protected:
   SampleFileTest()
       : HloTestBase(
-            /*test_platform=*/PlatformUtil::GetPlatform("gpu").ValueOrDie(),
-            /*reference_platform=*/PlatformUtil::GetPlatform("cpu")
-                .ValueOrDie()) {}
+            /*test_platform=*/PlatformUtil::GetPlatform("gpu").value(),
+            /*reference_platform=*/PlatformUtil::GetPlatform("cpu").value()) {}
 };
 
 TEST_F(SampleFileTest, Convolution) {

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_PASSES_LOWER_GLOBALS_TO_ML_PROGRAM_H
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_PASSES_LOWER_GLOBALS_TO_ML_PROGRAM_H
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_LOWER_GLOBALS_TO_ML_PROGRAM_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_LOWER_GLOBALS_TO_ML_PROGRAM_H_
 
 #include <memory>
 
@@ -32,4 +32,4 @@ void RegisterLowerGlobalsToMlProgramPass();
 }  // namespace tf_saved_model
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_PASSES_LOWER_GLOBALS_TO_ML_PROGRAM_H
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_LOWER_GLOBALS_TO_ML_PROGRAM_H_

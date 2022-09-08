@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
@@ -64,15 +64,15 @@ inline const char* TpuName() {
   return kTpuName;
 }
 inline PjRtPlatformId CpuId() {
-  static const PjRtPlatformId kCpuId = tensorflow::Fingerprint64(CpuName());
+  static const PjRtPlatformId kCpuId = tsl::Fingerprint64(CpuName());
   return kCpuId;
 }
 inline PjRtPlatformId GpuId() {
-  static const PjRtPlatformId kGpuId = tensorflow::Fingerprint64(GpuName());
+  static const PjRtPlatformId kGpuId = tsl::Fingerprint64(GpuName());
   return kGpuId;
 }
 inline PjRtPlatformId TpuId() {
-  static const PjRtPlatformId kTpuId = tensorflow::Fingerprint64(TpuName());
+  static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
   return kTpuId;
 }
 
@@ -418,6 +418,7 @@ class PjRtClient {
   // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
 
+  // TODO(b/244756954): Rethink this function altogether
   // Returns an enum that identifies the type of runtime being used under this
   // client.
   virtual PjRtRuntimeType runtime_type() const = 0;

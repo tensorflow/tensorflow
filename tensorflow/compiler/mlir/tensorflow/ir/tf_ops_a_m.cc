@@ -2367,31 +2367,46 @@ LogicalResult EmptyTensorListOp::verify() {
 //===----------------------------------------------------------------------===//
 
 // For EnqueueTPUEmbedding ops the device ordinal corresponds to the resource
-// instance.
+// instance. We also take the `device` attribute into account in order to avoid
+// dependencies between ops with the same ordinal on different devices.
+
+// Helper function to get an absolute device string, combining device and
+// ordinal attribute values.
+std::string GetAbsDeviceStr(Operation *op, uint64_t device_ordinal) {
+  std::string device_ordinal_str = std::to_string(device_ordinal);
+  auto device_attr = op->getAttrOfType<StringAttr>("device");
+  if (!device_attr || device_attr.getValue().empty()) return device_ordinal_str;
+
+  // TODO(b/229028654) Remove string conversion once implicit conversion between
+  // llvm::StringRef and absl::string_view works.
+  absl::string_view device_str(device_attr.data(), device_attr.size());
+  // Concatenate full device string and device ordinal.
+  return absl::StrCat(device_str, ":", device_ordinal_str);
+}
 
 std::string
 EnqueueTPUEmbeddingArbitraryTensorBatchOp::GetResourceInstanceStr() {
-  return std::to_string(device_ordinal());
+  return GetAbsDeviceStr(*this, device_ordinal());
 }
 
 std::string EnqueueTPUEmbeddingBatchOp::GetResourceInstanceStr() {
-  return std::to_string(device_ordinal());
+  return GetAbsDeviceStr(*this, device_ordinal());
 }
 
 std::string EnqueueTPUEmbeddingIntegerBatchOp::GetResourceInstanceStr() {
-  return std::to_string(device_ordinal());
+  return GetAbsDeviceStr(*this, device_ordinal());
 }
 
 std::string EnqueueTPUEmbeddingRaggedTensorBatchOp::GetResourceInstanceStr() {
-  return std::to_string(device_ordinal());
+  return GetAbsDeviceStr(*this, device_ordinal());
 }
 
 std::string EnqueueTPUEmbeddingSparseBatchOp::GetResourceInstanceStr() {
-  return std::to_string(device_ordinal());
+  return GetAbsDeviceStr(*this, device_ordinal());
 }
 
 std::string EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceStr() {
-  return std::to_string(device_ordinal());
+  return GetAbsDeviceStr(*this, device_ordinal());
 }
 
 //===----------------------------------------------------------------------===//

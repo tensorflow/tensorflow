@@ -33,9 +33,8 @@ StatusOr<xla::HloProto> GetHloProtoByModuleName(
 
 // Converts multiple XSpaces to HLO protos.
 // Stores the HLO protos as files in the same directory as the xspace files.
-// Returns "true" if there are HLO protos in this profile, otherwise, returns
-// "false".
-StatusOr<std::string> ConvertMultiXSpaceToHloProto(
+// Returns whether there are HLO protos in this profile.
+StatusOr<bool> ConvertMultiXSpaceToHloProto(
     const SessionSnapshot& session_snapshot);
 
 }  // namespace profiler

@@ -2408,7 +2408,7 @@ Status ExtractOutsideCompilationForFunction(
       auto host_compute_node_or = ReplaceOutsideCompilationCallNode(
           graph_out.get(), n, host_compute_core, *cluster_deps);
       TF_RETURN_IF_ERROR(host_compute_node_or.status());
-      Node* host_compute_node = host_compute_node_or.ValueOrDie();
+      Node* host_compute_node = host_compute_node_or.value();
       host_compute_nodes[host_compute_node->name()] = host_compute_node;
     }
     // For XlaHostCompute nodes with dependencies, add control edges between

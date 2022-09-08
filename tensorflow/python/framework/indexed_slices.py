@@ -451,13 +451,6 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
             "Converting sparse IndexedSlices to a dense Tensor with %d "
             "elements. This may consume a large amount of memory." %
             num_elements)
-    else:
-      if value.dense_shape.op.type != "VariableShape":
-        # VariableShape may hide static shapes behind a resource handle
-        # producing a warning that isn't that useful to users.
-        warnings.warn(
-            "Converting sparse IndexedSlices(%s) to a dense Tensor of unknown "
-            "shape. This may consume a large amount of memory." % value)
   return math_ops.unsorted_segment_sum(
       value.values, value.indices, value.dense_shape[0], name=name)
 

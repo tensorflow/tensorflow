@@ -29,7 +29,7 @@ namespace kernel_gen {
 namespace tf_framework {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_EMBEDTFFRAMEWORKPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 bool IsNotInsideTfEntryFunction(Operation* op) {
@@ -47,7 +47,7 @@ bool HasInitializedOpKernelContextOperand(OpTy op) {
 // * std.alloc becomes tf_framework.alloc_raw,
 // * std.dealloc becomes tf_framework.dealloc_raw.
 class EmbedTFFrameworkPass
-    : public EmbedTFFrameworkPassBase<EmbedTFFrameworkPass> {
+    : public impl::EmbedTFFrameworkPassBase<EmbedTFFrameworkPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
   }

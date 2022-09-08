@@ -169,7 +169,7 @@ TfLiteDelegatePtr CreateHexagonDelegate(
     TfLiteHexagonTearDown();
   });
 }
-#endif
+#endif  // TFLITE_ENABLE_HEXAGON
 
 #if defined(__s390x__) || defined(TFLITE_WITHOUT_XNNPACK)
 TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
@@ -196,6 +196,7 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
   opts.num_threads = num_threads > 1 ? num_threads : 0;
   return CreateXNNPACKDelegate(&opts);
 }
+#endif  // defined(__s390x__) || defined(TFLITE_WITHOUT_XNNPACK)
 
 TfLiteDelegatePtr CreateCoreMlDelegate() {
 #ifdef REAL_IPHONE_DEVICE
@@ -208,9 +209,8 @@ TfLiteDelegatePtr CreateCoreMlDelegate() {
   return TfLiteDelegatePtr(delegate, &TfLiteCoreMlDelegateDelete);
 #else
   return tools::CreateNullDelegate();
-#endif
+#endif  // REAL_IPHONE_DEVICE
 }
 
-#endif
 }  // namespace evaluation
 }  // namespace tflite

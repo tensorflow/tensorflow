@@ -683,6 +683,7 @@ TEST_F(ParallelInterleaveDatasetOpTest,
 // length when the experiment is on.
 TEST_F(ParallelInterleaveDatasetOpTest, InputCycleLengthPreservedInGraphDef) {
   setenv("TF_JOB_NAME", "test_job", /*overwrite=*/1);
+  setenv("TF_TASK_ID", "0", /*overwrite=*/1);
   setenv("TF_DATA_EXPERIMENT_OPT_IN", "serialize_input_cycle_length",
          /*overwrite=*/1);
   auto dataset_params = DatasetGraphDefParams();
@@ -716,8 +717,13 @@ TEST_F(ParallelInterleaveDatasetOpTest, InputCycleLengthPreservedInGraphDef) {
                parallel_interleave_node_def->input(kCycleLengthInput);
       });
   ASSERT_NE(node_iter, graph_def.node().end());
-  EXPECT_EQ(model::kAutotune,
-            node_iter->attr().at("value").tensor().int64_val(0));
+  if (GetExperiments().contains("serialize_input_cycle_length")) {
+    EXPECT_EQ(model::kAutotune,
+              node_iter->attr().at("value").tensor().int64_val(0));
+  } else {
+    EXPECT_NE(model::kAutotune,
+              node_iter->attr().at("value").tensor().int64_val(0));
+  }
 }
 
 TEST_F(ParallelInterleaveDatasetOpTest, DatasetNodeName) {

@@ -132,7 +132,7 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
               HloInstruction::CreateCollectivePermuteStart(
                   ShapeInference::InferCollectivePermuteStartShape(
                       operand_shapes)
-                      .ValueOrDie(),
+                      .value(),
                   operand, cp->mutable_operand(1), cp->mutable_operand(2),
                   cp->mutable_operand(3), cp->source_target_pairs(),
                   cp->dynamic_slice_sizes_list(), cp->channel_id()));

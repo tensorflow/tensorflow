@@ -44,12 +44,12 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/graph_partition.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -828,11 +828,15 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     default_device = flr->device();
   }
 
-  // Mark each node in the graph to be compiled by specified device.
+  // Mark and assign device for each node in the graph to be compiled by
+  // specified device.
   if (!options.xla_compile_device_type.empty()) {
     for (Node* node : graph->op_nodes()) {
       node->AddAttr("_xla_compile_device_type",
                     options.xla_compile_device_type);
+      if (default_device) {
+        node->set_assigned_device_name(default_device->name());
+      }
     }
   }
 
@@ -887,6 +891,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
 
+  const uint64 optimization_start_time_usecs = Env::Default()->NowMicros();
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
   SessionOptions session_options;
@@ -1000,6 +1005,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
           optimized_subgraph->ToGraphDefDebug());
     }
   }
+  const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
+  metrics::UpdateFunctionGraphOptimizationTime(optimization_end_time_usecs -
+                                               optimization_start_time_usecs);
 
   if (options.graph_collector != nullptr) {
     for (const auto& pair : subgraphs) {

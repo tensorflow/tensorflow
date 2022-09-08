@@ -288,7 +288,7 @@ struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
                                 tensorflow::TensorShape(result_shape));
       auto attr_or = tensorflow::ConvertTensor(tensor, &rewriter);
       if (!attr_or.ok()) return failure();
-      rewriter.replaceOpWithNewOp<TF::ConstOp>(op, attr_or.ValueOrDie());
+      rewriter.replaceOpWithNewOp<TF::ConstOp>(op, attr_or.value());
       return success();
     }
 
@@ -301,7 +301,7 @@ struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
       auto attr_or = tensorflow::ConvertTensor(tensor, &rewriter);
       if (!attr_or.ok()) return failure();
 
-      auto value = rewriter.create<TF::ConstOp>(loc, attr_or.ValueOrDie());
+      auto value = rewriter.create<TF::ConstOp>(loc, attr_or.value());
       values.push_back(value);
     }
     rewriter.replaceOpWithNewOp<TF::PackOp>(

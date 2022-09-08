@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -1429,8 +1429,7 @@ MemoryUsageTracker::PickRematerializationCandidates(
               !output_buffer.live_out) {
             const Shape& original_shape = item->instruction->shape();
             if (original_shape.IsArray()) {
-              Shape compact_shape =
-                  GetCompactShape(item->instruction).ValueOrDie();
+              Shape compact_shape = GetCompactShape(item->instruction).value();
               const int64_t memory_reduced =
                   MemoryReducedIfCompressed(item, compact_shape);
               // Since the compressed and uncompressed buffers need to be alive

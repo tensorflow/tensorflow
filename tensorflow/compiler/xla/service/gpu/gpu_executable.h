@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace tfrt {
 namespace gpu {
@@ -145,12 +145,14 @@ class GpuExecutable : public Executable {
       std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
       absl::string_view mlir_module,
       xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
+      absl::string_view asm_text, absl::string_view binary,
       GpuVersion gpu_version, stream_executor::StreamExecutor* executor);
 
   // Constructor to use when loading a GpuExecutable from an object file (native
   // function compiled for JitRt). Omits setting class members that aren't used
   // in JitRt execution mode.
-  GpuExecutable(std::shared_ptr<HloModule> hlo_module, GpuVersion gpu_version,
+  GpuExecutable(std::shared_ptr<HloModule> hlo_module, std::string asm_text,
+                std::vector<uint8_t> binary, GpuVersion gpu_version,
                 xla::EntryFunctionAttributes entry_func_attrs,
                 absl::string_view module_name, Shape xla_output_shape,
                 std::vector<BufferAllocation> allocations,

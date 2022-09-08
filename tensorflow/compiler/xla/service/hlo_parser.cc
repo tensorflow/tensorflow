@@ -888,7 +888,7 @@ bool HloParserImpl::ParseCustomCallSchedule(CustomCallSchedule* result) {
         StrFormat("expects custom-call schedule but sees: %s, error: %s", val,
                   status_or_result.status().error_message()));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -905,7 +905,7 @@ bool HloParserImpl::ParseCustomCallApiVersion(CustomCallApiVersion* result) {
         StrFormat("expects custom-call API version but sees: %s, error: %s",
                   val, status_or_result.status().error_message()));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -1207,8 +1207,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
 
   // Add shared attributes like metadata to the instruction, if they were seen.
   if (sharding) {
-    instruction->set_sharding(
-        HloSharding::FromProto(sharding.value()).ValueOrDie());
+    instruction->set_sharding(HloSharding::FromProto(sharding.value()).value());
   }
   if (parameter_replication) {
     int leaf_count = ShapeUtil::GetLeafCount(instruction->shape());
@@ -1267,7 +1266,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
               "failed to infer shape for opcode: %s, error: %s",
               HloOpcodeString(opcode), inferred.status().error_message()));
         }
-        shape = std::move(inferred).ValueOrDie();
+        shape = std::move(inferred).value();
         return true;
       };
 
@@ -3240,9 +3239,9 @@ bool HloParserImpl::ParseDomain(DomainData* domain) {
   }
   if (*kind == ShardingMetadata::KindName()) {
     auto entry_sharding_ptr = std::make_unique<HloSharding>(
-        HloSharding::FromProto(*entry_sharding).ValueOrDie());
+        HloSharding::FromProto(*entry_sharding).value());
     auto exit_sharding_ptr = std::make_unique<HloSharding>(
-        HloSharding::FromProto(*exit_sharding).ValueOrDie());
+        HloSharding::FromProto(*exit_sharding).value());
     domain->entry_metadata =
         std::make_unique<ShardingMetadata>(std::move(entry_sharding_ptr));
     domain->exit_metadata =
@@ -5545,13 +5544,13 @@ bool HloParserImpl::ParseOpcode(
             StrFormat("expects async wrapped opcode but sees: %s, error: %s",
                       val, status_or_result.status().error_message()));
       }
-      *async_wrapped_opcode = status_or_result.ValueOrDie();
+      *async_wrapped_opcode = status_or_result.value();
     } else {
       return TokenError(StrFormat("expects opcode but sees: %s, error: %s", val,
                                   status_or_result.status().error_message()));
     }
   } else {
-    *opcode = status_or_result.ValueOrDie();
+    *opcode = status_or_result.value();
   }
   lexer_.Lex();
   return true;
@@ -5594,7 +5593,7 @@ bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
     return TokenError(
         StrFormat("expects comparison direction but sees: %s", val));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -5609,7 +5608,7 @@ bool HloParserImpl::ParseComparisonType(Comparison::Type* result) {
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects comparison type but sees: %s", val));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -5626,7 +5625,7 @@ bool HloParserImpl::ParseFusionKind(HloInstruction::FusionKind* result) {
                                 val,
                                 status_or_result.status().error_message()));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -5643,7 +5642,7 @@ bool HloParserImpl::ParseRandomDistribution(RandomDistribution* result) {
         StrFormat("expects random distribution but sees: %s, error: %s", val,
                   status_or_result.status().error_message()));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -5660,7 +5659,7 @@ bool HloParserImpl::ParseRandomAlgorithm(RandomAlgorithm* result) {
         StrFormat("expects random algorithm but sees: %s, error: %s", val,
                   status_or_result.status().error_message()));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -5677,7 +5676,7 @@ bool HloParserImpl::ParsePrecision(PrecisionConfig::Precision* result) {
                                 val,
                                 status_or_result.status().error_message()));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }

@@ -36,10 +36,9 @@ def TfDevice_Dialect : Dialect {
     These operations do not map 1-1 to TensorFlow ops and requires a lowering
     pass later to transform them into Compile/Run op pairs, like XlaCompile and
     XlaRun.
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }];
 
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
   let cppNamespace = "::mlir::tf_device";
 }
 

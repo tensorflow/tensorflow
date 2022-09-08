@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_RESULTS_H_
-#define XLA_RUNTIME_RESULTS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_RESULTS_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_RESULTS_H_
 
-#include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
@@ -57,7 +56,7 @@ class ResultConverter {
                                     void* ret) const = 0;
 
   // Returns error for all results.
-  virtual void ReturnError(const llvm::Error& error) const = 0;
+  virtual void ReturnError(const absl::Status& error) const = 0;
 };
 
 //===----------------------------------------------------------------------===//
@@ -72,10 +71,10 @@ struct NoResultConverter : public ResultConverter {
     return failure();
   }
 
-  void ReturnError(const llvm::Error&) const final {}
+  void ReturnError(const absl::Status&) const final {}
 };
 
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_RESULTS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_RESULTS_H_

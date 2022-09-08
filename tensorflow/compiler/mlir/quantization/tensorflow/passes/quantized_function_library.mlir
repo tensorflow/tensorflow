@@ -312,7 +312,9 @@ module {
     %0 = "tf.Cast"(%input) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
     %1 = "tf.Sub"(%0, %input_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
 
-    %2 = "tf.Cast"(%weight) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    // Use identity op to avoid the weight being constant-folded.
+    %identity = "tf.Identity"(%weight) : (tensor<*xi8>) -> tensor<*xi8>
+    %2 = "tf.Cast"(%identity) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
     %3 = "tf.Sub"(%2, %weight_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
 
     // TODO(b/215633216): Optimize this function with the XLA Dot op.

@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
@@ -43,6 +44,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:type_id",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:ConversionPasses",
         "@llvm-project//mlir:FuncDialect",
@@ -70,15 +72,30 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "compilation_pipeline",
-    srcs = ["compilation_pipeline.cc"],
-    hdrs = ["compilation_pipeline.h"],
+tf_cc_test(
+    name = "calling_convention_test",
+    srcs = ["calling_convention_test.cc"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        ":custom_call_encoding",
+        ":calling_convention",
+        "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "compilation_pipeline_gpu",
+    srcs = ["compilation_pipeline_gpu.cc"],
+    hdrs = ["compilation_pipeline_gpu.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":compilation_pipeline_options",
         ":passes",
-        "//tensorflow/compiler/xla/runtime:type_id",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:IR",
@@ -89,9 +106,19 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToControlFlow",
-        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,  # has pipeline registration
+)
+
+cc_library(
+    name = "compilation_pipeline_options",
+    hdrs = ["compilation_pipeline_options.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":custom_call_encoding",
+        "//tensorflow/compiler/xla/runtime:type_id",
+        "@llvm-project//mlir:Transforms",
+    ],
 )
 
 cc_library(
@@ -100,6 +127,7 @@ cc_library(
     hdrs = ["custom_call_encoding.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:type_id",
         "@llvm-project//llvm:Support",
@@ -122,7 +150,6 @@ cc_library(
         ":passes",
         ":specialization",
         ":type_converter",
-        "//tensorflow/compiler/xla/mlir/utils:to_string",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:constraints",
         "//tensorflow/compiler/xla/runtime:errors",
@@ -148,7 +175,6 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/mlir/transforms/runtime:type_converter",
-        "//tensorflow/compiler/xla/mlir/utils:to_string",
         "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:constraints",
@@ -162,6 +188,7 @@ cc_library(
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
     ],
 )
@@ -173,7 +200,6 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
-        "//tensorflow/compiler/xla/mlir/utils:to_string",
         "//tensorflow/compiler/xla/runtime:errors",
         "//tensorflow/compiler/xla/runtime:types",
         "@com_google_absl//absl/status",
@@ -181,5 +207,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )

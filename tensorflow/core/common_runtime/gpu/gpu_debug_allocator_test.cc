@@ -41,7 +41,7 @@ se::StreamExecutor* ExecutorForPlatformDeviceId(
     PlatformDeviceId platform_device_id) {
   return DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                    platform_device_id)
-      .ValueOrDie();
+      .value();
 }
 
 TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {

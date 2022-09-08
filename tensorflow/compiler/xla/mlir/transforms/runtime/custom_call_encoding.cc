@@ -15,20 +15,25 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
@@ -44,7 +49,6 @@ using arith::ConstantOp;
 using func::FuncOp;
 
 using llvm::ArrayRef;
-using llvm::StringRef;
 
 //===----------------------------------------------------------------------===//
 // Custom call arguments encoding.
@@ -63,13 +67,30 @@ FailureOr<EncodedArg> CustomCallArgEncodingSet::Encode(Globals &g,
 }
 
 //===----------------------------------------------------------------------===//
+// Custom call results encoding.
+//===----------------------------------------------------------------------===//
+
+using EncodedRet = CustomCallRetEncodingSet::Encoded;
+
+FailureOr<EncodedRet> CustomCallRetEncodingSet::Encode(Globals &g,
+                                                       ImplicitLocOpBuilder &b,
+                                                       Type value,
+                                                       Type converted) const {
+  for (auto &encoding : encodings_)
+    if (succeeded(encoding->Match(value, converted)))
+      return encoding->Encode(g, b, value, converted);
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // Custom call attributes encoding.
 //===----------------------------------------------------------------------===//
 
 using EncodedAttr = CustomCallAttrEncodingSet::Encoded;
 
 FailureOr<EncodedAttr> CustomCallAttrEncodingSet::Encode(
-    Globals &g, ImplicitLocOpBuilder &b, StringRef name, Attribute attr) const {
+    Globals &g, ImplicitLocOpBuilder &b, std::string_view name,
+    Attribute attr) const {
   for (auto &encoding : encodings_)
     if (succeeded(encoding->Match(name, attr)))
       return encoding->Encode(g, b, name, attr);
@@ -85,8 +106,8 @@ Value PackTypeId(Globals &g, ImplicitLocOpBuilder &b, TypeID type_id) {
   return Globals::AddrOf(b, global);
 }
 
-Value PackString(Globals &g, ImplicitLocOpBuilder &b, StringRef strref,
-                 StringRef symbol_base) {
+Value PackString(Globals &g, ImplicitLocOpBuilder &b, std::string_view strref,
+                 std::string_view symbol_base) {
   MLIRContext *ctx = b.getContext();
   int64_t size = strref.size();
 
@@ -115,7 +136,7 @@ Value PackString(Globals &g, ImplicitLocOpBuilder &b, StringRef strref,
 
 // Packs scalar attribute as a global constant. Returns `!llvm.ptr<AttrType>`.
 Value PackScalarAttribute(Globals &g, ImplicitLocOpBuilder &b, Attribute value,
-                          StringRef symbol_base) {
+                          std::string_view symbol_base) {
   auto global = g.GetOrCreate(b, value, symbol_base);
   return Globals::AddrOf(b, global);
 }
@@ -136,7 +157,7 @@ static mlir::DenseElementsAttr Flatten(DenseIntOrFPElementsAttr dense) {
 // `!llvm.ptr<EncodedDenseElements>`.
 static Value PackDenseElementsAttribute(Globals &g, ImplicitLocOpBuilder &b,
                                         Attribute value,
-                                        StringRef symbol_base) {
+                                        std::string_view symbol_base) {
   MLIRContext *ctx = b.getContext();
   DenseIntOrFPElementsAttr dense = value.cast<DenseIntOrFPElementsAttr>();
 
@@ -196,7 +217,7 @@ static Value PackDenseElementsAttribute(Globals &g, ImplicitLocOpBuilder &b,
 // Returns `!llvm.ptr<array<element_type x size>>
 static Value CreateGlobalFromArray(Globals &g, ImplicitLocOpBuilder &b,
                                    ArrayAttr array, Type element_type,
-                                   StringRef symbol_base) {
+                                   std::string_view symbol_base) {
   Type arr_type = LLVM::LLVMArrayType::get(element_type, array.size());
 
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) {
@@ -215,7 +236,7 @@ static Value CreateGlobalFromArray(Globals &g, ImplicitLocOpBuilder &b,
 // Packs array attribute as a global constant. Returns `!llvm.ptr<EncodedArr>`.
 static Value PackArrayAttribute(Globals &g, ImplicitLocOpBuilder &b,
                                 ArrayAttr array, Type element_type,
-                                StringRef symbol_base) {
+                                std::string_view symbol_base) {
   MLIRContext *ctx = b.getContext();
 
   int64_t size = array.size();
@@ -258,11 +279,12 @@ static Value FillDataFromDenseArrayAttr(
 }
 
 static Value CreateGlobalFromDenseArray(Globals &g, ImplicitLocOpBuilder &b,
-                                        DenseArrayBaseAttr base_array,
-                                        Type arr_type, StringRef symbol_base) {
+                                        DenseArrayAttr base_array,
+                                        Type arr_type,
+                                        std::string_view symbol_base) {
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) {
     Value data = ib.create<LLVM::UndefOp>(arr_type);
-    llvm::TypeSwitch<DenseArrayBaseAttr>(base_array)
+    llvm::TypeSwitch<DenseArrayAttr>(base_array)
         .Case([&](DenseI8ArrayAttr attr) {
           data = FillDataFromDenseArrayAttr<int8_t, IntegerAttr>(
               b, &ImplicitLocOpBuilder::getI8IntegerAttr, attr, data);
@@ -287,7 +309,7 @@ static Value CreateGlobalFromDenseArray(Globals &g, ImplicitLocOpBuilder &b,
           data = FillDataFromDenseArrayAttr<double, FloatAttr>(
               b, &ImplicitLocOpBuilder::getF64FloatAttr, attr, data);
         })
-        .Default([&](DenseArrayBaseAttr attr) {
+        .Default([&](DenseArrayAttr attr) {
           assert(false && "unsupported DenseArrayAttr element type");
         });
     ib.create<LLVM::ReturnOp>(data);
@@ -298,10 +320,11 @@ static Value CreateGlobalFromDenseArray(Globals &g, ImplicitLocOpBuilder &b,
 }
 
 static Value PackDenseArrayAttribute(Globals &g, ImplicitLocOpBuilder &b,
-                                     Attribute value, StringRef symbol_base) {
+                                     Attribute value,
+                                     std::string_view symbol_base) {
   MLIRContext *ctx = b.getContext();
 
-  DenseArrayBaseAttr base_array = value.cast<DenseArrayBaseAttr>();
+  DenseArrayAttr base_array = value.cast<DenseArrayAttr>();
   int64_t size = base_array.size();
 
   // Encoded array type:
@@ -332,7 +355,8 @@ static Value PackDenseArrayAttribute(Globals &g, ImplicitLocOpBuilder &b,
 }
 
 static Value PackEmptyArrayAttribute(Globals &g, ImplicitLocOpBuilder &b,
-                                     Attribute value, StringRef symbol_base) {
+                                     Attribute value,
+                                     std::string_view symbol_base) {
   MLIRContext *ctx = b.getContext();
 
   // Encoded array type: !llvm.struct<(i64, !llvm.ptr<i8>)>.
@@ -401,33 +425,34 @@ LLVM::GlobalOp Globals::Find(Key key) {
   return nullptr;
 }
 
-LLVM::GlobalOp Globals::GetOrCreate(ImplicitLocOpBuilder &b, StringRef strref,
-                                    StringRef symbol_base) {
+LLVM::GlobalOp Globals::GetOrCreate(ImplicitLocOpBuilder &b,
+                                    std::string_view strref,
+                                    std::string_view symbol_base) {
   // Create an std::string to get a null terminated sequence of characters.
-  std::string str = strref.str();
+  std::string str(strref);
 
   // Create a string reference that captures the null terminator.
-  StringRef ref(str.data(), str.size() + 1);
+  std::string_view ref(str.data(), str.size() + 1);
   StringAttr attr = b.getStringAttr(ref);
   Type arr = LLVM::LLVMArrayType::get(b.getI8Type(), ref.size());
   return GetOrCreate(b, attr, arr, symbol_base);
 }
 
 LLVM::GlobalOp Globals::GetOrCreate(ImplicitLocOpBuilder &b, TypedAttr attr,
-                                    StringRef symbol_base) {
+                                    std::string_view symbol_base) {
   return GetOrCreate(b, attr, attr.getType(), symbol_base);
 }
 
 LLVM::GlobalOp Globals::GetOrCreate(ImplicitLocOpBuilder &b,
                                     mlir::TypeID type_id) {
-  llvm::StringRef name = type_id_names_.FindTypeIDSymbolName(type_id);
+  std::string_view name = type_id_names_.FindTypeIDSymbolName(type_id);
   assert(!name.empty() && "cannot find the symbol name of type_id");
   return GetOrCreate(b, IntegerAttr(), b.getI64Type(), name, /*initialize=*/{},
                      LLVM::Linkage::External);
 }
 
 LLVM::GlobalOp Globals::GetOrCreate(ImplicitLocOpBuilder &b, Attribute attr,
-                                    Type type, StringRef symbol_base,
+                                    Type type, std::string_view symbol_base,
                                     GlobalInitializer initialize,
                                     LLVM::Linkage linkage) {
   if (!initialize) {
@@ -445,7 +470,7 @@ LLVM::GlobalOp Globals::GetOrCreate(ImplicitLocOpBuilder &b, Attribute attr,
 
 mlir::FailureOr<mlir::LLVM::GlobalOp> Globals::TryGetOrCreate(
     mlir::ImplicitLocOpBuilder &b, mlir::Attribute attr, mlir::Type type,
-    llvm::StringRef symbol_base, FailureOrGlobalInitializer initialize,
+    std::string_view symbol_base, FailureOrGlobalInitializer initialize,
     mlir::LLVM::Linkage linkage) {
   // We assume that this triple uniquely identifies the global value and the
   // global initializer always produces the same value for given inputs.
@@ -593,32 +618,34 @@ static TypeID DenseElementsRuntimeTypeId(Type elem_type) {
 // Custom call attributes encoding.
 //===----------------------------------------------------------------------===//
 
-LogicalResult StringAttrEncoding::Match(StringRef name, Attribute attr) const {
+LogicalResult StringAttrEncoding::Match(std::string_view name,
+                                        Attribute attr) const {
   return success(attr.isa<StringAttr>());
 }
 
 FailureOr<EncodedAttr> StringAttrEncoding::Encode(Globals &g,
                                                   ImplicitLocOpBuilder &b,
-                                                  StringRef name,
+                                                  std::string_view name,
                                                   Attribute attr) const {
   auto str = attr.cast<StringAttr>();
 
   Encoded encoded;
   encoded.name = PackString(g, b, name, kAttrName);
-  encoded.type_id = PackTypeId(g, b, TypeID::get<Tagged<llvm::StringRef>>());
-  encoded.value = PackString(g, b, str, kAttrValue);
+  encoded.type_id = PackTypeId(g, b, TypeID::get<Tagged<std::string_view>>());
+  encoded.value = PackString(g, b, str.getValue(), kAttrValue);
   return encoded;
 }
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult ScalarAttrEncoding::Match(StringRef name, Attribute attr) const {
+LogicalResult ScalarAttrEncoding::Match(std::string_view name,
+                                        Attribute attr) const {
   return success(IsSupportedScalarAttribute(attr));
 }
 
 FailureOr<EncodedAttr> ScalarAttrEncoding::Encode(Globals &g,
                                                   ImplicitLocOpBuilder &b,
-                                                  StringRef name,
+                                                  std::string_view name,
                                                   Attribute attr) const {
   Type type = attr.cast<TypedAttr>().getType();
 
@@ -632,7 +659,7 @@ FailureOr<EncodedAttr> ScalarAttrEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult DenseElementsAttrEncoding::Match(StringRef name,
+LogicalResult DenseElementsAttrEncoding::Match(std::string_view name,
                                                Attribute attr) const {
   if (auto dense = attr.dyn_cast<DenseIntOrFPElementsAttr>())
     return success(IsSupportedScalarType(dense.getElementType()));
@@ -640,7 +667,8 @@ LogicalResult DenseElementsAttrEncoding::Match(StringRef name,
 }
 
 FailureOr<EncodedAttr> DenseElementsAttrEncoding::Encode(
-    Globals &g, ImplicitLocOpBuilder &b, StringRef name, Attribute attr) const {
+    Globals &g, ImplicitLocOpBuilder &b, std::string_view name,
+    Attribute attr) const {
   auto dense = attr.cast<DenseIntOrFPElementsAttr>();
   Type elem_type = dense.getType().getElementType();
 
@@ -654,7 +682,8 @@ FailureOr<EncodedAttr> DenseElementsAttrEncoding::Encode(
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult ArrayAttrEncoding::Match(StringRef name, Attribute attr) const {
+LogicalResult ArrayAttrEncoding::Match(std::string_view name,
+                                       Attribute attr) const {
   if (auto array = attr.dyn_cast<ArrayAttr>();
       array && !array.empty() && array[0].isa<TypedAttr>()) {
     return success(IsSupportedScalarAttribute(array[0]));
@@ -664,7 +693,7 @@ LogicalResult ArrayAttrEncoding::Match(StringRef name, Attribute attr) const {
 
 FailureOr<EncodedAttr> ArrayAttrEncoding::Encode(Globals &g,
                                                  ImplicitLocOpBuilder &b,
-                                                 StringRef name,
+                                                 std::string_view name,
                                                  Attribute attr) const {
   ArrayAttr array = attr.dyn_cast<ArrayAttr>();
   Type elem_type = array[0].cast<TypedAttr>().getType();
@@ -686,9 +715,9 @@ FailureOr<EncodedAttr> ArrayAttrEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult DenseArrayAttrEncoding::Match(StringRef name,
+LogicalResult DenseArrayAttrEncoding::Match(std::string_view name,
                                             Attribute attr) const {
-  if (auto array = attr.dyn_cast<DenseArrayBaseAttr>()) {
+  if (auto array = attr.dyn_cast<DenseArrayAttr>()) {
     return success();
   }
   return failure();
@@ -696,9 +725,9 @@ LogicalResult DenseArrayAttrEncoding::Match(StringRef name,
 
 FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(Globals &g,
                                                       ImplicitLocOpBuilder &b,
-                                                      StringRef name,
+                                                      std::string_view name,
                                                       Attribute attr) const {
-  Type elem_type = attr.cast<DenseArrayBaseAttr>().getType().getElementType();
+  Type elem_type = attr.cast<DenseArrayAttr>().getType().getElementType();
 
   Encoded encoded;
   encoded.name = PackString(g, b, name, kAttrName);
@@ -710,7 +739,7 @@ FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult EmptyArrayAttrEncoding::Match(StringRef name,
+LogicalResult EmptyArrayAttrEncoding::Match(std::string_view name,
                                             Attribute attr) const {
   if (auto array = attr.dyn_cast<ArrayAttr>(); array && array.empty()) {
     return success();
@@ -720,7 +749,7 @@ LogicalResult EmptyArrayAttrEncoding::Match(StringRef name,
 
 FailureOr<EncodedAttr> EmptyArrayAttrEncoding::Encode(Globals &g,
                                                       ImplicitLocOpBuilder &b,
-                                                      StringRef name,
+                                                      std::string_view name,
                                                       Attribute attr) const {
   Encoded encoded;
   encoded.name = PackString(g, b, name, kAttrName);
@@ -736,9 +765,10 @@ FailureOr<EncodedAttr> EmptyArrayAttrEncoding::Encode(Globals &g,
 
 FailureOr<Value> EncodeAttributes(Globals &g, ImplicitLocOpBuilder &b,
                                   const CustomCallAttrEncodingSet &encoding,
-                                  StringRef symbol_base,
+                                  std::string_view symbol_base,
                                   ArrayRef<NamedAttribute> attrs) {
-  using EncodedAttr = std::pair<StringRef, CustomCallAttrEncoding::Encoded>;
+  using EncodedAttr =
+      std::pair<std::string_view, CustomCallAttrEncoding::Encoded>;
 
   // In addition to encoded attributes we encode the number of attributes.
   int64_t n_attrs = attrs.size();
@@ -752,9 +782,10 @@ FailureOr<Value> EncodeAttributes(Globals &g, ImplicitLocOpBuilder &b,
     // Try to encode each individual attribute.
     llvm::SmallVector<EncodedAttr> encoded_attrs;
     for (auto &attr : attrs) {
-      auto encoded = encoding.Encode(g, b, attr.getName(), attr.getValue());
+      auto encoded =
+          encoding.Encode(g, b, attr.getName().getValue(), attr.getValue());
       if (failed(encoded)) return failure();
-      encoded_attrs.emplace_back(attr.getName(), *encoded);
+      encoded_attrs.emplace_back(attr.getName().getValue(), *encoded);
     }
 
     // Prepare an array for encoding attributes.
@@ -819,6 +850,35 @@ FailureOr<EncodedArg> ScalarArgEncoding::Encode(Globals &g,
   encoded.type_id = PackTypeId(g, b, ScalarRuntimeTypeId(type));
   encoded.value = PackValue(b, converted);
 
+  return encoded;
+}
+
+//===----------------------------------------------------------------------===//
+
+static bool IsOpaqueValue(Value value) {
+  return value.getType().isa<OpaqueType>();
+}
+
+OpaqueArgEncoding::OpaqueArgEncoding()
+    : OpaqueArgEncoding(IsOpaqueValue, TypeID::get<Tagged<void *>>()) {}
+
+OpaqueArgEncoding::OpaqueArgEncoding(std::function<bool(Value)> match,
+                                     TypeID type_id)
+    : match_(std::move(match)), type_id_(type_id) {}
+
+LogicalResult OpaqueArgEncoding::Match(Value value, Value converted) const {
+  if (auto ptr = converted.getType().dyn_cast<LLVM::LLVMPointerType>())
+    return success(match_(value));
+  return failure();
+}
+
+FailureOr<EncodedArg> OpaqueArgEncoding::Encode(Globals &g,
+                                                ImplicitLocOpBuilder &b,
+                                                Value value,
+                                                Value converted) const {
+  Encoded encoded;
+  encoded.type_id = PackTypeId(g, b, type_id_);
+  encoded.value = PackValue(b, converted);
   return encoded;
 }
 
@@ -916,6 +976,59 @@ Value MemrefArgEncoding::EncodeMemRef(ImplicitLocOpBuilder &b,
 }
 
 //===----------------------------------------------------------------------===//
+// Custom call results encodings.
+//===----------------------------------------------------------------------===//
+
+LogicalResult ScalarRetEncoding::Match(Type type, Type converted) const {
+  return success(IsSupportedScalarType(type));
+}
+
+FailureOr<EncodedRet> ScalarRetEncoding::Encode(Globals &g,
+                                                ImplicitLocOpBuilder &b,
+                                                Type value,
+                                                Type converted) const {
+  Encoded encoded;
+  encoded.type_id = PackTypeId(g, b, ScalarRuntimeTypeId(converted));
+
+  Type ptr = LLVM::LLVMPointerType::get(converted);
+  Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
+  encoded.value = b.create<LLVM::AllocaOp>(ptr, one, 0);
+
+  return encoded;
+}
+
+//===----------------------------------------------------------------------===//
+
+static bool IsOpaqueType(Type type) { return type.isa<OpaqueType>(); }
+
+OpaqueRetEncoding::OpaqueRetEncoding()
+    : OpaqueRetEncoding(IsOpaqueType, TypeID::get<Tagged<void *>>()) {}
+
+OpaqueRetEncoding::OpaqueRetEncoding(std::function<bool(Type)> match,
+                                     TypeID type_id)
+    : match_(std::move(match)), type_id_(type_id) {}
+
+LogicalResult OpaqueRetEncoding::Match(Type type, Type converted) const {
+  if (auto ptr = converted.dyn_cast<LLVM::LLVMPointerType>())
+    return success(match_(type));
+  return failure();
+}
+
+FailureOr<EncodedRet> OpaqueRetEncoding::Encode(Globals &g,
+                                                ImplicitLocOpBuilder &b,
+                                                Type value,
+                                                Type converted) const {
+  Encoded encoded;
+  encoded.type_id = PackTypeId(g, b, type_id_);
+
+  Type ptr = LLVM::LLVMPointerType::get(converted);
+  Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
+  encoded.value = b.create<LLVM::AllocaOp>(ptr, one, 0);
+
+  return encoded;
+}
+
+//===----------------------------------------------------------------------===//
 // Default encodings for arguments and attributes.
 //===----------------------------------------------------------------------===//
 
@@ -929,7 +1042,13 @@ CustomCallAttrEncodingSet DefaultAttrEncodings() {
 
 CustomCallArgEncodingSet DefaultArgEncodings() {
   CustomCallArgEncodingSet encodings;
-  encodings.Add<ScalarArgEncoding, MemrefArgEncoding>();
+  encodings.Add<ScalarArgEncoding, OpaqueArgEncoding, MemrefArgEncoding>();
+  return encodings;
+}
+
+CustomCallRetEncodingSet DefaultRetEncodings() {
+  CustomCallRetEncodingSet encodings;
+  encodings.Add<ScalarRetEncoding, OpaqueRetEncoding>();
   return encodings;
 }
 

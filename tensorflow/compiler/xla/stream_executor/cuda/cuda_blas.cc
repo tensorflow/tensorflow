@@ -70,7 +70,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -389,7 +389,7 @@ port::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   ScopedCublasMathMode math_mode{blas_};
 #if CUBLAS_VER_MAJOR >= 11
   if (math_type == CUBLAS_TF32_TENSOR_OP_MATH &&
-      tensorflow::tensor_float_32_execution_enabled()) {
+      tsl::tensor_float_32_execution_enabled()) {
 #else
   if (math_type == CUBLAS_TENSOR_OP_MATH) {
 #endif
@@ -626,7 +626,7 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
             CudaComputeCapability::AMPERE)) {
       // TODO(reedwm): Remove or make this VLOG(1) once TensorFloat-32 is more
       // well tested.
-      if (tensorflow::tensor_float_32_execution_enabled()) {
+      if (tsl::tensor_float_32_execution_enabled()) {
         LOG_FIRST_N(INFO, 1) << "TensorFloat-32 will be used for the matrix "
                                 "multiplication. This will only be logged "
                                 "once.";
@@ -951,7 +951,7 @@ static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
             "Algorithm ", algorithm,
             " uses tensor ops, but tensor ops are not available in sm",
             cc.major, "X devices for float input types."));
-      } else if (!tensorflow::tensor_float_32_execution_enabled()) {
+      } else if (!tsl::tensor_float_32_execution_enabled()) {
         return port::InternalError(absl::StrCat(
             "Algorithm ", algorithm,
             " uses tensor ops, but tensor ops are disabled for fp32 inputs"));
@@ -1276,7 +1276,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
       // DoBlassInternalImpl will switch math_type back to CUBLAS_DEFAULT_MATH
       // if TensorFloat-32 is disabled.
       math_type = CUBLAS_TF32_TENSOR_OP_MATH;
-      algo = tensorflow::tensor_float_32_execution_enabled()
+      algo = tsl::tensor_float_32_execution_enabled()
                  ? CUBLAS_GEMM_DFALT_TENSOR_OP
                  : CUBLAS_GEMM_DFALT;
 #endif

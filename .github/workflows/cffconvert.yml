@@ -22,6 +22,7 @@ on:
 
 jobs:
   validate:
+    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     name: "validate"
     runs-on: ubuntu-latest
     steps:

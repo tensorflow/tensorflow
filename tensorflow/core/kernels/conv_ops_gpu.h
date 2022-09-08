@@ -141,7 +141,7 @@ AllocateScratchOrFallback(se::ScratchAllocator* scratch_allocator,
   if (workspace_size > 0) {
     auto scratch_or = scratch_allocator->AllocateBytes(workspace_size);
     if (scratch_or.ok()) {
-      scratch_memory = scratch_or.ValueOrDie();
+      scratch_memory = scratch_or.value();
     } else if ((selected_runner = no_scratch_fallback)) {
       if (selected_runner->GetWorkspaceSize() > 0) {
         return errors::Internal(

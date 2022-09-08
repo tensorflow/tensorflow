@@ -234,7 +234,7 @@ class HloSharding {
   // ShapeTree object so is not cheap.
   StatusOr<ShapeTree<HloSharding>> AsShapeTree(const Shape& shape) const;
   ShapeTree<HloSharding> GetAsShapeTree(const Shape& shape) const {
-    return AsShapeTree(shape).ValueOrDie();
+    return AsShapeTree(shape).value();
   }
 
   // Retrieves the sub sharding at a given index, out of a tuple sharding.
@@ -310,6 +310,8 @@ class HloSharding {
   // REQUIRES: !IsTuple()
   Shape TileShape(const Shape& shape, int64_t device) const;
 
+  // Gets the total number of tiles including subgroups and partial replication.
+  int64_t TotalNumTiles() const;
   // Gets the number of tiles. If it has partial replication, this will not
   // equal the device count.
   int64_t NumTiles() const;

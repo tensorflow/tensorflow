@@ -111,7 +111,7 @@ class UnsortedSegmentSum : public XlaOpKernel {
     auto result = XlaScatter(buffer, /*updates=*/data, indices,
                              /*indices_are_vectors=*/false, combiner, builder);
     OP_REQUIRES_OK(ctx, result.status());
-    ctx->SetOutput(0, result.ValueOrDie());
+    ctx->SetOutput(0, result.value());
   }
 
  private:

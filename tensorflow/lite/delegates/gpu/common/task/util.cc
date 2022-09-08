@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
 #include <cfloat>
+#include <map>
 #include <string>
+#include <vector>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -75,6 +77,10 @@ std::string GetGlslConversion(const GpuInfo& gpu_info, DataType src_type,
     return "";
   }
 }
+
+bool IsWordSymbol(char symbol) {
+  return absl::ascii_isalnum(symbol) || symbol == '_';
+}
 }  // namespace
 
 std::string MemoryTypeToCLType(MemoryType type) {
@@ -100,28 +106,6 @@ std::string MemoryTypeToMetalType(MemoryType type) {
       return "threadgroup";
   }
   return "";
-}
-
-std::string GetXStrideCorrected(const std::string& src_x,
-                                const std::string& batch_size,
-                                const std::string& stride_x,
-                                const std::string& padding_x) {
-  // int p0 = src_x / batch_size;\n";
-  // int b0 = src_x % batch_size;\n";
-  // return p0 * stride_x * batch_size + b0 + padding_x;\n";
-  return absl::Substitute("((($0) / $1) * $2 * $1 + (($0) % $1) + $3)", src_x,
-                          batch_size, stride_x, padding_x);
-}
-
-std::string GetXStrideCorrectedV2(const std::string& src_x,
-                                  const std::string& batch_size,
-                                  const std::string& stride_x,
-                                  const std::string& padding_x) {
-  // int p0 = src_x / batch_size;\n";
-  // int b0 = src_x % batch_size;\n";
-  // return (p0 * stride_x + padding_x) * batch_size + b0;\n";
-  return absl::Substitute("(((($0) / $1) * $2 + $3) * $1 + ($0) % $1)", src_x,
-                          batch_size, stride_x, padding_x);
 }
 
 float4 GetMaskForLastPlane(int channels) {
@@ -289,6 +273,70 @@ std::string GetTypeConversion(const GpuInfo& gpu_info, DataType src_type,
     }
   }
   return "$0";
+}
+
+std::string GetNextWord(const std::string& code, size_t first_position) {
+  size_t pos = first_position;
+  char t = code[pos];
+  while (IsWordSymbol(t)) {
+    pos++;
+    t = code[pos];
+  }
+  return code.substr(first_position, pos - first_position);
+}
+
+size_t FindEnclosingBracket(const std::string& text, size_t first_pos,
+                            char bracket) {
+  const std::map<char, char> brackets = {
+      {'(', ')'},
+      {'{', '}'},
+      {'[', ']'},
+      {'<', '>'},
+  };
+  char b_open = bracket;
+  auto it = brackets.find(b_open);
+  if (it == brackets.end()) {
+    return -1;
+  }
+  char b_close = it->second;
+  size_t pos = first_pos;
+  int opened = 1;
+  int closed = 0;
+  while (opened != closed && pos < text.size()) {
+    if (text[pos] == b_open) {
+      opened++;
+    } else if (text[pos] == b_close) {
+      closed++;
+    }
+    pos++;
+  }
+  if (opened == closed) {
+    return pos;
+  } else {
+    return -1;
+  }
+}
+
+absl::Status ParseArgsInsideBrackets(const std::string& text,
+                                     size_t open_bracket_pos,
+                                     size_t* close_bracket_pos,
+                                     std::vector<std::string>* args) {
+  *close_bracket_pos =
+      FindEnclosingBracket(text, open_bracket_pos + 1, text[open_bracket_pos]);
+  if (*close_bracket_pos == -1) {
+    return absl::NotFoundError("Not found enclosing bracket");
+  }
+  std::string str_args = text.substr(open_bracket_pos + 1,
+                                     *close_bracket_pos - open_bracket_pos - 2);
+  std::vector<absl::string_view> words = absl::StrSplit(str_args, ',');
+  args->reserve(words.size());
+  for (const auto& word : words) {
+    absl::string_view arg = absl::StripAsciiWhitespace(word);
+    if (!arg.empty()) {
+      args->push_back(std::string(arg));
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

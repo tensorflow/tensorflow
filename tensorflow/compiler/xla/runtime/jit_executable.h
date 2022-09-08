@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_JIT_EXECUTABLE_H_
-#define XLA_RUNTIME_JIT_EXECUTABLE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_JIT_EXECUTABLE_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_JIT_EXECUTABLE_H_
 
 #include <any>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/jit_compiler.h"
 #include "tensorflow/compiler/xla/runtime/async_values_cache.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
@@ -39,12 +41,13 @@ class JitExecutable {
   // XLA program can be specialized and recompiled at runtime to the concrete
   // input shapes and sometimes values (e.g. reduction dimension).
   enum class Specialization {
-    // Recompile specialized kernels when needed.
+    // Recompile specialized executables when needed.
     kEnabled,
-    // Completely disable specialized kernels (always call default executable).
+    // Completely disable specialized executables (always call default
+    // executable).
     kDisabled,
-    // Always use specialized kernels, and never call default executable (only
-    // required for getting reproducible results in benchmarks).
+    // Always use specialized executables, and never call default executable
+    // (only required for getting reproducible results in benchmarks).
     kAlways,
   };
 
@@ -72,23 +75,23 @@ class JitExecutable {
   // that the runner will be called in the same thread as `GetExecutable`.
   //
   using CompilationTaskRunner =
-      llvm::unique_function<void(size_t, llvm::ArrayRef<ArgumentConstraint>,
+      llvm::unique_function<void(size_t, absl::Span<const ArgumentConstraint>,
                                  ArgumentsRef, CompilationTask, UserData)>;
 
   // Inline compilation task runner runs compilation task in the caller thread.
   static void InlineCompilationTaskRunner(
       size_t num_specializations,
-      llvm::ArrayRef<ArgumentConstraint> constraints, ArgumentsRef arguments,
+      absl::Span<const ArgumentConstraint> constraints, ArgumentsRef arguments,
       CompilationTask task, UserData user_data);
 
-  static llvm::Expected<JitExecutable> Instantiate(
+  static absl::StatusOr<JitExecutable> Instantiate(
       std::string_view mlir_module, std::string_view entrypoint, Options opts,
       std::string_view memory_region_name = "",
       CompilationTaskRunner runner = InlineCompilationTaskRunner);
 
   // Returns entrypoint operands constraints after resolving them using the
   // statically known information in the entrypoint function signature.
-  llvm::ArrayRef<ArgumentConstraint> constraints() const;
+  absl::Span<const ArgumentConstraint> constraints() const;
 
   // Returns default executable that accepts all compatible operands
   // (operands rank and all static dimensions should match the operands).
@@ -117,7 +120,7 @@ class JitExecutable {
   //
   // Note: This function never falls back on the default executable if
   // specialization compilation fails.
-  llvm::Expected<tfrt::AsyncValuePtr<Executable>> GetExecutable(
+  absl::StatusOr<tfrt::AsyncValuePtr<Executable>> GetExecutable(
       ArgumentsRef arguments, UserData user_data = {},
       const SpecializationListener* listener = nullptr);
 
@@ -132,9 +135,9 @@ class JitExecutable {
  private:
   JitExecutable(std::string_view mlir_module, std::string_view entrypoint,
                 std::string_view memory_region_name, Options opts,
-                llvm::ArrayRef<ArgumentConstraint> constraints,
+                absl::Span<const ArgumentConstraint> constraints,
                 FunctionType signature,
-                llvm::Optional<Executable> default_executable,
+                std::optional<Executable> default_executable,
                 CompilationTaskRunner runner);
 
   std::string mlir_module_;
@@ -162,8 +165,8 @@ class JitExecutable {
   //
   // This function signature is allowed to have operands and results types
   // without a well-defined ABI (e.g. it can have tensors when compiled module
-  // defined in Tensorflow dialect), and it corresponds to the kernel definition
-  // in one of the high level dialects (e.g. Tensorflow or mHLO).
+  // defined in Tensorflow dialect), and it corresponds to the executable
+  // definition in one of the high level dialects (e.g. Tensorflow or mHLO).
   //
   // When compiled module prepared for execution, function operands and results
   // are mapped to the types with well-defined ABI (e.g. tensors mapped to
@@ -189,4 +192,4 @@ class JitExecutable {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_JIT_EXECUTABLE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_JIT_EXECUTABLE_H_

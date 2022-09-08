@@ -57,8 +57,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -1172,6 +1172,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAddDependency(
       HloInstruction* data_operand, HloInstruction* token_operand);
 
+  // Returns true if `execution_thread` is included in the
+  // `execution_threads_set`.
+  static bool IsThreadIncluded(
+      absl::string_view execution_thread,
+      const absl::flat_hash_set<absl::string_view>& execution_threads_set);
+
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
   HloOpcode* mutable_opcode() { return &opcode_; }
@@ -1543,6 +1549,7 @@ class HloInstruction {
   bool IsFusible() const;
 
   bool IsCustomCall(absl::string_view target) const;
+  bool IsCustomCall(absl::Span<const absl::string_view> targets) const;
 
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.
@@ -2160,6 +2167,10 @@ class HloInstruction {
 
   // Delegates to HloCholeskyInstruction::cholesky_options().
   const CholeskyOptions& cholesky_options() const;
+
+  // Delegates to HloCustomCallInstruction::output_to_operand_aliasing().
+  const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
+  custom_call_output_operand_aliasing() const;
 
   // Appends operand to the list of operands and adds this instruction as a user
   // of the operand.

@@ -21,7 +21,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -33,6 +32,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_GROUPREDUCTIONDIMENSIONSPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 LogicalResult tryLowerToCollapseShape(
@@ -297,7 +300,8 @@ struct GroupReductionDimensionsPattern : public OpRewritePattern<ReduceOp> {
 };
 
 struct GroupReductionDimensionsPass
-    : public GroupReductionDimensionsPassBase<GroupReductionDimensionsPass> {
+    : public impl::GroupReductionDimensionsPassBase<
+          GroupReductionDimensionsPass> {
   explicit GroupReductionDimensionsPass(bool preferColumnsReductions)
       : GroupReductionDimensionsPassBase<
             GroupReductionDimensionsPass>::GroupReductionDimensionsPassBase() {

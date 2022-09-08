@@ -875,3 +875,18 @@ func.func @ConstFoldPadV2(%arg0: tensor<15600xf32>) -> tensor<15600xf32> {
   func.return %2 : tensor<15600xf32>
   // CHECK:  return %arg0
 }
+
+// CHECK-LABEL: @ConstFoldEmbeddingLookup
+func.func @ConstFoldEmbeddingLookup() -> (tensor<5x2xf32>, tensor<3x2x2xf32>) {
+  %index0 = "tfl.pseudo_const"() {value = dense<[2, 1, 0, 0, 2]> : tensor<5xi32>} : () -> tensor<5xi32>
+  %index1 = "tfl.pseudo_const"() {value = dense<[0, 1, 0]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %value0 = "tfl.pseudo_const"() {value = dense<[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]> : tensor<3x2xf32>} : () -> tensor<3x2xf32>
+  %value1 = "tfl.pseudo_const"() {value = dense<[[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]> : tensor<2x2x2xf32>} : () -> tensor<2x2x2xf32>
+  %lookup0 = "tfl.embedding_lookup"(%index0, %value0) : (tensor<5xi32>, tensor<3x2xf32>) -> tensor<5x2xf32>
+  %lookup1 = "tfl.embedding_lookup"(%index1, %value1) : (tensor<3xi32>, tensor<2x2x2xf32>) -> tensor<3x2x2xf32>
+  func.return %lookup0, %lookup1 : tensor<5x2xf32>, tensor<3x2x2xf32>
+
+  // CHECK-DAG: %[[LOOKUP0:.*]] = arith.constant dense<{{\[\[}}5.000000e+00, 6.000000e+00], [3.000000e+00, 4.000000e+00], [1.000000e+00, 2.000000e+00], [1.000000e+00, 2.000000e+00], [5.000000e+00, 6.000000e+00]]> : tensor<5x2xf32>
+  // CHECK-DAG: %[[LOOKUP1:.*]] = arith.constant dense<{{\[\[\[}}1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]], {{\[\[}}5.000000e+00, 6.000000e+00], [7.000000e+00, 8.000000e+00]], {{\[\[}}1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]]> : tensor<3x2x2xf32>
+  // CHECK: return %[[LOOKUP0]], %[[LOOKUP1]] : tensor<5x2xf32>, tensor<3x2x2xf32>
+}

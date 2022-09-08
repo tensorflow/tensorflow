@@ -2832,7 +2832,7 @@ class ConvertAvgPoolGradOp : public OpRewritePattern<OpTy> {
         return failure();
       }
       ::xla::SpatialDimensionOutputSizeAndPadding &conv_grad_spatial_dim =
-          status.ValueOrDie();
+          status.value();
       // Subtract the original exterior padding since it doesn't contribute to
       // the gradient. Note that we save one `PadOp` and some unnecessary kernel
       // computations, compared to the `xla::AvgPoolGrad` implementation, by

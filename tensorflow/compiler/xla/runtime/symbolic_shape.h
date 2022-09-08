@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_SYMBOLIC_SHAPE_H_
-#define XLA_RUNTIME_SYMBOLIC_SHAPE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_SYMBOLIC_SHAPE_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_SYMBOLIC_SHAPE_H_
+
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "llvm/ADT/DenseSet.h"
@@ -80,7 +82,7 @@ class SymbolicShapesResolver {
   absl::StatusOr<llvm::hash_code> ResolveHash(ArgumentsRef arguments) const;
 
   // Replaces all symbolic dimensions with dynamic dimension.
-  static llvm::SmallVector<int64_t> Normalize(const SymbolicShape& shape);
+  static StaticShape Normalize(const SymbolicShape& shape);
 
   // Computes a hash value of the symbolic shapes.
   static llvm::hash_code Hash(absl::Span<const SymbolicShape> symbolic_shapes);
@@ -97,7 +99,7 @@ class SymbolicShapesResolver {
 
   // Statically known sizes of shaped arguments from the function signature. For
   // non-shaped arguments (e.g. opaque pointers) we keep empty shape value.
-  llvm::SmallVector<llvm::Optional<StaticShape>> arguments_sizes_;
+  llvm::SmallVector<std::optional<StaticShape>> arguments_sizes_;
 
   // Values of statically known dimensions sizes in the function signature.
   llvm::DenseSet<int64_t> seen_static_sizes_;
@@ -112,4 +114,4 @@ class SymbolicShapesResolver {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_SYMBOLIC_SHAPE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_SYMBOLIC_SHAPE_H_

@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 #include "tensorflow/core/transforms/remapper/remapping_helper.h"
 #include "tensorflow/core/transforms/utils/pdll/utils.h"
 #include "tensorflow/core/transforms/utils/utils.h"
@@ -41,6 +40,9 @@ namespace tfg {
 namespace mkl {
 #include "tensorflow/core/transforms/remapper/pdll/MklPDLLPatterns.h.inc"
 }  // namespace mkl
+
+#define GEN_PASS_DEF_REMAPPER
+#include "tensorflow/core/transforms/passes.h.inc"
 
 // Convert Sigmoid+Mul to Swish
 // Mul(x, Sigmoid(x)) --> _MklSwish(x)
@@ -314,7 +316,7 @@ template <OpKind activation>
 using ContractionBiasAddActivationRewriter =
     BasePatternActivationRewriter<ContractionBiasAddRewriter, activation>;
 
-class Remapper : public RemapperBase<Remapper> {
+class Remapper : public impl::RemapperBase<Remapper> {
  public:
   Remapper() = default;
   explicit Remapper(bool enable_onednn_patterns, bool xla_auto_clustering) {

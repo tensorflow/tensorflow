@@ -66,10 +66,10 @@ cc_library(
     srcs = ["proto_text_util.cc"],
     hdrs = ["proto_text_util.h"],
     deps = [
+        "//tensorflow/core/lib/strings:scanner",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/platform:protobuf",
-        "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:strcat",
         "@com_google_absl//absl/strings",

@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {

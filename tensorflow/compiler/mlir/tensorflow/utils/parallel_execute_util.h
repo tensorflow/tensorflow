@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PARALLEL_EXECUTE_UTIL_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PARALLEL_EXECUTE_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_PARALLEL_EXECUTE_UTIL_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_PARALLEL_EXECUTE_UTIL_H_
 
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -38,4 +38,4 @@ LogicalResult RemoveSingletonParallelExecuteOp(
 }  // namespace TFTPU
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PARALLEL_EXECUTE_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_PARALLEL_EXECUTE_UTIL_H_

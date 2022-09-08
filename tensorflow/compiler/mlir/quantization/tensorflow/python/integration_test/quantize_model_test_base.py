@@ -363,6 +363,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         """
         self.has_bias = has_bias
         self.activation_fn = activation_fn
+        self.filters = np.random.uniform(low=-1.0, high=1.0, size=(1024, 3))
+        self.bias = np.random.uniform(low=-1.0, high=1.0, size=(3,))
 
       @def_function.function(input_signature=[
           tensor_spec.TensorSpec(
@@ -381,12 +383,10 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         Returns:
           A map of: output key -> output result.
         """
-        filters = np.random.uniform(low=-1.0, high=1.0, size=(1024, 3))
-        bias = np.random.uniform(low=-1.0, high=1.0, size=(3,))
-        out = math_ops.matmul(input_tensor, filters)
+        out = math_ops.matmul(input_tensor, self.filters)
 
         if self.has_bias:
-          out = nn_ops.bias_add(out, bias)
+          out = nn_ops.bias_add(out, self.bias)
 
         if self.activation_fn is not None:
           out = self.activation_fn(out)

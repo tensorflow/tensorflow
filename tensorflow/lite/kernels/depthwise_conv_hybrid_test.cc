@@ -295,6 +295,11 @@ TEST_F(PerChannelHybridDepthwiseConvolutionOptimizedOpTest,
 }
 
 TEST_F(PerChannelHybridDepthwiseConvolutionOptimizedOpTest,
+       AccuracyPaddiacc_buffer_sizengTest4096) {
+  RandomTest(1, 3, 3, 4096, 3, true, 1);
+}
+
+TEST_F(PerChannelHybridDepthwiseConvolutionOptimizedOpTest,
        Accuracy2x2StrideTest32) {
   RandomTest(1, 112, 112, 32, 3, false, 2);
 }

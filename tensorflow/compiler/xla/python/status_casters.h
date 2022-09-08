@@ -71,8 +71,8 @@ struct type_caster<xla::StatusOr<T>> {
     if (!src.ok()) {
       throw xla::XlaRuntimeError(src.status());
     }
-    return value_conv::cast(std::forward<xla::StatusOr<T>>(src).ValueOrDie(),
-                            policy, parent);
+    return value_conv::cast(std::forward<xla::StatusOr<T>>(src).value(), policy,
+                            parent);
   }
 };
 

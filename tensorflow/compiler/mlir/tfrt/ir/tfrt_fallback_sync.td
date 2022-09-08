@@ -22,6 +22,7 @@ include "tfrt/core_runtime/opdefs/corert_base.td"
 include "tfrt/core_runtime/opdefs/corert_traits.td"
 include "tfrt_fallback.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 def FallbackSync_Dialect : Dialect {
   let name = "tfrt_fallback_sync";
@@ -96,7 +97,7 @@ def CreateOp: FallbackSync_Op<"createop", [CoreRT_TypedAttributeTrait]> {
     op_name: The tensorflow op name. eg. "tf.AddV2"
 
     Example:
-      tfrt_fallback_async.createop() key(0) device("/CPU:0")
+      tfrt_fallback_sync.createop() key(0) device("/CPU:0")
         "some.op"() {attr1 = value, attr2 = value2} {f_attr1 = "fn1", f_attr2 = "fn2"} num_args(1)
   }];
 
@@ -110,7 +111,7 @@ def CreateOp: FallbackSync_Op<"createop", [CoreRT_TypedAttributeTrait]> {
   let results = (outs);
 }
 
-def ExecuteOp : FallbackSync_Op<"executeop",
+def SyncExecuteOp : FallbackSync_Op<"executeop",
     [NoSideEffect, CoreRT_TypedAttributeTrait]> {
   let summary = "The Fallback Sync ExecuteOp";
   let description = [{
@@ -123,14 +124,14 @@ def ExecuteOp : FallbackSync_Op<"executeop",
   }];
 
   let arguments = (ins
-    Variadic<TensorType>:$operands,
+    Variadic<TFTensorType>:$operands,
     ArrayAttr:$op_attrs,
     I64Attr:$op_key,
     StrAttr:$op_name
   );
 
   let results = (outs
-    Variadic<TensorType>:$results
+    Variadic<TFTensorType>:$results
   );
 
   let extraClassDeclaration = [{

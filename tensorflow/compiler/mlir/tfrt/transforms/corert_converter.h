@@ -45,13 +45,6 @@ class CoreRTConverter : public mlir::TypeConverter {
   // CoreRT ops and fallback ops.
   void MaterializeDerivedAttributes(mlir::Operation *op);
 
-  bool IsSupportedNumericDType(mlir::Type type) const;
-
-  // Create a single attribute that contains the named attribute lists. It is an
-  // array of pairs. The key must be a string attribute, and the value can be
-  // any attribute that is supported by CoreRuntime.
-  mlir::ArrayAttr CreateOpAttrs(llvm::ArrayRef<mlir::NamedAttribute> attrs);
-
   // Similar to CreateOpAttrs, create a single attribute that contains the
   // named attribute lists, which is an array of pairs, with keys and values
   // both being string attributes. The values represent function names.

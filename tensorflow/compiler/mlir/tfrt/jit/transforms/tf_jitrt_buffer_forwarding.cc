@@ -20,7 +20,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LINALGTRIVIALBUFFERFORWARDING
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 // Returns true if all linalg.generic operation iterators are "parallel".
@@ -192,7 +192,7 @@ struct LinalgTrivialBufferForwardingPattern
 // Trivial buffer forwarding for the linalg.generic operations.
 // -------------------------------------------------------------------------- //
 struct LinalgTrivialBufferForwardingPass
-    : public LinalgTrivialBufferForwardingBase<
+    : public impl::LinalgTrivialBufferForwardingBase<
           LinalgTrivialBufferForwardingPass> {
   void runOnOperation() override {
     mlir::func::FuncOp function = getOperation();

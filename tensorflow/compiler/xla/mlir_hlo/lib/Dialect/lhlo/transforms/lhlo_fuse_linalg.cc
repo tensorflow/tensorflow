@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -36,11 +35,16 @@ limitations under the License.
 
 namespace mlir {
 namespace lmhlo {
+
+#define GEN_PASS_DEF_LHLOFUSELINALGPASS
+#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
+
 namespace {
 
 using linalg::LinalgOp;
 
-class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
+class LhloFuseLinalgPass
+    : public impl::LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, linalg::LinalgDialect, scf::SCFDialect>();
   }

@@ -44,6 +44,12 @@ using BufferizePatternsCallback = std::function<void(
 // Passes
 //===----------------------------------------------------------------------===//
 
+#define GEN_PASS_DECL_BUFFERPACKING
+#define GEN_PASS_DECL_FINALBUFFERIZEPASS
+#define GEN_PASS_DECL_PROPAGATESTATICSHAPESTOKERNELPASS
+#define GEN_PASS_DECL_TILELOOPSPASS
+#include "mlir-hlo/Transforms/passes.h.inc"
+
 /// Creates a pass that reuses buffers which are already allocated.
 std::unique_ptr<OperationPass<func::FuncOp>> createBufferReusePass();
 
@@ -102,6 +108,10 @@ std::unique_ptr<OperationPass<>> createCollapseParallelLoopsTo1DPass();
 // and unroll factors provided through `unroll_factors`.
 std::unique_ptr<OperationPass<func::FuncOp>> createTileLoopsPass(
     ArrayRef<int64_t> tileSizes = {}, ArrayRef<int64_t> unrollFactors = {});
+
+// Detensorizes loop-carried variables and block arguments of scf.while, scf.for
+// and scf.if.
+std::unique_ptr<OperationPass<func::FuncOp>> createDetensorizeScfOpsPass();
 
 namespace hlo {
 std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();

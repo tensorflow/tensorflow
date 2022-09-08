@@ -43,6 +43,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:types",
     ] + if_static([
         ":device_id_impl",
     ]),

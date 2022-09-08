@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -45,14 +45,14 @@ LocalClient* GetOrCreateLocalClientOrDie(
   StatusOr<LocalClient*> result =
       ClientLibrary::GetOrCreateLocalClient(client_options);
   TF_CHECK_OK(result.status()) << " could not create local client for testing";
-  return result.ValueOrDie();
+  return result.value();
 }
 
 // Helper functions to get the reference platform.
 se::Platform* GetReferencePlatform() {
   auto result = PlatformUtil::GetPlatform(kInterpreter);
   TF_CHECK_OK(result.status()) << "could not get interpreter platform";
-  return result.ValueOrDie();
+  return result.value();
 }
 
 }  // namespace
@@ -154,7 +154,7 @@ std::string ClientLibraryTestBase::ExecuteToString(
   if (!result.ok()) {
     return result.status().ToString();
   } else {
-    return result.ValueOrDie().ToString();
+    return result.value().ToString();
   }
 }
 

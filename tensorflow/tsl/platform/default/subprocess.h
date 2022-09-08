@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_POSIX_SUBPROCESS_H_
-#define TENSORFLOW_CORE_PLATFORM_POSIX_SUBPROCESS_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_SUBPROCESS_H_
+#define TENSORFLOW_TSL_PLATFORM_DEFAULT_SUBPROCESS_H_
 
 #include <errno.h>
 #include <unistd.h>
@@ -22,11 +22,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 
 class SubProcess {
  public:
@@ -126,6 +126,6 @@ class SubProcess {
   TF_DISALLOW_COPY_AND_ASSIGN(SubProcess);
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PLATFORM_POSIX_SUBPROCESS_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_SUBPROCESS_H_

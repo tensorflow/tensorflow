@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_BENCHMARK_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_BENCHMARK_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_
 
 #include <utility>
 
@@ -95,10 +95,9 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   opts.async_task_runner = &async_task_runner;
 
   // Get an executable that might be specialized to the operands.
-  llvm::Expected<AsyncValuePtr<Executable>> executable =
+  absl::StatusOr<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands);
-  if (auto err = executable.takeError())
-    LOG(FATAL) << "Failed to specialize executable";
+  if (!executable.ok()) LOG(FATAL) << "Failed to specialize executable";
 
   // Wait for the compilation completion.
   host->Await({executable->CopyRef()});
@@ -109,12 +108,14 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = (*executable)->InitializeCallFrame(operands, &call_frame))
+  if (auto st = (*executable)->InitializeCallFrame(operands, &call_frame);
+      !st.ok())
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
     (*executable)->Execute(call_frame, opts);
-    if (auto err = (*executable)->ReturnResults(converter, &call_frame))
+    if (auto st = (*executable)->ReturnResults(converter, &call_frame);
+        !st.ok())
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 
@@ -177,4 +178,4 @@ void RunMatMulEigenBenchmark(::testing::benchmark::State& state) {
   }                                                                          \
   BENCHMARK(BM_eigen_##NAME##_##TYPE)
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_BENCHMARK_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
@@ -158,7 +159,7 @@ LLVM_ATTRIBUTE_ALWAYS_INLINE static LogicalResult ResolveImpl(
     // At this point it's guaranteed that the argument at `i` is a shaped one,
     // because non-shaped argument are not in the `iteration_order`.
     const MemrefDesc* shaped = cast<MemrefDesc>(&arguments[i]);
-    ArrayRef<int64_t> runtime_sizes = shaped->sizes();
+    absl::Span<const int64_t> runtime_sizes = shaped->sizes();
 
     // Check that statically known rank matches the runtime rank.
     if (LLVM_UNLIKELY(has_static_sizes && resolver.argument_sizes(i).size() !=
@@ -281,7 +282,7 @@ absl::StatusOr<llvm::hash_code> SymbolicShapesResolver::ResolveHash(
                                   fingerprint.values.end());
 }
 
-/*static*/ llvm::SmallVector<int64_t> SymbolicShapesResolver::Normalize(
+/*static*/ StaticShape SymbolicShapesResolver::Normalize(
     const SymbolicShape& shape) {
   auto normalize = llvm::map_range(shape, [](int64_t dim) {
     return std::max(dim, MemrefType::kDynamicSize);

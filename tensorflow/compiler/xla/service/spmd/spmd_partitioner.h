@@ -338,8 +338,17 @@ class PartitionedHlo {
     // to use the tuple sharding. Reshard() implementation assumes this.
     if (hlo_->shape().IsTuple() && !hlo_->sharding().IsTuple()) {
       hlo_->set_sharding(
-          hlo_->sharding().GetTupleSharding(hlo_->shape()).ValueOrDie());
+          hlo_->sharding().GetTupleSharding(hlo_->shape()).value());
     }
+  }
+
+  PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const {
+    PartitionedHlo new_phlo = *this;
+    new_phlo.hlo_ = hlo;
+    if (!hlo->has_sharding() && hlo_->has_sharding()) {
+      hlo->set_sharding(hlo_->sharding());
+    }
+    return new_phlo;
   }
 
   // Reshards the current SPMD instruction to a new sharding with optional

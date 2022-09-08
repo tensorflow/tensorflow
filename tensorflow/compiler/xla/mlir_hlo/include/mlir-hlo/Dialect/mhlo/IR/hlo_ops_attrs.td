@@ -76,6 +76,50 @@ def ConvDimensionNumbers : AttrDef<HLO_Dialect, "ConvDimensionNumbers"> {
   let hasCustomAssemblyFormat = 1;
 }
 
+def OutputOperandAlias : AttrDef<HLO_Dialect, "OutputOperandAlias"> {
+  let cppNamespace = "::mlir::mhlo";
+  let mnemonic = "output_operand_alias";
+  let summary =
+    "Attribute that models the alias relationship of output and operand of a CustomCall op";
+  let description = [{
+    This attribute captures the alias relationship of the output to one of the
+    operands for a CustomCall op, denoted by `operand_index`. The
+    `output_tuple_indices` and `operand_tuple_indices` are used to index into
+    output and operand types. These indices lists are empty if the corresponding
+    types are not tuple types, and can be arbitrarily long in case of
+    arbitrarily nested tuple types.
+
+    See https://www.tensorflow.org/xla/aliasing.
+
+    Example when used as array with in mhlo.custom-call:
+
+    ```mlir
+    %0 = "mhlo.custom_call"(%arg0, %arg1) {
+      // other attributes
+      output_operand_alias = [
+        #mhlo.output_operand_alias<output_tuple_indices = [0],
+                                   operand_index = 0,
+                                   operand_tuple_indices = [1]>
+      ]
+    } : (tuple<tensor<1x1xf32>, tensor<2x3xf32>>, tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
+
+    The output and the 0th operand are both tuples. The aliasing shows the
+    relationship between the 0th element in output tuple with the 1st element in
+    the 0th operand. And both of them are of the same type: tensor<2x3xf32>.
+    ```
+  }];
+  let parameters = (ins
+    HLODim:$outputTupleIndices,
+    "int64_t":$operandIndex,
+    HLODim:$operandTupleIndices
+  );
+  let assemblyFormat = "`<` "
+                       "`output_tuple_indices` `=` `[` $outputTupleIndices `]` `,`"
+                       "`operand_index` `=` $operandIndex `,`"
+                       "`operand_tuple_indices` `=` `[` $operandTupleIndices `]`"
+                       "`>`";
+}
+
 def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
   let cppNamespace = "::mlir::mhlo";
   let mnemonic = "result_alias";

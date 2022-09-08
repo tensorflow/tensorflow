@@ -157,7 +157,9 @@ class AsyncCheckpointingTest(test.TestCase):
     # save called by hook in `after_create_session` and every `after_run`
     num_save_calls = 1 + max_steps // checkpoint_interval
     sync_count, async_count = _get_checkpoint_metrics_counts()
-    self.assertEqual(sync_count, num_save_calls)
+    # save might be called one extra time in `end` hook based on timing of
+    # `_last_checkpoint_step` update in the final `after_run` call
+    self.assertIn(sync_count, [num_save_calls, num_save_calls + 1])
     self.assertLessEqual(async_count, num_save_calls)
 
   def testAsyncCheckpointHookWithoutListeners(self):
@@ -208,7 +210,9 @@ class AsyncCheckpointingTest(test.TestCase):
     # save called by hook in `after_create_session` and every `after_run`
     num_save_calls = 1 + max_steps // checkpoint_interval
     sync_count, async_count = _get_checkpoint_metrics_counts()
-    self.assertEqual(sync_count, num_save_calls)
+    # save might be called one extra time in `end` hook based on timing of
+    # `_last_checkpoint_step` update in the final `after_run` call
+    self.assertIn(sync_count, [num_save_calls, num_save_calls + 1])
     self.assertLessEqual(async_count, num_save_calls)
 
 

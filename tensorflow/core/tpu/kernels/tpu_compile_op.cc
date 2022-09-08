@@ -29,7 +29,7 @@ TpuCompileOp::TpuCompileOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> compile_op_impl =
       CompileOpImplFactory::Get()->CreateNonMlirImpl(ctx);
   OP_REQUIRES_OK(ctx, compile_op_impl.status());
-  impl_ = std::move(compile_op_impl.ValueOrDie());
+  impl_ = std::move(compile_op_impl.value());
 }
 
 void TpuCompileOp::Compute(OpKernelContext* ctx) { impl_->Compute(ctx); }
@@ -38,7 +38,7 @@ TpuCompileMlirOp::TpuCompileMlirOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> compile_op_impl =
       CompileOpImplFactory::Get()->CreateMlirImpl(ctx);
   OP_REQUIRES_OK(ctx, compile_op_impl.status());
-  impl_ = std::move(compile_op_impl.ValueOrDie());
+  impl_ = std::move(compile_op_impl.value());
 }
 
 void TpuCompileMlirOp::Compute(OpKernelContext* ctx) { impl_->Compute(ctx); }

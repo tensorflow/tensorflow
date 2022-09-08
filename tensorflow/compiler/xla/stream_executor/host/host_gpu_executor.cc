@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
+#include "tensorflow/tsl/platform/mem.h"
 
 namespace stream_executor {
 namespace host {
@@ -62,7 +62,7 @@ port::Status HostExecutor::Init(int device_ordinal,
 }
 
 bool HostExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
-  tensorflow::port::MemoryInfo mem_info = tensorflow::port::GetMemoryInfo();
+  tsl::port::MemoryInfo mem_info = tsl::port::GetMemoryInfo();
   *free = (mem_info.free != INT64_MAX) ? mem_info.free : -1;
   *total = (mem_info.total != INT64_MAX) ? mem_info.total : -1;
   return true;
@@ -72,9 +72,9 @@ DeviceMemoryBase HostExecutor::Allocate(uint64_t size, int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
   // Use a minimum alignment of 64 bytes to be friendly to AVX512 code.
   // This should probably be kept in sync with
-  // tensorflow::Allocator::kAllocatorAlignment.
+  // tsl::Allocator::kAllocatorAlignment.
   return DeviceMemoryBase(
-      tensorflow::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
+      tsl::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
 }
 
 void* HostExecutor::GetSubBuffer(DeviceMemoryBase* parent,
@@ -83,7 +83,7 @@ void* HostExecutor::GetSubBuffer(DeviceMemoryBase* parent,
 }
 
 void HostExecutor::Deallocate(DeviceMemoryBase* mem) {
-  tensorflow::port::AlignedFree(mem->opaque());
+  tsl::port::AlignedFree(mem->opaque());
 }
 
 port::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
@@ -307,7 +307,7 @@ blas::BlasSupport* HostExecutor::CreateBlas() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 bool HostExecutor::SupportsFft() const {
@@ -328,7 +328,7 @@ fft::FftSupport* HostExecutor::CreateFft() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 bool HostExecutor::SupportsRng() const {
@@ -349,7 +349,7 @@ rng::RngSupport* HostExecutor::CreateRng() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 std::unique_ptr<internal::StreamInterface>

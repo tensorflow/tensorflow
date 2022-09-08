@@ -124,6 +124,12 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
     "signature_runner.h",
 ]
 
+# Private header files that are included from the public API header files.
+STABLE_FRAMEWORK_LIB_IMPL_HDRS = [
+    "core/subgraph.h",
+    "signature_runner.h",
+]
+
 exports_files(
     FRAMEWORK_LIB_HDRS,
     visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
@@ -445,8 +451,8 @@ alias(
 # TODO(ahentz): investigate dependency on gemm_support requiring usage of tf_copts.
 cc_library(
     name = "framework_stable",
-    srcs = [],
-    hdrs = FRAMEWORK_LIB_HDRS,
+    srcs = STABLE_FRAMEWORK_LIB_IMPL_HDRS,
+    hdrs = STABLE_FRAMEWORK_LIB_HDRS,
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     deps = [
@@ -465,6 +471,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/impl:headers",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
@@ -506,6 +513,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/impl:headers",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
@@ -535,13 +543,10 @@ alias(
 # these APIs, see 'framework_stable' above.
 cc_library(
     name = "cc_api_stable",
-    srcs = [
-        "core/subgraph.cc",
-        "core/subgraph.h",
+    srcs = STABLE_FRAMEWORK_LIB_IMPL_HDRS + [
         "interpreter.cc",
         "interpreter_builder.cc",
         "logger.cc",
-        "signature_runner.h",
     ],
     hdrs = [
         "interpreter.h",
@@ -562,7 +567,6 @@ cc_library(
         ":allocation",
         ":external_cpu_backend_context",
         ":graph_info",
-        ":kernel_api",
         ":macros",
         ":memory_planner",
         ":minimal_logging",
@@ -572,17 +576,17 @@ cc_library(
         ":simple_memory_arena",
         ":stderr_reporter",
         ":string",
+        ":subgraph",
         ":tensorflow_profiler_logger_shim",
         ":type_to_tflitetype",
         ":util",
         ":version",
-        "@flatbuffers//:runtime_cc",
-        "@ruy//ruy:denormal",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/impl:headers",
         "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qs8",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qu8",
@@ -593,15 +597,22 @@ cc_library(
         "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
-    ] + select({
-        ":tflite_use_simple_memory_planner": [
-            ":simple_planner",
-        ],
-        "//conditions:default": [
-            ":arena_planner",
-        ],
-    }),
+        "@flatbuffers//:runtime_cc",
+        "@ruy//ruy:denormal",
+    ],
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
+)
+
+cc_library(
+    name = "signature_runner_header",
+    hdrs = ["signature_runner.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//tensorflow/lite/core/impl:__subpackages__"],
+    deps = [
+        "//tensorflow/lite:subgraph",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/internal:signature_def",
+    ],
 )
 
 # The key parts of the C++ API, including experimental APIs.
@@ -637,8 +648,6 @@ cc_library(
         ":builtin_ops",
         ":cc_api_stable",
         ":external_cpu_backend_context",
-        ":graph_info",
-        ":kernel_api",
         ":macros",
         ":memory_planner",
         ":minimal_logging",
@@ -647,14 +656,53 @@ cc_library(
         ":string",
         ":type_to_tflitetype",
         ":util",
-        "@flatbuffers//:runtime_cc",
-        "@ruy//ruy:denormal",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/core/impl:headers",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
+        "//tensorflow/lite/profiling:root_profiler",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers//:runtime_cc",
+        "@ruy//ruy:denormal",
+    ],
+    alwayslink = 1,  # TODO(b/161243354): eliminate this.
+)
+
+# TODO(b/161243354): move this target to core/BUILD, once we've
+# added a BUILD file there.  (Unfortunately that isn't completely
+# straightforward due to core/macros.h being exposed as a public header
+# in the :framework_stable target.)
+cc_library(
+    name = "subgraph",
+    srcs = [
+        "core/subgraph.cc",
+    ],
+    hdrs = [
+        "core/subgraph.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite/core/impl:__subpackages__",
+        "//tensorflow/lite/kernels:__subpackages__",
+    ],
+    deps = [
+        ":allocation",
+        ":graph_info",
+        ":interpreter_options_header",
+        ":kernel_api",
+        ":macros",
+        ":memory_planner",
+        ":minimal_logging",
+        ":util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
@@ -664,8 +712,24 @@ cc_library(
         "//conditions:default": [
             ":arena_planner",
         ],
+    }) + select({
+        ":tensorflow_profiler_config": [
+            ":tensorflow_profiler_logger_shim",
+        ],
+        "//conditions:default": [],
     }),
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
+)
+
+cc_library(
+    name = "interpreter_options_header",
+    hdrs = [
+        "interpreter_options.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/lite/core/impl:__subpackages__",
+    ],
 )
 
 cc_library(

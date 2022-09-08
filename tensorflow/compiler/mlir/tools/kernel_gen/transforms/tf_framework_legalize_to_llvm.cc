@@ -477,7 +477,10 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
     mlir::Operation *op = null_memref_op.getOperation();
 
     auto shaped_result_type = null_memref_op.getType().cast<BaseMemRefType>();
-    unsigned address_space = shaped_result_type.getMemorySpaceAsInt();
+    auto mem_space =
+        shaped_result_type.getMemorySpace().dyn_cast_or_null<IntegerAttr>();
+    unsigned address_space =
+        static_cast<unsigned>(mem_space ? mem_space.getInt() : 0);
 
     Type elem_type = shaped_result_type.getElementType();
     Type llvm_elem_type = type_converter.convertType(elem_type);

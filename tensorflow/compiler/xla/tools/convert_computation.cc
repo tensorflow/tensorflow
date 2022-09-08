@@ -26,9 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace tools {
@@ -53,7 +53,7 @@ void RealMain(const std::string& mode, const std::string& path) {
 }  // namespace xla
 
 int main(int argc, char** argv) {
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  tsl::port::InitMain(argv[0], &argc, &argv);
 
   QCHECK_EQ(argc, 3) << "usage: " << argv[0] << " <txt2bin|bin2txt> <path>";
   xla::tools::RealMain(argv[1], argv[2]);

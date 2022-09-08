@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "llvm/Support/MathExtras.h"
-#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/tsl/platform/mem.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
@@ -45,8 +45,8 @@ using tfrt::MakeConstructedAsyncValueRef;
 
 using xla::runtime::AsyncRuntimeObject;
 
-using tensorflow::port::AlignedFree;
-using tensorflow::port::AlignedMalloc;
+using tsl::port::AlignedFree;
+using tsl::port::AlignedMalloc;
 
 class AsyncToken : public AsyncRuntimeObject {
  public:
@@ -65,7 +65,7 @@ class AsyncValue : public AsyncRuntimeObject {
   explicit AsyncValue(size_t size, size_t alignment, unsigned ref_count = 1)
       : AsyncRuntimeObject(ref_count),
         storage_(MakeConstructedAsyncValueRef<Storage>(size, alignment)) {
-    // Storage memory will be initialized by the compiled kernel.
+    // Storage memory will be initialized by the compiled executable.
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(GetStorage(), size);
   }
 
@@ -267,7 +267,8 @@ void AsyncRuntime::SetAvailable(AsyncRuntime::Token* token) {
 void AsyncRuntime::SetError(AsyncRuntime::Token* token) {
   // TODO(ezhulenev): Construct a better diagnostincs when async runtime API
   // will support passing custom error messages.
-  token->GetAsyncValue()->SetError(DecodedDiagnostic("<async runtime error>"));
+  token->GetAsyncValue()->SetError(
+      absl::InternalError("<async runtime error>"));
   // Async tokens created with a ref count `2` to keep token alive until the
   // async task completes. Drop extra reference explicitly when token emplaced.
   DropRef(token);
@@ -300,7 +301,8 @@ void AsyncRuntime::SetAvailable(AsyncRuntime::Value* value) {
 void AsyncRuntime::SetError(AsyncRuntime::Value* value) {
   // TODO(ezhulenev): Construct a better diagnostincs when async runtime API
   // will support passing custom error messages.
-  value->GetAsyncValue()->SetError(DecodedDiagnostic("<async runtime error>"));
+  value->GetAsyncValue()->SetError(
+      absl::InternalError("<async runtime error>"));
   // Async values created with a ref count `2` to keep token alive until the
   // async task completes. Drop extra reference explicitly when token emplaced.
   DropRef(value);

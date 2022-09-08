@@ -17,7 +17,7 @@ cc_library(
     name = "dso_loader",
     srcs = ["dso_loader.cc"] + select({
         # include dynamic loading checker only for open source build
-        "//tensorflow:oss": ["dlopen_checker.cc"],
+        "//tensorflow/tsl:oss": ["dlopen_checker.cc"],
         "//conditions:default": ["dlopen_checker_stub.cc"],
     }),
     hdrs = ["dso_loader.h"],

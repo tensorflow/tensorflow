@@ -162,6 +162,11 @@ Features* GetFeatures<Example>(Example* proto) {
 }
 
 template <>
+Features* GetFeatures<SequenceExample>(SequenceExample* proto) {
+  return proto->mutable_context();
+}
+
+template <>
 const Features& GetFeatures<Features>(const Features& proto) {
   return proto;
 }
@@ -169,6 +174,11 @@ const Features& GetFeatures<Features>(const Features& proto) {
 template <>
 const Features& GetFeatures<Example>(const Example& proto) {
   return proto.features();
+}
+
+template <>
+const Features& GetFeatures<SequenceExample>(const SequenceExample& proto) {
+  return proto.context();
 }
 
 template <>

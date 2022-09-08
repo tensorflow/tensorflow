@@ -416,6 +416,7 @@ def get_gpu_client(
     allowed_devices: Optional[Any] = ...,
     platform_name: Optional[str] = ...) -> Client:...
 def get_tpu_client(max_inflight_computations: int = ...) -> Client: ...
+def get_tfrt_tpu_c_api_client() -> Client: ...
 
 class DeviceArrayBase: ...
 
@@ -452,7 +453,8 @@ class DeviceArray(DeviceArrayBase):
   traceback: Traceback
   def clone(self) -> DeviceArray: ...
 
-class ShardedBuffer():
+class ShardedBuffer:
+  def __init__(self, buffers: Sequence[DeviceArray]): ...
   @staticmethod
   def create_sharded_buffer(buffers: Sequence[DeviceArray]) -> ShardedBuffer: ...
   def get_device_buffers(self) -> List[DeviceArray]: ...
@@ -462,6 +464,21 @@ class ShardedBuffer():
 
 PyLocalBuffer = DeviceArray
 Buffer = DeviceArray
+
+class Array:
+  def __init__(self,
+               aval: Any,
+               sharding: Any,
+               arrays: Sequence[DeviceArray],
+               committed: bool,
+               _skip_checks: bool = ...,
+               _fast_path_args: Optional[Any] = ...): ...
+  def block_until_ready(self) -> Array: ...
+  dtype: np.dtype
+  shape: Tuple[int, ...]
+  _arrays: Any
+  _fast_path_args: Any
+  _npy_value: Any
 
 class Token:
   def block_until_ready(self): ...

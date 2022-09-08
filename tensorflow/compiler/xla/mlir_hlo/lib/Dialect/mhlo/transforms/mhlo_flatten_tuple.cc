@@ -24,17 +24,21 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_FLATTENTUPLEPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 // Calculates the flatten types of a value.
@@ -92,7 +96,7 @@ struct FlattenCustomCallOp : public OpRewritePattern<CustomCallOp> {
   }
 };
 
-class FlattenTuplePass : public FlattenTuplePassBase<FlattenTuplePass> {
+class FlattenTuplePass : public impl::FlattenTuplePassBase<FlattenTuplePass> {
  public:
   void runOnOperation() override {
     MLIRContext *context = &getContext();

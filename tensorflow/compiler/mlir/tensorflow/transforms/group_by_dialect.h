@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_GROUP_BY_DIALECT_H
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_GROUP_BY_DIALECT_H
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_GROUP_BY_DIALECT_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_GROUP_BY_DIALECT_H_
 
 #include <memory>
 
@@ -32,4 +32,4 @@ void RegisterGroupByDialectPass();
 }  // namespace TF
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_GROUP_BY_DIALECT_H
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_GROUP_BY_DIALECT_H_

@@ -77,5 +77,5 @@ message CompileOptionsProto {
   ExecutableBuildOptionsProto executable_build_options = 3;
   bool compile_portable_executable = 4;
   int64 profile_version = 5;
-  // TODO(b/240299401): Add a field to store "multi_slice_config".
+  bytes serialized_multi_slice_config = 6;
 }

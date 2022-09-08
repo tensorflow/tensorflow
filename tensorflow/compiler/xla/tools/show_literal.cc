@@ -19,6 +19,7 @@ limitations under the License.
 // Literal serialized on disk.
 
 #include <stdio.h>
+
 #include <string>
 
 #include "tensorflow/compiler/xla/literal.h"
@@ -26,11 +27,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 int main(int argc, char **argv) {
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  tsl::port::InitMain(argv[0], &argc, &argv);
 
   if (argc < 2) {
     LOG(QFATAL) << "Usage: " << argv[0]

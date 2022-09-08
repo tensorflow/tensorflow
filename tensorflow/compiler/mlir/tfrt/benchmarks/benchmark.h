@@ -43,6 +43,7 @@ namespace tensorflow {
 // used only to build benchmarks for different functions in this folder, so
 // it is ok to put convenience using-declarations here.
 
+using ::llvm::MutableArrayRef;
 using ::tfrt::HostContext;
 using ::tfrt::RemainingResults;
 using ::xla::runtime::JitExecutable;
@@ -101,12 +102,14 @@ JitExecutable& CreateJitExecutable(const HostContext& host,
 template <typename T, int rank>
 MemrefDesc TensorToMemrefDesc(Eigen::Tensor<T, rank, Eigen::RowMajor>& tensor) {
   tfrt::TensorShape shape(tensor.dimensions().values);
-  return MemrefDesc(shape.GetRank(),
-                    xla::primitive_util::NativeToPrimitiveType<T>(),
-                    tensor.data(), 0, [&](auto sizes, auto strides) {
-                      shape.GetDimensions(sizes);
-                      shape.GetStrides(strides);
-                    });
+  return MemrefDesc(
+      shape.GetRank(), xla::primitive_util::NativeToPrimitiveType<T>(),
+      tensor.data(), 0, [&](auto sizes, auto strides) {
+        MutableArrayRef<int64_t> sizes_ref(sizes.data(), sizes.size());
+        MutableArrayRef<int64_t> strides_ref(strides.data(), strides.size());
+        shape.GetDimensions(sizes_ref);
+        shape.GetStrides(strides_ref);
+      });
 }
 
 // Converts Tensorflow Tensor to Memref descriptor.

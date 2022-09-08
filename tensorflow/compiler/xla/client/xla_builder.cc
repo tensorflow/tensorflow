@@ -87,7 +87,7 @@ void SetProtoIdAndName(T* entry, const std::string& base_name, char separator,
 }
 
 bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
-  HloOpcode opcode = StringToHloOpcode(instr_proto->opcode()).ValueOrDie();
+  HloOpcode opcode = StringToHloOpcode(instr_proto->opcode()).value();
   if (opcode == HloOpcode::kCustomCall &&
       instr_proto->custom_call_target() == "SetBound") {
     return true;
@@ -123,6 +123,75 @@ XlaOp XlaBuilderFriend::BuildFusion(XlaBuilder* builder,
     builder->AddCalledComputation(fused_computation, &instr);
     return builder->AddInstruction(std::move(instr), HloOpcode::kFusion,
                                    operands);
+  });
+}
+
+XlaOp XlaBuilderFriend::BuildAsyncStart(
+    XlaBuilder* builder, absl::Span<const XlaOp> operands,
+    std::string execution_thread, const XlaComputation& called_computation,
+    const Shape& shape) {
+  return BuildAsyncStart(builder, operands, execution_thread, /*group_id=*/-1,
+                         called_computation, shape);
+}
+
+XlaOp XlaBuilderFriend::BuildAsyncStart(
+    XlaBuilder* builder, absl::Span<const XlaOp> operands,
+    std::string execution_thread, int64_t group_id,
+    const XlaComputation& called_computation, const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    instr.set_async_execution_thread(execution_thread);
+    instr.set_async_group_id(group_id);
+    builder->AddCalledComputation(called_computation, &instr);
+    return builder->AddInstruction(std::move(instr), HloOpcode::kAsyncStart,
+                                   operands);
+  });
+}
+
+XlaOp XlaBuilderFriend::BuildAsyncUpdate(
+    XlaBuilder* builder, const XlaOp operand, std::string execution_thread,
+    const XlaComputation& called_computation, const Shape& shape) {
+  return BuildAsyncUpdate(builder, operand, execution_thread, /*group_id=*/-1,
+                          called_computation, shape);
+}
+
+XlaOp XlaBuilderFriend::BuildAsyncUpdate(
+    XlaBuilder* builder, const XlaOp operand, std::string execution_thread,
+    int64_t group_id, const XlaComputation& called_computation,
+    const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    instr.set_async_execution_thread(execution_thread);
+    instr.set_async_group_id(group_id);
+    builder->AddCalledComputation(called_computation, &instr);
+    return builder->AddInstruction(std::move(instr), HloOpcode::kAsyncUpdate,
+                                   {operand});
+  });
+}
+
+XlaOp XlaBuilderFriend::BuildAsyncDone(XlaBuilder* builder, const XlaOp operand,
+                                       std::string execution_thread,
+                                       const XlaComputation& called_computation,
+                                       const Shape& shape) {
+  return BuildAsyncDone(builder, operand, execution_thread, /*group_id=*/-1,
+                        called_computation, shape);
+}
+
+XlaOp XlaBuilderFriend::BuildAsyncDone(XlaBuilder* builder, const XlaOp operand,
+                                       std::string execution_thread,
+                                       int64_t group_id,
+                                       const XlaComputation& called_computation,
+                                       const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    instr.set_async_execution_thread(execution_thread);
+    instr.set_async_group_id(group_id);
+    builder->AddCalledComputation(called_computation, &instr);
+    return builder->AddInstruction(std::move(instr), HloOpcode::kAsyncDone,
+                                   {operand});
   });
 }
 
@@ -261,7 +330,7 @@ static std::string ShapeToString(const ShapeProto& shape) {
 void XlaBuilder::ToStringHelper(std::string* out, int ident,
                                 int64_t op_handle) const {
   const HloInstructionProto& instr =
-      *(LookUpInstructionByHandle(op_handle).ValueOrDie());
+      *(LookUpInstructionByHandle(op_handle).value());
   absl::StrAppend(out, std::string(ident, ' '), instr.opcode(),
                   ", shape=", ShapeToString(instr.shape()));
   if (instr.has_metadata()) {
@@ -302,7 +371,7 @@ XlaOp XlaBuilder::ReportErrorOrReturn(const StatusOr<XlaOp>& op) {
   if (!op.ok()) {
     return ReportError(op.status());
   }
-  return op.ValueOrDie();
+  return op.value();
 }
 
 XlaOp XlaBuilder::ReportErrorOrReturn(
@@ -361,10 +430,10 @@ void XlaBuilder::IsConstantVisitor(const int64_t op_handle, int depth,
   }
 
   const HloInstructionProto& instr =
-      *(LookUpInstructionByHandle(op_handle).ValueOrDie());
+      *(LookUpInstructionByHandle(op_handle).value());
   HloInstructionProto to_print(instr);
   to_print.clear_shape();
-  const HloOpcode opcode = StringToHloOpcode(instr.opcode()).ValueOrDie();
+  const HloOpcode opcode = StringToHloOpcode(instr.opcode()).value();
   const std::string indent =
       absl::StrJoin(std::vector<absl::string_view>(depth, "  "), "");
   if (VLOG_IS_ON(2)) {
@@ -416,7 +485,7 @@ void XlaBuilder::IsConstantVisitor(const int64_t op_handle, int depth,
       break;
     case HloOpcode::kGetTupleElement: {
       const HloInstructionProto& operand_instr =
-          *(LookUpInstructionByHandle(instr.operand_ids(0)).ValueOrDie());
+          *(LookUpInstructionByHandle(instr.operand_ids(0)).value());
       if (HloOpcodeString(HloOpcode::kTuple) == operand_instr.opcode()) {
         IsConstantVisitor(operand_instr.operand_ids(instr.tuple_index()),
                           depth + 1, visited, is_constant);
@@ -497,7 +566,7 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
 Status XlaBuilder::GetCurrentStatus() const {
   if (!first_error_.ok()) {
     std::string backtrace;
-    first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
+    first_error_backtrace_.Dump(tsl::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
   return OkStatus();
@@ -847,7 +916,7 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
           status_or_shape.status().error_message());
     }
 
-    return AddOpWithShape(triop, status_or_shape.ValueOrDie(),
+    return AddOpWithShape(triop, status_or_shape.value(),
                           {updated_lhs, updated_rhs, updated_ehs});
   });
 }
@@ -3606,8 +3675,7 @@ StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
                                                      int64_t dimension) {
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
                       LookUpInstruction(val));
-  if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
-          HloOpcode::kConstant &&
+  if (StringToHloOpcode(val_proto->opcode()).value() == HloOpcode::kConstant &&
       shape.is_dynamic_dimension(dimension)) {
     TF_ASSIGN_OR_RETURN(auto constant_size,
                         Literal::CreateFromProto(val_proto->literal(), true));
@@ -3641,7 +3709,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   if (!is_constant) {
     auto op_status = LookUpInstruction(root_op);
     std::string op_string =
-        op_status.ok() ? op_status.ValueOrDie()->name() : "<unknown operation>";
+        op_status.ok() ? op_status.value()->name() : "<unknown operation>";
     return InvalidArgument(
         "Operand to BuildConstantSubGraph depends on a parameter.\n\n"
         "  op requested for constant subgraph: %s\n\n"

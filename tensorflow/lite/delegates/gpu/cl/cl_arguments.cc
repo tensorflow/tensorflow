@@ -130,7 +130,7 @@ absl::Status CLArguments::Init(const GpuInfo& gpu_info, CLContext* context,
                                Arguments* args, std::string* code) {
   RETURN_IF_ERROR(AllocateObjects(*args, context));
   RETURN_IF_ERROR(AddObjectArgs(gpu_info, *args));
-  object_refs_ = std::move(args->object_refs_);
+  args->MoveObjectRefs(&object_refs_);
   const bool use_f32_for_halfs = gpu_info.IsPowerVR();
   CopyArguments(*args, use_f32_for_halfs);
   RETURN_IF_ERROR(SetObjectsResources(*args));
@@ -147,7 +147,7 @@ absl::Status CLArguments::Init(const GpuInfo& gpu_info, Arguments* args,
                                CLContext* context) {
   RETURN_IF_ERROR(AllocateObjects(*args, context));
   RETURN_IF_ERROR(AddObjectArgs(gpu_info, *args));
-  object_refs_ = std::move(args->object_refs_);
+  args->MoveObjectRefs(&object_refs_);
   const bool use_f32_for_halfs = gpu_info.IsPowerVR();
   CopyArguments(*args, use_f32_for_halfs);
   RETURN_IF_ERROR(SetObjectsResources(*args));
@@ -156,9 +156,9 @@ absl::Status CLArguments::Init(const GpuInfo& gpu_info, Arguments* args,
 
 absl::Status CLArguments::AllocateObjects(const Arguments& args,
                                           CLContext* context) {
-  objects_.resize(args.objects_.size());
+  objects_.resize(args.GetObjects().size());
   int i = 0;
-  for (auto& t : args.objects_) {
+  for (auto& t : args.GetObjects()) {
     RETURN_IF_ERROR(CreateCLObject(t.second.get(), context, &objects_[i]));
     i++;
   }
@@ -167,10 +167,10 @@ absl::Status CLArguments::AllocateObjects(const Arguments& args,
 
 absl::Status CLArguments::AddObjectArgs(const GpuInfo& gpu_info,
                                         const Arguments& args) {
-  for (const auto& t : args.objects_) {
+  for (const auto& t : args.GetObjects()) {
     AddGPUResources(t.first, t.second->GetGPUResources(gpu_info));
   }
-  for (const auto& t : args.object_refs_) {
+  for (const auto& t : args.GetObjectRefs()) {
     AddGPUResources(t.first, t.second->GetGPUResources(gpu_info));
   }
   return absl::OkStatus();
@@ -178,7 +178,7 @@ absl::Status CLArguments::AddObjectArgs(const GpuInfo& gpu_info,
 
 absl::Status CLArguments::SetObjectsResources(const Arguments& args) {
   int i = 0;
-  for (const auto& t : args.objects_) {
+  for (const auto& t : args.GetObjects()) {
     GPUResourcesWithValue resources;
     RETURN_IF_ERROR(objects_[i]->GetGPUResources(t.second.get(), &resources));
     RETURN_IF_ERROR(SetGPUResources(t.first, resources));
@@ -188,7 +188,7 @@ absl::Status CLArguments::SetObjectsResources(const Arguments& args) {
 }
 
 void CLArguments::CopyArguments(const Arguments& args, bool use_f32_for_halfs) {
-  for (const auto& fvalue : args.float_values_) {
+  for (const auto& fvalue : args.GetFloatValues()) {
     auto& new_val = float_values_[fvalue.first];
     new_val.value = fvalue.second.value;
     new_val.active = fvalue.second.active;
@@ -197,7 +197,7 @@ void CLArguments::CopyArguments(const Arguments& args, bool use_f32_for_halfs) {
       shared_float4s_data_.push_back(new_val.value);
     }
   }
-  for (const auto& ivalue : args.int_values_) {
+  for (const auto& ivalue : args.GetIntValues()) {
     auto& new_val = int_values_[ivalue.first];
     new_val.value = ivalue.second.value;
     new_val.active = ivalue.second.active;
@@ -206,7 +206,7 @@ void CLArguments::CopyArguments(const Arguments& args, bool use_f32_for_halfs) {
       shared_int4s_data_.push_back(new_val.value);
     }
   }
-  for (const auto& hfvalue : args.half_values_) {
+  for (const auto& hfvalue : args.GetHalfValues()) {
     auto& new_val = half_values_[hfvalue.first];
     new_val.value = hfvalue.second.value;
     new_val.active = hfvalue.second.active;

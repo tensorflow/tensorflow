@@ -117,7 +117,7 @@ TEST(TrackedTfrtCpuDeviceBufferTest, BasicError) {
   tfrt::Await({tracked_buffer.definition_event().GetAsyncValue()});
 
   ASSERT_TRUE(tracked_buffer.definition_event().IsError());
-  EXPECT_EQ(tracked_buffer.definition_event().GetError().message,
+  EXPECT_EQ(tracked_buffer.definition_event().GetError().message(),
             "tracked_tfrt_cpu_device_buffer_test error.");
 }
 
@@ -152,7 +152,7 @@ TEST(TrackedTfrtCpuDeviceBufferTest, TupleError) {
   tfrt::Await({tracked_buffer.definition_event().GetAsyncValue()});
 
   ASSERT_TRUE(tracked_buffer.definition_event().IsError());
-  EXPECT_EQ(tracked_buffer.definition_event().GetError().message,
+  EXPECT_EQ(tracked_buffer.definition_event().GetError().message(),
             "tracked_tfrt_cpu_device_buffer_test tuple error.");
 }
 

@@ -93,9 +93,8 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   schedule.set_sequence(entry_computation, {iter, data, tuple, while_op});
   TF_ASSERT_OK(schedule.Verify());
 
-  EXPECT_EQ(
-      25,
-      HeapSimulator::MinimumMemoryForModule(schedule, size_fn).ValueOrDie());
+  EXPECT_EQ(25,
+            HeapSimulator::MinimumMemoryForModule(schedule, size_fn).value());
 }
 
 TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
@@ -208,14 +207,14 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   memory_by_computation[body_computation] = 16;
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module.get()).ValueOrDie();
+      HloAliasAnalysis::Run(module.get()).value();
 
   // HeapSimulator accounts for subcomputations. The output buffer is aliased,
   // so we don't double count.
   EXPECT_EQ(64, HeapSimulator::MinimumMemoryForComputation(
                     *entry_computation, schedule.sequence(entry_computation),
                     *alias_analysis, size_fn, &memory_by_computation)
-                    .ValueOrDie());
+                    .value());
 }
 
 const char kAlloc[] = "Alloc";
@@ -386,7 +385,7 @@ class HeapSimulatorTracker {
     auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
 
     alias_analysis_ =
-        HloAliasAnalysis::Run(module_.get(), can_share_buffer).ValueOrDie();
+        HloAliasAnalysis::Run(module_.get(), can_share_buffer).value();
 
     HeapSimulator::Options options;
 

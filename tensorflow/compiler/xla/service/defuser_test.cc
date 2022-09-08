@@ -55,7 +55,7 @@ TEST_F(DefuserTest, NoFusionInstruction) {
   m->AddEntryComputation(builder.Build());
   EXPECT_EQ(0, FusionCount(m.get()));
 
-  EXPECT_FALSE(defuser_.Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(defuser_.Run(m.get()).value());
 }
 
 TEST_F(DefuserTest, TrivialFusionInstructionAsRoot) {
@@ -75,7 +75,7 @@ TEST_F(DefuserTest, TrivialFusionInstructionAsRoot) {
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 
   EXPECT_EQ(1, FusionCount(m.get()));
-  EXPECT_TRUE(defuser_.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(defuser_.Run(m.get()).value());
   EXPECT_EQ(0, FusionCount(m.get()));
 
   EXPECT_THAT(computation->root_instruction(),
@@ -101,7 +101,7 @@ TEST_F(DefuserTest, TrivialFusionInstructionNotAsRoot) {
   EXPECT_THAT(computation->root_instruction(), op::Negate(op::Fusion()));
 
   EXPECT_EQ(1, FusionCount(m.get()));
-  EXPECT_TRUE(defuser_.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(defuser_.Run(m.get()).value());
   EXPECT_EQ(0, FusionCount(m.get()));
 
   EXPECT_THAT(computation->root_instruction(),
@@ -140,7 +140,7 @@ TEST_F(DefuserTest, NonTrivialFusionInstruction) {
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 
   EXPECT_EQ(1, FusionCount(m.get()));
-  EXPECT_TRUE(defuser_.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(defuser_.Run(m.get()).value());
   EXPECT_EQ(0, FusionCount(m.get()));
 
   EXPECT_THAT(computation->root_instruction(),
@@ -180,7 +180,7 @@ TEST_F(DefuserTest, MultipleFusionInstructions) {
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 
   EXPECT_EQ(2, FusionCount(m.get()));
-  EXPECT_TRUE(defuser_.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(defuser_.Run(m.get()).value());
   EXPECT_EQ(0, FusionCount(m.get()));
 
   EXPECT_THAT(computation->root_instruction(),
@@ -210,7 +210,7 @@ TEST_F(DefuserTest, NestedFusionInstructions) {
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 
   EXPECT_EQ(2, FusionCount(m.get()));
-  EXPECT_TRUE(defuser_.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(defuser_.Run(m.get()).value());
   EXPECT_EQ(0, FusionCount(m.get()));
 
   EXPECT_THAT(computation->root_instruction(), op::Negate(op::Add()));

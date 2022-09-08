@@ -64,9 +64,9 @@ ENTRY comp {
 }
 )";
 
-  auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
   ConditionalToSelect pass;
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_EQ(root->opcode(), HloOpcode::kMap);
@@ -117,9 +117,9 @@ ENTRY comp {
 }
 )";
 
-  auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
   ConditionalToSelect pass;
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_EQ(root->opcode(), HloOpcode::kMap);

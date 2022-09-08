@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/numbers.h"
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 namespace xla {
 
@@ -68,7 +68,7 @@ std::vector<int64_t> ToMixedRadix(const int64_t n,
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
   VLOG(1) << status.ToString();
-  VLOG(2) << tensorflow::CurrentStackTrace();
+  VLOG(2) << tsl::CurrentStackTrace();
   return status;
 }
 

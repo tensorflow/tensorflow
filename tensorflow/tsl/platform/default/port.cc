@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/base/internal/sysinfo.h"
-#include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/numa.h"
-#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
-#include "tensorflow/core/platform/snappy.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/platform/numa.h"
+#include "tensorflow/tsl/platform/profile_utils/cpu_utils.h"
+#include "tensorflow/tsl/platform/snappy.h"
+#include "tensorflow/tsl/platform/types.h"
 
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sched.h>
@@ -64,7 +64,7 @@ limitations under the License.
 #include <cxxabi.h>
 #endif
 
-namespace tensorflow {
+namespace tsl {
 namespace port {
 
 void InitMain(const char* usage, int* argc, char*** argv) {}
@@ -85,6 +85,8 @@ string JobName() {
 }
 
 int64_t JobUid() { return -1; }
+
+int64_t TaskId() { return -1; }
 
 int NumSchedulableCPUs() {
 #if defined(__linux__) && !defined(__ANDROID__)
@@ -161,7 +163,7 @@ int GetCurrentCPU() {
 }
 
 int NumHyperthreadsPerCore() {
-  static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
+  static const int ht_per_core = tsl::port::CPUIDNumSMT();
   return (ht_per_core > 0) ? ht_per_core : 1;
 }
 
@@ -254,32 +256,6 @@ int NUMAGetThreadNodeAffinity() {
   return node_index;
 }
 
-void* AlignedMalloc(size_t size, int minimum_alignment) {
-#if defined(__ANDROID__)
-  return memalign(minimum_alignment, size);
-#else  // !defined(__ANDROID__)
-  void* ptr = nullptr;
-  // posix_memalign requires that the requested alignment be at least
-  // sizeof(void*). In this case, fall back on malloc which should return
-  // memory aligned to at least the size of a pointer.
-  const int required_alignment = sizeof(void*);
-  if (minimum_alignment < required_alignment) return Malloc(size);
-  int err = posix_memalign(&ptr, minimum_alignment, size);
-  if (err != 0) {
-    return nullptr;
-  } else {
-    return ptr;
-  }
-#endif
-}
-
-void AlignedFree(void* aligned_memory) { Free(aligned_memory); }
-
-void* Malloc(size_t size) { return malloc(size); }
-
-void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
-
-void Free(void* ptr) { free(ptr); }
 
 void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
 #ifdef TENSORFLOW_USE_NUMA
@@ -294,7 +270,7 @@ void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
     }
   }
 #endif  // TENSORFLOW_USE_NUMA
-  return AlignedMalloc(size, minimum_alignment);
+  return tsl::port::AlignedMalloc(size, minimum_alignment);
 }
 
 void NUMAFree(void* ptr, size_t size) {
@@ -304,7 +280,7 @@ void NUMAFree(void* ptr, size_t size) {
     return;
   }
 #endif  // TENSORFLOW_USE_NUMA
-  Free(ptr);
+  tsl::port::Free(ptr);
 }
 
 int NUMAGetMemAffinity(const void* addr) {
@@ -331,17 +307,6 @@ int NUMAGetMemAffinity(const void* addr) {
   return node;
 }
 
-void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
-  // No-op.
-}
-
-std::size_t MallocExtension_GetAllocatedSize(const void* p) {
-#if !defined(__ANDROID__)
-  return 0;
-#else
-  return malloc_usable_size(p);
-#endif
-}
 
 bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef TF_USE_SNAPPY
@@ -403,7 +368,52 @@ string Demangle(const char* mangled) {
 }
 
 double NominalCPUFrequency() {
-  return tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency();
+  return tsl::profile_utils::CpuUtils::GetCycleCounterFrequency();
+}
+
+}  // namespace port
+}  // namespace tsl
+
+namespace tsl {
+namespace port {
+
+void* AlignedMalloc(size_t size, int minimum_alignment) {
+#if defined(__ANDROID__)
+  return memalign(minimum_alignment, size);
+#else  // !defined(__ANDROID__)
+  void* ptr = nullptr;
+  // posix_memalign requires that the requested alignment be at least
+  // sizeof(void*). In this case, fall back on malloc which should return
+  // memory aligned to at least the size of a pointer.
+  const int required_alignment = sizeof(void*);
+  if (minimum_alignment < required_alignment) return Malloc(size);
+  int err = posix_memalign(&ptr, minimum_alignment, size);
+  if (err != 0) {
+    return nullptr;
+  } else {
+    return ptr;
+  }
+#endif
+}
+
+void AlignedFree(void* aligned_memory) { Free(aligned_memory); }
+
+void* Malloc(size_t size) { return malloc(size); }
+
+void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
+
+void Free(void* ptr) { free(ptr); }
+
+void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
+  // No-op.
+}
+
+std::size_t MallocExtension_GetAllocatedSize(const void* p) {
+#if !defined(__ANDROID__)
+  return 0;
+#else
+  return malloc_usable_size(p);
+#endif
 }
 
 MemoryInfo GetMemoryInfo() {
@@ -423,6 +433,5 @@ MemoryBandwidthInfo GetMemoryBandwidthInfo() {
   MemoryBandwidthInfo membw_info = {INT64_MAX};
   return membw_info;
 }
-
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl

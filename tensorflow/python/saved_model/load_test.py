@@ -1169,18 +1169,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       v.assign_add(1)
       capture.assign_sub(1)
 
-    @def_function.function(input_signature=[
-        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
-    ])
-    def func_with_input_signature(v):
-      v.assign_add(5)
-      capture.assign_sub(5)
-      return 1
-
     vsave = variables.Variable(1)
     root = autotrackable.AutoTrackable()
     root.f = func.get_concrete_function(vsave)
-    root.f_sig = func_with_input_signature.get_concrete_function()
     root.capture = capture
 
     self.assertEqual(1, vsave.numpy())
@@ -1188,24 +1179,17 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(2, vsave.numpy())
     self.assertEqual(-1, capture.numpy())
 
-    root.f_sig(vsave)
-    self.assertEqual(7, vsave.numpy())
-    self.assertEqual(-6, capture.numpy())
-
     imported = cycle(root, cycles)
 
     vload = variables.Variable(1)
     imported.f(vload)
     self.assertEqual(2, vload.numpy())
+    self.assertEqual(-2, imported.capture.numpy())
     imported.f(v=vload)
     self.assertEqual(3, vload.numpy())
-    self.assertEqual(-8, imported.capture.numpy())
+    self.assertEqual(-3, imported.capture.numpy())
 
-    imported.f_sig(v=vload)
-    self.assertEqual(8, vload.numpy())
-    self.assertEqual(-13, imported.capture.numpy())
-
-    self.assertEqual(-6, capture.numpy())
+    self.assertEqual(-1, capture.numpy())
 
   def test_function_and_component(self, cycles):
 

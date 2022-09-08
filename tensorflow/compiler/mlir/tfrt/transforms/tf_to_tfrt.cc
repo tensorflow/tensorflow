@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/opdefs/tf_jitrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_clustering.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/attr_lowering_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/corert_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/fallback_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -152,7 +154,8 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
     // Remove the function attributes, which have already been processed.
     for (const auto &key : func_attr_keys) op->removeAttr(key);
 
-    mlir::ArrayAttr op_attrs = corert_converter_.CreateOpAttrs(op->getAttrs());
+    Builder builder(op->getContext());
+    mlir::ArrayAttr op_attrs = CreateTfrtOpAttrs(op->getAttrs(), builder);
     if (!op_attrs) return op->emitWarning("failed to lower attributes.");
 
     mlir::StringAttr op_name =
@@ -354,7 +357,7 @@ class FallbackConstOpConversion
       mlir::TF::ConstOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
     // Some data types are handled separately using a fast path.
-    if (corert_converter_.IsSupportedNumericDType(op.dtype()) ||
+    if (IsSupportedTfrtNumericDType(op.dtype()) ||
         op.dtype().isa<mlir::TF::StringType>())
       return failure();
 
@@ -583,7 +586,9 @@ class FallbackBatchFunctionOpConversion
       }
       attr_array.push_back(key_and_value);
     }
-    ArrayAttr op_attrs = corert_converter_.CreateOpAttrs(attr_array);
+
+    Builder builder(op.getContext());
+    ArrayAttr op_attrs = CreateTfrtOpAttrs(attr_array, builder);
     if (!op_attrs) return op.emitWarning("failed to lower attributes.");
 
     llvm::SmallVector<Type, 4> result_types;
@@ -626,8 +631,7 @@ class CoreRTConstDenseTensorOpConversion
   LogicalResult matchAndRewrite(
       mlir::TF::ConstOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    if (!corert_converter_.IsSupportedNumericDType(op.dtype()))
-      return failure();
+    if (!IsSupportedTfrtNumericDType(op.dtype())) return failure();
 
     // Only CPU ops can be lowered using this conversion. If there is no device
     // assignment, this op is treated as a CPU op and can be lowered.
@@ -845,7 +849,8 @@ class CoreRTExecuteOpConversion : public mlir::OpConversionPattern<TF_Op> {
     // Remove the function attributes, which have already been processed.
     for (const auto &key : func_attr_keys) op->removeAttr(key);
 
-    ArrayAttr op_attrs = corert_converter_.CreateOpAttrs(op->getAttrs());
+    Builder builder(op.getContext());
+    ArrayAttr op_attrs = CreateTfrtOpAttrs(op->getAttrs(), builder);
     if (!op_attrs) return op.emitError("failed to lower attributes.");
 
     llvm::SmallVector<mlir::Value, 4> new_operands;

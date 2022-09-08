@@ -88,7 +88,10 @@ tf_proto_library(
 
 cc_library(
     name = "profiler_impl",
-    visibility = ["//tensorflow:__pkg__"],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/core/profiler/backends/cpu:annotation_stack_impl",
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",

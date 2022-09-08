@@ -57,13 +57,13 @@ class ComputeConstantTest : public ::testing::Test {
           ClientLibrary::GetOrCreateLocalClient(platform);
       TF_CHECK_OK(result.status())
           << "could not create LocalClient for testing";
-      return result.ValueOrDie();
+      return result.value();
     } else if (client_type == ClientType::kCompileOnly) {
       StatusOr<Client*> result =
           ClientLibrary::GetOrCreateCompileOnlyClient(platform);
       TF_CHECK_OK(result.status())
           << "could not create CompileOnlyClient for testing";
-      return result.ValueOrDie();
+      return result.value();
     }
     LOG(FATAL) << "invalid client_type value";
   }
@@ -88,7 +88,7 @@ class ComputeConstantTest : public ::testing::Test {
   bool IsConstant(const XlaOp operand, XlaBuilder* builder) {
     StatusOr<bool> result = builder->IsConstant(operand);
     EXPECT_TRUE(result.ok()) << result.status();
-    return result.ok() ? result.ValueOrDie() : false;
+    return result.ok() ? result.value() : false;
   }
 
   se::Platform* platform_;
@@ -103,7 +103,7 @@ TEST_F(ComputeConstantTest, ScalarInt32Literal) {
 
     auto value = ComputeConstantScalar<int32_t>(client, computation, &b);
     ASSERT_TRUE(value.ok()) << value.status();
-    EXPECT_EQ(value.ValueOrDie(), 42);
+    EXPECT_EQ(value.value(), 42);
   }
 }
 
@@ -117,7 +117,7 @@ TEST_F(ComputeConstantTest, ScalarFloatAdd) {
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
     ASSERT_TRUE(value.ok()) << value.status();
-    EXPECT_EQ(value.ValueOrDie(), 44.0f);
+    EXPECT_EQ(value.value(), 44.0f);
   }
 }
 

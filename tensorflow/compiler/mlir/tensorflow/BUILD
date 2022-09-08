@@ -392,6 +392,27 @@ cc_library(
 )
 
 cc_library(
+    name = "mlprogram",
+    srcs = [
+        "transforms/mlprogram.cc",
+    ],
+    hdrs = [
+        "transforms/mlprogram.h",
+    ],
+    deps = [
+        ":compile_mlir_util",
+        ":tensorflow_passes",
+        ":tf_saved_model_passes",
+        "//tensorflow/compiler/mlir/xla:legalize_tf",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "tensorflow_attributes",
     hdrs = [
         "ir/tf_attributes.h",
@@ -978,6 +999,7 @@ cc_library(
         "transforms/freeze_global_tensors.cc",
         "transforms/freeze_saved_model_assets.cc",
         "transforms/lower_globals_to_ml_program.cc",
+        "transforms/lower_variable_ops_to_ml_program.cc",
         "transforms/optimize_global_tensors.cc",
         "transforms/remove_vars_in_session_initializer.cc",
     ],
@@ -1133,6 +1155,7 @@ cc_library(
         "transforms/batchmatmul_to_einsum.cc",
         "transforms/bridge.cc",
         "transforms/canonicalize_compile_and_replicate_attributes.cc",
+        "transforms/check_control_dependencies.cc",
         "transforms/cluster_formation.cc",
         "transforms/cluster_ops_by_policy.cc",
         "transforms/cluster_outlining.cc",
@@ -2601,6 +2624,19 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:adjust_layout",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "mlprogram_util",
+    srcs = ["utils/mlprogram_util.cc"],
+    hdrs = ["utils/mlprogram_util.h"],
+    deps = [
+        ":mlprogram",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 

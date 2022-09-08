@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_DTENSOR_MLIR_SPARSE_EXPANSIONS_DYNAMICE_ENQUEUE_SPARSE_EXPANDER_H_
-#define THIRD_PARTY_DTENSOR_MLIR_SPARSE_EXPANSIONS_DYNAMICE_ENQUEUE_SPARSE_EXPANDER_H_
+#ifndef TENSORFLOW_DTENSOR_MLIR_SPARSE_EXPANSIONS_DYNAMIC_ENQUEUE_SPARSE_EXPANDER_H_
+#define TENSORFLOW_DTENSOR_MLIR_SPARSE_EXPANSIONS_DYNAMIC_ENQUEUE_SPARSE_EXPANDER_H_
 
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/dtensor/mlir/sparse_expander.h"
@@ -30,4 +30,4 @@ class DynamicEnqueueSparseExpander : public SparseExpanderBase {
 }  // namespace dtensor
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_DTENSOR_MLIR_SPARSE_EXPANSIONS_DYNAMICE_ENQUEUE_SPARSE_EXPANDER_H_
+#endif  // TENSORFLOW_DTENSOR_MLIR_SPARSE_EXPANSIONS_DYNAMIC_ENQUEUE_SPARSE_EXPANDER_H_

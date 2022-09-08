@@ -310,14 +310,18 @@ TfLiteStatus SplitInputLayerNameAndValueFile(
     std::pair<std::string, std::string>& name_file_pair) {
   // 1. split the string by ':' and ignore escaped characters
   int delim_index = -1;
-  for (int i = 1; i < name_and_value_file.length(); ++i) {
-    if (name_and_value_file[i] == ':' && name_and_value_file[i - 1] != '\\') {
-      if (delim_index == -1) {
-        delim_index = i;
+  for (int i = 0; i < name_and_value_file.length() - 1; ++i) {
+    if (name_and_value_file[i] == ':') {
+      if (name_and_value_file[i + 1] == ':') {
+        ++i;
       } else {
-        TFLITE_LOG(ERROR) << name_and_value_file
-                          << " contains more than one delimiter.";
-        return kTfLiteError;
+        if (delim_index == -1) {
+          delim_index = i;
+        } else {
+          TFLITE_LOG(ERROR)
+              << name_and_value_file << " contains more than one delimiter.";
+          return kTfLiteError;
+        }
       }
     }
   }
@@ -326,11 +330,11 @@ TfLiteStatus SplitInputLayerNameAndValueFile(
                       << " doesn't contain any delimiter.";
     return kTfLiteError;
   }
-  // 2. replace escaped "\:" string to ":"
+  // 2. replace escaped "::" string to ":"
   name_file_pair.first = absl::StrReplaceAll(
-      name_and_value_file.substr(0, delim_index), {{"\\:", ":"}});
+      name_and_value_file.substr(0, delim_index), {{"::", ":"}});
   name_file_pair.second = absl::StrReplaceAll(
-      name_and_value_file.substr(delim_index + 1), {{"\\:", ":"}});
+      name_and_value_file.substr(delim_index + 1), {{"::", ":"}});
   return kTfLiteOk;
 }
 

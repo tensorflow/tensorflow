@@ -57,11 +57,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_xla_runtime(false);
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
 
-  // Run all GPU work on one stream by default. Multi-streaming support has been
-  // removed, so setting this to false has no effect.
-  // TODO(reedwm): Remove this option.
-  opts.set_xla_gpu_disable_multi_streaming(true);
-
   opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
   opts.set_xla_cpu_fast_math_honor_nans(true);
@@ -90,7 +85,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
   opts.set_xla_detailed_logging_and_dumping(true);
 
-  opts.set_xla_gpu_jitrt_executable(false);
+  opts.set_xla_gpu_enable_xla_runtime_executable(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
 
@@ -393,12 +388,6 @@ static void AllocateFlags() {
       flag_values->xla_gpu_ftz(),
       "If true, flush-to-zero semantics are enabled in the code generated for "
       "GPUs."));
-  flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_disable_multi_streaming",
-      bool_setter_for(&DebugOptions::set_xla_gpu_disable_multi_streaming),
-      flag_values->xla_gpu_disable_multi_streaming(),
-      "Has no impact. Multi-streaming support has been removed from XLA GPU so "
-      "it is always disabled."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_max_kernel_unroll_factor",
       int32_setter_for(&DebugOptions::set_xla_gpu_max_kernel_unroll_factor),
@@ -730,11 +719,18 @@ static void AllocateFlags() {
       flag_values->xla_dump_hlo_pipeline_re(),
       "If specified, dumps HLO before and after optimization passes in the "
       "pass pipelines that match this regular expression."));
+  // Deprecated flag.
+  // TODO(ecg): remove once TAP presubmits don't set it.
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_jitrt_executable",
-      bool_setter_for(&DebugOptions::set_xla_gpu_jitrt_executable),
-      flag_values->xla_gpu_jitrt_executable(),
-      "Whether to enable XLIR to compile gpu programs to JitRt."));
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
+      flag_values->xla_gpu_enable_xla_runtime_executable(),
+      "Whether to enable XLIR to compile gpu programs to XLA Runtime."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_enable_xla_runtime_executable",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
+      flag_values->xla_gpu_enable_xla_runtime_executable(),
+      "Whether to enable XLIR to compile gpu programs to XLA Runtime."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_nccl_termination_timeout_seconds",
       int64_setter_for(

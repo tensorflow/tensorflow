@@ -15,53 +15,40 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/constraints.h"
 
+#include <string>
+#include <string_view>
 #include <utility>
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
-#include "tensorflow/compiler/xla/runtime/errors.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 
 namespace xla {
 namespace runtime {
 
-using llvm::ArrayRef;
-using llvm::Expected;
-using llvm::raw_ostream;
-using llvm::StringRef;
+using absl::InvalidArgumentError;
+using absl::StatusOr;
+using absl::StrCat;
 
-raw_ostream& operator<<(raw_ostream& os, const ArgumentConstraint& constraint) {
-  auto str = [](ArgumentConstraint constraint) {
-    switch (constraint) {
-      case ArgumentConstraint::kResolved:
-        return "resolved";
-      case ArgumentConstraint::kRank:
-        return "rank";
-      case ArgumentConstraint::kShape:
-        return "shape";
-      case ArgumentConstraint::kValue:
-        return "value";
-      default:
-        llvm_unreachable("unknown operand constraint");
-    }
-  };
-
-  os << str(constraint);
-  return os;
-}
-
-raw_ostream& operator<<(raw_ostream& os,
-                        ArrayRef<ArgumentConstraint> constraints) {
-  os << "[";
-  llvm::interleaveComma(constraints, os);
-  os << "]";
-  return os;
-}
-
-Expected<ArgumentConstraint> ParseArgumentConstraint(StringRef str) {
+StatusOr<ArgumentConstraint> ParseArgumentConstraint(std::string_view str) {
   if (str == "rank") return ArgumentConstraint::kRank;
   if (str == "shape") return ArgumentConstraint::kShape;
   if (str == "value") return ArgumentConstraint::kValue;
-  return MakeStringError("unknown operand constraint: ", str);
+  return InvalidArgumentError(StrCat("unknown operand constraint: ", str));
+}
+
+std::string ArgumentConstraintToString(ArgumentConstraint constraint) {
+  switch (constraint) {
+    case ArgumentConstraint::kResolved:
+      return "resolved";
+    case ArgumentConstraint::kRank:
+      return "rank";
+    case ArgumentConstraint::kShape:
+      return "shape";
+    case ArgumentConstraint::kValue:
+      return "value";
+    default:
+      llvm_unreachable("unknown operand constraint");
+  }
 }
 
 }  // namespace runtime

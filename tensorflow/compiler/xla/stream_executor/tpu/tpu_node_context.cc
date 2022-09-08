@@ -74,13 +74,13 @@ xla::Backend* TpuNodeContext::backend() const {
   static xla::Backend* backend =
       xla::Backend::CreateBackend(
           xla::BackendOptions().set_platform(platform()))
-          .ValueOrDie()
+          .value()
           .release();
   return backend;
 }
 
 stream_executor::StreamExecutor* TpuNodeContext::stream_executor() const {
-  return backend()->stream_executor(device_ordinal_).ValueOrDie();
+  return backend()->stream_executor(device_ordinal_).value();
 }
 
 bool TpuNodeContext::CompactionSupported(int device_ordinal) const {

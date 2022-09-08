@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <iterator>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -52,6 +53,14 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
+// Checks that all layouts are fully replicated
+bool AllReplicated(const std::vector<Layout>& layouts) {
+  for (const Layout& layout : layouts) {
+    if (!layout.IsFullyReplicated()) return false;
+  }
+  return true;
+}
 
 StatusOr<mlir::TensorType> LocalTypeFromGlobalType(
     const Layout& layout, const mlir::TensorType& original_type) {

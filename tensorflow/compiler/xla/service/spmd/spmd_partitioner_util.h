@@ -109,7 +109,7 @@ template <typename NativeT, typename T, typename = IsCompOrCompBuilder<T>>
 HloInstruction* CreateR0WithType(PrimitiveType type, NativeT value, T* b) {
   auto literal = LiteralUtil::CreateR0(value)
                      .ConvertToShape(ShapeUtil::MakeShape(type, {}))
-                     .ValueOrDie();
+                     .value();
   return b->AddInstruction(HloInstruction::CreateConstant(std::move(literal)));
 }
 
@@ -496,6 +496,33 @@ struct PadWithWrapPattern {
 std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
     const HloInstruction* concat, const HloInstruction* lhs,
     const HloInstruction* mid, const HloInstruction* rhs);
+
+// Reshards data for a slice to be happening on such data with the passed
+// parameters.
+std::optional<PartitionedHlo::WindowedInputShardReturnValue>
+ReshardDataForSlicing(absl::Span<const int64_t> strides,
+                      absl::Span<const int64_t> starts,
+                      absl::Span<const int64_t> limits,
+                      PartitionedHlo to_reshard,
+                      const HloSharding& target_sharding, SpmdBuilder* b);
+
+// Performs slicing of data based on the windowed sharding passed as input.
+HloInstruction* SliceDataFromWindowReshard(
+    const PartitionedHlo::WindowedInputShardReturnValue& reshard_operand,
+    absl::Span<const int64_t> strides, const Shape& base_shape,
+    const HloSharding& target_sharding, SpmdBuilder* b);
+
+// Reshards data for a pad to be happening on such data with the passed
+// parameters.
+std::optional<PartitionedHlo::WindowedInputShardReturnValue> ReshardDataForPad(
+    HloInstruction* pad_value, PaddingConfig pc, PartitionedHlo to_reshard,
+    const Shape& target_shape, const HloSharding& target_sharding,
+    SpmdBuilder* b);
+
+// Performs padding of data based on the windowed sharding passed as input.
+HloInstruction* PadDataFromWindowReshard(
+    const PartitionedHlo::WindowedInputShardReturnValue& reshard_operand,
+    HloInstruction* pad_value, SpmdBuilder* b);
 
 }  // namespace spmd
 }  // namespace xla

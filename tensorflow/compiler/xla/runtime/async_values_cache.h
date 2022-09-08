@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_ASYNC_VALUES_CACHE_H_
-#define XLA_RUNTIME_ASYNC_VALUES_CACHE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_ASYNC_VALUES_CACHE_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_ASYNC_VALUES_CACHE_H_
 
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/tsl/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/runtime/google/async_values_cache.h"
@@ -24,4 +24,4 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/default/async_values_cache.h"
 #endif
 
-#endif  // XLA_RUNTIME_ASYNC_VALUES_CACHE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_ASYNC_VALUES_CACHE_H_

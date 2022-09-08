@@ -48,9 +48,13 @@ namespace tfrt {
 class AsyncKernelFrame;
 }  // namespace tfrt
 
-namespace tensorflow {
-
+namespace tsl {
 class Status;
+}  // namespace tsl
+
+namespace tensorflow {
+using tsl::Status;
+
 class TFRTOpKernel;
 class TFRTOpMeta;
 class Tensor;

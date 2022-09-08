@@ -494,10 +494,7 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_STRIDED_SLICE);
                               .HostMemory("strides"),                   \
                           StridedSliceAssignOp<GPUDevice, type, true>)
 
-TF_CALL_uint8(REGISTER_GPU);
-TF_CALL_int8(REGISTER_GPU);
-TF_CALL_int64(REGISTER_GPU);
-TF_CALL_uint32(REGISTER_GPU);
+TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 
 // A special GPU kernel for int32.

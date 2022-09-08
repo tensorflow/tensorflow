@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_ERROR_WINDOWS_H_
-#define TENSORFLOW_CORE_PLATFORM_WINDOWS_ERROR_WINDOWS_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_WINDOWS_ERROR_WINDOWS_H_
+#define TENSORFLOW_TSL_PLATFORM_WINDOWS_ERROR_WINDOWS_H_
 
 // This file is here to provide a windows specific interface to error functions
 // without needing to include any windows specific headers. This is intended to
@@ -37,4 +37,4 @@ std::string WindowsWSAGetLastErrorMessage();
 }  // namespace internal
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_WINDOWS_ERROR_WINDOWS_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_WINDOWS_ERROR_WINDOWS_H_

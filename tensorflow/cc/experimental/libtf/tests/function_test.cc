@@ -160,7 +160,7 @@ TEST_P(FunctionTest, Square) {
   TaggedValue args(std::move(x));
   StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
   ASSERT_TRUE(v.ok()) << v.status().error_message();
-  const TaggedValue& result = v.ValueOrDie();
+  const TaggedValue& result = v.value();
   AbstractTensorHandle* t = result.tensor().get();
   ExpectEquals(t, 4.0f);
 }
@@ -184,7 +184,7 @@ TEST_P(FunctionTest, Add) {
   args.tuple().emplace_back(TaggedValue(x));
   StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
   ASSERT_TRUE(v.ok()) << v.status().error_message();
-  const TaggedValue& result = v.ValueOrDie();
+  const TaggedValue& result = v.value();
   ExpectEquals(result.tensor().get(), 4.0f);
 }
 
@@ -206,7 +206,7 @@ TEST_P(FunctionTest, IdentityN) {
   args.tuple().emplace_back(TaggedValue(y));
   StatusOr<TaggedValue> v = tf_function.Execute(ctx_.get(), args);
   ASSERT_TRUE(v.ok()) << v.status().error_message();
-  const TaggedValue& result = v.ValueOrDie();
+  const TaggedValue& result = v.value();
   ExpectEquals(result.tuple()[0].tensor().get(), 2.0f);
   ExpectEquals(result.tuple()[1].tensor().get(), 4.0f);
 }

@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
@@ -27,6 +26,9 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 namespace {
+
+#define GEN_PASS_DEF_GMLSTTOSCF
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 /// Converts gml_st.loop to SCF loop nest. All parallel dimensions are collected
 /// into an scf.parallel loop and all sequential dimensions will result in a
@@ -144,7 +146,7 @@ struct ForOpToSCFPattern : public OpRewritePattern<ForOp> {
   }
 };
 
-struct GmlStToScfPass : public GmlStToScfBase<GmlStToScfPass> {
+struct GmlStToScfPass : public impl::GmlStToScfBase<GmlStToScfPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);

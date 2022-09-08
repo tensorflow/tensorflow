@@ -16,7 +16,6 @@ limitations under the License.
 // This file implements logic for lowering bufferization.to_tensor ops that are
 // inserted during `mhlo-legalize-to-lmhlo`.
 
-#include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/passes.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -33,6 +32,10 @@ limitations under the License.
 
 namespace mlir {
 namespace lmhlo {
+
+#define GEN_PASS_DEF_LEGALIZETOTENSOROPPASS
+#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
+
 namespace {
 using shape::ShapeOfOp;
 using tensor::ExtractOp;
@@ -75,7 +78,7 @@ struct ForwardShapeOfOp : public OpRewritePattern<ShapeOfOp> {
 };
 
 struct LegalizeToTensorOpPass
-    : public LegalizeToTensorOpPassBase<LegalizeToTensorOpPass> {
+    : public impl::LegalizeToTensorOpPassBase<LegalizeToTensorOpPass> {
   // Perform the lowering to remove bufferization.to_tensor ops inserted during
   // `mhlo-legalize-to-lmhlo`.
   void runOnOperation() override {

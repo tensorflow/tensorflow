@@ -19,13 +19,18 @@
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
@@ -67,6 +72,12 @@ XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(
     xla::runtime::CustomCall, const xla::ServiceExecutableRunOptions);
 XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
                                           const xla::DebugOptions);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          const std::string);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          const std::vector<uint8_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
+                                          se::DeviceMemoryBase);
 
 namespace xla {
 namespace gpu {
@@ -74,8 +85,6 @@ namespace gpu {
 using Eigen::half;
 
 using llvm::ArrayRef;
-using llvm::Error;
-using llvm::Optional;
 
 using mlir::failure;
 using mlir::FailureOr;
@@ -84,13 +93,11 @@ using mlir::StringRef;
 using mlir::succeeded;
 using mlir::success;
 
-using tfrt::MakeStringError;
-
 using ::xla::runtime::AggregateAttrDef;
 using ::xla::runtime::AggregateAttrEncoding;
 using ::xla::runtime::CustomCall;
 using ::xla::runtime::CustomCallAttrEncodingSet;
-using ::xla::runtime::DirectCustomCallLibrary;
+using ::xla::runtime::DirectCustomCallRegistry;
 using ::xla::runtime::EnumAttrEncoding;
 using ::xla::runtime::Executable;
 using ::xla::runtime::Tagged;
@@ -112,7 +119,7 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 // -------------------------------------------------------------------------- //
 
 // Populate mapping from XLA (SE) enums/structs type id to symbol names.
-void PopulateXlaTypeIdNames(TypeIDNameRegistry& registry) {
+void PopulateXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
   registry.Register<Tagged<se::dnn::ActivationMode>>(
       "__type_id_se_dnn_activation");
   registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
@@ -390,37 +397,30 @@ FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
 
 // -------------------------------------------------------------------------- //
 
-Error AsError(Status s) { return MakeStringError(s.error_message()); }
-
-template <typename T>
-Error AsError(StatusOr<T>& s) {
-  assert(!s.ok());
-  return AsError(s.status());
-}
-
-// -------------------------------------------------------------------------- //
-
 namespace {
 struct LaunchFunc {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   JitRtKernelsCache* kernels_cache, int32_t grid_size_x,
-                   int32_t grid_size_y, int32_t grid_size_z,
-                   int32_t block_size_x, int32_t block_size_y,
-                   int32_t block_size_z, CustomCall::RemainingArgs args,
-                   StringRef ptx, StringRef name) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          const std::string* ptx,
+                          const std::vector<uint8_t>* cubin,
+                          se::DeviceMemoryBase* temp_buffer,
+                          JitRtKernelsCache* kernels_cache, int32_t grid_size_x,
+                          int32_t grid_size_y, int32_t grid_size_z,
+                          int32_t block_size_x, int32_t block_size_y,
+                          int32_t block_size_z, CustomCall::RemainingArgs args,
+                          StringRef name) const;
 
   static LaunchFunc Handler() { return LaunchFunc(); }
 };
 }  // namespace
 
-Error LaunchFunc::operator()(const ServiceExecutableRunOptions* run_options,
-                             JitRtKernelsCache* kernels_cache,
-                             int32_t grid_size_x, int32_t grid_size_y,
-                             int32_t grid_size_z, int32_t block_size_x,
-                             int32_t block_size_y, int32_t block_size_z,
-                             CustomCall::RemainingArgs args, StringRef ptx,
-                             StringRef name) const {
+absl::Status LaunchFunc::operator()(
+    const ServiceExecutableRunOptions* run_options, const std::string* ptx,
+    const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
+    JitRtKernelsCache* kernels_cache, int32_t grid_size_x, int32_t grid_size_y,
+    int32_t grid_size_z, int32_t block_size_x, int32_t block_size_y,
+    int32_t block_size_z, CustomCall::RemainingArgs args,
+    StringRef name) const {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
@@ -428,21 +428,23 @@ Error LaunchFunc::operator()(const ServiceExecutableRunOptions* run_options,
       {grid_size_x, grid_size_y, grid_size_z},
       {block_size_x, block_size_y, block_size_z});
 
-  se::KernelBase* kernel = kernels_cache->Get(executor, ptx.data(), name);
+  se::KernelBase* kernel = kernels_cache->Get(executor, ptx->data(), name);
+  const int args_size_including_temp_buffer = args.size() + 1;
 
   // If kernel does not exists create it from the ptx.
   if (kernel == nullptr) {
-    auto created = CreateKernel(absl::string_view(name.data(), name.size()),
-                                args.size(), ptx.data(), {}, executor);
-    if (!created.ok()) return AsError(created);
+    auto created =
+        CreateKernel(absl::string_view(name.data(), name.size()),
+                     args_size_including_temp_buffer, *ptx, *cubin, executor);
+    if (!created.ok()) return ToAbslStatus(created.status());
 
     kernel =
-        kernels_cache->Set(executor, ptx.data(), name, std::move(*created));
+        kernels_cache->Set(executor, ptx->data(), name, std::move(*created));
   }
 
   VLOG(3) << "Launching " << kernel->name();
   absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
-  buffer_args.reserve(args.size());
+  buffer_args.reserve(args_size_including_temp_buffer);
 
   // Add MemRef arguments as buffer arguments.
   for (unsigned i = 0; i < args.size(); ++i) {
@@ -461,20 +463,25 @@ Error LaunchFunc::operator()(const ServiceExecutableRunOptions* run_options,
       continue;
     }
 
-    return MakeStringError("Unsupported argumeent type");
+    return absl::InvalidArgumentError("Unsupported argument type");
   }
+  buffer_args.push_back(*temp_buffer);
 
   // Execute device kernel on a main stream.
   auto executed =
       ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions, stream);
-  if (!executed.ok()) return AsError(executed);
+  if (!executed.ok()) return ToAbslStatus(executed);
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
-static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool LaunchFunc(runtime::ExecutionContext* ctx, void** args,
+                       void** attrs, void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.func.launch")
                              .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const std::string*>()
+                             .UserData<const std::vector<uint8_t>*>()
+                             .UserData<se::DeviceMemoryBase*>()
                              .UserData<JitRtKernelsCache*>()
                              .Arg<int32_t>()   // grid_size_x
                              .Arg<int32_t>()   // grid_size_y
@@ -483,12 +490,11 @@ static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .Arg<int32_t>()   // block_size_y
                              .Arg<int32_t>()   // block_size_x
                              .RemainingArgs()  // args
-                             .Attr<StringRef>("ptx")
-                             .Attr<StringRef>("kernel")
+                             .Attr<std::string_view>("kernel")
                              .To<RuntimeChecks()>(LaunchFunc::Handler())
                              .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -496,27 +502,27 @@ static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct Gemm {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   const DebugOptions* debug_options,
-                   JitRtGemmConfigCache* configs,
-                   runtime::StridedMemrefView lhs,
-                   runtime::StridedMemrefView rhs,
-                   runtime::StridedMemrefView out, int64_t algorithm,
-                   double alpha_real, double alpha_imag, double beta,
-                   DotDimensionNumbers dot_dims, int64_t uid) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          const DebugOptions* debug_options,
+                          JitRtGemmConfigCache* configs,
+                          runtime::StridedMemrefView lhs,
+                          runtime::StridedMemrefView rhs,
+                          runtime::StridedMemrefView out, int64_t algorithm,
+                          double alpha_real, double alpha_imag, double beta,
+                          DotDimensionNumbers dot_dims, int64_t uid) const;
 
   static Gemm Handler() { return Gemm(); }
 };
 }  // namespace
 
-Error Gemm::operator()(const ServiceExecutableRunOptions* run_options,
-                       const DebugOptions* debug_options,
-                       JitRtGemmConfigCache* configs,
-                       runtime::StridedMemrefView lhs,
-                       runtime::StridedMemrefView rhs,
-                       runtime::StridedMemrefView out, int64_t algorithm,
-                       double alpha_real, double alpha_imag, double beta,
-                       DotDimensionNumbers dot_dims, int64_t uid) const {
+absl::Status Gemm::operator()(const ServiceExecutableRunOptions* run_options,
+                              const DebugOptions* debug_options,
+                              JitRtGemmConfigCache* configs,
+                              runtime::StridedMemrefView lhs,
+                              runtime::StridedMemrefView rhs,
+                              runtime::StridedMemrefView out, int64_t algorithm,
+                              double alpha_real, double alpha_imag, double beta,
+                              DotDimensionNumbers dot_dims, int64_t uid) const {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
@@ -530,7 +536,7 @@ Error Gemm::operator()(const ServiceExecutableRunOptions* run_options,
     auto cfg = GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag,
                              beta, dot_dims.lhs_batch, dot_dims.lhs_contract,
                              dot_dims.rhs_batch, dot_dims.rhs_contract);
-    if (!cfg.ok()) return AsError(cfg);
+    if (!cfg.ok()) return ToAbslStatus(cfg.status());
     config = configs->Set(uid, std::move(*cfg));
   }
 
@@ -538,12 +544,13 @@ Error Gemm::operator()(const ServiceExecutableRunOptions* run_options,
     return RunGemm(*config, lhs_data, rhs_data, output_data, stream);
   }();
 
-  if (!executed.ok()) return AsError(executed);
+  if (!executed.ok()) return ToAbslStatus(executed);
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
-static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool Gemm(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                 void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.gemm")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
@@ -560,7 +567,7 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Gemm::Handler())
                              .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -570,26 +577,27 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct CublasLtMatmul {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   const DebugOptions* debug_options,
-                   runtime::StridedMemrefView a, runtime::StridedMemrefView b,
-                   runtime::StridedMemrefView c, runtime::StridedMemrefView d,
-                   Optional<runtime::StridedMemrefView> bias, int64_t algorithm,
-                   double alpha_real, double alpha_imag, double beta,
-                   DotDimensionNumbers dot_dims,
-                   se::cuda::BlasLt::Epilogue epilogue,
-                   ArrayRef<int32_t> precision, int64_t uid) const;
+  absl::Status operator()(
+      const ServiceExecutableRunOptions* run_options,
+      const DebugOptions* debug_options, runtime::StridedMemrefView a,
+      runtime::StridedMemrefView b, runtime::StridedMemrefView c,
+      runtime::StridedMemrefView d,
+      std::optional<runtime::StridedMemrefView> bias, int64_t algorithm,
+      double alpha_real, double alpha_imag, double beta,
+      DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
+      ArrayRef<int32_t> precision, int64_t uid) const;
 
   static CublasLtMatmul Handler() { return CublasLtMatmul(); }
 };
 }  // namespace
 
-Error CublasLtMatmul::operator()(
+absl::Status CublasLtMatmul::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, runtime::StridedMemrefView a,
     runtime::StridedMemrefView b, runtime::StridedMemrefView c,
-    runtime::StridedMemrefView d, Optional<runtime::StridedMemrefView> bias,
-    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
+    runtime::StridedMemrefView d,
+    std::optional<runtime::StridedMemrefView> bias, int64_t algorithm,
+    double alpha_real, double alpha_imag, double beta,
     DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
     ArrayRef<int32_t> precision, int64_t uid) const {
   VLOG(3) << "Running CublasLtMatmul";
@@ -599,13 +607,13 @@ Error CublasLtMatmul::operator()(
   auto cfg = GetGemmConfig(a, b, c, algorithm, alpha_real, alpha_imag, beta,
                            dot_dims.lhs_batch, dot_dims.lhs_contract,
                            dot_dims.rhs_batch, dot_dims.rhs_contract);
-  if (!cfg.ok()) return AsError(cfg);
+  if (!cfg.ok()) return ToAbslStatus(cfg.status());
 
   auto plan = cublas_lt::MatmulPlan::From(*cfg, epilogue);
-  if (!plan.ok()) return AsError(plan);
+  if (!plan.ok()) return ToAbslStatus(plan.status());
 
   auto algos = plan->GetAlgorithms(stream);
-  if (!algos.ok()) return AsError(algos);
+  if (!algos.ok()) return ToAbslStatus(algos.status());
 
   se::DeviceMemoryBase a_data = GetDeviceAddress(a);
   se::DeviceMemoryBase b_data = GetDeviceAddress(b);
@@ -620,9 +628,9 @@ Error CublasLtMatmul::operator()(
   auto st =
       plan->ExecuteOnStream(stream, a_data, b_data, c_data, d_data, bias_data,
                             (*algos)[algorithm], scratch_allocator);
-  if (!st.ok()) return AsError(st);
+  if (!st.ok()) return ToAbslStatus(st);
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
 // Adds custom call bindings for matmul operations.
@@ -639,8 +647,8 @@ static auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
       .template Attr<int64_t>("uid");
 }
 
-static bool CublasLtMatmul(runtime::KernelContext* ctx, void** args,
-                           void** attrs) {
+static bool CublasLtMatmul(runtime::ExecutionContext* ctx, void** args,
+                           void** attrs, void** rets) {
   static auto* handler =
       BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul")
                                .UserData<const ServiceExecutableRunOptions*>()
@@ -649,16 +657,16 @@ static bool CublasLtMatmul(runtime::KernelContext* ctx, void** args,
                                .Arg<runtime::StridedMemrefView>()  // b
                                .Arg<runtime::StridedMemrefView>()  // c
                                .Arg<runtime::StridedMemrefView>()  // d
-                               .Value(CustomCall::None)            // bias
+                               .Value(std::nullopt)                // bias
                            )
           .To<RuntimeChecks()>(CublasLtMatmul::Handler())
           .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
-static bool CublasLtMatmulBias(runtime::KernelContext* ctx, void** args,
-                               void** attrs) {
+static bool CublasLtMatmulBias(runtime::ExecutionContext* ctx, void** args,
+                               void** attrs, void** rets) {
   static auto* handler =
       BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul.bias")
                                .UserData<const ServiceExecutableRunOptions*>()
@@ -672,7 +680,7 @@ static bool CublasLtMatmulBias(runtime::KernelContext* ctx, void** args,
           .To<RuntimeChecks()>(CublasLtMatmul::Handler())
           .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -715,8 +723,8 @@ static GpuConvDescriptor GetConvDescriptor(
     // Attributes
     ConvDimensionNumbers dims, Window w, ConvBackendConfig b, ConvAttrs attrs,
     // Conv-specific arguments and attributes
-    Optional<FusedConvAttrs> fused = llvm::None,
-    Optional<SideInputAttrs> side_input = llvm::None) {
+    std::optional<FusedConvAttrs> fused = std::nullopt,
+    std::optional<SideInputAttrs> side_input = std::nullopt) {
   // Build a convolution descriptor from the attributes.
   GpuConvDescriptor descriptor;
   descriptor.kind = kind;
@@ -799,12 +807,12 @@ static GpuConvDescriptor GetConvDescriptor(
 namespace {
 struct Conv {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(
+  absl::Status operator()(
       const ServiceExecutableRunOptions* run_options,
       const DebugOptions* debug_options, runtime::StridedMemrefView operand0,
       runtime::StridedMemrefView operand1,
-      Optional<runtime::FlatMemrefView> bias,
-      Optional<runtime::StridedMemrefView> side_input,
+      std::optional<runtime::FlatMemrefView> bias,
+      std::optional<runtime::StridedMemrefView> side_input,
       runtime::StridedMemrefView output, runtime::FlatMemrefView scratch,
       ConvDimensionNumbers conv_dims,
       // Window config
@@ -816,13 +824,13 @@ struct Conv {
       // Remaining attributes
       int64_t feature_group_count, double result_scale,
       // Optional attributes for fused convolutions.
-      Optional<se::dnn::ActivationMode> activation_mode = llvm::None,
-      Optional<double> side_input_scale = llvm::None) const {
+      std::optional<se::dnn::ActivationMode> activation_mode = std::nullopt,
+      std::optional<double> side_input_scale = std::nullopt) const {
     // Build config for optional attributes.
-    Optional<FusedConvAttrs> fused_attrs = llvm::None;
+    std::optional<FusedConvAttrs> fused_attrs = std::nullopt;
     if (activation_mode.has_value()) fused_attrs = {*activation_mode};
 
-    Optional<SideInputAttrs> side_input_attrs = llvm::None;
+    std::optional<SideInputAttrs> side_input_attrs = std::nullopt;
     if (side_input_scale.has_value()) side_input_attrs = {*side_input_scale};
 
     // Prepare a descriptor for the XLA convolution.
@@ -834,7 +842,7 @@ struct Conv {
 
     // Convert descriptor to the Conv config.
     StatusOr<GpuConvConfig> config = GetGpuConvConfig(descriptor, "");
-    if (!config.ok()) return AsError(config);
+    if (!config.ok()) return ToAbslStatus(config.status());
 
     // Prepare buffer arguments.
     std::vector<se::DeviceMemoryBase> buffers = {GetDeviceAddress(operand0),
@@ -856,10 +864,10 @@ struct Conv {
     auto st = RunGpuConv(*config, buffers, result_buffer, scratch_buffer,
                          run_options->stream(), opts);
     if (!st.ok() || !run_options->stream()->ok()) {
-      return AsError(st);
+      return ToAbslStatus(st);
     }
 
-    return Error::success();
+    return absl::OkStatus();
   }
 
   static Conv Handler(CudnnConvKind kind) { return Conv{kind}; }
@@ -889,27 +897,28 @@ static auto BindConvAttributes(runtime::CustomCallBinding<Ts...> binding) {
 }
 
 template <CudnnConvKind kind>
-static bool ConvFn(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool ConvFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                   void** rets) {
   static auto* handler =
       BindConvAttributes(CustomCall::Bind("xla.gpu.conv")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
                              .Arg<runtime::StridedMemrefView>()  // operand0
                              .Arg<runtime::StridedMemrefView>()  // operand1
-                             .Value(CustomCall::None)            // bias
-                             .Value(CustomCall::None)            // side_input
+                             .Value(std::nullopt)                // bias
+                             .Value(std::nullopt)                // side_input
                              .Arg<runtime::StridedMemrefView>()  // output
                              .Arg<runtime::FlatMemrefView>()     // scratch
                          )
           .To(Conv::Handler(kind))
           .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 template <CudnnConvKind kind>
-static bool ConvFusedFn(runtime::KernelContext* ctx, void** args,
-                        void** attrs) {
+static bool ConvFusedFn(runtime::ExecutionContext* ctx, void** args,
+                        void** attrs, void** rets) {
   static auto* handler =
       BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused")
                              .UserData<const ServiceExecutableRunOptions*>()
@@ -917,7 +926,7 @@ static bool ConvFusedFn(runtime::KernelContext* ctx, void** args,
                              .Arg<runtime::StridedMemrefView>()  // operand0
                              .Arg<runtime::StridedMemrefView>()  // operand1
                              .Arg<runtime::FlatMemrefView>()     // bias
-                             .Value(CustomCall::None)            // side_input
+                             .Value(std::nullopt)                // side_input
                              .Arg<runtime::StridedMemrefView>()  // output
                              .Arg<runtime::FlatMemrefView>()     // scratch
                          )
@@ -925,12 +934,12 @@ static bool ConvFusedFn(runtime::KernelContext* ctx, void** args,
           .To(Conv::Handler(kind))
           .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 template <CudnnConvKind kind>
-static bool ConvFuseSideInputdFn(runtime::KernelContext* ctx, void** args,
-                                 void** attrs) {
+static bool ConvFuseSideInputdFn(runtime::ExecutionContext* ctx, void** args,
+                                 void** attrs, void** rets) {
   static auto* handler =
       BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused.side_input")
                              .UserData<const ServiceExecutableRunOptions*>()
@@ -947,22 +956,23 @@ static bool ConvFuseSideInputdFn(runtime::KernelContext* ctx, void** args,
           .To(Conv::Handler(kind))
           .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
 
 namespace {
 struct Infeed {
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   CustomCall::RemainingArgs args, StringRef config) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          CustomCall::RemainingArgs args,
+                          StringRef config) const;
   static Infeed Handler() { return Infeed(); }
 };
 }  // namespace
 
-Error Infeed::operator()(const ServiceExecutableRunOptions* run_options,
-                         CustomCall::RemainingArgs args,
-                         StringRef config) const {
+absl::Status Infeed::operator()(const ServiceExecutableRunOptions* run_options,
+                                CustomCall::RemainingArgs args,
+                                StringRef config) const {
   VLOG(3) << "Infeeding to GPU";
 
   se::Stream* stream = run_options->stream();
@@ -971,14 +981,14 @@ Error Infeed::operator()(const ServiceExecutableRunOptions* run_options,
 
   // Check that we have correct number of arguments.
   if (args.size() != source_buffers.leaf_count())
-    return MakeStringError("Incorrect number of arguments");
+    return absl::InvalidArgumentError("Incorrect number of arguments");
 
   size_t index = 0;
   for (auto& source : source_buffers.leaves()) {
     // Get the destination buffer.
     auto dest = args.get<runtime::StridedMemrefView>(index);
     if (failed(dest))
-      return MakeStringError("Failed to get the destination buffer");
+      return absl::InternalError("Failed to get the destination buffer");
 
     // Get the source buffer shape.
     const Shape& source_shape =
@@ -987,7 +997,7 @@ Error Infeed::operator()(const ServiceExecutableRunOptions* run_options,
     // Check that destination shape matches the source shape.
     Shape dest_shape = ToShape(*dest);
     if (!ShapeUtil::ReshapeIsBitcast(dest_shape, source_shape)) {
-      return MakeStringError(
+      return absl::InvalidArgumentError(
           "The destination shape does not match the source shape");
     }
 
@@ -1000,37 +1010,39 @@ Error Infeed::operator()(const ServiceExecutableRunOptions* run_options,
 
   // TODO(ezhulenev): Make this function async?
   Status block_status = stream->BlockHostUntilDone();
-  if (!block_status.ok()) return AsError(block_status);
+  if (!block_status.ok()) return ToAbslStatus(block_status);
 
   VLOG(3) << "Infeeding to GPU complete";
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
-static bool Infeed(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool Infeed(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                   void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.infeed")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<StringRef>("config")
+                             .Attr<std::string_view>("config")
                              .To<RuntimeChecks()>(Infeed::Handler())
                              .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
 
 namespace {
 struct Outfeed {
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   CustomCall::RemainingArgs args, StringRef config) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          CustomCall::RemainingArgs args,
+                          StringRef config) const;
   static Outfeed Handler() { return Outfeed(); }
 };
 }  // namespace
 
-Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
-                          CustomCall::RemainingArgs args,
-                          StringRef config) const {
+absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
+                                 CustomCall::RemainingArgs args,
+                                 StringRef config) const {
   VLOG(3) << "Outfeeding from GPU";
 
   se::Stream* stream = run_options->stream();
@@ -1041,18 +1053,18 @@ Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
   // Nothing to be done for an outfeed with no inputs.
   // Note: Must do this after `BlockingGetNextDestination` above to dequeue an
   // entry from the outfeed manager.
-  if (args.empty()) return Error::success();
+  if (args.empty()) return absl::OkStatus();
 
   // Check that we have correct number of arguments.
   if (args.size() != dest_buffers->leaf_count())
-    return MakeStringError("Incorrect number of arguments");
+    return absl::InvalidArgumentError("Incorrect number of arguments");
 
   size_t index = 0;
   for (auto& dest : dest_buffers->leaves()) {
     // Get the source buffer.
     auto source = args.get<runtime::StridedMemrefView>(index);
     if (failed(source))
-      return MakeStringError("Failed to get the source buffer");
+      return absl::InternalError("Failed to get the source buffer");
 
     // Get the source buffer shape.
     const Shape& dest_shape =
@@ -1061,7 +1073,7 @@ Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
     // Check that destination shape matches the source shape.
     Shape source_shape = ToShape(*source);
     if (!ShapeUtil::ReshapeIsBitcast(dest_shape, source_shape)) {
-      return MakeStringError(
+      return absl::InvalidArgumentError(
           "The destination shape does not match the source shape");
     }
 
@@ -1077,22 +1089,23 @@ Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
   }
 
   Status block_status = stream->BlockHostUntilDone();
-  if (!block_status.ok()) return AsError(block_status);
+  if (!block_status.ok()) return ToAbslStatus(block_status);
 
   VLOG(3) << "Outfeeding from GPU complete";
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
-static bool Outfeed(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool Outfeed(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                    void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.outfeed")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<StringRef>("config")
+                             .Attr<std::string_view>("config")
                              .To<RuntimeChecks()>(Outfeed::Handler())
                              .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1103,21 +1116,21 @@ enum class MemcpyDirection { kDeviceToDevice, kDeviceToHost, kHostToDevice };
 
 template <MemcpyDirection direction>
 struct Memcpy {
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   runtime::FlatMemrefView dst,
-                   runtime::FlatMemrefView src) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          runtime::FlatMemrefView dst,
+                          runtime::FlatMemrefView src) const;
   static Memcpy Handler() { return Memcpy(); }
 };
 }  // namespace
 
 template <MemcpyDirection direction>
-Error Memcpy<direction>::operator()(
+absl::Status Memcpy<direction>::operator()(
     const ServiceExecutableRunOptions* run_options, runtime::FlatMemrefView dst,
     runtime::FlatMemrefView src) const {
   se::Stream* stream = run_options->stream();
 
   if (dst.size_in_bytes != src.size_in_bytes) {
-    return MakeStringError(
+    return absl::InvalidArgumentError(
         "Source memref size does not match destination memref size");
   }
 
@@ -1142,14 +1155,15 @@ Error Memcpy<direction>::operator()(
   // transfer is completed.
   if (direction != MemcpyDirection::kDeviceToDevice) {
     auto st = stream->BlockHostUntilDone();
-    if (!st.ok()) return AsError(st);
+    if (!st.ok()) return ToAbslStatus(st);
   }
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
 template <MemcpyDirection direction>
-static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool MemcpyFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                     void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .Arg<runtime::FlatMemrefView>()  // dst
@@ -1157,7 +1171,7 @@ static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Memcpy<direction>::Handler())
                              .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1165,17 +1179,17 @@ static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 
 struct Memset {
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   runtime::FlatMemrefView dst,
-                   CustomCall::VariantArg constant) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          runtime::FlatMemrefView dst,
+                          CustomCall::VariantArg constant) const;
   static Memset Handler() { return Memset(); }
 };
 
 }  // namespace
 
-Error Memset::operator()(const ServiceExecutableRunOptions* run_options,
-                         runtime::FlatMemrefView dst,
-                         CustomCall::VariantArg constant) const {
+absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
+                                runtime::FlatMemrefView dst,
+                                CustomCall::VariantArg constant) const {
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
 
@@ -1194,7 +1208,7 @@ Error Memset::operator()(const ServiceExecutableRunOptions* run_options,
 
   if (set_zero) {
     stream->ThenMemZero(&dst_data, dst.size_in_bytes);
-    return Error::success();
+    return absl::OkStatus();
   }
 
   // If the constant is not zero, use the given pattern to `memset`.
@@ -1205,17 +1219,18 @@ Error Memset::operator()(const ServiceExecutableRunOptions* run_options,
   else if (auto f32 = constant.get<float>(); succeeded(f32))
     pattern = reinterpret_cast<uint32_t&>(*f32);
   else
-    return MakeStringError("Unsupported memset bit pattern type");
+    return absl::InvalidArgumentError("Unsupported memset bit pattern type");
 
   if (dst.size_in_bytes % 4 != 0)
-    return MakeStringError("Memref size is not divisible by 4");
+    return absl::InvalidArgumentError("Memref size is not divisible by 4");
 
   stream->ThenMemset32(&dst_data, pattern, dst.size_in_bytes);
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
-static bool MemsetFn(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool MemsetFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                     void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.memset")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .Arg<runtime::FlatMemrefView>()  // dst
@@ -1223,7 +1238,7 @@ static bool MemsetFn(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Memset::Handler())
                              .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1231,19 +1246,20 @@ static bool MemsetFn(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct Fft {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   runtime::StridedMemrefView input,
-                   runtime::StridedMemrefView output,
-                   ArrayRef<int64_t> fft_length, se::fft::Type fft_type) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          runtime::StridedMemrefView input,
+                          runtime::StridedMemrefView output,
+                          ArrayRef<int64_t> fft_length,
+                          se::fft::Type fft_type) const;
   static Fft Handler() { return Fft(); }
 };
 }  // namespace
 
-Error Fft::operator()(const ServiceExecutableRunOptions* run_options,
-                      runtime::StridedMemrefView input,
-                      runtime::StridedMemrefView output,
-                      ArrayRef<int64_t> fft_length,
-                      se::fft::Type fft_type) const {
+absl::Status Fft::operator()(const ServiceExecutableRunOptions* run_options,
+                             runtime::StridedMemrefView input,
+                             runtime::StridedMemrefView output,
+                             ArrayRef<int64_t> fft_length,
+                             se::fft::Type fft_type) const {
   // TODO(ezhulenev): Cache FFT plans in the GpuExecutable.
   FftPlanCache fft_plan_cache;
 
@@ -1266,7 +1282,7 @@ Error Fft::operator()(const ServiceExecutableRunOptions* run_options,
         fft_type = se::fft::Type::kZ2D;
         break;
       default:
-        return MakeStringError("Unsupported FFT type");
+        return absl::InvalidArgumentError("Unsupported FFT type");
     }
   }
 
@@ -1274,12 +1290,13 @@ Error Fft::operator()(const ServiceExecutableRunOptions* run_options,
       RunFft(GetDeviceAddress(input), ToShape(input), GetDeviceAddress(output),
              ToShape(output), fft_type, fft_length, executor->device_ordinal(),
              &fft_plan_cache, stream, run_options->allocator());
-  if (!st.ok()) return AsError(st);
+  if (!st.ok()) return ToAbslStatus(st);
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
-static bool Fft(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool Fft(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.fft")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .Arg<runtime::StridedMemrefView>()  // input
@@ -1288,7 +1305,7 @@ static bool Fft(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .Attr<se::fft::Type>("fft_type")
                              .To<RuntimeChecks()>(Fft::Handler())
                              .release();
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1296,21 +1313,22 @@ static bool Fft(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct Cholesky {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   const DebugOptions* debug_options,
-                   runtime::MemrefView operand, runtime::MemrefView a,
-                   runtime::MemrefView workspace, runtime::MemrefView info,
-                   int64_t batch_size, bool is_lower, int64_t n) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          const DebugOptions* debug_options,
+                          runtime::MemrefView operand, runtime::MemrefView a,
+                          runtime::MemrefView workspace,
+                          runtime::MemrefView info, int64_t batch_size,
+                          bool is_lower, int64_t n) const;
   static Cholesky Handler() { return Cholesky(); }
 };
 }  // namespace
 
-Error Cholesky::operator()(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           runtime::MemrefView operand, runtime::MemrefView a,
-                           runtime::MemrefView workspace,
-                           runtime::MemrefView info, int64_t batch_size,
-                           bool is_lower, int64_t n) const {
+absl::Status Cholesky::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, runtime::MemrefView operand,
+    runtime::MemrefView a, runtime::MemrefView workspace,
+    runtime::MemrefView info, int64_t batch_size, bool is_lower,
+    int64_t n) const {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
   se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
@@ -1331,15 +1349,16 @@ Error Cholesky::operator()(const ServiceExecutableRunOptions* run_options,
                         a_buffer, workspace_buffer, info_buffer};
   auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
                               operand.dtype, &params, stream);
-  if (!executed.ok()) return AsError(executed);
+  if (!executed.ok()) return ToAbslStatus(executed);
 
-  return Error::success();
+  return absl::OkStatus();
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return failure();
 #endif
 }
 
-static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool Cholesky(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                     void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.cholesky")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
@@ -1353,7 +1372,7 @@ static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Cholesky::Handler())
                              .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1367,30 +1386,33 @@ namespace {
 // call (no need to pass config via the serialized string).
 struct TriangularSolve {
   // Adaptor from XlaCustomCall API to properly typed TriangularSolve handler.
-  static Error run(const ServiceExecutableRunOptions* run_options,
-                   const DebugOptions* debug_options,
-                   CustomCall::RemainingArgs args, StringRef backend_config);
+  static absl::Status run(const ServiceExecutableRunOptions* run_options,
+                          const DebugOptions* debug_options,
+                          CustomCall::RemainingArgs args,
+                          StringRef backend_config);
 
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   const DebugOptions* debug_options,
-                   runtime::StridedMemrefView a, runtime::StridedMemrefView b,
-                   runtime::StridedMemrefView result,
-                   runtime::FlatMemrefView temp, bool left_side, bool lower,
-                   bool unit_diagonal,
-                   TriangularSolveOptions::Transpose transpose_a) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          const DebugOptions* debug_options,
+                          runtime::StridedMemrefView a,
+                          runtime::StridedMemrefView b,
+                          runtime::StridedMemrefView result,
+                          runtime::FlatMemrefView temp, bool left_side,
+                          bool lower, bool unit_diagonal,
+                          TriangularSolveOptions::Transpose transpose_a) const;
   static TriangularSolve Handler() { return TriangularSolve(); }
 };
 
 }  // namespace
 
-Error TriangularSolve::run(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           CustomCall::RemainingArgs args,
-                           StringRef backend_config) {
+absl::Status TriangularSolve::run(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, CustomCall::RemainingArgs args,
+    StringRef backend_config) {
   TriangularSolve handler = TriangularSolve::Handler();
 
   if (args.size() != 4)
-    return MakeStringError("Expected 4 arguments, got %n", args.size());
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Expected 4 arguments, got %d", args.size()));
 
   // Check if all arguments have the correct type.
   auto a = args.get<runtime::StridedMemrefView>(0);
@@ -1398,19 +1420,19 @@ Error TriangularSolve::run(const ServiceExecutableRunOptions* run_options,
   auto result = args.get<runtime::StridedMemrefView>(2);
   auto temp = args.get<runtime::FlatMemrefView>(3);
   if (failed(a) || failed(b) || failed(result) || failed(temp))
-    return MakeStringError("Incorrect argument types");
+    return absl::InvalidArgumentError("Incorrect argument types");
 
   // Parse backend config string.
   TriangularSolveOptions opts;
   auto st = tensorflow::HumanReadableJsonToProto(backend_config.str(), &opts);
-  if (!st.ok()) return AsError(st);
+  if (!st.ok()) return ToAbslStatus(st);
 
   return handler(run_options, debug_options, *a, *b, *result, *temp,
                  opts.left_side(), opts.lower(), opts.unit_diagonal(),
                  opts.transpose_a());
 }
 
-Error TriangularSolve::operator()(
+absl::Status TriangularSolve::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, runtime::StridedMemrefView a,
     runtime::StridedMemrefView b, runtime::StridedMemrefView result,
@@ -1465,15 +1487,15 @@ Error TriangularSolve::operator()(
   }();
 
   if (failed(transpose))
-    return MakeStringError("Failed to convert transpose type");
+    return absl::InternalError("Failed to convert transpose type");
 
   auto st = RunTriangulatSolve(
       a_data, result_data, temp_data, PtxOptsFromDebugOptions(*debug_options),
       uplo, side, diagonal, *transpose, elem_type, batch_size, m, n,
       a_batch_stride, b_batch_stride, stream);
-  if (!st.ok()) return AsError(st);
+  if (!st.ok()) return ToAbslStatus(st);
 
-  return Error::success();
+  return absl::OkStatus();
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return failure();
 #endif
@@ -1489,19 +1511,20 @@ namespace {
 struct XlaCustomCall {
   using Stream = se::gpu::GpuStreamHandle;
 
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   const DebugOptions* debug_options,
-                   CustomCall::RemainingArgs args, StringRef call_target_name,
-                   int32_t api_version, StringRef backend_config) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          const DebugOptions* debug_options,
+                          CustomCall::RemainingArgs args,
+                          StringRef call_target_name, int32_t api_version,
+                          StringRef backend_config) const;
   static XlaCustomCall Handler() { return XlaCustomCall(); }
 };
 }  // namespace
 
-Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
-                                const DebugOptions* debug_options,
-                                CustomCall::RemainingArgs args,
-                                StringRef call_target_name, int32_t api_version,
-                                StringRef backend_config) const {
+absl::Status XlaCustomCall::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, CustomCall::RemainingArgs args,
+    StringRef call_target_name, int32_t api_version,
+    StringRef backend_config) const {
   // Pattern match custom call to a few special cases, otherwise find the custom
   // call handler regustered with the runtime.
   if (call_target_name == kTriangularSolveCallTarget)
@@ -1513,8 +1536,8 @@ Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name.str(), platform_name);
   if (!call_target) {
-    return MakeStringError("Cannot find the Xla custom call handler ",
-                           call_target_name.str());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Cannot find the Xla custom call handler ", call_target_name.str()));
   }
 
   // Prepare pointers to buffers to pass to the Xla custom call handler.
@@ -1533,7 +1556,8 @@ Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
       buffers.push_back(size_in_bytes == 0 ? nullptr : strided->data);
       continue;
     }
-    return MakeStringError("Failed to get arguments as (strided) memref view");
+    return absl::InvalidArgumentError(
+        "Failed to get arguments as (strided) memref view");
   }
 
   // Original custom call API version that doesn't support returning status.
@@ -1545,7 +1569,7 @@ Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
                     buffers.data(), backend_config.data(),
                     backend_config.size());
 
-    return Error::success();
+    return absl::OkStatus();
   }
 
   // Xla Custom call API returning status.
@@ -1560,27 +1584,28 @@ Error XlaCustomCall::operator()(const ServiceExecutableRunOptions* run_options,
                     backend_config.size(), &custom_call_status);
 
     if (auto message = CustomCallStatusGetMessage(&custom_call_status)) {
-      return MakeStringError(message.value());
+      return absl::InternalError(message.value());
     } else {
-      return Error::success();
+      return absl::OkStatus();
     }
   }
 
-  return MakeStringError("Incorrect custom call API version");
+  return absl::InvalidArgumentError("Incorrect custom call API version");
 }
 
-static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool CustomCall(runtime::ExecutionContext* ctx, void** args,
+                       void** attrs, void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
                              .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<StringRef>("call_target_name")
+                             .Attr<std::string_view>("call_target_name")
                              .Attr<int32_t>("api_version")
-                             .Attr<StringRef>("backend_config")
+                             .Attr<std::string_view>("backend_config")
                              .To<RuntimeChecks()>(XlaCustomCall::Handler())
                              .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // ------------------------------------------------------------------------- //
@@ -1588,23 +1613,23 @@ static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct AllReduce {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   JitRtCollectiveSupport* collectives,
-                   CustomCall::RemainingArgs args, int32_t uid,
-                   int64_t group_mode, int64_t op_id, int64_t reduction_kind,
-                   ArrayRef<int64_t> replica_group_offsets,
-                   ArrayRef<int64_t> replica_group_values) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          JitRtCollectiveSupport* collectives,
+                          CustomCall::RemainingArgs args, int32_t uid,
+                          int64_t group_mode, int64_t op_id,
+                          int64_t reduction_kind,
+                          ArrayRef<int64_t> replica_group_offsets,
+                          ArrayRef<int64_t> replica_group_values) const;
   static AllReduce Handler() { return AllReduce(); }
 };
 }  // namespace
 
-Error AllReduce::operator()(const ServiceExecutableRunOptions* run_options,
-                            JitRtCollectiveSupport* collectives,
-                            CustomCall::RemainingArgs args, int32_t uid,
-                            int64_t group_mode, int64_t op_id,
-                            int64_t reduction_kind,
-                            ArrayRef<int64_t> replica_group_offsets,
-                            ArrayRef<int64_t> replica_group_values) const {
+absl::Status AllReduce::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
+    ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduce";
   se::Stream* stream = run_options->stream();
@@ -1612,28 +1637,29 @@ Error AllReduce::operator()(const ServiceExecutableRunOptions* run_options,
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return MakeStringError("Failed to get NcclComm");
+  if (failed(comm)) return absl::InternalError("Failed to get NcclComm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
   if (failed(device_buffers))
-    return MakeStringError("Failed to get device buffers");
+    return absl::InternalError("Failed to get device buffers");
 
   auto executed = RunAllReduce(static_cast<ReductionKind>(reduction_kind),
                                *device_buffers, *stream, **comm);
-  if (!executed.ok()) return AsError(executed);
+  if (!executed.ok()) return ToAbslStatus(executed);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
   auto st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
-  if (!st.ok()) return AsError(st);
+  if (!st.ok()) return ToAbslStatus(st);
 
-  return Error::success();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
   // NCCL disabled.
-  return MakeStringError("NCCL disabled");
+  return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool AllReduce(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool AllReduce(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                      void** rets) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.all_reduce")
           .UserData<const ServiceExecutableRunOptions*>()
@@ -1648,7 +1674,7 @@ static bool AllReduce(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To<RuntimeChecks()>(AllReduce::Handler())
           .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // ------------------------------------------------------------------------- //
@@ -1656,24 +1682,23 @@ static bool AllReduce(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct AllReduceStart {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   JitRtAsyncCollectiveSupport* async_collectives,
-                   CustomCall::RemainingArgs args, int64_t group_mode,
-                   int64_t op_id, int64_t reduction_kind,
-                   ArrayRef<int64_t> replica_group_offsets,
-                   ArrayRef<int64_t> replica_group_values, int32_t uid) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          JitRtAsyncCollectiveSupport* async_collectives,
+                          CustomCall::RemainingArgs args, int64_t group_mode,
+                          int64_t op_id, int64_t reduction_kind,
+                          ArrayRef<int64_t> replica_group_offsets,
+                          ArrayRef<int64_t> replica_group_values,
+                          int32_t uid) const;
   static AllReduceStart Handler() { return AllReduceStart(); }
 };
 }  // namespace
 
-Error AllReduceStart::operator()(const ServiceExecutableRunOptions* run_options,
-                                 JitRtAsyncCollectiveSupport* async_collectives,
-                                 CustomCall::RemainingArgs args,
-                                 int64_t group_mode, int64_t op_id,
-                                 int64_t reduction_kind,
-                                 ArrayRef<int64_t> replica_group_offsets,
-                                 ArrayRef<int64_t> replica_group_values,
-                                 int32_t uid) const {
+absl::Status AllReduceStart::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    JitRtAsyncCollectiveSupport* async_collectives,
+    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    int64_t reduction_kind, ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values, int32_t uid) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduceStart";
   se::Stream* stream = run_options->stream();
@@ -1681,11 +1706,11 @@ Error AllReduceStart::operator()(const ServiceExecutableRunOptions* run_options,
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return MakeStringError("Failed to get NcclComm");
+  if (failed(comm)) return absl::InternalError("Failed to get NcclComm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
   if (failed(device_buffers))
-    return MakeStringError("Failed to get device buffers");
+    return absl::InternalError("Failed to get device buffers");
 
   // Wait until compute inputs are ready.
   async_collectives->async_comm_stream()->ThenWaitFor(params.stream);
@@ -1693,25 +1718,25 @@ Error AllReduceStart::operator()(const ServiceExecutableRunOptions* run_options,
   auto executed =
       RunAllReduce(static_cast<ReductionKind>(reduction_kind), *device_buffers,
                    *async_collectives->async_comm_stream(), **comm);
-  if (!executed.ok()) return AsError(executed);
+  if (!executed.ok()) return ToAbslStatus(executed);
 
   // Create an event on the async stream for the completion of the all-reduce.
   se::Event done_event(async_collectives->async_comm_stream()->parent());
-  if (!done_event.Init()) return MakeStringError("Failed to create event");
+  if (!done_event.Init()) return absl::InternalError("Failed to create event");
   async_collectives->async_comm_stream()->ThenRecordEvent(&done_event);
 
   if (failed(async_collectives->PushEvent(
           uid, stream->parent()->device_ordinal(), std::move(done_event))))
-    return MakeStringError("Failed to push event to async collectives");
+    return absl::InternalError("Failed to push event to async collectives");
 
-  return Error::success();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
-  return MakeStringError("NCCL disabled");
+  return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool AllReduceStart(runtime::KernelContext* ctx, void** args,
-                           void** attrs) {
+static bool AllReduceStart(runtime::ExecutionContext* ctx, void** args,
+                           void** attrs, void** rets) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.all_reduce_start")
           .UserData<const ServiceExecutableRunOptions*>()
@@ -1726,7 +1751,7 @@ static bool AllReduceStart(runtime::KernelContext* ctx, void** args,
           .To<RuntimeChecks()>(AllReduceStart::Handler())
           .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // ------------------------------------------------------------------------- //
@@ -1734,40 +1759,40 @@ static bool AllReduceStart(runtime::KernelContext* ctx, void** args,
 namespace {
 struct AllReduceDone {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   JitRtCollectiveSupport* collectives,
-                   JitRtAsyncCollectiveSupport* async_collectives,
-                   CustomCall::RemainingArgs args, int32_t uid) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          JitRtCollectiveSupport* collectives,
+                          JitRtAsyncCollectiveSupport* async_collectives,
+                          CustomCall::RemainingArgs args, int32_t uid) const;
   static AllReduceDone Handler() { return AllReduceDone(); }
 };
 }  // namespace
 
-Error AllReduceDone::operator()(const ServiceExecutableRunOptions* run_options,
-                                JitRtCollectiveSupport* collectives,
-                                JitRtAsyncCollectiveSupport* async_collectives,
-                                CustomCall::RemainingArgs args,
-                                int32_t uid) const {
+absl::Status AllReduceDone::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    JitRtCollectiveSupport* collectives,
+    JitRtAsyncCollectiveSupport* async_collectives,
+    CustomCall::RemainingArgs args, int32_t uid) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduceDone";
   se::Stream* stream = run_options->stream();
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
   auto event = async_collectives->PopEvent(uid, device_ordinal);
-  if (failed(event)) return MakeStringError("Failed to pop event");
+  if (failed(event)) return absl::InternalError("Failed to pop event");
 
   stream->ThenWaitFor(&*event);
 
   if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return MakeStringError("Failed to block host");
+    return absl::InternalError("Failed to block host");
 
-  return Error::success();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
-  return MakeStringError("NCCL disabled");
+  return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool AllReduceDone(runtime::KernelContext* ctx, void** args,
-                          void** attrs) {
+static bool AllReduceDone(runtime::ExecutionContext* ctx, void** args,
+                          void** attrs, void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.all_reduce_done")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<JitRtCollectiveSupport*>()
@@ -1777,7 +1802,7 @@ static bool AllReduceDone(runtime::KernelContext* ctx, void** args,
                              .To<RuntimeChecks()>(AllReduceDone::Handler())
                              .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1785,23 +1810,23 @@ static bool AllReduceDone(runtime::KernelContext* ctx, void** args,
 namespace {
 struct ReduceScatter {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   JitRtCollectiveSupport* collectives,
-                   CustomCall::RemainingArgs args, int32_t uid,
-                   int64_t group_mode, int64_t op_id, int64_t reduction_kind,
-                   ArrayRef<int64_t> replica_group_offsets,
-                   ArrayRef<int64_t> replica_group_values) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          JitRtCollectiveSupport* collectives,
+                          CustomCall::RemainingArgs args, int32_t uid,
+                          int64_t group_mode, int64_t op_id,
+                          int64_t reduction_kind,
+                          ArrayRef<int64_t> replica_group_offsets,
+                          ArrayRef<int64_t> replica_group_values) const;
   static ReduceScatter Handler() { return ReduceScatter(); }
 };
 }  // namespace
 
-Error ReduceScatter::operator()(const ServiceExecutableRunOptions* run_options,
-                                JitRtCollectiveSupport* collectives,
-                                CustomCall::RemainingArgs args, int32_t uid,
-                                int64_t group_mode, int64_t op_id,
-                                int64_t reduction_kind,
-                                ArrayRef<int64_t> replica_group_offsets,
-                                ArrayRef<int64_t> replica_group_values) const {
+absl::Status ReduceScatter::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
+    ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running ReduceScatter";
   se::Stream* stream = run_options->stream();
@@ -1809,28 +1834,28 @@ Error ReduceScatter::operator()(const ServiceExecutableRunOptions* run_options,
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return MakeStringError("Failed to get NcclComm");
+  if (failed(comm)) return absl::InternalError("Failed to get NcclComm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
   if (failed(device_buffers))
-    return MakeStringError("Failed to get device buffers");
+    return absl::InternalError("Failed to get device buffers");
 
   auto executed = RunReduceScatter(static_cast<ReductionKind>(reduction_kind),
                                    *device_buffers, *stream, **comm);
-  if (!executed.ok()) return AsError(executed);
+  if (!executed.ok()) return ToAbslStatus(executed);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
   if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
-    return MakeStringError("Failed to block host");
+    return absl::InternalError("Failed to block host");
 
-  return Error::success();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
-  return MakeStringError("NCCL disabled");
+  return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool ReduceScatter(runtime::KernelContext* ctx, void** args,
-                          void** attrs) {
+static bool ReduceScatter(runtime::ExecutionContext* ctx, void** args,
+                          void** attrs, void** rets) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.reduce_scatter")
           .UserData<const ServiceExecutableRunOptions*>()
@@ -1845,7 +1870,7 @@ static bool ReduceScatter(runtime::KernelContext* ctx, void** args,
           .To<RuntimeChecks()>(ReduceScatter::Handler())
           .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1853,22 +1878,22 @@ static bool ReduceScatter(runtime::KernelContext* ctx, void** args,
 namespace {
 struct AllGather {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   JitRtCollectiveSupport* collectives,
-                   CustomCall::RemainingArgs args, int32_t uid,
-                   int64_t group_mode, int64_t op_id,
-                   ArrayRef<int64_t> replica_group_offsets,
-                   ArrayRef<int64_t> replica_group_values) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          JitRtCollectiveSupport* collectives,
+                          CustomCall::RemainingArgs args, int32_t uid,
+                          int64_t group_mode, int64_t op_id,
+                          ArrayRef<int64_t> replica_group_offsets,
+                          ArrayRef<int64_t> replica_group_values) const;
   static AllGather Handler() { return AllGather(); }
 };
 }  // namespace
 
-Error AllGather::operator()(const ServiceExecutableRunOptions* run_options,
-                            JitRtCollectiveSupport* collectives,
-                            CustomCall::RemainingArgs args, int32_t uid,
-                            int64_t group_mode, int64_t op_id,
-                            ArrayRef<int64_t> replica_group_offsets,
-                            ArrayRef<int64_t> replica_group_values) const {
+absl::Status AllGather::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, int64_t op_id,
+    ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllGather";
   se::Stream* stream = run_options->stream();
@@ -1876,26 +1901,27 @@ Error AllGather::operator()(const ServiceExecutableRunOptions* run_options,
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return MakeStringError("Failed to get NCCL comm");
+  if (failed(comm)) return absl::InternalError("Failed to get NCCL comm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
   if (failed(device_buffers))
-    return MakeStringError("Failed to get device buffers");
+    return absl::InternalError("Failed to get device buffers");
 
   auto st = RunAllGather(*device_buffers, *stream, **comm);
-  if (!st.ok()) return AsError(st);
+  if (!st.ok()) return ToAbslStatus(st);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
   st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
-  if (!st.ok()) return AsError(st);
+  if (!st.ok()) return ToAbslStatus(st);
 
-  return Error::success();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
-  return MakeStringError("NCCL diasbled");
+  return absl::InternalError("NCCL diasbled");
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool AllGather(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool AllGather(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                      void** rets) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.all_gather")
           .UserData<const ServiceExecutableRunOptions*>()
@@ -1909,7 +1935,7 @@ static bool AllGather(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To<RuntimeChecks()>(AllGather::Handler())
           .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1917,23 +1943,23 @@ static bool AllGather(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct AllToAll {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   JitRtCollectiveSupport* collectives,
-                   CustomCall::RemainingArgs args, int32_t uid,
-                   int64_t group_mode, bool has_split_dimension, int64_t op_id,
-                   ArrayRef<int64_t> replica_group_offsets,
-                   ArrayRef<int64_t> replica_group_values) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          JitRtCollectiveSupport* collectives,
+                          CustomCall::RemainingArgs args, int32_t uid,
+                          int64_t group_mode, bool has_split_dimension,
+                          int64_t op_id,
+                          ArrayRef<int64_t> replica_group_offsets,
+                          ArrayRef<int64_t> replica_group_values) const;
   static AllToAll Handler() { return AllToAll(); }
 };
 }  // namespace
 
-Error AllToAll::operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtCollectiveSupport* collectives,
-                           CustomCall::RemainingArgs args, int32_t uid,
-                           int64_t group_mode, bool has_split_dimension,
-                           int64_t op_id,
-                           ArrayRef<int64_t> replica_group_offsets,
-                           ArrayRef<int64_t> replica_group_values) const {
+absl::Status AllToAll::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, bool has_split_dimension, int64_t op_id,
+    ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllToAll";
   se::Stream* stream = run_options->stream();
@@ -1941,26 +1967,27 @@ Error AllToAll::operator()(const ServiceExecutableRunOptions* run_options,
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return MakeStringError("Failed to get NCCL comm");
+  if (failed(comm)) return absl::InternalError("Failed to get NCCL comm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
   if (failed(device_buffers))
-    return MakeStringError("Failed to get device buffers");
+    return absl::InternalError("Failed to get device buffers");
 
   auto st = RunAllToAll(has_split_dimension, *device_buffers, *stream, **comm);
-  if (!st.ok()) return AsError(st);
+  if (!st.ok()) return ToAbslStatus(st);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
   st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
-  if (!st.ok()) return AsError(st);
+  if (!st.ok()) return ToAbslStatus(st);
 
-  return Error::success();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
-  return MakeStringError("NCCL disabled");
+  return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool AllToAll(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool AllToAll(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                     void** rets) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.all_to_all")
           .UserData<const ServiceExecutableRunOptions*>()
@@ -1975,7 +2002,7 @@ static bool AllToAll(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To<RuntimeChecks()>(AllToAll::Handler())
           .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1983,19 +2010,19 @@ static bool AllToAll(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct CollectivePermute {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   JitRtCollectiveSupport* collectives,
-                   CustomCall::RemainingArgs args, int32_t uid,
-                   int64_t group_mode, int64_t op_id,
-                   ArrayRef<int64_t> replica_group_offsets,
-                   ArrayRef<int64_t> replica_group_values,
-                   ArrayRef<int64_t> source_peers,
-                   ArrayRef<int64_t> target_peers) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          JitRtCollectiveSupport* collectives,
+                          CustomCall::RemainingArgs args, int32_t uid,
+                          int64_t group_mode, int64_t op_id,
+                          ArrayRef<int64_t> replica_group_offsets,
+                          ArrayRef<int64_t> replica_group_values,
+                          ArrayRef<int64_t> source_peers,
+                          ArrayRef<int64_t> target_peers) const;
   static CollectivePermute Handler() { return CollectivePermute(); }
 };
 }  // namespace
 
-Error CollectivePermute::operator()(
+absl::Status CollectivePermute::operator()(
     const ServiceExecutableRunOptions* run_options,
     JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id,
@@ -2009,22 +2036,23 @@ Error CollectivePermute::operator()(
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values);
-  if (failed(comm)) return MakeStringError("Failed to get NcclComm");
+  if (failed(comm)) return absl::InternalError("Failed to get NcclComm");
 
   auto device_buffers = GetDeviceBufferPairs(args);
   if (failed(device_buffers))
-    return MakeStringError("Failed to get device buffers");
+    return absl::InternalError("Failed to get device buffers");
   if (device_buffers->size() != 1) {
-    return MakeStringError("Expected device buffer size: 1, got ",
-                           device_buffers->size());
+    return absl::InternalError(absl::StrFormat(
+        "Expected device buffer size: 1, got %d", device_buffers->size()));
   }
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return AsError(global_device_id);
+  if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
 
   StatusOr<DeviceAssignment::LogicalID> current_logical_id =
       params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!current_logical_id.ok()) return AsError(current_logical_id);
+  if (!current_logical_id.ok())
+    return ToAbslStatus(current_logical_id.status());
 
   const int64_t current_id = static_cast<CollectiveOpGroupMode>(group_mode) ==
                                      CollectiveOpGroupMode::kCrossReplica
@@ -2046,20 +2074,20 @@ Error CollectivePermute::operator()(
   auto executed =
       RunCollectivePermute(source_target, (*device_buffers)[0], *stream, **comm,
                            device_string, current_id);
-  if (!executed.ok()) return AsError(executed);
+  if (!executed.ok()) return ToAbslStatus(executed);
 
   int32_t device_ordinal = stream->parent()->device_ordinal();
   auto st = collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
-  if (!st.ok()) return AsError(st);
+  if (!st.ok()) return ToAbslStatus(st);
 
-  return Error::success();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
-  return MakeStringError("NCCL disabled");
+  return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
 }
 
-static bool CollectivePermute(runtime::KernelContext* ctx, void** args,
-                              void** attrs) {
+static bool CollectivePermute(runtime::ExecutionContext* ctx, void** args,
+                              void** attrs, void** rets) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.collective_permute")
           .UserData<const ServiceExecutableRunOptions*>()
@@ -2075,7 +2103,7 @@ static bool CollectivePermute(runtime::KernelContext* ctx, void** args,
           .To<RuntimeChecks()>(CollectivePermute::Handler())
           .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -2083,40 +2111,42 @@ static bool CollectivePermute(runtime::KernelContext* ctx, void** args,
 namespace {
 struct ReplicaId {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   runtime::FlatMemrefView result) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          runtime::FlatMemrefView result) const;
   static ReplicaId Handler() { return ReplicaId(); }
 };
 }  // namespace
 
-Error ReplicaId::operator()(const ServiceExecutableRunOptions* run_options,
-                            runtime::FlatMemrefView result) const {
+absl::Status ReplicaId::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    runtime::FlatMemrefView result) const {
   VLOG(3) << "Running ReplicaId";
   se::Stream* stream = run_options->stream();
   NcclExecuteParams params(*run_options, stream);
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return AsError(global_device_id);
+  if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
 
   StatusOr<DeviceAssignment::LogicalID> logical_id =
       params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!logical_id.ok()) return AsError(logical_id);
+  if (!logical_id.ok()) return ToAbslStatus(logical_id.status());
 
   se::DeviceMemoryBase result_data = GetDeviceAddress(result);
   params.stream->ThenMemset32(&result_data, logical_id.value().replica_id,
                               /*size=*/4);
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
-static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool ReplicaId(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                      void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.replica_id")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .Arg<runtime::FlatMemrefView>()  // result
                              .To<RuntimeChecks()>(ReplicaId::Handler())
                              .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -2124,84 +2154,87 @@ static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct PartitionId {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  Error operator()(const ServiceExecutableRunOptions* run_options,
-                   runtime::FlatMemrefView result) const;
+  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          runtime::FlatMemrefView result) const;
   static PartitionId Handler() { return PartitionId(); }
 };
 }  // namespace
 
-Error PartitionId::operator()(const ServiceExecutableRunOptions* run_options,
-                              runtime::FlatMemrefView result) const {
+absl::Status PartitionId::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    runtime::FlatMemrefView result) const {
   VLOG(3) << "Running PartitionId";
   se::Stream* stream = run_options->stream();
   NcclExecuteParams params(*run_options, stream);
 
   StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return AsError(global_device_id);
+  if (!global_device_id.ok()) return ToAbslStatus(global_device_id.status());
 
   StatusOr<DeviceAssignment::LogicalID> logical_id =
       params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!logical_id.ok()) return AsError(logical_id);
+  if (!logical_id.ok()) return ToAbslStatus(logical_id.status());
 
   se::DeviceMemoryBase result_data = GetDeviceAddress(result);
   params.stream->ThenMemset32(&result_data, logical_id.value().computation_id,
                               /*size=*/4);
 
-  return Error::success();
+  return absl::OkStatus();
 }
 
-static bool PartitionId(runtime::KernelContext* ctx, void** args,
-                        void** attrs) {
+static bool PartitionId(runtime::ExecutionContext* ctx, void** args,
+                        void** attrs, void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.partition_id")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .Arg<runtime::FlatMemrefView>()  // result
                              .To<RuntimeChecks()>(PartitionId::Handler())
                              .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
 
-DirectCustomCallLibrary JitRtGpuCustomCalls() {
-  DirectCustomCallLibrary lib;
-
-  lib.Insert("xla.gpu.fft", &xla::gpu::Fft);
-  lib.Insert("xla.gpu.cholesky", &xla::gpu::Cholesky);
-  lib.Insert("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
-  lib.Insert("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
-  lib.Insert("xla.gpu.gemm", &xla::gpu::Gemm);
-  lib.Insert("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
-  lib.Insert("xla.gpu.cublas.lt.matmul.bias", &xla::gpu::CublasLtMatmulBias);
+void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
+  registry.Register("xla.gpu.fft", &xla::gpu::Fft);
+  registry.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);
+  registry.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
+  registry.Register("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
+  registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);
+  registry.Register("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
+  registry.Register("xla.gpu.cublas.lt.matmul.bias",
+                    &xla::gpu::CublasLtMatmulBias);
 
   auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
-  lib.Insert(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
-  lib.Insert(conv("backward.input"), &ConvFn<CudnnConvKind::kBackwardInput>);
-  lib.Insert(conv("backward.filter"), &ConvFn<CudnnConvKind::kBackwardFilter>);
-  lib.Insert(conv("forward.fused"),
-             &ConvFusedFn<CudnnConvKind::kForwardActivation>);
-  lib.Insert(conv("forward.fused.side_input"),
-             &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
+  registry.Register(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
+  registry.Register(conv("backward.input"),
+                    &ConvFn<CudnnConvKind::kBackwardInput>);
+  registry.Register(conv("backward.filter"),
+                    &ConvFn<CudnnConvKind::kBackwardFilter>);
+  registry.Register(conv("forward.fused"),
+                    &ConvFusedFn<CudnnConvKind::kForwardActivation>);
+  registry.Register(conv("forward.fused.side_input"),
+                    &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
 
-  lib.Insert("xla.gpu.memcpy.d2d", &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
-  lib.Insert("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
-  lib.Insert("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
-  lib.Insert("xla.gpu.memset", &MemsetFn);
-  lib.Insert("xla.gpu.infeed", &xla::gpu::Infeed);
-  lib.Insert("xla.gpu.outfeed", &xla::gpu::Outfeed);
-  lib.Insert("xla.gpu.custom_call", &xla::gpu::CustomCall);
+  registry.Register("xla.gpu.memcpy.d2d",
+                    &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
+  registry.Register("xla.gpu.memcpy.h2d",
+                    &MemcpyFn<MemcpyDirection::kHostToDevice>);
+  registry.Register("xla.gpu.memcpy.d2h",
+                    &MemcpyFn<MemcpyDirection::kDeviceToHost>);
+  registry.Register("xla.gpu.memset", &MemsetFn);
+  registry.Register("xla.gpu.infeed", &xla::gpu::Infeed);
+  registry.Register("xla.gpu.outfeed", &xla::gpu::Outfeed);
+  registry.Register("xla.gpu.custom_call", &xla::gpu::CustomCall);
 
   // Collective operations.
-  lib.Insert("xla.gpu.all_gather", &xla::gpu::AllGather);
-  lib.Insert("xla.gpu.all_reduce", &xla::gpu::AllReduce);
-  lib.Insert("xla.gpu.all_reduce_done", &xla::gpu::AllReduceDone);
-  lib.Insert("xla.gpu.all_reduce_start", &xla::gpu::AllReduceStart);
-  lib.Insert("xla.gpu.all_to_all", &xla::gpu::AllToAll);
-  lib.Insert("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
-  lib.Insert("xla.gpu.partition_id", &xla::gpu::PartitionId);
-  lib.Insert("xla.gpu.replica_id", &xla::gpu::ReplicaId);
-
-  return lib;
+  registry.Register("xla.gpu.all_gather", &xla::gpu::AllGather);
+  registry.Register("xla.gpu.all_reduce", &xla::gpu::AllReduce);
+  registry.Register("xla.gpu.all_reduce_done", &xla::gpu::AllReduceDone);
+  registry.Register("xla.gpu.all_reduce_start", &xla::gpu::AllReduceStart);
+  registry.Register("xla.gpu.all_to_all", &xla::gpu::AllToAll);
+  registry.Register("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
+  registry.Register("xla.gpu.partition_id", &xla::gpu::PartitionId);
+  registry.Register("xla.gpu.replica_id", &xla::gpu::ReplicaId);
 }
 
 }  // namespace gpu

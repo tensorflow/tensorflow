@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_UNARY_BENCHMARK_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_UNARY_BENCHMARK_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_
 
 #include <utility>
 
@@ -91,10 +91,9 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   converter.AddConversion(FreeReturnedMemref);
 
   // Get an executable that might be specialized to the operands.
-  llvm::Expected<AsyncValuePtr<Executable>> executable =
+  absl::StatusOr<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands);
-  if (auto err = executable.takeError())
-    LOG(FATAL) << "Failed to specialize executable";
+  if (!executable.ok()) LOG(FATAL) << "Failed to specialize executable";
 
   // Wait for the compilation completion.
   host->Await({executable->CopyRef()});
@@ -127,7 +126,8 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
+  if (auto st = b.executable->InitializeCallFrame(operands, &call_frame);
+      !st.ok())
     LOG(FATAL) << "Failed to initialize call frame";
 
   // Execute async tasks in the HostContext work queue.
@@ -137,7 +137,7 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
 
   // Execute once.
   b.executable->Execute(call_frame, opts);
-  if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
+  if (auto st = b.executable->ReturnResults(b.converter, &call_frame); !st.ok())
     LOG(FATAL) << "Failed to return compiled kernel results";
 }
 
@@ -160,7 +160,8 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
+  if (auto st = b.executable->InitializeCallFrame(operands, &call_frame);
+      !st.ok())
     LOG(FATAL) << "Failed to initialize call frame";
 
   // Execute async tasks in the HostContext work queue.
@@ -171,7 +172,8 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
   for (auto _ : state) {
     call_frame.args[0] = nullptr;  // reset kernel context argument
     b.executable->Execute(call_frame, opts);
-    if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
+    if (auto st = b.executable->ReturnResults(b.converter, &call_frame);
+        !st.ok())
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 
@@ -289,4 +291,4 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
   }                                                                          \
   BENCHMARK(BM_eigen_v_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_UNARY_BENCHMARK_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_

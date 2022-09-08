@@ -1127,17 +1127,17 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     }
     if (rhs_same) {
       return HandleConvolutionWithLiterals(
-          conv, lhs_literal.Convert(result_shape.element_type()).ValueOrDie(),
+          conv, lhs_literal.Convert(result_shape.element_type()).value(),
           rhs_literal);
     }
     if (lhs_same) {
       return HandleConvolutionWithLiterals(
           conv, lhs_literal,
-          rhs_literal.Convert(result_shape.element_type()).ValueOrDie());
+          rhs_literal.Convert(result_shape.element_type()).value());
     }
     return HandleConvolutionWithLiterals(
-        conv, lhs_literal.Convert(result_shape.element_type()).ValueOrDie(),
-        rhs_literal.Convert(result_shape.element_type()).ValueOrDie());
+        conv, lhs_literal.Convert(result_shape.element_type()).value(),
+        rhs_literal.Convert(result_shape.element_type()).value());
   }
 
   Status HandleDot(HloInstruction* dot) override {
@@ -1195,9 +1195,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const PrimitiveType native_ty =
         primitive_util::NativeToPrimitiveType<NativeT>();
     Literal lhs_literal =
-        parent_->GetEvaluatedLiteralFor(lhs).Convert(native_ty).ValueOrDie();
+        parent_->GetEvaluatedLiteralFor(lhs).Convert(native_ty).value();
     Literal rhs_literal =
-        parent_->GetEvaluatedLiteralFor(rhs).Convert(native_ty).ValueOrDie();
+        parent_->GetEvaluatedLiteralFor(rhs).Convert(native_ty).value();
     const int64_t contracted_dimension_size =
         lhs->shape().dimensions(lhs_contracting_dimension);
     Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
@@ -1211,7 +1211,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     Literal result(ShapeUtil::MakeShape(native_ty, dot->shape().dimensions()));
     result.PopulateR2FromArray2D(*result_array);
     parent_->evaluated_[dot] =
-        std::move(result).Convert(dot->shape().element_type()).ValueOrDie();
+        std::move(result).Convert(dot->shape().element_type()).value();
     return OkStatus();
   }
 
@@ -1335,16 +1335,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     if (lhs_same) {
       return HandleDotSlowPathWithLiterals(
           dot, lhs_literal,
-          rhs_literal.Convert(dot->shape().element_type()).ValueOrDie());
+          rhs_literal.Convert(dot->shape().element_type()).value());
     }
     if (rhs_same) {
       return HandleDotSlowPathWithLiterals(
-          dot, lhs_literal.Convert(dot->shape().element_type()).ValueOrDie(),
+          dot, lhs_literal.Convert(dot->shape().element_type()).value(),
           rhs_literal);
     }
     return HandleDotSlowPathWithLiterals(
-        dot, lhs_literal.Convert(dot->shape().element_type()).ValueOrDie(),
-        rhs_literal.Convert(dot->shape().element_type()).ValueOrDie());
+        dot, lhs_literal.Convert(dot->shape().element_type()).value(),
+        rhs_literal.Convert(dot->shape().element_type()).value());
   }
 
   Status HandlePad(HloInstruction* pad) override {
