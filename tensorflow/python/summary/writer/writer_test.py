@@ -67,7 +67,11 @@ class FileWriterTestBase:
     return summary_iterator.summary_iterator(event_paths[-1])
 
   def assertRecent(self, t):
-    self.assertLess(abs(t - time.time()), 10)
+    # We want to ensure the timestamp is something plausible, and aren't able
+    # to mock out the actual clock used through many layers of the stack, so
+    # just assert that it's within the past hour, which should always be true.
+    self.assertLessEqual(t, time.time())
+    self.assertLess(abs(t - time.time()), 3600)
 
   def assertEventsWithGraph(self, test_dir, g, has_shapes):
     meta_graph_def = meta_graph.create_meta_graph_def(
