@@ -1112,9 +1112,7 @@ cc_library(
 
 cc_library(
     name = "tensor_float_32_utils",
-    srcs = ["tensor_float_32_utils.cc"],
     hdrs = ["tensor_float_32_utils.h"],
-    copts = tf_copts(),
     deps = [
         "//tensorflow/tsl/platform:tensor_float_32_utils",
     ],

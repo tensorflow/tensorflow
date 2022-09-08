@@ -3547,7 +3547,7 @@ filegroup(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
         "//tensorflow/core/util:determinism",  # determinism
-        "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
+        "//tensorflow/tsl/platform:tensor_float_32_utils",  # tensor_float_32
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",  # profiler
