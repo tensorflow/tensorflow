@@ -312,6 +312,7 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
     const PjRtLoadedExecutable& executable) const {
   if (kPjRtCApiBypass) {
+    VLOG(1) << "PJRT C API BYPASS: SerializeExecutable";
     return wrapped_->SerializeExecutable(
         *PjRtCApiExecutable::GetWrapped(&executable));
   }
@@ -322,6 +323,7 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
                                       CompileOptions options) {
   if (kPjRtCApiBypass) {
+    VLOG(1) << "PJRT C API BYPASS: DeserializeExecutable";
     return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
   }
   return Unimplemented("PJRT C API does not support DeserializeExecutable");
@@ -330,6 +332,7 @@ PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
 StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
     PjRtBuffer* buffer) {
   if (kPjRtCApiBypass) {
+    VLOG(1) << "PJRT C API BYPASS: UnsafeBufferPointer";
     return wrapped_->UnsafeBufferPointer(PjRtCApiBuffer::GetWrapped(buffer));
   }
   return Unimplemented("PJRT C API does not support UnsafeBufferPointer");
@@ -670,6 +673,7 @@ PjRtCApiExecutable::ExecuteSharded(
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   if (kPjRtCApiBypass) {
+    VLOG(1) << "PJRT C API BYPASS: ExecuteSharded";
     std::vector<PjRtBuffer*> wrapped_args =
         PjRtCApiBuffer::GetWrappedVector(argument_handles);
 
@@ -694,6 +698,7 @@ PjRtCApiExecutable::ExecutePortable(
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   if (kPjRtCApiBypass) {
+    VLOG(1) << "PJRT C API BYPASS: ExecutePortable";
     std::vector<PjRtBuffer*> wrapped_args =
         PjRtCApiBuffer::GetWrappedVector(argument_handles);
 
@@ -933,6 +938,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
         std::make_unique<PjRtCApiBuffer>(client_, args.dst_buffer));
   } else {
     if (kPjRtCApiBypass) {
+      VLOG(1) << "PJRT C API BYPASS: CopyToDevice";
       // TODO(b/239735405) Copying across different clients where `dst_device`
       // is not a PjRtCApiDevice raises an error.
       return wrapped_->CopyToDevice(dst_device);
