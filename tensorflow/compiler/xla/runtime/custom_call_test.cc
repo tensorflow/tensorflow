@@ -37,6 +37,8 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
+using absl::StatusOr;
+
 //===----------------------------------------------------------------------===//
 // A helper function that compiles `module` to XLA runtime executable and runs
 // `test` function with the given arguments. Caller can also register custom
@@ -54,6 +56,7 @@ struct TestOpts {
   std::function<void(CustomCallRetEncodingSet&)> populate_ret_encodings;
   std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
 
+  TypeConverter type_converter;
   DiagnosticEngine diagnostic_engine;
 };
 
@@ -63,6 +66,7 @@ static absl::StatusOr<JitExecutable> Compile(std::string_view module,
   opts.specialization = JitExecutable::Specialization::kDisabled;
   opts.compiler.symbols_binding =
       ToSymbolsBinding(test_opts.direct_custom_calls, test_opts.types);
+  opts.compiler.type_converter = test_opts.type_converter;
 
   opts.compiler.register_dialects = [&](mlir::DialectRegistry& registry) {
     registry.insert<TestlibDialect>();
@@ -85,7 +89,7 @@ static absl::StatusOr<JitExecutable> Compile(std::string_view module,
 static absl::Status CompileAndExecute(std::string_view module,
                                       ArgumentsRef args,
                                       const TestOpts& test_opts) {
-  absl::StatusOr<JitExecutable> jit_executable = Compile(module, test_opts);
+  StatusOr<JitExecutable> jit_executable = Compile(module, test_opts);
   if (!jit_executable.ok()) return jit_executable.status();
 
   AsyncValuePtr<Executable> executable = jit_executable->DefaultExecutable();
@@ -370,6 +374,133 @@ struct ValueRef {
 XLA_RUNTIME_REGISTER_OPAQUE_ARG_DECODING(ValueRef, std::string*);
 XLA_RUNTIME_REGISTER_OPAQUE_RET_DECODING(ValueRef, std::string*);
 
+// Register mapping from custom type id to its unique symbol name.
+static void RegisterTypeName(TypeIDNameRegistry& registry) {
+  registry.Register<Tagged<ValueRef>>("__type_id_testlib_value");
+}
+
+// Register custom call argument encoding for a custom value type.
+static void RegisterArgEncoding(CustomCallArgEncodingSet& encoding) {
+  encoding.Add<OpaqueArgEncoding>(OpaqueArgEncoding::Match<ValueType>(),
+                                  TypeID::get<Tagged<ValueRef>>());
+}
+
+// Register custom call result encoding for a custom value type.
+static void RegisterRetEncoding(CustomCallRetEncodingSet& encoding) {
+  encoding.Add<OpaqueRetEncoding>(OpaqueRetEncoding::Match<ValueType>(),
+                                  TypeID::get<Tagged<ValueRef>>());
+}
+
+// Conversion from argument compile-time type to the argument run-time types.
+static std::unique_ptr<Type> ConvertArgTypeToOpaqueArg(ValueType arg) {
+  return std::make_unique<OpaqueOperandType>();
+}
+
+TEST(CustomCallTest, CustomArgAsOpaqueArg) {
+  absl::string_view module = R"(
+    func.func private @use(%arg0: !testlib.value)
+      attributes { rt.custom_call = "test.use" }
+
+    func.func @test(%arg0: !testlib.value) {
+      call @use(%arg0) : (!testlib.value) -> ()
+      return
+    }
+  )";
+
+  // We'll pass around an opaque pointer to this string in our custom calls.
+  std::string message = "";
+
+  auto use = [&](ValueRef arg0) {
+    (*arg0.value) += "foo";
+    return success();
+  };
+
+  OpaqueArg arg0(&message);
+
+  TestOpts opts;
+  opts.types = RegisterTypeName;
+  opts.populate_arg_encodings = RegisterArgEncoding;
+  opts.populate_type_conversions = AddTestlibTypeConversions;
+  opts.type_converter.AddConversion(ConvertArgTypeToOpaqueArg);
+  opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.use").Arg<ValueRef>().To(use));
+  };
+
+  ASSERT_TRUE(CompileAndExecute(module, {arg0}, opts).ok());
+
+  EXPECT_EQ(message, "foo");
+}
+
+// In the test above we relied on the conversion of custom argument type to
+// opaque type and opaque argument. In this test we introduce a custom type and
+// argument to preserve the type information at run time.
+struct ValueArgType : public llvm::RTTIExtends<ValueArgType, Type> {
+  static constexpr char ID = 0;  // NOLINT
+  StatusOr<ArgumentAbi> AsArgument() const final { return ArgumentAbi{1}; }
+  std::string ToString() const final { return "!testlib.value"; }
+};
+
+// Value argument passed as a single pointer to the XLA executable.
+struct ValueArg final : public llvm::RTTIExtends<ValueArg, Argument> {
+  static constexpr char ID = 0;  // NOLINT
+
+  explicit ValueArg(std::string* ptr) : ptr(ptr) {}
+
+  absl::Status Verify(const Type& type) const final {
+    return llvm::isa<ValueArgType>(type)
+               ? absl::OkStatus()
+               : absl::InvalidArgumentError("unsupported type");
+  }
+
+  void Pack(absl::Span<void*> args) const final {
+    args[0] = const_cast<void*>(reinterpret_cast<const void*>(&ptr));
+  }
+
+  std::string ToString() const final { return "!testlib.value"; }
+
+  std::string* ptr;
+};
+
+// Converts `!testlib.value` type to the `ValueArgType` run-time type.
+static std::unique_ptr<Type> ConvertArgTypeToValueArg(ValueType arg) {
+  return std::make_unique<ValueArgType>();
+}
+
+TEST(CustomCallTest, CustomArg) {
+  absl::string_view module = R"(
+    func.func private @use(%arg0: !testlib.value)
+      attributes { rt.custom_call = "test.use" }
+
+    func.func @test(%arg0: !testlib.value) {
+      call @use(%arg0) : (!testlib.value) -> ()
+      return
+    }
+  )";
+
+  // We'll pass around an opaque pointer to this string in our custom calls.
+  std::string message = "";
+
+  auto use = [&](ValueRef arg0) {
+    (*arg0.value) += "bar";
+    return success();
+  };
+
+  ValueArg arg0(&message);
+
+  TestOpts opts;
+  opts.types = RegisterTypeName;
+  opts.populate_arg_encodings = RegisterArgEncoding;
+  opts.populate_type_conversions = AddTestlibTypeConversions;
+  opts.type_converter.AddConversion(ConvertArgTypeToValueArg);
+  opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.use").Arg<ValueRef>().To(use));
+  };
+
+  ASSERT_TRUE(CompileAndExecute(module, {arg0}, opts).ok());
+
+  EXPECT_EQ(message, "bar");
+}
+
 TEST(CustomCallTest, CustomArgsAndRets) {
   absl::string_view module = R"(
     func.func private @make() -> (!testlib.value)
@@ -399,27 +530,10 @@ TEST(CustomCallTest, CustomArgsAndRets) {
     return success();
   };
 
-  // Give a unique name to the `!testlib.value` type.
-  auto types = [](TypeIDNameRegistry& registry) {
-    registry.Register<Tagged<ValueRef>>("__type_id_testlib_value");
-  };
-
-  // Encoding for custom calls taking `!testlib.value` arguments.
-  auto args = [&](CustomCallArgEncodingSet& encoding) {
-    encoding.Add<OpaqueArgEncoding>(OpaqueArgEncoding::Match<ValueType>(),
-                                    TypeID::get<Tagged<ValueRef>>());
-  };
-
-  // Encoding for custom calls returning `!testlib.value`.
-  auto rets = [&](CustomCallRetEncodingSet& encoding) {
-    encoding.Add<OpaqueRetEncoding>(OpaqueRetEncoding::Match<ValueType>(),
-                                    TypeID::get<Tagged<ValueRef>>());
-  };
-
   TestOpts opts;
-  opts.types = types;
-  opts.populate_arg_encodings = args;
-  opts.populate_ret_encodings = rets;
+  opts.types = RegisterTypeName;
+  opts.populate_arg_encodings = RegisterArgEncoding;
+  opts.populate_ret_encodings = RegisterRetEncoding;
   opts.populate_type_conversions = AddTestlibTypeConversions;
   opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
     registry.Register(CustomCall::Bind("test.make").Ret<ValueRef>().To(make));
@@ -679,7 +793,7 @@ static void BenchmarkCustomCall(
     registry.Register(name, custom_call);
   };
 
-  absl::StatusOr<JitExecutable> jit_executable = Compile(module, opts);
+  StatusOr<JitExecutable> jit_executable = Compile(module, opts);
   CHECK(jit_executable.ok()) << jit_executable.status();
 
   AsyncValuePtr<Executable> executable = jit_executable->DefaultExecutable();
