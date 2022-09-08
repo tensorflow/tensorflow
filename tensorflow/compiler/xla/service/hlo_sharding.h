@@ -310,6 +310,8 @@ class HloSharding {
   // REQUIRES: !IsTuple()
   Shape TileShape(const Shape& shape, int64_t device) const;
 
+  // Gets the total number of tiles including subgroups and partial replication.
+  int64_t TotalNumTiles() const;
   // Gets the number of tiles. If it has partial replication, this will not
   // equal the device count.
   int64_t NumTiles() const;

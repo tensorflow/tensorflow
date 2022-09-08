@@ -342,6 +342,15 @@ class PartitionedHlo {
     }
   }
 
+  PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const {
+    PartitionedHlo new_phlo = *this;
+    new_phlo.hlo_ = hlo;
+    if (!hlo->has_sharding() && hlo_->has_sharding()) {
+      hlo->set_sharding(hlo_->sharding());
+    }
+    return new_phlo;
+  }
+
   // Reshards the current SPMD instruction to a new sharding with optional
   // specified pad value used during resharding. Could only modify the reshard
   // cache.
