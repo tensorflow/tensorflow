@@ -189,12 +189,6 @@ bool IsIm2ColRequired(const TfLiteTensor* input, TfLiteConvParams* params,
   // Return early as basic requirement is not met
   if (!need_im2col) return false;
 
-  // Special case for Hybrid, as it supports only non-dilated im2col currently
-  const bool is_hybrid_non_dilated = is_hybrid && need_non_dilated_im2col;
-  const bool is_quantized = input->type == kTfLiteUInt8 ||
-                            input->type == kTfLiteInt8 ||
-                            input->type == kTfLiteInt16;
-
   switch (kernel_type) {
     case kReference:
       if (is_hybrid) {
@@ -204,13 +198,12 @@ bool IsIm2ColRequired(const TfLiteTensor* input, TfLiteConvParams* params,
       }
     case kGenericOptimized:
     case kCblasOptimized:
-      if (is_hybrid && !need_non_dilated_im2col) {
-        return false;
-      } else {
-        return true;
-      }
+      // `need_im2col` is always satisfied.
+      return true;
     case kMultithreadOptimized:
-      if (is_hybrid_non_dilated || is_quantized ||
+      if (input->type == kTfLiteUInt8 ||  //
+          input->type == kTfLiteInt8 ||   //
+          input->type == kTfLiteInt16 ||  // quantized.
           !data->supports_multithreaded_kernel) {
         return true;
       } else {
