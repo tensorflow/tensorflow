@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
-#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 
 namespace tensorflow {
 namespace {

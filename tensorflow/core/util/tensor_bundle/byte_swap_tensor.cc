@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"

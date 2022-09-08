@@ -27,8 +27,8 @@ filegroup(
     srcs = [
         "byte_swap_array.cc",
         "byte_swap_array.h",
-        "byte_swap.cc",
-        "byte_swap.h",
+        "byte_swap_tensor.cc",
+        "byte_swap_tensor.h",
         "naming.cc",
         "naming.h",
         "tensor_bundle.cc",
@@ -53,7 +53,7 @@ cc_library(
     linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     deps = [
         ":naming",
-        ":byteswap",
+        ":byteswaptensor",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -90,9 +90,9 @@ cc_library(
 )
 
 cc_library(
-    name = "byteswap",
-    srcs = ["byte_swap.cc"],
-    hdrs = ["byte_swap.h"],
+    name = "byteswaptensor",
+    srcs = ["byte_swap_tensor.cc"],
+    hdrs = ["byte_swap_tensor.h"],
     deps = [
         ":byteswaparray",
         "//tensorflow/core:framework",

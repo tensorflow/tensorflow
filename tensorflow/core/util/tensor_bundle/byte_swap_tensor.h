@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_H_
-#define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_H_
+#ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_TENSOR_H_
+#define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_TENSOR_H_
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/byte_order.h"
@@ -37,4 +37,4 @@ Status ByteSwapTensorContent(MetaGraphDef *meta_graph_def);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_H_
+#endif  // TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_TENSOR_H_
