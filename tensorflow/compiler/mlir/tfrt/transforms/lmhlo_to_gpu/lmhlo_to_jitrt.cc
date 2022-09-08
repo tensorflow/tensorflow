@@ -73,33 +73,22 @@ using mlir::Operation;
 using mlir::OperationPass;
 using mlir::success;
 using mlir::SymbolTable;
-using mlir::Type;
 using mlir::TypeRange;
 using mlir::WalkResult;
 using mlir::arith::ConstantOp;
-using mlir::arith::IndexCastOp;
 using mlir::detail::PassOptions;
 using mlir::func::CallOp;
 using mlir::func::FuncOp;
 using mlir::func::ReturnOp;
-using mlir::gpu::GPUModuleOp;
-using mlir::gpu::LaunchFuncOp;
 using mlir::gpu::MemcpyOp;
-using mlir::gpu::MemsetOp;
 using mlir::lmhlo::AllGatherOp;
 using mlir::lmhlo::AllReduceOp;
 using mlir::lmhlo::AllToAllOp;
-using mlir::lmhlo::CaseOp;
 using mlir::lmhlo::CollectivePermuteOp;
-using mlir::lmhlo::CustomCallOp;
 using mlir::lmhlo::FftOp;
-using mlir::lmhlo::InfeedOp;
-using mlir::lmhlo::OutfeedOp;
 using mlir::lmhlo::PartitionIdOp;
 using mlir::lmhlo::ReduceScatterOp;
 using mlir::lmhlo::ReplicaIdOp;
-using mlir::lmhlo::TerminatorOp;
-using mlir::lmhlo::WhileOp;
 using mlir::lmhlo_gpu::AllReduceDoneOp;
 using mlir::lmhlo_gpu::AllReduceStartOp;
 using mlir::lmhlo_gpu::CholeskyOp;
@@ -110,8 +99,6 @@ using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
 using mlir::lmhlo_gpu::ConvForwardOp;
 using mlir::lmhlo_gpu::CublasLtMatmulOp;
 using mlir::lmhlo_gpu::GEMMOp;
-using mlir::memref::AllocaOp;
-using mlir::memref::GetGlobalOp;
 
 static constexpr const char kDirectCustomCall[] = "rt.direct_custom_call";
 
@@ -127,19 +114,6 @@ class ConvertLmhloGpuToJitRtPass
 };
 
 }  // namespace
-
-// -------------------------------------------------------------------------- //
-
-class TerminatorOpLowering : public OpRewritePattern<TerminatorOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TerminatorOp op,
-                                PatternRewriter& rewriter) const override {
-    rewriter.replaceOpWithNewOp<ReturnOp>(op);
-    return mlir::success();
-  }
-};
 
 // -------------------------------------------------------------------------- //
 
@@ -432,218 +406,6 @@ class ConvForwardFusedSideInputOpLowering
     : public ConvOpLowering<ConvForwardFusedSideInputOp> {
  public:
   using ConvOpLowering::ConvOpLowering;
-};
-
-// -------------------------------------------------------------------------- //
-
-class WhileOpLowering : public OpRewritePattern<WhileOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(WhileOp op,
-                                PatternRewriter& rewriter) const override {
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    // Create an `scf.while` loop in place of `lmhlo.while` loop.
-    auto loop = b.create<scf::WhileOp>(TypeRange(), ValueRange());
-
-    // Predicate buffer placed on the device.
-    assert(op.getNumOperands() == 1 && "expected single cond operand");
-    Value pred = op.getOperand(0);
-
-    // Clone condition and body blocks into the new loop operation.
-    BlockAndValueMapping mapping;
-    op.getCond().cloneInto(&loop.getBefore(), mapping);
-    op.getBody().cloneInto(&loop.getAfter(), mapping);
-
-    {  // Replace loop condition terminator.
-      auto* terminator = loop.getBefore().back().getTerminator();
-      b.setInsertionPointAfter(terminator);
-
-      // Copy predicate buffer to the host ...
-      auto i1 = b.getI1Type();
-      Value pred_on_host = b.create<memref::AllocaOp>(MemRefType::get({}, i1));
-      b.create<gpu::MemcpyOp>(TypeRange(), ValueRange({pred_on_host, pred}));
-
-      // .. and check if we need to continue loop iteration.
-      Value cond = b.create<memref::LoadOp>(i1, pred_on_host, ValueRange());
-      b.create<scf::ConditionOp>(cond, ValueRange());
-      rewriter.eraseOp(terminator);
-    }
-
-    {  // Replace loop body terminator.
-      auto* terminator = loop.getAfter().back().getTerminator();
-      b.setInsertionPointAfter(terminator);
-      b.create<scf::YieldOp>(TypeRange(), ValueRange());
-      rewriter.eraseOp(terminator);
-    }
-
-    // Erase the original while loop.
-    rewriter.eraseOp(op);
-
-    return success();
-  }
-};
-
-// -------------------------------------------------------------------------- //
-
-class CaseOpLowering : public OpRewritePattern<CaseOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(CaseOp op,
-                                PatternRewriter& rewriter) const override {
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    // Copy index buffer to the host ...
-    auto index_type = op.getIndex().getType().dyn_cast<MemRefType>();
-    Value index_on_host = b.create<memref::AllocaOp>(index_type);
-    b.create<gpu::MemcpyOp>(TypeRange(),
-                            ValueRange({index_on_host, op.getIndex()}));
-
-    // Get the index value from the buffer.
-    Value index = b.create<memref::LoadOp>(index_type.getElementType(),
-                                           index_on_host, ValueRange());
-
-    bool is_predicate = index_type.getElementType().isInteger(1);
-
-    // For binary index (predicate) convert i1 to i32 index.
-    if (is_predicate) {
-      Value c0 = b.create<ConstantOp>(b.getI32IntegerAttr(0));
-      Value c1 = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-      index = b.create<arith::SelectOp>(index, c0, c1);
-    }
-
-    // For integer index make sure that it is within range.
-    if (!is_predicate) {
-      unsigned n = op.getNumRegions() - 1;
-      Value c0 = b.create<ConstantOp>(b.getI32IntegerAttr(0));
-      Value cN = b.create<ConstantOp>(b.getI32IntegerAttr(n));
-
-      Value too_small = b.create<arith::CmpIOp>(
-          b.getI1Type(), arith::CmpIPredicate::slt, index, c0);
-      Value too_large = b.create<arith::CmpIOp>(
-          b.getI1Type(), arith::CmpIPredicate::sgt, index, cN);
-
-      Value out_of_range = b.create<arith::OrIOp>(too_small, too_large);
-      index = b.create<arith::SelectOp>(out_of_range, cN, index);
-    }
-
-    // Split block right at the case operation.
-    Block* cont = rewriter.splitBlock(op->getBlock(), op->getIterator());
-    Block* orig = cont->getPrevNode();
-
-    // Prepare case destinations for the `scf.switch` operation.
-    llvm::SmallVector<llvm::APInt> case_values;
-    llvm::SmallVector<Block*> case_blocks;
-    llvm::SmallVector<ValueRange> case_operands;
-
-    // Create blocks from each of the case regions.
-    for (Region& region : op->getRegions()) {
-      // Move `lmhlo.case` block before the continuation.
-      Block& block = region.front();
-      block.moveBefore(cont);
-
-      // Erase original `lmhlo.terminator`.
-      rewriter.eraseOp(block.getTerminator());
-
-      // Branch into the continuation block.
-      b.setInsertionPointToEnd(&block);
-      b.create<cf::BranchOp>(cont);
-
-      // Add a `cf.switch` case.
-      int32_t idx = case_blocks.size();
-      case_values.push_back(b.getI32IntegerAttr(idx).getValue());
-      case_blocks.push_back(&block);
-      case_operands.push_back({});
-    }
-
-    // Replace `lmhlo.case` with a `cf.switch` operation on the host.
-    b.setInsertionPointToEnd(orig);
-    b.create<cf::SwitchOp>(index, cont, ValueRange(), case_values, case_blocks,
-                           case_operands);
-
-    // Erase the original case operation.
-    rewriter.eraseOp(op);
-
-    return success();
-  }
-};
-
-// -------------------------------------------------------------------------- //
-
-class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
- private:
-  static constexpr const char kCustomCallTarget[] = "xla.gpu.custom_call";
-
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(CustomCallOp op,
-                                PatternRewriter& rewriter) const override {
-    MLIRContext* ctx = this->getContext();
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    // Custom call target.
-    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
-                          b.getStringAttr(kCustomCallTarget));
-
-    // By default all operands passed to the custom call handler.
-    llvm::SmallVector<Value> operands = op.getOperands();
-
-    // If custom call has target arguments mapping, then we need to pass empty
-    // memrefs in place of holes.
-    if (op.getTargetArgMapping().has_value()) {
-      auto mapping = *op.getTargetArgMapping();
-      int64_t num_args = mapping.getNumArgs();
-      int64_t num_results = mapping.getNumResults();
-
-      // We represent holes as empty i8 memrefs.
-      Value hole = b.create<AllocaOp>(MemRefType::get({0}, b.getI8Type()));
-      operands = llvm::SmallVector<Value>(num_args + num_results, hole);
-
-      // Update operands to mapped custom call arguments.
-      auto args = mapping.getArgsToTargetArgs();
-      for (const auto& indexed : llvm::enumerate(args))
-        operands[indexed.value()] = op.getArgs()[indexed.index()];
-
-      // Update operands to mapped custom call results.
-      auto res = mapping.getResultsToTargetResults();
-      for (const auto& indexed : llvm::enumerate(res))
-        operands[num_args + indexed.value()] = op.getOutput()[indexed.index()];
-    }
-
-    // Create a custom call function declaration.
-    auto custom_call_type =
-        FunctionType::get(ctx, TypeRange(ValueRange(operands)), TypeRange());
-
-    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
-                                      custom_call_type, custom_call_attrs);
-    custom_call.setPrivate();
-
-    SymbolTable sym_table(op->getParentOfType<ModuleOp>());
-    auto inserted = sym_table.insert(custom_call);
-    rewriter.notifyOperationInserted(custom_call);
-
-    // Call the runtime intrinsic with the original operands.
-    auto call =
-        rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(), operands);
-
-    // Pass attributes to the custom call handler.
-    auto set_attr = [&](StringRef name, Attribute attr) {
-      call->setAttr(b.getStringAttr(name), attr);
-    };
-
-    set_attr("api_version", op.getApiVersionAttr());
-    set_attr("backend_config", op.getBackendConfigAttr());
-    set_attr("call_target_name", op.getCallTargetNameAttr());
-
-    // Erase the original infeed/outfeed operation.
-    rewriter.eraseOp(op);
-
-    return success();
-  }
 };
 
 // -------------------------------------------------------------------------- //
@@ -1256,8 +1018,7 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   // Patterns for every other Gpu operation.
   patterns
       .insert<FftOpLowering, CholeskyOpLowering, PartitionIdOpLowering,
-              ReplicaIdOpLowering, WhileOpLowering, CaseOpLowering,
-              CustomCallOpLowering, TerminatorOpLowering, ConvForwardOpLowering,
+              ReplicaIdOpLowering, ConvForwardOpLowering,
               ConvForwardFusedOpLowering, ConvForwardFusedSideInputOpLowering,
               ConvBackwardFilterOpLowering, ConvBackwardInputOpLowering>(ctx);
 
@@ -1291,8 +1052,8 @@ void populateLmhloToJitRtPasses(mlir::OpPassManager& pm,
 
   // Lower all Gpu operations to the JitRt Gpu runtime intrinsics.
   pm.addPass(createConvertLmhloGpuToJitRtPass());
-  pm.addPass(xla::gpu::createConvertGpuToGpuRuntimePass());
   pm.addPass(xla::gpu::createConvertLmhloToGpuRuntimePass());
+  pm.addPass(xla::gpu::createConvertGpuToGpuRuntimePass());
 }
 
 void registerLmhloToJitRtPasses() {
