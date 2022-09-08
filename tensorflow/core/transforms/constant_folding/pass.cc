@@ -700,17 +700,13 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
                                 PatternRewriter &rewriter) const override {
     if (!helper_.IsFoldable(op)) return failure();
 
-    // TODO(chiahungduan): Switch folding needs to delete dead values.
-    if (dialect_->IsSwitch(op)) return failure();
-
     // The op has been folded but it has multiple results which we can just
     // replace it with a constant op and it also has control edges which prevent
     // it from removing. Use the attr to avoid evaluating them again.
     if (op->hasAttr(folded_attr_name_)) return failure();
 
     // If the op has no users, don't invoke the eager runtime.
-    if (op->getNumResults() > 2 &&
-        llvm::all_of(op->getResults().drop_back(),
+    if (llvm::all_of(op->getResults().drop_back(),
                      [](Value v) { return v.use_empty(); })) {
       return failure();
     }
@@ -732,23 +728,34 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
       return failure();
     }
 
+    // Check if CreateConstantTensorNode ops can fail before creating any nodes
+    // TODO(tlongeri): Is CreateConstantTensorNode check correct? Shouldn't it
+    // always be a ShapedType?
+    for (TypedAttr r : result)
+      if (r && r.getType().isa<VariantType>()) return failure();
+
     StringAttr name_attr = static_cast<TFGraphDialect *>(op->getDialect())
                                ->getNameAttrIdentifier();
     SmallVector<Value> control_operands(
         OperandControlRetRange(op->getOperands()));
 
-    StringAttr device_attr = TFOp(op).deviceAttr();
-    SmallVector<TFOp> const_ops;
+    SmallVector<TFOp> const_ops(result.size());
     for (auto &it : llvm::enumerate(result)) {
       TypedAttr attr = it.value();
-      FailureOr<TFOp> const_op = CreateConstantTensorOp(
+      // Null values represent dead outputs. They can result from evaluating a
+      // switch op.
+      if (!attr) continue;
+      if (op->getResult(it.index()).use_empty()) continue;
+      // CreateConstantTensorOp cannot return failure, we checked failure
+      // conditions above.
+      TFOp const_op = *CreateConstantTensorOp(
           rewriter, op->getLoc(),
           (Twine(TFOp(op).name(), "/eval_") + Twine(it.index())).str(),
-          attr.getType().cast<ShapedType>(), control_operands, attr,
+          attr.getType(), control_operands, attr,
           NamedAttribute(name_attr, TFOp(op).nameAttr()));
-      if (failed(const_op)) return failure();
-      if (device_attr) (*const_op).setRequestedDevice(device_attr);
-      const_ops.emplace_back(*const_op);
+      if (StringAttr device_attr = TFOp(op).deviceAttr())
+        const_op.setRequestedDevice(device_attr);
+      const_ops[it.index()] = const_op;
     }
 
     // If this is single output, just replace the op.
@@ -756,21 +763,27 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
       // Use the same node name for the replacement. Note that even this is not
       // in nodes_to_preserve, certain cases may still expect the op has the
       // same name after folding.
-      const_ops[0].setName(TFOp(op).nameAttr());
-      rewriter.replaceOp(op, const_ops[0]->getResults());
+      TFOp const_op = const_ops[0];
+      assert(const_op);
+      const_op.setName(TFOp(op).nameAttr());
+      rewriter.replaceOp(op, const_op->getResults());
     } else {
       for (auto &it : llvm::enumerate(const_ops)) {
-        for (OpOperand &user :
+        if (!it.value()) continue;
+        for (OpOperand &use :
              llvm::make_early_inc_range(op->getResult(it.index()).getUses())) {
-          rewriter.startRootUpdate(user.getOwner());
-          user.set(it.value()->getResult(0));
-          rewriter.finalizeRootUpdate(user.getOwner());
+          rewriter.startRootUpdate(use.getOwner());
+          use.set(it.value()->getResult(0));
+          rewriter.finalizeRootUpdate(use.getOwner());
         }
       }
-
-      // Now all the non-control operands are replaced with constant ops, remove
-      // the op if it doesn't have control operand either.
-      if (TFOp(op).controlRet().use_empty()) {
+      // All the non-control outputs are replaced with constant ops, except for
+      // dead outputs (in the case of a switch op).
+      // If the op has no dead outputs and no uses of its control output, then
+      // it can be removed.
+      // Dead code removal for switches with dead outputs (because of a constant
+      // pred) is handled in Grappler's LoopOptimizer pass.
+      if (op->use_empty()) {
         rewriter.eraseOp(op);
       } else {
         // We can't remove it directly. To avoid folding it again, add an attr
