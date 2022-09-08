@@ -293,9 +293,22 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
   bool is_one_dnn_enabled = IsMKLEnabled();
 
   if (is_one_dnn_enabled) {
+    // Currently, oneDNN based fused-kernel does not support transpose_a on
+    // MatMul. Since bfloat16 precision fused-kernel is only enabled through
+    // oneDNN, the fusion is disabled here. Float32 precision, however, will use
+    // the eigen library based kernel in case of transpose_a since the
+    // mkl_layout_pass will not rewrite for transpose_a. So for float32
+    // precision, the fusion is enabled for transpose_a.
+    bool is_supported_matmul = false;
+    if (IsMatMul(*contraction)) {
+      is_supported_matmul = (dtype == DT_BFLOAT16)
+                                ? contraction->attr().contains("transpose_a") &&
+                                      !contraction->attr().at("transpose_a").b()
+                                : true;
+    }
     return (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
-            IsMatMul(*contraction) || IsConv3D(*contraction) ||
-            IsAnyBatchMatMul(*contraction)) &&
+            IsConv3D(*contraction) || IsAnyBatchMatMul(*contraction) ||
+            is_supported_matmul) &&
            (dtype == DT_FLOAT || dtype == DT_BFLOAT16);
   }
   if (IsConv2D(*contraction)) {
@@ -1323,6 +1336,11 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     DataType matmul_dtype = GetDataTypeFromAttr(*matmul_node, "T");
 
     bool cpu_ok = IsMKLEnabled() && IsCpuCompatibleMatMul(*ctx, matmul_node);
+    // Currently, the fusion is not supported on CPU for transpose_a in the
+    // MatMul op.
+    cpu_ok = cpu_ok && matmul_node->attr().contains("transpose_a") &&
+             !matmul_node->attr().at("transpose_a").b();
+
     bool gpu_ok = NodeIsOnGpu(matmul_node) && RuntimeFusionEnabled(cluster) &&
                   matmul_dtype == DT_HALF;
     if (!cpu_ok && !gpu_ok) return false;
@@ -1355,6 +1373,14 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     // matmul_node is already the _FusedMatMul and we don't need to check its
     // data type again.
     if (!IsMKLEnabled() && !NodeIsOnGpu(matmul_node)) return false;
+
+    // Currently, the fusion is not supported on CPU for transpose_a in the
+    // MatMul op.
+    if (NodeIsOnCpu(matmul_node) &&
+        matmul_node->attr().contains("transpose_a") &&
+        matmul_node->attr().at("transpose_a").b()) {
+      return false;
+    }
 
     // Check if _FusedMatMul contains only BiasAdd
     auto fused_ops = matmul_node->attr().at("fused_ops").list().s();
