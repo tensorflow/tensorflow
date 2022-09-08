@@ -24,7 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
@@ -70,7 +70,7 @@ static absl::StatusOr<JitExecutable> Compile(std::string_view module,
 
   opts.compiler.register_dialects = [&](mlir::DialectRegistry& registry) {
     registry.insert<TestlibDialect>();
-    RegisterDefaultXlaRuntimeDialects(registry);
+    RegisterDefaultXlaGpuRuntimeDialects(registry);
   };
 
   opts.compiler.create_compilation_pipeline = [&](mlir::PassManager& pm) {
@@ -80,7 +80,7 @@ static absl::StatusOr<JitExecutable> Compile(std::string_view module,
     copts.populate_ret_encodings = test_opts.populate_ret_encodings;
     copts.populate_attr_encodings = test_opts.populate_attr_encodings;
     copts.populate_type_conversions = test_opts.populate_type_conversions;
-    CreateDefaultXlaRuntimeCompilationPipeline(pm, copts);
+    CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
   };
 
   return JitExecutable::Instantiate(module, "test", opts);

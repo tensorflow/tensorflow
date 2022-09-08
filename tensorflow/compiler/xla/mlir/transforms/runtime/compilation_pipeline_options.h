@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_COMPILATION_PIPELINE_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_COMPILATION_PIPELINE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_COMPILATION_PIPELINE_OPTIONS_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_COMPILATION_PIPELINE_OPTIONS_H_
 
 #include <functional>
 
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
@@ -26,6 +25,7 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
+// Common options for default XLA-{CPU,GPU} compilation pipelines.
 struct CompilationPipelineOptions {
   // Register names for the TypeIDs used for encoding types of custom arguments
   // and attributes.
@@ -46,19 +46,7 @@ struct CompilationPipelineOptions {
   std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
 };
 
-// Registers dialects, interfaces and dialects translations with the registry
-// required by the default XLA runtime compilation pipeline.
-void RegisterDefaultXlaRuntimeDialects(mlir::DialectRegistry& registry);
-
-// Creates default XLA runtime compilation pipeline that lowers from the `rt`
-// and `memref` dialects to the LLVMIR dialect. This is a very simple pipeline
-// that is mostly intended for writing tests for the XLA runtime, and it is
-// expected that all end users will construct their own compilation pipelines
-// from the available XLA and MLIR passes.
-void CreateDefaultXlaRuntimeCompilationPipeline(
-    mlir::OpPassManager& pm, const CompilationPipelineOptions& opts);
-
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_COMPILATION_PIPELINE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_COMPILATION_PIPELINE_OPTIONS_H_

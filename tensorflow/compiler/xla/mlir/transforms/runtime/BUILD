@@ -89,14 +89,13 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "compilation_pipeline",
-    srcs = ["compilation_pipeline.cc"],
-    hdrs = ["compilation_pipeline.h"],
+    name = "compilation_pipeline_gpu",
+    srcs = ["compilation_pipeline_gpu.cc"],
+    hdrs = ["compilation_pipeline_gpu.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        ":custom_call_encoding",
+        ":compilation_pipeline_options",
         ":passes",
-        "//tensorflow/compiler/xla/runtime:type_id",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:IR",
@@ -107,9 +106,19 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToControlFlow",
-        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,  # has pipeline registration
+)
+
+cc_library(
+    name = "compilation_pipeline_options",
+    hdrs = ["compilation_pipeline_options.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":custom_call_encoding",
+        "//tensorflow/compiler/xla/runtime:type_id",
+        "@llvm-project//mlir:Transforms",
+    ],
 )
 
 cc_library(

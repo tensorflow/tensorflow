@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
 
 #include <utility>
 
@@ -32,7 +32,7 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
-void RegisterDefaultXlaRuntimeDialects(mlir::DialectRegistry& registry) {
+void RegisterDefaultXlaGpuRuntimeDialects(mlir::DialectRegistry& registry) {
   // Register MLIR dialects supported by the compiled executables.
   registry.insert<mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
                   mlir::func::FuncDialect, RuntimeDialect>();
@@ -41,7 +41,7 @@ void RegisterDefaultXlaRuntimeDialects(mlir::DialectRegistry& registry) {
   mlir::registerLLVMDialectTranslation(registry);
 }
 
-void CreateDefaultXlaRuntimeCompilationPipeline(
+void CreateDefaultXlaGpuRuntimeCompilationPipeline(
     mlir::OpPassManager& pm, const CompilationPipelineOptions& opts) {
   pm.addPass(mlir::createConvertSCFToCFPass());
 
@@ -61,14 +61,14 @@ void CreateDefaultXlaRuntimeCompilationPipeline(
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 }
 
-static void CreateDefaultPipeline(mlir::OpPassManager& pm) {
+static void CreateDefaultGpuPipeline(mlir::OpPassManager& pm) {
   CompilationPipelineOptions copts;
-  CreateDefaultXlaRuntimeCompilationPipeline(pm, copts);
+  CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
 }
 
 static mlir::PassPipelineRegistration<> kXlaRuntimePipeline(
-    "xla-runtime-default-pipeline", "Default XLA runtime compilation pipeline",
-    CreateDefaultPipeline);
+    "xla-runtime-default-gpu-pipeline",
+    "Default XLA-GPU runtime compilation pipeline", CreateDefaultGpuPipeline);
 
 }  // namespace runtime
 }  // namespace xla
