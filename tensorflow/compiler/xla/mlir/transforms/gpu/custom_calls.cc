@@ -71,5 +71,10 @@ FuncOp CustomCalls::GetOrCreate(ImplicitLocOpBuilder& b, StringRef target,
   return GetOrCreate(b, target, op->getOperandTypes(), op->getResultTypes());
 }
 
+void AppendCustomCallAttrs(mlir::Operation* op,
+                           llvm::ArrayRef<mlir::NamedAttribute> attrs) {
+  for (auto& attr : attrs) op->setAttr(attr.getName(), attr.getValue());
+}
+
 }  // namespace gpu
 }  // namespace xla

@@ -41,6 +41,13 @@ createConvertMemrefGetGlobalToArgPass(int64_t min_num_elements);
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertGpuToGpuRuntimePass();
 
+//===----------------------------------------------------------------------===//
+// Passes for lowering from the `lmhlo` dialect.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertLmhloToGpuRuntimePass();
+
 //===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION

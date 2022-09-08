@@ -115,15 +115,6 @@ using mlir::memref::GetGlobalOp;
 
 static constexpr const char kDirectCustomCall[] = "rt.direct_custom_call";
 
-class ConvertGpuToJitRtPass
-    : public ConvertGpuToJitRtPassBase<ConvertGpuToJitRtPass> {
-  void runOnOperation() override;
-
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mlir::func::FuncDialect, mlir::arith::ArithmeticDialect>();
-  }
-};
-
 class ConvertLmhloGpuToJitRtPass
     : public ConvertLmhloGpuToJitRtPassBase<ConvertLmhloGpuToJitRtPass> {
   void runOnOperation() override;
@@ -148,61 +139,6 @@ class TerminatorOpLowering : public OpRewritePattern<TerminatorOp> {
     rewriter.replaceOpWithNewOp<ReturnOp>(op);
     return mlir::success();
   }
-};
-
-// -------------------------------------------------------------------------- //
-
-template <typename IoFeedOp>
-class IoFeedOpLowering : public OpRewritePattern<IoFeedOp> {
- private:
-  static StringRef CustomCallTarget(InfeedOp) { return "xla.gpu.infeed"; }
-  static StringRef CustomCallTarget(OutfeedOp) { return "xla.gpu.outfeed"; }
-
- public:
-  explicit IoFeedOpLowering(MLIRContext* ctx)
-      : OpRewritePattern<IoFeedOp>(ctx) {}
-
-  LogicalResult matchAndRewrite(IoFeedOp op,
-                                PatternRewriter& rewriter) const override {
-    MLIRContext* ctx = this->getContext();
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    // Custom call target.
-    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
-                          b.getStringAttr(CustomCallTarget(op)));
-
-    // Create a custom call function declaration.
-    auto custom_call_type =
-        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
-    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), CustomCallTarget(op),
-                                      custom_call_type, custom_call_attrs);
-    custom_call.setPrivate();
-
-    SymbolTable sym_table(op->template getParentOfType<ModuleOp>());
-    auto inserted = sym_table.insert(custom_call);
-    rewriter.notifyOperationInserted(custom_call);
-
-    // Call the runtime intrinsic with the original operands.
-    auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
-                                        op.getOperands());
-    call->setAttr(b.getStringAttr("config"), op.getConfigAttr());
-
-    // Erase the original infeed/outfeed operation.
-    rewriter.eraseOp(op);
-
-    return success();
-  }
-};
-
-class InfeedOpLowering : public IoFeedOpLowering<InfeedOp> {
- public:
-  using IoFeedOpLowering::IoFeedOpLowering;
-};
-
-class OutfeedOpLowering : public IoFeedOpLowering<OutfeedOp> {
- public:
-  using IoFeedOpLowering::IoFeedOpLowering;
 };
 
 // -------------------------------------------------------------------------- //
@@ -1282,18 +1218,6 @@ class PartitionIdOpLowering : public IdOpLowering<PartitionIdOp> {
 
 // -------------------------------------------------------------------------- //
 
-void ConvertGpuToJitRtPass::runOnOperation() {
-  ModuleOp module = getOperation();
-  MLIRContext* ctx = module.getContext();
-
-  // Convert gpu operations to JitRt gpu runtime custom calls.
-  RewritePatternSet patterns(ctx);
-  patterns.insert<InfeedOpLowering, OutfeedOpLowering>(ctx);
-
-  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
-    return signalPassFailure();
-}
-
 void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -1352,10 +1276,6 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> createConvertGpuToJitRtPass() {
-  return std::make_unique<ConvertGpuToJitRtPass>();
-}
-
 std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloGpuToJitRtPass() {
   return std::make_unique<ConvertLmhloGpuToJitRtPass>();
 }
@@ -1372,11 +1292,10 @@ void populateLmhloToJitRtPasses(mlir::OpPassManager& pm,
   // Lower all Gpu operations to the JitRt Gpu runtime intrinsics.
   pm.addPass(createConvertLmhloGpuToJitRtPass());
   pm.addPass(xla::gpu::createConvertGpuToGpuRuntimePass());
-  pm.addPass(createConvertGpuToJitRtPass());
+  pm.addPass(xla::gpu::createConvertLmhloToGpuRuntimePass());
 }
 
 void registerLmhloToJitRtPasses() {
-  mlir::registerPass([] { return createConvertGpuToJitRtPass(); });
   mlir::registerPass([] { return createConvertLmhloGpuToJitRtPass(); });
 
   mlir::registerPassPipeline(

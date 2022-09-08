@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -59,6 +60,10 @@ class CustomCalls {
   using Key = std::pair<llvm::StringRef, mlir::FunctionType>;
   llvm::DenseMap<Key, mlir::func::FuncOp> custom_calls_;
 };
+
+// Appends all attributes from the list to the operation.
+void AppendCustomCallAttrs(mlir::Operation* op,
+                           llvm::ArrayRef<mlir::NamedAttribute> attrs);
 
 }  // namespace gpu
 }  // namespace xla

@@ -40,6 +40,7 @@ cc_library(
     name = "passes",
     srcs = [
         "gpu_to_gpu_runtime.cc",
+        "lmhlo_to_gpu_runtime.cc",
         "memref_get_global_to_arg.cc",
     ],
     hdrs = ["passes.h"],
@@ -47,6 +48,8 @@ cc_library(
     deps = [
         ":custom_calls",
         ":passes_inc_gen",
+        "//tensorflow/compiler/xla/mlir_hlo:lhlo",
+        "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",
