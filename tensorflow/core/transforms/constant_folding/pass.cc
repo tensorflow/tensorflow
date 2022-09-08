@@ -3215,7 +3215,7 @@ class ConstantPushDownBiasAdd
 
     if (!hasRank(op->getOperand(0)) || !hasRank(op->getOperand(1)) ||
         !hasRank(add_child->getOperand(0)) ||
-        !hasRank(add_child->getOperand(0))) {
+        !hasRank(add_child->getOperand(1))) {
       return failure();
     }
 
