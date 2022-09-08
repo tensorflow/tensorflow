@@ -510,7 +510,8 @@ bool InferGatherParallelShardingFromOperands(
   CHECK(DynCast<HloGatherInstruction>(instruction));
   bool changed = false;
   auto aligned_operand_parallel_dims =
-      hlo_sharding_util::IndexAlignedOperandParallelDims(parallel_dims);
+      hlo_sharding_util::IndexAlignedOperandParallelDims(*instruction,
+                                                         parallel_dims);
   auto output_parallel_dims = hlo_sharding_util::GetGatherOutputParallelDims(
       *instruction, parallel_dims);
   // Infer output sharding from scatter operand sharding.
@@ -544,7 +545,8 @@ bool InferScatterParallelShardingFromOperands(
   CHECK(scatter);
   bool changed = false;
   auto aligned_operand_parallel_dims =
-      hlo_sharding_util::IndexAlignedOperandParallelDims(parallel_dims);
+      hlo_sharding_util::IndexAlignedOperandParallelDims(*instruction,
+                                                         parallel_dims);
   auto update_parallel_dims = hlo_sharding_util::GetScatterUpdateParallelDims(
       *instruction, parallel_dims);
   auto output_parallel_dims = aligned_operand_parallel_dims;
@@ -1621,7 +1623,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
         return hlo_sharding_util::GatherIndexSharding(user.sharding(), &user);
       }
       if (is_spmd) {
-        return hlo_sharding_util::GatherOperandShardingFromOutput(
+        return hlo_sharding_util::GatherDataOperandShardingFromOutput(
             user.sharding(), user);
       }
       return std::nullopt;
@@ -1641,25 +1643,27 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       }
       CHECK_EQ(&instruction, scatter_user.scatter_updates()[0]);
       auto indices = scatter_user.scatter_indices();
-      auto from_indices = IsSpatiallyPartitioned(indices)
-                              ? hlo_sharding_util::ScatterDataSharding(
-                                    indices->sharding(), &scatter_user)
-                              : HloSharding::Replicate();
+      // Prioritize parallel sharding first as this is how it is in
+      // spmd_partitioner.
       if (is_spmd) {
-        auto from_output = hlo_sharding_util::ScatterUpdateShardingFromOutput(
-            user.sharding(), scatter_user);
-        if (from_output.has_value()) {
-          // Use sharding from output as primary sharding since it prioritize
-          // parallel sharding first as this is how it is in spmd_partitioner.
-          hlo_sharding_util::MergeShardingIfCompatible(
-              from_indices, from_output->NumTiles() + 1, &*from_output);
-          if (!from_output->IsTileMaximal()) {
-            return from_output;
-          }
+        auto parallel_update_sharding = hlo_sharding_util::
+            ScatterUpdateShardingFromOutputParallelDimensions(user.sharding(),
+                                                              scatter_user);
+        if (parallel_update_sharding.has_value() &&
+            !parallel_update_sharding->IsTileMaximal()) {
+          return parallel_update_sharding;
         }
       }
-      if (!from_indices.IsTileMaximal()) {
-        return from_indices;
+      if (IsSpatiallyPartitioned(indices)) {
+        auto from_indices = hlo_sharding_util::ScatterDataSharding(
+            indices->sharding(), &scatter_user);
+        if (!from_indices.IsTileMaximal()) {
+          return from_indices;
+        }
+      }
+      if (is_spmd) {
+        return hlo_sharding_util::ScatterUpdateShardingFromOutput(
+            user.sharding(), scatter_user);
       }
       return std::nullopt;
     }
@@ -2227,7 +2231,7 @@ bool ShardingPropagation::InferShardingFromOperands(
               hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
                   instruction->operand(0)->sharding(), operand_parallel_dims);
           auto maybe_from_data =
-              hlo_sharding_util::GatherOutputShardingFromOperand(
+              hlo_sharding_util::GatherOutputShardingFromDataOperand(
                   filtered_operand_sharding, *instruction,
                   instruction->gather_slice_sizes(), instruction->shape(),
                   instruction->operand(0)->shape());
