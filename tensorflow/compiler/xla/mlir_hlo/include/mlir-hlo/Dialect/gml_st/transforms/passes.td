@@ -61,10 +61,14 @@ def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
   let constructor = "::mlir::gml_st::createComposeSetOpsPass()";
 }
 
-def UncollapseMaterializeOpsPass : Pass<"gml-uncollapse-materialize-ops",
+def CollapseMaterializeOpsPass : Pass<"gml-collapse-materialize-ops",
     "mlir::func::FuncOp"> {
-  let summary = "Uncollapse materialize operations.";
-  let constructor = "::mlir::gml_st::createUncollapseMaterializeOpsPass()";
+  let summary = "Collapse (or uncollapse) materialize operations.";
+  let constructor = "::mlir::gml_st::createCollapseMaterializeOpsPass()";
+  let options = [
+    Option<"reverse_", "reverse", "bool", /*default=*/"false", "Whether to "
+        "revert collapsing of materialize operations.">,
+  ];
 }
 
 def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
