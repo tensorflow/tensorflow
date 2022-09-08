@@ -162,10 +162,10 @@ def initialize_accelerator_system(
   global _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
   assert context.executing_eagerly()
 
-  if _INITIALIZED_ACCELERATOR_SYSTEM_TYPE:
+  if is_initialized():
     raise ValueError(
         "Accelerator system has already been initialized. "
-        "Call tf.experimental.dtensor.shutdown_acceerator_system() first.")
+        "Call tf.experimental.dtensor.shutdown_accelerator_system() first.")
 
   context.context()._clear_caches()  # pylint: disable=protected-access
 
