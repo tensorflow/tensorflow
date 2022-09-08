@@ -185,6 +185,7 @@ cc_test(
         "//tensorflow/lite:testdata/custom_sinh.bin",
     ],
     deps = [
+        ":c_api_internal",
         ":common",
         ":selectively_built_c_api_test_lib",
         "//tensorflow/lite/testing:util",
@@ -258,8 +259,6 @@ cc_library(
 # For use with library targets that can't use relative paths.
 exports_files([
     "c_api.h",
-    "c_api_internal.h",
-    "c_api_opaque.h",
     "c_api_experimental.h",
     "c_api_opaque.h",
     "c_api_types.h",
@@ -272,6 +271,7 @@ filegroup(
     srcs = [
         "c_api.cc",
         "c_api_experimental.cc",
+        "c_api_internal.h",
         "c_api_opaque.cc",
         "common_internal.h",
     ],
