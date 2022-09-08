@@ -128,6 +128,7 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
 STABLE_FRAMEWORK_LIB_IMPL_HDRS = [
     "core/subgraph.h",
     "signature_runner.h",
+    "core/impl/interpreter.h",
 ]
 
 exports_files(
@@ -490,7 +491,7 @@ cc_library(
 # that includes 'framework_stable' as a subset.
 cc_library(
     name = "framework_experimental",
-    srcs = [],
+    srcs = ["core/impl/interpreter.h"],
     hdrs = FRAMEWORK_LIB_HDRS,
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
@@ -541,11 +542,10 @@ alias(
 # these APIs, see 'framework_stable' above.
 cc_library(
     name = "cc_api_stable",
-    srcs = [
+    srcs = STABLE_FRAMEWORK_LIB_IMPL_HDRS + [
         "interpreter.cc",
         "interpreter_builder.cc",
         "logger.cc",
-        "signature_runner.h",
     ],
     hdrs = [
         "interpreter.h",
@@ -565,7 +565,9 @@ cc_library(
     deps = [
         ":allocation",
         ":external_cpu_backend_context",
+        ":graph_info",
         ":macros",
+        ":memory_planner",
         ":minimal_logging",
         ":model_builder",
         ":mutable_op_resolver",
@@ -606,6 +608,7 @@ cc_library(
 cc_library(
     name = "cc_api_experimental",
     srcs = [
+        "core/impl/interpreter.h",
         "interpreter_experimental.cc",
         "signature_runner.cc",
     ],
