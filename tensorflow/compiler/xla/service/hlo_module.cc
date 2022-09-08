@@ -823,6 +823,10 @@ void SortComputationsByContent(std::vector<HloComputation*>* computations) {
     if (a->instruction_count() != b->instruction_count()) {
       return a->instruction_count() < b->instruction_count();
     }
+    // Avoid computing fingerprints of (potentially) giant computation strings
+    // just to compare when a == b
+    if (a == b) return false;
+
     return fingerprint_map.GetFingerprint(a) <
            fingerprint_map.GetFingerprint(b);
   };
