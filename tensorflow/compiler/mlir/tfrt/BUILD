@@ -332,6 +332,7 @@ cc_library(
         "transforms/corert_converter.h",
     ],
     deps = [
+        ":attr_lowering_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -387,6 +388,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        ":attr_lowering_utils",
         ":corert_converter",
         ":cost_analysis",
         ":fallback_converter",
@@ -798,4 +800,22 @@ tf_cc_binary(
         ["//third_party/tf_runtime_llvm:tfrt_translate_main"],
         ["@tf_runtime//third_party/llvm_derived:tfrt_translate_main"],
     ),
+)
+
+cc_library(
+    name = "attr_lowering_utils",
+    srcs = [
+        "transforms/attr_lowering_utils.cc",
+    ],
+    hdrs = [
+        "transforms/attr_lowering_utils.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@tf_runtime//:core_runtime_opdefs",
+    ],
 )
