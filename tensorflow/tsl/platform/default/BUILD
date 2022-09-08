@@ -349,7 +349,7 @@ cc_library(
     name = "resource_loader",
     testonly = 1,
     srcs = ["resource_loader.cc"],
-    hdrs = ["//tensorflow/core/platform:resource_loader.h"],
+    hdrs = ["//tensorflow/tsl/platform:resource_loader.h"],
     tags = [
         "manual",
         "no_oss",
