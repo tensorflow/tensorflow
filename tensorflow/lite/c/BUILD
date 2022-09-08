@@ -3,6 +3,7 @@ load(
     "tflite_cc_shared_object",
     "tflite_copts",
     "tflite_custom_c_library",
+    "tflite_self_contained_libs_test_suite",
 )
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
@@ -75,6 +76,7 @@ cc_library(
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
     copts = tflite_copts(),
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_internal",
         ":c_api_types",
@@ -183,6 +185,7 @@ cc_test(
         "//tensorflow/lite:testdata/custom_sinh.bin",
     ],
     deps = [
+        ":c_api_internal",
         ":common",
         ":selectively_built_c_api_test_lib",
         "//tensorflow/lite/testing:util",
@@ -256,8 +259,6 @@ cc_library(
 # For use with library targets that can't use relative paths.
 exports_files([
     "c_api.h",
-    "c_api_internal.h",
-    "c_api_opaque.h",
     "c_api_experimental.h",
     "c_api_opaque.h",
     "c_api_types.h",
@@ -270,6 +271,7 @@ filegroup(
     srcs = [
         "c_api.cc",
         "c_api_experimental.cc",
+        "c_api_internal.h",
         "c_api_opaque.cc",
         "common_internal.h",
     ],
@@ -319,5 +321,7 @@ cc_test(
         ":common",
     ],
 )
+
+tflite_self_contained_libs_test_suite(name = "self_contained_libs_test_suite")
 
 tflite_portable_test_suite()

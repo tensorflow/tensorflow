@@ -78,7 +78,7 @@ class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo::CollectivePermuteOp op) {
     return GetCollectiveOpGroupMode(op.getChannelId().has_value(), std::nullopt)
-        .ValueOrDie();
+        .value();
   }
 
  protected:

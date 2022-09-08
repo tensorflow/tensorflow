@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -36,6 +35,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_LEGALIZEGENERALDOTPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 Value transposeReshape(Value arg, Location loc,
@@ -234,6 +237,15 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
             lhsTy.getRank() - 1 &&
         static_cast<int64_t>(rhsContractingDims.size()) ==
             rhsTy.getRank() - 1) {
+      // Retain the sparse encoding if any.
+      // TODO(peiming): A more general problem is how to infer the sparse
+      // encoding for dot operator?
+      auto enc = sparse_tensor::getSparseTensorEncoding(resultTy);
+      if (enc) {
+        // If there is a sparse encoding, it is a ranked tensor.
+        newDotOp.setType(RankedTensorType::get(newTy.getShape(),
+                                               newTy.getElementType(), enc));
+      }
       rewriter.replaceOp(op, newDotOp);
       return success();
     }
@@ -289,7 +301,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 };
 
 struct LegalizeGeneralDotPass
-    : public LegalizeGeneralDotPassBase<LegalizeGeneralDotPass> {
+    : public impl::LegalizeGeneralDotPassBase<LegalizeGeneralDotPass> {
   /// Lower all general dots that can be represented as a non-batched matmul.
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());

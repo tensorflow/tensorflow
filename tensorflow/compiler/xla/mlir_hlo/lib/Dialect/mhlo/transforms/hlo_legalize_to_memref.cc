@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/bufferizable_op_interface_impl.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -36,6 +35,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_HLOLEGALIZETOMEMREFPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 using bufferization::AnalysisState;
@@ -98,10 +101,10 @@ struct CustomCallOpInterface
         op->getLoc(), llvm::None, bufferArgs, op->getAttrs());
     // lmhlo.custom_call uses a segment_size attribute to tell input from output
     // arguments.
-    lhloOp->setAttr(
-        lhloOp.getOperandSegmentSizeAttr(),
-        rewriter.getI32VectorAttr({static_cast<int32_t>(op->getNumOperands()),
-                                   static_cast<int32_t>(op->getNumResults())}));
+    lhloOp->setAttr(lhloOp.getOperandSegmentSizeAttr(),
+                    rewriter.getDenseI32ArrayAttr(
+                        {static_cast<int32_t>(op->getNumOperands()),
+                         static_cast<int32_t>(op->getNumResults())}));
     bufferization::replaceOpWithBufferizedValues(
         rewriter, op, makeArrayRef(bufferArgs).slice(op->getNumOperands()));
     return success();
@@ -362,7 +365,7 @@ struct DynamicBroadcastInDimOpInterface
 };
 
 struct HloLegalizeToMemrefPass
-    : public HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
+    : public impl::HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<bufferization::BufferizationDialect, memref::MemRefDialect,
                     mhlo::MhloDialect, lmhlo::LmhloDialect>();

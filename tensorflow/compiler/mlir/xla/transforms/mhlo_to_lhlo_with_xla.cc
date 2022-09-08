@@ -129,11 +129,11 @@ Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
   }
 
   xla::BackendOptions backend_options;
-  backend_options.set_platform(platform.ValueOrDie());
+  backend_options.set_platform(platform.value());
   auto backend_or_err = xla::Backend::CreateBackend(backend_options);
   TF_RETURN_WITH_CONTEXT_IF_ERROR(backend_or_err.status(),
                                   "failed to create XLA Backend ");
-  auto backend = std::move(backend_or_err.ValueOrDie());
+  auto backend = std::move(backend_or_err.value());
 
   StatusOr<std::unique_ptr<HloModule>> optimized_hlo_module;
 
@@ -202,15 +202,14 @@ class XlaHloToLhloPass
       TF_RETURN_WITH_CONTEXT_IF_ERROR(
           ConvertMlirHloToHlo(module, &hlo_proto,
                               /*use_tuple_args=*/false,
-                              /*return_tuple=*/false,
-                              /*shape_determination_fns=*/{}),
+                              /*return_tuple=*/false),
           "conversion to XLA HLO proto failed");
 
       auto statusOrHloModule = HloModuleFromProto(hlo_proto);
       TF_RETURN_WITH_CONTEXT_IF_ERROR(statusOrHloModule.status(),
                                       "parsing HLO proto to HLO module failed");
       std::unique_ptr<HloModule> hlo_module =
-          std::move(statusOrHloModule.ValueOrDie());
+          std::move(statusOrHloModule.value());
 
       return OptimizeAndConvertHloToLmhlo(std::move(hlo_module), module,
                                           platform_, optimize_xla_hlo_);
@@ -771,7 +770,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
   const int32_t segments[2] = {static_cast<int32_t>(num_arguments),
                                static_cast<int32_t>(num_results)};
   custom_call->setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
-                       builder_.getI32VectorAttr(segments));
+                       builder_.getDenseI32ArrayAttr(segments));
   if (target_mapping) custom_call.setTargetArgMappingAttr(target_mapping);
   return custom_call.getOperation();
 }

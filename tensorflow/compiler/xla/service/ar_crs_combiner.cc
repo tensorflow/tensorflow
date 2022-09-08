@@ -337,8 +337,8 @@ bool ArCrsCombiner::TestInstructionsComputeSameValue(HloInstruction* i1,
                                                      HloInstruction* i2) {
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto module = i1->parent()->parent();
-  CHECK_EQ(module, i2->parent()->parent());
+  auto module = i1->GetModule();
+  CHECK_EQ(module, i2->GetModule());
   combiner.call_graph_ = CallGraph::Build(module);
   absl::flat_hash_map<int64_t, int64_t> visited_pairs;
   return combiner.InstructionsComputeSameValue(i1, i2, &visited_pairs);

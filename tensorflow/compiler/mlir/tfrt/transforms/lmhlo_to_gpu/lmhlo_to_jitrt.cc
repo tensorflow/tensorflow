@@ -15,6 +15,7 @@
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_jitrt.h"
 
 #include <cstdint>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -42,10 +43,11 @@
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
+#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
@@ -113,30 +115,6 @@ using mlir::memref::GetGlobalOp;
 
 static constexpr const char kDirectCustomCall[] = "rt.direct_custom_call";
 
-class ConvertLmhloConstantToArgPass
-    : public ConvertLmhloConstantToArgPassBase<ConvertLmhloConstantToArgPass> {
- public:
-  ConvertLmhloConstantToArgPass() = default;
-  explicit ConvertLmhloConstantToArgPass(int64_t min_num_elements) {
-    this->min_num_elements_ = min_num_elements;
-  }
-
-  void runOnOperation() override;
-
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mlir::memref::MemRefDialect>();
-  }
-};
-
-class ConvertGpuToJitRtPass
-    : public ConvertGpuToJitRtPassBase<ConvertGpuToJitRtPass> {
-  void runOnOperation() override;
-
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mlir::func::FuncDialect, mlir::arith::ArithmeticDialect>();
-  }
-};
-
 class ConvertLmhloGpuToJitRtPass
     : public ConvertLmhloGpuToJitRtPassBase<ConvertLmhloGpuToJitRtPass> {
   void runOnOperation() override;
@@ -152,19 +130,6 @@ class ConvertLmhloGpuToJitRtPass
 
 // -------------------------------------------------------------------------- //
 
-class GpuModuleOpLowering : public OpRewritePattern<GPUModuleOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(GPUModuleOp op,
-                                PatternRewriter& rewriter) const override {
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
-
-// -------------------------------------------------------------------------- //
-
 class TerminatorOpLowering : public OpRewritePattern<TerminatorOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -173,216 +138,6 @@ class TerminatorOpLowering : public OpRewritePattern<TerminatorOp> {
                                 PatternRewriter& rewriter) const override {
     rewriter.replaceOpWithNewOp<ReturnOp>(op);
     return mlir::success();
-  }
-};
-
-// -------------------------------------------------------------------------- //
-
-template <typename IoFeedOp>
-class IoFeedOpLowering : public OpRewritePattern<IoFeedOp> {
- private:
-  static StringRef CustomCallTarget(InfeedOp) { return "xla.gpu.infeed"; }
-  static StringRef CustomCallTarget(OutfeedOp) { return "xla.gpu.outfeed"; }
-
- public:
-  explicit IoFeedOpLowering(MLIRContext* ctx)
-      : OpRewritePattern<IoFeedOp>(ctx) {}
-
-  LogicalResult matchAndRewrite(IoFeedOp op,
-                                PatternRewriter& rewriter) const override {
-    MLIRContext* ctx = this->getContext();
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    // Custom call target.
-    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
-                          b.getStringAttr(CustomCallTarget(op)));
-
-    // Create a custom call function declaration.
-    auto custom_call_type =
-        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
-    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), CustomCallTarget(op),
-                                      custom_call_type, custom_call_attrs);
-    custom_call.setPrivate();
-
-    SymbolTable sym_table(op->template getParentOfType<ModuleOp>());
-    auto inserted = sym_table.insert(custom_call);
-    rewriter.notifyOperationInserted(custom_call);
-
-    // Call the runtime intrinsic with the original operands.
-    auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
-                                        op.getOperands());
-    call->setAttr(b.getStringAttr("config"), op.getConfigAttr());
-
-    // Erase the original infeed/outfeed operation.
-    rewriter.eraseOp(op);
-
-    return success();
-  }
-};
-
-class InfeedOpLowering : public IoFeedOpLowering<InfeedOp> {
- public:
-  using IoFeedOpLowering::IoFeedOpLowering;
-};
-
-class OutfeedOpLowering : public IoFeedOpLowering<OutfeedOp> {
- public:
-  using IoFeedOpLowering::IoFeedOpLowering;
-};
-
-// -------------------------------------------------------------------------- //
-
-class MemcpyOpLowering : public OpRewritePattern<MemcpyOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  // We use a heuristic to identify the direction of the memcpy operation, if
-  // the operand was allocated by alloca op or is a global memref, then it must
-  // be a memref on the host.
-  static bool IsHostMemRef(Value value) {
-    auto* op = value.getDefiningOp();
-    return llvm::isa_and_nonnull<memref::AllocaOp, memref::GetGlobalOp>(op);
-  }
-
-  LogicalResult matchAndRewrite(MemcpyOp op,
-                                PatternRewriter& rewriter) const override {
-    MLIRContext* ctx = getContext();
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    // Identify the direction of the memcpy operation.
-    auto memcpy = [&]() {
-      if (IsHostMemRef(op.dst())) return "xla.gpu.memcpy.d2h";
-      if (IsHostMemRef(op.src())) return "xla.gpu.memcpy.h2d";
-      return "xla.gpu.memcpy.d2d";
-    }();
-
-    // Custom call target.
-    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
-                          b.getStringAttr(memcpy));
-
-    // Create a custom call function declaration.
-    auto custom_call_type =
-        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
-    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), memcpy, custom_call_type,
-                                      custom_call_attrs);
-    custom_call.setPrivate();
-
-    SymbolTable sym_table(op->getParentOfType<ModuleOp>());
-    auto inserted = sym_table.insert(custom_call);
-    rewriter.notifyOperationInserted(custom_call);
-
-    // Create a function launch call operation.
-    rewriter.replaceOpWithNewOp<CallOp>(op, inserted, TypeRange(),
-                                        op.getOperands());
-
-    return success();
-  }
-};
-
-// -------------------------------------------------------------------------- //
-
-class MemsetOpLowering : public OpRewritePattern<MemsetOp> {
- private:
-  static constexpr const char kCustomCallTarget[] = "xla.gpu.memset";
-
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(MemsetOp op,
-                                PatternRewriter& rewriter) const override {
-    MLIRContext* ctx = getContext();
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    // Custom call target.
-    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
-                          b.getStringAttr(kCustomCallTarget));
-
-    // Create a custom call function declaration.
-    auto custom_call_type =
-        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
-    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
-                                      custom_call_type, custom_call_attrs);
-    custom_call.setPrivate();
-
-    SymbolTable sym_table(op->getParentOfType<ModuleOp>());
-    auto inserted = sym_table.insert(custom_call);
-    rewriter.notifyOperationInserted(custom_call);
-
-    // Create a function launch call operation.
-    rewriter.replaceOpWithNewOp<CallOp>(op, inserted, TypeRange(),
-                                        op.getOperands());
-
-    return success();
-  }
-};
-
-// -------------------------------------------------------------------------- //
-
-class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
- private:
-  static constexpr const char kCustomCallTarget[] = "xla.gpu.func.launch";
-
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(LaunchFuncOp op,
-                                PatternRewriter& rewriter) const override {
-    MLIRContext* ctx = getContext();
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    ModuleOp module = op->getParentOfType<ModuleOp>();
-
-    // Cast grid and block dimensions to i32 before passing to the custom call.
-    auto cast = [&](mlir::Value value) {
-      return b.create<IndexCastOp>(b.getI32Type(), value);
-    };
-
-    // Prepare arguments for the custom call.
-    llvm::SmallVector<Value> args = {
-        cast(op.gridSizeX()),  cast(op.gridSizeY()),  cast(op.gridSizeZ()),
-        cast(op.blockSizeX()), cast(op.blockSizeY()), cast(op.blockSizeZ())};
-
-    // Add kernel arguments.
-    llvm::copy(op.operands(), std::back_inserter(args));
-
-    // Types of the custom call arguments.
-    llvm::SmallVector<Type> args_types = TypeRange(ValueRange(args));
-
-    // Custom call target.
-    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
-                          b.getStringAttr(kCustomCallTarget));
-
-    // Create a custom call function declaration.
-    auto custom_call_type = FunctionType::get(ctx, args_types, TypeRange());
-    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
-                                      custom_call_type, custom_call_attrs);
-    custom_call.setPrivate();
-
-    SymbolTable sym_table(module);
-    auto inserted = sym_table.insert(custom_call);
-    rewriter.notifyOperationInserted(custom_call);
-
-    // Get the compiled gpu function.
-    auto* kernel = SymbolTable::lookupNearestSymbolFrom(op, op.kernel());
-    assert(kernel && "kernel not found");
-
-    // Get the compiled GPU binary from the device kernel module.
-    auto gpu_module = kernel->getParentOfType<mlir::gpu::GPUModuleOp>();
-    auto gpu_binary = gpu_module->getAttrOfType<mlir::StringAttr>("binary");
-
-    // Create a function launch call operation.
-    auto call = b.create<CallOp>(inserted, TypeRange(), args);
-    call->setAttr(b.getStringAttr("ptx"), gpu_binary);
-    call->setAttr(b.getStringAttr("kernel"), op.getKernelName());
-
-    // Erase the original gpu launch operation.
-    rewriter.eraseOp(op);
-
-    return success();
   }
 };
 
@@ -889,86 +644,6 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
 
     return success();
   }
-};
-
-// -------------------------------------------------------------------------- //
-
-using GlobalConstantsArgs = llvm::DenseMap<FuncOp, llvm::StringMap<Value>>;
-
-// Returns a mapping from a global constant name to the function argument.
-//
-// Example:
-//
-//   memref.global "private" constant @cst : memref<2x3xf32>
-//   func @get_global(%arg0: memref<24xi8> {lmhlo.constant_name = "cst"})
-//
-// All memref.get_global operations will be replaced by constant arguments
-// corresponding to the global constant.
-GlobalConstantsArgs GetConstantArgs(ModuleOp m) {
-  GlobalConstantsArgs mapping;
-
-  m.walk([&](FuncOp func) {
-    for (unsigned i = 0; i < func.getNumArguments(); ++i) {
-      auto cst = func.getArgAttrOfType<StringAttr>(i, "lmhlo.constant_name");
-      if (cst) mapping[func][cst] = func.getArgument(i);
-    }
-  });
-
-  return mapping;
-}
-
-class GetGlobalOpLowering : public OpRewritePattern<GetGlobalOp> {
- public:
-  GetGlobalOpLowering(MLIRContext* ctx, const GlobalConstantsArgs& cst_args)
-      : OpRewritePattern<GetGlobalOp>(ctx), cst_args_(cst_args) {}
-
-  LogicalResult matchAndRewrite(GetGlobalOp op,
-                                PatternRewriter& rewriter) const override {
-    // Find global constants mapping for the parent function.
-    auto func_mapping = cst_args_.find(op->getParentOfType<FuncOp>());
-    if (func_mapping == cst_args_.end()) return failure();
-
-    // Check if the global operation correposponds to the LMHLO constant arg.
-    auto arg = func_mapping->second.find(op.getName());
-    if (arg == func_mapping->second.end()) return failure();
-
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    MemRefType memref = op->getResult(0).getType().cast<MemRefType>();
-
-    // For identity layouts we can replace all loads from a global with the
-    // corresponding argument.
-    if (memref.getLayout().isIdentity()) {
-      Value c0 = b.create<ConstantOp>(rewriter.getIndexAttr(0));
-      rewriter.replaceOpWithNewOp<memref::ViewOp>(op, memref, arg->second, c0,
-                                                  ValueRange());
-      return success();
-    }
-
-    // For non-identity type we first view constant argument as a flat memref
-    // with the correct element type, and then cast it to the strided memref
-    // corresponding to the original memref layout.
-
-    // Get the strides and offset from the original memref type.
-    int64_t offset;
-    llvm::SmallVector<int64_t> strides;
-    if (failed(getStridesAndOffset(memref, strides, offset)))
-      return op.emitOpError("failed to compute strides and offset");
-
-    // Create a 1d view into the corresponding argument.
-    Value c0 = b.create<ConstantOp>(rewriter.getIndexAttr(0));
-    Value flat_view = b.create<memref::ViewOp>(
-        MemRefType::get({memref.getNumElements()}, memref.getElementType()),
-        arg->second, c0, ValueRange());
-
-    // Cast flat memref view into the original memref type.
-    rewriter.replaceOpWithNewOp<memref::ReinterpretCastOp>(
-        op, memref, flat_view, offset, memref.getShape(), strides);
-
-    return success();
-  }
-
- private:
-  const GlobalConstantsArgs& cst_args_;
 };
 
 // -------------------------------------------------------------------------- //
@@ -1543,47 +1218,6 @@ class PartitionIdOpLowering : public IdOpLowering<PartitionIdOp> {
 
 // -------------------------------------------------------------------------- //
 
-void ConvertLmhloConstantToArgPass::runOnOperation() {
-  ModuleOp module = getOperation();
-  MLIRContext* ctx = module.getContext();
-
-  // Replace memref loads from globals corresponding to the constant arguments.
-  RewritePatternSet patterns(ctx);
-  GlobalConstantsArgs cst_args = GetConstantArgs(module);
-  patterns.insert<GetGlobalOpLowering>(ctx, cst_args);
-
-  // Set up conversion target to rewrite only GetGlobalOp larger than the
-  // threshold and avoid any other canonicalizations that can break later
-  // passes.
-  ConversionTarget target(*ctx);
-  target.addDynamicallyLegalOp<GetGlobalOp>([&](GetGlobalOp op) {
-    auto memref = op.getType();
-    return memref.getNumElements() < min_num_elements_;
-  });
-  target.addLegalOp<ConstantOp, memref::ViewOp, memref::ReinterpretCastOp>();
-
-  // TODO(ezhulenev): By adding MHLO and LMHLO to a set of legal dialects, we
-  // suppress any rewrites for these dialects (there are canonicalization
-  // patterns that interact badly with downstream Gpu binary code generation).
-  target.addLegalDialect<mhlo::MhloDialect, lmhlo::LmhloDialect>();
-
-  if (failed(applyPartialConversion(module, target, std::move(patterns))))
-    signalPassFailure();
-}
-
-void ConvertGpuToJitRtPass::runOnOperation() {
-  ModuleOp module = getOperation();
-  MLIRContext* ctx = module.getContext();
-
-  // Convert gpu operations to JitRt gpu runtime custom calls.
-  RewritePatternSet patterns(ctx);
-  patterns.insert<GpuModuleOpLowering, LaunchFuncOpLowering, MemcpyOpLowering,
-                  MemsetOpLowering, InfeedOpLowering, OutfeedOpLowering>(ctx);
-
-  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
-    return signalPassFailure();
-}
-
 void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -1642,48 +1276,26 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> createConvertGpuToJitRtPass() {
-  return std::make_unique<ConvertGpuToJitRtPass>();
-}
-
-std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloConstantToArgPass() {
-  return std::make_unique<ConvertLmhloConstantToArgPass>();
-}
-
-std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloConstantToArgPass(
-    int64_t min_num_elements) {
-  return std::make_unique<ConvertLmhloConstantToArgPass>(min_num_elements);
-}
-
 std::unique_ptr<OperationPass<ModuleOp>> createConvertLmhloGpuToJitRtPass() {
   return std::make_unique<ConvertLmhloGpuToJitRtPass>();
 }
 
-void populateLmhloToJitRtPasses(mlir::OpPassManager& pm) {
-  // Convert large global memrefs corresponding to XLA constants with arguments,
-  // so that compiled device kernels do not capture them.
-  //
-  // TODO(ezhulenev): Threshold should be consistent with the device kernel
-  // code generation. If constant will be embedded into the device module, we
-  // should not inline it too early. Currently it's hardcoded to `1` element.
-  pm.addPass(createConvertLmhloConstantToArgPass(/*min_num_elements=*/2));
-  pm.addPass(createSymbolDCEPass());  // Clean up unused global constants.
-
+void populateLmhloToJitRtPasses(mlir::OpPassManager& pm,
+                                xla::gpu::ThunkSequence* thunk_sequence) {
   // Small global constants will be embedded into the device modules.
-  pm.addPass(createConvertLmhloToGpuBinaryPass());
+  pm.addPass(createConvertLmhloToGpuBinaryPass(thunk_sequence));
 
-  // Convert remaining small global memrefs corresponding to constant arguments.
-  pm.addPass(createConvertLmhloConstantToArgPass());
+  // Convert global memrefs corresponding to constant arguments.
+  pm.addPass(xla::gpu::createConvertMemrefGetGlobalToArgPass());
   pm.addPass(createSymbolDCEPass());  // Clean up unused global constants.
 
   // Lower all Gpu operations to the JitRt Gpu runtime intrinsics.
   pm.addPass(createConvertLmhloGpuToJitRtPass());
-  pm.addPass(createConvertGpuToJitRtPass());
+  pm.addPass(xla::gpu::createConvertGpuToGpuRuntimePass());
+  pm.addPass(xla::gpu::createConvertLmhloToGpuRuntimePass());
 }
 
 void registerLmhloToJitRtPasses() {
-  mlir::registerPass([] { return createConvertGpuToJitRtPass(); });
-  mlir::registerPass([] { return createConvertLmhloConstantToArgPass(); });
   mlir::registerPass([] { return createConvertLmhloGpuToJitRtPass(); });
 
   mlir::registerPassPipeline(

@@ -258,7 +258,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     auto result_or = xla::SetAllDimensionSizes(&ctx->value_inference(), uniform,
                                                ctx->Input(0));
     OP_REQUIRES_OK(ctx, result_or.status());
-    ctx->SetOutput(0, result_or.ValueOrDie());
+    ctx->SetOutput(0, result_or.value());
   }
 
  private:
@@ -442,7 +442,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     auto result_or = xla::SetAllDimensionSizes(&ctx->value_inference(), normal,
                                                ctx->Input(0));
     OP_REQUIRES_OK(ctx, result_or.status());
-    ctx->SetOutput(0, result_or.ValueOrDie());
+    ctx->SetOutput(0, result_or.value());
   }
 
  private:

@@ -50,8 +50,11 @@ namespace mlir {
 namespace tosa {
 namespace {
 
+#define GEN_PASS_DEF_TOSALEGALIZETFLPASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 // Performs lowering to TOSA dialect.
-class LegalizeTFL : public TosaLegalizeTFLPassBase<LegalizeTFL> {
+class LegalizeTFL : public impl::TosaLegalizeTFLPassBase<LegalizeTFL> {
  public:
   LegalizeTFL() = default;
   explicit LegalizeTFL(ArrayRef<std::string> disabled_patterns,
@@ -86,6 +89,7 @@ struct ConvertConstantOp : public RewritePattern {
                                   PatternRewriter& rewriter) const override; \
   }
 DECL_CONVERT_OP(Relu);
+DECL_CONVERT_OP(Relu1);
 DECL_CONVERT_OP(Relu6);
 DECL_CONVERT_OP(Equal);
 DECL_CONVERT_OP(NotEqual);
@@ -219,6 +223,61 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
       rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
       rewriter.getF32FloatAttr(0.0f),
       rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
+
+  return success();
+}
+
+LogicalResult ConvertTFLRelu1Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_relu1_op = cast<TFL::Relu1Op>(op);
+
+  ShapedType input_type = tfl_relu1_op.x().getType().dyn_cast<ShapedType>();
+  ShapedType output_type =
+      tfl_relu1_op.getResult().getType().dyn_cast<ShapedType>();
+  // Not a ranked tensor output
+  if (!input_type || !output_type) return failure();
+
+  bool input_is_qtype =
+      input_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+  bool output_is_qtype =
+      output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+
+  if (input_is_qtype != output_is_qtype) {
+    return op->emitOpError(
+        "ConvertTFLRelu1Op: input/output tensor should "
+        "be all quantized or all floating-point.");
+  }
+
+  int64_t clamp_min = -1;
+  int64_t clamp_max = 1;
+  Value clamp_in = tfl_relu1_op.x();
+
+  if (output_is_qtype && input_is_qtype) {
+    UniformQuantizedType input_qtype =
+        input_type.getElementType()
+            .dyn_cast<mlir::quant::UniformQuantizedType>();
+    UniformQuantizedType output_qtype =
+        output_type.getElementType()
+            .dyn_cast<mlir::quant::UniformQuantizedType>();
+
+    clamp_min = output_qtype.getZeroPoint() -
+                std::llround(1.0f / output_qtype.getScale());
+
+    clamp_max = std::llround(1.0f / output_qtype.getScale()) +
+                output_qtype.getZeroPoint();
+
+    clamp_in =
+        buildRescale(rewriter, op, output_type, tfl_relu1_op.x(),
+                     input_qtype.getScale() / output_qtype.getScale(),
+                     input_qtype.getZeroPoint(), output_qtype.getZeroPoint(),
+                     /*double_round=*/false, /*scale32=*/true);
+  }
+
+  CreateReplaceOpAndInfer<tosa::ClampOp>(rewriter, op, output_type, clamp_in,
+                                         rewriter.getI64IntegerAttr(clamp_min),
+                                         rewriter.getI64IntegerAttr(clamp_max),
+                                         rewriter.getF32FloatAttr(-1.0f),
+                                         rewriter.getF32FloatAttr(1.0f));
 
   return success();
 }
@@ -1573,40 +1632,50 @@ LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_reshape_op = cast<TFL::ReshapeOp>(op);
 
-  ShapedType output_type =
-      tfl_reshape_op.getResult().getType().dyn_cast<ShapedType>();
-  // Not a shaped tensor output
-  if (!output_type) return failure();
+  Value shape = tfl_reshape_op.shape();
+  ShapedType shape_type = shape.getType().dyn_cast<ShapedType>();
+  ShapedType output_type = tfl_reshape_op.getType().dyn_cast<ShapedType>();
 
-  SmallVector<int64_t> shape_vals;
+  int64_t rank = ShapedType::kDynamicSize;
+  if (output_type.hasRank()) rank = output_type.getRank();
 
-  // Either the output type needs to be ranked or we need a constant input
-  // to compute the output rank.
-  ElementsAttr shape_attr;
-  if (!matchPattern(tfl_reshape_op.shape(), m_Constant(&shape_attr))) {
-    if (!output_type.hasRank()) return failure();
-    shape_vals.resize(output_type.getRank(), -1);
-  } else {
-    for (auto dim : shape_attr.getValues<int32_t>()) shape_vals.push_back(dim);
-  }
-
-  // Propagate the agreement between the output shape and constant value.
-  if (output_type.hasRank()) {
-    if (output_type.getRank() != shape_vals.size()) return failure();
-    for (int i = 0; i < output_type.getRank(); i++) {
-      if (shape_vals[i] == -1) shape_vals[i] = output_type.getDimSize(i);
+  // Check the inferred rank from the shape tensor matches the output.
+  if (shape_type.hasRank() && !shape_type.isDynamicDim(0)) {
+    int64_t dim = shape_type.getDimSize(0);
+    if (rank != ShapedType::kDynamicSize && rank != dim) {
+      return rewriter.notifyMatchFailure(op,
+                                         "static dim mismatch on tfl.reshape");
     }
+    rank = dim;
   }
 
-  // We cannot handle more than 1 dynamic dimension.
-  int64_t dynamic_count = 0;
-  for (auto val : shape_vals)
-    if (val == -1) dynamic_count++;
-  if (dynamic_count > 1) return failure();
+  if (rank == ShapedType::kDynamicSize) {
+    return rewriter.notifyMatchFailure(op, "unknown rank for output shape");
+  }
 
-  ArrayAttr new_shape_attr = rewriter.getI64ArrayAttr(shape_vals);
-  CreateReplaceOpAndInfer<tosa::ReshapeOp>(
-      rewriter, op, output_type, tfl_reshape_op.input(), new_shape_attr);
+  // Extract the dynamically shaped values for each dimension.
+  SmallVector<Value> shape_vals;
+  shape_vals.reserve(rank);
+  auto shape_ty = shape.getType().dyn_cast<ShapedType>();
+  for (int i = 0; i < rank; i++) {
+    auto e_ty = shape_ty.getElementType();
+    Value dim = rewriter.createOrFold<tosa::SliceOp>(
+        op->getLoc(), RankedTensorType::get({1}, e_ty), shape,
+        rewriter.getI64ArrayAttr({i}), rewriter.getI64ArrayAttr({1}));
+    dim = rewriter.createOrFold<tosa::ReshapeOp>(
+        op->getLoc(), RankedTensorType::get({}, e_ty), dim,
+        rewriter.getI64ArrayAttr({}));
+    shape_vals.push_back(dim);
+  }
+
+  // Build the reshape operation with dynamic shapes.
+  auto reshape =
+      buildReshapeWithDynamicDims(rewriter, op, tfl_reshape_op.input(),
+                                  tfl_reshape_op.getType(), shape_vals);
+
+  if (!reshape.has_value()) return failure();
+
+  rewriter.replaceOp(op, {reshape.getValue()});
   return success();
 }
 
@@ -3323,6 +3392,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLPow);
 
   DEF_PATTERN_INSERT(TFLRelu);
+  DEF_PATTERN_INSERT(TFLRelu1);
   DEF_PATTERN_INSERT(TFLRelu6);
   DEF_PATTERN_INSERT(TFLEqual);
   DEF_PATTERN_INSERT(TFLNotEqual);

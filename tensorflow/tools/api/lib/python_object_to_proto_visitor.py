@@ -18,8 +18,6 @@
 import enum
 import sys
 
-import six
-
 from google.protobuf import message
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
@@ -181,8 +179,7 @@ def _SanitizedMRO(obj):
     str_repr = _NormalizeType(str(cls))
     return_list.append(str_repr)
     # Class type that has keras in their name should also be monitored. This
-    # will cover any class that imported from third_party/py/keras or
-    # keras_preprocessing.
+    # will cover any class imported from third_party/py/keras.
     if 'tensorflow' not in str_repr and 'keras' not in str_repr:
       break
 
@@ -200,7 +197,7 @@ def _IsProtoClass(obj):
   return isinstance(obj, type) and issubclass(obj, message.Message)
 
 
-class PythonObjectToProtoVisitor(object):
+class PythonObjectToProtoVisitor:
   """A visitor that summarizes given python objects as protobufs."""
 
   def __init__(self, default_path='tensorflow'):
@@ -225,8 +222,7 @@ class PythonObjectToProtoVisitor(object):
       if (_SkipMember(parent, member_name) or
           isinstance(member_obj, deprecation.HiddenTfApiAttribute)):
         return
-      if member_name == '__init__' or not six.ensure_str(
-          member_name).startswith('_'):
+      if member_name == '__init__' or not member_name.startswith('_'):
         if tf_inspect.isroutine(member_obj):
           new_method = proto.member_method.add()
           new_method.name = member_name

@@ -64,7 +64,7 @@ namespace dtensor {
 #define ASSIGN_OR_RETURN_C_STATUS_IMPL(statusor, var, cpp_status, c_status) \
   auto statusor = (cpp_status);                                             \
   RETURN_C_STATUS_IF_NOT_OK(statusor.status(), (c_status));                 \
-  var = std::move(statusor.ValueOrDie());
+  var = std::move(statusor.value());
 
 struct TranslatedFunction {
   // Mesh for which specified function will run.

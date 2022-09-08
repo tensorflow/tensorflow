@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef ORG_TENSORFLOW_JNI_RUN_STATS_JNI_H_
-#define ORG_TENSORFLOW_JNI_RUN_STATS_JNI_H_
+#ifndef TENSORFLOW_TOOLS_ANDROID_INFERENCE_INTERFACE_JNI_RUN_STATS_JNI_H_
+#define TENSORFLOW_TOOLS_ANDROID_INFERENCE_INTERFACE_JNI_RUN_STATS_JNI_H_
 
 #include <jni.h>
 
@@ -37,4 +37,4 @@ JNIEXPORT JNICALL jstring RUN_STATS_METHOD(summary)(JNIEnv*, jclass, jlong);
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // ORG_TENSORFLOW_JNI_RUN_STATS_JNI_H_
+#endif  // TENSORFLOW_TOOLS_ANDROID_INFERENCE_INTERFACE_JNI_RUN_STATS_JNI_H_

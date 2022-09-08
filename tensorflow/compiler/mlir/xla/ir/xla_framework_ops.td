@@ -37,6 +37,7 @@ def XLAFramework_Dialect : Dialect {
     static constexpr StringRef kXLAEntryAttrName = "xla_entry";
   }];
 
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
   let useDefaultTypePrinterParser = 1;
 }
 

@@ -39,7 +39,6 @@ PACKAGES=(
   "grpcio"
   "h5py"
   "keras-nightly"
-  "keras_preprocessing"
   "libclang"
   "markdown"
   "pandas"

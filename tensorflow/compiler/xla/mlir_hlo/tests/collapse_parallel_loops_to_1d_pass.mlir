@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt --collapse-parallel-loops-to-1d --canonicalize %s | \
+// RUN: mlir-hlo-opt --collapse-parallel-loops-to-1d %s | \
 // RUN: FileCheck %s
 
 // CHECK-LABEL: func @parallel_2d

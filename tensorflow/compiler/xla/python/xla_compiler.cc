@@ -597,6 +597,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_readwrite("argument_layouts", &CompileOptions::argument_layouts)
       .def_readwrite("parameter_is_tupled_arguments",
                      &CompileOptions::parameter_is_tupled_arguments)
+      .def_readwrite("compile_portable_executable",
+                     &CompileOptions::compile_portable_executable)
       .def_readonly("executable_build_options",
                     &CompileOptions::executable_build_options)
       // TODO(phawkins): the following fields exist for backward compatibility.
@@ -750,9 +752,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &xla::OpSharding::replicate_on_last_tile_dim,
                     &xla::OpSharding::set_replicate_on_last_tile_dim)
       .def("__repr__", &xla::OpSharding::DebugString)
-      .def("SerializeToString", [](const OpSharding& sharding) {
-        return py::bytes(sharding.SerializeAsString());
-      });
+      .def("SerializeToString",
+           [](const OpSharding& sharding) {
+             return py::bytes(sharding.SerializeAsString());
+           })
+      .def("clone",
+           [](const OpSharding& sharding) { return OpSharding(sharding); });
   DefRepeatedProperty(op_sharding, "tile_assignment_dimensions",
                       &xla::OpSharding::mutable_tile_assignment_dimensions);
   DefRepeatedProperty(op_sharding, "tile_assignment_devices",

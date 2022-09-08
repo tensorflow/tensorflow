@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
 
-namespace tensorflow {
+namespace tsl {
 
 namespace internal {
 
@@ -77,7 +77,7 @@ inline void MaybeRaiseFromStatus(const Status& status) {
 }
 
 inline void SetRegisteredErrFromStatus(const tensorflow::Status& status) {
-  PyErr_SetObject(PyExceptionRegistry::Lookup(status.code()),
+  PyErr_SetObject(tensorflow::PyExceptionRegistry::Lookup(status.code()),
                   pybind11::make_tuple(pybind11::none(), pybind11::none(),
                                        status.error_message(),
                                        internal::StatusPayloadToDict(status))
@@ -85,7 +85,7 @@ inline void SetRegisteredErrFromStatus(const tensorflow::Status& status) {
 }
 
 inline void SetRegisteredErrFromTFStatus(TF_Status* status) {
-  PyErr_SetObject(PyExceptionRegistry::Lookup(TF_GetCode(status)),
+  PyErr_SetObject(tensorflow::PyExceptionRegistry::Lookup(TF_GetCode(status)),
                   pybind11::make_tuple(pybind11::none(), pybind11::none(),
                                        TF_Message(status),
                                        internal::TFStatusPayloadToDict(status))
@@ -135,6 +135,18 @@ inline void MaybeRaiseRegisteredFromTFStatusWithGIL(TF_Status* status) {
   }
 }
 
+}  // namespace tsl
+
+namespace tensorflow {
+
+using tsl::MaybeRaiseFromStatus;
+using tsl::MaybeRaiseFromTFStatus;
+using tsl::MaybeRaiseRegisteredFromStatus;
+using tsl::MaybeRaiseRegisteredFromStatusWithGIL;
+using tsl::MaybeRaiseRegisteredFromTFStatus;
+using tsl::MaybeRaiseRegisteredFromTFStatusWithGIL;
+using tsl::SetRegisteredErrFromStatus;
+using tsl::SetRegisteredErrFromTFStatus;
 }  // namespace tensorflow
 
 namespace pybind11 {

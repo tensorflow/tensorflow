@@ -20,7 +20,6 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -43,6 +42,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_LEGALIZECONTROLFLOWPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 // All transformations in this file take mhlo blocks which end with
@@ -189,7 +192,7 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
 };
 
 struct LegalizeControlFlowPass
-    : public LegalizeControlFlowPassBase<LegalizeControlFlowPass> {
+    : public impl::LegalizeControlFlowPassBase<LegalizeControlFlowPass> {
   // Perform the lowering to MLIR control flow.
   void runOnOperation() override {
     func::FuncOp f = getOperation();

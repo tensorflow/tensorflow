@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 #if XLA_ENABLE_XCCL
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif
 
 namespace xla {
@@ -106,7 +106,8 @@ Status RunAllToAll(bool has_split_dimension,
           auto dtype_and_multiplier,
           ToNcclDataTypeAndCountMultiplier(buffer.element_type));
       ncclDataType_t dtype = dtype_and_multiplier.first;
-      int element_count = buffer.element_count * dtype_and_multiplier.second;
+      int64_t element_count =
+          buffer.element_count * dtype_and_multiplier.second;
 
       TF_RET_CHECK(element_count % num_participants == 0)
           << "Buffer was not an exact multiple of the number of participants.";

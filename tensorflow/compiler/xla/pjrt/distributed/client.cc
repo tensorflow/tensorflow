@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <chrono>  // NOLINT
+#include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <utility>
@@ -129,6 +131,7 @@ class DistributedRuntimeCoordinationServiceClient
  private:
   std::unique_ptr<tensorflow::CoordinationServiceAgent> coord_agent_;
   tensorflow::CoordinationServiceConfig config_;
+  absl::Duration min_connect_barrier_timeout_;
   int task_id_;
 };
 
@@ -355,7 +358,10 @@ xla::Status DistributedRuntimeClientImpl::WaitAtBarrier(
   }
   ::grpc::ClientContext ctx;
   ctx.set_fail_fast(false);
-  ctx.set_deadline(absl::ToChronoTime(absl::Now() + timeout));
+  // Set timeout to be at least 5 seconds so that there is time for service-side
+  // timeout logic to execute.
+  ctx.set_deadline(
+      absl::ToChronoTime(absl::Now() + std::max(timeout, absl::Seconds(5))));
   WaitAtBarrierRequest request;
   request.set_session_id(session_id_);
   request.set_barrier_id(std::move(barrier_id));
@@ -434,6 +440,7 @@ DistributedRuntimeCoordinationServiceClient::
   config.set_service_leader("/job:jax_worker/task:0");
   config.set_cluster_register_timeout_in_ms(
       absl::ToInt64Milliseconds(options.init_timeout));
+  min_connect_barrier_timeout_ = options.rpc_timeout;
   config.set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
       options.heartbeat_interval * options.max_missing_heartbeats));
   config.set_shutdown_barrier_timeout_in_ms(
@@ -475,7 +482,12 @@ xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
     ++attempt;
     s = coord_agent_->Connect();
     if (s.ok()) {
-      s = coord_agent_->WaitAtBarrier("PjRT_Client_Connect", timeout,
+      absl::Duration barrier_timeout = deadline - absl::Now();
+      // Note: `init_timeout` in client options may be set to 0 so that the
+      // client only attempts to connect once. In that case, we provide some
+      // buffer time to wait for all tasks.
+      barrier_timeout = std::max(barrier_timeout, min_connect_barrier_timeout_);
+      s = coord_agent_->WaitAtBarrier("PjRT_Client_Connect", barrier_timeout,
                                       /*tasks=*/{});
     }
     // Exponential backoff with jitter. Note we will retry for `init_timeout`

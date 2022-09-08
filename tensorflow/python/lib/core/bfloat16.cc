@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/numpy.h"
 
 namespace tensorflow {
@@ -1642,7 +1643,11 @@ bool RegisterNumpyDtype(PyObject* numpy) {
   arr_funcs.argmax = NPyCustomFloat_ArgMaxFunc<T>;
   arr_funcs.argmin = NPyCustomFloat_ArgMinFunc<T>;
 
+#if PY_VERSION_HEX < 0x030900A4 && !defined(Py_SET_TYPE)
   Py_TYPE(&CustomFloatTypeDescriptor<T>::npy_descr) = &PyArrayDescr_Type;
+#else
+  Py_SET_TYPE(&CustomFloatTypeDescriptor<T>::npy_descr, &PyArrayDescr_Type);
+#endif
   TypeDescriptor<T>::npy_type =
       PyArray_RegisterDataType(&CustomFloatTypeDescriptor<T>::npy_descr);
   TypeDescriptor<T>::type_ptr = &TypeDescriptor<T>::type;

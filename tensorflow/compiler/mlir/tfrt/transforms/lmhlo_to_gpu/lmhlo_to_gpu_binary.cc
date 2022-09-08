@@ -16,6 +16,8 @@ limitations under the License.
 // This file implements logic for lowering LHLO GPU dialect to TFRT CUDA
 // dialect.
 
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
+
 #include <memory>
 #include <utility>
 
@@ -28,7 +30,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-void populateKernelOpsPattern(mlir::RewritePatternSet&);
+using xla::gpu::ThunkSequence;
+
+void populateKernelOpsPattern(mlir::RewritePatternSet&, ThunkSequence*);
 
 namespace {
 
@@ -37,10 +41,14 @@ namespace {
 
 struct ConvertLmhloToGpuBinaryPass
     : public ConvertLmhloToGpuBinaryPassBase<ConvertLmhloToGpuBinaryPass> {
+ public:
+  explicit ConvertLmhloToGpuBinaryPass(ThunkSequence* thunk_sequence)
+      : thunk_sequence(thunk_sequence) {}
+
  private:
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
-    populateKernelOpsPattern(patterns);
+    populateKernelOpsPattern(patterns, thunk_sequence);
     if (failed(applyOpPatternsAndFold(getOperation(), std::move(patterns))))
       return signalPassFailure();
   }
@@ -48,16 +56,15 @@ struct ConvertLmhloToGpuBinaryPass
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     xla::gpu::IrEmitterUnnested::GetDependentDialects(registry);
   }
+
+  ThunkSequence* thunk_sequence;
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createConvertLmhloToGpuBinaryPass() {
-  return std::make_unique<ConvertLmhloToGpuBinaryPass>();
-}
-
-void registerConvertLmhloToGpuBinaryPass() {
-  ::mlir::registerPass([] { return createConvertLmhloToGpuBinaryPass(); });
+std::unique_ptr<mlir::Pass> createConvertLmhloToGpuBinaryPass(
+    ThunkSequence* thunk_sequence) {
+  return std::make_unique<ConvertLmhloToGpuBinaryPass>(thunk_sequence);
 }
 
 }  // namespace tensorflow

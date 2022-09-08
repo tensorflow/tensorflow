@@ -67,7 +67,7 @@ def _make_worker(dispatcher_address,
 
 
 # pylint: disable=protected-access
-class TestWorker(object):
+class TestWorker:
   """A tf.data service worker."""
 
   def __init__(self,
@@ -122,7 +122,7 @@ class TestWorker(object):
     return self._server._address
 
 
-class TestCluster(object):
+class TestCluster:
   """Test tf.data service cluster."""
 
   def __init__(self,
@@ -198,6 +198,9 @@ class TestCluster(object):
     # pylint: disable=protected-access
     self.dispatcher._stop()
 
+  def stop_worker(self, index):
+    self.workers[index].stop()
+
   def stop_workers(self):
     for worker in self.workers:
       worker.stop()
@@ -244,6 +247,7 @@ class TestBase(test_base.DatasetTestBase):
                                consumer_index=None,
                                num_consumers=None,
                                max_outstanding_requests=None,
+                               data_transfer_protocol=None,
                                compression="AUTO",
                                cross_trainer_cache=None,
                                target_workers="AUTO"):
@@ -257,6 +261,7 @@ class TestBase(test_base.DatasetTestBase):
             num_consumers=num_consumers,
             max_outstanding_requests=max_outstanding_requests,
             task_refresh_interval_hint_ms=20,
+            data_transfer_protocol=data_transfer_protocol,
             compression=compression,
             cross_trainer_cache=cross_trainer_cache,
             target_workers=target_workers))
@@ -267,6 +272,7 @@ class TestBase(test_base.DatasetTestBase):
                                      processing_mode="parallel_epochs",
                                      job_name=None,
                                      max_outstanding_requests=None,
+                                     data_transfer_protocol=None,
                                      compression="AUTO",
                                      cross_trainer_cache=None,
                                      target_workers="AUTO"):
@@ -277,6 +283,7 @@ class TestBase(test_base.DatasetTestBase):
         processing_mode=processing_mode,
         job_name=job_name,
         max_outstanding_requests=max_outstanding_requests,
+        data_transfer_protocol=data_transfer_protocol,
         compression=compression,
         cross_trainer_cache=cross_trainer_cache,
         target_workers=target_workers)

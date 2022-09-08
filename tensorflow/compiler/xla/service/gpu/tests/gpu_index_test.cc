@@ -76,7 +76,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
       ROOT gte = pred[5,7,2]{2,1,0} compare(x, reshape), direction=GE
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
 
   // Check the optimized IR as the unoptimized IR contains dead udiv and urem.
   CompileAndVerifyIr(std::move(module),
@@ -102,7 +102,7 @@ TEST_F(GpuIndexTest,
       ROOT gte = pred[1,7,2,5,3]{4,3,2,1,0} compare(x, broadcast), direction=GE
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
   CompileAndVerifyIr(std::move(module),
                      R"(
 ; CHECK: %[[tmp4:.*]] = udiv i32 %[[linear_index:.*]], 1
@@ -135,7 +135,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
       ROOT gte = pred[5,7,2]{2,1,0} compare(x, broadcast), direction=GE
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
 
   // Check the optimized IR reuses the linear index by calculating modulo 14.
 
@@ -167,7 +167,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
       ROOT y = f16[1,1024,1,256]{2,3,1,0} convert(x)
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
 
   // Check that the unoptimized IR reuses the linear index.
   CompileAndVerifyIr(std::move(module),
@@ -198,7 +198,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithTranspose) {
       ROOT gte = pred[1024,2,256,3]{2,3,0,1} compare(transpose, y), direction=GE
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
   // Check the optimized IR contains no udiv and urem.
   CompileAndVerifyIr(std::move(module),
                      R"(

@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_OVERFLOW_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_OVERFLOW_UTIL_H_
 
+#include <limits>
 #include <optional>
 #include <type_traits>
 
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 

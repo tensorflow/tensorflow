@@ -32,21 +32,21 @@ using gpusolverHandle_t = cusolverDnHandle_t;
 #include "rocm/rocm_config.h"
 // Macros to ease the transition from rocsolver to hipsolver.
 #if TENSORFLOW_USE_HIPSOLVER
-#include "tensorflow/stream_executor/rocm/hipsolver_wrapper.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/hipsolver_wrapper.h"
 using gpusolverHandle_t = hipsolverHandle_t;
 #else  // TENSORFLOW_USE_ROCSOLVER
-#include "tensorflow/stream_executor/rocm/rocblas_wrapper.h"
-#include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocblas_wrapper.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocsolver_wrapper.h"
 using gpusolverHandle_t = rocblas_handle;
 #endif  // TF_ROCM_VERSION >= 40500
 #endif  // TENSORFLOW_USE_ROCM
 
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/blas.h"
 
 namespace xla {
 namespace gpu {
@@ -64,9 +64,7 @@ class GpuSolverContext {
   GpuSolverContext& operator=(const GpuSolverContext&) = delete;
   GpuSolverContext& operator=(GpuSolverContext&&);
 
-  bool SupportsPotrfBatched() const {
-    return true;
-  }
+  bool SupportsPotrfBatched() const { return true; }
 
   // Computes the Cholesky factorization A = L * L^T for a single matrix.
   // Returns Status::OK() if the kernel was launched successfully. See:

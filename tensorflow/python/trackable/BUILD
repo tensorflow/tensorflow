@@ -149,6 +149,7 @@ py_library(
     name = "resource",
     srcs = ["resource.py"],
     srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":base",
     ],
@@ -205,6 +206,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
     ],
 )

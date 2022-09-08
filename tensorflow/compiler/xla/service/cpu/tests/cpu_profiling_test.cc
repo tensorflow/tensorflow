@@ -90,7 +90,7 @@ TEST_P(CpuProfilingTest, DoIt) {
 
   std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
 
-  CompileAheadOfTimeAndVerifyIr(std::move(hlo_module).ValueOrDie(), options,
+  CompileAheadOfTimeAndVerifyIr(std::move(hlo_module).value(), options,
                                 check_lines,
                                 /*match_optimized_ir=*/true);
 }

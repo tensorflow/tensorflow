@@ -13,14 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Suite of types that represent device memory allocations. These are
-// allocated by the StreamExecutor interface, which produces values appropriate
-// for the underlying platform (whether it be CUDA or OpenCL).
-//
-// The untyped base class (like a device void*) is DeviceMemoryBase, which can
-// be specialized for a given allocation type (like a device T*) using
-// DeviceMemory<T>.
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DEVICE_MEMORY_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DEVICE_MEMORY_H_
 

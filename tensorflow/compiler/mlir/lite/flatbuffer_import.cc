@@ -213,6 +213,25 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
                                          bool is_constant = false,
                                          bool is_intermediate = false) {
   mlir::Type elem_type = ConvertElementType(tensor.type, builder);
+  if (tensor.type == tflite::TensorType_VARIANT) {
+    llvm::SmallVector<mlir::TensorType> tensor_types;
+    if (tensor.variant_tensors.size() > 1) {
+      return errors::InvalidArgument(
+          "Have more than one nested type in `variant_tensors`.");
+    }
+    for (const auto& nested_tensor : tensor.variant_tensors) {
+      mlir::Type nested_elem_type =
+          ConvertElementType(nested_tensor->type, builder);
+      if (nested_tensor->has_rank) {
+        llvm::SmallVector<int64_t> shape(nested_tensor->shape.begin(),
+                                         nested_tensor->shape.end());
+        tensor_types.push_back(RankedTensorType::get(shape, nested_elem_type));
+      } else {
+        tensor_types.push_back(UnrankedTensorType::get(nested_elem_type));
+      }
+    }
+    elem_type = mlir::TF::VariantType::get(tensor_types, builder.getContext());
+  }
   if (IsQuantized(tensor)) {
     TF_ASSIGN_OR_RETURN(elem_type,
                         GetQuantizedType(tensor, builder, is_constant));
@@ -1303,7 +1322,7 @@ StatusOr<FuncOp> ConvertSubgraph(
           return emitError(const_loc, op_or_err.status().ToString()),
                  op_or_err.status();
         }
-        vals_map[input_num] = op_or_err.ValueOrDie()->getResult(0);
+        vals_map[input_num] = op_or_err.value()->getResult(0);
       }
     }
 
@@ -1360,7 +1379,7 @@ StatusOr<FuncOp> ConvertSubgraph(
         return emitError(const_loc, op_or_err.status().ToString()),
                op_or_err.status();
       }
-      vals_map[index] = op_or_err.ValueOrDie()->getResult(0);
+      vals_map[index] = op_or_err.value()->getResult(0);
     }
     return_operands.push_back(vals_map[index]);
   }

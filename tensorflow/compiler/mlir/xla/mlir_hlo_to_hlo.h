@@ -19,11 +19,9 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/tf2xla/layout_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/mlir/xla/layout_util.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace mlir {
 
@@ -45,6 +43,9 @@ struct MlirToHloConversionOptions {
 
   // Legalize names to be compatible with TensorFlow.
   bool legalize_node_names = true;
+
+  LayoutPreferenceFn layout_preference_fn;
+  ShapeRepresentationFn shape_representation_fn;
 };
 
 // Converts a MLIR module in HLO dialect into a HloModuleProto. If
@@ -54,14 +55,9 @@ struct MlirToHloConversionOptions {
 // are converted to a tuple even when there is only a single return value.
 // Multiple return values are always converted to a tuple and returned as a
 // single value.
-//
-// TODO(timshen): move other options into `options`.
-Status ConvertMlirHloToHlo(
-    mlir::ModuleOp module, ::xla::HloProto* hlo_proto, bool use_tuple_args,
-    bool return_tuple,
-    const tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns
-        shape_determination_fns = {},
-    MlirToHloConversionOptions options = {});
+Status ConvertMlirHloToHlo(mlir::ModuleOp module, ::xla::HloProto* hlo_proto,
+                           bool use_tuple_args, bool return_tuple,
+                           MlirToHloConversionOptions options = {});
 
 // Transforms a Block into HLO, where the HLO is represented as calls into an
 // XlaBuilder. Callee functions are allowed in the Block's ancestor ModuleOp.

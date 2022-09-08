@@ -19,17 +19,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/file_system_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -39,45 +40,89 @@ namespace {
 constexpr char kNoModuleIdentifier[] = "NO_MODULE";
 constexpr char kHloProtoSuffix[] = ".hlo_proto.pb";
 
-}  // namespace
-
-Status GetHloProtoFromMultiXSpaceAndSaveToFile(
-    const std::vector<XSpace>& xspaces,
-    const std::vector<std::string>& xspace_file_names) {
-  if (xspace_file_names.empty() || xspaces.empty()) return OkStatus();
-
+// Extracts and deduplicates the HLO protos from all the XSpaces.
+// Stores the HLO protos as files in the same directory as the xspace files.
+StatusOr<bool> GetHloProtoFromMultiXSpaceAndSaveToFile(
+    const SessionSnapshot& session_snapshot) {
   // Get all HLO protos from XSpaces and deduplicate.
   HloProtoMap hlo_proto_map;
-  for (const XSpace& xspace : xspaces) {
-    hlo_proto_map.AddHloProtosFromXSpace(xspace);
+  for (int i = 0; i < session_snapshot.XSpaceSize(); i++) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                        session_snapshot.GetXSpace(i));
+    hlo_proto_map.AddHloProtosFromXSpace(*xspace);
   }
 
-  absl::string_view dir_name = tensorflow::io::Dirname(xspace_file_names[0]);
   std::vector<absl::string_view> module_list = hlo_proto_map.GetModuleList();
   // Write an empty identifier if there is no HLO module.
   if (module_list.empty()) {
-    std::string file_name = ProfilerJoinPath(
-        dir_name, absl::StrCat(kNoModuleIdentifier, kHloProtoSuffix));
+    std::string file_name =
+        ProfilerJoinPath(session_snapshot.GetSessionRunDir(),
+                         absl::StrCat(kNoModuleIdentifier, kHloProtoSuffix));
     xla::HloProto empty_hlo;
     TF_RETURN_IF_ERROR(tensorflow::WriteBinaryProto(tensorflow::Env::Default(),
                                                     file_name, empty_hlo));
-    return OkStatus();
+    // The profile does not have HLO proto.
+    return false;
   }
 
-  // Save HLO protos to the same directory as XSpaces.
+  // Save HLO protos to session run directory.
   for (const absl::string_view module_name : module_list) {
     auto hlo_proto_or = hlo_proto_map.GetHloProtoByModuleName(module_name);
     if (!hlo_proto_or.ok()) {
-      return Status(tensorflow::error::INTERNAL,
-                    hlo_proto_or.status().message());
+      return errors::Internal(hlo_proto_or.status().message());
     }
     std::string file_name =
-        ProfilerJoinPath(dir_name, absl::StrCat(module_name, kHloProtoSuffix));
+        ProfilerJoinPath(session_snapshot.GetSessionRunDir(),
+                         absl::StrCat(module_name, kHloProtoSuffix));
     TF_RETURN_IF_ERROR(tensorflow::WriteBinaryProto(
         tensorflow::Env::Default(), file_name, *hlo_proto_or.value()));
   }
 
-  return OkStatus();
+  // The profile has HLO proto.
+  return true;
+}
+
+}  // namespace
+
+StatusOr<xla::HloProto> GetHloProtoByModuleName(
+    const SessionSnapshot& session_snapshot,
+    const absl::string_view module_name) {
+  std::string file_name =
+      ProfilerJoinPath(session_snapshot.GetSessionRunDir(),
+                       absl::StrCat(module_name, kHloProtoSuffix));
+  xla::HloProto hlo_proto;
+  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
+                                                 file_name, &hlo_proto));
+  return hlo_proto;
+}
+
+StatusOr<bool> ConvertMultiXSpaceToHloProto(
+    const SessionSnapshot& session_snapshot) {
+  // Gets all the files in session run directory.
+  // TODO(profiler): Move this glob to SessionSnapshot and build a map from file
+  // type to file paths.
+  std::vector<std::string> results;
+  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->GetChildren(
+      std::string(session_snapshot.GetSessionRunDir()), &results));
+
+  // If the profiler finds a filename with hlo proto suffix, this means HLO
+  // proto was already generated previously.
+  for (const std::string& path : results) {
+    if (absl::EndsWith(path, kHloProtoSuffix)) {
+      if (absl::EndsWith(path,
+                         absl::StrCat(kNoModuleIdentifier, kHloProtoSuffix))) {
+        return false;
+      } else {
+        return true;
+      }
+    }
+  }
+
+  // Generate HLO proto.
+  // TODO(jiesun): Maybe generate a tag file at profile collection time, so
+  // don't need to read XSpace files for checking whether HLO proto exists or
+  // not.
+  return GetHloProtoFromMultiXSpaceAndSaveToFile(session_snapshot);
 }
 
 }  // namespace profiler

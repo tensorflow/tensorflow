@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TF_CORE_PLATFORM_TF2_UTILS_H_
-#define TF_CORE_PLATFORM_TF2_UTILS_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_ENABLE_TF2_UTILS_H_
+#define TENSORFLOW_CORE_PLATFORM_ENABLE_TF2_UTILS_H_
 
 namespace tensorflow {
 
@@ -28,4 +28,4 @@ bool tf2_execution_enabled();
 
 }  // namespace tensorflow
 
-#endif  // TF_CORE_PLATFORM_TF2_UTILS_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_ENABLE_TF2_UTILS_H_

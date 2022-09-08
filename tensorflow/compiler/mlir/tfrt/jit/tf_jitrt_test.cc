@@ -22,6 +22,9 @@
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "testing/base/public/benchmark.h"
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/xla/runtime/results.h"
+#include "tensorflow/compiler/xla/runtime/types.h"
+#include "tfrt/jitrt/results.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -30,10 +33,12 @@ using ::tfrt::DType;
 using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 
-using ::tfrt::jitrt::MemrefType;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConversion;
 using ::tfrt::jitrt::StaticRemainingResultsConverter;
+
+using ::xla::PrimitiveType;
+using ::xla::runtime::MemrefType;
 
 using ReturnTensorflowTensor =
     ReturnValueConversion<TensorflowConversionContext,
@@ -45,7 +50,7 @@ using TensorflowResultConverter =
 
 static void BM_ReturnTensor(benchmark::State& state) {
   auto dims = std::array<int64_t, 4>({1, 2, 3, 4});
-  auto type = std::make_unique<MemrefType>(dims, DType::F32);
+  auto type = std::make_unique<MemrefType>(dims, PrimitiveType::F32);
 
   // Prepare a memref descriptor that will be returned as a tensor.
   StridedMemRefType<float, 4> memref{

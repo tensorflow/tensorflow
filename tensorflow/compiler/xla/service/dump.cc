@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
 
@@ -425,7 +425,7 @@ static std::vector<std::string> DumpHloModuleImpl(
         *module.entry_computation(),
         /*label=*/filename, module.config().debug_options(), format, profile);
     if (rendered_graph.ok()) {
-      return std::move(rendered_graph).ValueOrDie();
+      return std::move(rendered_graph).value();
     }
     return StrFormat("Error rendering graph: %s",
                      rendered_graph.status().ToString());

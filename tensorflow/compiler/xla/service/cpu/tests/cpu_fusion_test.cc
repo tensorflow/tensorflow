@@ -67,7 +67,7 @@ TEST_F(CpuFusionTest, FuseTwoElementwiseOps) {
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The computation root instruction was fused. Verify the fusion instruction
   // is now the root.
@@ -114,7 +114,7 @@ TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The computation root instruction was fused. Verify the fusion instruction
   // is now the root.
@@ -189,7 +189,7 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The computation root instruction was fused. Verify the fusion instruction
   // is now the root.
@@ -261,7 +261,7 @@ TEST_F(CpuFusionTest, TestOperandOrderToAvoidDuplication) {
 
   // Run fusion.
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).value());
 
   auto fusion1 = result->operand(0);
   auto fusion2 = result->operand(1);
@@ -317,7 +317,7 @@ TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
-  EXPECT_TRUE(fusion.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The only fusion instruction should be operand 0 of the tuple (formerly
   // negate1).

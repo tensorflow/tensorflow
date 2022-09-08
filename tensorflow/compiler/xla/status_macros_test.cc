@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/status_macros.h"
 
+#include <functional>
 #include <utility>
 
 #include "tensorflow/compiler/xla/statusor.h"

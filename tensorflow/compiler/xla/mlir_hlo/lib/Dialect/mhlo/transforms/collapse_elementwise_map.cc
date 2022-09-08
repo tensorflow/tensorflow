@@ -16,7 +16,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -27,6 +26,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_COLLAPSEELEMENTWISEMAPPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 // TODO(b/228448038): consider to move this pattern to mhlo.map canonicalizer.
@@ -81,7 +84,7 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
 };
 
 struct CollapseElementwiseMapPass
-    : public CollapseElementwiseMapPassBase<CollapseElementwiseMapPass> {
+    : public impl::CollapseElementwiseMapPassBase<CollapseElementwiseMapPass> {
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);

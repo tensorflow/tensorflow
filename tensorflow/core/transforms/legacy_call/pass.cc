@@ -23,12 +23,15 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/ops.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
 namespace {
-class LiftLegacyCallPass : public LiftLegacyCallBase<LiftLegacyCallPass> {
+
+#define GEN_PASS_DEF_LIFTLEGACYCALL
+#include "tensorflow/core/transforms/passes.h.inc"
+
+class LiftLegacyCallPass : public impl::LiftLegacyCallBase<LiftLegacyCallPass> {
  public:
   LogicalResult initialize(MLIRContext *context) override {
     tfg_legacy_call_id_ = StringAttr::get(context, "tfg.legacy_call");

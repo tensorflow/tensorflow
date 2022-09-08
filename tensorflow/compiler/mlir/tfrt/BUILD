@@ -6,7 +6,10 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library", "tfrt_cc_test")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# Note: keep the following lines separate due to the way copybara works
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")  # buildifier: disable=same-origin-load
 
 # TF to TFRT kernels conversion.
 package(
@@ -29,6 +32,7 @@ package_group(
         "//learning/brain/experimental/mlir/tfrt_compiler/...",
         "//learning/brain/experimental/tfrt/...",
         "//learning/brain/tfrt/...",
+        "//learning/infra/mira/...",
         "//learning/serving/contrib/tfrt/mlir/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
@@ -104,6 +108,7 @@ cc_library(
     name = "tf_jitrt_pipeline",
     srcs = ["jit/tf_jitrt_pipeline.cc"],
     hdrs = ["jit/tf_jitrt_pipeline.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
@@ -155,7 +160,6 @@ tfrt_cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",
-        "@tf_runtime//backends/jitrt",
     ],
 )
 
@@ -165,9 +169,11 @@ tfrt_cc_library(
 #     srcs = ["jit/tf_jitrt_test.cc"],
 #     deps = [
 #         ":tf_jitrt",
+#         "//tensorflow/compiler/xla/runtime:results",
+#         "//tensorflow/compiler/xla/runtime:types",
 #         "@com_google_googletest//:gtest_main",
 #         "@llvm-project//mlir:mlir_c_runner_utils",
-#         "@tf_runtime//backends/jitrt",
+#         "@tf_runtime//backends/jitrt:results",
 #     ],
 # )
 # copybara:uncomment_end
@@ -198,6 +204,12 @@ tfrt_cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
+        "//tensorflow/compiler/xla/mlir/utils/runtime:async_runtime_api",
+        "//tensorflow/compiler/xla/runtime:arguments",
+        "//tensorflow/compiler/xla/runtime:async_runtime",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:jit_executable",
+        "//tensorflow/compiler/xla/runtime:types",
         "//tensorflow/core:framework",
         "//tensorflow/core:platform_base",
         "//tensorflow/core/platform:dynamic_annotations",
@@ -215,10 +227,8 @@ tfrt_cc_library(
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
         "@tf_runtime//:tracing",
-        "@tf_runtime//backends/jitrt",
-        "@tf_runtime//backends/jitrt:async_runtime",
-        "@tf_runtime//backends/jitrt:async_runtime_api",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
+        "@tf_runtime//backends/jitrt:results",
     ],
 )
 
@@ -228,9 +238,10 @@ tfrt_cc_library(
     hdrs = ["jit/tf_jitrt_request_context.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     deps = [
+        "//tensorflow/compiler/xla/runtime:async_values_cache",
+        "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/core/platform:status",
         "@tf_runtime//:hostcontext",
-        "@tf_runtime//backends/jitrt",
     ],
 )
 
@@ -321,6 +332,7 @@ cc_library(
         "transforms/corert_converter.h",
     ],
     deps = [
+        ":attr_lowering_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -376,6 +388,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        ":attr_lowering_utils",
         ":corert_converter",
         ":cost_analysis",
         ":fallback_converter",
@@ -578,6 +591,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/fallback:op_cost_map_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -615,27 +629,6 @@ cc_library(
         ":tensor_array_side_effect_analysis",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "compatibility_analysis",
-    srcs = [
-        "analysis/compatibility_analysis.cc",
-    ],
-    hdrs = [
-        "analysis/compatibility_analysis.h",
-    ],
-    deps = [
-        ":analysis/analysis_proto_cc",
-        ":tf_to_tfrt",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/core:lib_proto_parsing",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:TranslateLib",
     ],
     alwayslink = 1,
 )
@@ -807,4 +800,22 @@ tf_cc_binary(
         ["//third_party/tf_runtime_llvm:tfrt_translate_main"],
         ["@tf_runtime//third_party/llvm_derived:tfrt_translate_main"],
     ),
+)
+
+cc_library(
+    name = "attr_lowering_utils",
+    srcs = [
+        "transforms/attr_lowering_utils.cc",
+    ],
+    hdrs = [
+        "transforms/attr_lowering_utils.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@tf_runtime//:core_runtime_opdefs",
+    ],
 )

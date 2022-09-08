@@ -1,9 +1,23 @@
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    packages = [
+        "//tensorflow/compiler/mlir/lite/...",
+    ],
+)
+
 cc_library(
     name = "metadata_util",
     srcs = ["metadata_util.cc"],
     hdrs = ["metadata_util.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
-        "//base",
         "//tensorflow/lite:graph_info",
     ],
 )

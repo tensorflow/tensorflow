@@ -37,10 +37,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -203,6 +203,13 @@ LocalService::CompileAotResults(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       GetHloModuleConfig(computation, argument_layouts, build_options));
+
+  // TODO(b/244260928): Remove this check if we can avoid compiling twice for
+  // both AOT and JIT pipelines.
+  if (!module_config->debug_options().xla_gpu_enable_xla_runtime_executable()) {
+    return InternalError(
+        "AOT compilation is supported only if JitRt is enabled");
+  }
 
   TF_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,

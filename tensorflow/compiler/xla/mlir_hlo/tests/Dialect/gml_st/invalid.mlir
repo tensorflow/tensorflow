@@ -75,7 +75,7 @@ func.func @loop_incorrent_iterator_types_count(%A: memref<192x192xf32>,
       gml_st.yield %CT_ : tensor<192x192xf32>
     }) {
       iterator_types = ["parallel"],
-      operand_segment_sizes = dense<2> : vector<5xi32>
+      operand_segment_sizes = array<i32: 2, 2, 2, 2, 2>
     } : (index, index, index, index, index, index, memref<192x192xf32>,
       memref<192x192xf32>, tensor<192x192xf32>, memref<192x192xf32>
     ) -> tensor<192x192xf32>
@@ -97,7 +97,7 @@ func.func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
       gml_st.yield
     }) {
       iterator_types = ["parallel"],
-      operand_segment_sizes = dense<[1, 1, 1, 0, 1]> : vector<5xi32>
+      operand_segment_sizes = array<i32: 1, 1, 1, 0, 1>
     } : (index, index, index, memref<192xf32>) -> ()
   func.return
 }
@@ -167,7 +167,7 @@ func.func @point_op_negative_static_indices(%size: index, %i: index) -> !gml_st.
 func.func @tile_op_mismatch_sizes_and_static_sizes(%i: index) {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{expected 0 dynamic size values}}
-  %1 = "gml_st.tile"(%0, %i) { static_offsets = [0, 0], static_sizes = [1, 1], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32> } : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x?>
+  %1 = "gml_st.tile"(%0, %i) { static_offsets = [0, 0], static_sizes = [1, 1], static_strides = [1, 1], operand_segment_sizes = array<i32: 1, 0, 1, 0> } : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x?>
   func.return
 }
 
@@ -176,7 +176,7 @@ func.func @tile_op_mismatch_sizes_and_static_sizes(%i: index) {
 func.func @tile_op_mismatch_offsets_and_static_offsets(%i: index) -> !gml_st.tile<8x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{expected 0 dynamic offset values}}
-  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [8, 8], static_strides = [1, 1], operand_segment_sizes = dense<[1, 1, 0, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<8x8>
+  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [8, 8], static_strides = [1, 1], operand_segment_sizes = array<i32: 1, 1, 0, 0>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<8x8>
   func.return %1 : !gml_st.tile<8x8>
 }
 
@@ -185,7 +185,7 @@ func.func @tile_op_mismatch_offsets_and_static_offsets(%i: index) -> !gml_st.til
 func.func @tile_op_mismatch_strides_and_static_strides(%i: index)  -> !gml_st.tile<8x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{expected 0 dynamic stride values}}
-  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [8, 8], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 0, 1]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<8x8>
+  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [8, 8], static_strides = [1, 1], operand_segment_sizes = array<i32: 1, 0, 0, 1>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<8x8>
   func.return %1 : !gml_st.tile<8x8>
 }
 
@@ -194,7 +194,7 @@ func.func @tile_op_mismatch_strides_and_static_strides(%i: index)  -> !gml_st.ti
 func.func @tile_op_negative_static_size(%i: index)  -> !gml_st.tile<?x?> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op expected size = -2 to be non-negative}}
-  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [-1, -2], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x?>
+  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [-1, -2], static_strides = [1, 1], operand_segment_sizes = array<i32: 1, 0, 1, 0>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x?>
   func.return %1 : !gml_st.tile<?x?>
 }
 
@@ -203,7 +203,7 @@ func.func @tile_op_negative_static_size(%i: index)  -> !gml_st.tile<?x?> {
 func.func @tile_op_negative_static_stride(%i: index)  -> !gml_st.tile<?x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op expected stride = -2 to be non-negative}}
-  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [-1, 8], static_strides = [1, -2], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x8>
+  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [-1, 8], static_strides = [1, -2], operand_segment_sizes = array<i32: 1, 0, 1, 0>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x8>
   func.return %1 : !gml_st.tile<?x8>
 }
 
@@ -212,7 +212,7 @@ func.func @tile_op_negative_static_stride(%i: index)  -> !gml_st.tile<?x8> {
 func.func @tile_op_negative_static_offset(%i: index)  -> !gml_st.tile<?x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op expected offset = -2 to be non-negative}}
-  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, -2], static_sizes = [-1, 8], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x8>
+  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, -2], static_sizes = [-1, 8], static_strides = [1, 1], operand_segment_sizes = array<i32: 1, 0, 1, 0>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x8>
   func.return %1 : !gml_st.tile<?x8>
 }
 
@@ -221,7 +221,7 @@ func.func @tile_op_negative_static_offset(%i: index)  -> !gml_st.tile<?x8> {
 func.func @tile_op_offset_out_of_bounds(%i: index) -> !gml_st.tile<?x?> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op offset = 32 is out of bounds for argument dimension size = 32}}
-  %1 = "gml_st.tile"(%0, %i, %i) {static_offsets = [0, 32], static_sizes = [-1, -1], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 2, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index, index) -> !gml_st.tile<?x?>
+  %1 = "gml_st.tile"(%0, %i, %i) {static_offsets = [0, 32], static_sizes = [-1, -1], static_strides = [1, 1], operand_segment_sizes = array<i32: 1, 0, 2, 0>} : (!gml_st.tile<64x32>, index, index) -> !gml_st.tile<?x?>
   func.return %1 : !gml_st.tile<?x?>
 }
 

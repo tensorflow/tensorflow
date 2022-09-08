@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -53,6 +54,10 @@ SmallVector<StringRef, 3> getParallelAndReductionIterators(unsigned nLoops,
 
 /// Returns an ArrayAttr that contains `nParallelLoops` "parallel" attributes.
 SmallVector<StringRef, 3> getNParallelLoopsAttrs(unsigned nParallelLoops);
+
+/// Generates an init sparse tensor.
+Value getInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
+                          ArrayRef<Value> dynSizes);
 
 /// Generates an initTensor op in the linalg dialect.
 Value getInitTensor(OpBuilder& b, Location loc, ShapedType type,
@@ -138,8 +143,27 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
           op, "mismatched operand/result types or iterator count");
     }
 
-    // Find input/output values and types.
     auto loc = op.getLoc();
+    // Within a linalg op, we can immediately de-tensorsize if the computation
+    // is scalar. We do not do this on the top-level, as that would break the
+    // nice invariant that all programs are exclusively on tensors, which is
+    // currently relied on for fusion in some pipelines.
+    if (nloops == 0 && isInBodyOfLinalgOps(op)) {
+      // No need to create a linalg.generic if all inputs are scalars.
+      SmallVector<Value> inputs;
+      for (auto input : adaptor.getOperands()) {
+        inputs.push_back(
+            rewriter.create<tensor::ExtractOp>(loc, input, ValueRange()));
+      }
+      Value scalarResult = mhlo::MhloOpToStdScalarOp::mapOp(
+          op, resultTy->getElementType(), inputs, &rewriter);
+      if (!scalarResult) return failure();
+      rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, *resultTy,
+                                                          scalarResult);
+      return success();
+    }
+
+    // Find input/output values and types.
     ValueRange inputs = adaptor.getOperands();
     Value output =
         getInitTensorFor(rewriter, loc, *resultTy, op, adaptor.getOperands());
@@ -175,6 +199,13 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
 
     rewriter.replaceOp(op, linalgOp->getResults());
     return success();
+  }
+
+ private:
+  static bool isInBodyOfLinalgOps(Operation* op) {
+    auto* parentOp = op->getParentRegion()->getParentOp();
+    return parentOp->getDialect() ==
+           parentOp->getContext()->getLoadedDialect<linalg::LinalgDialect>();
   }
 };
 

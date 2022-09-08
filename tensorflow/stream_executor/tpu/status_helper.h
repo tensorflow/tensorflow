@@ -16,37 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_
 
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
-
-class StatusHelper {
- public:
-  StatusHelper()
-      : c_status(tensorflow::tpu::ExecutorApiFn()->TpuStatus_NewFn()) {}
-
-  ~StatusHelper() {
-    tensorflow::tpu::ExecutorApiFn()->TpuStatus_FreeFn(c_status);
-  }
-
-  static tensorflow::Status FromC(TF_Status* const c_status) {
-    if (tensorflow::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status)) {
-      return ::tensorflow::OkStatus();
-    } else {
-      return tensorflow::Status(
-          tensorflow::error::Code(
-              tensorflow::tpu::ExecutorApiFn()->TpuStatus_CodeFn(c_status)),
-          tensorflow::tpu::ExecutorApiFn()->TpuStatus_MessageFn(c_status));
-    }
-  }
-
-  bool ok() const {
-    return tensorflow::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status);
-  }
-
-  tensorflow::Status status() const { return FromC(c_status); }
-
-  TF_Status* const c_status;  // NOLINT
-};
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_

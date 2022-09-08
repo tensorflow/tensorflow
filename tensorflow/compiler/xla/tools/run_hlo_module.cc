@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -235,7 +235,7 @@ Status RunAndCompare(
   std::unique_ptr<HloModule> test_module =
       LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
                          options.input_format, config_modifier_hook)
-          .ValueOrDie();
+          .value();
   return RunAndCompare(std::move(test_module), test_runner, reference_runner,
                        engine, options, iteration_literals_proto,
                        reference_module_modifier_hook, config_modifier_hook);

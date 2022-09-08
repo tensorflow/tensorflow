@@ -19,6 +19,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif  // _WIN32
+
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -723,6 +727,19 @@ TEST(TensorBundleTest, StringTensorsOldFormat) {
   Expect<float>(&reader, "floats", Constant_2x3<float>(16.18));
 }
 
+// Copied from absl code.
+size_t GetPageSize() {
+#ifdef _WIN32
+  SYSTEM_INFO system_info;
+  GetSystemInfo(&system_info);
+  return std::max(system_info.dwPageSize, system_info.dwAllocationGranularity);
+#elif defined(__wasm__) || defined(__asmjs__)
+  return getpagesize();
+#else
+  return sysconf(_SC_PAGESIZE);
+#endif
+}
+
 TEST(TensorBundleTest, StringTensors) {
   constexpr size_t kLongLength = static_cast<size_t>(UINT32_MAX) + 1;
   Tensor long_string_tensor(DT_STRING, TensorShape({1}));
@@ -783,14 +800,17 @@ TEST(TensorBundleTest, StringTensors) {
     TF_ASSERT_OK(reader.Lookup("long_scalar", &long_string_tensor));
     ASSERT_EQ(backing_string, long_string_tensor.flat<tstring>().data());
     EXPECT_EQ(kLongLength, backing_string->length());
-    for (size_t i = 0; i < kLongLength; i++) {
-      // Not using ASSERT_EQ('d', c) because this way is twice as fast due to
-      // compiler optimizations.
-      if ((*backing_string)[i] != 'd') {
+
+    const size_t kPageSize = GetPageSize();
+    char* testblock = new char[kPageSize];
+    memset(testblock, 'd', sizeof(char) * kPageSize);
+    for (size_t i = 0; i < kLongLength; i += kPageSize) {
+      if (memcmp(testblock, backing_string->data() + i, kPageSize) != 0) {
         FAIL() << "long_scalar is not full of 'd's as expected.";
         break;
       }
     }
+    delete[] testblock;
   }
 }
 

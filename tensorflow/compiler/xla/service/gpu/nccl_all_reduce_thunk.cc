@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif
 
 namespace xla {
@@ -59,7 +59,7 @@ Status RunAllReduce(ReductionKind reduction_kind,
     TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
                         ToNcclDataTypeAndCountMultiplier(buffer.element_type));
     ncclDataType_t dtype = dtype_and_multiplier.first;
-    int element_count = buffer.element_count * dtype_and_multiplier.second;
+    int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
     VLOG(3) << absl::StreamFormat(
         "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
@@ -182,7 +182,7 @@ std::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
   PrimitiveType type =
       TypeToShape(block.getArgument(0).getType()).element_type();
   if (type == PRED) {
-    switch (opcode.ValueOrDie()) {
+    switch (opcode.value()) {
       case HloOpcode::kAnd:
         return ReductionKind::MIN;
       case HloOpcode::kOr:

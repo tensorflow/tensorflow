@@ -50,7 +50,7 @@ using mlir::TypeConverter;
 using mlir::Value;
 using mlir::func::FuncOp;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_JITRTLEGALIZEI1TYPES
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 static Optional<Type> PromoteI1ToI8(Type input_type) {
@@ -189,7 +189,7 @@ static void populateI1TypeConversionPatterns(I1TypeConverter &type_converter,
 }
 
 struct JitRtLegalizeI1TypesPass
-    : public JitRtLegalizeI1TypesBase<JitRtLegalizeI1TypesPass> {
+    : public impl::JitRtLegalizeI1TypesBase<JitRtLegalizeI1TypesPass> {
   void runOnOperation() override {
     MLIRContext &context = getContext();
     I1TypeConverter type_converter;

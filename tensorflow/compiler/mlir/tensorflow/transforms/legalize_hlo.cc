@@ -57,9 +57,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/broadcast_utils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/BroadcastUtils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/ChloOps.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
 
@@ -1508,7 +1508,7 @@ bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
   if (reduce_dim < 0) reduce_dim += iota_type.getRank();
 
   auto index =
-      llvm::Optional<SmallVector<int64_t>>(llvm::in_place, iota_type.getRank());
+      llvm::Optional<SmallVector<int64_t>>(std::in_place, iota_type.getRank());
   while (index.has_value()) {
     StridedArrayView<DenseIntElementsAttr> array_view(
         iota_const_attr, iota_shape, *index, reduce_dim);

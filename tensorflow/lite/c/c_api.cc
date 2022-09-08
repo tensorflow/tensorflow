@@ -69,12 +69,25 @@ TfLiteModel* TfLiteModelCreateFromFile(const char* model_path) {
 void TfLiteModelDelete(TfLiteModel* model) { delete model; }
 
 TfLiteRegistrationExternal* TfLiteRegistrationExternalCreate(
-    const char* custom_name, const int version) {
+    const char* custom_name, int version) {
   return new TfLiteRegistrationExternal{custom_name, version};
 }
 
 void TfLiteRegistrationExternalDelete(TfLiteRegistrationExternal* reg) {
   delete reg;
+}
+
+void TfLiteRegistrationExternalSetInit(
+    TfLiteRegistrationExternal* registration,
+    void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
+                  size_t length)) {
+  registration->init = init;
+}
+
+void TfLiteRegistrationExternalSetFree(
+    TfLiteRegistrationExternal* registration,
+    void (*free)(TfLiteOpaqueContext* context, void* data)) {
+  registration->free = free;
 }
 
 void TfLiteRegistrationExternalSetPrepare(

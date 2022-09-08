@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_simplify_padding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
@@ -54,15 +55,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
 
 namespace xla {
 namespace gpu {
@@ -90,12 +92,21 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<TupleSimplifier>();
 
-  // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
-  // introduces reshapes and transposes that can be eliminated using
-  // AlgebraicSimplifier  We run algsimp to a fixed point.
-  AlgebraicSimplifierOptions options;
-  options.set_enable_conv_operand_swap(false);
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+  AlgebraicSimplifierOptions algsimp_options;
+  algsimp_options.set_enable_conv_operand_swap(false);
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
+
+  // CudnnSimplifyPadding gets rid of some padding introduced by
+  // CudnnPadForConvolutions and used by CudnnVectorizeConvolutions.  The
+  // pattern-matches in this pass need to be run after inlining and simplifying
+  // tuples from CudnnVectorizeConvolutions.  We also need to run algsimp to
+  // e.g. clean up unnecessary nop `convert`s.
+  pipeline.AddPass<CudnnSimplifyPadding>();
+
+  // tf2xla bridge, DepthwiseConvolutionConverter, GpuConvRewriter, and
+  // CudnnSimplifyPadding introduce reshapes and transposes that can be
+  // eliminated using AlgebraicSimplifier  We run algsimp to a fixed point.
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
   // GpuConvRewriter, GpuConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified
@@ -168,7 +179,7 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
       // The matrix bias operand can be overwritten in-place.
       if (user->custom_call_target() == kCublasLtMatmulCallTarget) {
         GemmBackendConfig config =
-            std::move(user->backend_config<GemmBackendConfig>()).ValueOrDie();
+            std::move(user->backend_config<GemmBackendConfig>()).value();
         return (config.beta() != 0.) && user->operand(2) == operand;
       }
       // The operand of cholesky can be shared with the first output.
@@ -277,7 +288,7 @@ void WarnIfBadDriverJITVersion() {
       LOG(WARNING) << "Couldn't read CUDA driver version.";
       return;
     }
-    se::cuda::DriverVersion version = version_or_status.ValueOrDie();
+    se::cuda::DriverVersion version = version_or_status.value();
 
     // The following versions of the driver JIT miscompile some address
     // calculations with large offsets (e.g. "load ptr + large_constant"),
@@ -414,7 +425,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
           // error out we have no way of telling how far through the process we
           // got).
           RecordPtxToCubinDuration(end_usecs - start_usecs);
-          cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
+          cache_value->cubin_data = std::move(maybe_cubin).value();
           VLOG(1) << "Compiled PTX size:" << ptx.size()
                   << " CUBIN size: " << cache_value->cubin_data.size();
         } else {

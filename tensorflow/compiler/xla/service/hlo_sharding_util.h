@@ -31,7 +31,7 @@ limitations under the License.
 namespace xla {
 namespace hlo_sharding_util {
 
-struct GatherParallelDims {
+struct GatherScatterParallelDims {
   absl::InlinedVector<int64_t, 1> indices_parallel_dims;
   absl::InlinedVector<int64_t, 1> operand_parallel_dims;
   std::vector<int64_t> index_parallel_in_dim;
@@ -64,7 +64,7 @@ std::optional<int64_t> SelectDominantDevice(
 // Assigns all the instructions of a computation, to a given device.
 // This API does not recurse into called computations, and does not assign
 // instructions which already have sharding.
-Status AssignComputationDevice(HloComputation* computation, int64_t device);
+void AssignComputationDevice(HloComputation* computation, int64_t device);
 
 // Given an instruction container, returns the device which is most commonly
 // occurring among the instructions.
@@ -78,7 +78,7 @@ std::optional<int64_t> GetMostOccurringDevice(
 // This API does not recurse into called computations.
 // If no device exists that satisfies the condition, the returned optional will
 // hold no value.
-StatusOr<std::optional<int64_t>> GetDominantDevice(
+std::optional<int64_t> GetDominantDevice(
     absl::Span<HloComputation* const> computations, double dominant_factor);
 
 // Returns the HloSharding with the tile dimensions and tile assignment
@@ -155,15 +155,25 @@ HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
 
 // Returns an output sharding of gather by passing through the data operand's
 // sharding.
-std::optional<HloSharding> GatherOutputShardingFromDataOperand(
-    const HloSharding& data_operand_sharding, const HloInstruction& hlo,
+std::optional<HloSharding> GatherOutputShardingFromOperand(
+    const HloSharding& operand_sharding, const HloInstruction& hlo,
     absl::Span<const int64_t> slice_sizes, const Shape& output_shape,
     const Shape& operand_shape);
 
+// Returns an output sharding of gather by passing through the data operand's
+// sharding on index parallel dimensions
+std::optional<HloSharding> GatherOperandShardingFromOutputParallelDimensions(
+    const HloSharding& output_sharding, const HloScatterInstruction& scatter);
+
 // Returns a data operand sharding of gather by passing through the output's
 // sharding.
-std::optional<HloSharding> GatherDataOperandShardingFromOutput(
+std::optional<HloSharding> GatherOperandShardingFromOutput(
     const HloSharding& output_sharding, const HloInstruction& hlo);
+
+// Returns the slice size for a scatter with given operand and update shapes.
+std::vector<int64_t> GetScatterSliceSize(const Shape& operand_shape,
+                                         const Shape& update_shape,
+                                         const ScatterDimensionNumbers& dnums);
 
 // Returns an output sharding of scatter by passing through the update operand's
 // sharding.
@@ -175,6 +185,26 @@ std::optional<HloSharding> ScatterOutputShardingFromUpdate(
 std::optional<HloSharding> ScatterUpdateShardingFromOutput(
     const HloSharding& per_output_sharding,
     const HloScatterInstruction& scatter);
+
+// Returns an update operand sharding of scatter by passing through the output's
+// sharding on operand pass-through dimensions.
+std::optional<HloSharding>
+ScatterUpdateShardingFromOutputOperandPassthroughDimensions(
+    const HloSharding& per_output_sharding,
+    const HloScatterInstruction& scatter);
+
+// Returns an update operand sharding of scatter by passing through the output's
+// sharding on index parallel dimensions.
+std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
+    const HloSharding& output_sharding, const HloScatterInstruction& scatter);
+
+// Returns an output sharding of gather or update operand sharding of scatter by
+// passing through the indices' sharding on index parallel dimensions.
+HloSharding GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
+    const HloSharding& indices_sharding,
+    const int64_t output_or_update_shape_rank,
+    absl::Span<const int64_t> indices_parallel_dims,
+    absl::Span<const int64_t> output_or_update_parallel_dims);
 
 // Returns an identity value and an HloOpcode for reduce computation of scatter
 // instruction.
@@ -225,20 +255,29 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
 // equivalent to kIota.
 std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota);
 
-// Returns identified parallel dimensions for Gather.
-std::optional<GatherParallelDims> GetGatherBatchParallelDims(
+// Returns identified parallel dimensions of operands and indices for Gather.
+std::optional<GatherScatterParallelDims> GetGatherBatchParallelDims(
+    const HloInstruction& hlo);
+
+// Returns identified parallel dimensions of operands and indices for Scatter.
+std::optional<GatherScatterParallelDims> GetScatterBatchParallelDims(
     const HloInstruction& hlo);
 
 // Returns the parallel dimensions of the output of a gather based on the
-// parallel dimensions of the input.
-absl::InlinedVector<int64_t, 1> GatherParallelOutputDims(
-    const HloInstruction& gather, const GatherParallelDims& parallel_dim);
+// parallel dimensions of the operands and indices.
+absl::InlinedVector<int64_t, 1> GetGatherOutputParallelDims(
+    const HloInstruction& hlo, const GatherScatterParallelDims& parallel_dim);
 
-// Returns the parallel dimensions of the data operand of a gather with the
-// order of the parallel dimensions matching that of the parallel dimensions
-// of the output.
-absl::InlinedVector<int64_t, 1> GatherOutputAlignedOperandParallelDims(
-    const HloInstruction& gather, const GatherParallelDims& parallel_dims);
+// Returns the parallel dimensions of the update of a scatter based on the
+// parallel dimensions of the operands and indices.
+absl::InlinedVector<int64_t, 1> GetScatterUpdateParallelDims(
+    const HloInstruction& hlo, const GatherScatterParallelDims& parallel_dim);
+
+// Returns the parallel dimensions of the data operand of a gather/scatter with
+// the order of the parallel dimensions matching that of the parallel dimensions
+// of the indices.
+absl::InlinedVector<int64_t, 1> IndexAlignedOperandParallelDims(
+    const GatherScatterParallelDims& parallel_dims);
 
 // Represents grouping devices in a tiled sharding along certain dimensions.
 // Elements in group dimensions define different device groups, and the sharding
@@ -273,6 +312,18 @@ GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
 GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
                                     absl::Span<const int64_t> group_dims,
                                     bool subgroup_manual = false);
+
+// Creates a GroupedSharding by trying to group on partially replicated
+// dimensions, otherwise replicate it.
+GroupedSharding GroupShardingOnReplicatedDim(const HloSharding& sharding,
+                                             const int64_t num_groups,
+                                             const int64_t num_tiles,
+                                             const int64_t data_rank);
+
+// Get group sharding for replicated sharding.
+GroupedSharding GetGroupedReplicatedSharding(const int64_t num_groups,
+                                             const int64_t num_tiles,
+                                             const int64_t data_rank);
 
 // Get group sharding for each manual subgroup.
 GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding);

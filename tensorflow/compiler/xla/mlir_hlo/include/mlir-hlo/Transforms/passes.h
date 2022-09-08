@@ -44,6 +44,12 @@ using BufferizePatternsCallback = std::function<void(
 // Passes
 //===----------------------------------------------------------------------===//
 
+#define GEN_PASS_DECL_BUFFERPACKING
+#define GEN_PASS_DECL_FINALBUFFERIZEPASS
+#define GEN_PASS_DECL_PROPAGATESTATICSHAPESTOKERNELPASS
+#define GEN_PASS_DECL_TILELOOPSPASS
+#include "mlir-hlo/Transforms/passes.h.inc"
+
 /// Creates a pass that reuses buffers which are already allocated.
 std::unique_ptr<OperationPass<func::FuncOp>> createBufferReusePass();
 
@@ -96,18 +102,25 @@ std::unique_ptr<OperationPass<ModuleOp>>
 createPropagateStaticShapesToKernelPass(Type pointerType = {});
 
 // Creates a pass for collapsing multidimensional parallel loops into 1D loops.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createCollapseParallelLoopsTo1DPass();
+std::unique_ptr<OperationPass<>> createCollapseParallelLoopsTo1DPass();
 
 // Creates a TileLoopsPass with tiles sizes provided through `tile_sizes`
 // and unroll factors provided through `unroll_factors`.
 std::unique_ptr<OperationPass<func::FuncOp>> createTileLoopsPass(
     ArrayRef<int64_t> tileSizes = {}, ArrayRef<int64_t> unrollFactors = {});
 
+// Detensorizes loop-carried variables and block arguments of scf.while, scf.for
+// and scf.if.
+std::unique_ptr<OperationPass<func::FuncOp>> createDetensorizeScfOpsPass();
+
 namespace hlo {
 std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
 
 std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass();
+
+std::unique_ptr<OperationPass<func::FuncOp>> createUnbufferizePass();
+std::unique_ptr<OperationPass<func::FuncOp>> createAllocToArgPass();
+
 }  // namespace hlo
 }  // namespace mlir
 

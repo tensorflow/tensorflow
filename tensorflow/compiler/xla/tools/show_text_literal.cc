@@ -16,6 +16,7 @@ limitations under the License.
 // Usage: show_text_literal <path-to-serialized-literal-text>
 
 #include <stdio.h>
+
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -25,12 +26,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/text_literal_reader.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 int main(int argc, char **argv) {
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  tsl::port::InitMain(argv[0], &argc, &argv);
 
   if (argc < 2) {
     LOG(QFATAL) << "Usage: " << argv[0] << " <path-to-serialized-literal-text>";

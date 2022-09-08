@@ -399,19 +399,19 @@ class StatelessParameterizedTruncatedNormalOp : public XlaOpKernel {
 
     auto bcasted_means = BroadcastTo(ctx->Input(2), shape.dim_sizes());
     OP_REQUIRES_OK(ctx, bcasted_means.status());
-    auto means = bcasted_means.ValueOrDie();
+    auto means = bcasted_means.value();
 
     auto bcasted_stddevs = BroadcastTo(ctx->Input(3), shape.dim_sizes());
     OP_REQUIRES_OK(ctx, bcasted_stddevs.status());
-    auto stddevs = bcasted_stddevs.ValueOrDie();
+    auto stddevs = bcasted_stddevs.value();
 
     auto bcasted_minvals = BroadcastTo(ctx->Input(4), shape.dim_sizes());
     OP_REQUIRES_OK(ctx, bcasted_minvals.status());
-    auto minvals = bcasted_minvals.ValueOrDie();
+    auto minvals = bcasted_minvals.value();
 
     auto bcasted_maxvals = BroadcastTo(ctx->Input(5), shape.dim_sizes());
     OP_REQUIRES_OK(ctx, bcasted_maxvals.status());
-    auto maxvals = bcasted_maxvals.ValueOrDie();
+    auto maxvals = bcasted_maxvals.value();
 
     xla::XlaOp uniform = StatelessRngUniform(
         device_type_string_, seed, xla_shape,

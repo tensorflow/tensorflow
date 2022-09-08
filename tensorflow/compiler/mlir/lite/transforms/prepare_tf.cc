@@ -795,9 +795,9 @@ struct ConvertTFBroadcastTo : public RewritePattern {
       return failure();
     }
 
-    auto tf_fill_op = rewriter.create<TF::FillOp>(
-        op->getLoc(), output_type, tf_broadcast_to_op.shape(),
-        status_or_const_op.ValueOrDie());
+    auto tf_fill_op = rewriter.create<TF::FillOp>(op->getLoc(), output_type,
+                                                  tf_broadcast_to_op.shape(),
+                                                  status_or_const_op.value());
 
     auto mul_op = rewriter.create<TF::MulOp>(
         op->getLoc(), output_type, tf_broadcast_to_op.input(), tf_fill_op);

@@ -495,6 +495,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Tries to use a kDot in place of the given convolution.
   StatusOr<bool> SimplifyConvToDot(HloInstruction* convolution);
+  // Tries to use a multiplication in place of the given convolution.
+  StatusOr<bool> SimplifyConvToMultiply(HloInstruction* convolution);
 
   // Tries to simplify a slice where the result of the slice is a scalar.
   StatusOr<bool> TrySimplifyScalarSlice(HloInstruction* slice);

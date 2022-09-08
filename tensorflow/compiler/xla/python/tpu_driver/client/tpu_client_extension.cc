@@ -224,6 +224,12 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def_property_readonly("traceback",
                              [](PyTpuBuffer*) { return py::none(); });
 
+  py::class_<PyTpuToken> token(m, "Token");
+  token.def("block_until_ready", &PyTpuToken::Await);
+  py::class_<PyShardedTpuToken> sharded_token(m, "ShardedToken");
+  sharded_token.def("block_until_ready", &PyShardedTpuToken::Await);
+  sharded_token.def("get_token", &PyShardedTpuToken::GetPyToken);
+
   py::class_<PyTpuExecutable>(m, "TpuExecutable")
       .def("local_logical_device_ids",
            &PyTpuExecutable::local_logical_device_ids)
@@ -239,10 +245,15 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("delete", &PyTpuExecutable::Delete)
       .def("execute", &PyTpuExecutable::Execute,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("execute_with_token", &PyTpuExecutable::ExecuteWithToken,
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("execute_on_local_devices", &PyTpuExecutable::ExecuteOnLocalDevices,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("execute_sharded_on_local_devices",
            &PyTpuExecutable::ExecuteShardedOnLocalDevices,
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("execute_sharded_on_local_devices_with_tokens",
+           &PyTpuExecutable::ExecuteShardedOnLocalDevicesWithTokens,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       // TODO(phawkins): implement traceback support.
       .def_property_readonly("traceback",

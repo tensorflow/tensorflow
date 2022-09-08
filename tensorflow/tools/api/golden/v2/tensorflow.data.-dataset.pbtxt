@@ -43,6 +43,10 @@ tf_class {
     argspec: "args=[\'self\', \'dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "counter"
+    argspec: "args=[\'start\', \'step\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \"<dtype: \'int64\'>\", \'None\'], "
+  }
+  member_method {
     name: "enumerate"
     argspec: "args=[\'self\', \'start\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }

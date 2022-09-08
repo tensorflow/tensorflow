@@ -43,10 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 82
+_version = 92
 
 # Version number for MLIR:Python components.
-mlir_api_version = 30
+mlir_api_version = 34
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -97,8 +97,20 @@ def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
       allowed_devices=allowed_devices)
 
 
+def make_tfrt_tpu_c_api_client():
+  return _xla.get_tfrt_tpu_c_api_client()
+
+
 def make_tpu_client():
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
+  use_pjrt_c_api = os.getenv('JAX_USE_PJRT_C_API_ON_TPU', 'false')
+  if use_pjrt_c_api not in ('1', 'true', 'false'):
+    raise ValueError(
+        'JAX_USE_PJRT_C_API_ON_TPU env var must be "1", "true" or "false", '
+        f'got "{use_pjrt_c_api}"')
+  if use_pjrt_c_api in ('1', 'true'):
+    return make_tfrt_tpu_c_api_client()
+
   max_inflight_computations = os.getenv(
       'JAX_TPU_MAX_INFLIGHT_COMPUTATIONS', '32')
   try:
@@ -323,7 +335,7 @@ def execute_with_python_values(executable, arguments, backend):
 
   arguments = [put(arg) for arg in arguments]
   outputs = executable.execute(arguments)
-  return [x.to_py() for x in outputs]
+  return [np.asarray(x) for x in outputs]
 
 
 def execute_with_python_values_replicated(executable, arguments, backend):
@@ -346,7 +358,7 @@ def execute_with_python_values_replicated(executable, arguments, backend):
 
   inputs = [copy_to_devices(pyvals) for pyvals in zip(*arguments)]
   outputs = executable.execute_sharded_on_local_devices(inputs)
-  return [[x.to_py() for x in xs] for xs in zip(*outputs)]
+  return [[np.asarray(x) for x in xs] for xs in zip(*outputs)]
 
 
 class PaddingType(enum.Enum):
@@ -391,6 +403,8 @@ XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
+ShardedBuffer = _xla.ShardedBuffer
+Array = _xla.Array
 DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
 OpSharding = _xla.OpSharding
@@ -670,3 +684,5 @@ XlaRuntimeError = _xla.XlaRuntimeError
 # Perform one last garbage collection of deferred Python references. This is
 # mostly to keep ASAN happy.
 atexit.register(_xla.collect_garbage)
+
+weakref_lru_cache = _xla.weakref_lru_cache

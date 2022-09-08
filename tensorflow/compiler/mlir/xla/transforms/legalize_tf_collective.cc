@@ -35,10 +35,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/hlo_utils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/ChloOps.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
@@ -139,8 +139,8 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
   ChannelHandleAttr channel_handle = ConvertChannel(builder, channel_id, mode);
   Location loc = op->getLoc();
   Type element_type = getElementTypeOrSelf(input.getType());
-  auto all_reduce = builder.create<AllReduceOp>(loc, result_type, input,
-                                                replica_groups, channel_handle);
+  auto all_reduce = builder.create<AllReduceOp>(
+      loc, result_type, input, replica_groups, channel_handle, nullptr);
   if (merge_op == "Add") {
     BuildReduceBody<AddOp>(element_type, &all_reduce.computation(), &builder);
   } else if (merge_op == "Mul") {

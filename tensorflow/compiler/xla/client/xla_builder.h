@@ -46,7 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 namespace xla {
 
@@ -59,6 +59,33 @@ namespace internal {
 struct XlaBuilderFriend {
   static XlaOp BuildAddDependency(XlaBuilder* builder, XlaOp operand,
                                   XlaOp token, const Shape& shape);
+
+  static XlaOp BuildAsyncStart(XlaBuilder* builder,
+                               absl::Span<const XlaOp> operands,
+                               std::string execution_thread, int64_t group_id,
+                               const XlaComputation& called_computation,
+                               const Shape& shape);
+  static XlaOp BuildAsyncStart(XlaBuilder* builder,
+                               absl::Span<const XlaOp> operands,
+                               std::string execution_thread,
+                               const XlaComputation& called_computation,
+                               const Shape& shape);
+  static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
+                                std::string execution_thread, int64_t group_id,
+                                const XlaComputation& called_computation,
+                                const Shape& shape);
+  static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
+                                std::string execution_thread,
+                                const XlaComputation& called_computation,
+                                const Shape& shape);
+  static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
+                              std::string execution_thread, int64_t group_id,
+                              const XlaComputation& called_computation,
+                              const Shape& shape);
+  static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
+                              std::string execution_thread,
+                              const XlaComputation& called_computation,
+                              const Shape& shape);
 
   static XlaOp BuildFusion(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands,
@@ -751,10 +778,12 @@ class XlaBuilder {
       const std::optional<Layout>& layout = std::nullopt,
       const std::optional<bool> use_global_device_ids = std::nullopt);
 
-  XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
-                  absl::Span<const ReplicaGroup> replica_groups = {},
-                  const std::optional<ChannelHandle>& channel_id = std::nullopt,
-                  const std::optional<Shape>& shape_with_layout = std::nullopt);
+  XlaOp AllReduce(
+      XlaOp operand, const XlaComputation& computation,
+      absl::Span<const ReplicaGroup> replica_groups = {},
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Shape>& shape_with_layout = std::nullopt,
+      const std::optional<bool> use_global_device_ids = std::nullopt);
 
   XlaOp ReduceScatter(
       XlaOp operand, const XlaComputation& computation,
@@ -1035,7 +1064,7 @@ class XlaBuilder {
   Status first_error_;
 
   // The saved stack trace from the point at which the first error occurred.
-  tensorflow::SavedStackTrace first_error_backtrace_;
+  tsl::SavedStackTrace first_error_backtrace_;
 
   // The instructions of this computation.
   // Use a deque so pointers into this are stable, for example the return
@@ -1367,7 +1396,8 @@ class XlaBuilder {
   friend XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                          absl::Span<const ReplicaGroup> replica_groups,
                          const std::optional<ChannelHandle>& channel_id,
-                         const std::optional<Shape>& shape_with_layout);
+                         const std::optional<Shape>& shape_with_layout,
+                         const std::optional<bool> use_global_device_ids);
   friend XlaOp ReduceScatter(XlaOp operand, const XlaComputation& computation,
                              int64_t scatter_dimension, int64_t shard_count,
                              absl::Span<const ReplicaGroup> replica_groups,
@@ -2348,7 +2378,8 @@ XlaOp AllGather(XlaOp operand, int64_t all_gather_dimension,
 XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                 absl::Span<const ReplicaGroup> replica_groups = {},
                 const std::optional<ChannelHandle>& channel_id = std::nullopt,
-                const std::optional<Shape>& shape_with_layout = std::nullopt);
+                const std::optional<Shape>& shape_with_layout = std::nullopt,
+                const std::optional<bool> use_global_device_ids = std::nullopt);
 
 XlaOp ReduceScatter(
     XlaOp operand, const XlaComputation& computation, int64_t scatter_dimension,

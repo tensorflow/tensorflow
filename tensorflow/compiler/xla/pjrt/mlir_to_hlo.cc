@@ -25,9 +25,9 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/ChloOps.h"
 
 namespace xla {
 
@@ -61,9 +61,8 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
   mlir::MlirToHloConversionOptions options;
   // We don't want the conversion to muck with our operator names.
   options.legalize_node_names = false;
-  TF_RETURN_IF_ERROR(
-      ConvertMlirHloToHlo(module, &proto, use_tuple_args, return_tuple,
-                          /*shape_determination_fns=*/{}, options));
+  TF_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &proto, use_tuple_args,
+                                         return_tuple, options));
 
   xla_computation = XlaComputation(std::move(*proto.mutable_hlo_module()));
   return OkStatus();

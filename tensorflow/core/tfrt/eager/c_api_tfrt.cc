@@ -376,7 +376,7 @@ tensorflow::DataType TensorHandleInterface::DataType() const {
   if (!metadata.hasValue()) {
     LOG(ERROR)
         << "Failed to get DataType due to error metadata: "
-        << value_.get<TensorHandle>().GetAsyncMetadata().GetError().message;
+        << value_.get<TensorHandle>().GetAsyncMetadata().GetError().message();
     return tensorflow::DT_INVALID;
   }
   auto kind = metadata.getValue()->dtype;
@@ -388,7 +388,7 @@ tensorflow::DataType TensorHandleInterface::DataType() const {
 
     if (async_tensor->IsError()) {
       LOG(ERROR) << "Failed to get DataType from an error tensor "
-                 << async_tensor->GetError().message;
+                 << async_tensor->GetError().message();
       return tensorflow::DT_INVALID;
     }
     assert(async_tensor->IsType<tensorflow::tfd::RuntimeFallbackTensor>());
@@ -407,9 +407,9 @@ tensorflow::Status TensorHandleInterface::TensorHandleStatus() const {
     if (!metadata.hasValue()) {
       LOG(ERROR)
           << "Metadata in the tensor handle is an error metadata: "
-          << value_.get<TensorHandle>().GetAsyncMetadata().GetError().message;
+          << value_.get<TensorHandle>().GetAsyncMetadata().GetError().message();
       return tensorflow::errors::Internal(
-          value_.get<TensorHandle>().GetAsyncMetadata().GetError().message);
+          value_.get<TensorHandle>().GetAsyncMetadata().GetError().message());
     }
 
     AsyncValue* async_tensor = value_.get<TensorHandle>().GetAsyncTensor();
@@ -419,8 +419,8 @@ tensorflow::Status TensorHandleInterface::TensorHandleStatus() const {
 
     if (async_tensor->IsError()) {
       LOG(ERROR) << "Async tensor in the tensor handle is an error tensor: "
-                 << async_tensor->GetError().message;
-      return tensorflow::errors::Internal(async_tensor->GetError().message);
+                 << async_tensor->GetError().message();
+      return tensorflow::errors::Internal(async_tensor->GetError().message());
     }
 
     return ::tensorflow::OkStatus();
@@ -554,7 +554,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
   if (target_av->IsError()) {
     *status = tensorflow::Status(
         tensorflow::error::Code::UNKNOWN,
-        StrCat("Cannot resolve tensor: ", target_av->GetError().message));
+        StrCat("Cannot resolve tensor: ", target_av->GetError().message()));
     return nullptr;
   }
   auto host_tensor_ref = target_th.ReleaseTensorRef();
@@ -625,7 +625,7 @@ static TensorInterface* MakeScalarTensor(T value, HostContext* host) {
   view.Elements()[0] = value;
 
   return new TensorInterface(
-      MakeAvailableAsyncValueRef<DenseHostTensor>(host, std::move(dht)));
+      MakeAvailableAsyncValueRef<DenseHostTensor>(std::move(dht)));
 }
 
 tensorflow::AbstractTensorInterface* ContextInterface::CreateInt64Scalar(
@@ -743,8 +743,8 @@ tensorflow::AbstractTensorInterface* ContextInterface::CreateTensor(
         tensorflow::Tensor(dtype, tensorflow::TensorShape(dim_sizes)));
   } else {
     auto t = DenseHostTensor::CreateUninitialized(md, GetHostContext());
-    return new TensorInterface(MakeAvailableAsyncValueRef<DenseHostTensor>(
-        GetHostContext(), std::move(t.getValue())));
+    return new TensorInterface(
+        MakeAvailableAsyncValueRef<DenseHostTensor>(std::move(t.getValue())));
   }
 }
 
@@ -759,7 +759,7 @@ tensorflow::AbstractTensorInterface* ContextInterface::CreateTensor(
         memory_releaser(data, len, memory_releaser_arg);
       });
   AsyncValueRef<DenseHostTensor> dht =
-      MakeConstructedAsyncValueRef<DenseHostTensor>(GetHostContext(), metadata,
+      MakeConstructedAsyncValueRef<DenseHostTensor>(metadata,
                                                     std::move(buffer));
 
   dht.SetStateConcrete();
@@ -786,16 +786,16 @@ tensorflow::ImmediateExecutionTensorHandle* ContextInterface::CreateLocalHandle(
 
     if (expected_result_tensor) {
       return new TensorHandleInterface(
-          Value(TensorHandle(
-              host->GetHostDeviceRef(), expected_result_tensor.get().metadata(),
-              MakeAvailableAsyncValueRef<
-                  tensorflow::tfd::RuntimeFallbackTensor>(
-                  host, std::move(expected_result_tensor.get())))),
+          Value(TensorHandle(host->GetHostDeviceRef(),
+                             expected_result_tensor.get().metadata(),
+                             MakeAvailableAsyncValueRef<
+                                 tensorflow::tfd::RuntimeFallbackTensor>(
+                                 std::move(expected_result_tensor.get())))),
           GetTfrtContext());
     } else {
       return new TensorHandleInterface(
           Value(TensorHandle::CreateError(MakeErrorAsyncValueRef(
-              GetHostContext(), StrCat(expected_result_tensor.takeError())))),
+              StrCat(expected_result_tensor.takeError())))),
           GetTfrtContext());
     }
   }
@@ -818,20 +818,20 @@ tensorflow::ImmediateExecutionTensorHandle* ContextInterface::CreateLocalHandle(
               host->GetHostDeviceRef(), md,
               MakeAvailableAsyncValueRef<
                   tensorflow::tfd::RuntimeFallbackTensor>(
-                  host, tensorflow::tfd::CopyRefDHTToRuntimeFallbackTensor(
-                            *dht, host)))),
+                  tensorflow::tfd::CopyRefDHTToRuntimeFallbackTensor(*dht,
+                                                                     host)))),
           GetTfrtContext());
     }
   } else {
-    auto result_tensor = MakeIndirectAsyncValue(host);
+    auto result_tensor = MakeIndirectAsyncValue();
     tensor_av.AndThen([host, result_tensor = result_tensor,
                        tensor_av = tensor_av.CopyRef()]() {
       if (auto* dht =
               llvm::dyn_cast<DenseHostTensor>(&tensor_av.get<Tensor>())) {
         result_tensor->ForwardTo(
             MakeAvailableAsyncValueRef<tensorflow::tfd::RuntimeFallbackTensor>(
-                host, tensorflow::tfd::CopyRefDHTToRuntimeFallbackTensor(
-                          *dht, host)));
+                tensorflow::tfd::CopyRefDHTToRuntimeFallbackTensor(*dht,
+                                                                   host)));
       } else {
         result_tensor->ForwardTo(tensor_av.CopyRef());
       }
@@ -865,12 +865,12 @@ ContextInterface::CreateLocalHandleFromTFTensor(tensorflow::Tensor& t,
         Value(TensorHandle(
             host->GetHostDeviceRef(), expected_result_tensor.get().metadata(),
             MakeAvailableAsyncValueRef<tensorflow::tfd::RuntimeFallbackTensor>(
-                host, std::move(expected_result_tensor.get())))),
+                std::move(expected_result_tensor.get())))),
         GetTfrtContext());
   } else {
     return new TensorHandleInterface(
         Value(TensorHandle::CreateError(MakeErrorAsyncValueRef(
-            GetHostContext(), StrCat(expected_result_tensor.takeError())))),
+            StrCat(expected_result_tensor.takeError())))),
         GetTfrtContext());
   }
 }
@@ -1047,7 +1047,7 @@ ContextInterface::CopyTensorHandleToDevice(
     *status = tensorflow::errors::InvalidArgument(
         StrCat(tfrt_device_name.takeError()));
     RCReference<AsyncValue> error_av =
-        MakeErrorAsyncValueRef(host_ctx, status->error_message());
+        MakeErrorAsyncValueRef(status->error_message());
     return new TensorHandleInterface(
         Value(TensorHandle::CreateError(std::move(error_av))),
         GetTfrtContext());
@@ -1059,8 +1059,7 @@ ContextInterface::CopyTensorHandleToDevice(
         tfrt::StrCat("Failed to find destination device with name: ",
                      tfrt_device_name.get());
     *status = tensorflow::errors::Internal(error_message);
-    RCReference<AsyncValue> error_av =
-        MakeErrorAsyncValueRef(host_ctx, error_message);
+    RCReference<AsyncValue> error_av = MakeErrorAsyncValueRef(error_message);
     return new TensorHandleInterface(
         Value(TensorHandle::CreateError(std::move(error_av))),
         GetTfrtContext());
@@ -1079,7 +1078,7 @@ ContextInterface::CopyTensorHandleToDevice(
   if (target_av->IsError()) {
     *status = tensorflow::errors::Internal(
         tfrt::StrCat("Copying to device <", tfrt_device_name.get(),
-                     "> failed: ", target_av->GetError().message));
+                     "> failed: ", target_av->GetError().message()));
     return nullptr;
   }
   return new TensorHandleInterface(Value(target_th.CopyRef()),

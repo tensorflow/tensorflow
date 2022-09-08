@@ -37,9 +37,9 @@ add_mlir_library(MhloPasses
   convert_to_signless_pass.cc
   expand_hlo_tuples.cc
   group_reduction_dimensions.cc
-  legalize_shape_computations.cc
   legalize_einsum_to_dot_general.cc
   legalize_gather_to_torch_index_select.cc
+  legalize_shape_computations.cc
   legalize_trigonometric_to_approximation.cc
   lower_complex.cc
   lower_complex_patterns.td
@@ -48,6 +48,7 @@ add_mlir_library(MhloPasses
   materialize_broadcasts_pass.cc
   merge_assuming_ops.cc
   mhlo_canonicalize_reduction.cc
+  mhlo_flatten_tuple.cc
   optimize_mhlo.cc
   optimize_mhlo_pass.cc
   rank_specialization.cc
@@ -58,7 +59,6 @@ add_mlir_library(MhloPasses
   test_infer_shaped_type_pass.cc
   unfuse_batch_norm.cc
   unfuse_batch_norm_pass.cc
-  mhlo_flatten_tuple.cc
 
   DEPENDS
   MLIRhlo_opsIncGen
@@ -69,9 +69,31 @@ add_mlir_library(MhloPasses
   Core
 
   LINK_LIBS PUBLIC
-  ChloDialect
+  ChloOps
   MhloDialect
   MhloTypeConversion
+  MLIRIR
+  MLIRMhloUtils
+  MLIRPass
+  MLIRTransformUtils
+  StablehloBroadcastUtils
+)
+
+add_mlir_library(MhloToThloConversion
+  legalize_mhlo_to_thlo.cc
+
+  DEPENDS
+  MLIRGmlStFusionInterfaceIncGen
+  MLIRMhloPassIncGen
+  THLODialect
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MhloDialect
+  MhloTypeConversion
+  THLODialect
   MLIRIR
   MLIRMhloUtils
   MLIRPass
@@ -111,6 +133,7 @@ add_mlir_library(MhloTypeConversion
 
   LINK_LIBS PUBLIC
   MLIRIR
+  MLIRTensorDialect
 )
 
 add_mlir_library(MhloToMemrefConversion
@@ -213,8 +236,9 @@ add_mlir_library(ChloPasses
   Core
 
   LINK_LIBS PUBLIC
-  ChloDialect
+  ChloOps
   HloToLinalgUtils
+  MLIRComplexDialect
   MLIRIR
   MLIRPass
   MLIRRewrite
@@ -275,6 +299,7 @@ target_link_libraries(AllMhloPasses INTERFACE
   MhloToStandard
   HloToLinalgUtils
   MhloToLinalg
+  MhloToThloConversion
   MhloShapeOpsToStandard
 )
 

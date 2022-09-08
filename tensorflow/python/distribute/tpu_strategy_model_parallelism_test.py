@@ -403,5 +403,6 @@ class TPUStrategyModelParallelismTest(
     self.assertEqual(3 * num_replicas,
                      self.evaluate(strategy.reduce("SUM", result, axis=None)))
 
+
 if __name__ == "__main__":
   test.main()

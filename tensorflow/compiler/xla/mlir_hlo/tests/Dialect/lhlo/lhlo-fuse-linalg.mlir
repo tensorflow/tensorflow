@@ -264,7 +264,7 @@ func.func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
                   iterator_types = ["parallel"]}
       ins(%arg0 : memref<?xf32>) outs(%1 : memref<?xf32>) {
   ^bb0(%arg3: f32, %arg4: f32):
-    %13 = math.abs %arg3 : f32
+    %13 = math.absf %arg3 : f32
     linalg.yield %13 : f32
   }
   %2 = memref.reshape %1(%arg1)
@@ -278,7 +278,7 @@ func.func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
 //       CHECK:  scf.for {{.*}} step %[[C1]]
 //   CHECK-NOT:  scf.for
 //       CHECK:      linalg.generic
-//       CHECK:        math.abs
+//       CHECK:        math.absf
 //       CHECK:  memref.reshape
 
 // TILED-LABEL: func @view_result
@@ -287,7 +287,7 @@ func.func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
 //       TILED:  scf.for {{.*}} step %[[C2]]
 //   TILED-NOT:  scf.for
 //       TILED:      linalg.generic
-//       TILED:        math.abs
+//       TILED:        math.absf
 //       TILED:  memref.reshape
 
 
@@ -296,7 +296,7 @@ func.func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
 //       PLOOP:  scf.parallel
 //   PLOOP-NOT:  scf.parallel
 //       PLOOP:      linalg.generic
-//       PLOOP:        math.abs
+//       PLOOP:        math.absf
 //       PLOOP:  memref.reshape
 
 
@@ -316,7 +316,7 @@ func.func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2:
                   iterator_types = ["parallel"]}
       ins(%arg0 : memref<?xf32>) outs(%1 : memref<?xf32>) {
   ^bb0(%arg3: f32, %arg4: f32):
-    %13 = math.abs %arg3 : f32
+    %13 = math.absf %arg3 : f32
     linalg.yield %13 : f32
   }
   %true = arith.constant 1 : i1
@@ -338,7 +338,7 @@ func.func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2:
 //       CHECK:  scf.for {{.*}} step %[[C1]]
 //   CHECK-NOT:  scf.for
 //       CHECK:      linalg.generic
-//       CHECK:        math.abs
+//       CHECK:        math.absf
 //       CHECK:  scf.if
 //       CHECK:    memref.reshape
 //       CHECK:    scf.yield
@@ -352,7 +352,7 @@ func.func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2:
 //       TILED:  scf.for {{.*}} step %[[C2]]
 //   TILED-NOT:  scf.for
 //       TILED:      linalg.generic
-//       TILED:        math.abs
+//       TILED:        math.absf
 //       TILED:  scf.if
 //       TILED:    memref.reshape
 //       TILED:    scf.yield
@@ -365,7 +365,7 @@ func.func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2:
 //       PLOOP:  scf.parallel
 //   PLOOP-NOT:  scf.parallel
 //       PLOOP:      linalg.generic
-//       PLOOP:        math.abs
+//       PLOOP:        math.absf
 //       PLOOP:  scf.if
 //       PLOOP:    memref.reshape
 //       PLOOP:    scf.yield
@@ -386,7 +386,7 @@ func.func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
                   iterator_types = ["parallel"]}
       ins(%arg0 : memref<32xf32>) outs(%1 : memref<32xf32>) {
   ^bb0(%arg3: f32, %arg4: f32):
-    %13 = math.abs %arg3 : f32
+    %13 = math.absf %arg3 : f32
     linalg.yield %13 : f32
   }
   %2 = bufferization.to_tensor %1 : memref<32xf32>
@@ -401,7 +401,7 @@ func.func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
 //       CHECK:  scf.for {{.*}} step %[[C1]]
 //   CHECK-NOT:  scf.for
 //       CHECK:      linalg.generic
-//       CHECK:        math.abs
+//       CHECK:        math.absf
 //       CHECK:  bufferization.to_tensor
 //       CHECK:  tensor.cast
 //       CHECK:  bufferization.to_memref
@@ -412,7 +412,7 @@ func.func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
 //       TILED:  scf.for {{.*}} step %[[C2]]
 //   TILED-NOT:  scf.for
 //       TILED:      linalg.generic
-//       TILED:        math.abs
+//       TILED:        math.absf
 //       TILED:  bufferization.to_tensor
 //       TILED:  tensor.cast
 //       TILED:  bufferization.to_memref
@@ -423,7 +423,7 @@ func.func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
 //       PLOOP:  scf.parallel
 //   PLOOP-NOT:  scf.parallel
 //       PLOOP:      linalg.generic
-//       PLOOP:        math.abs
+//       PLOOP:        math.absf
 //       PLOOP:  bufferization.to_tensor
 //       PLOOP:  tensor.cast
 //       PLOOP:  bufferization.to_memref

@@ -28,9 +28,10 @@ using shape_inference::ShapeHandle;
 namespace {
 
 static Status StatelessRandomPermuteShape(InferenceContext* c) {
-  ShapeHandle index_shape, seed_shape, max_index_shape;
+  ShapeHandle index_shape, seed_shape, max_index_shape, rounds_shape;
 
   // Basic constraints but unknown ranks will not raise errors here.
+  // index, seed and max_index can be scalars or vectors (when batching).
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &index_shape));
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &seed_shape));
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 2, &seed_shape));
@@ -102,6 +103,7 @@ REGISTER_OP("RandomIndexShuffle")
     .Input("seed: Tseed")
     .Input("max_index: dtype")
     .Output("output: dtype")
+    .Attr("rounds: int = 4")
     .Attr("dtype: {int32, uint32, int64, uint64}")
     .Attr("Tseed: {int32, uint32, int64, uint64}")
     .SetShapeFn(StatelessRandomPermuteShape);

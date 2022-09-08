@@ -149,8 +149,7 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
       via_builder
           ? ConvertMlirHloToHloViaBuilder(module, &hloProto, options)
           : mlir::ConvertMlirHloToHlo(module, &hloProto, emit_use_tuple_arg,
-                                      emit_return_tuple,
-                                      /*shape_determination_fns=*/{}, options);
+                                      emit_return_tuple, options);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();
@@ -164,7 +163,7 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
     return mlir::failure();
   }
 
-  HloModule* hlo_module = statusOrHloModule.ValueOrDie().get();
+  HloModule* hlo_module = statusOrHloModule.value().get();
 
   output << hlo_module->ToString(
       HloPrintOptions().set_include_layout_in_shapes(print_layouts));

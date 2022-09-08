@@ -89,6 +89,12 @@ StatusOr<SliceSpecByName> BuildSliceSpecDeviceMap(
 
 }  // namespace
 
+// Example is _dev-02-of-16.
+std::string DeviceSuffix(int device_id, int total_devices) {
+  return absl::StrFormat("_dev-%0*d-of-%d", absl::StrCat(total_devices).size(),
+                         device_id, total_devices);
+}
+
 StatusOr<absl::flat_hash_map<
     int64_t, absl::flat_hash_map<int64_t, std::vector<std::string>>>>
 BuildSavingSpec(absl::Span<const SavingTensorMetadata> tensor_metadatas) {
@@ -126,7 +132,7 @@ BuildSavingSpec(absl::Span<const SavingTensorMetadata> tensor_metadatas) {
 
 SaveOpSpecs BuildPerDeviceSave(
     const absl::flat_hash_map<int64_t, std::vector<std::string>>& saving_spec,
-    const int device_id, absl::string_view prefix) {
+    const int device_id, absl::string_view prefix, const int total_devices) {
   std::vector<std::string> new_prefixes;
   std::vector<std::vector<int>> tensor_indices;
   std::vector<std::vector<std::string>> shape_and_slice_specs;
@@ -144,7 +150,8 @@ SaveOpSpecs BuildPerDeviceSave(
         shape_and_slice_specs.push_back({});
         // Generate new prefix based on device_id and save op index, only when
         // we need a new save_op.
-        new_prefixes.push_back(absl::StrCat(prefix, "_device_", device_id));
+        new_prefixes.push_back(
+            absl::StrCat(prefix, DeviceSuffix(device_id, total_devices)));
       }
       tensor_indices[save_op_index].push_back(tensor_index);
       shape_and_slice_specs[save_op_index].push_back(specs[save_op_index]);

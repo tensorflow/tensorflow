@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_BENCHMARK_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_BENCHMARK_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_
 
 #include <utility>
 
@@ -34,11 +34,11 @@ using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
-using ::tfrt::jitrt::Executable;
-using ::tfrt::jitrt::HostContextAsyncTaskRunner;
-using ::tfrt::jitrt::JitExecutable;
-using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::RemainingResultsConverter;
+using ::xla::runtime::Executable;
+using ::xla::runtime::HostContextAsyncTaskRunner;
+using ::xla::runtime::JitExecutable;
+using ::xla::runtime::MemrefDesc;
 
 // -------------------------------------------------------------------------- //
 // Run benchmark by compiling MLIR function using TFRT JitRt API.
@@ -95,26 +95,27 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   opts.async_task_runner = &async_task_runner;
 
   // Get an executable that might be specialized to the operands.
-  llvm::Expected<AsyncValuePtr<Executable>> executable =
+  absl::StatusOr<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands);
-  if (auto err = executable.takeError())
-    LOG(FATAL) << "Failed to specialize executable";
+  if (!executable.ok()) LOG(FATAL) << "Failed to specialize executable";
 
   // Wait for the compilation completion.
   host->Await({executable->CopyRef()});
 
   CHECK(!executable->IsError())
-      << "Failed to get executable: " << StrCat(executable->GetError());
+      << "Failed to get executable: " << tfrt::StrCat(executable->GetError());
   CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = (*executable)->InitializeCallFrame(operands, &call_frame))
+  if (auto st = (*executable)->InitializeCallFrame(operands, &call_frame);
+      !st.ok())
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
     (*executable)->Execute(call_frame, opts);
-    if (auto err = (*executable)->ReturnResults(converter, &call_frame))
+    if (auto st = (*executable)->ReturnResults(converter, &call_frame);
+        !st.ok())
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 
@@ -177,4 +178,4 @@ void RunMatMulEigenBenchmark(::testing::benchmark::State& state) {
   }                                                                          \
   BENCHMARK(BM_eigen_##NAME##_##TYPE)
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_BENCHMARK_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_

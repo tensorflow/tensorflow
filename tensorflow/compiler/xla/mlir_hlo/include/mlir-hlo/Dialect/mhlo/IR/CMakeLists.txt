@@ -14,21 +14,14 @@
 # limitations under the License.
 #
 # Need a separate function because of the .cc vs .cpp used in the one provided by MLIR
-function(add_mlir_hlo_dialect dialect)
-  set(LLVM_TARGET_DEFINITIONS ${dialect}.td)
-  mlir_tablegen(${dialect}.h.inc -gen-op-decls)
-  mlir_tablegen(${dialect}.cc.inc -gen-op-defs)
-  add_public_tablegen_target(MLIR${dialect}IncGen)
-  add_dependencies(mlir-headers MLIR${dialect}IncGen)
-endfunction()
-
-add_mlir_hlo_dialect(chlo_ops)
-
 set(LLVM_TARGET_DEFINITIONS hlo_ops.td)
 mlir_tablegen(hlo_ops.h.inc -gen-op-decls)
 mlir_tablegen(hlo_ops.cc.inc -gen-op-defs)
-mlir_tablegen(hlo_ops_base_enums.h.inc -gen-enum-decls)
-mlir_tablegen(hlo_ops_base_enums.cc.inc -gen-enum-defs)
-mlir_tablegen(hlo_ops_base_attrs.h.inc -gen-attrdef-decls)
-mlir_tablegen(hlo_ops_base_attrs.cc.inc -gen-attrdef-defs)
+mlir_tablegen(hlo_ops_enums.h.inc -gen-enum-decls)
+mlir_tablegen(hlo_ops_enums.cc.inc -gen-enum-defs)
+mlir_tablegen(hlo_ops_attrs.h.inc -gen-attrdef-decls)
+mlir_tablegen(hlo_ops_attrs.cc.inc -gen-attrdef-defs)
+mlir_tablegen(hlo_ops_typedefs.h.inc -gen-typedef-decls --typedefs-dialect=mhlo)
+mlir_tablegen(hlo_ops_typedefs.cc.inc -gen-typedef-defs --typedefs-dialect=mhlo)
 add_public_tablegen_target(MLIRhlo_opsIncGen)
+add_dependencies(mlir-headers MLIRhlo_opsIncGen)

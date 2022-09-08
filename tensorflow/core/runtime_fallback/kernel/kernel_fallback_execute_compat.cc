@@ -90,9 +90,10 @@ void KernelFallbackEmitError(
                 fallback_request_state->session_metadata().version(), ") ");
   auto error = EmitErrorAsync(
       exec_ctx,
-      tfrt::StrCat(model_info, "error running kernel fallback kernel ", op_name,
-                   ": ", status.error_message()),
-      tfrt::ConvertTfErrorCodeToTfrtErrorCode(status));
+      absl::Status(
+          ToAbslStatus(status).code(),
+          tfrt::StrCat(model_info, "error running kernel fallback kernel ",
+                       op_name, ": ", status.error_message())));
   std::fill(results.begin(), results.end(), error);
   if (op_chain) *op_chain = std::move(error);
 }
@@ -228,8 +229,7 @@ static void KernelFallbackExecuteCompatAsyncInternal(
     const OpKernelRunner& kernel_runner,
     tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results) {
-  auto chain =
-      tfrt::MakeUnconstructedAsyncValueRef<tfrt::Chain>(exec_ctx.host());
+  auto chain = tfrt::MakeUnconstructedAsyncValueRef<tfrt::Chain>();
   if (op_chain) *op_chain = chain.CopyRef();
 
   // Allocate unconstructed result tensors and set them in the output `results`.
@@ -237,7 +237,7 @@ static void KernelFallbackExecuteCompatAsyncInternal(
   result_refs.reserve(results.size());
   for (auto& result : results) {
     result_refs.emplace_back(
-        tfrt::MakeUnconstructedAsyncValueRef<TensorType>(exec_ctx.host()));
+        tfrt::MakeUnconstructedAsyncValueRef<TensorType>());
     result = result_refs.back().CopyRef();
   }
 
@@ -266,10 +266,10 @@ static void KernelFallbackExecuteCompatAsyncInternal(
     if (!context.status().ok()) {
       auto diag = tfrt::EmitError(
           exec_ctx,
-          {tfrt::StrCat("error running kernel fallback kernel ",
-                        context.op_kernel().name(), ": ",
-                        context.status().error_message())},
-          tfrt::ConvertTfErrorCodeToTfrtErrorCode(context.status()));
+          absl::Status(ToAbslStatus(context.status()).code(),
+                       tfrt::StrCat("error running kernel fallback kernel ",
+                                    context.op_kernel().name(), ": ",
+                                    context.status().error_message())));
       for (auto& result : async_state->result_refs) result.SetError(diag);
       async_state->chain.SetError(diag);
       return;
@@ -550,10 +550,13 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
   }
   if (is_cost_measurement_enabled) {
     op_chain->AndThen([run_start_time, exec_ctx, frame] {
-      auto execution_time = Env::Default()->NowMicros() - run_start_time;
+      // Adds 1 to make sure it's a positive integer.
+      auto execution_time = Env::Default()->NowMicros() - run_start_time + 1;
+      // Adds op_key as a suffix to distinguish the same operation with
+      // different shape.
       exec_ctx.host()
           ->GetOrCreateSharedContext<tensorflow::tfrt_stub::CostRecorder>()
-          .RecordCost(frame.op_name().GetValue(), execution_time);
+          .RecordCost(frame.op_key().GetValue(), execution_time);
     });
   }
 }
@@ -623,12 +626,11 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackCreateOp(
       attr_builder, fallback_request_state->device_manager(),
       fallback_request_state->process_function_library_runtime());
   if (!statusor_runner.ok())
-    return tfrt::EmitErrorAsync(
-        exec_ctx, statusor_runner.status().error_message(),
-        tfrt::ConvertTfErrorCodeToTfrtErrorCode(statusor_runner.status()));
+    return tfrt::EmitErrorAsync(exec_ctx,
+                                ToAbslStatus(statusor_runner.status()));
 
   if (!runner_table->Insert(op_key.GetValue(),
-                            std::move(statusor_runner).ValueOrDie())) {
+                            std::move(statusor_runner).value())) {
     return tfrt::EmitErrorAsync(
         exec_ctx,
         absl::StrCat("KernelFallbackCreateOp: OpKernelRunner already exists: ",

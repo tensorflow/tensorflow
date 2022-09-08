@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -33,6 +32,10 @@ namespace {
 #include "generated_legalize_to_standard.inc"
 }  // end anonymous namespace
 namespace mhlo {
+
+#define GEN_PASS_DEF_LEGALIZETOSTANDARDPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
@@ -77,7 +80,7 @@ class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
 
     if (!comparePredicate.has_value()) return failure();
 
-    rewriter.replaceOpWithNewOp<arith::CmpIOp>(op, comparePredicate.getValue(),
+    rewriter.replaceOpWithNewOp<arith::CmpIOp>(op, comparePredicate.value(),
                                                lhs, rhs);
     return success();
   }
@@ -125,7 +128,7 @@ class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
 
     if (!comparePredicate.has_value()) return failure();
 
-    rewriter.replaceOpWithNewOp<arith::CmpFOp>(op, comparePredicate.getValue(),
+    rewriter.replaceOpWithNewOp<arith::CmpFOp>(op, comparePredicate.value(),
                                                lhs, rhs);
     return success();
   }
@@ -203,7 +206,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 
 namespace {
 struct LegalizeToStandardPass
-    : public LegalizeToStandardPassBase<LegalizeToStandardPass> {
+    : public impl::LegalizeToStandardPassBase<LegalizeToStandardPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<arith::ArithmeticDialect, math::MathDialect,
                     func::FuncDialect>();

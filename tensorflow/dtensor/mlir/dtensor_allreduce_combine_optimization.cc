@@ -224,7 +224,7 @@ mlir::LogicalResult MergeAllReduceGroup(
       all_reduce_group[0].device_type());
   SetSingleLayoutOnOp(
       merged_all_reduce,
-      ExtractSingleLayoutFromOp(all_reduce_group[0]).ValueOrDie().value());
+      ExtractSingleLayoutFromOp(all_reduce_group[0]).value().value());
 
   // Slice out the original all-reduces, and reshape back to the original shape.
   offset_num_elements = 0;

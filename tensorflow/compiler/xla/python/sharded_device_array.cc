@@ -131,6 +131,19 @@ PyObject* ShardedDeviceArray::type_ = nullptr;
   return py::reinterpret_borrow<ShardedDeviceArray::object>(obj);
 }
 
+/*static*/ ShardedDeviceArray::object ShardedDeviceArray::Make(
+    py::object aval, ShardingSpec sharding_spec,
+    const xla::PyShardedBuffer& sharded_buffer, py::object indices,
+    bool weak_type) {
+  int num_devices = sharded_buffer.num_devices();
+  py::list device_buffers(num_devices);
+  for (int i = 0; i < num_devices; ++i) {
+    device_buffers[i] = sharded_buffer.GetPyBuffer(i);
+  }
+  return Make(std::move(aval), std::move(sharding_spec),
+              std::move(device_buffers), std::move(indices), weak_type);
+}
+
 bool ShardedDeviceArray::IsShardedDeviceArray(py::handle handle) {
   return handle.get_type() == ShardedDeviceArray::type();
 }
@@ -220,9 +233,20 @@ py::handle ShardedDeviceArray::AsHandle() {
   m.attr("ShardedDeviceArray") = type;
 
   type.attr("make") = def_static([](py::object aval, ShardingSpec sharding_spec,
-                                    py::list device_buffers, py::object indices,
-                                    bool weak_type) {
-    return ShardedDeviceArray::Make(aval, sharding_spec, device_buffers,
+                                    py::object sharded_buffer_or_device_buffers,
+                                    py::object indices, bool weak_type) {
+    // Overloads this "make" method to accept either a list of PyBuffers or a
+    // PyShardedBuffer.
+    if (py::isinstance<py::list>(sharded_buffer_or_device_buffers)) {
+      return ShardedDeviceArray::Make(
+          aval, sharding_spec,
+          std::move(sharded_buffer_or_device_buffers).cast<py::list>(), indices,
+          weak_type);
+    }
+
+    return ShardedDeviceArray::Make(aval, sharding_spec,
+                                    std::move(sharded_buffer_or_device_buffers)
+                                        .cast<xla::PyShardedBuffer>(),
                                     indices, weak_type);
   });
   type.attr("aval") =

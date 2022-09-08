@@ -1042,16 +1042,23 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
+  const Shape& output_shape = bitcast->shape();
+  const Shape& operand_shape = bitcast->operand(0)->shape();
   if (opts_.layout_sensitive &&
-      opts_.shape_size(bitcast->shape()) !=
-          opts_.shape_size(bitcast->operand(0)->shape())) {
-    return InternalError(
-        "Bitcast cannot have different shape sizes of output (%d) and operand "
-        "(%d) (%s) (%s)",
-        opts_.shape_size(bitcast->shape()),
-        opts_.shape_size(bitcast->operand(0)->shape()),
-        bitcast->shape().ToString(true),
-        bitcast->operand(0)->shape().ToString(true));
+      opts_.shape_size(output_shape) != opts_.shape_size(operand_shape)) {
+    // Allow bitcast that has the same data size but different trailing
+    // paddings.
+    if (!opts_.allow_bitcast_to_have_different_size ||
+        !(output_shape.is_static() && operand_shape.is_static() &&
+          (ShapeUtil::ArrayDataSize(output_shape) ==
+           ShapeUtil::ArrayDataSize(operand_shape)))) {
+      return InternalError(
+          "Bitcast cannot have different shape sizes of output (%d) and "
+          "operand "
+          "(%d) (%s) (%s)",
+          opts_.shape_size(output_shape), opts_.shape_size(operand_shape),
+          output_shape.ToString(true), operand_shape.ToString(true));
+    }
   }
   return OkStatus();
 }
@@ -1770,7 +1777,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
                                         instruction->ToString());
     return s;
   }
-  return CheckShape(instruction, inferred_shape_status.ValueOrDie());
+  return CheckShape(instruction, inferred_shape_status.value());
 }
 
 Status ShapeVerifier::CheckUnaryShape(const HloInstruction* instruction) {
@@ -2478,6 +2485,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
+  Status HandleCustomCall(HloInstruction* hlo) override {
+    if (opts_.verify_custom_call_nested_computation_thread_name) {
+      // Allow kCustomCall to contain computations on separate thread.
+      return CheckCallableInstructionThreadName(
+          hlo, /*skip_nested_async_op_check=*/true);
+    }
+    return OkStatus();
+  }
+
   Status Preprocess(HloInstruction* instruction) override {
     auto previous = instructions_by_name_.find(instruction->name());
     TF_RET_CHECK(previous == instructions_by_name_.end())
@@ -2493,13 +2509,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
   Status Postprocess(HloInstruction* instruction) override {
     if (!opts_.InstructionCanChangeLayout(instruction) &&
-        LayoutUtil::IsDenseArray(instruction->shape())) {
+        LayoutUtil::IsDenseArray(instruction->shape()) &&
+        instruction->shape().has_layout()) {
       const Shape& result_shape = instruction->shape();
       const Layout& result_layout = result_shape.layout();
       for (HloInstruction* operand : instruction->operands()) {
         const Shape& operand_shape = operand->shape();
         if (LayoutUtil::IsDenseArray(operand_shape) &&
-            operand_shape.rank() == result_shape.rank()) {
+            operand_shape.rank() == result_shape.rank() &&
+            operand_shape.has_layout()) {
           const Layout& operand_layout = operand_shape.layout();
           TF_RET_CHECK(LayoutUtil::Equal(result_layout, operand_layout))
               << "Instruction shouldn't change layouts "
@@ -2542,7 +2560,7 @@ StatusOr<bool> HloVerifier::Run(
         target_metadata_->GetVerifier();
     InstructionVerifier instruction_verifier(
         target_metadata_->GetVerifierOpts());
-    for (auto* computation : module->computations()) {
+    for (auto* computation : module->computations(execution_threads)) {
       TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
     }
@@ -2569,7 +2587,7 @@ StatusOr<bool> HloVerifier::Run(
     return false;
   }();
   if (status_or_changed.ok()) {
-    return status_or_changed.ValueOrDie();
+    return status_or_changed.value();
   }
   return Status(status_or_changed.status().code(),
                 absl::StrCat("during context [", context_, "]: ",

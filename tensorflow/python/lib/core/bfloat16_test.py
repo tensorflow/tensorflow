@@ -602,21 +602,11 @@ class CustomFloatNumPyTest(parameterized.TestCase):
       self.skipTest("Not supported")  # Nans don't have payload.
     for nan_payload in list(range(1, 128)):
       with self.subTest(nan_payload):
-        one = np.array(1., dtype=float_type)
         inf_bits = 0x7f80
-        two = np.array(2., dtype=float_type)
         nan_bits = inf_bits | nan_payload
-        zero = np.array(0., dtype=float_type)
-        little_endian_uint16 = np.dtype(np.uint16).newbyteorder("L")
-        nan = np.array(np.nan, dtype=float_type)
-        little_endian_bfloat = np.dtype(bfloat16).newbyteorder("L")
-        np.testing.assert_equal(
-            np.nextafter(one, two) - one, epsilon[float_type])
-        nan = little_endian_uint16.type(nan_bits).view(little_endian_bfloat)
-        np.testing.assert_equal(
-            np.nextafter(one, zero) - one, -epsilon[float_type] / 2)
+        nan = np.uint16(nan_bits).view(bfloat16)
         nan_with_sign = np.copysign(nan, bfloat16(-1))
-        nan_with_sign_bits = nan_with_sign.view(little_endian_uint16)
+        nan_with_sign_bits = nan_with_sign.view(np.uint16)
         np.testing.assert_equal(nan_bits | (1 << 15), nan_with_sign_bits)
 
   def testNextAfter(self, float_type):

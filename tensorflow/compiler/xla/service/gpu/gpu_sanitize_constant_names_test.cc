@@ -40,7 +40,7 @@ TEST_F(SanitizeConstantNamesTest, InstructionNameWithHyphenSanitized) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).value());
   HloInstruction *root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->name(), "equal_to");
 }
@@ -55,7 +55,7 @@ TEST_F(SanitizeConstantNamesTest, InstructionNameWithDotSanitized) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).value());
   HloInstruction *root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->name(), "equal_to");
 }
@@ -72,7 +72,7 @@ TEST_F(SanitizeConstantNamesTest, BufferSanitizedNameCollisionResolved) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).value());
   EXPECT_THAT(FindInstruction(module.get(), "equal_to_1"), op::Constant());
   EXPECT_THAT(FindInstruction(module.get(), "equal_to_2"), op::Constant());
 }

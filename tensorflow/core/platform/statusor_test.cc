@@ -80,7 +80,7 @@ TEST(StatusOr, NullPointerStatusOr) {
   // error. Test that it no longer is.
   StatusOr<int*> null_status(nullptr);
   EXPECT_TRUE(null_status.ok());
-  EXPECT_EQ(null_status.ValueOrDie(), nullptr);
+  EXPECT_EQ(null_status.value(), nullptr);
 }
 
 TEST(StatusOr, TestNoDefaultConstructorInitialization) {
@@ -98,13 +98,13 @@ TEST(StatusOr, TestNoDefaultConstructorInitialization) {
 TEST(StatusOr, TestMoveOnlyInitialization) {
   StatusOr<std::unique_ptr<int>> thing(ReturnUniquePtr());
   ASSERT_TRUE(thing.ok());
-  EXPECT_EQ(0, *thing.ValueOrDie());
-  int* previous = thing.ValueOrDie().get();
+  EXPECT_EQ(0, *thing.value());
+  int* previous = thing.value().get();
 
   thing = ReturnUniquePtr();
   EXPECT_TRUE(thing.ok());
-  EXPECT_EQ(0, *thing.ValueOrDie());
-  EXPECT_NE(previous, thing.ValueOrDie().get());
+  EXPECT_EQ(0, *thing.value());
+  EXPECT_NE(previous, thing.value().get());
 }
 
 TEST(StatusOr, TestMoveOnlyStatusCtr) {
@@ -119,21 +119,21 @@ TEST(StatusOr, TestMoveOnlyValueExtraction) {
   EXPECT_EQ(0, *ptr);
 
   thing = std::move(ptr);
-  ptr = std::move(thing.ValueOrDie());
+  ptr = std::move(thing.value());
   EXPECT_EQ(0, *ptr);
 }
 
 TEST(StatusOr, TestMoveOnlyConversion) {
   StatusOr<std::unique_ptr<const int>> const_thing(ReturnUniquePtr());
   EXPECT_TRUE(const_thing.ok());
-  EXPECT_EQ(0, *const_thing.ValueOrDie());
+  EXPECT_EQ(0, *const_thing.value());
 
   // Test rvalue converting assignment
-  const int* const_previous = const_thing.ValueOrDie().get();
+  const int* const_previous = const_thing.value().get();
   const_thing = ReturnUniquePtr();
   EXPECT_TRUE(const_thing.ok());
-  EXPECT_EQ(0, *const_thing.ValueOrDie());
-  EXPECT_NE(const_previous, const_thing.ValueOrDie().get());
+  EXPECT_EQ(0, *const_thing.value());
+  EXPECT_NE(const_previous, const_thing.value().get());
 }
 
 TEST(StatusOr, TestMoveOnlyVector) {
@@ -142,7 +142,7 @@ TEST(StatusOr, TestMoveOnlyVector) {
   vec.push_back(ReturnUniquePtr());
   vec.resize(2);
   auto another_vec = std::move(vec);
-  EXPECT_EQ(0, *another_vec[0].ValueOrDie());
+  EXPECT_EQ(0, *another_vec[0].value());
   EXPECT_EQ(tensorflow::error::UNKNOWN, another_vec[1].status().code());
 }
 
@@ -154,12 +154,12 @@ TEST(StatusOr, TestMoveWithValuesAndErrors) {
   StatusOr<std::string> error2(Status(tensorflow::error::UNKNOWN, "error2"));
 
   ASSERT_TRUE(status_or.ok());
-  EXPECT_EQ(std::string(1000, '0'), status_or.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '0'), status_or.value());
 
   // Overwrite the value in status_or with another value.
   status_or = std::move(value1);
   ASSERT_TRUE(status_or.ok());
-  EXPECT_EQ(std::string(1000, '1'), status_or.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '1'), status_or.value());
 
   // Overwrite the value in status_or with an error.
   status_or = std::move(error1);
@@ -174,7 +174,7 @@ TEST(StatusOr, TestMoveWithValuesAndErrors) {
   // Overwrite the error with a value.
   status_or = std::move(value2);
   ASSERT_TRUE(status_or.ok());
-  EXPECT_EQ(std::string(1000, '2'), status_or.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '2'), status_or.value());
 }
 
 TEST(StatusOr, TestCopyWithValuesAndErrors) {
@@ -185,12 +185,12 @@ TEST(StatusOr, TestCopyWithValuesAndErrors) {
   StatusOr<std::string> error2(Status(tensorflow::error::UNKNOWN, "error2"));
 
   ASSERT_TRUE(status_or.ok());
-  EXPECT_EQ(std::string(1000, '0'), status_or.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '0'), status_or.value());
 
   // Overwrite the value in status_or with another value.
   status_or = value1;
   ASSERT_TRUE(status_or.ok());
-  EXPECT_EQ(std::string(1000, '1'), status_or.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '1'), status_or.value());
 
   // Overwrite the value in status_or with an error.
   status_or = error1;
@@ -205,13 +205,13 @@ TEST(StatusOr, TestCopyWithValuesAndErrors) {
   // Overwrite the error with a value.
   status_or = value2;
   ASSERT_TRUE(status_or.ok());
-  EXPECT_EQ(std::string(1000, '2'), status_or.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '2'), status_or.value());
 
   // Verify original values unchanged.
-  EXPECT_EQ(std::string(1000, '1'), value1.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '1'), value1.value());
   EXPECT_EQ("error1", error1.status().error_message());
   EXPECT_EQ("error2", error2.status().error_message());
-  EXPECT_EQ(std::string(1000, '2'), value2.ValueOrDie());
+  EXPECT_EQ(std::string(1000, '2'), value2.value());
 }
 
 TEST(StatusOr, TestDefaultCtor) {
@@ -222,10 +222,10 @@ TEST(StatusOr, TestDefaultCtor) {
 
 TEST(StatusOrDeathTest, TestDefaultCtorValue) {
   StatusOr<int> thing;
-  EXPECT_DEATH(thing.ValueOrDie(), "");
+  EXPECT_DEATH(thing.value(), "");
 
   const StatusOr<int> thing2;
-  EXPECT_DEATH(thing.ValueOrDie(), "");
+  EXPECT_DEATH(thing.value(), "");
 }
 
 TEST(StatusOr, TestStatusCtor) {
@@ -238,7 +238,7 @@ TEST(StatusOr, TestValueCtor) {
   const int kI = 4;
   const StatusOr<int> thing(kI);
   EXPECT_TRUE(thing.ok());
-  EXPECT_EQ(kI, thing.ValueOrDie());
+  EXPECT_EQ(kI, thing.value());
 }
 
 TEST(StatusOr, TestCopyCtorStatusOk) {
@@ -246,7 +246,7 @@ TEST(StatusOr, TestCopyCtorStatusOk) {
   const StatusOr<int> original(kI);
   const StatusOr<int> copy(original);
   EXPECT_EQ(copy.status(), original.status());
-  EXPECT_EQ(original.ValueOrDie(), copy.ValueOrDie());
+  EXPECT_EQ(original.value(), copy.value());
 }
 
 TEST(StatusOr, TestCopyCtorStatusNotOk) {
@@ -261,7 +261,7 @@ TEST(StatusOr, TestCopyCtorNonAssignable) {
   StatusOr<CopyNoAssign> original(value);
   StatusOr<CopyNoAssign> copy(original);
   EXPECT_EQ(copy.status(), original.status());
-  EXPECT_EQ(original.ValueOrDie().foo_, copy.ValueOrDie().foo_);
+  EXPECT_EQ(original.value().foo_, copy.value().foo_);
 }
 
 TEST(StatusOr, TestCopyCtorStatusOKConverting) {
@@ -269,7 +269,7 @@ TEST(StatusOr, TestCopyCtorStatusOKConverting) {
   StatusOr<int> original(kI);
   StatusOr<double> copy(original);
   EXPECT_EQ(copy.status(), original.status());
-  EXPECT_DOUBLE_EQ(original.ValueOrDie(), copy.ValueOrDie());
+  EXPECT_DOUBLE_EQ(original.value(), copy.value());
 }
 
 TEST(StatusOr, TestCopyCtorStatusNotOkConverting) {
@@ -284,7 +284,7 @@ TEST(StatusOr, TestAssignmentStatusOk) {
   StatusOr<int> target;
   target = source;
   EXPECT_EQ(target.status(), source.status());
-  EXPECT_EQ(source.ValueOrDie(), target.ValueOrDie());
+  EXPECT_EQ(source.value(), target.value());
 }
 
 TEST(StatusOr, TestAssignmentStatusNotOk) {
@@ -305,23 +305,23 @@ TEST(StatusOr, TestStatus) {
 TEST(StatusOr, TestValue) {
   const int kI = 4;
   StatusOr<int> thing(kI);
-  EXPECT_EQ(kI, thing.ValueOrDie());
+  EXPECT_EQ(kI, thing.value());
 }
 
 TEST(StatusOr, TestValueConst) {
   const int kI = 4;
   const StatusOr<int> thing(kI);
-  EXPECT_EQ(kI, thing.ValueOrDie());
+  EXPECT_EQ(kI, thing.value());
 }
 
 TEST(StatusOrDeathTest, TestValueNotOk) {
   StatusOr<int> thing(Status(tensorflow::error::CANCELLED, "cancelled"));
-  EXPECT_DEATH(thing.ValueOrDie(), "cancelled");
+  EXPECT_DEATH(thing.value(), "cancelled");
 }
 
 TEST(StatusOrDeathTest, TestValueNotOkConst) {
   const StatusOr<int> thing(Status(tensorflow::error::UNKNOWN, ""));
-  EXPECT_DEATH(thing.ValueOrDie(), "");
+  EXPECT_DEATH(thing.value(), "");
 }
 
 TEST(StatusOr, TestPointerDefaultCtor) {
@@ -332,7 +332,7 @@ TEST(StatusOr, TestPointerDefaultCtor) {
 
 TEST(StatusOrDeathTest, TestPointerDefaultCtorValue) {
   StatusOr<int*> thing;
-  EXPECT_DEATH(thing.ValueOrDie(), "");
+  EXPECT_DEATH(thing.value(), "");
 }
 
 TEST(StatusOr, TestPointerStatusCtor) {
@@ -345,7 +345,7 @@ TEST(StatusOr, TestPointerValueCtor) {
   const int kI = 4;
   StatusOr<const int*> thing(&kI);
   EXPECT_TRUE(thing.ok());
-  EXPECT_EQ(&kI, thing.ValueOrDie());
+  EXPECT_EQ(&kI, thing.value());
 }
 
 TEST(StatusOr, TestPointerCopyCtorStatusOk) {
@@ -353,7 +353,7 @@ TEST(StatusOr, TestPointerCopyCtorStatusOk) {
   StatusOr<const int*> original(&kI);
   StatusOr<const int*> copy(original);
   EXPECT_EQ(copy.status(), original.status());
-  EXPECT_EQ(original.ValueOrDie(), copy.ValueOrDie());
+  EXPECT_EQ(original.value(), copy.value());
 }
 
 TEST(StatusOr, TestPointerCopyCtorStatusNotOk) {
@@ -367,8 +367,7 @@ TEST(StatusOr, TestPointerCopyCtorStatusOKConverting) {
   StatusOr<Derived*> original(&derived);
   StatusOr<Base2*> copy(original);
   EXPECT_EQ(copy.status(), original.status());
-  EXPECT_EQ(static_cast<const Base2*>(original.ValueOrDie()),
-            copy.ValueOrDie());
+  EXPECT_EQ(static_cast<const Base2*>(original.value()), copy.value());
 }
 
 TEST(StatusOr, TestPointerCopyCtorStatusNotOkConverting) {
@@ -383,7 +382,7 @@ TEST(StatusOr, TestPointerAssignmentStatusOk) {
   StatusOr<const int*> target;
   target = source;
   EXPECT_EQ(target.status(), source.status());
-  EXPECT_EQ(source.ValueOrDie(), target.ValueOrDie());
+  EXPECT_EQ(source.value(), target.value());
 }
 
 TEST(StatusOr, TestPointerAssignmentStatusNotOk) {
@@ -404,13 +403,13 @@ TEST(StatusOr, TestPointerStatus) {
 TEST(StatusOr, TestPointerValue) {
   const int kI = 0;
   StatusOr<const int*> thing(&kI);
-  EXPECT_EQ(&kI, thing.ValueOrDie());
+  EXPECT_EQ(&kI, thing.value());
 }
 
 TEST(StatusOr, TestPointerValueConst) {
   const int kI = 0;
   const StatusOr<const int*> thing(&kI);
-  EXPECT_EQ(&kI, thing.ValueOrDie());
+  EXPECT_EQ(&kI, thing.value());
 }
 
 TEST(StatusOr, TestArrowOperator) {
@@ -444,12 +443,12 @@ TEST(StatusOr, TestStarOperatorDeath) {
 
 TEST(StatusOrDeathTest, TestPointerValueNotOk) {
   StatusOr<int*> thing(Status(tensorflow::error::CANCELLED, "cancelled"));
-  EXPECT_DEATH(thing.ValueOrDie(), "cancelled");
+  EXPECT_DEATH(thing.value(), "cancelled");
 }
 
 TEST(StatusOrDeathTest, TestPointerValueNotOkConst) {
   const StatusOr<int*> thing(Status(tensorflow::error::CANCELLED, "cancelled"));
-  EXPECT_DEATH(thing.ValueOrDie(), "cancelled");
+  EXPECT_DEATH(thing.value(), "cancelled");
 }
 
 static StatusOr<int> MakeStatus() { return 100; }
@@ -581,7 +580,7 @@ void BM_StatusOrFactory(::testing::benchmark::State& state) {
   for (auto s : state) {
     StatusOr<BenchmarkType*> result = factory.StatusOrFactory();
     if (result.ok()) {
-      result.ValueOrDie()->DoWork();
+      result.value()->DoWork();
     }
   }
 }
@@ -609,7 +608,7 @@ void BM_StatusOrFactoryFail(::testing::benchmark::State& state) {
   for (auto s : state) {
     StatusOr<BenchmarkType*> result = factory.StatusOrFactoryFail();
     if (result.ok()) {
-      result.ValueOrDie()->DoWork();
+      result.value()->DoWork();
     }
   }
 }
@@ -637,7 +636,7 @@ void BM_StatusOrFactoryFailShortMsg(::testing::benchmark::State& state) {
   for (auto s : state) {
     StatusOr<BenchmarkType*> result = factory.StatusOrFactoryFailShortMsg();
     if (result.ok()) {
-      result.ValueOrDie()->DoWork();
+      result.value()->DoWork();
     }
   }
 }
@@ -665,7 +664,7 @@ void BM_StatusOrFactoryFailLongMsg(::testing::benchmark::State& state) {
   for (auto s : state) {
     StatusOr<BenchmarkType*> result = factory.StatusOrFactoryFailLongMsg();
     if (result.ok()) {
-      result.ValueOrDie()->DoWork();
+      result.value()->DoWork();
     }
   }
 }

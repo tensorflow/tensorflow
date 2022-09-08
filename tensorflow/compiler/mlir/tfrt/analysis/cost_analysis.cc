@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -127,6 +128,18 @@ void RegisterCostFunction(absl::string_view op_name,
                        std::move(cost_function));
 }
 
+int64_t CostAnalysis::GetCost(mlir::Operation* op, int64_t op_key) const {
+  // Try to use its measured cost.
+  const auto& measured_cost_map = op_cost_map_proto_.op_cost_map();
+  if (const auto op_cost = measured_cost_map.find(op_key);
+      op_cost != measured_cost_map.end()) {
+    return op_cost->second;
+  }
+
+  assert(cost_map_.count(op) > 0);
+  return cost_map_.lookup(op);
+}
+
 void CostAnalysis::AnalyzeArguments(mlir::func::FuncOp func_op) {
   // Use the max size among function inputs as the default size of dynamic
   // shaped tensors in the function.
@@ -170,16 +183,6 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
     return;
   }
 
-  // Try to use its measured cost.
-  if (is_cost_measured_) {
-    const auto& measured_cost_map = op_cost_map_proto_.op_cost_map();
-    if (const auto op_cost = measured_cost_map.find(op_name);
-        op_cost != measured_cost_map.end()) {
-      cost_map_[op] = op_cost->second;
-      return;
-    }
-  }
-
   // For other ops, use the sum of input sizes as its cost.
   int64_t cost = kDefaultCheapCost;
   for (auto operand : op->getOperands()) {
@@ -206,7 +209,6 @@ Status CostAnalysis::ReadMeasuredCosts() {
   tensorflow::Env* env = Env::Default();
   const std::string measured_cost_path(env_var);
   TF_RETURN_IF_ERROR(env->FileExists(measured_cost_path));
-  is_cost_measured_ = true;
   return ReadTextProto(env, measured_cost_path, &op_cost_map_proto_);
 }
 

@@ -168,6 +168,31 @@ MLIR_CAPI_EXPORTED int64_t
 mlirMhloConvDimensionNumbersGetOutputSpatialDimensionsElem(MlirAttribute attr,
                                                            intptr_t pos);
 
+// Creates a new OutputOperandAlias attribute with the given parameters. The
+// pairs of consecutive intptr_t / int64_t* arguments are interpeted as sized
+// arrays.
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloOutputOperandAliasGet(
+    MlirContext ctx, intptr_t nOutputTupleIndices,
+    const int64_t *outputTupleIndices, int64_t operandIndex,
+    intptr_t nOperandTupleIndices, const int64_t *operandTupleIndices);
+
+// Returns true of the given attribute is a OutputOperandAlias attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsAOutputOperandAlias(
+    MlirAttribute attr);
+
+MLIR_CAPI_EXPORTED intptr_t
+mlirMhloOutputOperandAliasGetOutputTupleIndicesSize(MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t mlirMhloOutputOperandAliasGetOutputTupleIndicesElem(
+    MlirAttribute attr, intptr_t pos);
+
+MLIR_CAPI_EXPORTED int64_t
+mlirMhloOutputOperandAliasGetOperandIndex(MlirAttribute attr);
+
+MLIR_CAPI_EXPORTED intptr_t
+mlirMhloOutputOperandAliasGetOperandTupleIndicesSize(MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t mlirMhloOutputOperandAliasGetOperandTupleIndicesElem(
+    MlirAttribute attr, intptr_t pos);
+
 //
 // ComparisonDirectionAttr.
 //

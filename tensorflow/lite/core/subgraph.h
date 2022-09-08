@@ -144,6 +144,9 @@ class Subgraph {
       bool is_variable = false, const size_t ndims_signature = 0,
       const int* dims_signature = nullptr);
 
+  // Get all tensors in the subgraph.
+  TfLiteTensor* tensors() { return context_.tensors; }
+
   // Get a mutable tensor data structure.
   TfLiteTensor* tensor(int tensor_index) {
     if (tensor_index < 0 ||
@@ -237,6 +240,12 @@ class Subgraph {
   // memory planning.
   // AllocateTensors needs to be called before next invocation.
   TfLiteStatus ReleaseNonPersistentMemory();
+
+  // WARNING: Experimental interface, subject to change
+  // This API releases memory held by the given subgraph. This method is
+  // designed to release memory of control flow subgraphs.
+  // AllocateTensors needs to be called before next invocation.
+  TfLiteStatus ReleaseMemory();
 
   // Update allocations for all tensors. This will redim dependent tensors using
   // the input tensor dimensionality as given. This is relatively expensive.
@@ -379,10 +388,16 @@ class Subgraph {
   // information about tenosrs and ops.
   void DumpMemoryPlannerDebugInfo() const;
 
+  typedef struct SubgraphAllocInfo {
+    size_t arena_size;
+    size_t arena_persist_size;
+    size_t dynamic_size;
+    size_t resource_size;
+  } SubgraphAllocInfo;
+
   // WARNING: This is an experimental API and subject to change.
   // Returns memory allocation status.
-  void GetMemoryAllocInfo(size_t* arena_size, size_t* arena_persist_size,
-                          size_t* dynamic_size) const;
+  void GetMemoryAllocInfo(SubgraphAllocInfo* alloc_info) const;
 
   // WARNING: This is an experimental API and subject to change.
   // Set the given `InterpreterOptions` object.
@@ -730,15 +745,15 @@ class Subgraph {
   // tensors if configured.
   void MaybeReleaseDynamicTensors(const TfLiteNode& node, size_t node_index);
 
-  // The state of the Interpreter.
+  // The state of the Subgraph.
   enum State {
-    // The interpreter isn't ready to be invoked.
+    // The Subgraph isn't ready to be invoked.
     // `AllocateTensor` need to be called to enter an invokable state.
     kStateUninvokable = 0,
-    // The interpreter is ready to be invoked.
+    // The Subgraph is ready to be invoked.
     kStateInvokable,
-    // The interpreter is ready to be invoked, and graph can't be further
-    // modified. The interpreter will enter this state when calling
+    // The Subgraph is ready to be invoked, and graph can't be further
+    // modified. The Subgraph will enter this state when calling
     // `ModifyGraphWithDelegate` and the delegate doesn't support dynamic
     // tensors.
     kStateInvokableAndImmutable,

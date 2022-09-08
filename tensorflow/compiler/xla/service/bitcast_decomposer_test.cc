@@ -150,7 +150,7 @@ TEST_P(BitcastDecomposerParameterizedTest, DoIt) {
   bool execute_module = absl::Bernoulli(this->rand_, 0.01);
   Literal param, expected_val;
   if (execute_module) {
-    param = MakeFakeLiteral(src).ValueOrDie();
+    param = MakeFakeLiteral(src).value();
     expected_val = ExecuteNoHloPasses(module->Clone(), {&param});
   }
 

@@ -60,7 +60,7 @@ class HloEvaluatorTest : public HloTestBase {
   StatusOr<Literal> Evaluate(
       absl::Span<const Literal* const> arg_literals = {}) {
     if (use_bfloat16_) {
-      HloElementTypeConverter(F32, BF16).Run(m_.get()).ValueOrDie();
+      HloElementTypeConverter(F32, BF16).Run(m_.get()).value();
     }
     return evaluator_.Evaluate(*m_->entry_computation(), arg_literals);
   }
@@ -71,7 +71,7 @@ class HloEvaluatorTest : public HloTestBase {
   Literal EvaluateWithModule(
       HloModule* module, absl::Span<const Literal* const> arg_literals = {}) {
     if (use_bfloat16_) {
-      HloElementTypeConverter(F32, BF16).Run(m_.get()).ValueOrDie();
+      HloElementTypeConverter(F32, BF16).Run(m_.get()).value();
     }
     return evaluator_.Evaluate(*module->entry_computation(), arg_literals)
         .value();

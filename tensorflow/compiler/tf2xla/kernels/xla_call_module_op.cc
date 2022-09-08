@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/ChloOps.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -152,7 +152,7 @@ void RefineDynamicShapes(XlaOpKernelContext *ctx, mlir::MLIRContext *context,
   std::vector<mlir::Type> static_input_types(main_body.getNumArguments());
   // The dim_arg parameters already have known types.
   for (int i = 0; i < nr_dim_args; ++i) {
-    static_input_types[i] = main_body.getArgument(i).getType();
+    static_input_types[i] = getElementTypeOrSelf(main_body.getArgument(i));
     *dim_args_are_i64 = (static_input_types[i].getIntOrFloatBitWidth() == 64);
   }
 

@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/windows_compatibility.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 // Provided by compiler-rt and MLIR.
 // Converts an F32 value to a BF16.
@@ -79,14 +79,6 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   return result;
 }
 
-llvm::StringRef DetectHostCpuName() {
-  auto cpu = llvm::sys::getHostCPUName();
-  // TODO(b/238469947): Targeting znver3 triggers a very deep recursion in LLVM.
-  // Fall back to zen 2 until https://reviews.llvm.org/D129745 lands to avoid
-  // running out of stack.
-  return cpu == "znver3" ? "znver2" : cpu;
-}
-
 }  // namespace
 
 /*static*/ std::unique_ptr<llvm::TargetMachine>
@@ -99,7 +91,7 @@ SimpleOrcJIT::InferTargetMachineForJIT(
           .setOptLevel(opt_level)
           .selectTarget(
               /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
-              /*MCPU=*/DetectHostCpuName(),
+              /*MCPU=*/llvm::sys::getHostCPUName(),
               /*MAttrs=*/DetectMachineAttributes()));
   CHECK(target_machine != nullptr);
   return target_machine;

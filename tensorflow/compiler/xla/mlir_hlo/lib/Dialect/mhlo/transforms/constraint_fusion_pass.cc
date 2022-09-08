@@ -21,7 +21,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -29,6 +28,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_CONSTRAINTFUSIONPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 enum class CstrBroadcastableOperandKind {
@@ -423,7 +426,7 @@ LogicalResult fuseBlockGlobalConstraints(Location loc, OpBuilder &builder,
 }
 
 struct ConstraintFusionPass
-    : public ConstraintFusionPassBase<ConstraintFusionPass> {
+    : public impl::ConstraintFusionPassBase<ConstraintFusionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect>();
   }

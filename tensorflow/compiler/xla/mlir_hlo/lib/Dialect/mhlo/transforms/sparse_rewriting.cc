@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "llvm/Support/Debug.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -30,19 +29,24 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_SPARSEREWRITINGPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 /// Approves subsuming sparse types into operation.
 // TODO(b/231360416): replace this list with "supports sparsity" trait?
 static bool canFuseWithSparseConvert(Operation *op) {
   return isa<sparse_tensor::ConvertOp>(op) || isa<AbsOp>(op) ||
-         isa<CeilOp>(op) || isa<ConvertOp>(op) || isa<CosineOp>(op) ||
-         isa<Expm1Op>(op) || isa<FloorOp>(op) || isa<ImagOp>(op) ||
-         isa<LogOp>(op) || isa<Log1pOp>(op) || isa<NegOp>(op) ||
-         isa<RealOp>(op) || isa<RoundOp>(op) || isa<SignOp>(op) ||
-         isa<SineOp>(op) || isa<SqrtOp>(op) || isa<TanhOp>(op) ||
-         isa<AddOp>(op) || isa<DivOp>(op) || isa<MulOp>(op) || isa<RemOp>(op) ||
-         isa<TransposeOp>(op) || isa<SubtractOp>(op);
+         isa<DotOp>(op) || isa<CeilOp>(op) || isa<ConvertOp>(op) ||
+         isa<CosineOp>(op) || isa<Expm1Op>(op) || isa<FloorOp>(op) ||
+         isa<ImagOp>(op) || isa<LogOp>(op) || isa<Log1pOp>(op) ||
+         isa<NegOp>(op) || isa<RealOp>(op) || isa<RoundOp>(op) ||
+         isa<SignOp>(op) || isa<SineOp>(op) || isa<SqrtOp>(op) ||
+         isa<TanhOp>(op) || isa<AddOp>(op) || isa<DivOp>(op) ||
+         isa<MulOp>(op) || isa<RemOp>(op) || isa<TransposeOp>(op) ||
+         isa<SubtractOp>(op);
 }
 
 /// Fuses a sparse tensor type from a conversion into a mhlo operation
@@ -72,8 +76,37 @@ struct SparseConvertConverter
   }
 };
 
+/// Converts a mhlo::concatenate operation into a sparse_tensor::concatenate
+/// directly when there is any sparse input/ouput.
+struct SparseConcatenateConverter
+    : public OpRewritePattern<mhlo::ConcatenateOp> {
+  explicit SparseConcatenateConverter(MLIRContext *context)
+      : OpRewritePattern(context) {}
+
+  LogicalResult matchAndRewrite(mhlo::ConcatenateOp op,
+                                PatternRewriter &rewriter) const override {
+    auto resultType = op.getResult().getType();
+    bool anySparse = llvm::any_of(op.getOperands().getTypes(), [](Type t) {
+      return sparse_tensor::getSparseTensorEncoding(t) != nullptr;
+    });
+    bool sparseOut =
+        sparse_tensor::getSparseTensorEncoding(resultType) != nullptr;
+    if (anySparse || sparseOut) {
+      // If there is any sparse input, lower to sparse_tensor.concatenate
+      // directly.
+      rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
+          op, resultType, op.getOperands(),
+          rewriter.getIndexAttr(op.dimension()));
+      return success();
+    }
+    // Pass to mhlo lowering pipeline if all input and output tensors
+    // are dense.
+    return failure();
+  }
+};
+
 struct SparseRewritingPass
-    : public SparseRewritingPassBase<SparseRewritingPass> {
+    : public impl::SparseRewritingPassBase<SparseRewritingPass> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     populateSparseRewritingPatterns(&patterns, &getContext());
@@ -88,7 +121,7 @@ struct SparseRewritingPass
 
 void populateSparseRewritingPatterns(RewritePatternSet *patterns,
                                      MLIRContext *ctx) {
-  patterns->add<SparseConvertConverter>(ctx);
+  patterns->add<SparseConvertConverter, SparseConcatenateConverter>(ctx);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createSparseRewritingPass() {

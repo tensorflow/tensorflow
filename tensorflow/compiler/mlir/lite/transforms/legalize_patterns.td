@@ -24,8 +24,8 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def CreateEmptyBoolAttr : NativeCodeCall<"::mlir::BoolAttr()">;
 
-def NonOpaqueElementsAttr : ElementsAttrBase<
-  CPred<"!$_self.isa<OpaqueElementsAttr>()">,
+def DenseElementsAttr : ElementsAttrBase<
+  CPred<"$_self.isa<DenseElementsAttr>()">,
   "non-opaque constant tensor">;
 
 def F32ElementsAttr : ElementsAttrBase<
@@ -85,7 +85,7 @@ def LegalizeTFConstToTFLConst: Pat<(TF_ConstOp:$res ElementsAttr:$value),
 
 // Convert to std constant for statically shaped, non-opaque constants.
 def ConvertTfConstToStdConst : Pat<
-  (TF_ConstOp:$res NonOpaqueElementsAttr:$value),
+  (TF_ConstOp:$res DenseElementsAttr:$value),
   (Arith_ConstantOp $value),
   [(AnyStaticShapeTensor $res)], (addBenefit 10)>;
 
@@ -223,6 +223,7 @@ def LegalizeSegmentSum : Pat<(TF_SegmentSumOp $data, $segment_ids),
 foreach UnsortedSegmentOp = [
   [TF_UnsortedSegmentSumOp, TFL_UnsortedSegmentSumOp],
   [TF_UnsortedSegmentMaxOp, TFL_UnsortedSegmentMaxOp],
+  [TF_UnsortedSegmentMinOp, TFL_UnsortedSegmentMinOp],
   [TF_UnsortedSegmentProdOp, TFL_UnsortedSegmentProdOp]] in {
   def Legalize#UnsortedSegmentOp[0] :
      Pat<(UnsortedSegmentOp[0] $data, $segment_ids, $num_segments),
@@ -570,3 +571,7 @@ def LegalizeMultinomial : Pat<
 def LegalizeXlaDynamicUpdateSlice : Pat<
   (TF_XlaDynamicUpdateSliceOp $operand, $update, $start_indices),
   (TFL_DynamicUpdateSliceOp $operand, $update, $start_indices)>;
+
+def LegalizeAtan2 : Pat<(TF_Atan2Op $y, $x), (TFL_Atan2Op $y, $x)>;
+
+def LegalizeSign : Pat<(TF_SignOp $x), (TFL_SignOp $x)>;

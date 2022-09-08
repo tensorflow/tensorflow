@@ -301,12 +301,6 @@ class DefaultTypesTest(test.TestCase):
     self.assertIsNone(original.most_specific_common_supertype([different_id]))
     self.assertIsNone(original.most_specific_common_supertype([different_type]))
 
-  def testReferencetSerialization(self):
-    ref_original = default_types.Reference(default_types.Literal(3), 1)
-    self.assertEqual(
-        serialization.deserialize(serialization.serialize(ref_original)),
-        ref_original)
-
 
 if __name__ == '__main__':
   test.main()

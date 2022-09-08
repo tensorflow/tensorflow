@@ -1185,6 +1185,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   m.def("get_git_version", []() { return TF_GIT_VERSION; });
   m.def("get_compiler_version", []() { return TF_COMPILER_VERSION; });
   m.def("get_cxx11_abi_flag", []() { return TF_CXX11_ABI_FLAG; });
+  m.def("get_cxx_version", []() { return TF_CXX_VERSION; });
   m.def("get_eigen_max_align_bytes", []() { return EIGEN_MAX_ALIGN_BYTES; });
   m.def("get_monolithic_build", []() { return TF_MONOLITHIC_BUILD; });
   m.def("get_graph_def_version", []() { return TF_GRAPH_DEF_VERSION; });

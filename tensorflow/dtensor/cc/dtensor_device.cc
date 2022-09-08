@@ -41,6 +41,9 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -70,9 +73,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tpu_system_interface.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_topology.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -99,7 +99,6 @@ class DTensorDevice {
 
   void AddMesh(std::unique_ptr<MeshWithParallelDevice> mesh,
                bool is_host_mesh) {
-    // TODO(b/168730933): Consider passing a cheaper int64_t mesh identifier.
     if (is_host_mesh) {
       std::string& tpu_host_mesh = Mesh::tpu_host_mesh();
       const std::string new_tpu_host_mesh = mesh->mesh_config().ToString();
@@ -902,7 +901,7 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
     packed_tensor =
         TensorWithLayout::Wrap(std::move(parallel_tensor),
                                *target_parallel_device, *target_layout)
-            .ValueOrDie();
+            .value();
   }
 
   RecordInShapeLayoutCache(*packed_tensor);
@@ -991,7 +990,7 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
   if (is_remote_mesh(target_parallel_device->mesh_config())) {
     // Create a dummy SparseTensorWithLayout.
     packed_tensor = SparseTensorWithLayout::Dummy(
-        local_shape, *target_parallel_device, target_layout.ValueOrDie());
+        local_shape, *target_parallel_device, target_layout.value());
   } else {
     // Parse the indices, values, and dense_shape tensors and put them into
     // parallel tensors, and then pack it into a single SparseTensorWithLayout.
@@ -1047,8 +1046,8 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
                                      std::move(parallel_values_tensor),
                                      std::move(parallel_dense_shapes_tensor),
                                      *target_parallel_device,
-                                     target_layout.ValueOrDie(), local_shape)
-            .ValueOrDie();
+                                     target_layout.value(), local_shape)
+            .value();
   }
 
   RecordInShapeLayoutCache(*packed_tensor);
@@ -1519,9 +1518,6 @@ void DTensorDevice::ExecuteRegularOperation(
 
   int num_global_outputs = 0;
 
-  // TODO(b/168730933): Lookup is slow as it takes all the devices in the Mesh
-  // object. Ideally we'd just use a fingerprinted int64_t as a unique
-  // identifier for a mesh.
   std::map<std::string, const MeshWithParallelDevice*>
       function_name_and_mesh_mapping;
   absl::flat_hash_set<std::string> excluded_fn_names;
@@ -1540,9 +1536,6 @@ void DTensorDevice::ExecuteRegularOperation(
                         .c_str());
     }
     const Mesh& mesh = *maybe_converted_mesh;
-    // TODO(b/168730933): Lookup is slow as it takes all the devices in the Mesh
-    // object. Ideally we'd just use a fingerprinted int64_t as a unique
-    // identifier for a mesh.
     const MeshWithParallelDevice* parallel_device_mesh =
         mesh_to_device_map_.contains(mesh) ? mesh_to_device_map_[mesh].get()
                                            : default_mesh_;
@@ -1703,9 +1696,6 @@ void DTensorDevice::ExecuteRegularOperation(
       continue;
     }
     const Mesh& mesh = function.function_mesh;
-    // TODO(b/168730933): Lookup is slow as it takes all the devices in the Mesh
-    // object. Ideally we'd just use a fingerprinted int64_t as a unique
-    // identifier for a mesh.
     const MeshWithParallelDevice* parallel_device_mesh =
         function_name_and_mesh_mapping[function.translated_function_name];
 
@@ -2029,7 +2019,7 @@ void AddMesh(const std::string& serialized_mesh, void* device_info,
                      .c_str());
     return;
   }
-  auto mesh_config = mesh_config_or_status.ValueOrDie();
+  auto mesh_config = mesh_config_or_status.value();
   std::vector<std::string> underlying_devices;
   underlying_devices.insert(underlying_devices.end(),
                             mesh_config.local_devices().begin(),
@@ -2059,7 +2049,7 @@ void ExperimentalSetDefaultLayout(const std::string& serialized_layout,
     RETURN_STATUS(status, TF_INTERNAL, layout.status().error_message().c_str());
   }
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  device->SetDefaultLayout(layout.ValueOrDie());
+  device->SetDefaultLayout(layout.value());
 }
 
 void ExperimentalClearDefaultLayout(void* device_info, TF_Status* status) {
@@ -2074,7 +2064,7 @@ void ExperimentalSetDefaultMesh(const std::string& serialized_mesh,
     RETURN_STATUS(status, TF_INTERNAL, mesh.status().error_message().c_str());
   }
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  device->SetDefaultMesh(mesh.ValueOrDie());
+  device->SetDefaultMesh(mesh.value());
 }
 
 void ExperimentalClearDefaultMesh(void* device_info, TF_Status* status) {

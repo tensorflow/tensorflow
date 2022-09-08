@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/stream_executor/gpu/gpu_activation.h"
 
 namespace xla {
 namespace gpu {
@@ -133,8 +133,15 @@ StatusOr<NcclComm::Lock> LockNcclComm(
   TF_RET_CHECK(it != participants.end());
   int rank = it - participants.begin();
 
+  std::vector<GlobalDeviceId> local_devices;
+  if (params.gpu_global_device_ids) {
+    local_devices.reserve(params.gpu_global_device_ids->size());
+    for (const auto& entry : *params.gpu_global_device_ids) {
+      local_devices.push_back(entry.second);
+    }
+  }
   size_t num_local_participants = GetNumLocalParticipants(
-      participants, /*local_devices=*/params.gpu_global_device_ids);
+      participants, params.gpu_global_device_ids ? &local_devices : nullptr);
 
   bool is_local = participants.size() == num_local_participants;
   TF_ASSIGN_OR_RETURN(
@@ -197,11 +204,9 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 std::string NcclCollectiveThunk::GetDeviceString(
     const NcclExecuteParams& nccl_params) {
   int device_ordinal = nccl_params.stream->parent()->device_ordinal();
-  GlobalDeviceId global_device_id =
-      nccl_params.GetGlobalDeviceId().ValueOrDie();
+  GlobalDeviceId global_device_id = nccl_params.GetGlobalDeviceId().value();
   DeviceAssignment::LogicalID logical_id =
-      nccl_params.device_assn->LogicalIdForDevice(global_device_id)
-          .ValueOrDie();
+      nccl_params.device_assn->LogicalIdForDevice(global_device_id).value();
   return absl::StrFormat("(r%d, p%d) : GlobalID %d, ord %d",
                          logical_id.replica_id, logical_id.computation_id,
                          global_device_id.value(), device_ordinal);

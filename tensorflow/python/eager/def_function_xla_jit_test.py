@@ -665,8 +665,8 @@ class DefFunctionTest(xla_test.XLATestCase):
       f()
       self.assertAllClose(v, [3.1, 2.3])
 
-  @test_util.disable_mlir_bridge('TODO(b/199737685): MLIR bridge does not'
-                                 'support tf.unique via jit_compile')
+  @test_util.disable_mlir_bridge('MLIR does not support resource update for'
+                                 ' signature with compile-time constant.')
   def testUniqueDifferentSizes(self):
     if not 'gpu' in self.device.lower():
       self.skipTest('Currently works only on GPU')
@@ -684,8 +684,6 @@ class DefFunctionTest(xla_test.XLATestCase):
             constant_op.constant([3.1, 3.2]),
             constant_op.constant([3.1, 3.2, 3.3]))
 
-  @test_util.disable_mlir_bridge('TODO(b/199737685): MLIR bridge does not'
-                                 'support tf.unique via jit_compile')
   def testUniqueCompilability(self):
     with ops.device('device:{}:0'.format(self.device)):
 
@@ -737,6 +735,9 @@ class DefFunctionTest(xla_test.XLATestCase):
       gc.collect()
       initial_usage = context.context().get_memory_info(
           v.device)['current'] if on_gpu else 0
+      update_var(constant_op.constant([1024, 1024]), arg)
+      # Need to do update_var for a second time so that BFC Allocator could
+      # defragment the GPU memory.
       update_var(constant_op.constant([1024, 1024]), arg)
       gc.collect()
       final_usage = context.context().get_memory_info(

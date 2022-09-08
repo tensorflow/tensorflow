@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <cstdint>
+#include <string>
+
 namespace stream_executor {
 namespace port {
 
-bool safe_strto32(const char* str, int32* value) {
+bool safe_strto32(const char* str, int32_t* value) {
   char* endptr;
   *value = strtol(str, &endptr, 10);  // NOLINT
   if (endptr != str) {
@@ -32,7 +35,7 @@ bool safe_strto32(const char* str, int32* value) {
 // Convert strings to floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
-bool safe_strto32(const std::string& str, int32* value) {
+bool safe_strto32(const std::string& str, int32_t* value) {
   return port::safe_strto32(str.c_str(), value);
 }
 

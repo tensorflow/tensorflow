@@ -508,6 +508,26 @@ func.func @testAddV2IdentityTensor(%arg0: tensor<f32>, %arg1: tensor<4xf32>) -> 
   func.return %1, %2, %3, %4: tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>
 }
 
+// CHECK-LABEL: testAddV2IdentityBroadcastTensor
+func.func @testAddV2IdentityBroadcastTensor(%arg0: tensor<4x1xf32>, %arg1: tensor<4x2xf32>) -> (tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>) {
+  %0 = "tf.Const"() {value = dense<0.0> : tensor<1x2xf32>} : () -> tensor<1x2xf32>
+
+  // Operand and identity shapes are broadcastable. However, we cannot fold
+  // because the operand does not match the result shape.
+  %1 = "tf.AddV2"(%arg0, %0) : (tensor<4x1xf32>, tensor<1x2xf32>) -> tensor<4x2xf32>
+  %2 = "tf.AddV2"(%0, %arg0) : (tensor<1x2xf32>, tensor<4x1xf32>) -> tensor<4x2xf32>
+
+  // If operand has the same shape as a result, we can fold it.
+  %3 = "tf.AddV2"(%arg1, %0) : (tensor<4x2xf32>, tensor<1x2xf32>) -> tensor<4x2xf32>
+  %4 = "tf.AddV2"(%0, %arg1) : (tensor<1x2xf32>, tensor<4x2xf32>) -> tensor<4x2xf32>
+
+  // CHECK: %[[CONST:.*]] = "tf.Const"()
+  // CHECK-DAG: %[[ADD1:.*]] = "tf.AddV2"(%arg0, %[[CONST]])
+  // CHECK-DAG: %[[ADD2:.*]] = "tf.AddV2"(%arg0, %[[CONST]])
+  // CHECK: return %[[ADD1]], %[[ADD2]], %arg1, %arg1
+  func.return %1, %2, %3, %4: tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>
+}
+
 // CHECK-LABEL: testDoubleConj
 func.func @testDoubleConj(%arg0: tensor<8x16x32x64xcomplex<f32>>) -> tensor<8x16x32x64xcomplex<f32>> {
   %0 = "tf.Conj"(%arg0) : (tensor<8x16x32x64xcomplex<f32>>) -> tensor<8x16x32x64xcomplex<f32>>
@@ -1993,7 +2013,7 @@ func.func @testXlaConvToV2(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16
 
 // CHECK-LABEL: testXlaReduceToXlaVariadicReduceV2
 func.func @testXlaReduceToXlaVariadicReduceV2(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
-  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = array<i32: 1, 1>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   %0 = "tf.XlaReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   func.return %0 : tensor<*xbf16>
 }
@@ -2005,7 +2025,7 @@ func.func private @sum1(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<
 
 // CHECK-LABEL: testXlaVariadicReduceToV2
 func.func @testXlaVariadicReduceToV2(%arg0: tensor<3x4xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> {
-  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = array<i32: 1, 1>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
   %0 = "tf.XlaVariadicReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }

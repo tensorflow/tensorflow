@@ -18,7 +18,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
+#include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/variant.h"
@@ -1402,7 +1402,7 @@ Status XlaCompiler::CompileGraph(
     for (const auto& node_name : output_node_token_inputs) {
       auto token_or = GetNodeToken(node_name);
       TF_RETURN_IF_ERROR(token_or.status());
-      token_inputs.push_back(token_or.ValueOrDie());
+      token_inputs.push_back(token_or.value());
     }
     token_output.reset(new xla::XlaOp(xla::AfterAll(&builder, token_inputs)));
   }

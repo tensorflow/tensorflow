@@ -84,12 +84,11 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
     const Shape shape = GetShape(op.getInputs()[i]);
     config.operand_element_type.push_back(shape.element_type());
   }
-  config.replica_groups =
-      ConvertReplicaGroups(op.getReplicaGroups()).ValueOrDie();
+  config.replica_groups = ConvertReplicaGroups(op.getReplicaGroups()).value();
   config.SetCollectiveOpKindAndID(op);
   config.group_mode = GetCollectiveOpGroupMode(op.getChannelId().has_value(),
                                                use_global_device_ids)
-                          .ValueOrDie();
+                          .value();
   return config;
 }
 
@@ -102,6 +101,8 @@ class NcclCollectiveThunk : public Thunk {
     int64_t element_count;
     BufferAllocation::Slice source_buffer;
     BufferAllocation::Slice destination_buffer;
+    mlir::Value source_value;
+    mlir::Value destination_value;
   };
 
   // Returns whether NCCL operations appear possible to perform; e.g. if we

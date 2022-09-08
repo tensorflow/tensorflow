@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PYTHON_LIB_CORE_FLOAT_E4M3B11_H_
-#define TENSORFLOW_PYTHON_LIB_CORE_FLOAT_E4M3B11_H_
+#ifndef TENSORFLOW_PYTHON_LIB_CORE_FLOAT8_E4M3B11_H_
+#define TENSORFLOW_PYTHON_LIB_CORE_FLOAT8_E4M3B11_H_
 
 #include <stdint.h>
 
@@ -61,4 +61,4 @@ class float8_e4m3b11 {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PYTHON_LIB_CORE_FLOAT_E4M3B11_H_
+#endif  // TENSORFLOW_PYTHON_LIB_CORE_FLOAT8_E4M3B11_H_

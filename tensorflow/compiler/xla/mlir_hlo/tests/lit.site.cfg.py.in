@@ -43,7 +43,7 @@ config.llvm_host_triple = '@LLVM_HOST_TRIPLE@'
 config.host_arch = "@HOST_ARCH@"
 config.mlir_hlo_src_root = "@MLIR_HLO_SOURCE_DIR@"
 config.mlir_hlo_obj_root = "@MLIR_HLO_BINARY_DIR@"
-config.mlir_runner_utils_dir = os.path.join(config.llvm_obj_root, "lib")
+config.mlir_lib_dir = os.path.join(config.llvm_obj_root, "lib")
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.

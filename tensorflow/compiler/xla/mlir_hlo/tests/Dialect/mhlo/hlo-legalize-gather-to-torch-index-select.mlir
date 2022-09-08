@@ -6,7 +6,7 @@ func.func @gather_to_index_select(%arg0 : tensor<5x4xf32>, %arg1 : tensor<1x3x1x
   // CHECK-SAME:   batch_dims = 0 : i64,
   // CHECK-SAME:   dim = 0 : i64
   // CHECK-SAME: } : (tensor<5x4xf32>, tensor<1x3x1xi32>) -> tensor<1x3x1x4xf32>
-  // CHECK: [[RES:%.+]] = "mhlo.reshape"([[TIS]])
+  // CHECK: [[RES:%.+]] = mhlo.reshape [[TIS]]
   %0 = "mhlo.gather"(%arg0, %arg1) {
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [0],

@@ -39,20 +39,20 @@ func.func @direct_reuse(%not_a_memref : index,
 
 // CHECK-LABEL: @local_reuse_with_memref_maps
 func.func @local_reuse_with_memref_maps(
-    %arg : memref<?xi64, offset: 2, strides: [3]>, %n : index)
-    -> memref<?xi64, offset: 2, strides: [3]> attributes {tf_entry} {
+    %arg : memref<?xi64, strided<[3], offset: 2>>, %n : index)
+    -> memref<?xi64, strided<[3], offset: 2>> attributes {tf_entry} {
   // CHECK: alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32]
-  %result = memref.alloc(%n) : memref<?xi64, offset: 2, strides: [3]>
+  %result = memref.alloc(%n) : memref<?xi64, strided<[3], offset: 2>>
   linalg.generic {
     indexing_maps = [affine_map<(i) -> (i)>, affine_map<(i) -> (i)>],
     iterator_types = ["parallel"]
-  } ins(%arg : memref<?xi64, offset: 2, strides: [3]>)
-    outs(%result : memref<?xi64, offset: 2, strides: [3]>) {
+  } ins(%arg : memref<?xi64, strided<[3], offset: 2>>)
+    outs(%result : memref<?xi64, strided<[3], offset: 2>>) {
   ^bb0(%a : i64, %b : i64):
     linalg.yield %a : i64
   }
-  func.return %result : memref<?xi64, offset: 2, strides: [3]>
+  func.return %result : memref<?xi64, strided<[3], offset: 2>>
 }
 
 // CHECK-LABEL: @local_reuse_with_broadcasting_memref_maps
@@ -531,7 +531,7 @@ func.func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
     iterator_types = ["parallel"]
   } ins(%3 : memref<?xf32>) outs(%9 : memref<?xf32>) {
   ^bb0(%arg1: f32, %arg2: f32):
-    %12 = math.abs %arg1 : f32
+    %12 = math.absf %arg1 : f32
     linalg.yield %12 : f32
   }
   %10 = bufferization.to_memref %0 : memref<?xindex>

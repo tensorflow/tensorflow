@@ -326,7 +326,7 @@ std::optional<CastToArrayResult> CastToArray(py::handle h) {
   if (!type_or_status.ok()) {
     throw xla::XlaRuntimeError(type_or_status.status());
   }
-  PrimitiveType type = type_or_status.ValueOrDie();
+  PrimitiveType type = type_or_status.value();
 
   absl::InlinedVector<int64_t, 4> dims(array.ndim());
   for (int i = 0; i < array.ndim(); ++i) {

@@ -64,7 +64,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
-    auto alias_analysis = HloAliasAnalysis::Run(module).ValueOrDie();
+    auto alias_analysis = HloAliasAnalysis::Run(module).value();
 
     Options options;
     if (memory_space_assignment_options.has_value()) {
@@ -75,7 +75,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     }
     auto cost_analysis = MemorySpaceAssignmentCostAnalysis::Create(
                              hlo_cost_analysis, options, *module)
-                             .ValueOrDie();
+                             .value();
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
             *cost_analysis, /*min_overlap_to_async_copy_ratio=*/0.8,
@@ -160,16 +160,16 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     options.max_outstanding_evictions = max_outstanding_async_copies;
     options.allocate_across_sequential_calls = GetParam();
 
-    auto alias_analysis = HloAliasAnalysis::Run(module).ValueOrDie();
+    auto alias_analysis = HloAliasAnalysis::Run(module).value();
     std::unique_ptr<HloLiveRange> hlo_live_range =
         HloLiveRange::Run(module->schedule(), *alias_analysis,
                           module->entry_computation())
-            .ValueOrDie();
+            .value();
 
     std::unique_ptr<PresetAssignments> preset_assignments =
         MemorySpaceAssignment::Run(module, *hlo_live_range, *alias_analysis,
                                    options)
-            .ValueOrDie();
+            .value();
     if (check_parameters_in_default_memory) {
       CheckParametersInDefaultMemory(module);
     }
@@ -216,12 +216,11 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   }
 
   void CheckRootInDefaultMemory(const HloModule* module) {
-    EXPECT_EQ(module->entry_computation()
-                  ->root_instruction()
-                  ->shape()
-                  .layout()
-                  .memory_space(),
-              kDefaultMemorySpace);
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    if (root->shape().IsArray()) {
+      EXPECT_EQ(root->shape().layout().memory_space(), kDefaultMemorySpace);
+    }
   }
 
   struct OutstandingAsyncCopies {
@@ -270,8 +269,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
                                    const ShapeIndex& index = {}) const {
     // Returns the offset of the assignment, -1 if it's not in the alternate
     // memory.
-    const HloModule* module = instruction->parent()->parent();
-    auto alias_analysis = HloAliasAnalysis::Run(module).ValueOrDie();
+    const HloModule* module = instruction->GetModule();
+    auto alias_analysis = HloAliasAnalysis::Run(module).value();
     HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(instruction, index);
     for (auto& pos_and_chunk : preset_assignments.chunks()) {
       for (auto& value : buffer.values()) {
@@ -482,8 +481,9 @@ TEST_P(MemorySpaceAssignmentTest, Simple) {
   // else should be in the alternate memory.
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{},
+      /*tiles=*/{},
+      /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(p0, op::ShapeWithLayout(shape));
   EXPECT_THAT(p1, op::ShapeWithLayout(shape));
   EXPECT_THAT(mul, op::ShapeWithLayout(shape));
@@ -543,8 +543,9 @@ TEST_P(MemorySpaceAssignmentTest, NegateChain) {
   // Negate instructions are in the alternate memory space (1).
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{},
+      /*tiles=*/{},
+      /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -859,8 +860,8 @@ TEST_P(MemorySpaceAssignmentTest, While) {
   }
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(body_data_mul, op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
@@ -1198,8 +1199,8 @@ TEST_P(MemorySpaceAssignmentTest, BitcastMultiUse) {
   AssignMemorySpace(module.get());
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(negate0->operand(0), op::ShapeWithLayout(shape));
   EXPECT_THAT(add->operand(0), op::ShapeWithLayout(shape_in_alternate_mem));
 }
@@ -1253,8 +1254,8 @@ TEST_P(MemorySpaceAssignmentTest, BitcastMultiUseTuple) {
   AssignMemorySpace(module.get());
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(negate0->operand(0), op::ShapeWithLayout(shape));
   EXPECT_THAT(fusion->operand(0)->operand(0),
               op::ShapeWithLayout(shape_in_alternate_mem));
@@ -3102,18 +3103,18 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   // so it can be trivially placed in the alternate memory space.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {0})->mutable_layout() =
       LayoutUtil::MakeLayout(
-          /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-          kAlternateMemorySpace);
+          /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+          /*element_size_in_bits=*/0, kAlternateMemorySpace);
   // Index {1} is a scalar, so it is always placed in the default memory.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {1})->mutable_layout() =
       LayoutUtil::MakeLayout(
-          /*minor_to_major=*/{}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-          kDefaultMemorySpace);
+          /*minor_to_major=*/{}, /*dim_level_types=*/{}, /*tiles=*/{},
+          /*element_size_in_bits=*/0, kDefaultMemorySpace);
   // Index {2} of the while loop is placed in the default memory.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {2})->mutable_layout() =
       LayoutUtil::MakeLayout(
-          /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-          kDefaultMemorySpace);
+          /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+          /*element_size_in_bits=*/0, kDefaultMemorySpace);
 
   // Expect the layout for the while loop and its aliased buffers.
   EXPECT_THAT(while_op, op::ShapeWithLayout(tuple_shape));
@@ -3546,8 +3547,8 @@ TEST_P(MemorySpaceAssignmentTest, CostAnalysis) {
   // Negate instructions are in the alternate memory space (1).
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -3616,8 +3617,8 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   EXPECT_THAT(p1, op::ShapeWithLayout(shape));
   Shape shape_in_default_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {4, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kDefaultMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, kDefaultMemorySpace);
   // Expect only negates to be in alternate memory space. Not all might fit but
   // make sure at least one does.
   std::vector<HloInstruction*> negate_instructions = {negate0, negate1, negate2,
@@ -3724,16 +3725,16 @@ TEST_P(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
   // Ensure all parameters and while are placed in default memory.
   Shape shape_in_default_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {4, 6},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kDefaultMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, kDefaultMemorySpace);
   Shape s32_in_default_mem = ShapeUtil::MakeShapeWithLayout(
       xla::S32, {},
-      /*minor_to_major=*/{}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kDefaultMemorySpace);
+      /*minor_to_major=*/{}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, kDefaultMemorySpace);
   Shape f32v1_in_default_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {1},
-      /*minor_to_major=*/{0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kDefaultMemorySpace);
+      /*minor_to_major=*/{0}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, kDefaultMemorySpace);
   Shape t_s32_f32v1_in_default_mem =
       ShapeUtil::MakeTupleShape({s32_in_default_mem, f32v1_in_default_mem});
   EXPECT_THAT(param, op::ShapeWithLayout(t_s32_f32v1_in_default_mem));
@@ -3843,8 +3844,8 @@ TEST_P(MemorySpaceAssignmentTest,
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, kAlternateMemorySpace);
   // p0 is in the default memory space.
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
@@ -5746,6 +5747,107 @@ ENTRY entry {
   AssignMemorySpace(module.get());
 }
 
+TEST_P(MemorySpaceAssignmentTest, AsyncCallDisableAlternateMem) {
+  absl::string_view hlo_string = R"(
+HloModule Module, is_scheduled=true
+
+called_comp {
+  p0 = f32[2,3] parameter(0)
+  negate10 = f32[2,3] negate(p0)
+  negate11 = f32[2,3] negate(negate10)
+  negate12 = f32[2,3] negate(negate11)
+  negate13 = f32[2,3] negate(negate12)
+  negate14 = f32[2,3] negate(negate13)
+  ROOT negate15 = f32[2,3] negate(negate14)
+}, execution_thread="foobar"
+
+async_comp {
+  p0 = f32[2,3] parameter(0)
+  ROOT call = f32[2,3] call(p0), to_apply=called_comp
+}, execution_thread="foobar"
+
+ENTRY entry {
+  p0 = f32[2,3] parameter(0)
+  negate0 = f32[2,3] negate(p0)
+  negate1 = f32[2,3] negate(negate0)
+  negate2 = f32[2,3] negate(negate1)
+  negate3 = f32[2,3] negate(negate2)
+  negate4 = f32[2,3] negate(negate3)
+  async-start = ((f32[2,3]), f32[2,3], f32[2]) async-start(negate1), async_group_id=0, async_execution_thread="foobar", calls=async_comp
+  async-done = f32[2,3] async-done(async-start), async_group_id=0, async_execution_thread="foobar", calls=async_comp
+  add0 = f32[2,3] add(negate0, async-done)
+  negate5 = f32[2,3] negate(add0)
+  negate6 = f32[2,3] negate(negate5)
+  negate7 = f32[2,3] negate(negate6)
+  negate8 = f32[2,3] negate(negate7)
+  negate9 = f32[2,3] negate(negate8)
+  ROOT add1 = f32[2,3] add(negate9, async-done)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  options.is_use_allowed_in_alternate_mem_fn = [](const HloUse& use) {
+    return use.instruction->opcode() != HloOpcode::kAsyncStart &&
+           use.instruction->opcode() != HloOpcode::kAsyncDone &&
+           use.instruction->parent()->IsMainThread();
+  };
+  options.is_position_allowed_in_alternate_mem_fn = [](const HloPosition& pos) {
+    return pos.instruction->opcode() != HloOpcode::kAsyncStart &&
+           pos.instruction->opcode() != HloOpcode::kAsyncDone &&
+           pos.instruction->parent()->IsMainThread();
+  };
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2,
+                    options);
+  auto has_alternate_memory_allocation =
+      [&](const HloInstruction* instruction) {
+        bool result = false;
+        auto shape_has_alternate_memory_allocation =
+            [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+              if (subshape.IsArray() &&
+                  subshape.layout().memory_space() == kAlternateMemorySpace) {
+                result = true;
+              }
+            };
+        ShapeUtil::ForEachSubshape(instruction->shape(),
+                                   shape_has_alternate_memory_allocation);
+        for (const HloInstruction* operand : instruction->operands()) {
+          ShapeUtil::ForEachSubshape(operand->shape(),
+                                     shape_has_alternate_memory_allocation);
+        }
+        return result;
+      };
+
+  // Check that the async ops themselves and the instructions inside async
+  // computations do not have any alternate memory allocations.
+  const HloInstruction* async_start =
+      FindInstruction(module.get(), "async-start");
+  const HloInstruction* async_done =
+      FindInstruction(module.get(), "async-done");
+  EXPECT_FALSE(has_alternate_memory_allocation(async_start));
+  EXPECT_FALSE(has_alternate_memory_allocation(async_done));
+  for (const HloInstruction* instruction :
+       async_start->async_wrapped_instruction()
+           ->called_computations()[0]
+           ->instructions()) {
+    EXPECT_FALSE(has_alternate_memory_allocation(instruction));
+  }
+  // Check that we still allow the tensor used/produced by the async computation
+  // to be placed in the alternate memory before/after the async computation.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Add(op::Negate(),
+                      op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                    op::AsyncDone())));
+  EXPECT_THAT(async_start,
+              op::AsyncStart(op::AsyncCopy(
+                  kDefaultMemorySpace, kAlternateMemorySpace, op::Negate())));
+}
+
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));
@@ -6466,8 +6568,8 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
   auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
   auto rhs_shape = ShapeUtil::MakeShapeWithLayout(
       F32, {kFeature, kOutput},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, kAlternateMemorySpace);
   auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
   HloInstruction* lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
@@ -6513,8 +6615,8 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
   auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
   auto rhs_shape = ShapeUtil::MakeShapeWithLayout(
       F32, {kFeature, kOutput},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*element_size_in_bits=*/0, kAlternateMemorySpace);
   auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
   auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
   HloInstruction* param = builder.AddInstruction(

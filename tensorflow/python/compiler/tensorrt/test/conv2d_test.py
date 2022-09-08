@@ -164,6 +164,14 @@ class Conv2DStridedNCHWTest(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     return ["TRTEngineOp_000"]
 
+  def ExpectedAbsoluteTolerance(self, run_params):
+    """The absolute tolerance to compare floating point results."""
+    return 5.e-01 if run_params.precision_mode == "INT8" else 1.e-02
+
+  def ExpectedRelativeTolerance(self, run_params):
+    """The relative tolerance to compare floating point results."""
+    return 5.e-00 if run_params.precision_mode == "INT8" else 1.e-02
+
 
 class Conv2DTranposeTest(trt_test.TfTrtIntegrationTestBase):
   """Testing conversion of conv2d_transpose (AKA Conv2DBackpropInput)"""

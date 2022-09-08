@@ -131,4 +131,9 @@ message QuantizationOptions {
   // If there are conflicts or ambiguity in this unit-wise precision, our
   // quantizer will raise an error.
   repeated UnitWiseQuantizationPrecision unit_wise_quantization_precision = 4;
+
+  // Minimum number of weight elements to apply quantization. Currently only
+  // supported for Post-training Dynamic Range Quantization. By default, it is
+  // set to 1024. To disable this, set the value to -1 explicitly.
+  int64 min_num_elements_for_weights = 5;
 }

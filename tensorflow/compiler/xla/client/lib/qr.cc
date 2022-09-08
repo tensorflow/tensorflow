@@ -63,7 +63,7 @@ QrDecomposition Qr(XlaOp a) {
     XlaOp error = a.builder()->ReportError(result.status());
     return QrDecomposition{error, error};
   }
-  return result.ValueOrDie();
+  return result.value();
 }
 
 XlaOp ProductOfElementaryHouseholderReflectors(XlaOp a, XlaOp taus) {
@@ -114,7 +114,7 @@ void QrExplicit(XlaOp a, bool full_matrices, XlaOp& q, XlaOp& r) {
     r = q;
     return;
   }
-  Shape a_shape = a_shape_or.ValueOrDie();
+  Shape a_shape = a_shape_or.value();
   const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
   const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
   const int64_t p = std::min(m, n);

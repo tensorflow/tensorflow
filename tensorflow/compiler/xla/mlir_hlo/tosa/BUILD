@@ -67,6 +67,7 @@ cc_library(
     deps = [
         ":MHLOTOSAPDLLPatternsIncGen",
         ":MHLOTOSATransformsPassIncGen",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -83,6 +84,7 @@ cc_binary(
     deps = [
         ":MHLOTOSATransforms",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:register",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",

@@ -1,6 +1,9 @@
 load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
@@ -26,6 +29,7 @@ cc_library(
     hdrs = [
         "quantize_model.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -40,6 +44,8 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op_and_kernels",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -157,6 +163,7 @@ pytype_strict_library(
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/types",
         "//third_party/py/numpy",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -238,6 +245,7 @@ pytype_strict_library(
 tf_py_test(
     name = "representative_dataset_test",
     srcs = ["representative_dataset_test.py"],
+    tags = ["no_pip"],  # b/241528672
     deps = [
         ":representative_dataset",
         "//tensorflow/python/client:session",

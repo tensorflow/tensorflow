@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/reference_util.h"
 
 #include <array>
+#include <cmath>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -28,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 

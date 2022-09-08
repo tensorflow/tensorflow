@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
+#include "absl/strings/match.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/parallel_execute_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
@@ -63,6 +65,7 @@ namespace mlir {
 namespace TFTPU {
 
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
+constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
 constexpr char kUseXlaSpmdAttr[] = "use_spmd_for_xla_partitioning";
@@ -441,8 +444,10 @@ LogicalResult BuildExecuteOp(
   // TODO(b/139377366): Need to snapshot all resource variable inputs in
   // follow-up CLs.
   llvm::SmallVector<Type, 4> output_types;
+  llvm::SmallVector<int, 4> cluster_to_core_index;
   auto result = tensorflow::GetOutputTypesForLogicalDeviceComputation(
-      core_id, output_sharding_config, cluster_func, &output_types);
+      core_id, output_sharding_config, cluster_func, &output_types,
+      &cluster_to_core_index);
   if (failed(result)) return failure();
 
   // TPUExecute has same output types as cluster_func.
@@ -504,6 +509,7 @@ LogicalResult AddToParallelExecuteOp(
     llvm::ArrayRef<llvm::SmallVector<tensorflow::TPUDeviceAndHost, 8>>
         tpu_devices,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
+    llvm::SmallVectorImpl<llvm::SmallVector<int, 4>>* cluster_to_core_index,
     Operation* compile_op, tf_device::ClusterFuncOp cluster_func,
     OpBuilder* builder, tf_device::ParallelExecuteOp old_parallel_execute,
     tf_device::ParallelExecuteOp* new_parallel_execute, int* cluster_idx) {
@@ -519,9 +525,11 @@ LogicalResult AddToParallelExecuteOp(
                                     num_cores_per_replica);
 
   for (int core = 0; core < num_cores_per_replica; ++core) {
+    cluster_to_core_index->emplace_back(llvm::SmallVector<int, 4>());
     llvm::SmallVector<Type, 4> output_types;
     auto result = tensorflow::GetOutputTypesForLogicalDeviceComputation(
-        core, output_sharding_config, cluster_func, &output_types);
+        core, output_sharding_config, cluster_func, &output_types,
+        &(*cluster_to_core_index)[core]);
     if (failed(result)) return failure();
 
     for (Type t : output_types) concatenated_output_types.emplace_back(t);
@@ -564,10 +572,18 @@ LogicalResult AddToParallelExecuteOp(
     // If computation is replicated, use aliased device. Otherwise there is only
     // one execution device per core and the device is assigned to the execute
     // op.
-    std::string device = replicated
-                             ? tensorflow::GetDeviceAliasForLogicalCore(core)
-                             : tpu_devices.front()[core].device;
-
+    std::string device;
+    if (replicated) {
+      device = tensorflow::GetDeviceAliasForLogicalCore(core);
+    } else {
+      auto device_attr = cluster_func->getAttrOfType<StringAttr>(kDeviceAttr);
+      if (device_attr && !device_attr.str().empty() &&
+          absl::StrContains(device_attr.str(), "TPU:")) {
+        device = cluster_func->getAttrOfType<StringAttr>(kDeviceAttr).str();
+      } else {
+        device = tpu_devices.front()[core].device;
+      }
+    }
     auto block_launch_op =
         WrapOpInLaunch(builder, block.getParent()->getLoc(), execute, device);
 
@@ -581,12 +597,23 @@ LogicalResult AddToParallelExecuteOp(
 tf_device::LaunchOp AssignDevicesToReplicatedExecute(
     llvm::ArrayRef<llvm::SmallVector<tensorflow::TPUDeviceAndHost, 8>>
         tpu_devices,
-    Operation* execute_op, OpBuilder* builder) {
+    Operation* execute_op, tf_device::ClusterFuncOp cluster_func,
+    OpBuilder* builder) {
   const bool replicated = tpu_devices.size() != 1;
   // If computation is replicated, use aliased device. Otherwise there is only
   // one execution device and the device is assigned to the execute op.
-  std::string device = replicated ? tensorflow::GetDeviceAliasForLogicalCore(0)
-                                  : tpu_devices.front().front().device;
+  std::string device;
+  if (replicated) {
+    device = tensorflow::GetDeviceAliasForLogicalCore(0);
+  } else {
+    auto device_attr = cluster_func->getAttrOfType<StringAttr>(kDeviceAttr);
+    if (device_attr && !device_attr.str().empty() &&
+        absl::StrContains(device_attr.str(), "TPU:")) {
+      device = cluster_func->getAttrOfType<StringAttr>(kDeviceAttr).str();
+    } else {
+      device = tpu_devices.front().front().device;
+    }
+  }
 
   return WrapOpInLaunch(builder, execute_op->getLoc(), execute_op, device);
 }
@@ -600,55 +627,6 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
   auto assert_op = builder->create<TF::TPUCompileSucceededAssertOp>(
       compile_op->getLoc(), result_id->getResult(0));
   WrapOpInLaunch(builder, compile_op->getLoc(), assert_op, compilation_device);
-}
-
-// Wrap the `ClusterFunc` in a `ParallelExecute` with only one child. This
-// creates a canonical form, regardless of whether a `ParallelExecute` was
-// created in a previous pass.
-void BuildSingletonParallelExecuteOp(
-    tf_device::ClusterFuncOp cluster_func, OpBuilder* builder,
-    tf_device::ParallelExecuteOp* parallel_execute) {
-  if (!*parallel_execute) {
-    const auto output_types = cluster_func.getResultTypes();
-    builder->setInsertionPoint(cluster_func);
-    *parallel_execute = builder->create<tf_device::ParallelExecuteOp>(
-        cluster_func.getLoc(), 1, output_types);
-    cluster_func->remove();
-    auto& block = parallel_execute->GetRegionBlockWithIndex(0);
-    builder->setInsertionPointToEnd(&block);
-    builder->insert(cluster_func);
-    cluster_func.replaceAllUsesWith(*parallel_execute);
-    builder->create<tf_device::ReturnOp>(block.getParent()->getLoc(),
-                                         cluster_func.getResults());
-  }
-}
-
-// Unwrap the `ParallelExecute`'s contents if it only has one child.
-LogicalResult RemoveSingletonParallelExecuteOp(
-    tf_device::ParallelExecuteOp parallel_execute, OpBuilder* builder) {
-  if (parallel_execute.regions().size() == 1) {
-    builder->setInsertionPoint(parallel_execute);
-    auto& block = parallel_execute.GetRegionBlockWithIndex(0);
-    llvm::SmallVector<Operation*, 2> ops_move;
-    for (Operation& op : block) {
-      ops_move.push_back(&op);
-    }
-    if (ops_move.size() != 2) {
-      parallel_execute.emitError() << "Expected 2 ops in parallel_execute.";
-      return failure();
-    }
-    auto launch = llvm::dyn_cast<tf_device::LaunchOp>(ops_move[0]);
-    if (!launch) {
-      parallel_execute.emitError()
-          << "Expected the op in parallel_execute to be a tf_device.launch";
-      return failure();
-    }
-    launch->remove();
-    builder->insert(launch);
-    parallel_execute.replaceAllUsesWith(launch);
-    parallel_execute.erase();
-  }
-  return success();
 }
 
 LogicalResult CheckTPUPartitionedInputAndOutputAreValid(
@@ -703,7 +681,8 @@ LogicalResult Rewrite(
                                  "ClusterFunc must be its direct parent.";
     return failure();
   }
-  BuildSingletonParallelExecuteOp(cluster_func, builder, &old_parallel_execute);
+  if (!old_parallel_execute)
+    old_parallel_execute = BuildParallelExecuteOp(cluster_func, builder);
 
   // check TPUPartitionedInput and TPUPartitionedOutput are in valid pattern
   if (failed(CheckTPUPartitionedInputAndOutputAreValid(cluster_func,
@@ -756,8 +735,7 @@ LogicalResult Rewrite(
            << status_or_tpu_device_assignment.status().error_message();
 
   // Create compile op.
-  auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
-  builder->setInsertionPoint(cluster_func);
+  auto& tpu_device_assignment = status_or_tpu_device_assignment.value();
 
   // Create the TPUCompileMlir and TPUCompileSucceededAssert outside of
   // the parallel_execute.
@@ -822,10 +800,12 @@ LogicalResult Rewrite(
   // concurrent device execution across multiple logical devices.
   tf_device::ParallelExecuteOp new_parallel_execute;
   int cluster_idx;
-  result = AddToParallelExecuteOp(tpu_device_assignment.tpu_devices,
-                                  output_shardings, compile_op, cluster_func,
-                                  builder, old_parallel_execute,
-                                  &new_parallel_execute, &cluster_idx);
+  llvm::SmallVector<llvm::SmallVector<int, 4>, 4> cluster_to_core_index;
+  cluster_to_core_index.reserve(num_cores_per_replica);
+  result = AddToParallelExecuteOp(
+      tpu_device_assignment.tpu_devices, output_shardings,
+      &cluster_to_core_index, compile_op, cluster_func, builder,
+      old_parallel_execute, &new_parallel_execute, &cluster_idx);
   if (failed(result)) return failure();
 
   // As tf_device.parallel_execute wraps # logical cores number of TPUExecute
@@ -833,8 +813,8 @@ LogicalResult Rewrite(
   // cluster_func op. As such, each return value of parallel_execute op must
   // be mapped with corresponding return value usages of cluster_func.
   result = tensorflow::RemapOutputsFromLogicalDevices(
-      cluster_func.getLoc(), output_shardings, old_parallel_execute,
-      cluster_idx, new_parallel_execute, builder);
+      cluster_func.getLoc(), output_shardings, cluster_to_core_index,
+      old_parallel_execute, cluster_idx, new_parallel_execute, builder);
   if (failed(result)) return failure();
 
   return RemoveSingletonParallelExecuteOp(new_parallel_execute, builder);

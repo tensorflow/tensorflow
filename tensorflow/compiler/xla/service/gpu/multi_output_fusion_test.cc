@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 
+#include <optional>
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -76,8 +82,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
       reduce.2 = f32[512]{0} reduce(p1, const.2), dimensions={0,2,3}, to_apply=scalar_add_computation
       ROOT root = (f32[512]{0}, f32[512]{0}) tuple(fusion, reduce.2)
     })"))
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
@@ -109,8 +115,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceInputShapes) {
       fusion.2 = f32[] fusion(p0, p1), kind=kInput, calls=fused_computation_2
       ROOT root = (f32[], f32[]) tuple(fusion.1, fusion.2)
     })"))
-                    .ValueOrDie();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceOutputShapes) {
@@ -136,8 +142,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceOutputShapes) {
       fusion.2 = f32[10]{0} fusion(p2, p1.3), kind=kInput, calls=fused_computation_2
       ROOT root = (f32[], f32[10]{0}) tuple(fusion.1, fusion.2)
     })"))
-                    .ValueOrDie();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceFusions) {
@@ -164,8 +170,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceFusions) {
       fusion.2 = f32[512] fusion(p0, p1), kind=kInput, calls=fused_computation_2
       ROOT root = (f32[512]{0}, f32[512]{0}) tuple(fusion.1, fusion.2)
     })"))
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
@@ -197,8 +203,8 @@ TEST_F(MultiOutputFusionTest,
       reduce.3 = f32[512]{0} reduce(p0, const), dimensions={0,2,3}, to_apply=scalar_add_computation
       ROOT root = (f32[512]{0}, f32[512]{0}, f32[512]{0}) tuple(f32[512]{0} get-tuple-element, f32[512]{0} get-tuple-element.1, f32[512]{0} reduce.3)
     })"))
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
@@ -236,8 +242,8 @@ TEST_F(MultiOutputFusionTest,
       fusion.2 = f32[10] fusion(p2, p1), kind=kInput, calls=fused_computation_2
       ROOT root = (f32[10,10], f32[], f32[10]) tuple(get-tuple-element.1, get-tuple-element.2, fusion.2)
     })"))
-                    .ValueOrDie();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
@@ -260,8 +266,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
       fusion.2 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_2
       ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(fusion.1, fusion.2)
     })"))
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
@@ -286,8 +292,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopReduceToInputFusion) {
       reduce = f32[] reduce(p0, const.2), dimensions={0}, to_apply=scalar_add_computation
       ROOT root = (f32[6400]{0}, f32[]) tuple(fusion.1, reduce)
     })"))
-                    .ValueOrDie();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
@@ -305,8 +311,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
       div = f32[6400]{0} divide(p0, broadcast)
       ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(fusion.1, div)
     })"))
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
@@ -334,8 +340,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopsDifferentShapes) {
       fusion.2 = f32[1,5,1,2]{3,2,1,0} fusion(p0), kind=kLoop, calls=fused_computation_2
       ROOT root = (f32[8,1,5,16,1,2]{5,4,3,2,1,0}, f32[1,5,1,2]{3,2,1,0}) tuple(fusion.1, fusion.2)
     })"))
-                    .ValueOrDie();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
@@ -369,8 +375,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
         f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,16,1,1]{5,4,3,2,1,0})
         tuple(gte0, gte1, fusion.2)
     })"))
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* fusion =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
@@ -410,8 +416,8 @@ TEST_F(MultiOutputFusionTest,
         f32[8,1,5,16,1,2]{5,4,3,2,1,0}, f32[1,5,1,2]{3,2,1,0})
         tuple(gte0, gte1, fusion.2)
     })"))
-                    .ValueOrDie();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionElementwiseAndReduce) {
@@ -424,8 +430,8 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionElementwiseAndReduce) {
         to_apply=scalar_add_computation
       ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0}) tuple(reduce, exp)
     })"))
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
@@ -452,8 +458,8 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
         to_apply=scalar_add_computation
       ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0}) tuple(reduce, add)
     })"))
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
@@ -498,8 +504,8 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
       ROOT root = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32,32]{2,1,0})
         tuple(gte1, gte1, select)
     })"))
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
@@ -535,8 +541,8 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
       fusion = f32[2,2]{1,0} fusion(element_wise), kind=kLoop, calls=fused_reduce
       ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(fusion, element_wise)
     })"))
-                    .ValueOrDie();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest,
@@ -574,8 +580,8 @@ TEST_F(MultiOutputFusionTest,
       ROOT root = (f32[32,32]{1,0}, f32[32,32]{1,0}, f16[32,32,32]{2,1,0})
         tuple(gte1, gte1, select)
     })"))
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
@@ -611,8 +617,8 @@ TEST_F(MultiOutputFusionTest,
       reduce_fusion = f32[1024]{0} fusion(loop_fusion), kind=kInput, calls=fused_reduce
       ROOT root = (f32[1024]{0}, f16[128,1024,32,32]{1,3,2,0}) tuple(reduce_fusion, loop_fusion)
     })"))
-                    .ValueOrDie();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, ProducerConsumerFusionAvoidsCycles) {
@@ -666,8 +672,8 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionAvoidsCycles) {
       ROOT root = (f32[32,32,32]{2,1,0}, f32[32,32]{1,0}, f32[64,64]{1,0},
                    f32[64,64,64]{2,1,0}) tuple(add, reduce1, reduce2, mul)
     })"))
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   EXPECT_EQ(1, CountMultiOutputFusions(module.get()));
 }
@@ -699,8 +705,8 @@ TEST_F(MultiOutputFusionTest, PreferFuseProducerIntoFusionConsumer) {
       ROOT root = (f32[32,32,32]{2,1,0}, f32[32,32]{1,0}, f32[32,32]{1,0})
                   tuple(add, reduce, reduce2)
     })"))
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   int multi_output_fusion_count = 0;
   for (auto* computation : module->MakeNonfusionComputations()) {
@@ -757,7 +763,7 @@ TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
         b.AddInstruction(make_fusion(params[i - 1], params[i]))));
   }
   auto computation = module->AddEntryComputation(b.Build());
-  EXPECT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   for (const HloInstruction* instr : computation->instructions()) {
     EXPECT_LE(instr->operand_count() + ShapeUtil::SubshapeCount(instr->shape()),
@@ -791,8 +797,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDUS) {
       f2 = f16[50,96,1024] fusion(p.01, p.1), kind=kLoop, calls=fusion.2
       ROOT tuple = (f16[50,96,1024],f16[50,96,1024]) tuple(f1, f2)
     })")
-                    .ValueOrDie();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
 // Check that we don't fuse too many reductions together.
@@ -903,10 +909,10 @@ TEST_F(MultiOutputFusionTest, SharedMemoryBudget) {
       ROOT out = (f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64]) tuple(f32[64] out0, f32[64] out1, f32[64] out2, f32[64] out3, f32[64] out4, f32[64] out5, f32[64] out6, f32[64] out7, f32[64] out8, f32[64] out9)
     }
   )"))
-                    .ValueOrDie();
+                    .value();
   ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
 
-  EXPECT_EQ(3, CountMultiOutputFusions(module.get()));
+  EXPECT_EQ(2, CountMultiOutputFusions(module.get()));
 }
 
 TEST_F(MultiOutputFusionTest, DoNotGroupTooManyReductions) {
@@ -1016,7 +1022,7 @@ TEST_F(MultiOutputFusionTest, DoNotGroupTooManyReductions) {
       ROOT out = (f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64]) tuple(f32[64] out0, f32[64] out1, f32[64] out2, f32[64] out3, f32[64] out4, f32[64] out5, f32[64] out6, f32[64] out7, f32[64] out8, f32[64] out9)
     }
   )"))
-                    .ValueOrDie();
+                    .value();
   ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
 
   EXPECT_EQ(2, CountMultiOutputFusions(module.get()));
@@ -1074,7 +1080,7 @@ ENTRY %reproducer (param_0.1090: f64[64,64], param_1.1377: f64[64,64], param_2.1
   ROOT %tuple.428 = (f64[64]{0}, f64[64]{0}, f64[64]{0}) tuple(f64[64]{0} %get-tuple-element, f64[64]{0} %fusion.2, f64[64]{0} %get-tuple-element.1)
 }
   )")
-                    .ValueOrDie();
+                    .value();
   EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
@@ -1234,8 +1240,135 @@ ENTRY main {
   ROOT root = (f32[2,20,256]{2,0,1}, f32[2,20,256]{2,0,1}) tuple(fusion.1, fusion.2)
 }
   )")
-                    .ValueOrDie();
-  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+}
+
+TEST_F(MultiOutputFusionTest, DoNotFuseRoot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+no_op {
+  arg_empty_tuple = () parameter(0)
+  ROOT tuple = () tuple()
+}
+
+fused_computation {
+  param_0 = f32[] parameter(0)
+  ROOT convert = s32[] convert(param_0)
+}
+
+ENTRY main {
+  param_0 = f32[] parameter(0)
+  fusion = s32[] fusion(param_0), kind=kLoop, calls=fused_computation
+  tuple = () tuple()
+  conditional = () conditional(fusion, tuple, tuple), branch_computations={no_op, no_op}
+  constant = f32[] constant(1)
+  ROOT root = f32[] add(param_0, constant)
+}
+  )")
+                    .value();
+  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
+}
+
+class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {
+ public:
+  void CheckGpuMultiOutputFusion(absl::string_view hlo,
+                                 std::optional<absl::string_view> expected) {
+    RunAndFilecheckHloRewrite(hlo, GpuMultiOutputFusion{}, expected);
+  }
+
+ protected:
+};
+
+TEST_F(TransposeMultiOutputFusionTest, MultipleCopies) {
+  const char* hlo = R"(
+HloModule module
+
+fused_computation {
+  param_0.1 = f32[16,32]{1,0} parameter(0)
+  s.1 = f32[16,32]{1,0} sqrt(param_0.1)
+  ROOT c.1 = f32[16,32]{0,1} copy(s.1)
+}
+
+ENTRY main {
+  p = f32[16,32]{1,0} parameter(0)
+  fusion = f32[16,32]{0,1} fusion(p), kind=kInput, calls=fused_computation
+  c1 = f32[16,32]{0,1} copy(p)
+  ROOT t = (f32[16,32]{0,1}, f32[16,32]{0,1}) tuple(fusion, c1)
+}
+  )";
+
+  CheckGpuMultiOutputFusion(hlo, R"(
+// CHECK: %fused_computation (param_0.1: f32[16,32]) -> (f32[16,32], f32[16,32]) {
+// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
+// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1_1]])
+// CHECK-NEXT:   [[c1_1_3:%[^ ]+]] = f32[16,32]{0,1} copy([[param_0_1_0]])
+// CHECK-NEXT:   ROOT [[tuple_4:%[^ ]+]] = (f32[16,32]{0,1}, f32[16,32]{0,1}) tuple([[c_1_2]], [[c1_1_3]])
+// CHECK-NEXT: }
+
+// CHECK: [[fusion_0:%[^ ]+]] = (f32[16,32]{0,1}, f32[16,32]{0,1}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
+)");
+}
+
+// Do not group copy and reduction.
+TEST_F(TransposeMultiOutputFusionTest, TiledReduceCopy) {
+  const char* hlo = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = add(lhs, rhs)
+}
+
+fused_computation {
+  param_0.1 = f32[16,32]{1,0} parameter(0)
+  s.1 = f32[16,32]{1,0} sqrt(param_0.1)
+  ROOT c.1 = f32[16,32]{0,1} copy(s.1)
+}
+
+ENTRY main {
+  p = f32[16,32]{1,0} parameter(0)
+  fusion = f32[16,32]{0,1} fusion(p), kind=kInput, calls=fused_computation
+  z = f32[] constant(0)
+  r1 = f32[32]{0} reduce(p, z), dimensions={0}, to_apply=add
+  ROOT t = (f32[16,32]{0,1}, f32[32]{0}) tuple(fusion, r1)
+}
+  )";
+
+  CheckGpuMultiOutputFusion(hlo, std::nullopt);
+}
+
+TEST_F(TransposeMultiOutputFusionTest, MultipleCopiesAndInput) {
+  const char* hlo = R"(
+HloModule module
+
+fused_computation {
+  param_0.1 = f32[16,32]{1,0} parameter(0)
+  s.1 = f32[16,32]{1,0} sqrt(param_0.1)
+  ROOT c.1 = f32[16,32]{0,1} copy(s.1)
+}
+
+ENTRY main {
+  p = f32[16,32]{1,0} parameter(0)
+  fusion = f32[16,32]{0,1} fusion(p), kind=kInput, calls=fused_computation
+  c1 = exponential(p)
+  ROOT t = tuple(fusion, c1)
+}
+  )";
+
+  CheckGpuMultiOutputFusion(hlo, R"(
+// CHECK: %fused_computation (param_0.1: f32[16,32]) -> (f32[16,32], f32[16,32]) {
+// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
+// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1_1]])
+// CHECK-NEXT:   [[c1_1_3:%[^ ]+]] = f32[16,32]{1,0} exponential([[param_0_1_0]])
+// CHECK-NEXT:   ROOT [[tuple_4:%[^ ]+]] = (f32[16,32]{0,1}, f32[16,32]{1,0}) tuple([[c_1_2]], [[c1_1_3]])
+// CHECK-NEXT: }
+// CHECK:   [[fusion_0:%[^ ]+]] = (f32[16,32]{0,1}, f32[16,32]{1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
+)");
 }
 
 }  // namespace gpu

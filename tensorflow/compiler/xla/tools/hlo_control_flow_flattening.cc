@@ -278,19 +278,31 @@ Status HloControlFlowFlattening::RemoveRecvDone(
 
   HloComputation* computation = recv_done->parent();
   CHECK_EQ(recv_done->shape().tuple_shapes_size(), 2);
-  const Shape& recv_shape = ShapeUtil::GetSubshape(recv_done->shape(), {0});
+  HloModule* module = computation->parent();
 
-  HloInstruction* custom_call = computation->AddInstruction(
-      HloInstruction::CreateCustomCall(recv_shape, {}, kNopCustomCallTarget));
+  HloInstruction* custom_call_recv =
+      computation->AddInstruction(HloInstruction::CreateCustomCall(
+          recv->shape(), recv->operands(), kNopCustomCallTarget));
+  auto replaced_recv_str = recv->ToString();
+  custom_call_recv->set_metadata_replaced_op(replaced_recv_str);
+  if (module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation)) {
+    module->schedule().replace_instruction(computation, recv, custom_call_recv);
+  }
+  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(recv, custom_call_recv));
 
-  // Create a new tuple consisting op the constant and the token that was
-  // originally the operand of recv, and replace the recv operation.
-  auto new_tuple =
-      HloInstruction::CreateTuple({custom_call, recv->mutable_operand(0)});
+  HloInstruction* custom_call_recv_done =
+      computation->AddInstruction(HloInstruction::CreateCustomCall(
+          recv_done->shape(), recv_done->operands(), kNopCustomCallTarget));
+  auto replaced_recv_done_str = recv_done->ToString();
+  custom_call_recv_done->set_metadata_replaced_op(replaced_recv_done_str);
+  if (module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation)) {
+    module->schedule().replace_instruction(computation, recv_done,
+                                           custom_call_recv_done);
+  }
   TF_RETURN_IF_ERROR(
-      computation->ReplaceWithNewInstruction(recv_done, std::move(new_tuple)));
-  additional_removed->insert(recv);
-  TF_RETURN_IF_ERROR(computation->RemoveInstruction(recv));
+      computation->ReplaceInstruction(recv_done, custom_call_recv_done));
 
   return OkStatus();
 }
@@ -320,16 +332,33 @@ Status HloControlFlowFlattening::RemoveSendDone(
   CHECK_EQ(send->opcode(), HloOpcode::kSend);
 
   HloComputation* computation = send_done->parent();
-  HloInstruction* custom_call =
-      computation->AddInstruction(HloInstruction::CreateCustomCall(
-          send_done->shape(), send_done->operand(0)->operands(),
-          "NopReturnToken"));
-  Cast<HloCustomCallInstruction>(custom_call)
-      ->set_custom_call_has_side_effect(true);
+  HloModule* module = computation->parent();
 
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(send_done, custom_call));
-  additional_removed->insert(send);
-  TF_RETURN_IF_ERROR(computation->RemoveInstruction(send));
+  HloInstruction* custom_call_send =
+      computation->AddInstruction(HloInstruction::CreateCustomCall(
+          send->shape(), send->operands(), kNopCustomCallTarget));
+  auto replaced_send_str = send->ToString();
+  custom_call_send->set_metadata_replaced_op(replaced_send_str);
+  if (module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation)) {
+    module->schedule().replace_instruction(computation, send, custom_call_send);
+  }
+  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(send, custom_call_send));
+
+  HloInstruction* custom_call_send_done =
+      computation->AddInstruction(HloInstruction::CreateCustomCall(
+          send_done->shape(), send_done->operands(), "NopReturnToken"));
+  Cast<HloCustomCallInstruction>(custom_call_send_done)
+      ->set_custom_call_has_side_effect(true);
+  auto replaced_send_done_str = send_done->ToString();
+  custom_call_send_done->set_metadata_replaced_op(replaced_send_done_str);
+  if (module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation)) {
+    module->schedule().replace_instruction(computation, send_done,
+                                           custom_call_send_done);
+  }
+  TF_RETURN_IF_ERROR(
+      computation->ReplaceInstruction(send_done, custom_call_send_done));
 
   return OkStatus();
 }
@@ -342,8 +371,17 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
   // Copy backend config. This is necessary for a collective op in megacore
   // fusion.
   custom_call->CopyBackendConfigFrom(hlo);
-  auto replaced_collective_op_str =
-      hlo->ToString(HloPrintOptions().Canonical());
+  auto hlo_print_option = HloPrintOptions();
+  hlo_print_option.set_print_subcomputation_mode(
+      HloPrintOptions::PrintSubcomputationMode::kFullBodies);
+  hlo_print_option.set_print_program_shape(false);
+  hlo_print_option.set_print_percent(false);
+  auto replaced_collective_op_str = hlo->ToString(hlo_print_option);
+  HloModule* module = computation->parent();
+  if (module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation)) {
+    module->schedule().replace_instruction(computation, hlo, custom_call);
+  }
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
   custom_call->set_metadata_replaced_op(replaced_collective_op_str);
   return OkStatus();

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_H_
-#define TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_H_
+#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_API_H_
+#define TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_API_H_
 
 #include <climits>
 #include <string>
@@ -38,9 +38,10 @@ struct TfTrtConversionParams {
   // Corresponds 'workspaceSize' parameter of
   // nvinfer1::IBuilderConfig::setMaxWorkspaceSize.
 #if IS_TRT_VERSION_GE(8, 4, 0, 0)
-  size_t max_workspace_size_bytes = INT_MAX;
+  // Must use `LLONG_MAX - 512` to avoid overflow during casting.
+  size_t max_workspace_size_bytes = LLONG_MAX - 512;
 #else
-  size_t max_workspace_size_bytes = 1 << 30;
+  size_t max_workspace_size_bytes = 1 << 30;  // 1,073,741,824
 #endif
 
   // Minimum precision used by the TRT Engine.
@@ -125,4 +126,4 @@ StatusOr<GraphDef> ConvertAndBuild(
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
-#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_H_
+#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_API_H_

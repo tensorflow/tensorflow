@@ -78,6 +78,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -107,24 +108,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/event.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/event.h"
-#include "tensorflow/stream_executor/host/host_platform_id.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/mem.h"
 
 namespace xla {
 
@@ -195,11 +196,9 @@ class CpuAllocator : public tensorflow::Allocator {
   std::string Name() override { return "cpu"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    return tensorflow::port::AlignedMalloc(num_bytes, alignment);
+    return tsl::port::AlignedMalloc(num_bytes, alignment);
   }
-  void DeallocateRaw(void* ptr) override {
-    return tensorflow::port::AlignedFree(ptr);
-  }
+  void DeallocateRaw(void* ptr) override { return tsl::port::AlignedFree(ptr); }
 };
 
 PjRtStreamExecutorClient::PjRtStreamExecutorClient(
@@ -209,7 +208,7 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
-    : platform_id_(tensorflow::Fingerprint64(platform_name)),
+    : platform_id_(tsl::Fingerprint64(platform_name)),
       platform_name_(std::move(platform_name)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
@@ -533,7 +532,7 @@ void PjRtStreamExecutorBuffer::ScopedHold::Acquire(
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or) {
   CHECK(!ok());
   if (buffer_or.ok()) {
-    buffer_ = buffer_or.ValueOrDie();
+    buffer_ = buffer_or.value();
     SetState(kValid);
   } else {
     status_ = buffer_or.status();
@@ -1343,7 +1342,7 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
       [promise](Status status) mutable { promise.Set(status); });
 
   auto usage_event = std::make_shared<BufferSequencingEvent>();
-  local_device->event_pool().ThenRecordEvent(stream, event_or.ValueOrDie());
+  local_device->event_pool().ThenRecordEvent(stream, event_or.value());
   usage_event->SetSequencingEvent(std::move(event_or).value(), stream);
   // When using the ComputeSynchronized allocation model, retain a reference to
   // the device_buffer until the copy completes, to ensure that the buffer isn't
@@ -1535,7 +1534,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
     return buffer_and_event_or.status();
   }
 
-  auto& buffer_and_event = buffer_and_event_or.ValueOrDie();
+  auto& buffer_and_event = buffer_and_event_or.value();
   std::unique_ptr<PjRtBuffer>& buffer = buffer_and_event.first;
   std::shared_ptr<BufferSequencingEvent>& event = buffer_and_event.second;
 
@@ -2011,7 +2010,7 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   }
 
   if (device_state->allocation_model() == LocalDeviceState::kSynchronous) {
-    ExecutionOutput& execution_output = result_buffer_or_status.ValueOrDie();
+    ExecutionOutput& execution_output = result_buffer_or_status.value();
     // If we used a transient tuple for the arguments we donated its root table
     // buffer. In that case, and/or if we donated any input buffers that were
     // not aliased, the donated buffers are going to be passed back to us via
@@ -2477,6 +2476,23 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
       std::move(local_executables), options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(addressable_device_logical_ids),
       std::move(addressable_devices), this);
+
+  if (client()->platform()->Name() == "CUDA") {
+    // TODO(b/244260928): We should avoid compiling twice for local_executables
+    // and aot_executables when JitRt is enabled by default. If JitRt is not
+    // enabled, this will return a bad Status. To turn on JitRt, use the xla
+    // flag -xla_gpu_enable_xla_runtime_executable=true.
+    auto aot_compilation_result =
+        client()->CompileAheadOfTime(computation, argument_layout_pointers,
+                                     options.executable_build_options);
+
+    if (aot_compilation_result.ok()) {
+      executable->aot_executables_ = std::move(aot_compilation_result.value());
+    } else {
+      VLOG(1) << aot_compilation_result.status();
+    }
+  }
+
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(options.parameter_is_tupled_arguments));
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
@@ -2491,6 +2507,70 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false));
   return Compile(xla_computation, options);
+}
+
+StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
+    const PjRtLoadedExecutable& executable) const {
+  const PjRtStreamExecutorExecutable* se_executable =
+      tensorflow::down_cast<const PjRtStreamExecutorExecutable*>(&executable);
+  if (se_executable->aot_executables_.empty()) {
+    return InternalError(
+        "No AOT compiled executable: Use XLA flag "
+        "--xla_gpu_enable_xla_runtime_executable to enabled AOT compilation");
+  }
+
+  if (se_executable->aot_executables_.size() != 1) {
+    return Unimplemented(
+        "PjRtStreamExecutorClient::SerializeExecutable unimplemented for MPMD "
+        "executables");
+  }
+
+  TF_ASSIGN_OR_RETURN(std::string result,
+                      se_executable->aot_executables_[0]->SerializeAsString());
+
+  if (result.empty()) {
+    return Internal(
+        "PjRtStreamExecutorClient::SerializeExecutable proto serialization "
+        "failed");
+  }
+  return result;
+}
+
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtStreamExecutorClient::DeserializeExecutable(absl::string_view serialized,
+                                                CompileOptions options) {
+  tensorflow::profiler::TraceMe traceme(
+      "PjRtStreamExecutorClient::DeserializeExecutable");
+  VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
+
+  std::string xla_flags(std::getenv("XLA_FLAGS"));
+  if (!absl::StrContains(xla_flags,
+                         "--xla_gpu_enable_xla_runtime_executable=true")) {
+    return InternalError("Desirialization requires enabling JitRt");
+  }
+
+  TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
+  std::shared_ptr<DeviceAssignment>& device_assignment =
+      extras.device_assignment;
+  std::vector<PjRtStreamExecutorExecutable::LogicalDeviceIds>&
+      addressable_device_logical_ids = extras.addressable_device_logical_ids;
+  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
+
+  std::string str(serialized);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<LocalExecutable> loaded,
+                      client()->Load(str, options.executable_build_options));
+
+  std::vector<std::unique_ptr<LocalExecutable>> local_executables;
+  local_executables.push_back(std::move(loaded));
+
+  auto executable = std::make_unique<PjRtStreamExecutorExecutable>(
+      std::move(local_executables), options.parameter_is_tupled_arguments,
+      std::move(device_assignment), std::move(addressable_device_logical_ids),
+      std::move(addressable_devices), this);
+
+  TF_RETURN_IF_ERROR(
+      executable->SetUpDonation(options.parameter_is_tupled_arguments));
+  return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
 }
 
 }  // namespace xla

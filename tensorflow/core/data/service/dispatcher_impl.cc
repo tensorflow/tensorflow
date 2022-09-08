@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_impl.h"
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>

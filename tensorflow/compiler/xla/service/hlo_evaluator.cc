@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -59,12 +60,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace xla {
 
@@ -419,13 +419,12 @@ Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
 }
 
 std::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
-  std::optional<tensorflow::StringPiece> error_detail =
-      error.GetPayload(kEvalErrorDetailUrl);
+  auto error_detail = error.GetPayload(kEvalErrorDetailUrl);
   if (!error_detail.has_value() && error_detail->empty()) {
     return std::nullopt;
   }
   return static_cast<EvalErrorDetail>(
-      absl::little_endian::Load32(error_detail->data()));
+      absl::little_endian::Load32(error_detail->Flatten().data()));
 }
 
 // A convenience wrapper to compute the while loop's argument's init value at
@@ -2456,8 +2455,15 @@ static StatusOr<std::reference_wrapper<const Literal>> ReshapedGatherIndices(
   std::vector<int64_t> new_shape(start_indices.shape().dimensions().begin(),
                                  start_indices.shape().dimensions().end());
   new_shape.push_back(1);
-  TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
-                      start_indices.Reshape(new_shape));
+  if (start_indices.shape().is_dynamic()) {
+    // TODO(b/243182930): If we add support for dynamic reshape, remove this
+    // check and the call to ToStatic().
+    TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
+                        start_indices.ToStatic().Reshape(new_shape));
+  } else {
+    TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
+                        start_indices.Reshape(new_shape));
+  }
   return std::cref(*reshaped_start_indices);
 }
 
@@ -3519,14 +3525,14 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
               compare_status = lhs.status();
               return false;
             }
-            literals.push_back(std::move(lhs.ValueOrDie()));
+            literals.push_back(std::move(lhs.value()));
             auto rhs = ExtractFromIndexPositions(literals_to_sort[i], {b},
                                                  /*extract_as_scalar=*/true);
             if (!rhs.ok()) {
               compare_status = rhs.status();
               return false;
             }
-            literals.push_back(std::move(rhs.ValueOrDie()));
+            literals.push_back(std::move(rhs.value()));
           }
           std::vector<const Literal*> literal_ptrs;
           absl::c_transform(literals, std::back_inserter(literal_ptrs),
@@ -3541,7 +3547,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
             compare_status = computed_result.status();
             return false;
           }
-          return computed_result.ValueOrDie().Get<bool>({});
+          return computed_result.value().Get<bool>({});
         };
         if (Cast<HloSortInstruction>(sort)->is_stable()) {
           std::stable_sort(indices_to_sort.begin(), indices_to_sort.end(),
@@ -3860,10 +3866,16 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
   // Out of convenience the literal may have been produced with a different
   // layout. Relayout as indicated by the HLO instruction.
-  if (!Layout::Equal().MinorToMajorOnly()(
-          GetEvaluatedLiteralFor(hlo).shape().layout(),
-          hlo->shape().layout())) {
-    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo->shape());
+  auto evaluated_shape = GetEvaluatedLiteralFor(hlo).shape();
+  xla::Shape hlo_shape = hlo->shape();
+  if (hlo_shape.IsArray() && !hlo_shape.has_layout()) {
+    *hlo_shape.mutable_layout() =
+        LayoutUtil::GetDefaultLayoutForShape(hlo_shape);
+  }
+  if (evaluated_shape.has_layout() && hlo_shape.has_layout() &&
+      !Layout::Equal().MinorToMajorOnly()(evaluated_shape.layout(),
+                                          hlo_shape.layout())) {
+    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo_shape);
   }
   return OkStatus();
 }

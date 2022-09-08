@@ -27,6 +27,7 @@ add_mlir_library(LmhloPasses
 
   DEPENDS
   MLIRlhlo_opsIncGen
+  MLIRLmhloPassIncGen
   MLIRMhloPassIncGen
 
   LINK_COMPONENTS

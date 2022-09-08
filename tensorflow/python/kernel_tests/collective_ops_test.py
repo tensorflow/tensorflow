@@ -122,7 +122,7 @@ collective_op_combinations = combinations.combine(collective_op=[
 class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    _setup_context()
+    _setup_context(num_devices=16)
     super().setUp()
 
   def testReduce(self, collective_ops, device, communication):
@@ -231,9 +231,36 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
                 communication_hint=communication))
       return collectives
 
+    cpu_tokens = {}
+    for i in range(16):
+      with ops.device('/device:CPU:%d' % i):
+        cpu_tokens[i] = create_ordering_token()
+
+    @def_function.function
+    def run_all_gather_16devices():
+      group_size = 16
+      group_key = 3
+      instance_key = 1
+      collectives = []
+      for i in range(16):
+        with ops.device('/device:CPU:%d' % i):
+          collectives.append(
+              collective_ops.all_gather(
+                  constant_op.constant([i]),
+                  group_size,
+                  group_key,
+                  instance_key,
+                  ordering_token=cpu_tokens[i],
+                  communication_hint=communication))
+      return collectives
+
     self.assertAllClose(run_all_gather_1device(), [1.], rtol=1e-5, atol=1e-5)
     for result in run_all_gather_2devices():
       self.assertAllClose(result, [1., 1.], rtol=1e-5, atol=1e-5)
+
+    for result in run_all_gather_16devices():
+      self.assertAllClose(
+          result, list(range(16)), rtol=1e-5, atol=1e-5)
 
   def testBroadcast(self, collective_ops, device, communication):
     dev0 = '/device:%s:0' % device
@@ -1772,9 +1799,9 @@ class CollectiveOpsV3Test(test.TestCase, parameterized.TestCase):
     self.assertAllClose(result[0], [3.0, 1.0], rtol=1e-5, atol=1e-5)
 
 
-def _setup_context():
+def _setup_context(num_devices=4):
   context._reset_context()
-  test_util.set_logical_devices_to_at_least('CPU', 4)
+  test_util.set_logical_devices_to_at_least('CPU', num_devices)
   context.ensure_initialized()
   context.set_log_device_placement(True)
 

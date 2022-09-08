@@ -35,9 +35,9 @@ func.func @sparse_gendot(%arg0: tensor<32x32xf64, #CSR>,
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<3x5xf64>,
 // CHECK-SAME:    %[[ARG1:.*]]: tensor<5xf64, #{{.*}}>) -> tensor<3xf64> {
 // CHECK:         %[[TRA:.*]] = "mhlo.transpose"(%[[ARG1]]) {permutation = dense<0> : tensor<1xi64>} : (tensor<5xf64, #{{.*}}>) -> tensor<5xf64>
-// CHECK:         %[[RS0:.*]] = "mhlo.reshape"(%[[TRA]]) : (tensor<5xf64>) -> tensor<5x1xf64>
+// CHECK:         %[[RS0:.*]] = mhlo.reshape %[[TRA]] : (tensor<5xf64>) -> tensor<5x1xf64>
 // CHECK:         %[[DOT:.*]] = "mhlo.dot"(%[[ARG0]], %[[RS0]]) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<3x5xf64>, tensor<5x1xf64>) -> tensor<3x1xf64>
-// CHECK:         %[[RS1:.*]] = "mhlo.reshape"(%[[DOT]]) : (tensor<3x1xf64>) -> tensor<3xf64>
+// CHECK:         %[[RS1:.*]] = mhlo.reshape %[[DOT]] : (tensor<3x1xf64>) -> tensor<3xf64>
 // CHECK:        return %[[RS1]] : tensor<3xf64>
 // CHECK:       }
 //

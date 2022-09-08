@@ -58,7 +58,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/human_readable_json.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -678,6 +678,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kConvolution: {
       TF_RET_CHECK(proto.has_window());
       TF_RET_CHECK(proto.has_convolution_dimension_numbers());
+      TF_RET_CHECK(absl::c_all_of(proto.precision_config().operand_precision(),
+                                  PrecisionConfig::Precision_IsValid));
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
@@ -769,6 +771,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           proto.custom_call_has_side_effect());
       custom_call_instr->set_padding_type(proto.padding_type());
 
+      TF_RET_CHECK(absl::c_all_of(proto.precision_config().operand_precision(),
+                                  PrecisionConfig::Precision_IsValid));
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
@@ -879,6 +883,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kDot: {
       TF_RET_CHECK(proto.has_dot_dimension_numbers())
           << "Dot instruction should have dot_dimension_numbers.";
+      TF_RET_CHECK(absl::c_all_of(proto.precision_config().operand_precision(),
+                                  PrecisionConfig::Precision_IsValid));
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
@@ -1788,9 +1794,9 @@ HloInstruction::CreateDynamicReshape(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind,
     absl::Span<HloInstruction* const> operands,
-    HloComputation* fusion_computation) {
+    HloComputation* fusion_computation, absl::string_view prefix) {
   return std::make_unique<HloFusionInstruction>(shape, fusion_kind, operands,
-                                                fusion_computation);
+                                                fusion_computation, prefix);
 }
 
 void HloInstruction::set_single_sharding(const HloSharding& sharding) {
@@ -1966,6 +1972,13 @@ bool HloInstruction::HasSideEffect() const {
   return std::make_unique<HloDomainInstruction>(
       shape, operand, std::move(operand_side_metadata),
       std::move(user_side_metadata));
+}
+
+/* static */ bool HloInstruction::IsThreadIncluded(
+    absl::string_view execution_thread,
+    const absl::flat_hash_set<absl::string_view>& execution_threads_set) {
+  return execution_threads_set.empty() ||
+         execution_threads_set.contains(execution_thread);
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
@@ -3236,8 +3249,10 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
                opcode() == HloOpcode::kSort) {
-      extra.push_back(
-          StrCat("to_apply=", PrintNameInternal(to_apply()->name(), options)));
+      if (!called_computations().empty()) {
+        extra.push_back(StrCat("to_apply=",
+                               PrintNameInternal(to_apply()->name(), options)));
+      }
     } else if (opcode() == HloOpcode::kCustomCall) {
       if (!called_computations().empty()) {
         extra.push_back(StrCat(
@@ -3305,8 +3320,10 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
-        extra.push_back(
-            StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+        if (!called_computations().empty()) {
+          extra.push_back(
+              StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+        }
         break;
       default:
         if (!called_computations().empty()) {
@@ -3414,6 +3431,12 @@ bool HloInstruction::IsFused() const {
 
 bool HloInstruction::IsCustomCall(absl::string_view target) const {
   return opcode() == HloOpcode::kCustomCall && custom_call_target() == target;
+}
+
+bool HloInstruction::IsCustomCall(
+    absl::Span<const absl::string_view> targets) const {
+  return opcode() == HloOpcode::kCustomCall &&
+         absl::c_linear_search(targets, custom_call_target());
 }
 
 bool HloInstruction::IsInputFusion() const {
@@ -4322,7 +4345,7 @@ Status HloInstruction::GetBackendConfigInternal(
 
 const std::string& HloInstruction::BackendConfigRep::GetRawString() const {
   if (proto_ && raw_string_.empty()) {
-    raw_string_ = BackendConfigToRawString(*proto_).ValueOrDie();
+    raw_string_ = BackendConfigToRawString(*proto_).value();
   }
   return raw_string_;
 }
@@ -4898,6 +4921,11 @@ const TriangularSolveOptions& HloInstruction::triangular_solve_options() const {
 
 const CholeskyOptions& HloInstruction::cholesky_options() const {
   return Cast<HloCholeskyInstruction>(this)->cholesky_options();
+}
+
+const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
+HloInstruction::custom_call_output_operand_aliasing() const {
+  return Cast<HloCustomCallInstruction>(this)->output_to_operand_aliasing();
 }
 
 }  // namespace xla

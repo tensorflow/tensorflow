@@ -120,11 +120,15 @@ def sharded_save(
   # Make sure all clients have written the files
   mesh_util.barrier(mesh.host_mesh(), 'SaveV2')  # pylint: disable=protected-access
 
+  # Set allow_missing_files explicitly to true. This will tell SPMD
+  # for MergeV2Checkpoints that this is a CheckpointV1 and we will not
+  # do any special SPMD for it.
   with ops.device(api.device_name()):
     merge_op = io_ops.MergeV2Checkpoints(
         checkpoint_prefixes=generated_shards,
         destination_prefix=file_prefix,
-        delete_old_dirs=True)
+        delete_old_dirs=True,
+        allow_missing_files=True)
 
   # Make sure first device in first host has finished merge.
   mesh_util.barrier(mesh.host_mesh(), 'MergeV2Checkpoints')

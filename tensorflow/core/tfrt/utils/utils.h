@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TFRT_UTILS_H_
-#define TENSORFLOW_CORE_TFRT_UTILS_H_
+#ifndef TENSORFLOW_CORE_TFRT_UTILS_UTILS_H_
+#define TENSORFLOW_CORE_TFRT_UTILS_UTILS_H_
 
 #include <string>
 
@@ -84,9 +84,10 @@ int64_t GetUniqueInt();
 #define RETURN_IF_ERROR_IN_IMPORT(...) \
   RETURN_IF_ERROR_WITH_STAGE_INFO("GraphDef proto -> MLIR", __VA_ARGS__)
 
-#define RETURN_IF_ERROR_IN_COMPILE(...)                                       \
-  RETURN_IF_ERROR_WITH_STAGE_INFO(                                            \
-      "TF dialect -> TFRT dialect, compiler issue, please contact MLIR team", \
+#define RETURN_IF_ERROR_IN_COMPILE(...)                                      \
+  RETURN_IF_ERROR_WITH_STAGE_INFO(                                           \
+      "TF dialect -> TFRT dialect, compiler issue, please contact the TFRT " \
+      "team",                                                                \
       __VA_ARGS__)
 
 #define RETURN_IF_ERROR_IN_INIT(...) \
@@ -107,9 +108,10 @@ int64_t GetUniqueInt();
 #define ASSIGN_OR_RETURN_IN_IMPORT(lhs, rexpr) \
   ASSIGN_OR_RETURN_WITH_STAGE_INFO("GraphDef proto -> MLIR", lhs, rexpr)
 
-#define ASSIGN_OR_RETURN_IN_COMPILE(lhs, rexpr)                               \
-  ASSIGN_OR_RETURN_WITH_STAGE_INFO(                                           \
-      "TF dialect -> TFRT dialect, compiler issue, please contact MLIR team", \
+#define ASSIGN_OR_RETURN_IN_COMPILE(lhs, rexpr)                              \
+  ASSIGN_OR_RETURN_WITH_STAGE_INFO(                                          \
+      "TF dialect -> TFRT dialect, compiler issue, please contact the TFRT " \
+      "team",                                                                \
       lhs, rexpr)
 
 #define ASSIGN_OR_RETURN_IN_INIT(lhs, rexpr) \
@@ -128,8 +130,8 @@ int64_t GetUniqueInt();
         _status,                                                              \
         ::tensorflow::strings::StrCat(stage, ": ", _status.error_message())); \
   }                                                                           \
-  lhs = std::move(statusor.ValueOrDie())
+  lhs = std::move(statusor.value())
 
 }  // namespace tfrt
 
-#endif  // TENSORFLOW_CORE_TFRT_UTILS_H_
+#endif  // TENSORFLOW_CORE_TFRT_UTILS_UTILS_H_

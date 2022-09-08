@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_C_EAGER_immediate_execution_distributed_manager_H_
-#define TENSORFLOW_C_EAGER_immediate_execution_distributed_manager_H_
+#ifndef TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_DISTRIBUTED_MANAGER_H_
+#define TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_DISTRIBUTED_MANAGER_H_
 
 #include <string>
 
@@ -56,4 +56,4 @@ class ImmediateExecutionDistributedManager {
 };
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EAGER_immediate_execution_distributed_manager_H_
+#endif  // TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_DISTRIBUTED_MANAGER_H_

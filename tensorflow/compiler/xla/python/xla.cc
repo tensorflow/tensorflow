@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/gpu_device.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pmap_lib.h"
 #include "tensorflow/compiler/xla/python/pprof_profile_builder.h"
 #include "tensorflow/compiler/xla/python/profiler.h"
+#include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
@@ -59,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/weakref_lru_cache.h"
 #include "tensorflow/compiler/xla/python/xla_compiler.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -193,6 +196,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("IMMUTABLE_UNTIL_TRANSFER_COMPLETES",
              PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes)
       .value("ZERO_COPY", PjRtClient::HostBufferSemantics::kZeroCopy);
+
+  jax::BuildWeakrefLRUCacheAPI(m);
 
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)
@@ -336,9 +341,17 @@ PYBIND11_MODULE(xla_extension, m) {
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("max_inflight_computations") = 32);
+  m.def("get_tfrt_tpu_c_api_client",
+        []() -> StatusOr<std::shared_ptr<PyClient>> {
+          py::gil_scoped_release gil_release;
+          TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
+                              GetCApiClient());
+          return std::make_shared<PyClient>(std::move(c_api_client));
+        });
 #endif  // XLA_PYTHON_ENABLE_TPU
 
   TF_CHECK_OK(PyBuffer::RegisterTypes(m));
+  PyArray::RegisterTypes(m);
 
   py::class_<CompiledMemoryStats>(m, "CompiledMemoryStats")
       .def_readwrite("generated_code_size_in_bytes",
@@ -372,15 +385,27 @@ PYBIND11_MODULE(xla_extension, m) {
            &PyExecutable::SizeOfGeneratedCodeInBytes)
       .def("get_compiled_memory_stats", &PyExecutable::GetCompiledMemoryStats)
       .def("delete", &PyExecutable::Delete)
-      .def("execute", &PyExecutable::Execute, py::arg("arguments"))
+      .def("execute", &PyExecutable::Execute, py::arg("arguments"),
+           py::arg("device") = std::nullopt)
       // TODO(chky): Change execute() to always return token rather than hanving
       // two API entry points.
       .def("execute_with_token", &PyExecutable::ExecuteWithToken,
+           py::arg("arguments"), py::arg("device") = std::nullopt)
+      .def("execute_sharded_on_local_devices",
+           py::overload_cast<absl::Span<const std::vector<PyBuffer::object>>>(
+               &PyExecutable::ExecuteShardedOnLocalDevices),
            py::arg("arguments"))
       .def("execute_sharded_on_local_devices",
-           &PyExecutable::ExecuteShardedOnLocalDevices, py::arg("arguments"))
+           py::overload_cast<absl::Span<PyShardedBuffer* const>>(
+               &PyExecutable::ExecuteShardedOnLocalDevices),
+           py::arg("arguments"))
       .def("execute_sharded_on_local_devices_with_tokens",
-           &PyExecutable::ExecuteShardedOnLocalDevicesWithTokens,
+           py::overload_cast<absl::Span<const std::vector<PyBuffer::object>>>(
+               &PyExecutable::ExecuteShardedOnLocalDevicesWithTokens),
+           py::arg("arguments"))
+      .def("execute_sharded_on_local_devices_with_tokens",
+           py::overload_cast<absl::Span<PyShardedBuffer* const>>(
+               &PyExecutable::ExecuteShardedOnLocalDevicesWithTokens),
            py::arg("arguments"))
       .def("hlo_modules", &PyExecutable::HloModules)
       .def("keep_alive", &PyExecutable::KeepAlive)
@@ -395,6 +420,9 @@ PYBIND11_MODULE(xla_extension, m) {
                              });
   py::class_<PyToken> token(m, "Token");
   token.def("block_until_ready", &PyToken::Await);
+  py::class_<PyShardedToken> sharded_token(m, "ShardedToken");
+  sharded_token.def("block_until_ready", &PyShardedToken::Await);
+  sharded_token.def("get_token", &PyShardedToken::GetPyToken);
 
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
         py::arg("buffer"), py::arg("take_ownership") = true);

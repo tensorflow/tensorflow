@@ -21,9 +21,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -42,6 +40,7 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 
@@ -52,6 +51,11 @@ static bool operator<(const Value &lhs, const Value &rhs) {
 }
 
 namespace mhlo {
+
+#define GEN_PASS_DEF_RANKSPECIALIZATIONCLUSTERPASS
+#define GEN_PASS_DEF_RANKSPECIALIZATIONTOSCFPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 /// Identify clusters of operations that can be rank-specialized together. The
@@ -74,7 +78,7 @@ bool isClusterable(Operation *op) {
   if (op->getNumOperands() == 0) return false;
   return (op->hasTrait<mlir::OpTrait::Elementwise>() &&
           op->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>()) ||
-         op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>();
+         op->hasTrait<hlo::OpTrait::BroadcastingElementwise>();
 }
 
 struct RankSpecializationClusterPattern : public RewritePattern {
@@ -278,7 +282,8 @@ struct MergeRankSpecializationClusterOpsPattern
 };
 
 struct RankSpecializationClusterPass
-    : public RankSpecializationClusterPassBase<RankSpecializationClusterPass> {
+    : public impl::RankSpecializationClusterPassBase<
+          RankSpecializationClusterPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect, chlo::ChloDialect>();
   }
@@ -528,14 +533,12 @@ Value materializeEqualShapesRankSpecializationCase(
       [&](OpBuilder &b, Location loc) {
         // Flatten non-scalar operands.
         Value flatShape = materializeFlatShape(b, loc, nonScalarShapes);
-        auto flatOperands =
-            llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
+        auto flatOperands = llvm::to_vector<8>(
+            llvm::map_range(op.operands(), [&](Value v) -> Value {
               if (isScalarTensorType(v.getType())) return v;
-              return b
-                  .create<mhlo::DynamicReshapeOp>(
-                      loc, deriveRankedTensorTypes(v.getType(), /*rank=*/1), v,
-                      flatShape)
-                  .result();
+              return b.create<mhlo::DynamicReshapeOp>(
+                  loc, deriveRankedTensorTypes(v.getType(), /*rank=*/1), v,
+                  flatShape);
             }));
 
         // Materialize ranked variants for the element-wise operations.
@@ -719,12 +722,11 @@ materializeRankSpecializationForSingleNonScalarShapeEquivalenceClass(
 
   // Restore the results' expected shape.
   Value shape = nonScalarShapes.front();
-  return llvm::to_vector<8>(llvm::map_range(unshapedResults, [&](Value v) {
-    return rewriter
-        .create<mhlo::DynamicReshapeOp>(
-            loc, deriveUnrankedTensorTypes(v.getType()), v, shape)
-        .result();
-  }));
+  return llvm::to_vector<8>(
+      llvm::map_range(unshapedResults, [&](Value v) -> Value {
+        return rewriter.create<mhlo::DynamicReshapeOp>(
+            loc, deriveUnrankedTensorTypes(v.getType()), v, shape);
+      }));
 }
 
 Value materializeRankSpecializationForTwoNonScalarShapeEquivalenceClasses(
@@ -905,7 +907,8 @@ struct LowerRankSpecializationClusterPattern
 };
 
 struct RankSpecializationToSCFPass
-    : public RankSpecializationToSCFPassBase<RankSpecializationToSCFPass> {
+    : public impl::RankSpecializationToSCFPassBase<
+          RankSpecializationToSCFPass> {
   explicit RankSpecializationToSCFPass(int64_t maxTargetRank)
       : RankSpecializationToSCFPassBase<
             RankSpecializationToSCFPass>::RankSpecializationToSCFPassBase() {

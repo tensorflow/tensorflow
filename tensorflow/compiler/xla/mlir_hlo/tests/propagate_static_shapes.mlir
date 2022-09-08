@@ -13,8 +13,7 @@ module attributes {gpu.container_module} {
       %argN: f32
     ) attributes {gpu.kernel} {
       // CHECK-DAG:  %[[base:.*]] = llvm.bitcast %arg1 : !llvm.ptr<i8> to !llvm.ptr<f32>
-      // CHECK-DAG:  %[[idx:.*]] = llvm.mlir.constant(4 : i64) : i64
-      // CHECK:      %[[ptr:.*]] = llvm.getelementptr %[[base]][%[[idx]]]
+      // CHECK:      %[[ptr:.*]] = llvm.getelementptr %[[base]][4]
       // CHECK:      llvm.call @dummy(%[[ptr]]) : (!llvm.ptr<f32>) -> ()
       %ptr = llvm.getelementptr %align[%stride.x] : (!llvm.ptr<f32>, i64) -> !llvm.ptr<f32>
       llvm.call @dummy(%ptr) : (!llvm.ptr<f32>) -> ()

@@ -133,7 +133,7 @@ def dummy_tf_decorator(method):
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    super(FunctionTest, self).setUp()
+    super().setUp()
     cpus = config.list_physical_devices('CPU')
     # Set 4 virtual CPUs
     config.set_logical_device_configuration(cpus[0], [
@@ -441,12 +441,39 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
+  def testReduceTracingWithNestedTFFunction(self):
+    v = resource_variable_ops.ResourceVariable([1., 2.])
+
+    @def_function.function(reduce_retracing=True)
+    def inner_test_fn(x):
+      x.assign_add([2., 2.])
+      return x
+
+    @def_function.function(reduce_retracing=True)
+    def test_fn(x):
+      x.assign_add([1., 1.])
+      return inner_test_fn(x)
+
+    with backprop.GradientTape() as tape:
+      y = test_fn(v)
+
+    grad = tape.gradient(y, v)
+    self.assertAllEqual(y, [4., 5.])
+    self.assertAllEqual(grad, [1., 1.])
+
+    with backprop.GradientTape() as tape:
+      y = test_fn(v)
+
+    grad = tape.gradient(y, v)
+    self.assertAllEqual(y, [7., 8.])
+    self.assertAllEqual(grad, [1., 1.])
+
   def testInputShapeRelaxationOnInstanceMethod(self):
     # Test that reduce_retracing is passed during
     # instance method bounding.
     unknown_dim = [False]
 
-    class Foo(object):
+    class Foo:
 
       @def_function.function(reduce_retracing=True)
       def func(self, a):
@@ -1387,7 +1414,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testGraphModeCaptureVariable(self):
     with context.graph_mode(), self.cached_session():
 
-      class HasAVar(object):
+      class HasAVar:
 
         def __init__(self):
           self.v = resource_variable_ops.ResourceVariable(1.0)
@@ -1948,7 +1975,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testCacheObjectHashCollisions(self):
 
-    class Foo(object):
+    class Foo:
 
       def __hash__(self):
         return 42
@@ -2477,27 +2504,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'does not match'):
       defined(rt5)
 
-  def testInputSignatureWithVariableArgs(self):
-
-    def f(v):
-      v.assign_add(1)
-
-    signature = [
-        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
-    ]
-    defined = function.defun(f, input_signature=signature)
-
-    v1 = variables.Variable(0)
-    v2 = variables.Variable(0)
-
-    defined(v1)
-    self.assertEqual(v1.numpy(), 1)
-    self.assertEqual(v2.numpy(), 0)
-
-    defined(v=v2)
-    self.assertEqual(v1.numpy(), 1)
-    self.assertEqual(v2.numpy(), 1)
-
   def testInputSignatureWithKeywordOnlyArgs(self):
 
     def f(a, b, c=3, *, d=4):
@@ -2552,6 +2558,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         ValueError, "keyword-only arguments must have default values.*'b'"):
       function.defun(test_func_lambda, input_signature=signature)
 
+  def testVariableSpecWithInputSignature(self):
+
+    def f(v):
+      v.assign_add(1)
+
+    signature = [
+        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
+    ]
+    with self.assertRaisesRegex(TypeError,
+                                "input_signature doesn't support VariableSpec"):
+      def_function.function(f, input_signature=signature)
+
   def testTensorKeywordArguments(self):
 
     def foo(a, b):
@@ -2596,7 +2614,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     integer = constant_op.constant(2, dtypes.int64)
 
-    class Foo(object):
+    class Foo:
 
       def one(self, tensor):
         return tensor
@@ -2615,7 +2633,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     integer = constant_op.constant(2, dtypes.int64)
 
-    class Foo(object):
+    class Foo:
 
       @def_function.function
       def func(self, other=integer):
@@ -2925,6 +2943,29 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(float(graph_function(v)), 1.0)
     self.assertEqual(float(graph_function(w)), 1.0)
 
+  def testVariableAliasIdInStructuredInputSignature(self):
+
+    @def_function.function
+    def foo(v1, v2):
+      return v1 + v2
+
+    v1 = resource_variable_ops.ResourceVariable(1.0)
+    v2 = resource_variable_ops.ResourceVariable(2.0)
+    graph_function = foo.get_concrete_function(v1, v1)
+    args_sig, _ = graph_function.graph.structured_input_signature
+    expected_spec = resource_variable_ops.VariableSpec([], alias_id=0)
+    self.assertLen(args_sig, 2)
+    self.assertEqual(args_sig[0], expected_spec)
+    self.assertEqual(args_sig[1], expected_spec)
+
+    graph_function = foo.get_concrete_function(v1, v2)
+    args_sig, _ = graph_function.graph.structured_input_signature
+    expected_spec1 = resource_variable_ops.VariableSpec([], alias_id=0)
+    expected_spec2 = resource_variable_ops.VariableSpec([], alias_id=1)
+    self.assertLen(args_sig, 2)
+    self.assertEqual(args_sig[0], expected_spec1)
+    self.assertEqual(args_sig[1], expected_spec2)
+
   def testCallingFunctionWithNonTensorsFails(self):
 
     @function.defun
@@ -3091,7 +3132,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.skipTest('attr module is unavailable.')
 
     @attr.s
-    class TestClass(object):
+    class TestClass:
       a = attr.ib()
       b = attr.ib()
 
@@ -3223,7 +3264,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testDecoratedMethodInspect(self):
 
-    class DefunnedMiniModel(object):
+    class DefunnedMiniModel:
 
       @function.defun
       def call(self, inputs, training=True):
@@ -4666,7 +4707,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testMissingArgsTfFunctionedMethod(self):
 
-    class A(object):
+    class A:
 
       def func(self, position_arg1, position_arg2):
         return position_arg1, position_arg2
@@ -4692,7 +4733,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testMissingArgsTfFunctionedObject(self):
 
-    class A(object):
+    class A:
 
       def __call__(self, position_arg1, position_arg2):
         return position_arg1, position_arg2

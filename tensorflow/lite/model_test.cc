@@ -29,6 +29,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/verifier.h"
@@ -787,6 +788,31 @@ TEST(BasicFlatBufferModel, TestHandleModelWithWhileOpContainsForwardingInput) {
   buf.WriteToTensor(tensor, /*new_shape=*/nullptr);
 
   ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
+}
+
+TEST(BasicFlatBufferModel, TestHandleZeroSizeConstant) {
+  TestErrorReporter reporter;
+  FileCopyAllocation model_allocation(
+      "tensorflow/lite/testdata/zero_size_constant.bin", &reporter);
+  EXPECT_TRUE(model_allocation.valid());
+  ::flatbuffers::Verifier verifier(
+      reinterpret_cast<const uint8_t*>(model_allocation.base()),
+      model_allocation.bytes());
+  EXPECT_TRUE(VerifyModelBuffer(verifier));
+  const Model* model_fb = ::tflite::GetModel(model_allocation.base());
+
+  auto model = FlatBufferModel::BuildFromModel(model_fb);
+  EXPECT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  EXPECT_EQ(
+      InterpreterBuilder(*model, TrivialResolver(&dummy_reg))(&interpreter),
+      kTfLiteOk);
+  EXPECT_NE(interpreter, nullptr);
+
+  EXPECT_EQ(interpreter->tensors_size(), 3);
+  // Second tensor should be treated as constant.
+  ASSERT_EQ(interpreter->tensor(1)->allocation_type, kTfLiteMmapRo);
 }
 
 // TODO(aselle): Add tests for serialization of builtin op data types.

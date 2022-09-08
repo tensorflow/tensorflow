@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace tools {
@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
   bool parsed_flags_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   QCHECK(parsed_flags_ok) << "\n" << usage;
 
-  tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
+  tsl::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(argc > 1) << "\nERROR: must specify at least one module\n" << usage;
 
   absl::Span<char* const> args(argv, argc);

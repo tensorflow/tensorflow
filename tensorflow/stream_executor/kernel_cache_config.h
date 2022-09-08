@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file contains declarations relating to kernel cache configuration
-// parameters recognized by the StreamExecutor.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_KERNEL_CACHE_CONFIG_H_
 #define TENSORFLOW_STREAM_EXECUTOR_KERNEL_CACHE_CONFIG_H_
 
