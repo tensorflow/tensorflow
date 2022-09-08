@@ -806,7 +806,9 @@ cc_library(
     textual_hdrs = [
         "subprocess.h",
     ],
-    deps = tf_windows_aware_platform_deps("subprocess"),
+    deps = [
+        "//tensorflow/tsl/platform:subprocess",
+    ],
 )
 
 cc_library(

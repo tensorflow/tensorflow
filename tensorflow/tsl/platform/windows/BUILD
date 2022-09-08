@@ -231,7 +231,7 @@ cc_library(
 cc_library(
     name = "subprocess",
     srcs = ["subprocess.cc"],
-    hdrs = ["//tensorflow/core/platform:subprocess.h"],
+    hdrs = ["//tensorflow/tsl/platform:subprocess.h"],
     tags = [
         "manual",
         "no_oss",

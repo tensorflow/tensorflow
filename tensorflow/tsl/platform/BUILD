@@ -352,6 +352,7 @@ filegroup(
         "str_util.h",
         "stringpiece.h",
         "stringprintf.h",
+        "subprocess.h",
         "thread_annotations.h",
         "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
         "//tensorflow/tsl/platform/profile_utils:clock_cycle_profiler.h",
@@ -455,6 +456,7 @@ filegroup(
         "fingerprint.h",
         "random.cc",
         "random.h",
+        "subprocess.h",
         "test_benchmark.h",
         "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.cc",
         "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
@@ -525,6 +527,7 @@ exports_files(
         "bfloat16.h",
         "logging.h",
         "rocm_rocdl_path.h",
+        "subprocess.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -785,6 +788,14 @@ cc_library(
         ":macros",
         ":types",
     ],
+)
+
+cc_library(
+    name = "subprocess",
+    textual_hdrs = [
+        "subprocess.h",
+    ],
+    deps = tf_windows_aware_platform_deps("subprocess"),
 )
 
 cc_library(
