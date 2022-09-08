@@ -422,6 +422,8 @@ filegroup(
         "raw_coding.h",
         "regexp.h",
         "resource.h",
+        "setround.cc",
+        "setround.h",
         "snappy.h",
         "stacktrace.h",
         "status.cc",
@@ -539,6 +541,7 @@ filegroup(
         "host_info.h",
         "intrusive_ptr.h",
         "platform.h",
+        "setround.h",
         "snappy.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -894,6 +897,16 @@ cc_library(
     deps = [
         ":platform",
     ] + tf_platform_deps("casts"),
+)
+
+cc_library(
+    name = "setround",
+    srcs = ["setround.cc"],
+    hdrs = ["setround.h"],
+    deps = [
+        ":logging",
+        ":macros",
+    ],
 )
 
 cc_library(

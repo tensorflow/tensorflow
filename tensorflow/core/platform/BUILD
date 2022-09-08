@@ -665,11 +665,11 @@ cc_library(
 
 cc_library(
     name = "setround",
-    srcs = ["setround.cc"],
     hdrs = ["setround.h"],
     deps = [
         ":logging",
         ":macros",
+        "//tensorflow/tsl/platform:setround",
     ],
 )
 
@@ -1835,7 +1835,6 @@ filegroup(
         "regexp.h",
         "scanner.cc",
         "scanner.h",
-        "setround.cc",
         "setround.h",
         "snappy.h",
         "stacktrace.h",

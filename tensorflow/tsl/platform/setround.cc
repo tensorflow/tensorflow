@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/setround.h"
+#include "tensorflow/tsl/platform/setround.h"
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace port {
 
 #if defined(TF_BROKEN_CFENV)
@@ -45,4 +45,4 @@ ScopedSetRound::~ScopedSetRound() { std::fesetround(original_mode_); }
 #endif  // TF_BROKEN_CFENV
 
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl
