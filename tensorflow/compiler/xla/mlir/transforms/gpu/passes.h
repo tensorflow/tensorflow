@@ -24,11 +24,22 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+//===----------------------------------------------------------------------===//
+// Auxiliary passes for lowering to XLA Gpu runtime.
+//===----------------------------------------------------------------------===//
+
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertMemrefGetGlobalToArgPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertMemrefGetGlobalToArgPass(int64_t min_num_elements);
+
+//===-----------------------------------------------------------------------===/
+// Passes for lowering from the `gpu` dialect.
+//===-----------------------------------------------------------------------===/
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertGpuToGpuRuntimePass();
 
 //===-----------------------------------------------------------------------===/
 

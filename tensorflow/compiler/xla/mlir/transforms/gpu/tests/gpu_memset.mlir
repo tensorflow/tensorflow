@@ -1,20 +1,6 @@
-// Copyright 2022 The TensorFlow Runtime Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// RUN: xla-gpu-opt %s --split-input-file -xla-gpu-to-gpu-runtime | FileCheck %s
 
-// RUN: lhlo-tfrt-opt %s -lmhlo-to-jitrt --split-input-file | FileCheck %s
-
-// CHECK: @gpu_memset_i32(
+// CHECK: func @gpu_memset_i32(
 // CHECK:   %[[DST:[a-z0-9]+]]: memref<?xi32>
 // CHECK: )
 func.func @gpu_memset_i32(%dst: memref<?xi32>) {
@@ -30,7 +16,7 @@ func.func @gpu_memset_i32(%dst: memref<?xi32>) {
 
 // -----
 
-// CHECK: @gpu_memset_f32(
+// CHECK: func @gpu_memset_f32(
 // CHECK:   %[[DST:[a-z0-9]+]]: memref<?xf32>
 // CHECK: )
 func.func @gpu_memset_f32(%dst: memref<?xf32>) {

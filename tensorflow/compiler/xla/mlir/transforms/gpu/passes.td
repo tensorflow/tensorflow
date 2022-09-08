@@ -18,6 +18,10 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+//===----------------------------------------------------------------------===//
+// Auxiliary passes for lowering to XLA Gpu runtime.
+//===----------------------------------------------------------------------===//
+
 def ConvertMemrefGetGlobalToArgPass :
     Pass<"xla-memref-get-global-to-arg", "mlir::ModuleOp"> {
   let summary = "Converts memref.get_global corresponding to lmhlo constants";
@@ -39,6 +43,22 @@ def ConvertMemrefGetGlobalToArgPass :
            "Do not convert `memref.get_global` operation if the number of "
            "elements is smaller than the given value.">,
   ];
+}
+
+//===----------------------------------------------------------------------===//
+// Passes for lowering from the `gpu` dialect.
+//===----------------------------------------------------------------------===//
+
+def ConvertGpuToGpuRuntimePass :
+    Pass<"xla-gpu-to-gpu-runtime", "mlir::ModuleOp"> {
+  let summary = "Converts gpu operations to XLA Gpu runtime custom calls.";
+
+  let description = [{
+    Converts gpu operations (function launch, memcpy, etc...) to the XLA Gpu
+    runtime custom calls.
+  }];
+
+  let constructor = "createConvertGpuToGpuRuntimePass()";
 }
 
 #endif  // XLA_GPU_PASSES

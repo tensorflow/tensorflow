@@ -139,19 +139,6 @@ class ConvertLmhloGpuToJitRtPass
 
 // -------------------------------------------------------------------------- //
 
-class GpuModuleOpLowering : public OpRewritePattern<GPUModuleOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(GPUModuleOp op,
-                                PatternRewriter& rewriter) const override {
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
-
-// -------------------------------------------------------------------------- //
-
 class TerminatorOpLowering : public OpRewritePattern<TerminatorOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -216,152 +203,6 @@ class InfeedOpLowering : public IoFeedOpLowering<InfeedOp> {
 class OutfeedOpLowering : public IoFeedOpLowering<OutfeedOp> {
  public:
   using IoFeedOpLowering::IoFeedOpLowering;
-};
-
-// -------------------------------------------------------------------------- //
-
-class MemcpyOpLowering : public OpRewritePattern<MemcpyOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  // We use a heuristic to identify the direction of the memcpy operation, if
-  // the operand was allocated by alloca op or is a global memref, then it must
-  // be a memref on the host.
-  static bool IsHostMemRef(Value value) {
-    auto* op = value.getDefiningOp();
-    return llvm::isa_and_nonnull<memref::AllocaOp, memref::GetGlobalOp>(op);
-  }
-
-  LogicalResult matchAndRewrite(MemcpyOp op,
-                                PatternRewriter& rewriter) const override {
-    MLIRContext* ctx = getContext();
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    // Identify the direction of the memcpy operation.
-    auto memcpy = [&]() {
-      if (IsHostMemRef(op.dst())) return "xla.gpu.memcpy.d2h";
-      if (IsHostMemRef(op.src())) return "xla.gpu.memcpy.h2d";
-      return "xla.gpu.memcpy.d2d";
-    }();
-
-    // Custom call target.
-    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
-                          b.getStringAttr(memcpy));
-
-    // Create a custom call function declaration.
-    auto custom_call_type =
-        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
-    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), memcpy, custom_call_type,
-                                      custom_call_attrs);
-    custom_call.setPrivate();
-
-    SymbolTable sym_table(op->getParentOfType<ModuleOp>());
-    auto inserted = sym_table.insert(custom_call);
-    rewriter.notifyOperationInserted(custom_call);
-
-    // Create a function launch call operation.
-    rewriter.replaceOpWithNewOp<CallOp>(op, inserted, TypeRange(),
-                                        op.getOperands());
-
-    return success();
-  }
-};
-
-// -------------------------------------------------------------------------- //
-
-class MemsetOpLowering : public OpRewritePattern<MemsetOp> {
- private:
-  static constexpr const char kCustomCallTarget[] = "xla.gpu.memset";
-
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(MemsetOp op,
-                                PatternRewriter& rewriter) const override {
-    MLIRContext* ctx = getContext();
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    // Custom call target.
-    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
-                          b.getStringAttr(kCustomCallTarget));
-
-    // Create a custom call function declaration.
-    auto custom_call_type =
-        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
-    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
-                                      custom_call_type, custom_call_attrs);
-    custom_call.setPrivate();
-
-    SymbolTable sym_table(op->getParentOfType<ModuleOp>());
-    auto inserted = sym_table.insert(custom_call);
-    rewriter.notifyOperationInserted(custom_call);
-
-    // Create a function launch call operation.
-    rewriter.replaceOpWithNewOp<CallOp>(op, inserted, TypeRange(),
-                                        op.getOperands());
-
-    return success();
-  }
-};
-
-// -------------------------------------------------------------------------- //
-
-class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
- private:
-  static constexpr const char kCustomCallTarget[] = "xla.gpu.func.launch";
-
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(LaunchFuncOp op,
-                                PatternRewriter& rewriter) const override {
-    MLIRContext* ctx = getContext();
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    ModuleOp module = op->getParentOfType<ModuleOp>();
-
-    // Cast grid and block dimensions to i32 before passing to the custom call.
-    auto cast = [&](mlir::Value value) {
-      return b.create<IndexCastOp>(b.getI32Type(), value);
-    };
-
-    // Prepare arguments for the custom call.
-    llvm::SmallVector<Value> args = {
-        cast(op.gridSizeX()),  cast(op.gridSizeY()),  cast(op.gridSizeZ()),
-        cast(op.blockSizeX()), cast(op.blockSizeY()), cast(op.blockSizeZ())};
-
-    // Add kernel arguments.
-    llvm::copy(op.operands(), std::back_inserter(args));
-
-    // Types of the custom call arguments.
-    llvm::SmallVector<Type> args_types = TypeRange(ValueRange(args));
-
-    // Custom call target.
-    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
-                          b.getStringAttr(kCustomCallTarget));
-
-    // Create a custom call function declaration.
-    auto custom_call_type = FunctionType::get(ctx, args_types, TypeRange());
-    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
-                                      custom_call_type, custom_call_attrs);
-    custom_call.setPrivate();
-
-    SymbolTable sym_table(module);
-    auto inserted = sym_table.insert(custom_call);
-    rewriter.notifyOperationInserted(custom_call);
-
-    // Create a function launch call operation.
-    auto call = b.create<CallOp>(inserted, TypeRange(), args);
-    call->setAttr(b.getStringAttr("kernel"), op.getKernelName());
-
-    // Erase the original gpu launch operation.
-    rewriter.eraseOp(op);
-
-    return success();
-  }
 };
 
 // -------------------------------------------------------------------------- //
@@ -1447,8 +1288,7 @@ void ConvertGpuToJitRtPass::runOnOperation() {
 
   // Convert gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
-  patterns.insert<GpuModuleOpLowering, LaunchFuncOpLowering, MemcpyOpLowering,
-                  MemsetOpLowering, InfeedOpLowering, OutfeedOpLowering>(ctx);
+  patterns.insert<InfeedOpLowering, OutfeedOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();
@@ -1531,6 +1371,7 @@ void populateLmhloToJitRtPasses(mlir::OpPassManager& pm,
 
   // Lower all Gpu operations to the JitRt Gpu runtime intrinsics.
   pm.addPass(createConvertLmhloGpuToJitRtPass());
+  pm.addPass(xla::gpu::createConvertGpuToGpuRuntimePass());
   pm.addPass(createConvertGpuToJitRtPass());
 }
 

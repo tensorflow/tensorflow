@@ -13,6 +13,7 @@ tf_cc_binary(
     deps = [
         "//tensorflow/compiler/xla/mlir/transforms/gpu:passes",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MlirOptLib",
     ],

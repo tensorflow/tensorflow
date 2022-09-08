@@ -1,27 +1,13 @@
-// Copyright 2022 The TensorFlow Runtime Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// RUN: lhlo-tfrt-opt %s -gpu-to-jitrt | FileCheck %s
-
-// Check that all gpu dialect `launch_func` operations gets converted to
-// function calls bound to jitrt custom calls.
+// RUN: xla-gpu-opt %s -xla-gpu-to-gpu-runtime | FileCheck %s
 
 module attributes {gpu.container_module} {
 
 // CHECK-NOT: gpu.module
 gpu.module @gpu_module attributes {binary = "kernel binary"} {
-  gpu.func @main(%arg0: memref<4x4xf32>, %arg1: memref<4x4xf32>) kernel {
+  gpu.func @fn0(%arg0: memref<4x4xf32>, %arg1: memref<4x4xf32>) kernel {
+    gpu.return
+  }
+  gpu.func @fn1(%arg0: memref<4x4xf32>, %arg1: memref<4x4xf32>) kernel {
     gpu.return
   }
 }
@@ -47,10 +33,18 @@ func.func @func(%arg0: memref<4x4xf32>, %arg1: memref<4x4xf32>) {
 
   // CHECK: call @[[LAUNCH:[_a-z.]+]](%[[C1]], %[[C2]], %[[C3]], %[[C4]],
   // CHECK-SAME: %[[C5]], %[[C6]], %[[ARG0]], %[[ARG1]])
-  // CHECK-DAG: kernel = "main"
-  gpu.launch_func  @gpu_module::@main
+  // CHECK-SAME: kernel = "fn0"
+  gpu.launch_func  @gpu_module::@fn0
     blocks in (%c1, %c2, %c3)
     threads in (%c4, %c5, %c6)
+    args(%arg0 : memref<4x4xf32>, %arg1 : memref<4x4xf32>)
+
+  // CHECK: call @[[LAUNCH]](%[[C3]], %[[C2]], %[[C1]], %[[C6]],
+  // CHECK-SAME: %[[C5]], %[[C4]], %[[ARG0]], %[[ARG1]])
+  // CHECK-DAG: kernel = "fn1"
+  gpu.launch_func  @gpu_module::@fn1
+    blocks in (%c3, %c2, %c1)
+    threads in (%c6, %c5, %c4)
     args(%arg0 : memref<4x4xf32>, %arg1 : memref<4x4xf32>)
 
   func.return
@@ -59,5 +53,8 @@ func.func @func(%arg0: memref<4x4xf32>, %arg1: memref<4x4xf32>) {
 // CHECK: func private @[[LAUNCH]](i32, i32, i32, i32, i32, i32,
 // CHECK-SAME: memref<4x4xf32>, memref<4x4xf32>)
 // CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.func.launch"}
+
+// Check that we have a single custom call declaration in the module.
+// CHECK-NOT: rt.direct_custom_call
 
 }
