@@ -53,13 +53,6 @@ This release contains contributions from many people at Google, as well as:
 *   RNG behavior change for `tf.keras.initializers`. Keras initializers will now use stateless random ops to generate random numbers.
     *   Both seeded and unseeded initializers will always generate the same values every time they are called (for a given variable shape). For unseeded initializers (`seed=None`), a random seed will be created and assigned at initializer creation (different initializer instances get different seeds).
     *   An unseeded initializer will raise a warning if it is reused (called) multiple times. This is because it would produce the same values each time, which may not be intended.
-*   API changes under `tf.experimental.dtensor`:
-    * New API for initialization of CPU/GPU/TPU in dtensor.
-      `dtensor.initialize_accelerator_system` and
-      `dtensor.shutdown_accelerator_system`.
-    * The following existing API will be removed:
-      `dtensor.initialize_multi_client`, `dtensor.initialize_tpu_system`, and
-      `dtensor.shutdown_tpu_system`.
 
 ## Deprecations
 

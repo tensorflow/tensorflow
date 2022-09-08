@@ -18,6 +18,7 @@ import functools
 import time
 from typing import List, Optional, Dict
 
+from absl import flags
 import numpy as np
 
 from tensorflow.dtensor.python import api
@@ -26,18 +27,22 @@ from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import heartbeat
 from tensorflow.dtensor.python import layout as layout_lib
+from tensorflow.dtensor.python import multi_client_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import topology
+from tensorflow.python.util.tf_export import tf_export
 
-
+_INITIALIZED_TPU_SYSTEMS = {}
 _MESH_DIM_X = "x"
 _TPU_DEVICE_TYPE = "TPU"
 
@@ -127,8 +132,9 @@ def _create_tpu_topology(core_locations: List[_CoreLocation], num_tasks: int,
       mesh_shape=mesh_shape, device_coordinates=device_coordinates)
 
 
-def shutdown_tpu_system():
-  """Shuts down the TPU system."""
+@tf_export("experimental.dtensor.shutdown_tpu_system", v1=[])
+def dtensor_shutdown_tpu_system():
+  """Shutdown TPU system."""
 
   @def_function.function
   def _shutdown_tpu_system():
@@ -141,8 +147,39 @@ def shutdown_tpu_system():
     logging.warning("TPU system fails to shut down.")
 
 
-def initialize_tpu_system():
-  """Initializes the TPU system."""
+@tf_export("experimental.dtensor.initialize_tpu_system", v1=[])
+def dtensor_initialize_tpu_system(enable_coordination_service=False):
+  """Initialize the TPU devices.
+
+  This functions performs additional TPU related initialization after
+  calling `dtensor.initialize_multi_client` to initialize multi-client DTensor.
+  Refer to `dtensor.initialize_multi_client` for relevant environment
+  variables that controls the initialization of multi-client DTensor.
+
+  Args:
+    enable_coordination_service: If true, enable distributed coordination
+      service to make sure that workers know the devices on each other, a
+      prerequisite for data transfer through cross-worker rendezvous.
+
+  Raises:
+    RuntimeError: If running inside a tf.function.
+    NotFoundError: If no TPU devices found in eager mode.
+  """
+
+  assert context.executing_eagerly()
+
+  # Reconfigure TensorFlow to use TFRT TPU runtime if requested.
+  _configure_tpu_runtime()
+
+  # Collective GRPC servers are only necessary in mutli-client setup.
+  # Single clients can use local mode of collectives.
+  if config.num_clients() > 1 and not multi_client_util.is_initialized():
+    multi_client_util.initialize_multi_client_cluster(
+        job_name=config.job_name(),
+        dtensor_jobs=config.jobs(),
+        client_id=config.client_id(),
+        collective_leader=config.full_job_name(task_id=0),
+        enable_coordination_service=enable_coordination_service)
 
   # Make sure the server change is fully propagated before attempting to run
   # the core ID merging logic below.
@@ -162,6 +199,14 @@ def initialize_tpu_system():
     with ops.device("/job:" + config.full_job_name() + "/device:TPU_SYSTEM:0"):  # pylint: disable=protected-access
       my_core_ids = _tpu_init_fn()
     logging.info("TPU core IDs: %s", my_core_ids)
+    context.initialize_logical_devices()
+
+    # Configure virtual CPUs that is 1:1 mapped to TPU cores.
+    context.context().set_logical_cpu_devices(
+        len(api.local_devices(_TPU_DEVICE_TYPE)),
+        tf_device.DeviceSpec(
+            job=config.job_name(), replica=0,
+            task=config.client_id()).to_string())
 
     # `my_core_ids` contains the IDs of TPU cores attached to this host.
     #
@@ -682,8 +727,8 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   # easier interaction with the C++ API.
   global_core_locations = [l.to_list() for l in global_core_locations]
   if _dtensor_device is None:
-    raise ValueError("Invalid system device, "
-                     "run dtensor.initialize_accelerator_system() first")
+    raise ValueError(
+        "Invalid system device, run dtensor.initialize_tpu_system() first")
   global_core_ids = _dtensor_device.tpu_core_locations_to_ids(
       global_core_locations)
 
@@ -764,16 +809,9 @@ def get_device_locations(
       "Looking up other clients' device locations is not supported")
 
 
-# TODO(b/245589661): Remove dtensor_initialize_tpu_system() and
-# dtensor_shutdown_tpu_system() after users stopped using them.
-def dtensor_initialize_tpu_system(enable_coordination_service=False):
-  """Deprecated way to initialize the TPU system."""
-  from . import accelerator_util  # pylint: disable=g-import-not-at-top
-  accelerator_util.initialize_accelerator_system(
-      "TPU", enable_coordination_service=enable_coordination_service)
-
-
-def dtensor_shutdown_tpu_system():
-  """Deprecated way to shutodwn the TPU system."""
-  from . import accelerator_util  # pylint: disable=g-import-not-at-top
-  accelerator_util.shutdown_accelerator_system()
+def _configure_tpu_runtime():
+  was_enabled = context.is_tfrt_enabled()
+  if ("tpu_use_tfrt" in flags.FLAGS and flags.FLAGS["tpu_use_tfrt"].value):
+    tfrt_utils.set_tfrt_enabled(True)
+  if not was_enabled:
+    context._reset_context()  # pylint:disable=protected-access

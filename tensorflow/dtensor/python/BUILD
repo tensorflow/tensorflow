@@ -192,32 +192,25 @@ pytype_strict_library(
         "//tensorflow/dtensor:dtensor-users",
     ],
     deps = [
-        ":accelerator_util",
         ":api",
         ":config",
         ":layout",
+        ":multi_client_util",
         ":tpu_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:config",
         "//tensorflow/python:device",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:tfrt_utils",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@absl_py//absl/flags",
         "@absl_py//absl/logging",
     ],
 )
 
-# TODO(b/245589661): Split accelerator_util to its module after
-# The circular dependence is removed with dtensor_initialize_tpu_system.
 pytype_strict_library(
     name = "tpu_util",
-    srcs = [
-        "accelerator_util.py",
-        "tpu_util.py",
-    ],
+    srcs = ["tpu_util.py"],
     visibility = default_visibility + [
         "//tensorflow/dtensor:dtensor-users",
     ],
@@ -228,8 +221,9 @@ pytype_strict_library(
         ":gen_dtensor_ops",
         ":heartbeat",
         ":layout",
-        "//tensorflow/core:protos_all_py",
+        ":multi_client_util",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:device",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -237,14 +231,12 @@ pytype_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:tfrt_utils",
         "//tensorflow/python/tpu:topology",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
-        "@absl_py//absl/logging",
     ],
 )
 
@@ -264,10 +256,14 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
-    name = "accelerator_util",
-    srcs = [],
+    name = "multi_client_util",
+    srcs = ["multi_client_util.py"],
     deps = [
-        ":tpu_util",
+        ":config",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/eager:context",
+        "@absl_py//absl/logging",
     ],
 )
 
