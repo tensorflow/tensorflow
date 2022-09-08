@@ -68,6 +68,8 @@ std::string ExecutionContextOperandType::ToString() const {
   return "!rt.execution_context";
 }
 
+std::string OpaqueOperandType::ToString() const { return "!rt.opaque"; }
+
 //===----------------------------------------------------------------------===//
 // ABI definition for canonical types.
 //===----------------------------------------------------------------------===//
@@ -105,6 +107,11 @@ absl::StatusOr<ResultAbi> MemrefType::AsResult() const {
 
 // Execution context passed as a single opaque pointer.
 absl::StatusOr<ArgumentAbi> ExecutionContextOperandType::AsArgument() const {
+  return ArgumentAbi{1};
+}
+
+// Opaque operands passed as a single opaque pointer.
+absl::StatusOr<ArgumentAbi> OpaqueOperandType::AsArgument() const {
   return ArgumentAbi{1};
 }
 

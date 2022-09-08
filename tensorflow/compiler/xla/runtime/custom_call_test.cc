@@ -287,6 +287,38 @@ TEST(CustomCallTest, ScalarRets) {
   EXPECT_EQ(f64, 42.0);
 }
 
+TEST(CustomCallTest, OpaqueArgs) {
+  absl::string_view module = R"(
+    func.func private @use(%arg0: !rt.opaque)
+      attributes { rt.custom_call = "test.use" }
+
+    func.func @test(%arg0: !rt.opaque) {
+      call @use(%arg0) : (!rt.opaque) -> ()
+      return
+    }
+  )";
+
+  // We'll pass around an opaque pointer to this string in our custom calls.
+  std::string message = "";
+
+  auto use = [&](void* arg0) {
+    std::string* str = reinterpret_cast<std::string*>(arg0);
+    (*str) += "foo";
+    return success();
+  };
+
+  OpaqueArg arg0(&message);
+
+  TestOpts opts;
+  opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.use").Arg<void*>().To(use));
+  };
+
+  ASSERT_TRUE(CompileAndExecute(module, {arg0}, opts).ok());
+
+  EXPECT_EQ(message, "foo");
+}
+
 TEST(CustomCallTest, OpaqueArgsAndRets) {
   absl::string_view module = R"(
     func.func private @make() -> (!rt.opaque)

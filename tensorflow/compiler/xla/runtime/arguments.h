@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_RUNTIME_ARGUMENTS_H_
 
 #include <cstddef>
+#include <initializer_list>
 #include <string>
 #include <type_traits>
 
@@ -148,7 +149,7 @@ class ArgumentsRef {
  public:
   ArgumentsRef() : data_(nullptr), size_(0), stride_(0) {}
 
-  template <typename... Ts>
+  template <typename... Ts, std::enable_if_t<sizeof...(Ts) != 0>* = nullptr>
   ArgumentsRef(const Arguments<Ts...>& args)  // NOLINT
       : data_(reinterpret_cast<const Argument*>(args.storage_.data())),
         size_(args.size()),
@@ -169,6 +170,10 @@ class ArgumentsRef {
   template <typename T, size_t n, std::enable_if_t<is_argument<T>>* = nullptr>
   ArgumentsRef(const std::array<T, n>& arr)  // NOLINT
       : ArgumentsRef(llvm::ArrayRef<T>(arr)) {}
+
+  template <typename T, std::enable_if_t<is_argument<T>>* = nullptr>
+  ArgumentsRef(std::initializer_list<T> list)  // NOLINT
+      : ArgumentsRef(llvm::ArrayRef<T>(list)) {}
 
   const Argument& operator[](size_t index) const {
     assert(index < size_ && "index out of bounds");
@@ -196,7 +201,7 @@ class ArgumentsRef {
 // MLIR passes to lower types and operations to the LLVM dialect.
 
 //===----------------------------------------------------------------------===//
-// OpaqueArg for passing `!llvm.ptr` (opaque pointer) arguments.
+// OpaqueArg for passing `!rt.opaque` arguments (lowered to `!llvm.ptr`).
 //===----------------------------------------------------------------------===//
 
 class OpaqueArg final : public llvm::RTTIExtends<OpaqueArg, Argument> {
