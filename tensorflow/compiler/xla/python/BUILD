@@ -262,6 +262,7 @@ cc_library(
     name = "py_client",
     srcs = [
         "callback.cc",
+        "py_array.cc",
         "py_buffer.cc",
         "py_client.cc",
         "py_executable.cc",
@@ -272,6 +273,7 @@ cc_library(
     ]),
     hdrs = [
         "callback.h",
+        "py_array.h",
         "py_buffer.h",
         "py_client.h",
         "py_executable.h",
@@ -292,6 +294,7 @@ cc_library(
         ":pprof_profile_builder",
         ":python_ref_manager",
         ":python_utils",
+        ":status_casters",
         ":traceback",
         ":transfer_guard_lib",
         ":types",
@@ -304,6 +307,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
         "//tensorflow/compiler/xla/pjrt:host_callback",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:statusor",
