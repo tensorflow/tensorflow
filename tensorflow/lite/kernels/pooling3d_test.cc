@@ -31,18 +31,13 @@ namespace tflite {
 
 using ::testing::ElementsAreArray;
 
-enum PoolType {
-  kAveragePool,
-  kMaxPool,
-};
-
 template <typename T>
 class BasePoolingOpModel : public SingleOpModel {
  public:
-  BasePoolingOpModel(PoolType pool_type, TensorData input, int filter_d,
-                     int filter_h, int filter_w, TensorData output,
-                     Padding padding = Padding_VALID, int stride_d = 2,
-                     int stride_h = 2, int stride_w = 2) {
+  BasePoolingOpModel(BuiltinOperator pool_operator, TensorData input,
+                     int filter_d, int filter_h, int filter_w,
+                     TensorData output, Padding padding = Padding_VALID,
+                     int stride_d = 2, int stride_h = 2, int stride_w = 2) {
     if (input.type == TensorType_FLOAT32) {
       // Clear quantization params.
       input.min = input.max = 0.f;
@@ -50,18 +45,14 @@ class BasePoolingOpModel : public SingleOpModel {
     }
     input_ = AddInput(input);
     output_ = AddOutput(output);
-    if (pool_type == kAveragePool) {
-      SetBuiltinOp(BuiltinOperator_AVERAGE_POOL_3D,
-                   BuiltinOptions_Pool3DOptions,
-                   CreatePool3DOptions(builder_, padding, stride_d, stride_w,
-                                       stride_h, filter_d, filter_w, filter_h)
-                       .Union());
-    } else {
-      SetBuiltinOp(BuiltinOperator_MAX_POOL_3D, BuiltinOptions_Pool3DOptions,
-                   CreatePool3DOptions(builder_, padding, stride_d, stride_w,
-                                       stride_h, filter_d, filter_w, filter_h)
-                       .Union());
-    }
+
+    CHECK(pool_operator == BuiltinOperator_AVERAGE_POOL_3D ||
+          pool_operator == BuiltinOperator_MAX_POOL_3D);
+    SetBuiltinOp(pool_operator, BuiltinOptions_Pool3DOptions,
+                 CreatePool3DOptions(builder_, padding, stride_d, stride_w,
+                                     stride_h, filter_d, filter_w, filter_h)
+                     .Union());
+
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -103,7 +94,7 @@ float GetTolerance(float min, float max) {
 #ifdef GTEST_HAS_DEATH_TEST
 TEST(AveragePoolingOpTest, InvalidDimSize) {
   EXPECT_DEATH(
-      BasePoolingOpModel<float> m(kAveragePool,
+      BasePoolingOpModel<float> m(BuiltinOperator_AVERAGE_POOL_3D,
                                   /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
                                   /*filter_d=*/2,
                                   /*filter_h=*/2, /*filter_w=*/2,
@@ -115,7 +106,7 @@ TEST(AveragePoolingOpTest, InvalidDimSize) {
 
 TEST(AveragePoolingOpTest, ZeroStride) {
   EXPECT_DEATH(BasePoolingOpModel<float> m(
-                   kAveragePool,
+                   BuiltinOperator_AVERAGE_POOL_3D,
                    /*input=*/{TensorType_FLOAT32, {1, 2, 2, 4, 1}},
                    /*filter_d=*/2,
                    /*filter_h=*/2, /*filter_w=*/2,
@@ -143,7 +134,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePool) {
       static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
   const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
   BasePoolingOpModel<TypeParam> m(
-      kAveragePool,
+      BuiltinOperator_AVERAGE_POOL_3D,
       /*input=*/
       {GetTensorType<TypeParam>(),
        {1, 2, 2, 4, 1},
@@ -166,7 +157,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolFilterH1) {
       static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
   const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
   BasePoolingOpModel<TypeParam> m(
-      kAveragePool,
+      BuiltinOperator_AVERAGE_POOL_3D,
       /*input=*/
       {GetTensorType<TypeParam>(),
        {1, 2, 2, 4, 1},
@@ -189,7 +180,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingSameStride1) {
       static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
   const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
   BasePoolingOpModel<TypeParam> m(
-      kAveragePool,
+      BuiltinOperator_AVERAGE_POOL_3D,
       /*input=*/
       {GetTensorType<TypeParam>(),
        {1, 2, 2, 4, 1},
@@ -217,7 +208,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingValidStride1) {
       static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
   const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
   BasePoolingOpModel<TypeParam> m(
-      kAveragePool,
+      BuiltinOperator_AVERAGE_POOL_3D,
       /*input=*/
       {GetTensorType<TypeParam>(),
        {1, 2, 2, 4, 1},
@@ -243,7 +234,7 @@ TYPED_TEST(MaxPoolingOpTest, MaxPool) {
       static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
   const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
   BasePoolingOpModel<TypeParam> m(
-      kMaxPool,
+      BuiltinOperator_MAX_POOL_3D,
       /*input=*/
       {GetTensorType<TypeParam>(),
        {1, 2, 2, 4, 1},
@@ -266,7 +257,7 @@ TYPED_TEST(MaxPoolingOpTest, MaxPoolFilterH1) {
       static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
   const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
   BasePoolingOpModel<TypeParam> m(
-      kMaxPool,
+      BuiltinOperator_MAX_POOL_3D,
       /*input=*/
       {GetTensorType<TypeParam>(),
        {1, 2, 2, 4, 1},
@@ -289,7 +280,7 @@ TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingSameStride1) {
       static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
   const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
   BasePoolingOpModel<TypeParam> m(
-      kMaxPool,
+      BuiltinOperator_MAX_POOL_3D,
       /*input=*/
       {GetTensorType<TypeParam>(),
        {1, 2, 2, 4, 1},
@@ -317,7 +308,7 @@ TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingValidStride1) {
       static_cast<float>(std::numeric_limits<TypeParam>::max() + 1);
   const float kTolerance = GetTolerance<TypeParam>(-15.9375, 15.9375);
   BasePoolingOpModel<TypeParam> m(
-      kMaxPool,
+      BuiltinOperator_MAX_POOL_3D,
       /*input=*/
       {GetTensorType<TypeParam>(),
        {1, 2, 2, 4, 1},

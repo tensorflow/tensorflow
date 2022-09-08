@@ -387,8 +387,8 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
            {{BuiltinOperator_UNSORTED_SEGMENT_SUM, 1}, "2.10.0"},
            {{BuiltinOperator_ATAN2, 1}, "2.10.0"},
            {{BuiltinOperator_SIGN, 1}, "2.11.0"},
-           {{BuiltinOperator_AVERAGE_POOL_3D, 1}, "2.10.0"},
-           {{BuiltinOperator_MAX_POOL_3D, 1}, "2.10.0"}});
+           {{BuiltinOperator_AVERAGE_POOL_3D, 1}, "2.11.0"},
+           {{BuiltinOperator_MAX_POOL_3D, 1}, "2.11.0"}});
 
   std::pair<BuiltinOperator, int> version_key = {op_code, op_version};
   auto it = op_version_map->find(version_key);

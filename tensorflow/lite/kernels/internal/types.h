@@ -882,6 +882,7 @@ struct PreluParams {
   int output_shift_2;
 };
 
+// Pool 2D parameters
 struct PoolParams {
   FusedActivationFunctionType activation;
   PaddingType padding_type;
@@ -891,6 +892,22 @@ struct PoolParams {
   int filter_height;
   int filter_width;
   // uint8_t, etc, activation params.
+  int32_t quantized_activation_min;
+  int32_t quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
+};
+
+struct Pool3DParams {
+  Padding3DValues padding_values;
+  int stride_depth;
+  int stride_height;
+  int stride_width;
+  int filter_depth;
+  int filter_height;
+  int filter_width;
+  // int8_t and int16_t activation params.
   int32_t quantized_activation_min;
   int32_t quantized_activation_max;
   // float activation params.
@@ -1006,22 +1023,6 @@ struct LeakyReluParams {
   int32_t output_shift_alpha;
   int32_t output_multiplier_identity;
   int32_t output_shift_identity;
-};
-
-struct Pool3DParams {
-  Padding3DValues padding_values;
-  int stride_depth;
-  int stride_height;
-  int stride_width;
-  int filter_depth;
-  int filter_height;
-  int filter_width;
-  // int8_t and int16_t activation params.
-  int32_t quantized_activation_min;
-  int32_t quantized_activation_max;
-  // float activation params.
-  float float_activation_min;
-  float float_activation_max;
 };
 
 template <typename P>

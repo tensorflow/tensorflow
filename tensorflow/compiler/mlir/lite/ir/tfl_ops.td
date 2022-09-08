@@ -5706,7 +5706,7 @@ def TFL_AveragePool3DOp: TFL_Op<"average_pool_3d", [
   let summary = "Average Pool 3D operator";
 
   let description = [{
-    Performs average-pooling operation on 3D input.
+    Performs 3D average-pooling operation on the input.
   }];
 
   let arguments = (
@@ -5739,7 +5739,7 @@ def TFL_MaxPool3DOp : TFL_Op<"max_pool_3d", [
   let summary = "Max Pool 3D operator";
 
   let description = [{
-    Performs max-pooling operation on 3D input.
+    Performs 3D max-pooling operation on the input.
   }];
 
   let arguments = (
