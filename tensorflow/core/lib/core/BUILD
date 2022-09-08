@@ -185,6 +185,7 @@ filegroup(
         "threadpool.h",
         "threadpool_interface.h",
         "threadpool_options.h",
+        "//tensorflow/tsl/lib/core:legacy_lib_core_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -221,6 +222,7 @@ filegroup(
     name = "legacy_lib_core_status_test_util_header",
     srcs = [
         "status_test_util.h",
+        "//tensorflow/tsl/lib/core:legacy_lib_core_status_test_util_header",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

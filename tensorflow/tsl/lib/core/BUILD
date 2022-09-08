@@ -27,9 +27,13 @@ filegroup(
     name = "legacy_lib_core_all_headers",
     srcs = [
         "bitmap.h",
+        "status_test_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/core:__pkg__",
+    ],
 )
 
 filegroup(
@@ -48,6 +52,18 @@ filegroup(
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "legacy_lib_core_status_test_util_header",
+    srcs = [
+        "status_test_util.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/core:__pkg__",
+    ],
 )
 
 cc_library(
