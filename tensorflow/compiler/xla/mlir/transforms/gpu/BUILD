@@ -44,12 +44,15 @@ cc_library(
         "memref_get_global_to_arg.cc",
     ],
     hdrs = ["passes.h"],
-    compatible_with = get_compatible_with_cloud(),
+    # Override cc_library()'s internal default value of ["//buildenv/target:gce"].`
+    # TODO(ezhulenev): Do not depend on NCCL thunks in compiler passes.
+    compatible_with = [],
     deps = [
         ":custom_calls",
         ":passes_inc_gen",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
+        "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ControlFlowDialect",
