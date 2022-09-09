@@ -125,7 +125,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
-#include "tensorflow/compiler/xla/service/gpu/scatter_slice_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
@@ -522,7 +521,6 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<ScatterSimplifier>();
       pipeline.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
-      pipeline.AddPass<ScatterSliceSimplifier>();
       pipeline.AddPass<AlgebraicSimplifier>(layout_insensitive_algsimp_opts);
       pipeline.AddPass<BitcastDtypesExpander>();
       // AlgebraicSimplifier may add contracting dimensions to a dot.
