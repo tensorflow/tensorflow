@@ -1266,6 +1266,62 @@ class HloInstructionPatternOpcodeImpl {
   bool invert_;
 };
 
+// An HloInstructionPattern implementation that matches if the instruction has
+// an opcode from a prescribed list or is identical to the operand.
+template <typename OperandType, typename OperandImpl>
+class HloInstructionPatternOpcodeOrOperandImpl {
+ public:
+  explicit HloInstructionPatternOpcodeOrOperandImpl(
+      absl::Span<const HloOpcode> opcodes,
+      const HloInstructionPattern<OperandType, OperandImpl>& operand,
+      bool invert, int* match_index = nullptr)
+      : opcodes_(opcodes.begin(), opcodes.end()),
+        operand_(operand),
+        invert_(invert),
+        match_index_(match_index) {}
+
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    // Transparent case
+    if (operand_.Match(inst, option)) {
+      if (match_index_) {
+        *match_index_ = -1;
+      }
+      return true;
+    }
+    // Attempt to match entries in opcodes
+    auto it = c_find(opcodes_, inst->opcode());
+    bool match = it != opcodes_.end();
+    if (match_index_) {
+      *match_index_ = match ? it - opcodes_.begin() : 1000;
+    }
+    if (invert_ && match) {
+      EXPLAIN << "HloInstruction has opcodes " << HloOpcodeString(opcodes_)
+              << ", expected anything else";
+      return false;
+    }
+    if (!invert_ && !match) {
+      EXPLAIN << "HloInstruction doesn't have any of opcodes "
+              << HloOpcodeString(opcodes_);
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    if (!invert_) {
+      *os << "with any opcode of " << HloOpcodeString(opcodes_);
+    } else {
+      *os << "with any opcode other than " << HloOpcodeString(opcodes_);
+    }
+  }
+
+ private:
+  absl::InlinedVector<HloOpcode, 1> opcodes_;
+  bool invert_;
+  int* match_index_;
+  const HloInstructionPattern<OperandType, OperandImpl> operand_;
+};
+
 // An HloInstructionPattern implementation that matches only if the instruction
 // has one of a given list of custom call targets.
 class HloInstructionCustomCallTargetImpl {
@@ -1940,6 +1996,18 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternNameImpl(name));
   }
 
+  // Modifies the pattern to match if the instruction is the operand or has one
+  // of the given opcodes.
+  template <typename OperandType, typename OperandImpl>
+  constexpr auto WithOpcodeOrOperand(
+      absl::Span<const HloOpcode> opcodes,
+      const HloInstructionPattern<OperandType, OperandImpl>& operand,
+      int* match_index = nullptr) const {
+    return AppendImpl(
+        HloInstructionPatternOpcodeOrOperandImpl<OperandType, OperandImpl>(
+            opcodes, operand, false, match_index));
+  }
+
   // Modifies the pattern to match only if the instruction has the given opcode.
   auto WithOpcode(HloOpcode opcode) const {
     return AppendImpl(HloInstructionPatternOpcodeImpl(opcode, false));
@@ -2156,6 +2224,22 @@ XLA_NULLOP_PATTERN(Rng)
 XLA_NULLOP_PATTERN(PartitionId)
 XLA_NULLOP_PATTERN(ReplicaId)
 #undef XLA_NULLOP_PATTERN
+
+// Matches any of a set of unary ops including the operand and optionally
+// returns the index of the matched op.
+template <typename Arg>
+inline auto UnaryOpAnyOfOrOperand(Arg&& arg, absl::Span<const HloOpcode> ops,
+                                  int* match_index = nullptr) {
+  return Op().WithOpcodeOrOperand(ops, std::forward<Arg>(arg), match_index);
+}
+
+template <typename HloInstructionType, typename Arg>
+inline auto UnaryOpAnyOfOrOperand(HloInstructionType** matched_inst, Arg&& arg,
+                                  absl::Span<const HloOpcode> ops,
+                                  int* match_index = nullptr) {
+  return Op(matched_inst)
+      .WithOpcodeOrOperand(ops, std::forward<Arg>(arg), match_index);
+}
 
 // Helpers for unary instructions.
 #define XLA_UNOP_PATTERN(NAME)                                       \

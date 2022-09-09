@@ -31,6 +31,24 @@ std::string HloOpcodeString(HloOpcode opcode) {
   }
 }
 
+std::string HloOpcodeString(absl::InlinedVector<HloOpcode, 1> opcodes) {
+  std::string opcode_str;
+  for (int i = 0; i < opcodes.size(); ++i) {
+    switch (opcodes[i]) {
+#define CASE_OPCODE_STRING(enum_name, opcode_name, ...) \
+  case HloOpcode::enum_name:                            \
+    if (!opcode_str.empty()) {                          \
+      opcode_str.append(", ");                          \
+    }                                                   \
+    opcode_str.append(opcode_name);                     \
+    break;
+      HLO_OPCODE_LIST(CASE_OPCODE_STRING)
+#undef CASE_OPCODE_STRING
+    }
+  }
+  return opcode_str;
+}
+
 StatusOr<HloOpcode> StringToHloOpcode(const std::string& opcode_name) {
   static auto* opcode_map = new absl::flat_hash_map<std::string, HloOpcode>({
 #define STRING_TO_OPCODE_ENTRY(enum_name, opcode_name, ...) \

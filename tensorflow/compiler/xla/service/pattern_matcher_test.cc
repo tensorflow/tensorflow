@@ -1102,5 +1102,34 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
       root, m::CustomCall("test_target", m::Parameter(1), m::Parameter(0))));
 }
 
+TEST_F(PatternMatcherTest, UnaryOpAnyOfOrOperand) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+
+    ENTRY test {
+      p0 = f32[] parameter(0)
+      ROOT out = f32[] abs(p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  int match_index;
+  EXPECT_TRUE(Match(
+      root, m::UnaryOpAnyOfOrOperand(m::Abs(m::Parameter(0)),
+                                     {HloOpcode::kBitcast, HloOpcode::kCos},
+                                     &match_index)));
+  EXPECT_EQ(match_index, -1);
+  EXPECT_TRUE(
+      Match(root, m::UnaryOpAnyOfOrOperand(m::Bitcast(m::Parameter(0)),
+                                           {HloOpcode::kCos, HloOpcode::kAbs},
+                                           &match_index)));
+  EXPECT_EQ(match_index, 1);
+  EXPECT_FALSE(Match(
+      root, m::UnaryOpAnyOfOrOperand(m::Bitcast(m::Parameter(0)),
+                                     {HloOpcode::kCos, HloOpcode::kBitcast},
+                                     &match_index)));
+}
 }  // namespace
 }  // namespace xla
