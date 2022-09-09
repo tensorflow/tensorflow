@@ -809,8 +809,8 @@ bool AssertSameStructureHelper(
                && !(IsMappingHelper(o1) && IsMappingHelper(o2))
                /* For CompositeTensor & TypeSpec, we check below. */
                && !(check_composite_tensor_type_spec &&
-                    (IsCompositeTensor(o1) || IsTypeSpec(o1)) &&
-                    (IsCompositeTensor(o2) || IsTypeSpec(o2)))) {
+                    (IsCompositeTensor(o1) || IsCompositeTensor(o2)) &&
+                    (IsTypeSpec(o1) || IsTypeSpec(o2)))) {
       *is_type_error = true;
       *error_msg = tensorflow::strings::StrCat(
           "The two namedtuples don't have the same sequence type. "

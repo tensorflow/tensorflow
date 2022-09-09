@@ -1101,8 +1101,8 @@ def assert_shallow_structure(shallow_tree,
         pass
 
       elif ((_is_composite_tensor(shallow_tree) or
-             _is_type_spec(shallow_tree)) and
-            (_is_composite_tensor(input_tree) or _is_type_spec(input_tree))):
+             _is_composite_tensor(input_tree)) and
+            (_is_type_spec(shallow_tree) or _is_type_spec(input_tree))):
         pass  # Compatibility will be checked below.
 
       elif not (isinstance(shallow_tree, _collections_abc.Mapping) and

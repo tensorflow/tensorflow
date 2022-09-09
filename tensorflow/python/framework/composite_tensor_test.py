@@ -79,20 +79,13 @@ class CT(composite_tensor.CompositeTensor):
 
 
 # Another test CompositeTensor class.  `tf.nest` should treat different CT
-# classes without common supertypes as different structure types
-# (e.g. for assert_same_structure).
+# classes as different structure types (e.g. for assert_same_structure).
 class CTSpec2(CTSpec):
   pass
 
 
 class CT2(CT):
   _type_spec_class = CTSpec2
-
-
-# CompositeTensors with a common supertype are considered to be the same
-# structure by tf.nest (e.g. for assert_same_structure).
-class CT3(CT):
-  _type_spec_class = CTSpec
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -204,10 +197,6 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       {'s1': CT(['a', 'b', 'c']), 's2': CT(['d', 'e', 'f'])},
       {'s1': [1, CT([10]), CT(200, metadata='xyz')],
        's2': [8, CT([55]), CT(100, metadata='xyz')]},
-      {'s1': CT('abc'), 's2': CT3('xyz')},
-      {'s1': CT(['a', 'b', 'c']), 's2': CT3(['d', 'e', 'f'])},
-      {'s1': [1, CT([10]), CT(200, metadata='xyz')],
-       's2': [8, CT([55]), CT3(100, metadata='xyz')]},
   ])  # pyformat: disable
   def testNestAssertSameStructure(self, s1, s2, expand_composites=True):
     nest.assert_same_structure(s1, s2, expand_composites=expand_composites)
@@ -223,7 +212,7 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       {'s1': CT(['a', 'b', 'c']), 's2': CT(['d', 'e'])},
       {'s1': [1, CT(['a']), CT('b', metadata='xyz')],
        's2': [8, CT([55, 66]), CT(100, metadata='abc')]},
-      {'s1': CT(0), 's2': CT2(0)},
+      {'s1': CT(0), 's2': CT2(0), 'error': TypeError},
   ])  # pyformat: disable
   def testNestAssertSameStructureCompositeMismatch(self,
                                                    s1,
