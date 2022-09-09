@@ -1,6 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load(
     "//tensorflow/compiler/tests:build_defs.bzl",
@@ -1822,7 +1823,7 @@ tf_cuda_cc_test(
 
 # Create a deterministic version of randomized_tests_mlir with fixed seed.
 # This can be used in presubmit checks as it is no longer randomized.
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "randomized_tests_mlir_seeded",
     size = "medium",
     args = [
@@ -1843,7 +1844,7 @@ tf_cuda_cc_test(
 
 # Create a deterministic version of randomized_tests with fixed seed.
 # This can be used in presubmit checks as it is no longer randomized.
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "randomized_tests_seeded",
     size = "medium",
     args = [

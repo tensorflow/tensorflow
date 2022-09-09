@@ -50,7 +50,7 @@ load("//tensorflow:tensorflow.bzl", "tf_disable_ptxas_warning_flags")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_kernel_cc_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
@@ -544,7 +544,7 @@ cc_library(
     ]),
 )
 
-tf_cuda_only_cc_test(
+tf_cuda_kernel_cc_test(
     name = "gpu_prim_helpers_test",
     srcs = ["gpu_prim_helpers_test.cu.cc"],
     tags = ["no_cuda_asan"],  # TODO(b/183963619)
