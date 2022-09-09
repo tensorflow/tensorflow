@@ -525,10 +525,23 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
       Convert2DCBuffersToCppBuffers(args->argument_lists, args->num_devices,
                                     args->num_args);
 
-  PJRT_ASSIGN_OR_RETURN(
-      std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>
-          cpp_buffer_lists,
-      args->executable->executable->Execute(cpp_argument_lists, options));
+  std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> cpp_buffer_lists;
+  if (args->device_complete_events != nullptr) {
+    std::optional<std::vector<xla::PjRtFuture<xla::Status>>> returned_futures;
+    returned_futures.emplace();
+
+    PJRT_ASSIGN_OR_RETURN(cpp_buffer_lists,
+                          args->executable->executable->Execute(
+                              cpp_argument_lists, options, returned_futures));
+    for (int i = 0; i < returned_futures->size(); ++i) {
+      args->device_complete_events[i] =
+          new PJRT_Event{std::move((*returned_futures)[i])};
+    }
+  } else {
+    PJRT_ASSIGN_OR_RETURN(
+        cpp_buffer_lists,
+        args->executable->executable->Execute(cpp_argument_lists, options));
+  }
 
   for (int i = 0; i < cpp_buffer_lists.size(); ++i) {
     for (int j = 0; j < cpp_buffer_lists[i].size(); ++j) {
