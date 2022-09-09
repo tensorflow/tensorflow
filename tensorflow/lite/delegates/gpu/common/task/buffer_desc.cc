@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -50,6 +51,8 @@ absl::Status BufferDescriptor::PerformSelector(
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Read") {
     return PerformReadSelector(gpu_info, args, result);
+  } else if (selector == "Write") {
+    return PerformWriteSelector(gpu_info, args, result);
   } else if (selector == "GetPtr") {
     return PerformGetPtrSelector(args, template_args, result);
   } else {
@@ -120,6 +123,18 @@ absl::Status BufferDescriptor::PerformReadSelector(
     *result = absl::StrCat("buffer[", args[0], "]");
     return absl::OkStatus();
   }
+}
+
+absl::Status BufferDescriptor::PerformWriteSelector(
+    const GpuInfo& gpu_info, const std::vector<std::string>& args,
+    std::string* result) const {
+  if (args.size() != 2) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "BufferDescriptor Write require two arguments(value, index), but ",
+        args.size(), " was passed"));
+  }
+  *result = absl::StrCat("buffer[", args[1], "] = ", args[0]);
+  return absl::OkStatus();
 }
 
 absl::Status BufferDescriptor::PerformGetPtrSelector(
