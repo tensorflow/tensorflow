@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // Testing configuration of denormal state.
-#include "tensorflow/core/platform/denormal.h"
+#include "tensorflow/tsl/platform/denormal.h"
 
 #include <cstring>
 #include <limits>
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace port {
 
 TEST(DenormalStateTest, ConstructorAndAccessorsWork) {
@@ -152,4 +152,4 @@ TEST(ScopedDontFlushDenormalTest, SetsNoFlushingAndRestoresState) {
 }
 
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl

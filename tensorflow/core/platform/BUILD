@@ -237,17 +237,6 @@ cc_library(
     ],
 )
 
-tf_cc_test(
-    name = "denormal_test",
-    size = "small",
-    srcs = ["denormal_test.cc"],
-    deps = [
-        ":denormal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
 cc_library(
     name = "dynamic_annotations",
     hdrs = ["dynamic_annotations.h"],
