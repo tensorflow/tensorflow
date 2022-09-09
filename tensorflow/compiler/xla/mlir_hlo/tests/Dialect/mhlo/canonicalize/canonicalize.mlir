@@ -1801,6 +1801,78 @@ func.func @not_fold_sqrt_neg_constants() -> tensor<4xf32> {
   func.return %1 : tensor<4xf32>
 }
 
+// CHECK-LABEL: func @not_fold_rsqrt_neg_constants
+func.func @not_fold_rsqrt_neg_constants() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<-1.0> : tensor<4xf32>
+  %1 = "mhlo.rsqrt"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: mhlo.constant dense<-1.000000e+00> : tensor<4xf32>
+  // CHECK: mhlo.rsqrt
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_sqrt_const_zero
+func.func @fold_sqrt_const_zero() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<0.0> : tensor<4xf32>
+  %1 = "mhlo.sqrt"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  //     CHECK: mhlo.constant dense<0.000000e+00> : tensor<4xf32>
+  // CHECK-NOT: mhlo.sqrt
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @not_fold_rsqrt_const_zero
+func.func @not_fold_rsqrt_const_zero() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<0.0> : tensor<4xf32>
+  %1 = "mhlo.rsqrt"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: mhlo.constant dense<0.000000e+00> : tensor<4xf32>
+  // CHECK: mhlo.rsqrt
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_sine
+func.func @fold_sine() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<2.0> : tensor<4xf32>
+  %1 = "mhlo.sine"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  //     CHECK: mhlo.constant dense<0.909297406> : tensor<4xf32>
+  // CHECK-NOT: mhlo.sine
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_cosine
+func.func @fold_cosine() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<2.0> : tensor<4xf32>
+  %1 = "mhlo.cosine"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  //     CHECK: mhlo.constant dense<-0.416146845> : tensor<4xf32>
+  // CHECK-NOT: mhlo.cosine
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_tanh
+func.func @fold_tanh() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<2.0> : tensor<4xf32>
+  %1 = "mhlo.tanh"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  //     CHECK: mhlo.constant dense<0.964027583> : tensor<4xf32>
+  // CHECK-NOT: mhlo.tanh
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_exponential
+func.func @fold_exponential() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<2.0> : tensor<4xf32>
+  %1 = "mhlo.exponential"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  //     CHECK: mhlo.constant dense<7.3890562> : tensor<4xf32>
+  // CHECK-NOT: mhlo.exponential
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_logistic
+func.func @fold_logistic() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<2.0> : tensor<4xf32>
+  %1 = "mhlo.logistic"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  //     CHECK: mhlo.constant dense<0.880797088> : tensor<4xf32>
+  // CHECK-NOT: mhlo.logistic
+  func.return %1 : tensor<4xf32>
+}
+
 // CHECK-LABEL: func @fold_if_true(
 //  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]
 //  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]
