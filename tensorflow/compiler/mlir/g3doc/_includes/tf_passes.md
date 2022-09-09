@@ -436,6 +436,43 @@ After running this pass, the two islands are merged:
     return %0 : tensor<f32>
   }
 ```
+### `-tf-executor-split-into-island-per-op`: Transform from TF control dialect to TF executor dialect.
+Splits an island with multiple ops into multiple islands (one per op). Does
+not create any control dependencies between new islands, and does not
+propagate control dependencies that potentially existed between the old
+islands into the new islands. Maintains existing data dependencies between
+ops wrapped by the new islands.
+
+Example: original program:
+
+```mlir
+    func.func @dangling_print(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
+      %graph:2 = tf_executor.graph {
+        %island1:3 = tf_executor.island {
+          %add1 = "tf.Add"(%arg0, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+          %add2 = "tf.Add"(%add1, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+          %res = "tf.Print"(%add2) { message = "add result" } : (tensor<*xi32>) -> (tensor<*xi32>)
+          tf_executor.yield %add1, %add2 : tensor<*xi32>, tensor<*xi32>
+        }
+        tf_executor.fetch %island1#0, %island1#1 : tensor<*xi32>, tensor<*xi32>
+      }
+      func.return %graph#0, %graph#1 : tensor<*xi32>, tensor<*xi32>
+    }
+```
+
+will be converted by this pass into:
+
+```mlir
+    func.func @dangling_print(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
+      %0:2 = tf_executor.graph {
+        %outputs, %control = tf_executor.island wraps "tf.Add"(%arg0, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+        %outputs_0, %control_1 = tf_executor.island wraps "tf.Add"(%outputs, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+        %outputs_2, %control_3 = tf_executor.island wraps "tf.Print"(%outputs_0) {message = "add result"} : (tensor<*xi32>) -> tensor<*xi32>
+        tf_executor.fetch %outputs, %outputs_0 : tensor<*xi32>, tensor<*xi32>
+      }
+      return %0#0, %0#1 : tensor<*xi32>, tensor<*xi32>
+    }
+```
 ### `-tf-executor-to-functional-conversion`: Lifts tf_executor.island inner ops from a tf_executor.graph
 This pass converts tf_executor.graphs consisting of only tf_executor.islands and
 a tf_executor.fetch into a sea of nodes consisting of TensorFlow Dialect ops by
