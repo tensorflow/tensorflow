@@ -236,6 +236,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
     ],

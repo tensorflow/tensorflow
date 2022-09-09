@@ -364,6 +364,10 @@ PYBIND11_MODULE(xla_extension, m) {
                      &CompiledMemoryStats::alias_size_in_bytes)
       .def_readwrite("temp_size_in_bytes",
                      &CompiledMemoryStats::temp_size_in_bytes)
+      .def_property_readonly("serialized_hlo_proto",
+                             [](const CompiledMemoryStats& cms) -> py::bytes {
+                               return py::bytes(cms.serialized_hlo_proto);
+                             })
       .def("__str__", &CompiledMemoryStats::DebugString);
 
   py::class_<PyExecutable, std::shared_ptr<PyExecutable>> executable(
