@@ -24,10 +24,6 @@ limitations under the License.
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 
-#if XLA_ENABLE_XLIR
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_jitrt.h"
-#endif  // XLA_ENABLE_XLIR
-
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
@@ -39,9 +35,6 @@ int main(int argc, char **argv) {
 
   mlir::registerAllPasses();
   tfrt::gpu::RegisterPasses();
-#if XLA_ENABLE_XLIR
-  tensorflow::registerLmhloToJitRtPasses();
-#endif  // XLA_ENABLE_XLIR
   return failed(
       mlir::MlirOptMain(argc, argv, "MHLO TFRT pass driver\n", registry));
 }

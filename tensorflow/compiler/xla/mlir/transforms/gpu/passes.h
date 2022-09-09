@@ -24,6 +24,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+class ThunkSequence;  // forward declare
+
+// Populate passes that lower MLIR modules from a combination of LMHLO and
+// LMHLO_GPU dialects to the XLA Gpu runtime. This pipeline is composed from
+// the passes defined below, and few builtin MLIR passes.
+void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
+                                 ThunkSequence* thunk_sequence);
+
 //===----------------------------------------------------------------------===//
 // Auxiliary passes for lowering to XLA Gpu runtime.
 //===----------------------------------------------------------------------===//
@@ -44,8 +52,6 @@ createConvertGpuToGpuRuntimePass();
 //===----------------------------------------------------------------------===//
 // Passes for lowering from the `lmhlo` dialect.
 //===----------------------------------------------------------------------===//
-
-class ThunkSequence;  // forward declare
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertLmhloToGpuLaunchPass(ThunkSequence* thunk_sequence = nullptr);

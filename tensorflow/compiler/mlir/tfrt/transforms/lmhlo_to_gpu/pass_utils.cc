@@ -19,6 +19,7 @@
 
 #include "mlir/Pass/PassManager.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -34,7 +35,8 @@ Status ConvertLmhloToJitRt(mlir::ModuleOp module,
                        mlir::PassManager::Nesting::Implicit);
 
   tensorflow::applyTensorflowAndCLOptions(pm);
-  populateLmhloToJitRtPasses(pm, thunk_sequence);
+
+  xla::gpu::populateXlaGpuRuntimePasses(pm, thunk_sequence);
 
   if (pm.run(module).failed()) {
     return errors::Internal(

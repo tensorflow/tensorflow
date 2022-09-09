@@ -16,8 +16,11 @@
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LMHLO_TO_GPU_PASS_UTILS_H_
 
 #include "mlir/IR/BuiltinOps.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_jitrt.h"
 #include "tensorflow/core/platform/status.h"
+
+namespace xla::gpu {
+class ThunkSequence;
+}  // namespace xla::gpu
 
 namespace tensorflow {
 
