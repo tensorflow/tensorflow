@@ -45,13 +45,19 @@ std::string MAC(const GpuInfo& gpu_info, const std::string& accum,
   }
 }
 
+bool IsConvKernelXis1(const Convolution2DAttributes& conv_attr) {
+  return conv_attr.weights.shape.w == 1 && conv_attr.dilations.w == 1 &&
+         conv_attr.strides.w == 1 && conv_attr.padding.prepended.w == 0 &&
+         conv_attr.padding.appended.w == 0;
+}
+bool IsConvKernelYis1(const Convolution2DAttributes& conv_attr) {
+  return conv_attr.weights.shape.h == 1 && conv_attr.dilations.h == 1 &&
+         conv_attr.strides.h == 1 && conv_attr.padding.prepended.h == 0 &&
+         conv_attr.padding.appended.h == 0;
+}
+
 bool IsConv1x1(const Convolution2DAttributes& conv_attr) {
-  const auto conv_shape = conv_attr.weights.shape;
-  return conv_shape.w == 1 && conv_shape.h == 1 && conv_attr.dilations.w == 1 &&
-         conv_attr.dilations.h == 1 && conv_attr.strides.w == 1 &&
-         conv_attr.strides.h == 1 && conv_attr.padding.prepended.w == 0 &&
-         conv_attr.padding.prepended.h == 0 &&
-         conv_attr.padding.appended.w == 0 && conv_attr.padding.appended.h == 0;
+  return IsConvKernelXis1(conv_attr) && IsConvKernelYis1(conv_attr);
 }
 
 int GetConvWeightsCount(const Convolution2DAttributes& attr) {
@@ -127,6 +133,7 @@ class ThinPointwiseFuser {
   int link_counter_ = 0;
   uint64_t flops_ = 0;
   bool last_op_ = false;
+  bool first_op_ = false;
   int convs_count_ = 0;
   std::set<NodeId> fused_nodes_;
   BHWC output_shape_;
@@ -214,9 +221,9 @@ void ThinPointwiseFuser::AddConv2dData(
     }
   }
   // conv weights loading
-  for (int ky = 0; ky < conv_attr.weights.shape.h; ++ky) {
-    for (int kx = 0; kx < conv_attr.weights.shape.w; ++kx) {
-      for (int s = 0; s < src_slices; ++s) {
+  for (int s = 0; s < src_slices; ++s) {
+    for (int ky = 0; ky < conv_attr.weights.shape.h; ++ky) {
+      for (int kx = 0; kx < conv_attr.weights.shape.w; ++kx) {
         for (int d = 0; d < dst_slices; ++d) {
           for (int j = 0; j < 4; ++j) {
             for (int i = 0; i < 4; ++i) {
@@ -342,9 +349,6 @@ bool ThinPointwiseFuser::IsNodeSupported(const GpuInfo& gpu_info,
     if (!is_1x1_conv && !nodes_.empty()) {
       return false;
     }
-    if (is_1x1_conv && nodes_.empty()) {
-      return false;
-    }
     const int weights_size = GetConvWeightsSize(*conv_attr, op_def_.precision);
     if (gpu_info.IsAdreno() && gpu_info.IsApiOpenCl()) {
       if (convs_count_ >= 3 || buffer_size_ + weights_size > 1024 * 3) {
@@ -424,7 +428,7 @@ void ThinPointwiseFuser::AddNode(const GpuInfo& gpu_info, Node* node) {
   } else if (op_type == OperationType::CONVOLUTION_2D) {
     Convolution2DAttributes* attr =
         absl::any_cast<Convolution2DAttributes>(&node->operation.attributes);
-    if (IsConv1x1(*attr)) {
+    if (IsConv1x1(*attr) && !first_op_) {
       AddConv1x1Node(gpu_info, *attr);
     } else {
       AddConv2dNode(gpu_info, *attr);
@@ -620,9 +624,22 @@ void ThinPointwiseFuser::AddConv2dNode(const GpuInfo& gpu_info,
     code_ += "  FLT4 " + outputs_[d] + " = args.constants.Read(" +
              std::to_string(weights_counter_++) + ");\n";
   }
-  code_ += "  int x_offseted = X * args.stride_x + args.padding_x;\n";
-  code_ += "  int y_offseted = Y * args.stride_y + args.padding_y;\n";
-  code_ += "  int x_c, y_c;\n";
+  std::string x_base_coord = "X";
+  if (attr.strides.w != 1 || attr.padding.prepended.w != 0) {
+    code_ += "  int x_offseted = X * args.stride_x + args.padding_x;\n";
+    x_base_coord = "x_offseted";
+  }
+  std::string y_base_coord = "Y";
+  if (attr.strides.h != 1 || attr.padding.prepended.h != 0) {
+    code_ += "  int y_offseted = Y * args.stride_y + args.padding_y;\n";
+    y_base_coord = "y_offseted";
+  }
+  if (!IsConvKernelXis1(attr)) {
+    code_ += "  int x_c;\n";
+  }
+  if (!IsConvKernelYis1(attr)) {
+    code_ += "  int y_c;\n";
+  }
 
   auto generate_check = [&]() {
     std::string check;
@@ -650,25 +667,35 @@ void ThinPointwiseFuser::AddConv2dNode(const GpuInfo& gpu_info,
 
   const std::string postfixes[] = {".x", ".xy", ".xyz", ""};
   code_ += "  FLT4 src;\n";
-  for (int ky = 0; ky < attr.weights.shape.h; ++ky) {
-    code_ +=
-        "  y_c = y_offseted + " + std::to_string(ky) + " * args.dilation_y;\n";
-    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
-      code_ += "  y_in = y_c >= 0 && y_c < args.src_tensor.Height();\n";
-      code_ += "  y_c = clamp(y_c, 0, args.src_tensor.Height() - 1);\n";
-    }
-    for (int kx = 0; kx < attr.weights.shape.w; ++kx) {
-      code_ += "  x_c = x_offseted + " + std::to_string(kx) +
-               " * args.dilation_x;\n";
-      if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
-        code_ += "  x_in = x_c >= 0 && x_c < args.src_tensor.Width();\n";
-        code_ += "  x_c = clamp(x_c, 0, args.src_tensor.Width() - 1);\n";
+  for (int s = 0; s < src_slices; ++s) {
+    for (int ky = 0; ky < attr.weights.shape.h; ++ky) {
+      std::string y_coord = "Y";
+      if (!IsConvKernelYis1(attr)) {
+        y_coord = "y_c";
+        code_ += "  y_c = " + y_base_coord + " + " + std::to_string(ky) +
+                 " * args.dilation_y;\n";
+        if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
+          code_ += "  y_in = y_c >= 0 && y_c < args.src_tensor.Height();\n";
+          code_ += "  y_c = clamp(y_c, 0, args.src_tensor.Height() - 1);\n";
+        }
       }
-      std::string multiplier =
-          check.empty() ? "" : " * INIT_FLT(" + check + ")";
-      for (int s = 0; s < src_slices; ++s) {
-        code_ += "  src = args.src_tensor.Read(x_c, y_c, " + std::to_string(s) +
-                 ")" + multiplier + ";\n";
+      for (int kx = 0; kx < attr.weights.shape.w; ++kx) {
+        std::string x_coord = "X";
+        if (!IsConvKernelXis1(attr)) {
+          x_coord = "x_c";
+          code_ += "  x_c = " + x_base_coord + " + " + std::to_string(kx) +
+                   " * args.dilation_x;\n";
+          if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
+            code_ += "  x_in = x_c >= 0 && x_c < args.src_tensor.Width();\n";
+            code_ += "  x_c = clamp(x_c, 0, args.src_tensor.Width() - 1);\n";
+          }
+        }
+        std::string multiplier;
+        if (!IsConv1x1(attr) && !check.empty()) {
+          multiplier = " * INIT_FLT(" + check + ")";
+        }
+        code_ += "  src = args.src_tensor.Read(" + x_coord + ", " + y_coord +
+                 ", " + std::to_string(s) + ")" + multiplier + ";\n";
         for (int d = 0; d < dst_slices; ++d) {
           std::string src = "src";
           const std::string c0 =
@@ -711,9 +738,8 @@ bool ThinPointwiseFuser::Finalize(
       tensor_descriptors.find(last_node_outputs[0]->id)->second;
   op_def_.dst_tensors.push_back(dst_desc);
   for (int i = 0; i < nodes_.size(); ++i) {
-    if (i == nodes_.size() - 1) {
-      last_op_ = true;
-    }
+    first_op_ = i == 0;
+    last_op_ = i == nodes_.size() - 1;
     AddNode(gpu_info, nodes_[i]);
     fused_nodes_.insert(nodes_[i]->id);
   }
