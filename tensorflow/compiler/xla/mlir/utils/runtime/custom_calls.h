@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_GPU_CUSTOM_CALLS_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_GPU_CUSTOM_CALLS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_CUSTOM_CALLS_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_CUSTOM_CALLS_H_
 
 #include <string>
 #include <utility>
@@ -28,15 +28,15 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 
 namespace xla {
-namespace gpu {
+namespace runtime {
 
 // A helper class to create XLA runtime custom call declarations in the given
 // symbol table. This class ensures that for each unique combination of the
 // custom call target and function signature we create exaclty one custom call
 // funcation declaration.
-class CustomCalls {
+class CustomCallDeclarations {
  public:
-  explicit CustomCalls(mlir::SymbolTable sym_table);
+  explicit CustomCallDeclarations(mlir::SymbolTable sym_table);
 
   // Returns existing custom call declaration or creates a new one.
   mlir::func::FuncOp GetOrCreate(mlir::ImplicitLocOpBuilder& b,
@@ -65,7 +65,7 @@ class CustomCalls {
 void AppendCustomCallAttrs(mlir::Operation* op,
                            llvm::ArrayRef<mlir::NamedAttribute> attrs);
 
-}  // namespace gpu
+}  // namespace runtime
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_GPU_CUSTOM_CALLS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_CUSTOM_CALLS_H_

@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/custom_calls.h"
+#include "tensorflow/compiler/xla/mlir/utils/runtime/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
@@ -61,6 +61,9 @@ using mlir::lmhlo::InfeedOp;
 using mlir::lmhlo::OutfeedOp;
 using mlir::lmhlo::TerminatorOp;
 using mlir::lmhlo::WhileOp;
+
+using xla::runtime::AppendCustomCallAttrs;
+using xla::runtime::CustomCallDeclarations;
 
 class ConvertLmhloToGpuRuntimePass
     : public ConvertLmhloToGpuRuntimePassBase<ConvertLmhloToGpuRuntimePass> {
@@ -94,7 +97,7 @@ class IoFeedOpLowering : public OpRewritePattern<IoFeedOp> {
   static StringRef Target(OutfeedOp) { return "xla.gpu.outfeed"; }
 
  public:
-  IoFeedOpLowering(MLIRContext* ctx, CustomCalls& custom_calls)
+  IoFeedOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
       : OpRewritePattern<IoFeedOp>(ctx), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(IoFeedOp op,
@@ -115,7 +118,7 @@ class IoFeedOpLowering : public OpRewritePattern<IoFeedOp> {
   }
 
  private:
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 class InfeedOpLowering : public IoFeedOpLowering<InfeedOp> {
@@ -135,7 +138,7 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
   static constexpr const char kCustomCallTarget[] = "xla.gpu.custom_call";
 
  public:
-  CustomCallOpLowering(MLIRContext* ctx, CustomCalls& custom_calls)
+  CustomCallOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
       : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(CustomCallOp op,
@@ -186,7 +189,7 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
   }
 
  private:
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -196,7 +199,7 @@ class FftOpLowering : public OpRewritePattern<FftOp> {
   static constexpr const char kCustomCallTarget[] = "xla.gpu.fft";
 
  public:
-  FftOpLowering(MLIRContext* ctx, CustomCalls& custom_calls)
+  FftOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
       : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(FftOp op,
@@ -217,7 +220,7 @@ class FftOpLowering : public OpRewritePattern<FftOp> {
   }
 
  private:
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -569,7 +572,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
 
  public:
   CollectiveOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
-                       CustomCalls& custom_calls)
+                       CustomCallDeclarations& custom_calls)
       : OpRewritePattern<CollectiveOp>(ctx),
         uid_(uid),
         custom_calls_(custom_calls) {}
@@ -690,7 +693,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
 
  private:
   CollectiveUidGenerator& uid_;
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 #define DEFINE_COLLECTIVE_OP_LOWERING(OP)                \
@@ -713,7 +716,7 @@ class AllReduceDoneOpLowering : public OpRewritePattern<AllReduceDoneOp> {
 
  public:
   AllReduceDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
-                          CustomCalls& custom_calls)
+                          CustomCallDeclarations& custom_calls)
       : OpRewritePattern(ctx), uid_(uid), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(AllReduceDoneOp op,
@@ -745,7 +748,7 @@ class AllReduceDoneOpLowering : public OpRewritePattern<AllReduceDoneOp> {
 
  private:
   CollectiveUidGenerator& uid_;
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 template <typename CollectiveIdOp>
@@ -754,7 +757,7 @@ class CollectiveIdOpLowering : public OpRewritePattern<CollectiveIdOp> {
   static StringRef Target(PartitionIdOp) { return "xla.gpu.partition_id"; }
 
  public:
-  CollectiveIdOpLowering(MLIRContext* ctx, CustomCalls& custom_calls)
+  CollectiveIdOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
       : OpRewritePattern<CollectiveIdOp>(ctx), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(CollectiveIdOp op,
@@ -770,7 +773,7 @@ class CollectiveIdOpLowering : public OpRewritePattern<CollectiveIdOp> {
   }
 
  private:
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 class ReplicaIdOpLowering : public CollectiveIdOpLowering<ReplicaIdOp> {
@@ -791,7 +794,7 @@ void ConvertLmhloToGpuRuntimePass::runOnOperation() {
 
   // Keep track of the custom calls created from the lowered operations.
   SymbolTable sym_table(module);
-  CustomCalls custom_calls(std::move(sym_table));
+  CustomCallDeclarations custom_calls(std::move(sym_table));
 
   // Convert lmhlo operations to XLA gpu runtime custom calls.
   RewritePatternSet patterns(ctx);

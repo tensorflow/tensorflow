@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
@@ -35,7 +34,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/custom_calls.h"
+#include "tensorflow/compiler/xla/mlir/utils/runtime/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 
@@ -55,6 +54,8 @@ using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
 using mlir::lmhlo_gpu::ConvForwardOp;
 using mlir::lmhlo_gpu::CublasLtMatmulOp;
 using mlir::lmhlo_gpu::GEMMOp;
+
+using xla::runtime::CustomCallDeclarations;
 
 class ConvertLmhloGpuToGpuRuntimePass
     : public ConvertLmhloGpuToGpuRuntimePassBase<
@@ -86,7 +87,7 @@ class GemmOpLowering : public OpRewritePattern<GEMMOp> {
 
  public:
   GemmOpLowering(MLIRContext* ctx, GemmUidGenerator& uid,
-                 CustomCalls& custom_calls)
+                 CustomCallDeclarations& custom_calls)
       : OpRewritePattern<GEMMOp>(ctx), uid_(uid), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(GEMMOp op,
@@ -121,7 +122,7 @@ class GemmOpLowering : public OpRewritePattern<GEMMOp> {
 
  private:
   GemmUidGenerator& uid_;
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -132,7 +133,7 @@ class CublasLtMatmulOpLowering : public OpRewritePattern<CublasLtMatmulOp> {
 
  public:
   CublasLtMatmulOpLowering(MLIRContext* ctx, GemmUidGenerator& uid,
-                           CustomCalls& custom_calls)
+                           CustomCallDeclarations& custom_calls)
       : OpRewritePattern<CublasLtMatmulOp>(ctx),
         uid_(uid),
         custom_calls_(custom_calls) {}
@@ -193,7 +194,7 @@ class CublasLtMatmulOpLowering : public OpRewritePattern<CublasLtMatmulOp> {
 
  private:
   GemmUidGenerator& uid_;
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -218,7 +219,8 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
   }
 
  public:
-  explicit ConvOpLowering(MLIRContext* ctx, CustomCalls& custom_calls)
+  explicit ConvOpLowering(MLIRContext* ctx,
+                          CustomCallDeclarations& custom_calls)
       : OpRewritePattern<Conv>(ctx), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(Conv op,
@@ -291,7 +293,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
   }
 
  private:
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 class ConvForwardOpLowering : public ConvOpLowering<ConvForwardOp> {
@@ -328,7 +330,8 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
   static constexpr const char kCustomCallTarget[] = "xla.gpu.cholesky";
 
  public:
-  explicit CholeskyOpLowering(MLIRContext* ctx, CustomCalls& custom_calls)
+  explicit CholeskyOpLowering(MLIRContext* ctx,
+                              CustomCallDeclarations& custom_calls)
       : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(CholeskyOp op,
@@ -364,7 +367,7 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
   }
 
  private:
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -375,7 +378,7 @@ void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
 
   // Keep track of the custom calls created from the lowered operations.
   SymbolTable sym_table(module);
-  CustomCalls custom_calls(std::move(sym_table));
+  CustomCallDeclarations custom_calls(std::move(sym_table));
 
   // Convert lmhlo_gpu operations to XLA gpu runtime custom calls.
   RewritePatternSet patterns(ctx);

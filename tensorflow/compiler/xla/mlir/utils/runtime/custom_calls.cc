@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/custom_calls.h"
+#include "tensorflow/compiler/xla/mlir/utils/runtime/custom_calls.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 
 namespace xla {
-namespace gpu {
+namespace runtime {
 
 using namespace mlir;  // NOLINT
 using mlir::func::FuncOp;
@@ -33,10 +33,12 @@ using llvm::StringRef;
 
 static constexpr const char kDirectCustomCall[] = "rt.direct_custom_call";
 
-CustomCalls::CustomCalls(SymbolTable sym_table) : sym_table_(sym_table) {}
+CustomCallDeclarations::CustomCallDeclarations(SymbolTable sym_table)
+    : sym_table_(sym_table) {}
 
-FuncOp CustomCalls::GetOrCreate(ImplicitLocOpBuilder& b, StringRef target,
-                                FunctionType type) {
+FuncOp CustomCallDeclarations::GetOrCreate(ImplicitLocOpBuilder& b,
+                                           StringRef target,
+                                           FunctionType type) {
   // Check if we already have a custom all declaration.
   Key key = {target, type};
   if (auto it = custom_calls_.find(key); it != custom_calls_.end())
@@ -60,14 +62,15 @@ FuncOp CustomCalls::GetOrCreate(ImplicitLocOpBuilder& b, StringRef target,
   return declaration;
 }
 
-FuncOp CustomCalls::GetOrCreate(ImplicitLocOpBuilder& b, StringRef target,
-                                TypeRange inputs, TypeRange results) {
+FuncOp CustomCallDeclarations::GetOrCreate(ImplicitLocOpBuilder& b,
+                                           StringRef target, TypeRange inputs,
+                                           TypeRange results) {
   auto type = FunctionType::get(b.getContext(), inputs, results);
   return GetOrCreate(b, target, type);
 }
 
-FuncOp CustomCalls::GetOrCreate(ImplicitLocOpBuilder& b, StringRef target,
-                                Operation* op) {
+FuncOp CustomCallDeclarations::GetOrCreate(ImplicitLocOpBuilder& b,
+                                           StringRef target, Operation* op) {
   return GetOrCreate(b, target, op->getOperandTypes(), op->getResultTypes());
 }
 
@@ -76,5 +79,5 @@ void AppendCustomCallAttrs(mlir::Operation* op,
   for (auto& attr : attrs) op->setAttr(attr.getName(), attr.getValue());
 }
 
-}  // namespace gpu
+}  // namespace runtime
 }  // namespace xla

@@ -7,18 +7,6 @@ package(
     licenses = ["notice"],
 )
 
-cc_library(
-    name = "custom_calls",
-    srcs = ["custom_calls.cc"],
-    hdrs = ["custom_calls.h"],
-    compatible_with = get_compatible_with_cloud(),
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
 gentbl_cc_library(
     name = "passes_inc_gen",
     compatible_with = get_compatible_with_cloud(),
@@ -50,8 +38,8 @@ cc_library(
     # TODO(ezhulenev): Do not depend on NCCL thunks in compiler passes.
     compatible_with = [],
     deps = [
-        ":custom_calls",
         ":passes_inc_gen",
+        "//tensorflow/compiler/xla/mlir/utils/runtime:custom_calls",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
