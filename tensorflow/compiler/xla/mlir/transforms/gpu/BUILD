@@ -40,6 +40,7 @@ cc_library(
     name = "passes",
     srcs = [
         "gpu_to_gpu_runtime.cc",
+        "lmhlo_gpu_to_gpu_runtime.cc",
         "lmhlo_to_gpu_runtime.cc",
         "memref_get_global_to_arg.cc",
     ],
@@ -53,6 +54,8 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
+        "//tensorflow/compiler/xla/stream_executor:blas",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ControlFlowDialect",

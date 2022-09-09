@@ -48,6 +48,13 @@ createConvertGpuToGpuRuntimePass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertLmhloToGpuRuntimePass();
 
+//===----------------------------------------------------------------------===//
+// Passes for lowering from the `lmhlo_gpu` dialect.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertLmhloGpuToGpuRuntimePass();
+
 //===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION

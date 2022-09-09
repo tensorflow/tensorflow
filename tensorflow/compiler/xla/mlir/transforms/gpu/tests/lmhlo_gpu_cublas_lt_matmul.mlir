@@ -1,4 +1,5 @@
-// RUN: lhlo-tfrt-opt %s -lmhlo-gpu-to-jitrt -split-input-file | FileCheck %s
+// RUN: xla-gpu-opt %s -split-input-file -xla-lmhlo-gpu-to-gpu-runtime \
+// RUN:   | FileCheck %s
 
 // CHECK: @compute(
 // CHECK:   %[[A:[a-z0-9]+]]: memref<2x6x2x2xf32>,

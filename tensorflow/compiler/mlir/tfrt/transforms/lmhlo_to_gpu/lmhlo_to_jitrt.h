@@ -27,9 +27,6 @@ namespace tensorflow {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertGpuBinaryToJitRtPass();
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createConvertLmhloGpuToJitRtPass();
-
 void registerLmhloToJitRtPasses();
 
 // Passes to lower from the lmhlo to the JitRt compatible program.

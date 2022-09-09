@@ -15,15 +15,3 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertLmhloGpuToJitRtPass :
-    Pass<"lmhlo-gpu-to-jitrt", "mlir::ModuleOp"> {
-  let summary = "Converts lmhlo_gpu ops to JitRt Gpu custom calls.";
-
-  let description = [{
-    Converts operations in the lmhlo_gpu dialect (e.g. lmhlo_gpu.gemm) to the
-    JitRt custom calls (custom call handlers implemented as library calls, e.g.
-    cuBLAS for gemm).
-  }];
-
-  let constructor = "createConvertLmhloGpuToJitRtPass()";
-}

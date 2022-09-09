@@ -51,7 +51,7 @@ def ConvertMemrefGetGlobalToArgPass :
 
 def ConvertGpuToGpuRuntimePass :
     Pass<"xla-gpu-to-gpu-runtime", "mlir::ModuleOp"> {
-  let summary = "Converts gpu operations to XLA Gpu runtime custom calls.";
+  let summary = "Converts gpu operations to XLA Gpu runtime custom calls";
 
   let description = [{
     Converts gpu operations (function launch, memcpy, etc...) to the XLA Gpu
@@ -67,7 +67,7 @@ def ConvertGpuToGpuRuntimePass :
 
 def ConvertLmhloToGpuRuntimePass :
     Pass<"xla-lmhlo-to-gpu-runtime", "mlir::ModuleOp"> {
-  let summary = "Converts lmhlo operations to XLA Gpu runtime custom calls.";
+  let summary = "Converts lmhlo operations to XLA Gpu runtime custom calls";
 
   let description = [{
     Converts lmhlo dialect operations (infeed, outfeed, collectives, etc...) to
@@ -75,6 +75,22 @@ def ConvertLmhloToGpuRuntimePass :
   }];
 
   let constructor = "createConvertLmhloToGpuRuntimePass()";
+}
+
+//===----------------------------------------------------------------------===//
+// Passes for lowering from the `lmhlo_gpu` dialect.
+//===----------------------------------------------------------------------===//
+
+def ConvertLmhloGpuToGpuRuntimePass :
+    Pass<"xla-lmhlo-gpu-to-gpu-runtime", "mlir::ModuleOp"> {
+  let summary = "Converts lmhlo_gpu operations to XLA Gpu runtime custom calls";
+
+  let description = [{
+    Converts lmhlo_gpu dialect operations (gemm, convolution, etc...) to
+    the XLA Gpu runtime custom calls.
+  }];
+
+  let constructor = "createConvertLmhloGpuToGpuRuntimePass()";
 }
 
 #endif  // XLA_GPU_PASSES
