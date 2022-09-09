@@ -1,0 +1,12 @@
+diff --git a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+index e9dcc37c40c7..12e0650d0a1b 100644
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -8862,6 +8862,7 @@ cc_library(
+         ":AffineUtils",
+         ":ArithmeticDialect",
+         ":ArithmeticTransforms",
++        ":ArithmeticUtils",
+         ":DialectUtils",
+         ":FuncDialect",
+         ":IR",
