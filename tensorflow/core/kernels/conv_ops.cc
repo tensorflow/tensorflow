@@ -827,6 +827,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   const int64_t patch_cols = filter.dim_size(1);
   const int64_t patch_depths = filter.dim_size(2);
 
+  T alpha=T(1.0), beta=T(0.0);
   OP_REQUIRES(
       ctx, filter.NumElements() > 0,
       errors::InvalidArgument("filter must not have zero elements "
@@ -853,10 +854,12 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    OP_REQUIRES_OK(
-        ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
-                                  a_ptr, k, &c_ptr, n,
-                                  se::blas::kDefaultComputePrecision));
+    se::blas::GemmCall call{
+      no_transpose, no_transpose, n, m, k,
+      se::blas::ToDataType<T>::value, &alpha,
+      &b_ptr, int(n), &a_ptr, int(k), &beta, &c_ptr, int(n)
+    };
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(call));
     return;
   } else if (patch_rows == in_rows && patch_cols == in_cols &&
              !is_grouped_convolution && row_dilation == 1 &&
@@ -876,10 +879,12 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    OP_REQUIRES_OK(
-        ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
-                                  a_ptr, k, &c_ptr, n,
-                                  se::blas::kDefaultComputePrecision));
+    se::blas::GemmCall call{
+      no_transpose, no_transpose, n, m, k,
+      se::blas::ToDataType<T>::value, &alpha,
+      &b_ptr, int(n), &a_ptr, int(k), &beta, &c_ptr, int(n)
+    };
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(call));
     return;
   }
 

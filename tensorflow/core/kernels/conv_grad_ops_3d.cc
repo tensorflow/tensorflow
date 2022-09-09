@@ -1326,6 +1326,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
+    T alpha=T(1.0), beta=T(0.0);
     bool is_grouped_convolution = filter_shape.dim_size(3) != dims.in_depth;
     if (!is_grouped_convolution && dims.filter_size(0) == 1 &&
         dims.filter_size(1) == 1 && dims.filter_size(2) == 1 &&
@@ -1347,10 +1348,12 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       auto transpose = se::blas::Transpose::kTranspose;
       auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-      OP_REQUIRES_OK(
-          context, stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr,
-                                        k, a_ptr, k, &c_ptr, n,
-                                        se::blas::kDefaultComputePrecision));
+      se::blas::GemmCall call{
+        transpose, no_transpose, n, m, k,
+        se::blas::ToDataType<T>::value, &alpha,
+        &b_ptr, int(k), &a_ptr, int(k), &beta, &c_ptr, int(n)
+      };
+      OP_REQUIRES_OK(context, stream->ThenBlasGemm(call));
       return;
     } else if (!is_grouped_convolution &&
                dims.filter_size(0) == dims.input_size(0) &&
@@ -1372,10 +1375,12 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       auto transpose = se::blas::Transpose::kTranspose;
       auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-      OP_REQUIRES_OK(
-          context, stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr,
-                                        k, a_ptr, k, &c_ptr, n,
-                                        se::blas::kDefaultComputePrecision));
+      se::blas::GemmCall call{
+        transpose, no_transpose, n, m, k,
+        se::blas::ToDataType<T>::value, &alpha,
+        &b_ptr, int(k), &a_ptr, int(k), &beta, &c_ptr, int(n)
+      };
+      OP_REQUIRES_OK(context, stream->ThenBlasGemm(call));
       return;
     }
 
@@ -1710,6 +1715,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+    T alpha=T(1.0), beta=T(0.0);
 
     bool is_grouped_convolution = filter_shape.dim_size(3) != dims.in_depth;
     if (!is_grouped_convolution && dims.filter_size(1) == 1 &&
@@ -1740,11 +1746,13 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                   filter_backprop->template flat<T>().size());
 
-      OP_REQUIRES_OK(context,
-                     stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                                          se::blas::Transpose::kTranspose, n, m,
-                                          k, a_ptr, n, b_ptr, m, &c_ptr, n,
-                                          se::blas::kDefaultComputePrecision));
+      se::blas::GemmCall call{
+        se::blas::Transpose::kNoTranspose,
+        se::blas::Transpose::kTranspose, n, m, k,
+        se::blas::ToDataType<T>::value, &alpha,
+        &a_ptr, int(n), &b_ptr, int(m), &beta, &c_ptr, int(n)
+      };
+      OP_REQUIRES_OK(context, stream->ThenBlasGemm(call));
       return;
     } else if (!is_grouped_convolution &&
                dims.filter_size(0) == dims.input_size(0) &&
@@ -1763,11 +1771,13 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                   filter_backprop->template flat<T>().size());
 
-      OP_REQUIRES_OK(context,
-                     stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                                          se::blas::Transpose::kTranspose, n, m,
-                                          k, b_ptr, n, a_ptr, m, &c_ptr, n,
-                                          se::blas::kDefaultComputePrecision));
+      se::blas::GemmCall call{
+        se::blas::Transpose::kNoTranspose,
+        se::blas::Transpose::kTranspose, n, m, k,
+        se::blas::ToDataType<T>::value, &alpha,
+        &b_ptr, int(n), &a_ptr, int(m), &beta, &c_ptr, int(n)
+      };
+      OP_REQUIRES_OK(context, stream->ThenBlasGemm(call));
       return;
     }
 

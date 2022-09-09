@@ -48,12 +48,13 @@ void TensorCuBlasGemm<T>::operator()(OpKernelContext* ctx, bool transa,
   auto a_ptr = AsDeviceMemory(a);
   auto b_ptr = AsDeviceMemory(b);
   auto c_ptr = AsDeviceMemory(c);
+  T alpha_t = static_cast<T>(alpha), beta_t = static_cast<T>(beta);
+  se::blas::GemmCall call{trans[transa], trans[transb], m, n, k, 
+      se::blas::ToDataType<T>::value,
+      &alpha_t, &a_ptr, lda, &b_ptr, ldb, &beta_t, &c_ptr, ldc};
 
   OP_REQUIRES_OK(
-      ctx, ctx->op_device_context()->stream()->ThenBlasGemm(
-               trans[transa], trans[transb], m, n, k, static_cast<T>(alpha),
-               a_ptr, lda, b_ptr, ldb, static_cast<T>(beta), &c_ptr, ldc,
-               se::blas::kDefaultComputePrecision));
+      ctx, ctx->op_device_context()->stream()->ThenBlasGemm(call));
 #else
   ctx->SetStatus(errors::InvalidArgument("CuBlasGemm needs CUDA."));
 #endif

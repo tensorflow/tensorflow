@@ -751,321 +751,16 @@ class Stream {
                        const DeviceMemory<double> &x, int incx, double beta,
                        DeviceMemory<double> *y, int incy);
 
-  template <typename InputType>
-  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                            uint64_t m, uint64 n, uint64 k,
-                            const DeviceMemory<InputType> &a, int lda,
-                            const DeviceMemory<InputType> &b, int ldb,
-                            DeviceMemory<InputType> *c, int ldc,
-                            blas::ComputePrecision precision) {
-    InputType alpha{1.0};
-    InputType beta{0.0};
-    return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
-                        ldc, precision);
-  }
-
-  // TODO(parkers): Update all callers to pass kDefaultComputePrecision.
-  template <typename InputType>
-  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                            uint64_t m, uint64 n, uint64 k,
-                            const DeviceMemory<InputType> &a, int lda,
-                            const DeviceMemory<InputType> &b, int ldb,
-                            DeviceMemory<InputType> *c, int ldc) {
-    return ThenBlasGemm(transa, transb, m, n, k, a, lda, b, ldb, c, ldc,
-                        blas::kDefaultComputePrecision);
-  }
-
-  template <typename InputType, typename ConstantType>
-  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                            uint64_t m, uint64 n, uint64 k, ConstantType alpha,
-                            const DeviceMemory<InputType> &a, int lda,
-                            const DeviceMemory<InputType> &b, int ldb,
-                            ConstantType beta, DeviceMemory<InputType> *c,
-                            int ldc, blas::ComputePrecision precision) {
-    static_assert(
-        detail::is_any_of<InputType, Eigen::half, Eigen::bfloat16, float,
-                          double, std::complex<float>, std::complex<double>>(),
-        "Input can be half, bf16, float, double, std::complex<float> or "
-        "std::complex<double>");
-    static_assert(!std::is_same_v<InputType, Eigen::half> ||
-                      detail::is_any_of<ConstantType, float, Eigen::half>(),
-                  "If input is Eigen::half, constant has to be either "
-                  "Eigen::half or float");
-    static_assert(
-        detail::is_any_of<InputType, Eigen::half, ConstantType>(),
-        "If input is not Eigen::half, constant and input types have to match");
-    blas::BlasSupport *blas = parent()->AsBlas();
-    if (!blas) {
-      return port::InternalError(
-          "Attempting to perform BLAS operation using "
-          "StreamExecutor without BLAS support");
-    }
-
-    void *alpha_ptr = &alpha;
-    void *beta_ptr = &beta;
-    float alpha_storage, beta_storage;
-    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
-                                    &beta_storage);
-
-    return blas->DoBlasGemm(this, transa, transb, m, n, k,
-                            blas::ToDataType<InputType>::value, alpha_ptr, a,
-                            lda, b, ldb, beta_ptr, c, ldc, precision);
-  }
-
-  // TODO(parkers): Update all callers to pass kDefaultComputePrecision.
-  template <typename InputType, typename ConstantType>
-  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                            uint64_t m, uint64 n, uint64 k, ConstantType alpha,
-                            const DeviceMemory<InputType> &a, int lda,
-                            const DeviceMemory<InputType> &b, int ldb,
-                            ConstantType beta, DeviceMemory<InputType> *c,
-                            int ldc) {
-    return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
-                        ldc, blas::kDefaultComputePrecision);
-  }
-
-  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, float alpha,
-                                    const DeviceMemory<Eigen::half> &a, int lda,
-                                    const DeviceMemory<Eigen::half> &b, int ldb,
-                                    float beta, DeviceMemory<Eigen::half> *c,
-                                    int ldc,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, float alpha,
-                                    const DeviceMemory<float> &a, int lda,
-                                    const DeviceMemory<float> &b, int ldb,
-                                    float beta, DeviceMemory<float> *c, int ldc,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, double alpha,
-                                    const DeviceMemory<double> &a, int lda,
-                                    const DeviceMemory<double> &b, int ldb,
-                                    double beta, DeviceMemory<double> *c,
-                                    int ldc,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<float> alpha,
-      const DeviceMemory<std::complex<float>> &a, int lda,
-      const DeviceMemory<std::complex<float>> &b, int ldb,
-      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<double> alpha,
-      const DeviceMemory<std::complex<double>> &a, int lda,
-      const DeviceMemory<std::complex<double>> &b, int ldb,
-      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
-      blas::ProfileResult *output_profile_result);
-
-  template <typename InputType, typename OutputType>
-  port::Status ThenBlasGemmWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, const DeviceMemory<InputType> &a, int lda,
-      const DeviceMemory<InputType> &b, int ldb, DeviceMemory<OutputType> *c,
-      int ldc, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result) {
-    OutputType alpha{1};
-    OutputType beta{0};
-    return ThenBlasGemmWithAlgorithm(transa, transb, m, n, k, alpha, a, lda, b,
-                                     ldb, beta, c, ldc, computation_type,
-                                     algorithm, blas::kDefaultComputePrecision,
-                                     output_profile_result);
-  }
-
-  template <typename InputType, typename OutputType, typename ConstantType>
-  port::Status ThenBlasGemmWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
-      const DeviceMemory<InputType> &b, int ldb, ConstantType beta,
-      DeviceMemory<OutputType> *c, int ldc,
-      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-      blas::ComputePrecision precision,
-      blas::ProfileResult *output_profile_result) {
-    TF_RETURN_IF_ERROR(
-        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
-            computation_type));
-
-    blas::BlasSupport *blas = parent()->AsBlas();
-    if (!blas) {
-      return port::InternalError(
-          "Attempting to perform BLAS operation using "
-          "StreamExecutor without BLAS support");
-    }
-
-    void *alpha_ptr = &alpha;
-    void *beta_ptr = &beta;
-    float alpha_storage, beta_storage;
-    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
-                                    &beta_storage);
-
-    port::Status st = blas->DoBlasGemmWithAlgorithm(
-        this, transa, transb, m, n, k, alpha_ptr, a,
-        blas::ToDataType<InputType>::value, lda, b,
-        blas::ToDataType<InputType>::value, ldb, beta_ptr, c,
-        blas::ToDataType<OutputType>::value, ldc, computation_type, algorithm,
-        precision, output_profile_result);
-    if (output_profile_result) {
-      // The error is recorded in the profile.
-      return ::tsl::OkStatus();
-    }
-    return st;
-  }
-
-  template <typename InputType, typename OutputType, typename ConstantType>
-  port::Status ThenBlasGemmStridedBatchedWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
-      int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
-      int64_t stride_b, ConstantType beta, DeviceMemory<OutputType> *c, int ldc,
-      int64_t stride_c, int batch_count, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm, blas::ComputePrecision precision,
-      blas::ProfileResult *output_profile_result) {
-    TF_RETURN_IF_ERROR(
-        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
-            computation_type));
-
-    blas::BlasSupport *blas = parent()->AsBlas();
-    if (!blas) {
-      return port::InternalError(
-          "Attempting to perform BLAS operation using "
-          "StreamExecutor without BLAS support");
-    }
-    void *alpha_ptr = &alpha;
-    void *beta_ptr = &beta;
-    float alpha_storage, beta_storage;
-    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
-                                    &beta_storage);
-    port::Status st = blas->DoBlasGemmStridedBatchedWithAlgorithm(
-        this, transa, transb, m, n, k, alpha_ptr, a,
-        blas::ToDataType<InputType>::value, lda, stride_a, b,
-        blas::ToDataType<InputType>::value, ldb, stride_b, beta_ptr, c,
-        blas::ToDataType<OutputType>::value, ldc, stride_c, batch_count,
-        computation_type, algorithm, precision, output_profile_result);
-    if (output_profile_result) {
-      // The error is recorded in the profile.
-      return ::tsl::OkStatus();
-    }
-    return st;
-  }
-
+  port::Status ThenBlasGemm(const blas::GemmCall& call);
   template <typename T>
   using DeviceMemorySlice = port::ArraySlice<DeviceMemory<T> *>;  // non-absl ok
 
   // See BlasSupport::DoBlasGemmBatched.
-  Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
-                              uint64_t m, uint64 n, uint64_t k, float alpha,
-                              const DeviceMemorySlice<Eigen::half> &a, int lda,
-                              const DeviceMemorySlice<Eigen::half> &b, int ldb,
-                              float beta,
-                              const DeviceMemorySlice<Eigen::half> &c, int ldc,
-                              int batch_count);
-  Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
-                              uint64_t m, uint64 n, uint64 k, float alpha,
-                              const DeviceMemorySlice<float> &a, int lda,
-                              const DeviceMemorySlice<float> &b, int ldb,
-                              float beta, const DeviceMemorySlice<float> &c,
-                              int ldc, int batch_count);
-  Stream &ThenBlasGemmBatched(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64 k, double alpha,
-      const port::ArraySlice<DeviceMemory<double> *> &a,  // non-absl ok
-      int lda,
-      const port::ArraySlice<DeviceMemory<double> *> &b,  // non-absl ok
-      int ldb, double beta,
-      const port::ArraySlice<DeviceMemory<double> *> &c,  // non-absl ok
-      int ldc, int batch_count);
-  Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
-                              uint64_t m, uint64 n, uint64_t k,
-                              std::complex<float> alpha,
-                              const DeviceMemorySlice<std::complex<float>> &a,
-                              int lda,
-                              const DeviceMemorySlice<std::complex<float>> &b,
-                              int ldb, std::complex<float> beta,
-                              const DeviceMemorySlice<std::complex<float>> &c,
-                              int ldc, int batch_count);
-  Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
-                              uint64_t m, uint64 n, uint64_t k,
-                              std::complex<double> alpha,
-                              const DeviceMemorySlice<std::complex<double>> &a,
-                              int lda,
-                              const DeviceMemorySlice<std::complex<double>> &b,
-                              int ldb, std::complex<double> beta,
-                              const DeviceMemorySlice<std::complex<double>> &c,
-                              int ldc, int batch_count);
-  Stream &ThenBlasGemmBatchedWithScratch(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, float alpha, const DeviceMemorySlice<Eigen::half> &a, int lda,
-      const DeviceMemorySlice<Eigen::half> &b, int ldb, float beta,
-      const DeviceMemorySlice<Eigen::half> &c, int ldc, int batch_count,
-      ScratchAllocator *scratch_allocator);
-  Stream &ThenBlasGemmBatchedWithScratch(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, float alpha, const DeviceMemorySlice<float> &a, int lda,
-      const DeviceMemorySlice<float> &b, int ldb, float beta,
-      const DeviceMemorySlice<float> &c, int ldc, int batch_count,
-      ScratchAllocator *scratch_allocator);
-  Stream &ThenBlasGemmBatchedWithScratch(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, double alpha, const DeviceMemorySlice<double> &a, int lda,
-      const DeviceMemorySlice<double> &b, int ldb, double beta,
-      const DeviceMemorySlice<double> &c, int ldc, int batch_count,
-      ScratchAllocator *scratch_allocator);
-  Stream &ThenBlasGemmBatchedWithScratch(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<float> alpha,
-      const DeviceMemorySlice<std::complex<float>> &a, int lda,
-      const DeviceMemorySlice<std::complex<float>> &b, int ldb,
-      std::complex<float> beta, const DeviceMemorySlice<std::complex<float>> &c,
-      int ldc, int batch_count, ScratchAllocator *scratch_allocator);
-  Stream &ThenBlasGemmBatchedWithScratch(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<double> alpha,
-      const DeviceMemorySlice<std::complex<double>> &a, int lda,
-      const DeviceMemorySlice<std::complex<double>> &b, int ldb,
-      std::complex<double> beta,
-      const DeviceMemorySlice<std::complex<double>> &c, int ldc,
-      int batch_count, ScratchAllocator *scratch_allocator);
-
-  template <typename InputType, typename ConstantType>
-  port::Status ThenBlasGemmStridedBatched(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
-      int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
-      int64_t stride_b, ConstantType beta, DeviceMemory<InputType> *c, int ldc,
-      int64_t stride_c, int batch_count, blas::ComputePrecision precision) {
-    static_assert(
-        detail::is_any_of<InputType, float, Eigen::half, Eigen::bfloat16,
-                          double, std::complex<float>, std::complex<double>>(),
-        "Unsupported input type");
-    static_assert(
-        std::is_same_v<ConstantType, InputType> ||
-            (detail::is_any_of<InputType, Eigen::half, Eigen::bfloat16>() &&
-             std::is_same_v<ConstantType, float>),
-        "Mismatched input and alpha/beta types");
-    blas::BlasSupport *blas = parent()->AsBlas();
-    if (!blas) {
-      return port::InternalError(
-          "Attempting to perform BLAS operation using "
-          "StreamExecutor without BLAS support");
-    }
-
-    void *alpha_ptr = &alpha;
-    void *beta_ptr = &beta;
-    float alpha_storage, beta_storage;
-    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
-                                    &beta_storage);
-
-    return blas->DoBlasGemmStridedBatched(
-        this, transa, transb, m, n, k, blas::ToDataType<InputType>::value,
-        alpha_ptr, a, lda, stride_a, b, ldb, stride_b, beta_ptr, c, ldc,
-        stride_c, batch_count, precision);
-  }
+  port::Status ThenBlasGemmBatched(const blas::BatchedGemmCall<Eigen::half>& call);
+  port::Status ThenBlasGemmBatched(const blas::BatchedGemmCall<float>& call);
+  port::Status ThenBlasGemmBatched(const blas::BatchedGemmCall<double>& call);
+  port::Status ThenBlasGemmBatched(const blas::BatchedGemmCall<std::complex<float> >& call);
+  port::Status ThenBlasGemmBatched(const blas::BatchedGemmCall<std::complex<double> >& call);
 
   // See BlasSupport::DoBlasTrsm.
   Stream &ThenBlasTrsm(blas::Side side, blas::UpperLower uplo,
@@ -1611,6 +1306,24 @@ class Stream {
           static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*alpha_ptr));
       *beta_storage =
           static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*beta_ptr));
+      *alpha_ptr = alpha_storage;
+      *beta_ptr = beta_storage;
+    }
+  }
+  void UpcastHalfToFloat(blas::DataType dt, const void **alpha_ptr, const void **beta_ptr,
+                         float *alpha_storage, float *beta_storage) {
+    if (dt==blas::DataType::kHalf) {
+      *alpha_storage =
+          static_cast<float>(*reinterpret_cast<const Eigen::half *>(*alpha_ptr));
+      *beta_storage =
+          static_cast<float>(*reinterpret_cast<const Eigen::half *>(*beta_ptr));
+      *alpha_ptr = alpha_storage;
+      *beta_ptr = beta_storage;
+    } else if (dt==blas::DataType::kBF16) {
+      *alpha_storage =
+          static_cast<float>(*reinterpret_cast<const Eigen::bfloat16 *>(*alpha_ptr));
+      *beta_storage =
+          static_cast<float>(*reinterpret_cast<const Eigen::bfloat16 *>(*beta_ptr));
       *alpha_ptr = alpha_storage;
       *beta_ptr = beta_storage;
     }

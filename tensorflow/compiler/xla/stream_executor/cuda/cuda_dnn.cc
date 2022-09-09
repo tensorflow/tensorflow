@@ -6177,6 +6177,8 @@ bool CudnnSupport::DoMatMul(Stream* stream,
     return false;
   }
 
+  const float alpha = 1.0f;  // Take the matrix product without scaling it.
+  const float beta = 0.0f;   // Ignore the original values in output_data.
   if (output_dimensions.width() == 1 && output_dimensions.height() == 1) {
     // This is a fast path that also supports the kBatchYXDepth layout.
 
@@ -6192,12 +6194,15 @@ bool CudnnSupport::DoMatMul(Stream* stream,
     const int64_t m = output_dimensions.NodesAcrossFeatureMaps();
     const int64_t n = input_dimensions.count();
     const int64_t k = input_dimensions.NodesAcrossFeatureMaps();
-    if (!stream
-             ->ThenBlasGemm(blas::Transpose::kNoTranspose,
-                            blas::Transpose::kNoTranspose, m, n, k, weights, m,
-                            input_data, k, output_data, m,
-                            blas::kDefaultComputePrecision)
-             .ok()) {
+    blas::GemmCall call{blas::Transpose::kNoTranspose,
+                            blas::Transpose::kNoTranspose, m, n, k,
+                            blas::DataType::kFloat,
+                            &alpha,
+                            &weights, (int)m,
+                            &input_data, (int)k, &beta,
+                            static_cast<DeviceMemoryBase*>(output_data),
+                            (int)m};
+    if (!stream->ThenBlasGemm(call).ok()) {
       return false;
     }
   } else {
@@ -6237,8 +6242,6 @@ bool CudnnSupport::DoMatMul(Stream* stream,
       return false;
     }
 
-    const float alpha = 1.0f;  // Take the matrix product without scaling it.
-    const float beta = 0.0f;   // Ignore the original values in output_data.
     const uint64_t m = output_dimensions.feature_map_count();
     const uint64_t n = input_dimensions.count();
     const uint64_t k = input_dimensions.NodesAcrossFeatureMaps();
@@ -6275,11 +6278,12 @@ bool CudnnSupport::DoMatMul(Stream* stream,
       }
       return ptrs;
     };
-
-    stream->ThenBlasGemmBatched(blas::Transpose::kNoTranspose,
+    port::ArraySlice<DeviceMemory<float> *> va=toPtrs(a), vb=toPtrs(b), vc=toPtrs(c);
+    blas::BatchedGemmCall<float> call{blas::Transpose::kNoTranspose,
                                 blas::Transpose::kNoTranspose, m, n, k, alpha,
-                                toPtrs(a), lda, toPtrs(b), ldb, beta, toPtrs(c),
-                                ldc, batch_count);
+                                &va, lda, &vb, ldb, beta, &vc,
+                                ldc, batch_count};
+    return stream->ThenBlasGemmBatched(call).ok();
   }
 
   return stream->ok();

@@ -265,6 +265,7 @@ struct LaunchConvOp<GPUDevice, T> {
 
     bool is_grouped_convolution = filter_depth != in_depth;
 
+    T alpha = T(1.0), beta = T(0.0);
     // NOTE: This only works in NHWC.
     if (!is_grouped_convolution && filter_planes == 1 && filter_rows == 1 &&
         filter_cols == 1 && dilations[0] == 1 && dilations[1] == 1 &&
@@ -283,10 +284,14 @@ struct LaunchConvOp<GPUDevice, T> {
                                   output->template flat<T>().size());
 
       auto no_transpose = se::blas::Transpose::kNoTranspose;
-      OP_REQUIRES_OK(
-          ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr,
-                                    n, a_ptr, k, &c_ptr, n,
-                                    se::blas::kDefaultComputePrecision));
+      se::blas::GemmCall call{
+        no_transpose, no_transpose, n, m, k, 
+        se::blas::ToDataType<T>::value,
+        &alpha,
+        &b_ptr,
+        int(n), &a_ptr, int(k), &beta, &c_ptr, int(n)
+      };
+      OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(call));
       return;
     } else if (!is_grouped_convolution && filter_planes == in_planes &&
                filter_rows == in_rows && filter_cols == in_cols &&
@@ -305,10 +310,14 @@ struct LaunchConvOp<GPUDevice, T> {
                                   output->template flat<T>().size());
 
       auto no_transpose = se::blas::Transpose::kNoTranspose;
-      OP_REQUIRES_OK(
-          ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr,
-                                    n, a_ptr, k, &c_ptr, n,
-                                    se::blas::kDefaultComputePrecision));
+      se::blas::GemmCall call{
+        no_transpose, no_transpose, n, m, k, 
+        se::blas::ToDataType<T>::value,
+        &alpha,
+        &b_ptr,
+        int(n), &a_ptr, int(k), &beta, &c_ptr, int(n)
+      };
+      OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(call));
       return;
     }
 

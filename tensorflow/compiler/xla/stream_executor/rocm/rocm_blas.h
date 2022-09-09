@@ -136,14 +136,11 @@ class ROCMBlas : public blas::BlasSupport {
   // strided flavor
   template <typename T>
   port::Status AllocateStridedBuffer(
-      const std::vector<typename RocBlasTypeConversionHelper<T>::mapped_type *>
-          &raw_ptrs,
-      int batch_count, uint64_t batch_stride,
-      ScratchAllocator *scratch_allocator, Stream *stream,
-      std::unique_ptr<TemporaryDeviceMemory<
-          typename RocBlasTypeConversionHelper<T>::mapped_type>> *temp_memory,
-      DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>
-          *device_memory,
+      const std::vector<T*> &raw_ptrs,
+      int batch_count, uint64_t batch_stride, ScratchAllocator *scratch_allocator,
+      Stream *stream,
+      std::unique_ptr<TemporaryDeviceMemory<T>> *temp_memory,
+      DeviceMemory<T> *device_memory,
       bool copy_data, bool &reallocated);
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
@@ -162,14 +159,12 @@ class ROCMBlas : public blas::BlasSupport {
   // matrix is created by broadcasting from a smaller matrix. When it happens,
   // It will take advantage of the AllocateStridedBuffer subroutine to
   // reallocate the memory layout to be strided batched.
+
   template <typename T, typename FuncT>
   port::Status DoBlasGemmBatchedInternal(
-      FuncT rocblas_func, Stream *stream, blas::Transpose transa,
-      blas::Transpose transb, uint64_t m, uint64 n, uint64 k, T alpha,
-      const absl::Span<DeviceMemory<T> *const> &a_ptrs_to_wrappers, int lda,
-      const absl::Span<DeviceMemory<T> *const> &b_ptrs_to_wrappers, int ldb,
-      T beta, const absl::Span<DeviceMemory<T> *const> &c_ptrs_to_wrappers,
-      int ldc, int batch_count, ScratchAllocator *scratch_allocator);
+    FuncT rocblas_func, Stream *stream, const blas::BatchedGemmCall<T>& call);
+  port::Status DoBlasGemmStridedBatched(Stream *stream, 
+      const blas::GemmCall& call);
 
   // Helper function for implementing DoBlasGemmWithProfiling.
   template <typename T, typename ParamType>

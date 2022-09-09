@@ -725,6 +725,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     return;
   }
 
+  T alpha=T(1.0), beta=T(0.0);
   // If the filter in-depth (filter_shape.dim_size(2)) is 1 and smaller than the
   // input depth, it's a depthwise convolution. More generally, if the filter
   // in-depth divides but is smaller than the input depth, it is a grouped
@@ -759,11 +760,13 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    OP_REQUIRES_OK(
-        ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                                  se::blas::Transpose::kTranspose, n, m, k,
-                                  a_ptr, n, b_ptr, m, &c_ptr, n,
-                                  se::blas::kDefaultComputePrecision));
+    se::blas::GemmCall call{
+      se::blas::Transpose::kNoTranspose,
+      se::blas::Transpose::kTranspose, n, m, k,
+      se::blas::ToDataType<T>::value, &alpha,
+      &a_ptr, int(n), &b_ptr, int(m), &beta, &c_ptr, int(n)
+    };
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(call));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -785,11 +788,13 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    OP_REQUIRES_OK(
-        ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                                  se::blas::Transpose::kTranspose, n, m, k,
-                                  b_ptr, n, a_ptr, m, &c_ptr, n,
-                                  se::blas::kDefaultComputePrecision));
+    se::blas::GemmCall call{
+      se::blas::Transpose::kNoTranspose,
+      se::blas::Transpose::kTranspose, n, m, k,
+      se::blas::ToDataType<T>::value, &alpha,
+      &b_ptr, int(n), &a_ptr, int(m), &beta, &c_ptr, int(n)
+    };
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(call));
     return;
   }
 

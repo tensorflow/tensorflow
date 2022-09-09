@@ -3853,15 +3853,19 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     // output=weights*input. So we only need to swap the order of
     // weights and input in the matrix product to correct for the
     // row-major versus column-major difference.
-    const int64_t m = output_dimensions.NodesAcrossFeatureMaps();
-    const int64_t n = input_dimensions.count();
-    const int64_t k = input_dimensions.NodesAcrossFeatureMaps();
-    if (!stream
-             ->ThenBlasGemm(blas::Transpose::kNoTranspose,
-                            blas::Transpose::kNoTranspose, m, n, k, weights, m,
-                            input_data, k, output_data, m,
-                            blas::kDefaultComputePrecision)
-             .ok()) {
+    const uint64_t m = output_dimensions.NodesAcrossFeatureMaps();
+    const uint64_t n = input_dimensions.count();
+    const uint64_t k = input_dimensions.NodesAcrossFeatureMaps();
+    float alpha = 1.0, beta = 1.0;
+    blas::GemmCall call{blas::Transpose::kNoTranspose,
+                            blas::Transpose::kNoTranspose, m, n, k, 
+                            blas::DataType::kFloat,
+                            &alpha,
+                            &weights, (int)m,
+                            &input_data, (int)k, &beta, 
+                            static_cast<DeviceMemoryBase*>(output_data), 
+                            (int)m};
+    if (!stream->ThenBlasGemm(call).ok()) {
       return false;
     }
   } else {
@@ -3940,10 +3944,13 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
       return ptrs;
     };
 
-    stream->ThenBlasGemmBatched(blas::Transpose::kNoTranspose,
+    port::ArraySlice<DeviceMemory<float> *> va=toPtrs(a), vb=toPtrs(b), vc=toPtrs(c);
+
+    blas::BatchedGemmCall<float> call{blas::Transpose::kNoTranspose,
                                 blas::Transpose::kNoTranspose, m, n, k, alpha,
-                                toPtrs(a), lda, toPtrs(b), ldb, beta, toPtrs(c),
-                                ldc, batch_count);
+                                &va, lda, &vb, ldb, beta, &vc,
+                                ldc, batch_count};
+    stream->ThenBlasGemmBatched(call);
   }
 
   return stream->ok();
