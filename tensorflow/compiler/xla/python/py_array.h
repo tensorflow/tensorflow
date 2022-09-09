@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_ARRAY_H_
 
 #include <memory>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -119,5 +120,144 @@ class PyArray {
 };
 
 }  // namespace xla
+
+namespace pybind11 {
+namespace detail {
+
+// A custom type_caster for PyArray. As of Sep 2022, the major overhead of
+// default pybind11 type_caster is from looking up type_info from a global hash
+// map. Since we know the type_info beforehand, we can make it more efficient by
+// avoiding the hash lookup.
+template <>
+struct type_caster<xla::PyArray> : type_caster_generic {
+  // NOLINTNEXTLINE
+  static constexpr auto name = const_name<xla::PyArray>();
+
+  using holder_type = std::unique_ptr<xla::PyArray>;
+  static_assert(std::is_same_v<default_holder_type<xla::PyArray>, holder_type>);
+
+  static_assert(sizeof(holder_type) <= sizeof(void*),
+                "PyArray's holder must have a simple layout (i.e. fit into the "
+                "one word)");
+  static_assert(alignof(holder_type) <= alignof(void*));
+
+  // Explicitly avoid looking up type_info in the global hash map, as we already
+  // know the type info.
+  type_caster() : type_caster_generic(/*type_info=*/nullptr) {}
+
+  struct SimpleLayoutValueAndHolder {
+    explicit SimpleLayoutValueAndHolder(instance* inst)
+        : simple_value_holder(inst->simple_value_holder) {}
+
+    xla::PyArray*& value_ptr() {
+      return reinterpret_cast<xla::PyArray*&>(simple_value_holder[0]);
+    }
+
+    holder_type& holder() {
+      return reinterpret_cast<holder_type&>(simple_value_holder[1]);
+    }
+
+    void** simple_value_holder;
+  };
+
+  static pybind11::detail::type_info* type_info() {
+    static auto* const type_info = pybind11::detail::get_type_info(
+        typeid(xla::PyArray), /*throw_if_missing=*/true);
+    return type_info;
+  }
+
+  // Python to C++ cast.
+  //
+  // Example:
+  //  py::object obj = ...;
+  //  auto* py_array_ptr = obj.cast<PyArray*>();
+  //  auto& py_array_ref = obj.cast<PyArray>();
+  //
+  bool load(handle src, bool) {
+    if (!src) return false;
+    if (src.get_type() != xla::PyArray::type()) return false;
+
+    SimpleLayoutValueAndHolder value_and_holder(
+        reinterpret_cast<instance*>(src.ptr()));
+
+    value = value_and_holder.value_ptr();
+
+    return true;
+  }
+
+  static PyObject* make_new_instance(PyTypeObject* type) {
+    PyObject* self = type->tp_alloc(type, 0);
+    auto* inst = reinterpret_cast<instance*>(self);
+    inst->simple_layout = true;
+    inst->simple_value_holder[0] = nullptr;
+    inst->simple_holder_constructed = false;
+    inst->simple_instance_registered = false;
+    inst->owned = true;
+    return self;
+  }
+
+  // C++ to python cast by move
+  //
+  // Example:
+  //  PyArray py_array(...);
+  //  py::object obj = py::cast(std::move(py_array));
+  //
+  static handle cast(xla::PyArray&& src, return_value_policy, handle) {
+    auto* type_info = type_caster::type_info();
+    auto obj = reinterpret_steal<object>(make_new_instance(type_info->type));
+
+    auto* inst = reinterpret_cast<instance*>(obj.ptr());
+    inst->owned = true;
+
+    SimpleLayoutValueAndHolder value_and_holder(inst);
+
+    value_and_holder.value_ptr() = new xla::PyArray(std::move(src));
+    new (std::addressof(value_and_holder.holder()))
+        holder_type(value_and_holder.value_ptr());
+    inst->simple_holder_constructed = true;
+
+    return obj.release();
+  }
+
+  // C++ to python cast by reference.
+  //
+  // Example:
+  //  PyArray py_array(...);
+  //  py::object obj = py::cast(&py_array);
+  //
+  static handle cast(xla::PyArray* src, return_value_policy policy, handle) {
+    DCHECK(src);
+
+    // Only reference semantic is supported.
+    DCHECK(policy == return_value_policy::automatic_reference ||
+           policy == return_value_policy::reference);
+
+    auto* type_info = type_caster::type_info();
+    auto obj = reinterpret_steal<object>(make_new_instance(type_info->type));
+
+    auto* inst = reinterpret_cast<instance*>(obj.ptr());
+    inst->owned = false;
+
+    SimpleLayoutValueAndHolder value_and_holder(inst);
+    value_and_holder.value_ptr() = src;
+
+    return obj.release();
+  }
+
+  template <typename T>
+  using cast_op_type = detail::cast_op_type<T>;
+
+  // NOLINTNEXTLINE(google-explicit-constructor)
+  operator xla::PyArray*() { return static_cast<xla::PyArray*>(value); }
+
+  // NOLINTNEXTLINE(google-explicit-constructor)
+  operator xla::PyArray&() {
+    DCHECK(value);
+    return *(static_cast<xla::PyArray*>(value));
+  }
+};
+
+}  // namespace detail
+}  // namespace pybind11
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_PY_ARRAY_H_
