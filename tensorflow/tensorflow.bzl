@@ -1486,51 +1486,7 @@ def tf_gpu_cc_test(
 def tf_cuda_cc_test(*args, **kwargs):
     tf_gpu_cc_test(*args, **kwargs)
 
-# A rule similar to tf_gpu_cc_test that creates a test that runs
-# on GPU only and does not have kernels to be compiled with nvcc
 def tf_gpu_only_cc_test(
-        name,
-        srcs = [],
-        deps = [],
-        tags = [],
-        data = [],
-        size = "medium",
-        args = [],
-        kernels = [],
-        linkopts = [],
-        extra_copts = [],
-        **kwargs):
-    tf_cc_test(
-        name = name,
-        size = size,
-        srcs = srcs,
-        args = args,
-        data = data,
-        extra_copts = extra_copts + if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"]),
-        kernels = kernels,
-        linkopts = linkopts,
-        linkstatic = select({
-            # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-            clean_dep("//tensorflow:macos"): 1,
-            "@local_config_cuda//cuda:using_nvcc": 1,
-            "@local_config_cuda//cuda:using_clang": 1,
-            "//conditions:default": 0,
-        }),
-        suffix = "_gpu",
-        tags = tags + tf_gpu_tests_tags(),
-        deps = deps + if_cuda_or_rocm([
-            clean_dep("//tensorflow/core:gpu_runtime"),
-        ]),
-        **kwargs
-    )
-
-# terminology changes: saving tf_cuda_* definition for compatibility
-def tf_cuda_only_cc_test(*args, **kwargs):
-    tf_gpu_only_cc_test(*args, **kwargs)
-
-# A rule similar to tf_gpu_only_cc_test that creates a test that runs
-# on GPU only and requires nvcc to compile GPU kernels
-def tf_gpu_kernel_cc_test(
         name,
         srcs = [],
         deps = [],
@@ -1570,8 +1526,8 @@ def tf_gpu_kernel_cc_test(
     )
 
 # terminology changes: saving tf_cuda_* definition for compatibility
-def tf_cuda_kernel_cc_test(*args, **kwargs):
-    tf_gpu_kernel_cc_test(*args, **kwargs)
+def tf_cuda_only_cc_test(*args, **kwargs):
+    tf_gpu_only_cc_test(*args, **kwargs)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests", along
 # with a test suite of the given name, if provided.

@@ -13,8 +13,8 @@ load(
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
-    "tf_cuda_kernel_cc_test",
     "tf_cuda_library",
+    "tf_cuda_only_cc_test",
     "tf_kernel_library",
     "tf_mkl_kernel_library",
 )
@@ -818,7 +818,7 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_kernel_cc_test(
+tf_cuda_only_cc_test(
     name = "gpu_kernel_helper_test",
     srcs = [
         "gpu_kernel_helper_test.cu.cc",

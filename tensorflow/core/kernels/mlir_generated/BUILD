@@ -10,8 +10,8 @@ load(
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
-    "tf_cuda_only_cc_test",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -446,7 +446,7 @@ cc_library(
     ],
 )
 
-tf_cuda_only_cc_test(
+tf_cuda_cc_test(
     name = "gpu_unary_ops_test",
     size = "medium",
     srcs = ["gpu_unary_ops_test.cc"],
@@ -492,7 +492,7 @@ cc_library(
     ],
 )
 
-tf_cuda_only_cc_test(
+tf_cuda_cc_test(
     name = "gpu_binary_ops_test",
     size = "medium",
     srcs = ["gpu_binary_ops_test.cc"],
