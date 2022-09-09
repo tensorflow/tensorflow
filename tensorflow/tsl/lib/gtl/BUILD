@@ -12,6 +12,7 @@ package(
         "//tensorflow/core/lib/random:__pkg__",
         # tensorflow/core/lib/strings:proto_serialization uses on gtl:inlined_vector
         "//tensorflow/core/lib/strings:__pkg__",
+        "//tensorflow/tsl/lib/strings:__pkg__",
         # tensorflow/core/lib/histogram uses array_slice
         "//tensorflow/core/lib/histogram:__pkg__",
         # tensorflow/core/framework uses array_slice, map_util, and flatmap

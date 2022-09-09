@@ -12,18 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
 
 #include <cstring>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/tsl/lib/gtl/inlined_vector.h"
+#include "tensorflow/tsl/platform/hash.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/macros.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 // Helper for deterministic serialization.
@@ -97,4 +97,4 @@ uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto) {
   return Hash64(serialized.data(), serialized.size());
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

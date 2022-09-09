@@ -582,7 +582,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/core/lib/strings:proto_serialization",
+        "//tensorflow/tsl/lib/strings:proto_serialization",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
     ] + if_static(["@com_google_protobuf//:protobuf"]),

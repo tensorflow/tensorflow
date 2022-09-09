@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
 
 namespace stream_executor {
 namespace dnn {
@@ -68,7 +68,7 @@ AlgorithmDesc::AlgorithmDesc(
 }
 
 uint64_t AlgorithmDesc::hash() const {
-  return tensorflow::DeterministicProtoHash64(proto_);
+  return tsl::DeterministicProtoHash64(proto_);
 }
 
 bool AlgorithmDesc::operator==(const AlgorithmDesc& other) const {
