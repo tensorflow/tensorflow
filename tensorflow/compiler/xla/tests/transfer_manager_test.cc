@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -476,7 +476,7 @@ BENCHMARK(BM_TransferDeviceToHost)
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  tensorflow::testing::RunBenchmarks();
+  tsl::testing::RunBenchmarks();
   return RUN_ALL_TESTS();
 }
 

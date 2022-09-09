@@ -40,9 +40,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/tsl/platform/logger.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "third_party/gpus/cudnn/cudnn.h"
@@ -771,7 +771,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     // If we crash on checking failure, we are in a testing/benchmark mode, thus
     // omitting logging through the logger.
     if (!crash_on_checking_failure) {
-      tensorflow::Logger::GetSingleton()->LogProto(log);
+      tsl::Logger::GetSingleton()->LogProto(log);
     } else {
       // Crash on miscompares and redzone violations if desired.
       for (const auto& profile : profile_results) {

@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/subprocess.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/net.h"
+#include "tensorflow/tsl/platform/test.h"
 
 #if defined(PLATFORM_WINDOWS)
 // This is not used on windows, but we define it here to make the test simpler
@@ -45,8 +45,8 @@ namespace {
 class GRPCClientTestBase : public ::testing::Test {
  protected:
   GRPCClientTestBase() {
-    std::string test_srcdir = tensorflow::testing::TensorFlowSrcRoot();
-    std::string service_main_path = tensorflow::io::JoinPath(
+    std::string test_srcdir = tsl::testing::TensorFlowSrcRoot();
+    std::string service_main_path = tsl::io::JoinPath(
         test_srcdir, "compiler/xla/rpc/grpc_service_main_cpu");
     int port = tensorflow::internal::PickUnusedPortOrDie();
     subprocess_.SetProgram(

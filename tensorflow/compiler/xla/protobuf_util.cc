@@ -23,13 +23,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 namespace protobuf_util {
 
-bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
-                    const tensorflow::protobuf::Message& m2) {
+bool ProtobufEquals(const tsl::protobuf::Message& m1,
+                    const tsl::protobuf::Message& m2) {
   // This is a bit fast and loose, but avoids introducing a dependency on
   // the much more complex protobuf::util::MessageDifferencer class.  For
   // our purposes we just say that two protobufs are equal if their serialized
@@ -40,7 +40,7 @@ bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
   return (serialized1 == serialized2);
 }
 
-size_t ProtobufHash(const tensorflow::protobuf::Message& m) {
+size_t ProtobufHash(const tsl::protobuf::Message& m) {
   // This is a bit fast and loose, but avoids introducing a dependency on
   // the much more complex protobuf::util::MessageDifferencer class.
   // We perform the hash on their serialized representation.
@@ -49,7 +49,7 @@ size_t ProtobufHash(const tensorflow::protobuf::Message& m) {
   return absl::HashOf(serialized);
 }
 
-Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
+Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
                             const std::string& directory,
                             const std::string& file_name,
                             std::string* full_path) {
@@ -60,7 +60,7 @@ Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
   if (!full_path) {
     full_path = &full_path_impl;
   }
-  *full_path = tensorflow::io::JoinPath(directory, safe_file_name);
+  *full_path = tsl::io::JoinPath(directory, safe_file_name);
   return tensorflow::WriteBinaryProto(env, *full_path, message);
 }
 

@@ -407,7 +407,7 @@ port::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   }
   cublasStatus_t ret = cublas_func(blas_, args...);
   if (ret == CUBLAS_STATUS_SUCCESS) {
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
   return port::InternalError(ToString(ret));
 }
@@ -1013,7 +1013,7 @@ static port::Status PopulateProfileFromTimer(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status CUDABlas::DoBlasGemmWithAlgorithm(
@@ -1044,7 +1044,7 @@ port::Status CUDABlas::DoBlasGemmWithAlgorithm(
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
                                               output_profile_result, stream));
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
@@ -1099,7 +1099,7 @@ port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
                                               output_profile_result, stream));
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 bool CUDABlas::GetBlasGemmAlgorithms(
@@ -1310,7 +1310,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
         const_cast<const CUDA_T **>(GpuMemory(b)), ldb, GpuComplex(&cb_beta),
         const_cast<CUDA_T **>(GpuMemory(c)), ldc, batch_count);
     if (ok) {
-      return ::tensorflow::OkStatus();
+      return ::tsl::OkStatus();
     }
     return port::Status(port::error::INTERNAL,
                         "failed BLAS call, see log for details");
@@ -1325,7 +1325,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
           a_matrix, lda, b_matrix, ldb, &beta, c_matrix, ldc,
           blas::kDefaultComputePrecision));
     }
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
 }
 
@@ -1501,7 +1501,7 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
             b_matrix, SE_CUDA_DATA_HALF, ldb, static_cast<const float *>(beta),
             c_matrix, SE_CUDA_DATA_HALF, ldc));
       }
-      return ::tensorflow::OkStatus();
+      return ::tsl::OkStatus();
     }
     case dnn::kFloat: {
       return DoBlasInternalImpl(
@@ -1676,7 +1676,7 @@ port::Status CUDABlas::GetVersion(std::string *version) {
     return port::InternalError(ToString(status));
   }
   *version = std::to_string(v);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 void initialize_cublas() {

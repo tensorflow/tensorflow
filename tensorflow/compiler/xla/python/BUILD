@@ -251,8 +251,8 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/container:flat_hash_map",
         "@pybind11",
     ],
@@ -322,7 +322,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core/platform:fingerprint",
-        "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python/lib/core:numpy_lib",
         "//tensorflow/tsl/platform:fingerprint",
@@ -383,8 +383,8 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:lru_cache",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/platform:status",
         "//third_party/python_runtime:headers",  # build_cleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",

@@ -26,9 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 namespace tools {

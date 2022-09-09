@@ -29,13 +29,13 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace {
 constexpr int kBarrierTimedOut = -1000;

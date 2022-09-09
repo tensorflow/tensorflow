@@ -33,9 +33,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:env",
         "//tensorflow/tsl/platform:stacktrace",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
     ] + if_static([
         "//tensorflow/core/platform:env_impl",
     ]),

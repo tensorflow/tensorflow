@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -56,15 +56,14 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
   std::string binary_filename;
   std::string text_filename;
   std::string outdir;
-  if (tensorflow::io::GetTestUndeclaredOutputsDir(&outdir)) {
-    std::string filename = tensorflow::io::JoinPath(
+  if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
+    std::string filename = tsl::io::JoinPath(
         outdir, absl::StrFormat("tempfile-%d-%s", env->NowMicros(), name));
     binary_filename = absl::StrCat(filename, ".pb");
     text_filename = absl::StrCat(filename, ".txt");
   } else {
-    binary_filename =
-        tensorflow::io::GetTempFilename(absl::StrCat(name, ".pb"));
-    text_filename = tensorflow::io::GetTempFilename(absl::StrCat(name, ".txt"));
+    binary_filename = tsl::io::GetTempFilename(absl::StrCat(name, ".pb"));
+    text_filename = tsl::io::GetTempFilename(absl::StrCat(name, ".txt"));
   }
 
   TF_CHECK_OK(

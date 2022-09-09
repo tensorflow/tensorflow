@@ -41,8 +41,8 @@ struct QuantizedRange {
 
   bool operator!=(const QuantizedRange& rhs) const { return !(*this == rhs); }
 
-  tensorflow::bfloat16 min = tensorflow::bfloat16(0.0f);
-  tensorflow::bfloat16 max = tensorflow::bfloat16(0.0f);
+  tsl::bfloat16 min = tsl::bfloat16(0.0f);
+  tsl::bfloat16 max = tsl::bfloat16(0.0f);
 };
 
 template <typename T>
@@ -136,19 +136,18 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
     XlaOp result;
 
     if (mode_string == "MIN_COMBINED") {
-      const tensorflow::bfloat16 scale_factor =
+      const tsl::bfloat16 scale_factor =
           (range.max - range.min) /
-          (static_cast<tensorflow::bfloat16>(std::numeric_limits<T>::max() -
-                                             std::numeric_limits<T>::min()));
+          (static_cast<tsl::bfloat16>(std::numeric_limits<T>::max() -
+                                      std::numeric_limits<T>::min()));
       // result = bfloat16(input + half_range) * scale_factor + range.min
       XlaOp unpack_input_bf16 = ConvertElementType(unpack_input, BF16);
-      XlaOp half_range_bf16 = xla::ConstantR0<tensorflow::bfloat16>(
+      XlaOp half_range_bf16 = xla::ConstantR0<tsl::bfloat16>(
           builder, static_cast<bfloat16>(half_range));
       XlaOp sum = unpack_input_bf16 + half_range_bf16;
 
-      result =
-          sum * xla::ConstantR0<tensorflow::bfloat16>(builder, scale_factor) +
-          xla::ConstantR0<tensorflow::bfloat16>(builder, range.min);
+      result = sum * xla::ConstantR0<tsl::bfloat16>(builder, scale_factor) +
+               xla::ConstantR0<tsl::bfloat16>(builder, range.min);
     } else {
       // TODO(wangtao): support other modes.
       return InvalidArgument(

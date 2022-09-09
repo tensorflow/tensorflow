@@ -88,8 +88,8 @@ cc_library(
     hdrs = ["status_helper.h"],
     deps = [
         ":tpu_executor_c_api_hdrs",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 

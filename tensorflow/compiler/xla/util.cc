@@ -37,7 +37,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/tsl/platform/numbers.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
 
 namespace xla {

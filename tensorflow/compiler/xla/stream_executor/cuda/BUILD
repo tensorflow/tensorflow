@@ -261,7 +261,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor:host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",

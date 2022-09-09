@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace {

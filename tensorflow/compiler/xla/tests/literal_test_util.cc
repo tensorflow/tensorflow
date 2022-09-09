@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -31,12 +31,12 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
   // TEST_UNDECLARED_OUTPUTS_DIR.  This plays well with tools that inspect test
   // results, especially when they're run on remote machines.
   std::string outdir;
-  if (!tensorflow::io::GetTestUndeclaredOutputsDir(&outdir)) {
-    outdir = tensorflow::testing::TmpDir();
+  if (!tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
+    outdir = tsl::testing::TmpDir();
   }
 
   auto* env = tensorflow::Env::Default();
-  std::string filename = tensorflow::io::JoinPath(
+  std::string filename = tsl::io::JoinPath(
       outdir, absl::StrFormat("tempfile-%d-%s", env->NowMicros(), name));
   TF_CHECK_OK(tensorflow::WriteBinaryProto(env, absl::StrCat(filename, ".pb"),
                                            literal.ToProto()));

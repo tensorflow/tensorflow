@@ -192,9 +192,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace {
 
@@ -673,7 +673,7 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   const int max_parallelism =
       module->config().intra_op_parallelism_threads() > 0
           ? module->config().intra_op_parallelism_threads()
-          : tensorflow::port::NumSchedulableCPUs();
+          : tsl::port::NumSchedulableCPUs();
   if (!is_aot_compile) {
     // Run ParallelTaskAssigner to assign parallel tasks to HLOs in module.
     // Note this is not run for AOT because it would bring in thread pool

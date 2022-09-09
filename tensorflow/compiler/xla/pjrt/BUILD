@@ -236,7 +236,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -341,13 +341,12 @@ cc_library(
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
-        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -570,10 +569,10 @@ cc_library(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
         "//tensorflow/compiler/xla/service/cpu:cpu_xfeed",
-        "//tensorflow/core/platform:denormal",
-        "//tensorflow/core/platform:setround",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/platform:denormal",
+        "//tensorflow/tsl/platform:setround",
         "//third_party/eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -657,8 +656,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:test_benchmark",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/platform:test_benchmark",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/numeric:int128",
@@ -680,9 +679,9 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_wrapper_impl",  # TODO(skyewm): remove
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:pjrt_api",
         "//tensorflow/core/tpu:tpu_initializer_helper",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 

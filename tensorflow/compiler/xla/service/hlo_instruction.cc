@@ -56,8 +56,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/human_readable_json.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -4322,7 +4322,7 @@ bool HloPtrComparator::operator()(const HloInstruction* const& lhs,
 }
 
 Status HloInstruction::GetBackendConfigInternal(
-    tensorflow::protobuf::Message* proto) const {
+    tsl::protobuf::Message* proto) const {
   proto->Clear();
 
   if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
@@ -4370,14 +4370,14 @@ HloInstruction::BackendConfigRep& HloInstruction::BackendConfigRep::operator=(
 }
 
 HloInstruction::BackendConfigRep& HloInstruction::BackendConfigRep::operator=(
-    const tensorflow::protobuf::Message& proto) {
+    const tsl::protobuf::Message& proto) {
   SetProto(proto);
   raw_string_.clear();
   return *this;
 }
 
 void HloInstruction::BackendConfigRep::SetProto(
-    const tensorflow::protobuf::Message& proto) {
+    const tsl::protobuf::Message& proto) {
   proto_.reset(proto.New());
   proto_->CopyFrom(proto);
 }
@@ -4387,7 +4387,7 @@ bool HloInstruction::BackendConfigRep::operator==(
   auto* proto_a = GetProtoPtr();
   auto* proto_b = other.GetProtoPtr();
   if (proto_a != nullptr && proto_b != nullptr) {
-    using ::tensorflow::protobuf::util::MessageDifferencer;
+    using ::tsl::protobuf::util::MessageDifferencer;
     return MessageDifferencer::Equals(*proto_a, *proto_b);
   }
   // TODO(b/225956414): Consider canonicalizing raw string form.
@@ -4395,7 +4395,7 @@ bool HloInstruction::BackendConfigRep::operator==(
 }
 
 /* static */ StatusOr<std::string> HloInstruction::BackendConfigToRawString(
-    const tensorflow::protobuf::Message& proto) {
+    const tsl::protobuf::Message& proto) {
   std::string ret;
   // Pass ignore_accuracy_loss = true because estimated_cycles field can be
   // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =

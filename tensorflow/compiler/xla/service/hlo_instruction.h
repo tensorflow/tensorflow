@@ -57,8 +57,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -1725,7 +1725,7 @@ class HloInstruction {
 
   template <typename T>
   using EnableIfProto = typename std::enable_if_t<
-      std::is_base_of<tensorflow::protobuf::Message, T>::value>;
+      std::is_base_of<tsl::protobuf::Message, T>::value>;
 
   // Returns the backend-specific configuration for how a backend should compile
   // this HLO. The meaning of the field is backend specific. Not for use before
@@ -1742,7 +1742,7 @@ class HloInstruction {
     return std::move(proto);
   }
 
-  Status set_backend_config(const tensorflow::protobuf::Message& proto) {
+  Status set_backend_config(const tsl::protobuf::Message& proto) {
     backend_config_ = proto;
     return OkStatus();
   }
@@ -1790,7 +1790,7 @@ class HloInstruction {
   //   return instr.raw_backend_config_string();
   //
   static StatusOr<std::string> BackendConfigToRawString(
-      const tensorflow::protobuf::Message& proto);
+      const tsl::protobuf::Message& proto);
 
   // Returns the information used to tell the implementation information about
   // what sort of precision is requested. The meaning of the field is backend
@@ -2223,9 +2223,7 @@ class HloInstruction {
   // Wrapper class of string format and protobuf format of BackendConfig.
   class BackendConfigRep {
    public:
-    const tensorflow::protobuf::Message* GetProtoPtr() const {
-      return proto_.get();
-    }
+    const tsl::protobuf::Message* GetProtoPtr() const { return proto_.get(); }
 
     const std::string& GetRawString() const;
 
@@ -2244,11 +2242,11 @@ class HloInstruction {
     }
 
     BackendConfigRep& operator=(std::string raw_string);
-    BackendConfigRep& operator=(const tensorflow::protobuf::Message& proto);
-    void SetProto(const tensorflow::protobuf::Message& proto);
+    BackendConfigRep& operator=(const tsl::protobuf::Message& proto);
+    void SetProto(const tsl::protobuf::Message& proto);
 
    private:
-    std::unique_ptr<tensorflow::protobuf::Message> proto_;
+    std::unique_ptr<tsl::protobuf::Message> proto_;
     // If proto_ is not null, raw_string_ is a lazy cache of its string format.
     mutable std::string raw_string_;
   };
@@ -2308,7 +2306,7 @@ class HloInstruction {
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
-  Status GetBackendConfigInternal(tensorflow::protobuf::Message* proto) const;
+  Status GetBackendConfigInternal(tsl::protobuf::Message* proto) const;
 
   // Mark this instruction as dead. Accessed by friend class HloInstruction.
   void MarkAsDead() { marked_as_dead_ = true; }

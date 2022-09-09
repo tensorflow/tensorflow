@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -50,8 +50,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR1F32Length2) {
   floats[0] = 42.0;
   floats[1] = 24.0;
 
-  std::string fname =
-      tensorflow::testing::TmpDir() + "/RoundTripsR1F32Length2.data";
+  std::string fname = tsl::testing::TmpDir() + "/RoundTripsR1F32Length2.data";
   EXPECT_TRUE(
       tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, data)
           .ok());
@@ -76,7 +75,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
   floats[3] = 46.0;  // y=1,x=1
 
   std::string fname =
-      tensorflow::testing::TmpDir() + "/RoundTripsR2F32Size2x2Dim0Minor.data";
+      tsl::testing::TmpDir() + "/RoundTripsR2F32Size2x2Dim0Minor.data";
   EXPECT_TRUE(
       tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, data)
           .ok());
@@ -109,7 +108,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
   floats[3] = 46.0;  // y=1,x=1
 
   std::string fname =
-      tensorflow::testing::TmpDir() + "/RoundTripsR2F32Size2x2Dim1Minor.data";
+      tsl::testing::TmpDir() + "/RoundTripsR2F32Size2x2Dim1Minor.data";
   EXPECT_TRUE(
       tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, data)
           .ok());

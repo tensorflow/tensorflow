@@ -182,15 +182,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 #if XLA_ENABLE_XLIR
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
@@ -1291,7 +1291,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 
   std::vector<StatusOr<BackendCompileResult>> compile_results(
       llvm_modules.size());
-  tensorflow::BlockingCounter counter(llvm_modules.size());
+  tsl::BlockingCounter counter(llvm_modules.size());
   for (int i = 0; i < llvm_modules.size(); i++) {
     thread_pool->Schedule(
         [&compile_results, compile_single_module, i, &llvm_modules, &counter] {

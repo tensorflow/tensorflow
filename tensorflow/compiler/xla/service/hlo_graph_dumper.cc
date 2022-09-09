@@ -55,9 +55,9 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/base64.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
@@ -1849,7 +1849,7 @@ static StatusOr<std::string> CompressAndEncode(absl::string_view input) {
   TF_RETURN_IF_ERROR(gz_file.Close());
 
   std::string encoded;
-  TF_RETURN_IF_ERROR(tensorflow::Base64Encode(compressed, &encoded));
+  TF_RETURN_IF_ERROR(tsl::Base64Encode(compressed, &encoded));
   return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
 }
 

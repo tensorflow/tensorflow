@@ -487,7 +487,7 @@ void RenderAndDisplayGraph(
   // Try to create a unique file inside of temp_dirs.front().  Notably, this
   // file's name must end with ".html", otherwise web browsers will treat it as
   // plain text, so we can't use Env::CreateUniqueFileName().
-  std::string temp_file_path = tensorflow::io::JoinPath(
+  std::string temp_file_path = tsl::io::JoinPath(
       temp_dirs.front(),
       absl::StrFormat("interactive_graphviz.%d.html", env->NowMicros()));
   auto status = tensorflow::WriteStringToFile(env, temp_file_path,

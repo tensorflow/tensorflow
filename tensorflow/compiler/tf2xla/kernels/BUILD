@@ -331,7 +331,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
@@ -339,6 +338,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
+        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/types:span",
     ],
 )

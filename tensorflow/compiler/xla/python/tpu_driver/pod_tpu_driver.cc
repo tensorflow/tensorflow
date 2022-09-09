@@ -24,7 +24,7 @@
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tpu_driver {
 namespace {

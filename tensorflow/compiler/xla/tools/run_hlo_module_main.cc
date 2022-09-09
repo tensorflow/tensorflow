@@ -26,11 +26,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/tools/run_hlo_module.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace {
 const char* const kUsage = R"(

@@ -257,8 +257,7 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
   const char* data = static_cast<const char*>(literal.untyped_data());
-  CHECK_EQ(module->getDataLayout().isLittleEndian(),
-           tensorflow::port::kLittleEndian);
+  CHECK_EQ(module->getDataLayout().isLittleEndian(), tsl::port::kLittleEndian);
   return llvm::ConstantDataArray::getString(
       module->getContext(), llvm::StringRef(data, literal.size_bytes()),
       /*AddNull=*/false);

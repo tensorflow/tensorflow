@@ -72,9 +72,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/record_reader.h"
-#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -302,7 +302,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
       LOG(INFO) << "\n\n***** Final run below ******";
     }
     int thread_pool_size = opts.intra_op_thread_pool_size < 0
-                               ? tensorflow::port::MaxParallelism()
+                               ? tsl::port::MaxParallelism()
                                : opts.intra_op_thread_pool_size;
     tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
                                         thread_pool_size);

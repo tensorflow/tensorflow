@@ -61,11 +61,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -119,8 +119,7 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
 // from the input filename.
 std::string MakeNameForTempProduct(absl::string_view input_filename,
                                    absl::string_view extension) {
-  return ReplaceFilenameExtension(tensorflow::io::Basename(input_filename),
-                                  extension);
+  return ReplaceFilenameExtension(tsl::io::Basename(input_filename), extension);
 }
 
 // Initializes LLVM passes. Uses the PassRegistry mechanism.
@@ -322,7 +321,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
   // CUDA 9+ uses a single libdevice file for all devices, and we don't support
   // older CUDAs.
   std::string libdevice_path =
-      tensorflow::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
+      tsl::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
   if (!tensorflow::Env::Default()->FileExists(libdevice_path).ok()) {
     LOG(WARNING)
         << "libdevice is required by this HLO module but was not found at "
@@ -380,7 +379,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
 
   bool dump_ir = hlo_module_config.debug_options().xla_gpu_dump_llvmir();
   std::string outputs_dir;
-  tensorflow::io::GetTestUndeclaredOutputsDir(&outputs_dir);
+  tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir);
   IrDumpingPassManager module_passes(module->getModuleIdentifier(), outputs_dir,
                                      dump_ir);
 
@@ -589,7 +588,7 @@ std::vector<std::string> GetROCDLPaths(std::string gcn_arch_name,
   std::vector<std::string> result;
   result.reserve(rocdl_filenames->size() + 1);
   for (auto& filename : *rocdl_filenames) {
-    result.push_back(tensorflow::io::JoinPath(rocdl_dir_path, filename));
+    result.push_back(tsl::io::JoinPath(rocdl_dir_path, filename));
   }
 
   // Add AMDGPU version-specific bitcodes.
@@ -598,7 +597,7 @@ std::vector<std::string> GetROCDLPaths(std::string gcn_arch_name,
   if (!tokens.empty() && tokens[0].size() >= 3) {
     amdgpu_version = tokens[0].substr(3);
   }
-  result.push_back(tensorflow::io::JoinPath(
+  result.push_back(tsl::io::JoinPath(
       rocdl_dir_path,
       absl::StrCat("oclc_isa_version_", amdgpu_version, ".bc")));
   return result;
@@ -682,22 +681,19 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   std::string random_number = std::to_string(tensorflow::random::New64());
   std::string ir_filename =
       absl::StrCat(module->getModuleIdentifier(), random_number + ".ll");
-  std::string ir_path = tensorflow::io::JoinPath(tempdir_name, ir_filename);
+  std::string ir_path = tsl::io::JoinPath(tempdir_name, ir_filename);
 
   std::string ir_opt_filename =
       absl::StrCat(module->getModuleIdentifier(), random_number + "_opt.ll");
-  std::string ir_opt_path =
-      tensorflow::io::JoinPath(tempdir_name, ir_opt_filename);
+  std::string ir_opt_path = tsl::io::JoinPath(tempdir_name, ir_opt_filename);
 
   std::string isabin_filename =
       absl::StrCat(module->getModuleIdentifier(), random_number + ".o");
-  std::string isabin_path =
-      tensorflow::io::JoinPath(tempdir_name, isabin_filename);
+  std::string isabin_path = tsl::io::JoinPath(tempdir_name, isabin_filename);
 
   std::string hsaco_filename =
       absl::StrCat(module->getModuleIdentifier(), random_number + ".hsaco");
-  std::string hsaco_path =
-      tensorflow::io::JoinPath(tempdir_name, hsaco_filename);
+  std::string hsaco_path = tsl::io::JoinPath(tempdir_name, hsaco_filename);
 
   std::error_code ec;
 
@@ -712,7 +708,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   // get creative to add a suffix.
   std::string module_id = module->getModuleIdentifier();
   IrDumpingPassManager codegen_passes(
-      ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
+      ReplaceFilenameExtension(tsl::io::Basename(module_id),
                                random_number + "-amdgpu.dummy"),
       "", false);
   codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
@@ -736,7 +732,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   // Locate lld.
   // TODO(whchung@gmail.com): change to tensorflow::ROCmRoot() after
   // ROCm-Device-Libs PR.
-  std::string lld_path = tensorflow::io::JoinPath("/opt/rocm", "llvm/bin");
+  std::string lld_path = tsl::io::JoinPath("/opt/rocm", "llvm/bin");
   auto lld_program = llvm::sys::findProgramByName("ld.lld", {lld_path});
   if (!lld_program) {
     return xla::InternalError("unable to find ld.lld in PATH: %s",

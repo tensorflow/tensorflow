@@ -46,11 +46,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 

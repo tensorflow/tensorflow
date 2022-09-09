@@ -33,9 +33,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/status_matchers.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -4088,7 +4088,7 @@ ENTRY test {
   ROOT root = f32[10,10]{1,0:D(X,C)} parameter(0)
 })";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(original).status(),
-              tensorflow::testing::StatusIs(
+              tsl::testing::StatusIs(
                   tensorflow::error::INVALID_ARGUMENT,
                   HasSubstr("expected a DimLevelType abbreviation")));
 }
@@ -4101,7 +4101,7 @@ ENTRY test {
 })";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(original).status(),
-      tensorflow::testing::StatusIs(
+      tsl::testing::StatusIs(
           tensorflow::error::INVALID_ARGUMENT,
           HasSubstr("Dimensions size is 2, but dim level types size is 1")));
 }
@@ -4113,7 +4113,7 @@ ENTRY test {
   ROOT root = f32[10,10]{1,0:D(D,C)T(128,8)} parameter(0)
 })";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(original).status(),
-              tensorflow::testing::StatusIs(
+              tsl::testing::StatusIs(
                   tensorflow::error::INVALID_ARGUMENT,
                   HasSubstr("Layout has tiles, but is for a sparse array")));
 }
@@ -4126,7 +4126,7 @@ ENTRY test {
 })";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(original).status(),
-      tensorflow::testing::StatusIs(
+      tsl::testing::StatusIs(
           tensorflow::error::INVALID_ARGUMENT,
           HasSubstr(
               "Layout has physical shape, but is not for a sparse array")));

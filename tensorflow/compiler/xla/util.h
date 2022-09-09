@@ -338,7 +338,7 @@ std::string VectorString(const std::initializer_list<T>& c) {
 }
 
 // Returns a string which can losslessly round trip to a bfloat.
-std::string RoundTripFpToString(tensorflow::bfloat16 value);
+std::string RoundTripFpToString(tsl::bfloat16 value);
 
 // Returns a string which can losslessly round trip to a fp16.
 std::string RoundTripFpToString(Eigen::half value);

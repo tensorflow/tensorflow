@@ -283,8 +283,8 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:resource_loader",
     ],
 )
 
@@ -1410,8 +1410,8 @@ xla_test(
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core/lib/math:math_util",
-        "//tensorflow/core/platform:test",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2287,9 +2287,9 @@ xla_test(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2318,6 +2318,8 @@ xla_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -2793,8 +2795,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:resource_loader",
     ],
 )
 

@@ -244,7 +244,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "//tensorflow/tsl/platform:regexp",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:errors",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:subprocess",
         "//tensorflow/core/platform:path",
@@ -285,7 +285,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "//tensorflow/tsl/platform:regexp",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:errors",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:subprocess",
         "//tensorflow/core/platform:path",
@@ -306,7 +306,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/cuda:fatbinary_wrapper",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_driver",
-    ]),
+    ]) + ["//tensorflow/tsl/platform:path"],
 )
 
 cc_library(

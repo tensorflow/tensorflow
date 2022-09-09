@@ -47,7 +47,7 @@ xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
     return tensorflow::errors::InvalidArgument(
         StructSizeErrorMsg(struct_name, expected_size, actual_size));
   }
-  return tensorflow::OkStatus();
+  return tsl::OkStatus();
 }
 
 std::string StructSizeErrorMsg(absl::string_view struct_name,

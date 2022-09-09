@@ -37,7 +37,7 @@ TEST(TextLiteralReaderTest, ReadsR3File) {
 (0,1,2): 47.5
 )";
 
-  std::string fname = tensorflow::testing::TmpDir() + "/ReadsR3File.data.txt";
+  std::string fname = tsl::testing::TmpDir() + "/ReadsR3File.data.txt";
   EXPECT_TRUE(
       tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, contents)
           .ok());

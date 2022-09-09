@@ -310,7 +310,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_runner_interface",
         "//tensorflow/compiler/xla/stream_executor:platform",
         "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/core/platform:errors",
+        "//tensorflow/tsl/platform:errors",
     ],
 )
 
@@ -354,8 +354,8 @@ cc_library(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:status",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -378,9 +378,10 @@ tf_cc_binary(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/core/platform:path",
         "//tensorflow/tsl/platform:platform_port",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/core/platform:test",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/tsl/platform:test",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]),

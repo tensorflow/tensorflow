@@ -40,8 +40,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -308,7 +308,7 @@ class Compiler {
   //
   // The stream executor is passed in to provide information about the hardware
   // that the backend configurations would be targeting.
-  virtual std::vector<std::unique_ptr<tensorflow::protobuf::Message>>
+  virtual std::vector<std::unique_ptr<tsl::protobuf::Message>>
   ComputeBackendConfigs(const HloInstruction& hlo,
                         se::StreamExecutor* executor) const;
 
@@ -318,9 +318,8 @@ class Compiler {
   //
   // The stream executor is passed in to provide information about the hardware
   // that the backend configurations would be targeting.
-  virtual std::unique_ptr<tensorflow::protobuf::Message>
-  ComputeDefaultBackendConfig(const HloInstruction& hlo,
-                              se::StreamExecutor* executor) const;
+  virtual std::unique_ptr<tsl::protobuf::Message> ComputeDefaultBackendConfig(
+      const HloInstruction& hlo, se::StreamExecutor* executor) const;
 
   // Compiles the HLO module group for ahead-of-time execution.  This is
   // intended for use in static compilation.

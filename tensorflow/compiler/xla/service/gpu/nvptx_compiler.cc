@@ -63,8 +63,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -203,7 +203,7 @@ bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
        module_config.debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.
-    auto filename = tensorflow::io::Basename(full_filename);
+    auto filename = tsl::io::Basename(full_filename);
     if (absl::StartsWith(filename, prefix)) {
       matched_filename = full_filename;
       VLOG(1) << "RunBackend() - Will load PTX from file: " << full_filename;
@@ -244,8 +244,7 @@ std::unique_ptr<llvm::Module> MaybeLoadLLVMFromFile(const HloModule* module,
       xla_gpu_llvm_ir_file, [prefix](const std::string& full_filename) {
         // To ease comparing many LLVM versions, accept different suffixes then
         // the original filename.
-        return absl::StartsWith(tensorflow::io::Basename(full_filename),
-                                prefix);
+        return absl::StartsWith(tsl::io::Basename(full_filename), prefix);
       });
   if (!xla_gpu_llvm_ir_file.empty() &&
       matched_filename == std::end(xla_gpu_llvm_ir_file)) {

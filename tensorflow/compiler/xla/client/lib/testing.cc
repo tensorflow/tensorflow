@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {

@@ -62,8 +62,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace jax {
 
@@ -285,7 +285,7 @@ xla::Status ParseArguments(py::handle args,
       }
     }
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 namespace {
@@ -717,7 +717,7 @@ xla::Status ComputeSignature(bool jax_enable_x64,
                         xla::PyArgSignatureOfValue(arg, jax_enable_x64));
     arguments.signature.dynamic_arg_signatures.push_back(std::move(sig));
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 // Copy buffers to device, skipping pruned arguments.
@@ -753,7 +753,7 @@ xla::Status CopyBuffersToDevice(
           std::move(on_device.owning_pybuffer));
     }
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 void CompiledFunction::PopulateCacheEntry(
@@ -1502,7 +1502,7 @@ void BuildJaxjitSubmodule(py::module& m) {
       [](py::handle self) -> xla::Status {
         TF_ASSIGN_OR_RETURN(CompiledFunction * fun, AsCompiledFunction(self));
         fun->ClearCache();
-        return ::tensorflow::OkStatus();
+        return ::tsl::OkStatus();
       },
       py::is_method(cfun));
   jitlib.def("_is_float0", &xla::IsFloat0);

@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
@@ -144,7 +144,7 @@ struct CanonicalDebugOptions {
     std::string dump_to_lower = absl::AsciiStrToLower(dump_to);
     if (dump_to_lower == "sponge" ||
         dump_to_lower == "test_undeclared_outputs_dir") {
-      if (!tensorflow::io::GetTestUndeclaredOutputsDir(&dump_to)) {
+      if (!tsl::io::GetTestUndeclaredOutputsDir(&dump_to)) {
         LOG(ERROR) << "--xla_dump_to=" << opts.xla_dump_to()
                    << ", but environment variable TEST_UNDECLARED_OUTPUTS_DIR "
                       "is not set, so cannot dump anywhere.";
@@ -271,7 +271,7 @@ static std::optional<std::string> GetDumpFilePath(
   // Make sure we are not going to dump more modules than the user has asked.
   if (opts.dump_max_hlo_modules > 0) {
     std::vector<std::string> matches;
-    auto pattern = tensorflow::io::JoinPath(dir, "*module_*.*");
+    auto pattern = tsl::io::JoinPath(dir, "*module_*.*");
     auto status = env->GetMatchingPaths(pattern, &matches);
     if (!status.ok()) {
       LOG(ERROR) << "Could not get matching paths for pattern " << pattern
@@ -297,7 +297,7 @@ static std::optional<std::string> GetDumpFilePath(
     }
   }
 
-  return tensorflow::io::JoinPath(dir, SanitizeFileName(std::string(filename)));
+  return tsl::io::JoinPath(dir, SanitizeFileName(std::string(filename)));
 }
 
 static std::optional<std::string> DumpToFileInDirImpl(
@@ -620,7 +620,7 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   outputFile->keep();
 }
 
-void DumpProtobufToFile(const tensorflow::protobuf::Message& proto,
+void DumpProtobufToFile(const tsl::protobuf::Message& proto,
                         const DebugOptions& debug_options,
                         absl::string_view filename) {
   CanonicalDebugOptions opts(debug_options);
@@ -635,7 +635,7 @@ void DumpProtobufToFile(const tensorflow::protobuf::Message& proto,
     }
   }
   if (env->IsDirectory(dir).ok()) {
-    const std::string path = tensorflow::io::JoinPath(dir, filename);
+    const std::string path = tsl::io::JoinPath(dir, filename);
     Status status;
     if (opts.dump_as_text) {
       status =
@@ -652,7 +652,7 @@ void DumpProtobufToFile(const tensorflow::protobuf::Message& proto,
 }
 
 void DumpPerModuleProtobufToFile(const HloModule& module,
-                                 const tensorflow::protobuf::Message& proto,
+                                 const tsl::protobuf::Message& proto,
                                  const DebugOptions& debug_options,
                                  absl::string_view name) {
   const std::string filename = FilenameFor(module, TimestampFor(module), name);

@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 
@@ -479,7 +479,7 @@ void BM_Eigen(const TransposeTestCase& bm, int parallelism,
   for (auto s : state) {
     TransposeUsingEigen(input.data(), output.data(), bm.dims, output_dims,
                         bm.permutation);
-    tensorflow::testing::DoNotOptimize(output);
+    tsl::testing::DoNotOptimize(output);
   }
 }
 static void BM_Eigen_uint8(const TransposeTestCase& bm, int parallelism,
@@ -509,7 +509,7 @@ void BM_Transpose(const TransposeTestCase& bm, int parallelism,
     plan->Execute(input.data(), output.data(), [&](std::function<void()> fn) {
       threadpool.Schedule(std::move(fn));
     });
-    tensorflow::testing::DoNotOptimize(output);
+    tsl::testing::DoNotOptimize(output);
   }
 }
 static void BM_Transpose_uint8(const TransposeTestCase& bm, int parallelism,

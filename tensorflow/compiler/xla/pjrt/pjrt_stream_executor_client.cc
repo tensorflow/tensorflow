@@ -116,16 +116,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
 #include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 

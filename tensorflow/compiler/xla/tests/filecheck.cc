@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/subprocess.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/resource_loader.h"
 
 namespace xla {
 
@@ -43,8 +43,8 @@ StatusOr<bool> RunFileCheck(const std::string& input,
 StatusOr<bool> RunFileCheckWithPatternFile(const std::string& input,
                                            const std::string& pattern_file) {
   // Invoke FileCheck to check whether input matches `pattern`.
-  std::string file_check_path = tensorflow::GetDataDependencyFilepath(
-      tensorflow::io::JoinPath("external", "llvm-project", "llvm", "FileCheck"));
+  std::string file_check_path = tsl::GetDataDependencyFilepath(
+      tsl::io::JoinPath("external", "llvm-project", "llvm", "FileCheck"));
 
   tensorflow::SubProcess file_check_process;
   file_check_process.SetProgram(file_check_path,

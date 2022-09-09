@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace op = xla::testing::opcode_matchers;
 

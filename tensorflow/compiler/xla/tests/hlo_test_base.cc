@@ -36,8 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -517,7 +517,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::Run(
     string_view hlo_string, bool run_hlo_passes, ExecutionProfile* profile,
-    const tensorflow::protobuf::Message* backend_config) {
+    const tsl::protobuf::Message* backend_config) {
   auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
@@ -565,7 +565,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::RunReplicated(
     string_view hlo_string, bool run_hlo_passes, int64_t num_replicas,
-    const tensorflow::protobuf::Message* backend_config) {
+    const tsl::protobuf::Message* backend_config) {
   auto module_or_status =
       ParseAndReturnVerifiedModule(hlo_string, num_replicas);
   if (!module_or_status.ok()) {
@@ -607,8 +607,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 ::testing::AssertionResult HloTestBase::RunMultipleTimes(
     string_view hlo_string, bool run_hlo_passes,
     std::vector<ExecutionProfile>* profiles,
-    const tensorflow::protobuf::Message* backend_config,
-    bool assert_determinism) {
+    const tsl::protobuf::Message* backend_config, bool assert_determinism) {
   int n = profiles->size();
   std::vector<std::vector<Literal*>> fake_argument_ptrs(n);
   std::vector<std::vector<Literal>> fake_arguments(n);

@@ -41,9 +41,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -269,7 +269,7 @@ XLA_TEST_F(CpuGpuFusionTest, RandomizedParallelPartition) {
   // Tests parallel partitioning of a fusion instruction.
   // Create shape with random outer dimension size to generate random parallel
   // partition counts for each test run.
-  const int seed = tensorflow::testing::RandomSeed();
+  const int seed = tsl::testing::RandomSeed();
   LOG(INFO) << "RandomizedParallelPartition seed: " << seed;
   std::mt19937 generator(seed);
   std::uniform_int_distribution<int> distribution(128, 1024);

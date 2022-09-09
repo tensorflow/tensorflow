@@ -32,10 +32,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/tsl/platform/cuda_libdevice_path.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/regexp.h"
 
 namespace stream_executor {
@@ -200,7 +200,7 @@ static std::string FindCudaExecutable(const std::string binary_name,
   std::string binary_path;
   for (const std::string& cuda_root :
        tsl::CandidateCudaRoots(preferred_cuda_dir)) {
-    binary_path = tensorflow::io::JoinPath(cuda_root, "bin", binary_filename);
+    binary_path = tsl::io::JoinPath(cuda_root, "bin", binary_filename);
     VLOG(2) << "Looking for " << binary_filename << " at " << binary_path;
     if (env->FileExists(binary_path).ok() &&
         GetPtxasVersionString(binary_path).ok()) {
@@ -424,7 +424,7 @@ static std::string findRocmExecutable(const std::string& binary_relative_path,
                                       const std::string& rocm_root_dir) {
   auto env = tensorflow::Env::Default();
   std::string binary_path =
-      tensorflow::io::JoinPath(rocm_root_dir, binary_relative_path);
+      tsl::io::JoinPath(rocm_root_dir, binary_relative_path);
   VLOG(2) << "Looking for " << binary_relative_path << " at " << rocm_root_dir;
   if (!env->FileExists(binary_path).ok()) {
     binary_path = absl::StrCat("<", binary_path, " - NOT FOUND>");

@@ -43,13 +43,13 @@ using tensorflow::Env;
 namespace xla {
 namespace tools {
 
-StatusOr<std::string> ToJson(const tensorflow::protobuf::Message& message) {
+StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
   std::string json_output;
-  tensorflow::protobuf::util::JsonPrintOptions json_options;
+  tsl::protobuf::util::JsonPrintOptions json_options;
   json_options.add_whitespace = true;
   json_options.always_print_primitive_fields = true;
-  auto status = tensorflow::protobuf::util::MessageToJsonString(
-      message, &json_output, json_options);
+  auto status = tsl::protobuf::util::MessageToJsonString(message, &json_output,
+                                                         json_options);
   if (!status.ok()) {
     return InternalError("MessageToJsonString failed: %s",
                          status.error_message().data());

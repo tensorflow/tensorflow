@@ -32,15 +32,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using ::tensorflow::testing::IsOkAndHolds;
+using ::tsl::testing::IsOkAndHolds;
 
 class CudnnSupportUtilsTest : public HloTestBase {
  public:

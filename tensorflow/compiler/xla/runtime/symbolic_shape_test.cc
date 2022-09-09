@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace runtime {
