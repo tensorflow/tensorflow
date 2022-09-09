@@ -20,6 +20,7 @@ import pprint
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
@@ -1595,28 +1596,39 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
   def _structured_signature_check_arg_types(self, args, kwargs):
     """Raises a TypeError if any args have the wrong type."""
+    signature_context = trace_type.InternalTracingContext()
     # Check argument types
     arg_specs, kwarg_specs = self.structured_input_signature
     for i, (arg, spec) in enumerate(zip(args, arg_specs)):
       name = self._function_spec.arg_names[i]
-      self._structured_signature_check_arg_type(arg, spec, name)
+      self._structured_signature_check_arg_type(arg, spec, name,
+                                                signature_context)
     for (name, arg) in kwargs.items():
-      self._structured_signature_check_arg_type(arg, kwarg_specs[name], name)
+      self._structured_signature_check_arg_type(arg, kwarg_specs[name], name,
+                                                signature_context)
 
-  def _structured_signature_check_arg_type(self, arg, spec, name):
+  def _structured_signature_check_arg_type(self, arg, spec, name,
+                                           signature_context):
     """Raise TypeError if `arg`'s type doesn't match `spec`."""
     if arg is function_spec.BOUND_VALUE:
       return
 
+    # TODO(xjun): Expand this to all CompositeTensors after removing
+    # TraceType.Reference usage from IteratorSpec.
+    if isinstance(arg, resource_variable_ops.BaseResourceVariable):
+      arg_spec = trace_type.from_value(arg, signature_context)
+    else:
+      arg_spec = arg
+
     # Check the overall nested structure of the argument.
     try:
-      nest.assert_same_structure(arg, spec, expand_composites=True)
+      nest.assert_same_structure(arg_spec, spec, expand_composites=True)
     except (ValueError, TypeError):
       try:
-        nest.assert_same_structure(arg, spec, expand_composites=False)
-        expected, got = spec, arg
+        nest.assert_same_structure(arg_spec, spec, expand_composites=False)
+        expected, got = spec, arg_spec
       except (ValueError, TypeError):
-        expected, got = _structure_summary(spec), _structure_summary(arg)
+        expected, got = _structure_summary(spec), _structure_summary(arg_spec)
       raise TypeError(f"{self._structured_signature_summary()}: argument "
                       f"{name} had incorrect type\n"
                       f"  expected: {expected}\n"
@@ -1658,7 +1670,8 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       args: a list of Tensors or Variables. Arguments from the Python function
         should be filtered before calling this method: objects aside from
         Tensors, CompositeTensors, and Variables are ignored. Any
-        CompositeTensors should be expanded before calling this method.
+        CompositeTensors other than ResourceVariables should be expanded before
+        calling this method.
       captured_inputs: the captured inputs that are also part of the input args
         to the actual execution. By default, it should be self._captured_inputs.
       cancellation_manager: (Optional.) A `CancellationManager` that can be
