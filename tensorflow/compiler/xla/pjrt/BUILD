@@ -548,6 +548,7 @@ cc_library(
     deps = [
         ":mlir_to_hlo",
         ":pjrt_client",
+        ":pjrt_executable",
         ":pjrt_future",
         ":semaphore",
         ":tracked_tfrt_cpu_device_buffer",
@@ -567,6 +568,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_module_util",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
         "//tensorflow/compiler/xla/service/cpu:cpu_xfeed",
