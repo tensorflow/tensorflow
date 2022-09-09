@@ -1843,18 +1843,6 @@ class HloInstruction {
   // Returns the module for this instruction.
   HloModule* GetModule() const;
 
-  // Get/Set the number of partitions per outer dimension (in order, starting
-  // with outer-most dimension first). Currently used by the parallel cpu
-  // backend to partition HLOs into parallel tasks.
-  //
-  // TODO(b/62783254) Replace these methods with a more general way to
-  // annotate HLOs with backend-specific information.
-  const std::vector<int64_t>& outer_dimension_partitions() const {
-    return outer_dimension_partitions_;
-  }
-  void set_outer_dimension_partitions(
-      const std::vector<int64_t>& outer_dimension_partitions);
-
   // A method that sorts users_, control_predecessors_, and control_successors_
   // according to the orders used in sorted_instruction. The sorting is used
   // during cloning, to make clone behavior match uncloned behavior.
@@ -1863,6 +1851,8 @@ class HloInstruction {
       const HloInstruction& sorted_instruction);
 
   // Old methods kept for smooth subclassing transition BEGIN.
+  // NOTE: Refrain from adding more delegates, prefer down casting to subclasses
+  // rather than using these methods.
   // TODO(b/80131774): Remove this code.
 
   // Delegates to HloBatchNormInstruction::feature_index.
@@ -2178,6 +2168,9 @@ class HloInstruction {
 
   // Old methods kept for smooth subclassing transition END.
 
+  HloInstruction(const HloInstruction&) = delete;
+  HloInstruction& operator=(const HloInstruction&) = delete;
+
  protected:
   // Internal constructor for a given opcode/shape, other fields must be filled
   // by factory methods.
@@ -2356,12 +2349,6 @@ class HloInstruction {
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;
 
-  // A trace instruction that consumes this instruction.
-  //
-  // Invariant: if trace_instruction_ != nullptr, trace_instruction has this as
-  // an operand.
-  HloInstruction* trace_instruction_ = nullptr;
-
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
   mutable BackendConfigRep backend_config_;
@@ -2378,6 +2365,12 @@ class HloInstruction {
   //    z' = const(20), frontend_attributes={?}
   FrontendAttributes frontend_attributes_;
 
+  // String identifier for instruction.
+  std::string name_;
+
+  // Metadata for debugging.
+  OpMetadata metadata_;
+
   // This field is assigned to true when backend_config_ is assigned to
   // a default configuration.
   bool is_default_config_ = false;
@@ -2386,22 +2379,9 @@ class HloInstruction {
   // operands.
   bool cleaned_up_ = false;
 
-  // String identifier for instruction.
-  std::string name_;
-
-  // Metadata for debugging.
-  OpMetadata metadata_;
-
-  // The number of partitions per outer dimension (listed in order from
-  // outer-most dimension first).
-  std::vector<int64_t> outer_dimension_partitions_;
-
   // Intrusive flag used by HloComputation, whether this instruction has
   // been marked as dead.
   bool marked_as_dead_;
-
-  HloInstruction(const HloInstruction&) = delete;
-  HloInstruction& operator=(const HloInstruction&) = delete;
 };
 
 // Explicit instantiations in hlo_instruction.cc.

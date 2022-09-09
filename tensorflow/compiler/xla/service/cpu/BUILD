@@ -17,7 +17,7 @@ load(
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load(":build_defs.bzl", "runtime_copts")
-load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available")
+load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available", "tf_proto_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -476,6 +476,7 @@ cc_library(
         "ir_emitter.h",
     ],
     deps = [
+        ":backend_config_proto_cc",
         ":cpu_options",
         ":cpu_runtime",
         ":dot_op_emitter",
@@ -613,6 +614,7 @@ cc_library(
         "dot_op_emitter.h",
     ],
     deps = [
+        ":backend_config_proto_cc",
         ":cpu_options",
         ":cpu_runtime",
         ":ir_emission_utils",
@@ -638,7 +640,6 @@ cc_library(
         "@llvm-project//mlir:ArithmeticUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
     ],
@@ -1284,7 +1285,7 @@ cc_library(
     srcs = ["parallel_task_assignment.cc"],
     hdrs = ["parallel_task_assignment.h"],
     deps = [
-        ":dot_op_emitter",
+        ":backend_config_proto_cc",
         ":ir_emission_utils",
         ":shape_partition",
         ":target_machine_features",
@@ -1293,7 +1294,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service/llvm_ir:dynamic_update_slice_util",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1421,4 +1421,11 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
     ],
+)
+
+tf_proto_library(
+    name = "backend_config_proto",
+    srcs = ["backend_config.proto"],
+    cc_api_version = 2,
+    protodeps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )

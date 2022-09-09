@@ -987,9 +987,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->SetAndSanitizeName(proto.name());
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
-  instruction->outer_dimension_partitions_.assign(
-      proto.outer_dimension_partitions().begin(),
-      proto.outer_dimension_partitions().end());
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
@@ -2171,7 +2168,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
-  clone->set_outer_dimension_partitions(outer_dimension_partitions_);
   clone->backend_config_ = backend_config_.Clone();
   // The new instruction's name will be uniquified when it's added to a
   // computation.
@@ -3346,10 +3342,6 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
     extra.push_back(StrCat("frontend_attributes=",
                            FrontendAttributesToString(frontend_attributes_)));
   }
-  if (!outer_dimension_partitions_.empty()) {
-    extra.push_back(absl::StrFormat("outer_dimension_partitions={%s}",
-                                    StrJoin(outer_dimension_partitions_, ",")));
-  }
 
   if (options.print_control_dependencies() && !control_predecessors_.empty()) {
     extra.push_back(StrCat("control-predecessors={",
@@ -3399,11 +3391,6 @@ HloInstructionProto HloInstruction::ToProto() const {
 
   if (has_sharding()) {
     *proto.mutable_sharding() = sharding().ToProto();
-  }
-  if (!outer_dimension_partitions_.empty()) {
-    for (const auto& idx : outer_dimension_partitions_) {
-      proto.mutable_outer_dimension_partitions()->Add(idx);
-    }
   }
 
   *proto.mutable_frontend_attributes() = frontend_attributes_;
@@ -4440,11 +4427,6 @@ HloModule* HloInstruction::GetModule() const {
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
   std::string parent_str = parent() == nullptr ? "noparent" : parent()->name();
   name_ = name_uniquer->GetUniqueName(name_);
-}
-
-void HloInstruction::set_outer_dimension_partitions(
-    const std::vector<int64_t>& outer_dimension_partitions) {
-  outer_dimension_partitions_ = outer_dimension_partitions;
 }
 
 void HloInstruction::SortInstructionUsersAndControlLists(

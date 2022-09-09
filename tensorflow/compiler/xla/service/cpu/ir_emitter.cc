@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/service/cpu/backend_config.pb.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
@@ -173,9 +174,12 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   is_top_level_computation_ = is_top_level_computation;
   allow_reassociation_ = allow_reassociation;
   num_dynamic_loop_bounds_ = 0;
-  if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
+  auto backend_config_or =
+      computation->root_instruction()->backend_config<BackendConfig>();
+  if (backend_config_or.ok() &&
+      !backend_config_or->outer_dimension_partitions().empty()) {
     num_dynamic_loop_bounds_ =
-        computation->root_instruction()->outer_dimension_partitions().size();
+        backend_config_or->outer_dimension_partitions().size();
   }
 
   if (computation->root_instruction()->opcode() != HloOpcode::kOutfeed) {
@@ -2233,7 +2237,10 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
 
-  if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
+  auto backend_config_or =
+      computation->root_instruction()->backend_config<BackendConfig>();
+  if (backend_config_or.ok() &&
+      !backend_config_or->outer_dimension_partitions().empty()) {
     // Having a nonempty set of 'outer_dimension_partitions' means that this
     // computation has been specially selected to be parallelized (one where the
     // root instruction is trivially parallelizable, like elementwise addition
@@ -2254,8 +2261,9 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
     // each call such that it only generates one partition of the output.
     HloInstruction* root = computation->root_instruction();
     TF_RETURN_IF_ERROR(EmitCallToParallelForkJoin(
-        call_args, root->shape(), root->outer_dimension_partitions(), &b_,
-        call_ir_function, computation->name()));
+        call_args, root->shape(),
+        backend_config_or->outer_dimension_partitions(), &b_, call_ir_function,
+        computation->name()));
 
     if (ComputationTransitivelyContainsCustomCall(computation)) {
       EmitEarlyReturnIfErrorStatus();

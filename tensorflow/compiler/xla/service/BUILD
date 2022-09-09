@@ -6103,7 +6103,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status_matchers",
         "@com_google_absl//absl/strings",
     ],

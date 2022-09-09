@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 
+#include <algorithm>
 #include <memory>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
+#include "tensorflow/compiler/xla/service/cpu/backend_config.pb.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/shape_partition.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -239,7 +240,11 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
 
     // Set assigned dimension partitioning to 'instruction'.
     auto* new_root = call->to_apply()->root_instruction();
-    new_root->set_outer_dimension_partitions(dim_partition_counts);
+    BackendConfig backend_config;
+    absl::c_copy(dim_partition_counts,
+                 tensorflow::protobuf::RepeatedFieldBackInserter(
+                     backend_config.mutable_outer_dimension_partitions()));
+    TF_CHECK_OK(new_root->set_backend_config(backend_config));
 
     VLOG(2) << "Assigned parallel task count: " << total_partition_count
             << " to instruction: " << new_root->name()

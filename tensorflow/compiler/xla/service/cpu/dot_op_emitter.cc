@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/cpu/backend_config.pb.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
@@ -1510,7 +1511,11 @@ Status EmitDotOperation(const HloInstruction& dot,
                         const TargetMachineFeatures& target_machine_features) {
   // This routine assumes that the dot operation is not in a parallelized
   // enclosing computation.
-  CHECK(dot.parent()->root_instruction()->outer_dimension_partitions().empty());
+  CHECK(dot.parent()
+            ->root_instruction()
+            ->backend_config<BackendConfig>()
+            ->outer_dimension_partitions()
+            .empty());
 
   if (IsBatchDot(dot)) {
     TF_RET_CHECK(addend_array == nullptr);
