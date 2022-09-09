@@ -399,6 +399,14 @@ class StreamErrorReporter : public ErrorReporter {
   std::stringstream* out_stream_;
 };
 
+std::string get_printable_string(const std::string& src) {
+  std::stringstream out;
+  for (auto it = src.begin(); it != src.end(); ++it) {
+    out << (isprint(*it) ? *it : '.');
+  }
+  return out.str();
+}
+
 std::string model_analyzer(const std::string& model_file_or_buffer,
                            bool input_is_filepath,
                            bool check_gpu_compatibility) {
@@ -487,7 +495,7 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
   dump_model_signature_defs(out_stream, model);
   dump_model_stats(out_stream, model, fb_model->allocation()->bytes(), &stats);
 
-  return out_stream.str();
+  return get_printable_string(out_stream.str());
 }
 
 }  // namespace tflite
