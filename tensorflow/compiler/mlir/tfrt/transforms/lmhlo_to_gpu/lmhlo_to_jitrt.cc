@@ -57,21 +57,13 @@
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 
 namespace tensorflow {
-namespace {
-
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/jitrt_passes.h.inc"
 
 using mlir::detail::PassOptions;
-
-static constexpr const char kDirectCustomCall[] = "rt.direct_custom_call";
-
-}  // namespace
 
 void populateLmhloToJitRtPasses(mlir::OpPassManager& pm,
                                 xla::gpu::ThunkSequence* thunk_sequence) {
   // Small global constants will be embedded into the device modules.
-  pm.addPass(createConvertLmhloToGpuBinaryPass(thunk_sequence));
+  pm.addPass(xla::gpu::createConvertLmhloToGpuLaunchPass(thunk_sequence));
 
   // Convert global memrefs corresponding to constant arguments.
   pm.addPass(xla::gpu::createConvertMemrefGetGlobalToArgPass());

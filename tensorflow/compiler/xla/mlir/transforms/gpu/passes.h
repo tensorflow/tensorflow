@@ -45,6 +45,11 @@ createConvertGpuToGpuRuntimePass();
 // Passes for lowering from the `lmhlo` dialect.
 //===----------------------------------------------------------------------===//
 
+class ThunkSequence;  // forward declare
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertLmhloToGpuLaunchPass(ThunkSequence* thunk_sequence = nullptr);
+
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertLmhloToGpuRuntimePass();
 

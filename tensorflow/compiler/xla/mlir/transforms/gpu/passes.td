@@ -65,6 +65,24 @@ def ConvertGpuToGpuRuntimePass :
 // Passes for lowering from the `lmhlo` dialect.
 //===----------------------------------------------------------------------===//
 
+def ConvertLmhloToGpuLaunchPass :
+    Pass<"xla-lmhlo-to-gpu-launch", "mlir::ModuleOp"> {
+  let summary = "Converts lmhlo fusions to Gpu dialect kernel launch";
+
+  let description = [{
+    Converts lmhlo operations that have registered IR emitters (e.g. fusions) to
+    Gpu dialect kernel launch operations (and trivial memory operations like
+    memcpy or memset). This pass relies on a pre-compiled ThunkSequence with an
+    associated device module (PTX and cubin) to find device kernels
+    corresponding to lmhlo operation in the input module.
+
+    Created Gpu kernel launch operations can be further lowered to the Gpu
+    runtime by the `xla-gpu-to-gpu-runtime` pass.
+  }];
+
+  let constructor = "createConvertLmhloToGpuLaunchPass()";
+}
+
 def ConvertLmhloToGpuRuntimePass :
     Pass<"xla-lmhlo-to-gpu-runtime", "mlir::ModuleOp"> {
   let summary = "Converts lmhlo operations to XLA Gpu runtime custom calls";
