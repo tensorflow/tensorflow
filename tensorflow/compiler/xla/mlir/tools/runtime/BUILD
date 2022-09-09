@@ -17,6 +17,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/mlir/ir/runtime/tests:testlib",
         "//tensorflow/compiler/xla/mlir/transforms/math:passes",
         "//tensorflow/compiler/xla/mlir/transforms/memref:passes",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline_cpu",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:passes",
         "@llvm-project//mlir:FuncDialect",

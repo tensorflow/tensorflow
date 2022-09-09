@@ -1,3 +1,4 @@
+// RUN: xla-runtime-opt %s --xla-runtime-default-cpu-pipeline | FileCheck %s
 // RUN: xla-runtime-opt %s --xla-runtime-default-gpu-pipeline | FileCheck %s
 
 // Check that entrypoint function was lowered to LLVM function with expected
