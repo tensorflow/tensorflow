@@ -1,0 +1,31 @@
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
+
+// NO_DEAD_FUNCTION-NOT: @test
+
+// CHECK: module @foobar
+HloModule foobar
+
+// Compiler-generated function
+// CHECK:  func private [[AG_GENSYM:@.*]]([[INPUT:%.*]]: tensor<128x32xf32>) -> tensor<128x128xf32> attributes {execution_thread = "main"} {
+  // CHECK-NEXT:  "mhlo.all_gather"([[INPUT]])
+  // CHECK-SAME: all_gather_dim = 1 : i64
+  // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+
+// CHECK:  func @main(%arg0: tensor<f32>) -> tensor<f32> {
+ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
+  ROOT %Arg_0.1 = f32[] parameter(0)
+}
+
+// CHECK:  func private @test_all_gather_start
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<128x32xf32>)
+%test_all_gather_start {
+  input = f32[128,32] parameter(0)
+  // CHECK-NEXT:  [[AG_START:%.*]] = "mhlo.async_start"([[INPUT]])
+  // CHECK-SAME: called_computation = [[AG_GENSYM]], execution_thread = "main"
+  ag-start = (f32[128,32], f32[128,128]) all-gather-start(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}
+  // CHECK-NEXT:  "mhlo.async_done"([[AG_START]])
+  // CHECK-SAME: called_computation = [[AG_GENSYM]], execution_thread = "main"
+  ROOT ag-done = f32[128,128] all-gather-done(ag-start)
+}
