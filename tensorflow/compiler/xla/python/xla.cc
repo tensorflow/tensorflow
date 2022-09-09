@@ -41,6 +41,9 @@ limitations under the License.
 #endif  // XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
+#include "tensorflow/compiler/xla/pjrt/pjrt_plugin_device_client.h"
+#endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 #ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
@@ -349,6 +352,16 @@ PYBIND11_MODULE(xla_extension, m) {
           return std::make_shared<PyClient>(std::move(c_api_client));
         });
 #endif  // XLA_PYTHON_ENABLE_TPU
+
+#ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
+  m.def("get_plugin_device_client",
+        []() -> StatusOr<std::shared_ptr<PyClient>> {
+          py::gil_scoped_release gil_release;
+          TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+                              GetTfrtPluginDeviceClient());
+          return std::make_shared<PyClient>(std::move(client));
+        });
+#endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 
   TF_CHECK_OK(PyBuffer::RegisterTypes(m));
   PyArray::RegisterTypes(m);

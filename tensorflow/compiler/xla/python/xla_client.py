@@ -43,7 +43,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 92
+_version = 93
 
 # Version number for MLIR:Python components.
 mlir_api_version = 34
@@ -121,6 +121,18 @@ def make_tpu_client():
         f'got {max_inflight_computations}') from e
   return _xla.get_tpu_client(
       max_inflight_computations=max_inflight_computations)
+
+
+def make_plugin_device_client():
+  """Returns a plugin device client."""
+  try:
+    return _xla.get_plugin_device_client()
+  except AttributeError as e:
+    raise AttributeError(
+        'xla_extension has no attributes named get_plugin_device_client. '
+        'Compile TensorFlow with '
+        '//tensorflow/compiler/xla/python:enable_plugin_device set to true '
+        '(defaults to false) to enable this.') from e
 
 
 class OpMetadata:

@@ -456,6 +456,22 @@ cc_library(
     ]),
 )
 
+cc_library(
+    name = "pjrt_plugin_device_client",
+    deps = [
+        ":pjrt_plugin_device_client_headers",
+        "//tensorflow/compiler/plugin",
+    ],
+)
+
+cc_library(
+    name = "pjrt_plugin_device_client_headers",
+    hdrs = ["pjrt_plugin_device_client.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
 # We actually wish we could write if_cuda(if_nccl(...)) in :gpu_device,
 # but Bazel does not allow nested selects. We can work around the problem using
 # an intermediate library that has the conditional NCCL pieces that is only
