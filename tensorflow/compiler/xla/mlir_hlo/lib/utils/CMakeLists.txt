@@ -21,6 +21,7 @@ add_mlir_dialect_library(MLIRMhloUtils
   hlo_utils.cc
 
   LINK_LIBS PUBLIC
+  ChloOps
   MLIRArithmeticDialect
   MLIRFuncDialect
   MLIRIR
