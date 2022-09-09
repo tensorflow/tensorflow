@@ -239,6 +239,7 @@ cc_library(
         ":macros",
         ":status",
         "//tensorflow/core/lib/core:errors",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
