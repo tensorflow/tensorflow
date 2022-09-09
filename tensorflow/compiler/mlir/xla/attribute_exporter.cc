@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 
+#include <utility>
+
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -178,6 +181,20 @@ StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
       return InvalidArgument("Unknown CustomCallApiVersion enum value #%d",
                              api_version);
   }
+}
+
+StatusOr<std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
+ConvertCustomCallOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
+  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasInfo;
+  for (auto attr : aliasArrayAttr.getValue()) {
+    auto alias = attr.cast<mlir::mhlo::OutputOperandAliasAttr>();
+    ShapeIndex outputShapeIndex(alias.getOutputTupleIndices());
+    ShapeIndex operandShapeIndex(alias.getOperandTupleIndices());
+    aliasInfo.push_back(std::make_pair(
+        outputShapeIndex,
+        std::make_pair(alias.getOperandIndex(), operandShapeIndex)));
+  }
+  return aliasInfo;
 }
 
 }  // namespace xla

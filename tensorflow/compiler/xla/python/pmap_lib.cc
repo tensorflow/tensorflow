@@ -158,7 +158,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
     TF_RET_CHECK(xla::PyBuffer::IsPyBuffer(per_device_pybuffers[0]));
     for (py::handle per_device_pybuffer : per_device_pybuffers) {
       xla::PjRtBuffer* buf =
-          xla::PyBuffer::AsPyBuffer(per_device_pybuffer).ValueOrDie()->buffer();
+          xla::PyBuffer::AsPyBuffer(per_device_pybuffer).value()->buffer();
       per_device_buffers.push_back(buf);
     }
   }
@@ -282,7 +282,7 @@ class PmapFunction {
         return signature_or_error.status();
       }
       arguments.signature.dynamic_arg_signatures.push_back(
-          std::move(signature_or_error).ValueOrDie());
+          std::move(signature_or_error).value());
     }
     try {
       py::object pxla_module = py::module::import("jax").attr("config");
@@ -692,7 +692,7 @@ PyObject* JaxPmapFunction_tp_call(PyObject* self, PyObject* args,
       PyErr_SetString(PyExc_ValueError, out.status().ToString().c_str());
       return nullptr;
     }
-    return out.ValueOrDie().release().ptr();
+    return out.value().release().ptr();
   } catch (py::error_already_set& e) {
     e.restore();
     return nullptr;

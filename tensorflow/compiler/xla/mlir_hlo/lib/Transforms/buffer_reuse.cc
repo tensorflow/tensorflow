@@ -16,7 +16,6 @@ limitations under the License.
 #include <algorithm>
 
 #include "mlir-hlo/Analysis/userange_analysis.h"
-#include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -27,6 +26,9 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+
+#define GEN_PASS_DEF_BUFFERREUSE
+#include "mlir-hlo/Transforms/passes.h.inc"
 
 namespace {
 
@@ -283,7 +285,7 @@ class BufferReuse : bufferization::BufferPlacementTransformationBase {
 
 /// The buffer reuse pass that uses already allocated buffers if all critera
 /// are met.
-struct BufferReusePass : BufferReuseBase<BufferReusePass> {
+struct BufferReusePass : impl::BufferReuseBase<BufferReusePass> {
   void runOnOperation() override {
     // Reuse allocated buffer instead of new allocation.
     Operation *funcOp = getOperation();

@@ -38,11 +38,11 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PROPAGATETFABIKNOWLEDGETOKERNELS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct PropagateTfAbiKnowledgeToKernelsPass
-    : public PropagateTfAbiKnowledgeToKernelsBase<
+    : public impl::PropagateTfAbiKnowledgeToKernelsBase<
           PropagateTfAbiKnowledgeToKernelsPass> {
   void runOnOperation() override {
     func::FuncOp function = getOperation();

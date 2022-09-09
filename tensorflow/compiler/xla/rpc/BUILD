@@ -15,10 +15,7 @@ load(
     "xla_py_grpc_library",
 )
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 tf_proto_library(
     name = "xla_service_proto",

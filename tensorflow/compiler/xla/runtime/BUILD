@@ -48,11 +48,10 @@ cc_library(
     hdrs = ["async_runtime.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
     ],
@@ -100,6 +99,23 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "custom_call_test",
+    srcs = ["custom_call_test.cc"],
+    deps = [
+        ":arguments",
+        ":async_runtime",
+        ":custom_call",
+        ":custom_call_registry",
+        ":diagnostics",
+        ":executable",
+        ":jit_executable",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "custom_call_registry",
     srcs = ["custom_call_registry.cc"],
@@ -118,6 +134,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":logical_result",
+        "//tensorflow/tsl/platform:logging",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -207,6 +224,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
     ],

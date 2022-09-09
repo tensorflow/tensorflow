@@ -38,8 +38,6 @@ static inline nsync::nsync_mu *mu_cast(internal::MuData *mu) {
 
 mutex::mutex() { nsync::nsync_mu_init(mu_cast(&mu_)); }
 
-mutex::mutex(LinkerInitialized x) {}
-
 void mutex::lock() { nsync::nsync_mu_lock(mu_cast(&mu_)); }
 
 bool mutex::try_lock() { return nsync::nsync_mu_trylock(mu_cast(&mu_)) != 0; };

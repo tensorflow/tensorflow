@@ -40,7 +40,7 @@ xla::XlaComputation Doubler() {
   auto r0f32 = xla::ShapeUtil::MakeShape(xla::F32, {});
   auto x = xla::Parameter(&builder, 0, r0f32, "x");
   xla::Mul(x, xla::ConstantR0<float>(&builder, 2.0));
-  return std::move(builder.Build().ValueOrDie());
+  return std::move(builder.Build().value());
 }
 
 }  // namespace
@@ -48,7 +48,7 @@ xla::XlaComputation Doubler() {
 int main(int argc, char** argv) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
-  auto client = xla::ClientLibrary::GetOrCreateCompileOnlyClient().ValueOrDie();
+  auto client = xla::ClientLibrary::GetOrCreateCompileOnlyClient().value();
 
   xla::XlaBuilder builder("aot_test_helper");
   auto opaque_shape = xla::ShapeUtil::MakeOpaqueShape();

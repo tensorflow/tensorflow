@@ -126,11 +126,11 @@ class DynamicSliceTest : public ClientLibraryTestBase {
     Literal input_values =
         LiteralUtil::CreateR1(input_values_int)
             .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-            .ValueOrDie();
+            .value();
     Literal expected_values =
         std::move(LiteralUtil::CreateR1(expected_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
 
     XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
@@ -152,11 +152,11 @@ class DynamicSliceTest : public ClientLibraryTestBase {
     Literal input_values =
         std::move(LiteralUtil::CreateR2FromArray2D(input_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
     Literal expected_values =
         std::move(LiteralUtil::CreateR2FromArray2D(expected_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
 
     XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
@@ -187,11 +187,11 @@ class DynamicSliceTest : public ClientLibraryTestBase {
     Literal input_values =
         std::move(LiteralUtil::CreateR3FromArray3D(input_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
     Literal expected_values =
         std::move(LiteralUtil::CreateR3FromArray3D(expected_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
 
     XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
@@ -378,15 +378,15 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     Literal input_value =
         std::move(LiteralUtil::CreateR0(input_value_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
     Literal update_value =
         std::move(LiteralUtil::CreateR0(update_value_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
     Literal expected_value =
         std::move(LiteralUtil::CreateR0(expected_value_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
 
     XlaBuilder builder(TestName());
     // Build dynamic slice computation.
@@ -405,15 +405,15 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     Literal input_values =
         std::move(LiteralUtil::CreateR1(input_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
     Literal update_values =
         std::move(LiteralUtil::CreateR1(update_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
     Literal expected_values =
         std::move(LiteralUtil::CreateR1(expected_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
 
     XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
@@ -436,15 +436,15 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     Literal input_values =
         std::move(LiteralUtil::CreateR2FromArray2D(input_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
     Literal update_values =
         std::move(LiteralUtil::CreateR2FromArray2D(update_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
     Literal expected_values =
         std::move(LiteralUtil::CreateR2FromArray2D(expected_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
 
     XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
@@ -475,15 +475,15 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     Literal input_values =
         std::move(LiteralUtil::CreateR3FromArray3D(input_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
     Literal update_values =
         std::move(LiteralUtil::CreateR3FromArray3D(update_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
     Literal expected_values =
         std::move(LiteralUtil::CreateR3FromArray3D(expected_values_int)
                       .Convert(primitive_util::NativeToPrimitiveType<DataT>())
-                      .ValueOrDie());
+                      .value());
 
     XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
@@ -754,13 +754,11 @@ XLA_TEST_F(HloTestBase, AddOfDUS) {
 }
 
 void BM_DynamicSlice(::testing::benchmark::State& state) {
-  se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
-  auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
+  se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
+  auto executors = PlatformUtil::GetStreamExecutors(platform).value();
   se::StreamExecutorMemoryAllocator allocator(platform, executors);
-  LocalClient* client =
-      ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie();
-  auto* transfer_manager =
-      TransferManager::GetForPlatform(platform).ValueOrDie();
+  LocalClient* client = ClientLibrary::GetOrCreateLocalClient(platform).value();
+  auto* transfer_manager = TransferManager::GetForPlatform(platform).value();
   int device_ordinal = client->default_device_ordinal();
 
   XlaBuilder builder("DynamicSlice");
@@ -771,8 +769,7 @@ void BM_DynamicSlice(::testing::benchmark::State& state) {
         {{13, 14, 15, 16}, {17, 18, 19, 20}, {21, 22, 23, 24}}}});
   auto input = ConstantLiteral(&builder, input_literal);
 
-  auto stream =
-      client->mutable_backend()->BorrowStream(device_ordinal).ValueOrDie();
+  auto stream = client->mutable_backend()->BorrowStream(device_ordinal).value();
 
   // Create dynamic slice start indices as a parameter: shape [4]
   auto start_indices_shape = ShapeUtil::MakeShape(S32, {});

@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "llvm/Support/Debug.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -30,6 +29,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_SPARSEREWRITINGPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 /// Approves subsuming sparse types into operation.
@@ -103,7 +106,7 @@ struct SparseConcatenateConverter
 };
 
 struct SparseRewritingPass
-    : public SparseRewritingPassBase<SparseRewritingPass> {
+    : public impl::SparseRewritingPassBase<SparseRewritingPass> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     populateSparseRewritingPatterns(&patterns, &getContext());

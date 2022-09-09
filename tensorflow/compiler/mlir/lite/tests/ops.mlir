@@ -277,6 +277,12 @@ func.func @testLogicalNot(tensor<? x i1>) -> tensor<? x i1> {
   func.return %0 : tensor<? x i1>
 }
 
+// CHECK-LABEL: testSign
+func.func @testSign(%arg0: tensor<? x f32>) -> tensor<? x f32> {
+  %0 = "tfl.sign"(%arg0): (tensor<? x f32>) -> tensor<? x f32>
+  func.return %0 : tensor<? x f32>
+}
+
 // -----
 
 func.func @testLogicalNotWrongOperandType(tensor<? x i32>) -> tensor<? x i32> {

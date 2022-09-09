@@ -117,7 +117,7 @@ StatusOr<std::string> Plot(std::unique_ptr<HloModule> module,
                                                  render_options);
   }
   if (graph_handle.ok()) {
-    LOG(INFO) << graph_handle.ValueOrDie();
+    LOG(INFO) << graph_handle.value();
   } else {
     LOG(INFO) << "Unable to render graph: " << graph_handle.status();
   }

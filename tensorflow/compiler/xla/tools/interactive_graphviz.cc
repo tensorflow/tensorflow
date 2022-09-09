@@ -454,7 +454,7 @@ void RenderAndDisplayGraph(
     const std::function<StatusOr<std::string>(RenderedGraphFormat)>& renderer) {
   StatusOr<std::string> url_result = renderer(RenderedGraphFormat::kUrl);
   if (url_result.ok()) {
-    std::string url = url_result.ValueOrDie();
+    std::string url = url_result.value();
     OpenUrl(opts, url);
     return;
   }
@@ -490,8 +490,8 @@ void RenderAndDisplayGraph(
   std::string temp_file_path = tensorflow::io::JoinPath(
       temp_dirs.front(),
       absl::StrFormat("interactive_graphviz.%d.html", env->NowMicros()));
-  auto status = tensorflow::WriteStringToFile(
-      env, temp_file_path, std::move(html_result).ValueOrDie());
+  auto status = tensorflow::WriteStringToFile(env, temp_file_path,
+                                              std::move(html_result).value());
   if (status.ok()) {
     OpenUrl(opts, absl::StrCat("file://", temp_file_path));
     return;
@@ -705,40 +705,39 @@ void RealMain(const Options& opts) {
     auto config =
         HloModule::CreateModuleConfigFromProto(snapshot.hlo().hlo_module(),
                                                xla::GetDebugOptionsFromFlags())
-            .ValueOrDie();
-    module = HloModule::CreateFromProto(snapshot.hlo().hlo_module(), config)
-                 .ValueOrDie();
+            .value();
+    module =
+        HloModule::CreateFromProto(snapshot.hlo().hlo_module(), config).value();
   } else if (!opts.hlo_proto.empty()) {
     module = HloRunner::ReadModuleFromBinaryProtoFile(
                  opts.hlo_proto, xla::GetDebugOptionsFromFlags())
-                 .ValueOrDie();
+                 .value();
   } else if (!opts.hlo_text.empty()) {
     module = HloRunner::ReadModuleFromHloTextFile(
                  opts.hlo_text, xla::GetDebugOptionsFromFlags())
-                 .ValueOrDie();
+                 .value();
   } else if (!opts.hlo_module_proto.empty()) {
     module = HloRunner::ReadModuleFromModuleBinaryProtofile(
                  opts.hlo_module_proto, xla::GetDebugOptionsFromFlags())
-                 .ValueOrDie();
+                 .value();
   }
 
   // If a platform was specified, compile the module for that platform.
   if (!opts.platform.empty()) {
-    se::Platform* platform =
-        PlatformUtil::GetPlatform(opts.platform).ValueOrDie();
+    se::Platform* platform = PlatformUtil::GetPlatform(opts.platform).value();
     LOG(INFO) << "Compiling module for " << platform->Name();
 
     se::StreamExecutor* executor =
-        platform->ExecutorForDevice(/*ordinal=*/0).ValueOrDie();
-    auto compiler = Compiler::GetForPlatform(platform).ValueOrDie();
+        platform->ExecutorForDevice(/*ordinal=*/0).value();
+    auto compiler = Compiler::GetForPlatform(platform).value();
     module = compiler
                  ->RunHloPasses(std::move(module), executor,
                                 /*device_allocator=*/nullptr)
-                 .ValueOrDie();
+                 .value();
     auto executable = compiler
                           ->RunBackend(std::move(module), executor,
                                        /*device_allocator=*/nullptr)
-                          .ValueOrDie();
+                          .value();
     InteractiveDumpGraphs(opts, executable->module());
   } else {
     InteractiveDumpGraphs(opts, *module);

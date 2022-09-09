@@ -191,7 +191,8 @@ class XlaCompilationCache : public ResourceBase {
       const std::string& serialized_aot_result);
 
   // Determines whether the cluster should be compiled.
-  bool ShouldCompileCluster(CompileMode compile_mode, bool is_first_execution,
+  bool ShouldCompileCluster(CompileMode compile_mode, bool is_megamorphic,
+                            bool is_first_execution,
                             int64_t current_request_count,
                             const NameAttrList& function);
 
@@ -273,6 +274,11 @@ class XlaCompilationCache : public ResourceBase {
 
     // Cumulative time spent compiling the cluster.
     int64_t cumulative_compile_time_us = 0;
+
+    // True if we have decided that this cluster is too dynamic (i.e. its shapes
+    // change too frequently) to profitably JIT compile.  Once a cluster is
+    // tagged megamorphic, it stays megamorphic forever.
+    bool is_megamorphic = false;
   };
 
   mutex cluster_compile_stats_mu_;

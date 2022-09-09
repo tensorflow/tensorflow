@@ -15,8 +15,8 @@ limitations under the License.
 
 // CUDA virtual memory API is only available in CUDA versions greater than 10.2.
 
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_VMEM_ALLOCATOR_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_VMEM_ALLOCATOR_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_VIRTUAL_MEM_ALLOCATOR_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_VIRTUAL_MEM_ALLOCATOR_H_
 
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
@@ -111,4 +111,4 @@ class GpuVirtualMemAllocator : public SubAllocator {
 
 #endif  // CUDA_VERSION >= 10200
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_VMEM_ALLOCATOR_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_VIRTUAL_MEM_ALLOCATOR_H_

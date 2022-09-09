@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_MLIR_MATH_PASSES_H_
-#define XLA_MLIR_MATH_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_MATH_PASSES_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_MATH_PASSES_H_
 
 #include <memory>
 
@@ -33,4 +33,4 @@ CreateMathOptimizationPass(bool enable_avx2 = false);
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_MLIR_MATH_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_MATH_PASSES_H_

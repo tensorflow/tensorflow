@@ -115,6 +115,22 @@ def test_conv_dimension_numbers():
 
 
 @run
+def test_output_operand_alias():
+  """Check that OutputOperandAlias attributes is available and usable."""
+
+  attr = OutputOperandAlias.get(
+      output_tuple_indices=[0],
+      operand_index=0,
+      operand_tuple_indices=[1])
+  assert str(attr) == ("#mhlo.output_operand_alias<output_tuple_indices = [0], "
+                       "operand_index = 0, "
+                       "operand_tuple_indices = [1]>")
+  assert attr.output_tuple_indices == [0]
+  assert attr.operand_index == 0
+  assert attr.operand_tuple_indices == [1]
+
+
+@run
 def test_comparison_direction():
   """Check that ComparisonDirection attribute is available and usable."""
 

@@ -163,15 +163,18 @@ class Conv2DTest(test.TestCase):
   def _DtypesToTest(self, use_gpu):
     if test_util.IsMklEnabled():
       return [dtypes.float32]
-    # double datatype is currently not supported for convolution ops
-    # on the ROCm platform
-    optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
-    if use_gpu and not test_util.GpuSupportsHalfMatMulAndConv():
-      return [dtypes.float32] + optional_float64
-    else:
-      # It is important that float32 comes before float16 here,
-      # as we will be using its gradients as reference for fp16 gradients.
-      return [dtypes.float32, dtypes.float16] + optional_float64
+
+    if use_gpu:
+      # It is important that float32 comes first, since we are using its
+      # gradients as a reference for fp16 gradients.
+      out = [dtypes.float32]
+      if test_util.GpuSupportsHalfMatMulAndConv():
+        out.append(dtypes.float16)
+      if not test.is_built_with_rocm():
+        out.append(dtypes.float64)
+      return out
+
+    return [dtypes.float32, dtypes.float64, dtypes.float16, dtypes.bfloat16]
 
   def _CreateNumpyTensor(self, shape):
     total_size = 1
@@ -328,8 +331,7 @@ class Conv2DTest(test.TestCase):
                     dilations=(1, 1),
                     gpu_only=False,
                     test_grappler_layout_optimizer=False,
-                    tol=1e-5,
-                    fp16_tol=1e-3):
+                    tol=1e-5):
     if gpu_only and not test.is_gpu_available(cuda_only=True):
       return
     tensors = []
@@ -361,12 +363,11 @@ class Conv2DTest(test.TestCase):
         value = values[i]
         tf_logging.debug("expected = %s", expected)
         tf_logging.debug("actual = %s", value)
-        tol_to_use = fp16_tol if value.dtype == np.float16 else tol
         if np.issubdtype(value.dtype, np.integer):
           self.assertAllEqual(np.rint(expected), np.ravel(value))
         else:
-          self.assertAllClose(expected, np.ravel(value), atol=tol_to_use,
-                              rtol=tol_to_use)
+          self.assertAllCloseAccordingToType(
+              expected, np.ravel(value), atol=tol, rtol=tol)
         self.assertShapeEqual(value, conv)
         self.assertEqual(value.dtype, conv.dtype.as_numpy_dtype)
 
@@ -377,8 +378,7 @@ class Conv2DTest(test.TestCase):
                               padding,
                               dilations=(1, 1),
                               test_grappler_layout_optimizer=False,
-                              tol=1e-5,
-                              fp16_tol=1e-3):
+                              tol=1e-5):
     """Verifies Conv2D with explicit padding generates correct values.
 
     It does this by comparing with Conv2D without explicit padding. This
@@ -394,8 +394,7 @@ class Conv2DTest(test.TestCase):
       dilations: Dilation values
       test_grappler_layout_optimizer: If True, allow the Grappler layout
         optimizer to run, which turns NHWC Conv2Ds on the GPU to NCHW Conv2Ds.
-      tol: The absolute and relative tolerance for non-fp16 dtypes.
-      fp16_tol: The absolute and relative tolerance for fp16.
+      tol: The absolute and relative tolerance.
     """
     input_tensor = self._CreateNumpyTensor(tensor_in_sizes)
     filter_tensor = self._CreateNumpyTensor(filter_in_sizes)
@@ -415,8 +414,7 @@ class Conv2DTest(test.TestCase):
         expected,
         dilations,
         test_grappler_layout_optimizer=test_grappler_layout_optimizer,
-        tol=tol,
-        fp16_tol=fp16_tol)
+        tol=tol)
 
   @test_util.run_in_graph_and_eager_modes
   def testConv2D1x1Filter(self):
@@ -1175,7 +1173,7 @@ class Conv2DTest(test.TestCase):
         self.assertShapeEqual(value, conv)
       tf_logging.debug("expected = %s", expected)
       tf_logging.debug("actual = %s", value)
-      self.assertArrayNear(expected, value.flatten(), err)
+      self.assertAllCloseAccordingToType(expected, value.flatten(), err)
 
   def _CompareBackFilter(self, input_sizes, filter_sizes, output_sizes,
                          conv_strides, padding):
@@ -1960,8 +1958,8 @@ class Conv2DTest(test.TestCase):
           reference_jacob_t = jacob_t
           err = np.fabs(jacob_t - jacob_n).max()
         else:
-          # Compare fp16 theoretical gradients to fp32 theoretical gradients,
-          # since fp16 numerical gradients are too imprecise.
+          # Compare fp16/bf16 theoretical gradients to fp32 gradients,
+          # since fp16/bf16 numerical gradients are too imprecise.
           err = np.fabs(jacob_t - reference_jacob_t).max()
 
         tf_logging.debug("conv_2d gradient error = %s", err)
@@ -2649,23 +2647,6 @@ class Conv2DTest(test.TestCase):
             data_format="NHWC",
             dilations=[1, 1, 1, 1])
         self.evaluate(t)
-
-  def testConv2DBfloat16Error(self):
-    x1 = self._CreateNumpyTensor((2, 2, 2, 2)).astype(
-        dtypes.bfloat16.as_numpy_dtype)
-    x2 = self._CreateNumpyTensor((2, 2, 2, 2)).astype(
-        dtypes.bfloat16.as_numpy_dtype)
-    with context.eager_mode():
-      # Conv2D used to return an empty output of shape [0] when given bfloat16
-      # inputs. Test that either a proper error message is now raised or that
-      # the output is the correct shape.
-      try:
-        y = nn_ops.conv2d(x1, x2, strides=[1, 1], padding="SAME")
-        self.assertEqual(y.shape, (2, 2, 2, 2))
-      except errors_impl.InvalidArgumentError as e:
-        self.assertIn("Op does not support bfloat16 inputs", e.message)
-      except errors_impl.NotFoundError as e:
-        self.assertIn("Could not find device for node", e.message)
 
 
 @test_util.run_all_without_tensor_float_32("Avoid TF32 conv on GPU")

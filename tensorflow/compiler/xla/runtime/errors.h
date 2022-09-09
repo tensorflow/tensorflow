@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_ERRORS_H_
-#define XLA_RUNTIME_ERRORS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_ERRORS_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_ERRORS_H_
 
 #include <string>
 
@@ -58,4 +58,4 @@ llvm::Error MakeStringError(Args&&... args) {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_ERRORS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_ERRORS_H_

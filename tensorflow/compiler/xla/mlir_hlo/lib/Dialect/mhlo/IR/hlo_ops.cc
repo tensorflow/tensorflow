@@ -22,12 +22,16 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -49,6 +53,7 @@ limitations under the License.
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -81,9 +86,68 @@ namespace mlir {
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.cc.inc"
+#define GET_TYPEDEF_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_typedefs.cc.inc"
 
 namespace mlir {
 namespace mhlo {
+
+namespace detail {
+/// A type representing a collection of other types.
+struct AsyncBundleTypeStorage final
+    : public TypeStorage,
+      public llvm::TrailingObjects<AsyncBundleTypeStorage, Type> {
+  using KeyTy = TypeRange;
+
+  explicit AsyncBundleTypeStorage(unsigned numTypes) : num_elements(numTypes) {}
+
+  // Construction.
+  static AsyncBundleTypeStorage* construct(TypeStorageAllocator& allocator,
+                                           TypeRange key) {
+    // Allocate a new storage instance.
+    auto byteSize = AsyncBundleTypeStorage::totalSizeToAlloc<Type>(key.size());
+    auto* rawMem =
+        allocator.allocate(byteSize, alignof(AsyncBundleTypeStorage));
+    auto* result = ::new (rawMem) AsyncBundleTypeStorage(key.size());
+
+    // Copy in the element types into the trailing storage.
+    std::uninitialized_copy(key.begin(), key.end(),
+                            result->getTrailingObjects<Type>());
+    return result;
+  }
+
+  bool operator==(const KeyTy& key) const { return key == getTypes(); }
+
+  // Return the number of held types.
+  unsigned size() const { return num_elements; }
+
+  // Return the held types.
+  ArrayRef<Type> getTypes() const {
+    return {getTrailingObjects<Type>(), size()};
+  }
+
+  void getFlattenedTypes(SmallVectorImpl<Type>& types) {
+    for (Type type : getTypes()) {
+      if (auto nestedTuple = type.dyn_cast<TupleType>())
+        nestedTuple.getFlattenedTypes(types);
+      else
+        types.push_back(type);
+    }
+  }
+
+  // The number of tuple elements.
+  unsigned num_elements;
+};
+
+}  // namespace detail
+/// Return the elements types for this tuple.
+ArrayRef<Type> AsyncBundleType::getTypes() const {
+  return getImpl()->getTypes();
+}
+void AsyncBundleType::getFlattenedTypes(SmallVectorImpl<Type>& types) {
+  getImpl()->getFlattenedTypes(types);
+}
+
 namespace {
 void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
                 ArrayRef<Type> types,
@@ -726,6 +790,171 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 
 //===----------------------------------------------------------------------===//
+// Async ops
+//===----------------------------------------------------------------------===//
+
+Type MaybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types) {
+  if (types.size() == 1) return types[0];
+  return TupleType::get(ctx, TypeRange(types));
+}
+
+LogicalResult AsyncStartOp::verify() {
+  ModuleOp module = getOperation()->getParentOfType<ModuleOp>();
+  func::FuncOp callee = module.lookupSymbol<func::FuncOp>(called_computation());
+  if (!callee) {
+    return emitOpError() << "can't find function: " << called_computation();
+  }
+  FunctionType calleeType = callee.getFunctionType();
+  auto calleeInputTypes = calleeType.getInputs();
+  auto calleeResultTypes = calleeType.getResults();
+
+  auto calleeThreadName = callee->getAttrOfType<StringAttr>("execution_thread");
+  if (!calleeThreadName)
+    return emitOpError() << "callee must have execution_thread attribute.";
+  if (calleeThreadName != execution_thread()) {
+    return emitOpError()
+           << "execution_thread does not match the execution_thread of "
+           << called_computation() << ".  Got: \"" << execution_thread()
+           << "\", but expected " << calleeThreadName << ".";
+  }
+
+  if (calleeType.getNumInputs() != getOperands().size()) {
+    return emitOpError() << "number of operands doesn't match operands for "
+                         << called_computation()
+                         << ". Got: " << getOperands().size()
+                         << ", but expected: " << calleeType.getNumInputs()
+                         << ".";
+  }
+  for (int i = 0; i < getOperands().size(); ++i) {
+    if (calleeType.getInput(i) != getOperandTypes()[i]) {
+      return emitOpError() << "type mismatch on argument #" << i << " of "
+                           << called_computation()
+                           << ". Got: " << getOperandTypes()[i]
+                           << ", but expected: " << calleeType.getInput(i)
+                           << ".";
+    }
+  }
+
+  auto resultTypes = getResult().getType().cast<AsyncBundleType>().getTypes();
+  if (resultTypes.size() < 2)
+    return emitOpError() << "result is expected to be a bundle of at least 2 "
+                            "components, but got "
+                         << resultTypes.size();
+  if (resultTypes[0] != MaybeTupleFromTypes(getContext(), calleeInputTypes)) {
+    return emitOpError()
+           << "component #0 of return type doesn't match callee input types";
+  }
+  if (resultTypes[1] != MaybeTupleFromTypes(getContext(), calleeResultTypes)) {
+    return emitOpError()
+           << "component #1 of return type doesn't match callee result types";
+  }
+
+  return success();
+}
+
+LogicalResult AsyncUpdateOp::verify() {
+  ModuleOp module = getOperation()->getParentOfType<ModuleOp>();
+  func::FuncOp callee = module.lookupSymbol<func::FuncOp>(called_computation());
+  if (!callee) {
+    return emitOpError() << "can't find function: " << called_computation();
+  }
+  FunctionType calleeType = callee.getFunctionType();
+  auto calleeInputTypes = calleeType.getInputs();
+  auto calleeResultTypes = calleeType.getResults();
+  auto bundleTypes = bundle().getType().cast<AsyncBundleType>().getTypes();
+
+  auto calleeThreadName = callee->getAttrOfType<StringAttr>("execution_thread");
+  if (!calleeThreadName)
+    return emitOpError() << "callee must have execution_thread attribute.";
+  if (calleeThreadName != execution_thread()) {
+    return emitOpError() << "execution_thread does not match name of "
+                         << called_computation() << ".  Got: \""
+                         << execution_thread() << "\", but expected "
+                         << calleeThreadName << ".";
+  }
+
+  if (bundleTypes.size() < 2)
+    return emitOpError() << "operand is expected to be a bundle of at least 2 "
+                            "components, but got "
+                         << bundleTypes.size();
+  if (bundleTypes[0] != MaybeTupleFromTypes(getContext(), calleeInputTypes)) {
+    return emitOpError() << "component #0 of operand bundle type doesn't match "
+                            "callee input types";
+  }
+  if (bundleTypes[1] != MaybeTupleFromTypes(getContext(), calleeResultTypes)) {
+    return emitOpError() << "component #1 of operand bundle type doesn't match "
+                            "callee result types";
+  }
+
+  return success();
+}
+
+LogicalResult AsyncUpdateOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  AsyncUpdateOp::Adaptor adaptor(operands, attributes, regions);
+  auto stateType = adaptor.bundle().getType().cast<AsyncBundleType>();
+  inferredReturnTypes.push_back(stateType);
+  return success();
+}
+
+LogicalResult AsyncDoneOp::verify() {
+  ModuleOp module = getOperation()->getParentOfType<ModuleOp>();
+  func::FuncOp callee = module.lookupSymbol<func::FuncOp>(called_computation());
+  if (!callee) {
+    return emitOpError() << "can't find function: " << called_computation();
+  }
+  FunctionType calleeType = callee.getFunctionType();
+  auto calleeInputTypes = calleeType.getInputs();
+  auto calleeResultTypes = calleeType.getResults();
+  auto bundleTypes = bundle().getType().cast<AsyncBundleType>().getTypes();
+
+  auto calleeThreadName = callee->getAttrOfType<StringAttr>("execution_thread");
+  if (!calleeThreadName)
+    return emitOpError() << "callee must have execution_thread attribute.";
+  if (calleeThreadName != execution_thread()) {
+    return emitOpError() << "execution_thread does not match name of "
+                         << called_computation() << ".  Got: \""
+                         << execution_thread() << "\", but expected "
+                         << calleeThreadName << ".";
+  }
+
+  if (bundleTypes.size() < 2)
+    return emitOpError() << "operand is expected to be a bundle of at least 2 "
+                            "components, but got "
+                         << bundleTypes.size();
+  if (bundleTypes[0] != MaybeTupleFromTypes(getContext(), calleeInputTypes)) {
+    return emitOpError()
+           << "operand type component #0 doesn't match callee input types";
+  }
+  if (bundleTypes[1] != MaybeTupleFromTypes(getContext(), calleeResultTypes)) {
+    return emitOpError()
+           << "operand type component #1 doesn't match callee result types";
+  }
+
+  return success();
+}
+
+LogicalResult AsyncDoneOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  AsyncDoneOp::Adaptor adaptor(operands, attributes, regions);
+  ModuleOp module =
+      adaptor.bundle().getDefiningOp()->getParentOfType<ModuleOp>();
+  auto calledComputation = adaptor.called_computationAttr();
+  func::FuncOp callee = module.lookupSymbol<func::FuncOp>(calledComputation);
+  if (!callee) {
+    return adaptor.bundle().getDefiningOp()->emitOpError()
+           << "can't find function: " << calledComputation;
+  }
+  llvm::append_range(inferredReturnTypes,
+                     callee.getFunctionType().getResults());
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ConstantOp
 //===----------------------------------------------------------------------===//
 
@@ -835,94 +1064,152 @@ void ConstantOp::print(::mlir::OpAsmPrinter& p) {
 // CustomCallOp
 //===----------------------------------------------------------------------===//
 
+void CustomCallOp::build(
+    ::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
+    ::mlir::TypeRange resultType, ::mlir::ValueRange operands,
+    ::mlir::StringAttr callTargetName, ::mlir::BoolAttr hasSideEffect,
+    ::mlir::StringAttr backendConfig,
+    ::mlir::mhlo::CustomCallApiVersionAttr apiVersion,
+    ::mlir::ArrayAttr calledComputations, ::mlir::ArrayAttr operandLayouts,
+    ::mlir::ArrayAttr resultLayouts) {
+  return CustomCallOp::build(odsBuilder, odsState, resultType, operands,
+                             callTargetName, hasSideEffect, backendConfig,
+                             apiVersion, calledComputations, operandLayouts,
+                             resultLayouts, nullptr);
+}
+
 LogicalResult CustomCallOp::verify() {
   // If both operand and result layout attributes are not specified then nothing
   // to verify.
-  if (!operand_layouts().has_value() && !result_layouts().has_value())
-    return success();
+  if (operand_layouts().has_value() || result_layouts().has_value()) {
+    // Layout constraints for either both operands & results or none should be
+    // specified.
+    if (operand_layouts().has_value() != result_layouts().has_value())
+      return emitOpError() << "Layout attributes should be specified for "
+                              "either both operands and results or none.";
 
-  // Layout constraints for either both operands & results or none should be
-  // specified.
-  if (operand_layouts().has_value() != result_layouts().has_value())
-    return emitOpError() << "Layout attributes should be specified for "
-                            "either both operands and results or none.";
-
-  // Helper function to verify types and the corresponding layouts.
-  auto verifyTypesAndLayouts =
-      [this](TypeRange types, mlir::ArrayAttr layouts,
-             const std::string& valueName) -> LogicalResult {
-    if (types.size() != layouts.size())
-      return emitOpError() << "Number of " << valueName
-                           << "s must match the number of " << valueName
-                           << " layouts, " << types.size()
-                           << " != " << layouts.size();
-
-    for (const auto& indexedTypeAndLayout :
-         llvm::enumerate(llvm::zip(types, layouts))) {
-      // Get index for more descriptive error message.
-      auto index = indexedTypeAndLayout.index();
-
-      auto type = std::get<0>(indexedTypeAndLayout.value());
-      auto layout = std::get<1>(indexedTypeAndLayout.value())
-                        .cast<DenseIntElementsAttr>();
-
-      if (type.isa<TupleType>())
-        return emitOpError() << "Tuple types are not fully supported with "
-                                "layout constraints yet";
-      auto tensorType = type.dyn_cast<TensorType>();
-
-      // For non-tensor types such as !mhlo.token, the layout should be empty.
-      if (!tensorType) {
-        if (layout.empty()) continue;
+    // Helper function to verify types and the corresponding layouts.
+    auto verifyTypesAndLayouts =
+        [this](TypeRange types, mlir::ArrayAttr layouts,
+               const std::string& valueName) -> LogicalResult {
+      if (types.size() != layouts.size())
         return emitOpError()
-               << "Only tensor types can have non-empty layout: " << valueName
-               << " #" << index << " of type " << type << " has layout "
-               << layout;
+               << "Number of " << valueName << "s must match the number of "
+               << valueName << " layouts, " << types.size()
+               << " != " << layouts.size();
+
+      for (const auto& indexedTypeAndLayout :
+           llvm::enumerate(llvm::zip(types, layouts))) {
+        // Get index for more descriptive error message.
+        auto index = indexedTypeAndLayout.index();
+
+        auto type = std::get<0>(indexedTypeAndLayout.value());
+        auto layout = std::get<1>(indexedTypeAndLayout.value())
+                          .cast<DenseIntElementsAttr>();
+
+        if (type.isa<TupleType>())
+          return emitOpError() << "Tuple types are not fully supported with "
+                                  "layout constraints yet";
+        auto tensorType = type.dyn_cast<TensorType>();
+
+        // For non-tensor types such as !mhlo.token, the layout should be empty.
+        if (!tensorType) {
+          if (layout.empty()) continue;
+          return emitOpError()
+                 << "Only tensor types can have non-empty layout: " << valueName
+                 << " #" << index << " of type " << type << " has layout "
+                 << layout;
+        }
+
+        // For unranked tensors, we cannot verify the compatibility with layout
+        // any further.
+        if (!tensorType.hasRank()) continue;
+
+        // Layout must be a permutation of [0, N) where N is the rank of the
+        // tensor type.
+        std::vector<int64_t> range(tensorType.getRank());
+        std::iota(range.begin(), range.end(), 0);
+        if (tensorType.getRank() != layout.size() ||
+            !std::is_permutation(range.begin(), range.end(), layout.begin()))
+          return emitOpError()
+                 << "incorrect layout " << layout << " for type " << type
+                 << ", layout must be a permutation of [0, "
+                 << tensorType.getRank() << ")";
       }
+      return success();
+    };
 
-      // For unranked tensors, we cannot verify the compatibility with layout
-      // any further.
-      if (!tensorType.hasRank()) continue;
+    // At this point both `operand_layouts` and `result_layouts` are defined.
+    ArrayAttr operandLayouts = this->operand_layouts().value();
+    ArrayAttr resultLayouts = this->result_layouts().value();
 
-      // Layout must be a permutation of [0, N) where N is the rank of the
-      // tensor type.
-      std::vector<int64_t> range(tensorType.getRank());
-      std::iota(range.begin(), range.end(), 0);
-      if (tensorType.getRank() != layout.size() ||
-          !std::is_permutation(range.begin(), range.end(), layout.begin()))
-        return emitOpError() << "incorrect layout " << layout << " for type "
-                             << type << ", layout must be a permutation of [0, "
-                             << tensorType.getRank() << ")";
+    // Full support for layouts for arbitrary nesting of tuples is not
+    // supported yet.
+    //
+    // If result does not have any tuples, then i-th element of `result_layouts`
+    // specifies the layout constraints on i-th result.
+    //
+    // For the common case of a single tuple result packing non-tuple values,
+    // the i-th element of `result_layouts` specifies layout for i-th element of
+    // the result tuple.
+    TypeRange resultTypes;
+    if (getNumResults() == 1 && getResult(0).getType().isa<TupleType>())
+      resultTypes = getResult(0).getType().cast<TupleType>().getTypes();
+    else
+      resultTypes = getResultTypes();
+
+    // Verify that operands and operand layouts match.
+    if (failed(verifyTypesAndLayouts(getOperandTypes(), operandLayouts,
+                                     "operand")))
+      return failure();
+
+    // Verify that results and result layouts match.
+    if (failed(verifyTypesAndLayouts(resultTypes, resultLayouts, "result")))
+      return failure();
+  }
+
+  // Check output_operand_aliases
+
+  auto aliasArrayAttr = output_operand_aliases();
+  for (auto attr : aliasArrayAttr) {
+    auto alias = attr.cast<OutputOperandAliasAttr>();
+    auto outputTupleIndices = alias.getOutputTupleIndices();
+    auto operandIndex = alias.getOperandIndex();
+    auto operandTupleIndices = alias.getOperandTupleIndices();
+
+    if (operandIndex < 0 || operandIndex >= operands().size())
+      return emitOpError()
+             << "expects operandIndex in the output_operand_alias attribute "
+                "to be in range [0, "
+             << operands().size() << "); got: " << operandIndex << ".";
+
+    Type operandPart = getOperand(operandIndex).getType();
+    for (auto i : operandTupleIndices) {
+      if (!operandPart.isa<TupleType>() ||
+          i >= operandPart.cast<TupleType>().size() || i < 0)
+        return emitOpError()
+               << "operand_tuple_indices in the output_operand_alias "
+                  "attribute out of bounds";
+      operandPart = operandPart.cast<TupleType>().getType(i);
     }
-    return success();
-  };
-
-  // At this point both `operand_layouts` and `result_layouts` are defined.
-  ArrayAttr operandLayouts = this->operand_layouts().value();
-  ArrayAttr resultLayouts = this->result_layouts().value();
-
-  // Full support for layouts for arbitrary nesting of tuples is not
-  // supported yet.
-  //
-  // If result does not have any tuples, then i-th element of `result_layouts`
-  // specifies the layout constraints on i-th result.
-  //
-  // For the common case of a single tuple result packing non-tuple values, the
-  // i-th element of `result_layouts` specifies layout for i-th element of the
-  // result tuple.
-  TypeRange resultTypes;
-  if (getNumResults() == 1 && getResult(0).getType().isa<TupleType>())
-    resultTypes = getResult(0).getType().cast<TupleType>().getTypes();
-  else
-    resultTypes = getResultTypes();
-
-  // Verify that operands and operand layouts match.
-  if (failed(
-          verifyTypesAndLayouts(getOperandTypes(), operandLayouts, "operand")))
-    return failure();
-
-  // Verify that results and result layouts match.
-  return verifyTypesAndLayouts(resultTypes, resultLayouts, "result");
+    Type outputPart = getNumResults() > 1
+                          ? TupleType::get(getContext(), getResultTypes())
+                          : getResult(0).getType();
+    for (auto i : outputTupleIndices) {
+      if (!outputPart.isa<TupleType>() ||
+          i >= outputPart.cast<TupleType>().size() || i < 0)
+        return emitOpError()
+               << "output_tuple_indices in the output_operand_alias "
+                  "attribute out of bounds";
+      outputPart = outputPart.cast<TupleType>().getType(i);
+    }
+    if (operandPart != outputPart)
+      return emitOpError()
+             << "shapes mismatch in the output_operand_alias attribute: "
+             << "operand part has type " << operandPart
+             << " and output part has type " << outputPart;
+  }
+  return success();
 }
 
 void CustomCallOp::getEffects(
@@ -6290,7 +6577,8 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
   if (!val) return {};
 
   auto type = getElementTypeOrSelf(getType());
-  if (!type.isF32() && !type.isF64()) return {};
+  if (!type.isF16() && !type.isBF16() && !type.isF32() && !type.isF64())
+    return {};
 
   auto shapedType = getType().cast<ShapedType>();
   if (!shapedType.hasStaticShape()) return {};
@@ -6298,17 +6586,58 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
   // Prevent folding if the result is too large.
   if (val.getNumElements() > kFoldOpEltLimit) return {};
 
-  int bitWidth = type.getIntOrFloatBitWidth();
   llvm::SmallVector<APFloat, 4> values;
   values.reserve(val.getNumElements());
   for (auto it : val.getValues<APFloat>()) {
-    double value = bitWidth == 32 ? it.convertToFloat() : it.convertToDouble();
-    if (value < 0) return {};
-    value = std::sqrt(value);
-    if (bitWidth == 32)
-      values.emplace_back(static_cast<float>(value));
-    else
-      values.emplace_back(value);
+    if (it.isNegative()) return {};
+
+    const llvm::fltSemantics& oldSemantics = it.getSemantics();
+
+    bool unusedLoseInfo;
+    it.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
+               &unusedLoseInfo);
+
+    APFloat result(std::sqrt(it.convertToDouble()));
+    result.convert(oldSemantics, APFloat::rmNearestTiesToEven, &unusedLoseInfo);
+
+    values.push_back(result);
+  }
+  return DenseFPElementsAttr::get(shapedType, values);
+}
+
+//===----------------------------------------------------------------------===//
+// RsqrtOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult RsqrtOp::fold(ArrayRef<Attribute> operands) {
+  auto val = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  if (!val) return {};
+
+  auto type = getElementTypeOrSelf(getType());
+  if (!type.isF16() && !type.isBF16() && !type.isF32() && !type.isF64())
+    return {};
+
+  auto shapedType = getType().cast<ShapedType>();
+  if (!shapedType.hasStaticShape()) return {};
+
+  // Prevent folding if the result is too large.
+  if (val.getNumElements() > kFoldOpEltLimit) return {};
+
+  llvm::SmallVector<APFloat, 4> values;
+  values.reserve(val.getNumElements());
+  for (auto it : val.getValues<APFloat>()) {
+    if (it.isNegative()) return {};
+
+    const llvm::fltSemantics& oldSemantics = it.getSemantics();
+
+    bool unusedLoseInfo;
+    it.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
+               &unusedLoseInfo);
+
+    APFloat result(1.0 / std::sqrt(it.convertToDouble()));
+    result.convert(oldSemantics, APFloat::rmNearestTiesToEven, &unusedLoseInfo);
+
+    values.push_back(result);
   }
   return DenseFPElementsAttr::get(shapedType, values);
 }
@@ -6462,11 +6791,11 @@ struct Sign {
     return {};                                                       \
   }
 
-UNARY_FOLDER(NegOp, std::negate);
-UNARY_FOLDER(SignOp, Sign);
-UNARY_FOLDER_INT(NotOp, LogicalNot);
-UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven);
-UNARY_FOLDER_FLOAT(RoundOp, Round);
+UNARY_FOLDER(NegOp, std::negate)
+UNARY_FOLDER(SignOp, Sign)
+UNARY_FOLDER_INT(NotOp, LogicalNot)
+UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven)
+UNARY_FOLDER_FLOAT(RoundOp, Round)
 
 #undef UNARY_FOLDER
 #undef UNARY_FOLDER_INT
@@ -6652,11 +6981,11 @@ struct Xor {
 // Due to the other ops behaving differently in signed vs unsigned integers,
 // APInts need a special implementation. Currently, it replicates signed int
 // op behavior.
-BINARY_FOLDER(SubtractOp, std::minus);
-BINARY_FOLDER(DivOp, Divide);
-BINARY_FOLDER(RemOp, Remainder);
-BINARY_FOLDER(MaxOp, Max);
-BINARY_FOLDER(MinOp, Min);
+BINARY_FOLDER(SubtractOp, std::minus)
+BINARY_FOLDER(DivOp, Divide)
+BINARY_FOLDER(RemOp, Remainder)
+BINARY_FOLDER(MaxOp, Max)
+BINARY_FOLDER(MinOp, Min)
 
 bool isSplatZero(SplatElementsAttr attr) {
   if (!attr) return false;
@@ -7199,11 +7528,11 @@ static LogicalResult sortDropEmptyUseArgs(SortOp op,
   if (erasedArgs.empty()) return failure();
 
   SmallVector<Value> newOperands;
-  SmallVector<unsigned> erasedBlockArgs;
+  BitVector erasedBlockArgs(op.getNumOperands() * 2);
   for (const auto& en : llvm::enumerate(op.operands())) {
     if (erasedArgs.contains(en.index())) {
-      erasedBlockArgs.push_back(en.index() * 2);
-      erasedBlockArgs.push_back(en.index() * 2 + 1);
+      erasedBlockArgs.set(en.index() * 2);
+      erasedBlockArgs.set(en.index() * 2 + 1);
     } else {
       newOperands.push_back(en.value());
     }
@@ -8438,6 +8767,7 @@ static LogicalResult whileCanonicalization(WhileOp whileOp,
 
   SmallVector<Value> newOperands, resultsToReplace;
   SmallVector<unsigned> invariantArgIdxs;
+  BitVector invariantArgIdxBitVector(cond->getNumArguments());
   for (const auto& enumeratedOperands : llvm::enumerate(llvm::zip(
            whileOp.getOperands(), cond->getArguments(), body->getArguments(),
            bodyReturnOp->getOperands(), whileOp->getResults()))) {
@@ -8452,6 +8782,7 @@ static LogicalResult whileCanonicalization(WhileOp whileOp,
                       bodyBlockArg == bodyReturnOperand);
     if (forwarded) {
       invariantArgIdxs.push_back(enumeratedOperands.index());
+      invariantArgIdxBitVector.set(enumeratedOperands.index());
       condBlockArg.replaceAllUsesWith(whileOperand);
       bodyBlockArg.replaceAllUsesWith(whileOperand);
       whileResult.replaceAllUsesWith(whileOperand);
@@ -8460,8 +8791,8 @@ static LogicalResult whileCanonicalization(WhileOp whileOp,
     newOperands.push_back(whileOperand);
     resultsToReplace.push_back(whileResult);
   }
-  cond->eraseArguments(invariantArgIdxs);
-  body->eraseArguments(invariantArgIdxs);
+  cond->eraseArguments(invariantArgIdxBitVector);
+  body->eraseArguments(invariantArgIdxBitVector);
   for (int idx : llvm::reverse(invariantArgIdxs))
     bodyReturnOp->eraseOperand(idx);
 
@@ -8553,7 +8884,7 @@ MhloDialect::MhloDialect(MLIRContext* context)
       >();
   addInterfaces<HLOBoundedDialectInterface>();
   addInterfaces<HLOInlinerInterface>();
-  addTypes<TokenType>();
+  addTypes<TokenType, AsyncBundleType>();
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.cc.inc"
@@ -8562,11 +8893,12 @@ MhloDialect::MhloDialect(MLIRContext* context)
 }
 
 Type MhloDialect::parseType(DialectAsmParser& parser) const {
-  StringRef dataType;
-  if (parser.parseKeyword(&dataType)) return Type();
-
-  if (dataType == "token") return TokenType::get(getContext());
-  parser.emitError(parser.getNameLoc()) << "unknown mhlo type: " << dataType;
+  StringRef mnemonic;
+  Type parsedType;
+  auto parseResult = generatedTypeParser(parser, &mnemonic, parsedType);
+  if (parseResult.hasValue()) return parsedType;
+  if (mnemonic == "token") return TokenType::get(getContext());
+  parser.emitError(parser.getNameLoc()) << "unknown mhlo type: " << mnemonic;
   return nullptr;
 }
 
@@ -8575,6 +8907,7 @@ void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
     os << "token";
     return;
   }
+  if (succeeded(generatedTypePrinter(type, os))) return;
   os << "<unknown mhlo type>";
 }
 

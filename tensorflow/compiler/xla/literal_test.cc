@@ -1900,7 +1900,7 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
       LiteralUtil::MakeTuple({&tuple, &vector_bfloat16, &tuple, &nil_literal});
 
   auto to_from_proto = [](const Literal& literal) -> Literal {
-    return Literal::CreateFromProto(literal.ToProto()).ValueOrDie();
+    return Literal::CreateFromProto(literal.ToProto()).value();
   };
 
   EXPECT_EQ(one_f32, to_from_proto(one_f32));

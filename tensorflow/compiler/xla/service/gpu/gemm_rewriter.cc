@@ -268,7 +268,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // is the only user. cublasLt matmul can operate out-of-place.
     bool can_fuse_bias = (bias->user_count() == 1) || IsCublasLtMatmul(*gemm);
 
-    auto config = gemm->backend_config<GemmBackendConfig>().ValueOrDie();
+    auto config = gemm->backend_config<GemmBackendConfig>().value();
 
     // It is possible to fuse into a cublasLt matmul that already has a vector
     // bias, but no other epilogue will commute with the matrix bias add.
@@ -306,7 +306,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                    HloInstruction *matmul) {
     TF_RET_CHECK(broadcast_bias->shape() == matmul->shape());
 
-    auto config = matmul->backend_config<GemmBackendConfig>().ValueOrDie();
+    auto config = matmul->backend_config<GemmBackendConfig>().value();
 
     // # output column dims == # non-contracting rhs operand dims.
     const DotDimensionNumbers &dot_dims = config.dot_dimension_numbers();

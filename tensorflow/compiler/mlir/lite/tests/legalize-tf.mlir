@@ -2443,3 +2443,12 @@ func.func @atan2(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> tensor<8xf32> {
 // CHECK: %[[RES0:.*]] = "tfl.atan2"(%arg0, %arg1) : (tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
 // CHECK:  return %[[RES0]] : tensor<8xf32>
 }
+
+func.func @sign(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = "tf.Sign"(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+
+// CHECK-LABEL: sign
+// CHECK: %[[RES0:.*]] = "tfl.sign"(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
+// CHECK:  return %[[RES0]] : tensor<8xf32>
+}

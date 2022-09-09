@@ -444,7 +444,7 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   default_key_tensor.vec<tensorflow::tstring>()(2) = kDefaultShardingValue;
   auto default_state_key = builder.create<TF::ConstOp>(
       while_op.getLoc(),
-      tensorflow::ConvertTensor(default_key_tensor, &builder).ValueOrDie());
+      tensorflow::ConvertTensor(default_key_tensor, &builder).value());
   // With all replicated inputs, now build the replicate op.
   auto unformat_replicate = builder.create<tf_device::ReplicateOp>(
       while_op.getLoc(), num_replicas, devices, unformat_replicate_operands,

@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utils/shape_inference_utils.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
@@ -37,6 +36,9 @@ namespace tfg {
 using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeHandle;
+
+#define GEN_PASS_DEF_SHAPEINFERENCE
+#include "tensorflow/core/transforms/passes.h.inc"
 
 // Only non-static shape or type with subtype can be refined.
 static bool CanBeRefined(Type type) {
@@ -60,7 +62,7 @@ static bool CanBeRefined(Operation *op) {
                       static_cast<bool (*)(Type)>(CanBeRefined));
 }
 
-class ShapeInference : public ShapeInferenceBase<ShapeInference> {
+class ShapeInference : public impl::ShapeInferenceBase<ShapeInference> {
  public:
   void runOnOperation() override;
 

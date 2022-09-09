@@ -182,7 +182,7 @@ std::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
   PrimitiveType type =
       TypeToShape(block.getArgument(0).getType()).element_type();
   if (type == PRED) {
-    switch (opcode.ValueOrDie()) {
+    switch (opcode.value()) {
       case HloOpcode::kAnd:
         return ReductionKind::MIN;
       case HloOpcode::kOr:

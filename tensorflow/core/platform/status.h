@@ -78,6 +78,7 @@ class Status {
  public:
   /// Create a success status.
   Status() {}
+  ~Status();  // Not inlined to save code space
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
@@ -195,7 +196,13 @@ class Status {
       const std::function<void(absl::string_view, absl::string_view)>& visitor)
       const;
 
+  // Sets the stack frame associated with this status object.
+  // Stack traces are only kept and returned via GetStackTrace() if
+  // !this->ok().
   void SetStackTrace(std::vector<StackFrame>);
+
+  // Retrieve an associated stack frame for a non-OK status that was
+  // set via SetStackTrace().
   std::vector<StackFrame> GetStackTrace() const;
 
   absl::Span<const SourceLocation> GetSourceLocations() const;
@@ -204,12 +211,17 @@ class Status {
   void MaybeAddSourceLocation(SourceLocation loc);
 
   static const std::string& empty_string();
-  std::vector<StackFrame> stack_trace_;
   struct State {
+    State() TF_ATTRIBUTE_NOINLINE = default;
+    ~State() TF_ATTRIBUTE_NOINLINE = default;
+    State(const State&) TF_ATTRIBUTE_NOINLINE = default;
+    State& operator=(const State&) TF_ATTRIBUTE_NOINLINE = default;
+
     tensorflow::error::Code code;
     std::string msg;
     std::unordered_map<std::string, std::string> payloads;
     absl::InlinedVector<SourceLocation, 4> source_locations;
+    std::vector<StackFrame> stack_trace;
   };
 
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
@@ -217,6 +229,7 @@ class Status {
   std::unique_ptr<State> state_;
 
   void SlowCopyFrom(const State* src);
+  State* NewStateFromNonOKStatus(const Status& s);
 };
 
 // OkStatus()
@@ -295,7 +308,7 @@ class StatusGroup {
 };
 
 inline Status::Status(const Status& s)
-    : state_((s.state_ == nullptr) ? nullptr : new State(*s.state_)) {}
+    : state_((s.state_ == nullptr) ? nullptr : NewStateFromNonOKStatus(s)) {}
 
 inline Status& Status::operator=(const Status& s) {
   // The following condition catches both aliasing (when this == &s),

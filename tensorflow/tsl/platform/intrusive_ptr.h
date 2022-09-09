@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_TSL_PLATFORM_REFCOUNTED_SHARED_PTR_H_
-#define TENSORFLOW_TSL_PLATFORM_REFCOUNTED_SHARED_PTR_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_INTRUSIVE_PTR_H_
+#define TENSORFLOW_TSL_PLATFORM_INTRUSIVE_PTR_H_
 
 #include <algorithm>
 namespace tsl {
@@ -78,4 +78,4 @@ class IntrusivePtr {
 }  // namespace core
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PLATFORM_REFCOUNTED_SHARED_PTR_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_INTRUSIVE_PTR_H_

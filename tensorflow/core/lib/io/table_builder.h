@@ -25,7 +25,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_TABLE_BUILDER_H_
 
 #include <stdint.h>
+
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/table_options.h"
 
 namespace tensorflow {

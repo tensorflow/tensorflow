@@ -65,7 +65,7 @@ TEST_F(HloLivenessAnalysisTest, AddAtEntryRoot) {
     constant.2 = s32[] constant(1)
     ROOT add = s32[] add(constant.1, constant.2)
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add"), {}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "constant.1"), {}));
@@ -82,7 +82,7 @@ TEST_F(HloLivenessAnalysisTest, DeadAdd) {
     add.1 = s32[] add(constant.1, constant.2)
     ROOT add.2 = s32[] add(constant.1, constant.2)
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add.2"), {}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "constant.1"), {}));
@@ -100,7 +100,7 @@ TEST_F(HloLivenessAnalysisTest, TupleAtEntryRoot) {
     constant.2 = s32[] constant(1)
     ROOT tuple.1 = (s32[], s32[]) tuple(constant.1, constant.2)
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "tuple.1"), {}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "tuple.1"), {0}));
@@ -121,7 +121,7 @@ TEST_F(HloLivenessAnalysisTest, NestedTupleAtEntryRoot) {
     tuple.1 = (s32[], s32[]) tuple(constant.2, constant.3)
     ROOT tuple.2 = (s32[], (s32[], s32[])) tuple(constant.1, tuple.1)
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "tuple.1"), {}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "tuple.1"), {0}));
@@ -147,7 +147,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfTuple) {
     tuple.1 = (s32[], s32[]) tuple(constant.1, constant.2)
     ROOT get-tuple-element.1 = s32[] get-tuple-element(tuple.1), index=0
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(
       liveness.IsLive(GetInstruction(module.get(), "get-tuple-element.1"), {}));
@@ -171,7 +171,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfNestedTuple) {
     tuple.2 = (s32[], (s32[], s32[])) tuple(constant.1, tuple.1)
     ROOT get-tuple-element.1 = (s32[], s32[]) get-tuple-element(tuple.2), index=1
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(
       liveness.IsLive(GetInstruction(module.get(), "get-tuple-element.1"), {}));
@@ -209,7 +209,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfGteOfNestedTuple) {
     get-tuple-element.1 = (s32[], s32[]) get-tuple-element(tuple.2), index=1
     ROOT get-tuple-element.2 = s32[] get-tuple-element(get-tuple-element.1), index=0
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(
       liveness.IsLive(GetInstruction(module.get(), "get-tuple-element.2"), {}));
@@ -264,7 +264,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithDeadTupleElement) {
       SimpleLoop.condition, body=SimpleLoop.body
     ROOT get-tuple-element.4 = s32[] get-tuple-element(while.0), index=0
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(
       liveness.IsLive(GetInstruction(module.get(), "get-tuple-element.4"), {}));
@@ -324,7 +324,7 @@ TEST_F(HloLivenessAnalysisTest, WhileCondPropagatesLiveness) {
       SimpleLoop.condition, body=SimpleLoop.body
     ROOT get-tuple-element.5 = s32[] get-tuple-element(while.0), index=0
   })")
-                    .ValueOrDie();
+                    .value();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(
       liveness.IsLive(GetInstruction(module.get(), "get-tuple-element.5"), {}));
@@ -377,7 +377,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithLiveTupleElements) {
       SimpleLoop.condition, body=SimpleLoop.body
     ROOT get-tuple-element.5 = s32[] get-tuple-element(while.1), index=0
   })")
-                    .ValueOrDie();
+                    .value();
 
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(
@@ -430,7 +430,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithOutfeed) {
       body=WhileBody
     ROOT rtuple = () tuple()
   })")
-                    .ValueOrDie();
+                    .value();
 
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add"), {}));
@@ -480,7 +480,7 @@ TEST_F(HloLivenessAnalysisTest, NestedWhileWithOutfeed) {
       body=OuterWhileBody
     ROOT rtuple = () tuple()
   })")
-                    .ValueOrDie();
+                    .value();
 
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add"), {}));
@@ -568,7 +568,7 @@ ENTRY %main.67 (arg_tuple.1: (s32[])) -> () {
   ROOT %tuple.66 = () tuple()
 }
 )")
-                    .ValueOrDie();
+                    .value();
 
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
   EXPECT_TRUE(

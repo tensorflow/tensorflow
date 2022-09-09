@@ -130,7 +130,7 @@ TEST_F(CudnnSimplifyPaddingTest, EndToEnd) {
       window={size=3x5}, dim_labels=b01f_01io->b01f,
       custom_call_target="__cudnn$convBiasActivationForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunEndToEnd({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -165,7 +165,7 @@ TEST_F(CudnnSimplifyPaddingTest, PaddedWeights) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_0x0_0x0_5
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_TRUE(changed);
@@ -200,7 +200,7 @@ TEST_F(CudnnSimplifyPaddingTest, PaddedWeightsNotPaddedEnough) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_0x0_0x0_5
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
@@ -223,7 +223,7 @@ TEST_F(CudnnSimplifyPaddingTest, PaddedAndReshapedWeightsNCHW) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_5x0_0x0_0
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_TRUE(changed);
@@ -256,7 +256,7 @@ TEST_F(CudnnSimplifyPaddingTest, PaddedAndReshapedWeightsNHWC) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_0x0_0x0_5
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_TRUE(changed);
@@ -290,7 +290,7 @@ TEST_F(CudnnSimplifyPaddingTest, PaddedTransposedAndReshapedOutput) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_6x0_0x0_0
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_TRUE(changed);
@@ -323,7 +323,7 @@ TEST_F(CudnnSimplifyPaddingTest, PaddedConstantWeight) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_0x0_0x0_5
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   // Set the constant's value.  (The HLO text above sets it to all 0s.)
   {
@@ -367,7 +367,7 @@ TEST_F(CudnnSimplifyPaddingTest, PaddedConstantWeightIsNotLargeEnough) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_0x0_0x0_5
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   // Set the constant's value.  (The HLO text above sets it to all 0s.)
   {
@@ -407,7 +407,7 @@ TEST_F(CudnnSimplifyPaddingTest, ReshapeDoesntMergeVectCDim) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_6x0_0x0_0
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
@@ -431,7 +431,7 @@ TEST_F(CudnnSimplifyPaddingTest, TwoVectCDimsInOutput) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_6x0_0x0_0
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
@@ -455,7 +455,7 @@ TEST_F(CudnnSimplifyPaddingTest, TwoVectCDimsInKernel) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_6x0_0x0_0
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
@@ -477,7 +477,7 @@ TEST_F(CudnnSimplifyPaddingTest, SliceDoesntStartAtBeginning) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_0x0_0x0_5
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
@@ -499,7 +499,7 @@ TEST_F(CudnnSimplifyPaddingTest, SliceDoesntStartAtBeginningOfFeatureDim) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_0x0_0x0_5
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
@@ -521,7 +521,7 @@ TEST_F(CudnnSimplifyPaddingTest, SliceHasStride) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_0x0_0x0_5
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
@@ -543,7 +543,7 @@ TEST_F(CudnnSimplifyPaddingTest, PadAddsInteriorPadding) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_0x0_0x0_5_1
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
@@ -565,7 +565,7 @@ TEST_F(CudnnSimplifyPaddingTest, SliceMoreElementsThanPad) {
       ROOT pad = pad(slice, s8[] constant(0)), padding=0_0x0_0x0_0x0_2
     }
   )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_TRUE(changed);

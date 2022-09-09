@@ -40,6 +40,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.h.inc"
 #define GET_ATTRDEF_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.h.inc"
+#define GET_TYPEDEF_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_typedefs.h.inc"
 
 namespace mlir {
 class OpBuilder;

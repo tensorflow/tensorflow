@@ -41,8 +41,7 @@ ENTRY entry {
 
   HloModuleConfig config;
   config.set_use_spmd_partitioning(true);
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(hlo_string, config).ValueOrDie();
+  auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
   // Verify that compilation succeeded.
   StatusOr<std::unique_ptr<Executable>> executable =
@@ -68,8 +67,7 @@ ENTRY main {
   config.set_use_spmd_partitioning(true);
   config.set_num_partitions(2);
   config.set_debug_options(GetDebugOptionsFromFlags());
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(hlo_string, config).ValueOrDie();
+  auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(std::move(hlo_module)));

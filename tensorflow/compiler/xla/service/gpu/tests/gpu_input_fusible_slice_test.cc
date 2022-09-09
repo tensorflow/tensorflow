@@ -65,7 +65,7 @@ TEST_F(GpuSliceInputFusionTest, InputFusionWithATupleOfSlices) {
 
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ; CHECK: slice2
@@ -112,7 +112,7 @@ TEST_F(GpuSliceInputFusionTest, ConcatThenSplit) {
 
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
+          .value();
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ; CHECK: slice2

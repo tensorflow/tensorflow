@@ -75,8 +75,8 @@ ENTRY %convolution (operand f64[2,2,2,3]{3,2,1,0}) -> (f64[2,2,4,4]{3,2,1,0}, u8
   ROOT %custom-call = (f64[2,2,4,4]{3,2,1,0}, u8[0]{0}) custom-call(f64[2,2,2,3]{3,2,1,0} %operand, f64[2,3,2,3]{3,2,1,0} %reverse), window={size=2x3 stride=2x2 pad=0_0x0_1}, dim_labels=bf01_01io->b01f, custom_call_target="__cudnn$convBackwardInput", backend_config="{\"algorithm\":\"0\",\"tensor_ops_enabled\":false,\"conv_result_scale\":1,\"activation_mode\":\"0\",\"side_input_scale\":0}"
 }
                                                )")
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuConvPaddingLegalization().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuConvPaddingLegalization().Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root,
               op::Tuple(op::Slice(op::GetTupleElement(

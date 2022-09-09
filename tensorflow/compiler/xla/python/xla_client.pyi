@@ -83,6 +83,10 @@ def make_interpreter_client() -> Client:
   ...
 
 
+def make_tfrt_tpu_c_api_client() -> Client:
+  ...
+
+
 def make_tpu_client() -> Client:
   ...
 

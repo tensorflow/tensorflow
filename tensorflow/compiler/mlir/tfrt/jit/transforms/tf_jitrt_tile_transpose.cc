@@ -30,7 +30,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TILETRANSPOSE
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using llvm::SmallVector;
@@ -115,7 +115,7 @@ struct TileTransposePattern : public mlir::OpRewritePattern<GenericOp> {
   LinalgTilingOptions options;
 };
 
-struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
+struct TileTransposePass : public impl::TileTransposeBase<TileTransposePass> {
   void runOnOperation() override {
     auto get_tile_size = [&](mlir::OpBuilder b, Operation *op) {
       auto generic_op = llvm::cast<GenericOp>(op);

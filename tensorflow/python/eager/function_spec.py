@@ -25,6 +25,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
@@ -500,10 +501,16 @@ def _validate_signature(signature):
     raise TypeError("input_signature must be either a tuple or a list, got "
                     f"{type(signature)}.")
 
-  if any(not isinstance(arg, tensor_spec.DenseSpec)
+  # TODO(xjun): Allow VariableSpec once we figure out API for de-aliasing.
+  variable_specs = _get_variable_specs(signature)
+  if variable_specs:
+    raise TypeError(
+        f"input_signature doesn't support VariableSpec, got {variable_specs}")
+
+  if any(not isinstance(arg, tensor_spec.TensorSpec)
          for arg in nest.flatten(signature, expand_composites=True)):
     bad_args = [arg for arg in nest.flatten(signature, expand_composites=True)
-                if not isinstance(arg, tensor_spec.DenseSpec)]
+                if not isinstance(arg, tensor_spec.TensorSpec)]
     raise TypeError("input_signature must be a possibly nested sequence of "
                     f"TensorSpec objects, got invalid args {bad_args} with "
                     f"types {list(six.moves.map(type, bad_args))}.")
@@ -650,3 +657,17 @@ def convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
       t for t in flat_inputs
       if isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
   ])
+
+
+def _get_variable_specs(args):
+  """Returns `VariableSpecs` from `args`."""
+  variable_specs = []
+  for arg in nest.flatten(args):
+    if not isinstance(arg, type_spec.TypeSpec):
+      continue
+    if isinstance(arg, resource_variable_ops.VariableSpec):
+      variable_specs.append(arg)
+    elif not isinstance(arg, tensor_spec.TensorSpec):
+      # arg is a CompositeTensor spec.
+      variable_specs.extend(_get_variable_specs(arg._component_specs))  # pylint: disable=protected-access
+  return variable_specs

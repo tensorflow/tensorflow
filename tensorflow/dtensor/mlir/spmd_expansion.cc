@@ -145,7 +145,7 @@ mlir::LogicalResult UpdateResourceArgumentType(
     if (!layout_or_status.ok())
       return function.emitOpError(layout_or_status.status().error_message());
 
-    const auto& layout = layout_or_status.ValueOrDie();
+    const auto& layout = layout_or_status.value();
     if (!layout) return mlir::success();
 
     std::vector<int64_t> local_arg_shape_vec =

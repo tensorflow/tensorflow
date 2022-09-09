@@ -4333,7 +4333,7 @@ Status HloInstruction::GetBackendConfigInternal(
 
 const std::string& HloInstruction::BackendConfigRep::GetRawString() const {
   if (proto_ && raw_string_.empty()) {
-    raw_string_ = BackendConfigToRawString(*proto_).ValueOrDie();
+    raw_string_ = BackendConfigToRawString(*proto_).value();
   }
   return raw_string_;
 }
@@ -4909,6 +4909,11 @@ const TriangularSolveOptions& HloInstruction::triangular_solve_options() const {
 
 const CholeskyOptions& HloInstruction::cholesky_options() const {
   return Cast<HloCholeskyInstruction>(this)->cholesky_options();
+}
+
+const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
+HloInstruction::custom_call_output_operand_aliasing() const {
+  return Cast<HloCustomCallInstruction>(this)->output_to_operand_aliasing();
 }
 
 }  // namespace xla

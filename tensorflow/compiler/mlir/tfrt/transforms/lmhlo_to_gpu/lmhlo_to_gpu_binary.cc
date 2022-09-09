@@ -30,7 +30,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-void populateKernelOpsPattern(mlir::RewritePatternSet&, GpuBinaryOptions);
+using xla::gpu::ThunkSequence;
+
+void populateKernelOpsPattern(mlir::RewritePatternSet&, ThunkSequence*);
 
 namespace {
 
@@ -40,13 +42,13 @@ namespace {
 struct ConvertLmhloToGpuBinaryPass
     : public ConvertLmhloToGpuBinaryPassBase<ConvertLmhloToGpuBinaryPass> {
  public:
-  explicit ConvertLmhloToGpuBinaryPass(GpuBinaryOptions options)
-      : options(options) {}
+  explicit ConvertLmhloToGpuBinaryPass(ThunkSequence* thunk_sequence)
+      : thunk_sequence(thunk_sequence) {}
 
  private:
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
-    populateKernelOpsPattern(patterns, options);
+    populateKernelOpsPattern(patterns, thunk_sequence);
     if (failed(applyOpPatternsAndFold(getOperation(), std::move(patterns))))
       return signalPassFailure();
   }
@@ -55,18 +57,14 @@ struct ConvertLmhloToGpuBinaryPass
     xla::gpu::IrEmitterUnnested::GetDependentDialects(registry);
   }
 
-  GpuBinaryOptions options;
+  ThunkSequence* thunk_sequence;
 };
 
 }  // namespace
 
 std::unique_ptr<mlir::Pass> createConvertLmhloToGpuBinaryPass(
-    GpuBinaryOptions options) {
-  return std::make_unique<ConvertLmhloToGpuBinaryPass>(options);
-}
-
-void registerConvertLmhloToGpuBinaryPass() {
-  ::mlir::registerPass([] { return createConvertLmhloToGpuBinaryPass(); });
+    ThunkSequence* thunk_sequence) {
+  return std::make_unique<ConvertLmhloToGpuBinaryPass>(thunk_sequence);
 }
 
 }  // namespace tensorflow

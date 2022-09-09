@@ -143,12 +143,11 @@ int main(int argc, char** argv) {
   const std::string reference_platform_name =
       GetReferencePlatformName(opts.reference_platform);
   auto* test_platform =
-      xla::PlatformUtil::GetPlatform(test_platform_name).ValueOrDie();
+      xla::PlatformUtil::GetPlatform(test_platform_name).value();
   auto* reference_platform =
       reference_platform_name.empty()
           ? nullptr
-          : xla::PlatformUtil::GetPlatform(reference_platform_name)
-                .ValueOrDie();
+          : xla::PlatformUtil::GetPlatform(reference_platform_name).value();
   xla::HloRunner test_runner(test_platform);
   auto reference_runner =
       reference_platform ? std::make_unique<xla::HloRunner>(reference_platform)

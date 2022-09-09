@@ -53,7 +53,7 @@ int64_t PeakMemoryUseOfEntryComputation(
   return HeapSimulator::Run(
              std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
              *computation, sequence, *alias_analysis, size_function)
-      .ValueOrDie()
+      .value()
       .heap_size;
 }
 

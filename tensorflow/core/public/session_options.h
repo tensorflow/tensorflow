@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PUBLIC_SESSION_OPTIONS_H_
-#define TENSORFLOW_PUBLIC_SESSION_OPTIONS_H_
+#ifndef TENSORFLOW_CORE_PUBLIC_SESSION_OPTIONS_H_
+#define TENSORFLOW_CORE_PUBLIC_SESSION_OPTIONS_H_
 
 #include <string>
 #include "tensorflow/core/platform/types.h"
@@ -62,4 +62,4 @@ struct SessionOptions {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_PUBLIC_SESSION_OPTIONS_H_
+#endif  // TENSORFLOW_CORE_PUBLIC_SESSION_OPTIONS_H_

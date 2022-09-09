@@ -3525,14 +3525,14 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
               compare_status = lhs.status();
               return false;
             }
-            literals.push_back(std::move(lhs.ValueOrDie()));
+            literals.push_back(std::move(lhs.value()));
             auto rhs = ExtractFromIndexPositions(literals_to_sort[i], {b},
                                                  /*extract_as_scalar=*/true);
             if (!rhs.ok()) {
               compare_status = rhs.status();
               return false;
             }
-            literals.push_back(std::move(rhs.ValueOrDie()));
+            literals.push_back(std::move(rhs.value()));
           }
           std::vector<const Literal*> literal_ptrs;
           absl::c_transform(literals, std::back_inserter(literal_ptrs),
@@ -3547,7 +3547,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
             compare_status = computed_result.status();
             return false;
           }
-          return computed_result.ValueOrDie().Get<bool>({});
+          return computed_result.value().Get<bool>({});
         };
         if (Cast<HloSortInstruction>(sort)->is_stable()) {
           std::stable_sort(indices_to_sort.begin(), indices_to_sort.end(),

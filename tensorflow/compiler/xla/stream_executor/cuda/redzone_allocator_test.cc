@@ -34,13 +34,13 @@ using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
 static void EXPECT_REDZONE_OK(port::StatusOr<RedzoneCheckStatus> status) {
   EXPECT_TRUE(status.ok());
-  EXPECT_TRUE(status.ValueOrDie().ok());
+  EXPECT_TRUE(status.value().ok());
 }
 
 static void EXPECT_REDZONE_VIOLATION(
     port::StatusOr<RedzoneCheckStatus> status) {
   EXPECT_TRUE(status.ok());
-  EXPECT_FALSE(status.ValueOrDie().ok());
+  EXPECT_FALSE(status.value().ok());
 }
 
 TEST(RedzoneAllocatorTest, WriteToRedzone) {
@@ -52,9 +52,8 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   // Allocate 32MiB + 1 byte (to make things misaligned)
   constexpr int64_t kAllocSize = (1 << 25) + 1;
 
-  Platform* platform =
-      MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
-  StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
+  Platform* platform = MultiPlatformManager::PlatformWithName("cuda").value();
+  StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
   GpuAsmOpts opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
 
@@ -126,9 +125,8 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
 TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   // Make sure the redzone size would require grid dimension > 65535.
   constexpr int64_t kRedzoneSize = 65535 * 1024 + 1;
-  Platform* platform =
-      MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
-  StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
+  Platform* platform = MultiPlatformManager::PlatformWithName("cuda").value();
+  StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
   GpuAsmOpts opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
   Stream stream(stream_exec);

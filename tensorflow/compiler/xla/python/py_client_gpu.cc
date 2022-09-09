@@ -119,7 +119,7 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
       if (!plan.ok()) {
         throw xla::XlaRuntimeError(plan.status().ToString());
       }
-      plan.ValueOrDie()->Execute(array.data(), temp);
+      plan.value()->Execute(array.data(), temp);
       gpuMemcpyAsync(buffers[arity + i], temp, result.size_in_bytes,
                      gpuMemcpyHostToDevice, stream);
     }

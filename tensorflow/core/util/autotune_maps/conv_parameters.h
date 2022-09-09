@@ -89,6 +89,43 @@ class ConvParameters {
   ConvParametersProto proto_;
   uint64 hash_code_;
 };
+
+class MatmulParameters {
+ public:
+  // LINT.IfChange(matmul_parameters_version)
+  // A positive number that denotes the version of this class. Should be
+  // incremented everytime this class or ConvParametersProto are updated in a
+  // way that may invalidate autotune results.
+  static constexpr int kVersion = 1;
+  // LINT.ThenChange()
+
+  MatmulParameters(DataType ab_dtype, DataType c_dtype, bool trans_a,
+                   bool trans_b, uint64_t m, uint64_t n, uint64_t k,
+                   int64_t lda, int64_t ldb, int64_t ldc,
+                   stream_executor::dnn::ActivationMode activation_mode,
+                   int device_id,
+                   // This argument should be set only for test use.
+                   int version = kVersion);
+
+  MatmulParameters(int device_id, const MatmulParametersProto& proto);
+
+  bool operator==(const MatmulParameters& other) const;
+
+  bool operator!=(const MatmulParameters& other) const {
+    return !(*this == other);
+  }
+  uint64 hash() const { return hash_code_; }
+
+  string ToString() const;
+
+  const MatmulParametersProto& proto() const { return proto_; }
+
+ private:
+  int device_id_;
+  MatmulParametersProto proto_;
+  uint64 hash_code_;
+};
+
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

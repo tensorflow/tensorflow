@@ -57,7 +57,7 @@ cc_library(
     hdrs = ["validation_graph_builder.h"],
     deps = [
         ":grafter",
-        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
@@ -81,4 +81,43 @@ cc_binary(
         "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
+)
+
+cc_library(
+    name = "custom_validation_embedder",
+    srcs = ["custom_validation_embedder.cc"],
+    hdrs = ["custom_validation_embedder.h"],
+    deps = [
+        ":constants",
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "custom_validation_embedder_test",
+    srcs = ["custom_validation_embedder_test.cc"],
+    deps = [
+        ":custom_validation_embedder",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_model",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:mini_benchmark_test_helper",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:model_loader",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "constants",
+    hdrs = ["constants.h"],
 )

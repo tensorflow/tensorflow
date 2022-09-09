@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_IR_UTILS_EVAL_UTILS_H_
-#define TENSORFLOW_CORE_IR_UTILS_EVAL_UTILS_H_
+#ifndef TENSORFLOW_CORE_TRANSFORMS_UTILS_EVAL_UTILS_H_
+#define TENSORFLOW_CORE_TRANSFORMS_UTILS_EVAL_UTILS_H_
 
 #include <memory>
 
@@ -66,4 +66,4 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase* cpu_device,
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_IR_UTILS_EVAL_UTILS_H_
+#endif  // TENSORFLOW_CORE_TRANSFORMS_UTILS_EVAL_UTILS_H_

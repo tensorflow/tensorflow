@@ -425,7 +425,7 @@ static std::vector<std::string> DumpHloModuleImpl(
         *module.entry_computation(),
         /*label=*/filename, module.config().debug_options(), format, profile);
     if (rendered_graph.ok()) {
-      return std::move(rendered_graph).ValueOrDie();
+      return std::move(rendered_graph).value();
     }
     return StrFormat("Error rendering graph: %s",
                      rendered_graph.status().ToString());

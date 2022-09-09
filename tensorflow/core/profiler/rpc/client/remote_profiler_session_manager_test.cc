@@ -38,7 +38,9 @@ using ::tensorflow::profiler::test::StartServer;
 using ::tensorflow::testing::TmpDir;
 using Response = tensorflow::profiler::RemoteProfilerSessionManager::Response;
 
-constexpr double kGracePeriodSeconds = 2.0;
+// Tests have intemittently failed with 2s grace period, so setting this to
+// a large enough value.
+constexpr double kGracePeriodSeconds = 10.0;
 
 // Copied from capture_profile to not introduce a dependency.
 ProfileRequest PopulateProfileRequest(
@@ -126,8 +128,7 @@ TEST(RemoteProfilerSessionManagerTest, ExpiredDeadline) {
   EXPECT_EQ(responses.back().profile_response->tool_data_size(), 0);
 }
 
-// TODO(b/243856125): Re-enable this test.
-TEST(RemoteProfilerSessionManagerTest, DISABLED_LongSession) {
+TEST(RemoteProfilerSessionManagerTest, LongSession) {
   absl::Duration duration = absl::Seconds(3);
   RemoteProfilerSessionManagerOptions options;
   *options.mutable_profiler_options() =

@@ -51,7 +51,7 @@ namespace {
 constexpr StringRef kTfWrapperLibaryLaunchHelperName =
     "_mlir_ciface_tf_launch_kernel";
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TFKERNELTOLLVMPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 /// A rewrite patter to convert gpu.launch_func operations into a runtime call
@@ -238,7 +238,8 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   return success();
 }
 
-class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
+class TFKernelToLLVMPass
+    : public impl::TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<LLVM::LLVMDialect>();
   }

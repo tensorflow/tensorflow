@@ -307,7 +307,7 @@ blas::BlasSupport* HostExecutor::CreateBlas() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 bool HostExecutor::SupportsFft() const {
@@ -328,7 +328,7 @@ fft::FftSupport* HostExecutor::CreateFft() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 bool HostExecutor::SupportsRng() const {
@@ -349,7 +349,7 @@ rng::RngSupport* HostExecutor::CreateRng() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 std::unique_ptr<internal::StreamInterface>

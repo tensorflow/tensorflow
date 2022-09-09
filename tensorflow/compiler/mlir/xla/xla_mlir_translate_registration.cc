@@ -163,7 +163,7 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
     return mlir::failure();
   }
 
-  HloModule* hlo_module = statusOrHloModule.ValueOrDie().get();
+  HloModule* hlo_module = statusOrHloModule.value().get();
 
   output << hlo_module->ToString(
       HloPrintOptions().set_include_layout_in_shapes(print_layouts));

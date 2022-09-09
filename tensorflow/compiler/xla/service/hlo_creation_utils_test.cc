@@ -41,7 +41,7 @@ class HloCreationUtilsTest : public HloTestBase {
     auto module = CreateNewVerifiedModule("test");
     *entry_computation = module->AddEntryComputation(
         CreateComputationWithSignature({&input_shape}, output_shape, "entry")
-            .ValueOrDie());
+            .value());
     *param = (*entry_computation)->parameter_instruction(0);
     return module;
   }
@@ -56,7 +56,7 @@ class HloCreationUtilsTest : public HloTestBase {
     auto module = CreateNewVerifiedModule("test");
     *entry_computation = module->AddEntryComputation(
         CreateComputationWithSignature({&input_shape}, output_shape, "entry")
-            .ValueOrDie());
+            .value());
     *param = (*entry_computation)->parameter_instruction(0);
     return module;
   }
@@ -352,7 +352,7 @@ TEST_F(HloCreationUtilsTest, MaybeMakeTupleTuplizesMultipleOperands) {
   HloComputation* entry_computation = module->AddEntryComputation(
       CreateComputationWithSignature({&input_shape0, &input_shape1},
                                      output_shape, "entry")
-          .ValueOrDie());
+          .value());
   HloInstruction* output =
       MaybeMakeTuple({entry_computation->parameter_instruction(1),
                       entry_computation->parameter_instruction(0)});

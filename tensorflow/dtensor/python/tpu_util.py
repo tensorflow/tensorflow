@@ -22,6 +22,7 @@ from absl import flags
 import numpy as np
 
 from tensorflow.dtensor.python import api
+from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import heartbeat
@@ -172,12 +173,12 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
 
   # Collective GRPC servers are only necessary in mutli-client setup.
   # Single clients can use local mode of collectives.
-  if api.num_clients() > 1 and not multi_client_util.is_initialized():
+  if config.num_clients() > 1 and not multi_client_util.is_initialized():
     multi_client_util.initialize_multi_client_cluster(
-        job_name=api.job_name(),
-        dtensor_jobs=api.jobs(),
-        client_id=api.client_id(),
-        collective_leader=api.full_job_name(task_id=0),
+        job_name=config.job_name(),
+        dtensor_jobs=config.jobs(),
+        client_id=config.client_id(),
+        collective_leader=config.full_job_name(task_id=0),
         enable_coordination_service=enable_coordination_service)
 
   # Make sure the server change is fully propagated before attempting to run
@@ -195,7 +196,7 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
     gen_dtensor_ops.d_tensor_set_global_tpu_array(topology_proto)
 
   try:
-    with ops.device("/job:" + api.full_job_name() + "/device:TPU_SYSTEM:0"):  # pylint: disable=protected-access
+    with ops.device("/job:" + config.full_job_name() + "/device:TPU_SYSTEM:0"):  # pylint: disable=protected-access
       my_core_ids = _tpu_init_fn()
     logging.info("TPU core IDs: %s", my_core_ids)
     context.initialize_logical_devices()
@@ -204,7 +205,8 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
     context.context().set_logical_cpu_devices(
         len(api.local_devices(_TPU_DEVICE_TYPE)),
         tf_device.DeviceSpec(
-            job=api.job_name(), replica=0, task=api.client_id()).to_string())
+            job=config.job_name(), replica=0,
+            task=config.client_id()).to_string())
 
     # `my_core_ids` contains the IDs of TPU cores attached to this host.
     #
@@ -214,8 +216,8 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
     #
     # This is essentially doing what WaitForDistributedTpuOp and
     # SetGlobalTPUArrayOp do, in our multi-client environment.
-    task_id = api.client_id()
-    num_tasks = api.num_clients()
+    task_id = config.client_id()
+    num_tasks = config.num_clients()
     num_devices = api.num_global_devices(_TPU_DEVICE_TYPE)
     num_devices_per_task = int(num_devices / num_tasks)
 
@@ -223,7 +225,7 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
     mesh = layout_lib.Mesh([_MESH_DIM_X],
                            *_create_device_array((num_devices,),
                                                  _TPU_DEVICE_TYPE,
-                                                 api.client_id()))
+                                                 config.client_id()))
     layout = layout_lib.Layout([_MESH_DIM_X, layout_lib.UNSHARDED], mesh)
     device = dtensor_device.DTensorDevice(meshes=[mesh])
     logging.info("TPU core locations: %s",
@@ -308,7 +310,7 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
     raise e
 
   # Optionally exchange heartbeats between workers every minute.
-  if api.num_clients() > 1 and api.heartbeat_enabled():
+  if config.num_clients() > 1 and config.heartbeat_enabled():
     logging.info(
         "Starting DTensor heartbeat service exchanging signals every 10 minutes"
     )
@@ -734,7 +736,7 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   _dtensor_device.set_tpu_core_ids(mesh_name, global_core_ids)
 
   # Create the mesh by manually specifying local_device_ids.
-  local_core_locations = _tpu_topology.device_coordinates[api.client_id()]
+  local_core_locations = _tpu_topology.device_coordinates[config.client_id()]
   indexes = [
       global_core_locations.index(list(local_core_location))
       for local_core_location in local_core_locations
@@ -764,7 +766,7 @@ def get_device_ids(mesh: layout_lib.Mesh,
   if mesh.device_type() != _TPU_DEVICE_TYPE:
     raise ValueError("The mesh must be a TPU mesh")
 
-  if client_id is None or client_id == api.client_id():
+  if client_id is None or client_id == config.client_id():
     return mesh.local_device_ids()
 
   # It's not clear we should ever allow a client to query other clients for
@@ -798,7 +800,7 @@ def get_device_locations(
   if mesh.device_type() != _TPU_DEVICE_TYPE:
     raise ValueError("The mesh must be a TPU mesh")
 
-  if client_id is None or client_id == api.client_id():
+  if client_id is None or client_id == config.client_id():
     return mesh.local_device_locations()
 
   # It's not clear we should ever allow a client to query other clients for

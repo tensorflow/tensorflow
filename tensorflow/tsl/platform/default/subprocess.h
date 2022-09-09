@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_POSIX_SUBPROCESS_H_
-#define TENSORFLOW_TSL_PLATFORM_POSIX_SUBPROCESS_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_SUBPROCESS_H_
+#define TENSORFLOW_TSL_PLATFORM_DEFAULT_SUBPROCESS_H_
 
 #include <errno.h>
 #include <unistd.h>
@@ -128,4 +128,4 @@ class SubProcess {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_TSL_PLATFORM_POSIX_SUBPROCESS_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_SUBPROCESS_H_

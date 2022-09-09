@@ -49,6 +49,9 @@ class MultiSliceConfig {
 
   // Returns the number of devices on each slice indexed by SliceId.
   virtual absl::flat_hash_map<int32_t, int32_t> NumDevicesPerSlice() const = 0;
+
+  // Returns a serialized proto representing MultiSliceConfig.
+  virtual std::string Serialize() const = 0;
 };
 
 struct CompileOptions {
@@ -78,9 +81,6 @@ struct CompileOptions {
   // Serialize the CompileOptions into a CompileOptionsProto.
   StatusOr<CompileOptionsProto> ToProto() const;
 };
-
-StatusOr<CompileOptions> CompileOptionsFromProto(
-    const CompileOptionsProto& input);
 
 // Static device memory usage for a compiled program.
 // The on-device memory needed to run an executable is at least

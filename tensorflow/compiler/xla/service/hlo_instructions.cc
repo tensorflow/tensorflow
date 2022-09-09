@@ -1983,7 +1983,7 @@ void HloFusionInstruction::MergeFusionInstruction(
     TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
   CHECK_EQ(0, cloned_fusion->user_count());
-  TF_CHECK_OK(parent()->parent()->RemoveEmbeddedComputation(
+  TF_CHECK_OK(GetModule()->RemoveEmbeddedComputation(
       cloned_fusion->fused_instructions_computation()));
 }
 

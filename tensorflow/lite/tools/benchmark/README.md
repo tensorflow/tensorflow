@@ -125,8 +125,8 @@ running the benchmark tool:
     item is separated by ',', and the item value consists of input layer name
     and the file path separated by ':',
     e.g. 'input1:file_path1,input2:file_path2'. In case the input layer name
-    contains ':' e.g. "input:0", escape it with "\:" literal,
-    e.g. `input\:0:file_path1`. If a input name appears in both
+    contains ':' e.g. "input:0", escape it with "::" literal,
+    e.g. `input::0:file_path1`. If a input name appears in both
     `input_layer_value_range` and `input_layer_value_files`, the corresponding
     input value range specified by`input_layer_value_range` will be ignored.
     The file format is binary, and the content should be either a byte array or

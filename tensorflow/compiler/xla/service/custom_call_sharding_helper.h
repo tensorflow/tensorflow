@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <string>
+
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
@@ -39,6 +42,26 @@ class CustomCallShardingHelper {
   virtual bool IsCustomCallShardable(const HloInstruction* instruction) const;
   virtual ~CustomCallShardingHelper() = default;
 };
+
+namespace spmd {
+class SpmdPartitioningVisitor;
+}  // namespace spmd
+
+// Helper class that provides a partitioning function in addition to sharding
+// policies.
+class CustomCallPartitioner : public CustomCallShardingHelper {
+ public:
+  virtual xla::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
+                                HloInstruction* hlo) const;
+};
+
+// Fetch partitioning overrides on a per-custom_call_target basis.
+const CustomCallPartitioner* GetCustomCallPartitioner(
+    const std::string& custom_call_target);
+// Register partitioning overrides on a per-custom_call_target basis.
+void RegisterCustomCallPartitioner(
+    const std::string& custom_call_target,
+    std::unique_ptr<CustomCallPartitioner> partitioner);
 
 }  // namespace xla
 

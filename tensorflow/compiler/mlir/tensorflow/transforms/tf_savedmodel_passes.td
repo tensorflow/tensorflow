@@ -89,3 +89,25 @@ def LowerGlobalsToMlProgramPass: Pass<"tf-saved-model-lower-globals-to-mlprogram
   }];
   let constructor = "mlir::tf_saved_model::CreateLowerGlobalsToMlProgramPass()";
 }
+
+def LowerVariableOpsToMlProgramPass: Pass<"tf-saved-model-lower-variable-ops-to-mlprogram", "mlir::ModuleOp"> {
+  let summary = "Lower tf.ReadVariable and tf.AssignVariable";
+
+  let description = [{
+    This pass will lower AssignVariableOp and ReadVariableOp to their ml_program
+    equivalents, for those resources which come from a VarHandle op, but also
+    for those which come from a "bound input" parameter. For the latter,
+    said parameter will not be removed, unlike LowerGlobalsToMlProgramPass.
+
+    So this will lower e.g.
+
+      %0 = "tf.VarHandleOp" {name = "foo"}
+      %1 = "tf.ReadVariableOp"(%0)
+
+    to
+
+      %0 = ml_program.global_load @vars.foo
+  }];
+
+  let constructor = "::mlir::tf_saved_model::CreateLowerVariableOpsToMlProgramPass()";
+}

@@ -70,7 +70,7 @@ XfeedBuffer* XfeedQueueManager::BlockingDequeueBuffer() {
 void XfeedQueueManager::ReleaseCurrentBuffer(int32_t length, void* data,
                                              StatusOr<Shape> shape) {
   VLOG(3) << "Releasing buffer with shape: "
-          << (shape.ok() ? ShapeUtil::HumanString(shape.ValueOrDie())
+          << (shape.ok() ? ShapeUtil::HumanString(shape.value())
                          : "<error status>");
   absl::MutexLock l(&mu_);
   CHECK(current_buffer_ != nullptr);

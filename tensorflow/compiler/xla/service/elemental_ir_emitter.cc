@@ -525,12 +525,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     case HloOpcode::kRoundNearestEven:
       return llvm_ir::EmitCallToIntrinsic(
 #if TENSORFLOW_USE_ROCM
-                                          llvm::Intrinsic::rint,
+          llvm::Intrinsic::rint,
 #else
-                                          llvm::Intrinsic::nearbyint,
+          llvm::Intrinsic::nearbyint,
 #endif
-                                          {operand_value},
-                                          {operand_value->getType()}, b_);
+          {operand_value}, {operand_value->getType()}, b_);
     case HloOpcode::kSign: {
       auto type = operand_value->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);

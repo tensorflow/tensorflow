@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/gpu_device.h"
@@ -339,6 +340,13 @@ PYBIND11_MODULE(xla_extension, m) {
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("max_inflight_computations") = 32);
+  m.def("get_tfrt_tpu_c_api_client",
+        []() -> StatusOr<std::shared_ptr<PyClient>> {
+          py::gil_scoped_release gil_release;
+          TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
+                              GetCApiClient());
+          return std::make_shared<PyClient>(std::move(c_api_client));
+        });
 #endif  // XLA_PYTHON_ENABLE_TPU
 
   TF_CHECK_OK(PyBuffer::RegisterTypes(m));

@@ -2,10 +2,7 @@
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 cuda_py_test(
     name = "bijector_test",

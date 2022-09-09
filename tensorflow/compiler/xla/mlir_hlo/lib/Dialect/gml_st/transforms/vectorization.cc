@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -28,8 +27,11 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
+#define GEN_PASS_DEF_VECTORIZEGMLSTLOOPSPASS
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
+
 struct VectorizeGmlStLoopsPass
-    : public VectorizeGmlStLoopsPassBase<VectorizeGmlStLoopsPass> {
+    : public impl::VectorizeGmlStLoopsPassBase<VectorizeGmlStLoopsPass> {
   void runOnOperation() override {
     auto funcOp = getOperation();
     // Vectorize linalg.generic operations inside gml_st.for and gml_st.parallel

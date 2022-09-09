@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 
+#include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -37,6 +39,12 @@ const tfrt::RCReference<tfrt::AsyncValue>& AsyncValueTensor::GetAsyncRef() {
 
 void AsyncValueTensor::SetAsyncRef(tfrt::RCReference<tfrt::AsyncValue> av_ref) {
   av_ref_ = std::move(av_ref);
+}
+
+xla::PjRtBuffer* AsyncValueTensor::GetBuffer() { return buffer_.get(); }
+
+void AsyncValueTensor::SetBuffer(std::shared_ptr<xla::PjRtBuffer> buffer) {
+  buffer_ = std::move(buffer);
 }
 
 /*static*/ AsyncValueTensor* AsyncValueTensor::FromOpaquePointer(void* ptr) {

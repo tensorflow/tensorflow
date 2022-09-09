@@ -24,8 +24,8 @@ limitations under the License.
 // Alternative: distribution-sampler.h allows O(1) time picking, but no weight
 // adjustment after construction.
 
-#ifndef TENSORFLOW_LIB_RANDOM_WEIGHTED_PICKER_H_
-#define TENSORFLOW_LIB_RANDOM_WEIGHTED_PICKER_H_
+#ifndef TENSORFLOW_CORE_LIB_RANDOM_WEIGHTED_PICKER_H_
+#define TENSORFLOW_CORE_LIB_RANDOM_WEIGHTED_PICKER_H_
 
 #include <assert.h>
 
@@ -130,4 +130,4 @@ inline int WeightedPicker::num_elements() const { return N_; }
 }  // namespace random
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_RANDOM_WEIGHTED_PICKER_H_
+#endif  // TENSORFLOW_CORE_LIB_RANDOM_WEIGHTED_PICKER_H_

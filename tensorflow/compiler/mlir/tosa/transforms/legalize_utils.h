@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H
-#define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H
+#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_
 
 #include <climits>
 #include <cstddef>
@@ -38,6 +38,15 @@ limitations under the License.
 
 namespace mlir {
 namespace tosa {
+
+LogicalResult getDynamicDims(PatternRewriter& rewriter, Value value,
+                             llvm::SmallVector<Value>& dims);
+
+llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
+                                                  Operation* op,
+                                                  Value input_value,
+                                                  ShapedType output_type,
+                                                  llvm::ArrayRef<Value> dims);
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
@@ -186,4 +195,4 @@ void CreateReplaceOpAndInfer(PatternRewriter& rewriter, Operation* op,
 }  // namespace tosa
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H
+#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_

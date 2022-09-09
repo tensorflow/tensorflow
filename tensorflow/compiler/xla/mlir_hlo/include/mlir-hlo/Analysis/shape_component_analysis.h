@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
-#define MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H_
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -165,4 +165,4 @@ struct DenseMapInfo<mlir::ShapeComponentAnalysis::Symbol> {
 
 }  // namespace llvm
 
-#endif  // MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H_

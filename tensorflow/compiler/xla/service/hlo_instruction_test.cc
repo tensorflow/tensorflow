@@ -1976,7 +1976,7 @@ ENTRY entry (param: s32[]) -> s32[] {
   for (HloComputation* computation : clone->computations()) {
     EXPECT_EQ(computation->parent(), clone.get());
     for (HloInstruction* instruction : computation->instructions()) {
-      EXPECT_EQ(instruction->parent()->parent(), clone.get());
+      EXPECT_EQ(instruction->GetModule(), clone.get());
     }
   }
 }

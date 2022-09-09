@@ -26,7 +26,7 @@ namespace tensorflow {
 Status ConvertLmhloToJitRt(mlir::ModuleOp module,
                            mlir::StringRef entry_function_name,
                            llvm::ArrayRef<int64_t> buffer_sizes,
-                           GpuBinaryOptions options);
+                           xla::gpu::ThunkSequence* thunk_sequence);
 
 }  // namespace tensorflow
 

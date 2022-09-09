@@ -46,19 +46,6 @@ namespace tensorrt {
 namespace convert {
 using ::stream_executor::port::StatusOr;
 
-#define TFTRT_INTERNAL_ERROR_AT_NODE(node)                           \
-  do {                                                               \
-    return errors::Internal("TFTRT::", __FUNCTION__, ":", __LINE__,  \
-                            " failed to add TRT layer, at: ", node); \
-  } while (0)
-
-#define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
-  do {                                           \
-    if (ptr == nullptr) {                        \
-      TFTRT_INTERNAL_ERROR_AT_NODE(node);        \
-    }                                            \
-  } while (0)
-
 struct EngineConnection {
   // Constructs a non-control edge.
   EngineConnection(const string& outside, int out_id, int out_port,

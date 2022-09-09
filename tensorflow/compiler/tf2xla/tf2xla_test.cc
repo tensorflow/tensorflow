@@ -81,16 +81,14 @@ TEST(ConvertGraphDefToXla, Sum) {
   auto y_global_or = client->TransferToServer(y_literal);
   TF_EXPECT_OK(x_global_or.status());
   TF_EXPECT_OK(y_global_or.status());
-  std::unique_ptr<xla::GlobalData> x_global =
-      std::move(x_global_or.ValueOrDie());
-  std::unique_ptr<xla::GlobalData> y_global =
-      std::move(y_global_or.ValueOrDie());
+  std::unique_ptr<xla::GlobalData> x_global = std::move(x_global_or.value());
+  std::unique_ptr<xla::GlobalData> y_global = std::move(y_global_or.value());
 
   // Execute and check result.
   auto result_or =
       client->ExecuteAndTransfer(computation, {x_global.get(), y_global.get()});
   TF_EXPECT_OK(result_or.status());
-  xla::Literal result = std::move(result_or.ValueOrDie());
+  xla::Literal result = std::move(result_or.value());
   EXPECT_EQ("(\ns32[] 42\n)", result.ToString());
 
   config.mutable_feed(0)->mutable_id()->set_output_index(
@@ -121,18 +119,16 @@ TEST(ConvertGraphDefToXla, SumWithUnusedArgument) {
   TF_EXPECT_OK(x_global_or.status());
   TF_EXPECT_OK(y_global_or.status());
   TF_EXPECT_OK(unused_global_or.status());
-  std::unique_ptr<xla::GlobalData> x_global =
-      std::move(x_global_or.ValueOrDie());
-  std::unique_ptr<xla::GlobalData> y_global =
-      std::move(y_global_or.ValueOrDie());
+  std::unique_ptr<xla::GlobalData> x_global = std::move(x_global_or.value());
+  std::unique_ptr<xla::GlobalData> y_global = std::move(y_global_or.value());
   std::unique_ptr<xla::GlobalData> unused_global =
-      std::move(unused_global_or.ValueOrDie());
+      std::move(unused_global_or.value());
 
   // Execute and check result.
   auto result_or = client->ExecuteAndTransfer(
       computation, {x_global.get(), y_global.get(), unused_global.get()});
   TF_EXPECT_OK(result_or.status());
-  xla::Literal result = std::move(result_or.ValueOrDie());
+  xla::Literal result = std::move(result_or.value());
   EXPECT_EQ("(\ns32[] 42\n)", result.ToString());
 }
 

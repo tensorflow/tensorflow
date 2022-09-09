@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Functions for quantization specifications of TensorFlow ops.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_OPS_QUANTIZABLE_OP_SPEC_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_OPS_QUANTIZABLE_OP_SPEC_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_OPS_TF_OP_QUANT_SPEC_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_OPS_TF_OP_QUANT_SPEC_H_
 
 #include <memory>
 
@@ -38,4 +38,4 @@ std::unique_ptr<OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op);
 }  // namespace quant
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_OPS_QUANTIZABLE_OP_SPEC_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_OPS_TF_OP_QUANT_SPEC_H_

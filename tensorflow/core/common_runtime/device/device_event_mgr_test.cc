@@ -109,7 +109,7 @@ class TestTensorBuffer : public TensorBuffer {
 namespace {
 
 TEST(EventMgr, Empty) {
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
+  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).value();
   TEST_EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
   EXPECT_EQ(0, th.queue_size());
@@ -118,7 +118,7 @@ TEST(EventMgr, Empty) {
 
 // Tests that WarnIfInCallback() triggers correctly.
 TEST(EventMgr, WarnIfInCallback) {
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
+  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).value();
   TEST_EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
   std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
@@ -436,7 +436,7 @@ static void BM_no_ops(::testing::benchmark::State& state) {
   const int threads = state.range(0);
   const int iters = state.max_iterations;
 
-  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
+  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).value();
   std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
   CHECK(stream);
   stream->Init();

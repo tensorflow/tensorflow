@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_TOPK_H
-#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_TOPK_H
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_TOPK_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_TOPK_H_
 
 #include <stdint.h>
 
@@ -27,4 +27,4 @@ extern void __xla_cpu_runtime_TopKF32(int64_t batch_size, int64_t input_size,
                                       float* out_values, int32_t* out_indices);
 }
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_TOPK_H
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_TOPK_H_

@@ -69,7 +69,7 @@ TEST_F(CpuNoAliasTest, Concat) {
   ASSERT_EQ(status_or_buffer_assn.status(), OkStatus());
 
   llvm::LLVMContext context;
-  llvm_ir::AliasAnalysis aa(*hlo_module, *status_or_buffer_assn.ValueOrDie(),
+  llvm_ir::AliasAnalysis aa(*hlo_module, *status_or_buffer_assn.value(),
                             &context);
 
   // Construct an LLVM module containing loads that we annotate as being from

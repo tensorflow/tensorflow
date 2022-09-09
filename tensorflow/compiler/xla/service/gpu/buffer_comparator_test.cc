@@ -38,7 +38,7 @@ class BufferComparatorTest : public testing::Test {
   BufferComparatorTest()
       : platform_(
             se::MultiPlatformManager::PlatformWithName(PLATFORM).ValueOrDie()),
-        stream_exec_(platform_->ExecutorForDevice(0).ValueOrDie()) {}
+        stream_exec_(platform_->ExecutorForDevice(0).value()) {}
 
   // Take floats only for convenience. Still uses ElementType internally.
   template <typename ElementType>

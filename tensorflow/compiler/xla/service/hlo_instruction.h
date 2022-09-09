@@ -2167,6 +2167,10 @@ class HloInstruction {
   // Delegates to HloCholeskyInstruction::cholesky_options().
   const CholeskyOptions& cholesky_options() const;
 
+  // Delegates to HloCustomCallInstruction::output_to_operand_aliasing().
+  const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
+  custom_call_output_operand_aliasing() const;
+
   // Appends operand to the list of operands and adds this instruction as a user
   // of the operand.
   void AppendOperand(HloInstruction* operand);

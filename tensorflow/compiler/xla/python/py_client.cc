@@ -167,7 +167,7 @@ Status PyClient::Defragment() {
             pjrt_client_
                 ->BufferFromHostLiteral(*tmp_buffer.host_copy,
                                         tmp_buffer.py_buffer->buffer_->device())
-                .ValueOrDie();
+                .value();
         TF_CHECK_OK(new_copy->BlockHostUntilReady());
         tmp_buffer.py_buffer->buffer_.reset(new_copy.release());
       }

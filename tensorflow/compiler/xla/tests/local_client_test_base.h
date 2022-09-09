@@ -45,8 +45,7 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
  public:
   explicit TestAllocator(se::Platform* platform)
       : se::StreamExecutorMemoryAllocator(
-            platform, PlatformUtil::GetStreamExecutors(platform).ValueOrDie()) {
-  }
+            platform, PlatformUtil::GetStreamExecutors(platform).value()) {}
 
   StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
                                             bool retry_on_failure,

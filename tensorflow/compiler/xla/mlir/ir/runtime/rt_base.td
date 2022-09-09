@@ -52,11 +52,8 @@ class RT_Type<string name, string typeMnemonic> : TypeDef<RuntimeDialect,
 // Types for integrating XLA executables with the runtime.
 //===----------------------------------------------------------------------===//
 
-// TODO(ezhulenev): Rename KernelContext to ExecutionContext because there is
-// no concept of a kernel in the XLA.
-
-def KernelContextType : RT_Type<"KernelContext", "kernel_context"> {
-  let summary = "Kernel Context type";
+def ExecutionContextType : RT_Type<"ExecutionContext", "execution_context"> {
+  let summary = "Execution Context type";
   let description = [{
     Handle to an instance of the runtime execution context.
   }];

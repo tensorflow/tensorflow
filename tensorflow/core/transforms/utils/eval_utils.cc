@@ -154,7 +154,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
       VLOG(3) << attr_or.status().error_message();
       return failure();
     }
-    results.push_back(attr_or.ValueOrDie());
+    results.push_back(attr_or.value());
   }
 
   return success();

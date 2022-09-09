@@ -27,9 +27,13 @@ limitations under the License.
 // TODO(skyewm): remove when everything goes through C API
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/pjrt_api.h"
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
 
@@ -62,6 +66,7 @@ PjRtCApiClient::PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client)
   wrapped_ = c_client_->client.get();
 
   InitDevices();
+  LOG(INFO) << "PjRtCApiClient created.";
 }
 
 void PjRtCApiClient::InitDevices() {
@@ -155,6 +160,38 @@ absl::string_view PjRtCApiClient::platform_version() const {
   return platform_version;
 }
 
+static DeviceAssignment CalculateDefaultAssignment(
+    int num_replicas, int num_partitions,
+    absl::Span<const int> device_assignment) {
+  DeviceAssignment cpp_device_assignment(num_replicas, num_partitions);
+  const int* iterator = device_assignment.begin();
+  for (int replica = 0; replica < num_replicas; ++replica) {
+    for (int partition = 0; partition < num_partitions; ++partition) {
+      cpp_device_assignment(replica, partition) = *(iterator++);
+    }
+  }
+  return cpp_device_assignment;
+}
+
+StatusOr<DeviceAssignment> PjRtCApiClient::GetDefaultDeviceAssignment(
+    int num_replicas, int num_partitions) const {
+  PJRT_Client_DefaultDeviceAssignment_Args args;
+  args.struct_size = PJRT_Client_DefaultDeviceAssignment_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = c_client_.get();
+  args.num_replicas = num_replicas;
+  args.num_partitions = num_partitions;
+  std::vector<int> assignment_buffer(num_replicas * num_partitions);
+  args.default_assignment_size = assignment_buffer.size();
+  args.default_assignment = assignment_buffer.data();
+  RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_DefaultDeviceAssignment(&args),
+                         c_api_);
+  absl::Span<const int> param{args.default_assignment,
+                              args.default_assignment_size};
+  return CalculateDefaultAssignment(args.num_replicas, args.num_partitions,
+                                    param);
+}
+
 StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
     const PjRtLoadedExecutable& executable) const {
   return {std::nullopt};
@@ -193,7 +230,7 @@ static Status ValidateCompileOption(CompileOptions options) {
 // Convert `CompileOptions` to `PJRT_CompileOptions`. `device_assignment_str`
 // will be used for serialized DeviceAssignment storage.
 static StatusOr<PJRT_CompileOptions> ConvertCppCompileOptionsToCCompileOptions(
-    CompileOptions options, std::string* device_assignment_str) {
+    const CompileOptions& options, std::string& device_assignment_str) {
   PJRT_CompileOptions c_options;
   c_options.struct_size = PJRT_CompileOptions_STRUCT_SIZE;
   c_options.parameter_is_tupled_arguments =
@@ -212,9 +249,9 @@ static StatusOr<PJRT_CompileOptions> ConvertCppCompileOptionsToCCompileOptions(
     TF_RETURN_IF_ERROR(
         options.executable_build_options.device_assignment().Serialize(
             &device_assignment_proto));
-    *device_assignment_str = device_assignment_proto.SerializeAsString();
-    c_options.device_assignment = device_assignment_str->c_str();
-    c_options.device_assignment_size = device_assignment_str->size();
+    device_assignment_str = device_assignment_proto.SerializeAsString();
+    c_options.device_assignment = device_assignment_str.c_str();
+    c_options.device_assignment_size = device_assignment_str.size();
   } else {
     c_options.device_assignment_size = 0;
     c_options.device_assignment = nullptr;
@@ -222,26 +259,53 @@ static StatusOr<PJRT_CompileOptions> ConvertCppCompileOptionsToCCompileOptions(
   return c_options;
 }
 
-StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
-    mlir::ModuleOp module, CompileOptions options) {
+// Initializes `PJRT_Client_Compile_Args`, which will be used to call
+// API PJRT_Client_Compile().
+static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
+    PjRtCApiClient* api_client, const PJRT_Api* c_api, PJRT_Client* client,
+    const CompileOptions& options, const std::string& code,
+    const std::string& format) {
   TF_RETURN_IF_ERROR(ValidateCompileOption(options));
+
   PJRT_Client_Compile_Args args;
   args.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.client = c_client_.get();
+  args.client = client;
   std::string device_assignment_str;
   TF_ASSIGN_OR_RETURN(PJRT_CompileOptions c_options,
                       ConvertCppCompileOptionsToCCompileOptions(
-                          options, &device_assignment_str));
+                          options, device_assignment_str));
   args.options = &c_options;
-  std::string module_str = tensorflow::SerializeMlirModule(module);
-  args.module = module_str.c_str();
-  args.module_size = module_str.size();
 
-  RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_Compile(&args), c_api_);
+  PJRT_Program program;
+  program.struct_size = PJRT_Program_STRUCT_SIZE;
+  program.priv = nullptr;
+  program.code = code.c_str();
+  program.code_size = code.size();
+  program.format = format.c_str();
+  program.format_size = format.size();
+  args.program = &program;
+
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Client_Compile(&args), c_api);
   std::unique_ptr<PjRtLoadedExecutable> ret =
-      std::make_unique<PjRtCApiExecutable>(this, args.executable);
+      std::make_unique<PjRtCApiExecutable>(api_client, args.executable);
   return ret;
+}
+
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  std::string module_str = computation.proto().SerializeAsString();
+  std::string format(pjrt::kHloFormat);
+  return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
+                                  module_str, format);
+}
+
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
+    mlir::ModuleOp module, CompileOptions options) {
+  std::string module_str = tensorflow::SerializeMlirModule(module);
+  std::string format(pjrt::kMlirFormat);
+  return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
+                                  module_str, format);
 }
 
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
@@ -283,6 +347,74 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::WrapBuffer(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtCApiBuffer>(
       this, new PJRT_Buffer{std::move(buffer), pjrt_c_client()}));
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
+  if (host_buffer_semantics != HostBufferSemantics::kImmutableOnlyDuringCall &&
+      host_buffer_semantics != HostBufferSemantics::kZeroCopy) {
+    return Unimplemented(
+        "PJRT C API does not support HostBufferSemantics other than "
+        "HostBufferSemantics::kImmutableOnlyDuringCall and "
+        "HostBufferSemantics::kZeroCopy.");
+  }
+
+  PJRT_Client_BufferFromHostBuffer_Args args;
+  args.struct_size = PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = c_client_.get();
+  args.data = data;
+  args.type = ::pjrt::ConvertToPjRtBufferType(type);
+
+  args.dims = dims.data();
+  args.num_dims = dims.size();
+  if (byte_strides.has_value()) {
+    args.byte_strides = byte_strides.value().data();
+    args.num_byte_strides = byte_strides.value().size();
+  } else {
+    args.byte_strides = nullptr;
+    args.num_byte_strides = 0;
+  }
+  args.host_buffer_semantics =
+      ::pjrt::ConvertToPjRtHostBufferSemantics(host_buffer_semantics);
+  args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+
+  RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_BufferFromHostBuffer(&args),
+                         c_api_);
+
+  auto buffer = std::unique_ptr<PjRtBuffer>(
+      std::make_unique<PjRtCApiBuffer>(this, args.buffer));
+
+  std::unique_ptr<PJRT_Event, ::pjrt::PJRT_EventDeleter> event(
+      args.done_with_host_buffer, ::pjrt::MakeEventDeleter(c_api_));
+
+  if (on_done_with_host_buffer) {
+    PJRT_Event_OnReady_Args event_args;
+    event_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
+    event_args.priv = nullptr;
+    event_args.event = event.get();
+    event_args.user_arg = new std::function<void(PJRT_Error*)>(
+        [on_done_with_host_buffer = std::move(on_done_with_host_buffer),
+         c_api = c_api_](PJRT_Error* error) {
+          if (error) {
+            ::pjrt::MakeErrorDeleter(c_api)(error);
+          }
+          on_done_with_host_buffer();
+        });
+    event_args.callback = [](PJRT_Error* error, void* args) {
+      std::function<void(PJRT_Error*)>* on_done_with_host_buffer =
+          reinterpret_cast<std::function<void(PJRT_Error*)>*>(args);
+      (*on_done_with_host_buffer)(error);
+      delete on_done_with_host_buffer;
+    };
+
+    RETURN_STATUS_IF_ERROR(c_api_->PJRT_Event_OnReady(&event_args), c_api_);
+  }
+
+  return buffer;
 }
 
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
@@ -415,15 +547,15 @@ absl::string_view PjRtCApiDevice::ToString() const {
 
 PjRtCApiExecutable::PjRtCApiExecutable(
     PjRtCApiClient* client, std::unique_ptr<PjRtLoadedExecutable> wrapped)
-    : client_(client),
-      executable_(
-          new PJRT_Executable{std::move(wrapped), client->pjrt_c_client()}) {
-  InitDevices();
+    : PjRtCApiExecutable(client, new PJRT_Executable{std::move(wrapped),
+                                                     client->pjrt_c_client()}) {
 }
 
 PjRtCApiExecutable::PjRtCApiExecutable(PjRtCApiClient* client,
                                        PJRT_Executable* executable)
-    : client_(client), executable_(executable) {
+    : client_(client),
+      executable_(executable,
+                  ::pjrt::MakeExecutableDeleter(client->pjrt_c_api())) {
   InitDevices();
 }
 
@@ -431,7 +563,7 @@ void PjRtCApiExecutable::InitDevices() {
   PJRT_Executable_AddressableDevices_Args args;
   args.struct_size = PJRT_Executable_AddressableDevices_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_;
+  args.executable = executable_.get();
   args.addressable_devices = nullptr;
   args.num_addressable_devices = 0;
 
@@ -447,15 +579,6 @@ void PjRtCApiExecutable::InitDevices() {
     PjRtCApiDevice* c_api_device = client_->GetCppDevice(device);
     addressable_devices_.push_back(c_api_device);
   }
-}
-
-PjRtCApiExecutable::~PjRtCApiExecutable() {
-  PJRT_Executable_Destroy_Args args;
-  args.struct_size = PJRT_Executable_Destroy_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.executable = executable_;
-  const PJRT_Api* api = pjrt_c_api();
-  pjrt::LogFatalIfPjrtError(api->PJRT_Executable_Destroy(&args), api);
 }
 
 static std::vector<std::vector<PJRT_Buffer*>> Convert2DCppBuffersToCBuffers(
@@ -496,7 +619,7 @@ PjRtCApiExecutable::Execute(
   PJRT_Executable_Execute_Args args;
   args.struct_size = PJRT_Executable_Execute_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_;
+  args.executable = executable_.get();
   PJRT_ExecuteOptions c_options;
   args.options = &c_options;
   args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
@@ -520,7 +643,7 @@ PjRtCApiExecutable::Execute(
   PJRT_Executable_NumOutputs_Args numoutputs_args;
   numoutputs_args.struct_size = PJRT_Executable_NumOutputs_Args_STRUCT_SIZE;
   numoutputs_args.priv = nullptr;
-  numoutputs_args.executable = executable_;
+  numoutputs_args.executable = executable_.get();
   RETURN_STATUS_IF_ERROR(
       pjrt_c_api()->PJRT_Executable_NumOutputs(&numoutputs_args), pjrt_c_api());
   size_t outer_size = args.num_devices;
@@ -593,7 +716,7 @@ PjRtLoadedExecutable* PjRtCApiExecutable::wrapped() const {
 absl::string_view PjRtCApiExecutable::name() const {
   const PJRT_Api* c_api = pjrt_c_api();
   PJRT_Executable_Name_Args args;
-  args.executable = executable_;
+  args.executable = executable_.get();
   args.struct_size = PJRT_Executable_Name_Args_STRUCT_SIZE;
   args.priv = nullptr;
   pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_Name(&args), c_api);
@@ -607,7 +730,7 @@ void PjRtCApiExecutable::Delete() {
   PJRT_Executable_Delete_Args args;
   args.struct_size = PJRT_Executable_Delete_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_;
+  args.executable = executable_.get();
   const PJRT_Api* c_api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_Delete(&args), c_api);
 }
@@ -616,7 +739,7 @@ bool PjRtCApiExecutable::IsDeleted() {
   PJRT_Executable_IsDeleted_Args args;
   args.struct_size = PJRT_Executable_IsDeleted_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.executable = executable_;
+  args.executable = executable_.get();
 
   const PJRT_Api* c_api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(c_api->PJRT_Executable_IsDeleted(&args), c_api);
@@ -684,6 +807,71 @@ void PjRtCApiBuffer::set_shape() {
       delete[] args.layout.tiles.heap;
     }
   }
+}
+
+PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
+  PJRT_Buffer_ToHostBuffer_Args args;
+  args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.src = buffer_.get();
+
+  const xla::Shape& shape = literal->shape();
+
+  if (!shape.IsArray()) {
+    return PjRtFuture<Status>(
+        Unimplemented("PjRtCApiBuffer::ToLiteral: Shapes other than array are"
+                      "not supported."));
+  }
+
+  args.dst_size = ShapeUtil::ByteSizeOfElements(shape);
+  args.dst = literal->untyped_data();
+
+  std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> error{
+      pjrt_c_api()->PJRT_Buffer_ToHostBuffer(&args),
+      ::pjrt::MakeErrorDeleter(pjrt_c_api())};
+
+  if (error != nullptr) {
+    xla::Status s = ::pjrt::PjrtErrorToStatus(error.get(), pjrt_c_api());
+    return PjRtFuture<Status>(s);
+  }
+
+  PJRT_Event_OnReady_Args event_onready_args;
+  event_onready_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
+  event_onready_args.priv = nullptr;
+  event_onready_args.event = args.event;
+
+  PjRtFuture<Status>::Promise promise = PjRtFuture<Status>::CreatePromise();
+
+  event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
+      [promise, api = client_->pjrt_c_api(),
+       pjrt_event = args.event](PJRT_Error* error) mutable {
+        if (error) {
+          xla::Status s = ::pjrt::PjrtErrorToStatus(error, api);
+          promise.Set(s);
+          ::pjrt::MakeErrorDeleter(api)(error);
+        } else {
+          promise.Set(Status::OK());
+        }
+        ::pjrt::MakeEventDeleter(api)(pjrt_event);
+      });
+
+  event_onready_args.callback = [](PJRT_Error* error, void* args) {
+    std::function<void(PJRT_Error*)>* set_future =
+        reinterpret_cast<std::function<void(PJRT_Error*)>*>(args);
+    (*set_future)(error);
+    delete set_future;
+  };
+
+  error.reset(pjrt_c_api()->PJRT_Event_OnReady(&event_onready_args));
+
+  if (error != nullptr) {
+    xla::Status s = ::pjrt::PjrtErrorToStatus(error.get(), pjrt_c_api());
+    return PjRtFuture<Status>(s);
+  }
+
+  PjRtFuture<Status> future = PjRtFuture<Status>(std::move(promise));
+
+  return future;
 }
 
 StatusOr<size_t> PjRtCApiBuffer::GetOnDeviceSizeInBytes() const {

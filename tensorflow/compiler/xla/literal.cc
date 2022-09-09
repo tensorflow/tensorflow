@@ -2111,7 +2111,7 @@ bool LiteralBase::IsAllFirst() const {
   absl::InlinedVector<int64_t, 4> start_indices(/*n=*/shape().rank(), 0);
   absl::InlinedVector<int64_t, 4> end_indices(/*n=*/shape().rank(), 1);
   Literal first = Slice(start_indices, end_indices);
-  return IsAll(first.Reshape({}).ValueOrDie());
+  return IsAll(first.Reshape({}).value());
 }
 
 bool LiteralBase::IsR1Iota() const {

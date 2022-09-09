@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVER_TYPE_H_
-#define TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVER_TYPE_H_
+#ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_TYPES_H_
+#define TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_TYPES_H_
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -54,4 +54,4 @@ tensorflow::StatusOr<Type> ConvertToMlirTensorType(
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVER_TYPE_H_
+#endif  // TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_TYPES_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_ARGUMENTS_H_
-#define XLA_RUNTIME_ARGUMENTS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_ARGUMENTS_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_ARGUMENTS_H_
 
 #include <cstddef>
 #include <string>
@@ -146,6 +146,8 @@ class ArgumentsRef {
   static constexpr bool is_argument = std::is_base_of_v<Argument, T>;
 
  public:
+  ArgumentsRef() : data_(nullptr), size_(0), stride_(0) {}
+
   template <typename... Ts>
   ArgumentsRef(const Arguments<Ts...>& args)  // NOLINT
       : data_(reinterpret_cast<const Argument*>(args.storage_.data())),
@@ -185,11 +187,11 @@ class ArgumentsRef {
 };
 
 //===----------------------------------------------------------------------===//
-// Canonical types for passing compiled kernel arguments.
+// Canonical types for passing compiled executable arguments.
 //===----------------------------------------------------------------------===//
 
 // By default we provide a set of types for passing common arguments to the
-// compiled kernel. The type hierarchy is open, and users can extend it by
+// compiled executable. The type hierarchy is open, and users can extend it by
 // definining new `Type` and `Argument` with the corresponding MLIR types and
 // MLIR passes to lower types and operations to the LLVM dialect.
 
@@ -330,4 +332,4 @@ class BufferDesc final : public llvm::RTTIExtends<BufferDesc, Argument> {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_ARGUMENTS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_ARGUMENTS_H_

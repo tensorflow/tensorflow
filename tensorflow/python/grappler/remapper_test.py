@@ -74,9 +74,9 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(RemapperTest, self).setUp()
-    # Gelu fusion on GPU requires cublasLt
+    # GeluApproximate fusion on GPU requires cublasLt.
     os.environ['TF_USE_CUBLASLT'] = '1'
-    # Conv runtime fusion on GPU requires cuDNN frontend APIs.
+    # GeluExact fusion and conv runtime fusion on GPU requires cuDNN frontend.
     os.environ['TF_CUDNN_USE_FRONTEND'] = '1'
     os.environ['TF_CUDNN_USE_RUNTIME_FUSION'] = '1'
 
@@ -138,50 +138,56 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
-  def test_matmul_biasadd_gelu_fusion(self, mode):
+  def test_matmul_biasadd_activation_fusion(self, mode):
     """Test MatMul+BiasAdd+Gelu fusion."""
     self.maybe_skip_test(mode)
-    data_types = [dtypes.float32]
-    if mode == 'cuda':
-      data_types.append(dtypes.float16)
-    elif mode == 'mkl':
-      data_types.append(dtypes.bfloat16)
 
-    is_bf16_supported = _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU()
+    def gelu_approximate(x):
+      return nn.gelu(x, approximate=True)
 
-    m, n, k = (3, 3, 4)  # Matrix dimensions
-    for precision in data_types:
-      for approximate in (False, True):
-        # Gelu exact (approximate=False) is not supported with bfloat16
-        # precision since no support for Erf with bfloat16 data type.
-        # TODO(intel-tf): Enable gelu exact with bfloat16, when Erf op is
-        # supported with bfloat16.
-        if precision == dtypes.bfloat16:
-          if not (approximate and is_bf16_supported):
-            continue
+    def gelu_exact(x):
+      return nn.gelu(x, approximate=False)
 
-        # TODO(kaixih@nvidia): Enable gelu exact when Erf op is supported with
-        # cublaslt.
-        if mode == 'cuda' and not approximate:
-          continue
+    device = '/device:GPU:0' if mode == 'cuda' else '/device:CPU:0'
+    config = []
+    if mode == 'mkl':
+      config.append((dtypes.float32, gelu_exact, b'GeluExact'))
+      config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
+      # Gelu exact (approximate=False) is not supported with bfloat16 precision
+      # since no support for Erf with bfloat16 data type.
+      # TODO(intel-tf): Enable gelu exact with bfloat16, when Erf op is
+      # supported with bfloat16.
+      if _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU():
+        config.append((dtypes.bfloat16, gelu_approximate, b'GeluApproximate'))
+    elif mode == 'cuda':
+      config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
+      config.append((dtypes.float16, gelu_approximate, b'GeluApproximate'))
+      # Gelu exact fusion is supported by cuDNN frontend APIs and performant
+      # with fp16 and on Ampere GPUs and later.
+      if (test_util.is_gpu_available(
+          cuda_only=True, min_cuda_compute_capability=(8, 0))):
+        config.append((dtypes.float16, gelu_exact, b'GeluExact'))
 
-        device = '/device:GPU:0' if mode == 'cuda' else '/device:CPU:0'
-        # Create MatMul + BiasAdd + Gelu graph
+    m, n, k = (2, 4, 6)  # Matrix dimensions
+    fused_op = ['_MklNativeFusedMatMul', '_MklFusedMatMul', '_FusedMatMul']
+
+    for precision, act_fn, act_name in config:
+      for transpose in (False, True):
+        # Create MatMul + BiasAdd + Activation graph
         ops.reset_default_graph()
         with ops.device(device):
-          x = _input([m, k])
-          w = _weight([k, n])
+          x = _input([k, m] if transpose else [m, k])
+          w = _weight([n, k] if transpose else [k, n])
           b = _bias([n])
           x = math_ops.cast(x, precision)
           w = math_ops.cast(w, precision)
           b = math_ops.cast(b, precision)
-          y = math_ops.matmul(x, w)
+          y = math_ops.matmul(
+              x, w, transpose_a=transpose, transpose_b=transpose)
           z = nn.bias_add(y, b)
-          out = nn.gelu(z, approximate=approximate)
+          out = act_fn(z)
 
-        gelu_type = b'GeluApproximate' if approximate else b'GeluExact'
-        epilog_ops = [b'BiasAdd', gelu_type]
-        fused_op = ['_MklNativeFusedMatMul', '_MklFusedMatMul', '_FusedMatMul']
+        epilog_ops = [b'BiasAdd', act_name]
         graph = self._VerifyValues(out, precision != dtypes.float32, fused_op,
                                    epilog_ops)
 

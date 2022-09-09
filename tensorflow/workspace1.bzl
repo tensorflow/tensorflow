@@ -22,11 +22,11 @@ def workspace(with_rules_cc = True):
 
     http_archive(
         name = "bazel_toolchains",
-        sha256 = "540cc8fec2bf8ab64d16fb9a7018f25738a4a03434057ea01b5d34add446ffb1",
-        strip_prefix = "bazel-toolchains-ea243d43269df23de03a797cff2347e1fc3d02bb",
+        sha256 = "294cdd859e57fcaf101d4301978c408c88683fbc46fbc1a3829da92afbea55fb",
+        strip_prefix = "bazel-toolchains-8c717f8258cd5f6c7a45b97d974292755852b658",
         urls = [
-            "http://mirror.tensorflow.org/github.com/bazelbuild/bazel-toolchains/archive/ea243d43269df23de03a797cff2347e1fc3d02bb.tar.gz",
-            "https://github.com/bazelbuild/bazel-toolchains/archive/ea243d43269df23de03a797cff2347e1fc3d02bb.tar.gz",
+            "http://mirror.tensorflow.org/github.com/bazelbuild/bazel-toolchains/archive/8c717f8258cd5f6c7a45b97d974292755852b658.tar.gz",
+            "https://github.com/bazelbuild/bazel-toolchains/archive/8c717f8258cd5f6c7a45b97d974292755852b658.tar.gz",
         ],
     )
 

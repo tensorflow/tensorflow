@@ -86,11 +86,16 @@ struct LoopOpInterface
   }
 
   FailureOr<BaseMemRefType> getBufferType(
-      Operation *op, BlockArgument bbArg,
-      const BufferizationOptions &options) const {
+      Operation *op, Value value, const BufferizationOptions &options,
+      const DenseMap<Value, BaseMemRefType> &fixedTypes) const {
     auto loopOp = cast<LoopOp>(op);
+    if (auto opResult = value.dyn_cast<OpResult>()) {
+      return bufferization::getBufferType(
+          loopOp.getOutputs()[opResult.getResultNumber()], options, fixedTypes);
+    }
+    BlockArgument bbArg = value.cast<BlockArgument>();
     return bufferization::getBufferType(loopOp.getTiedOperand(bbArg).get(),
-                                        options);
+                                        options, fixedTypes);
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,

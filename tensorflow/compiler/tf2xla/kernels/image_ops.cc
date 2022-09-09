@@ -551,7 +551,7 @@ class NonMaxSuppressionOp : public XlaOpKernel {
         xla::WhileLoopHelper(WhileCondFn(num_boxes, output_size),
                              SuppressBodyFn(num_boxes), init_values,
                              "suppress_loop", builder)
-            .ValueOrDie();
+            .value();
 
     xla::XlaOp included_score =
         xla::Gt(scores, xla::Broadcast(score_thresh, {num_boxes}));

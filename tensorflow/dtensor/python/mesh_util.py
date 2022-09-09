@@ -19,6 +19,7 @@ from absl import logging
 import numpy as np
 
 from tensorflow.dtensor.python import api
+from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import multi_client_util
 from tensorflow.dtensor.python import tpu_util
@@ -93,7 +94,7 @@ def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
   """
   device_specs, device_type = _make_device_specs(devices, device_type)
 
-  local_spec = tf_device.DeviceSpec(job=api.job_name(), replica=0, task=0)
+  local_spec = tf_device.DeviceSpec(job=config.job_name(), replica=0, task=0)
   device_specs = [local_spec.make_merged_spec(d) for d in device_specs]
 
   if mesh_dims is None:
@@ -173,27 +174,27 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
     # This is particularly useful on single clients when users want to create
     # meshes that use fewer logical devices than what's available.
 
-    if api.num_clients() > 1 and not multi_client_util.is_initialized():
+    if config.num_clients() > 1 and not multi_client_util.is_initialized():
       raise ValueError('Invalid multi-client topology, please run '
                        'dtensor.initialize_multi_client() first.')
 
     local_spec = tf_device.DeviceSpec(
-        job=api.job_name(), replica=0, task=api.client_id())
+        job=config.job_name(), replica=0, task=config.client_id())
     device_specs = [local_spec.make_merged_spec(d) for d in device_specs]
 
     # Assumes identical number of local devices per client.
-    num_global_devices = len(device_specs) * api.num_clients()
+    num_global_devices = len(device_specs) * config.num_clients()
 
     if np.prod(shape) != num_global_devices:
       raise ValueError(
           f'Global number of devices '
-          f'({len(device_specs)} per client * {api.num_clients()} clients '
+          f'({len(device_specs)} per client * {config.num_clients()} clients '
           f'= {num_global_devices}) must be '
           f'equal to total size of the mesh of shape {shape}')
 
     global_device_ids = np.arange(num_global_devices).reshape(shape)
     flattened = np.ravel(global_device_ids).tolist()
-    start_idx = len(device_specs) * api.client_id()
+    start_idx = len(device_specs) * config.client_id()
     local_device_ids = flattened[start_idx:start_idx + len(device_specs)]
 
     mesh = layout.Mesh(
@@ -202,15 +203,15 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
         local_device_ids=local_device_ids,
         local_devices=device_specs,
         mesh_name=mesh_name)
-    _print_context(num_global_devices, api.num_clients(), api.client_id(),
+    _print_context(num_global_devices, config.num_clients(), config.client_id(),
                    device_type, mesh)
     return mesh
 
   if device_type.upper() == 'TPU':
     mesh = tpu_util.create_tpu_mesh(dim_names, shape, mesh_name)
     _print_context(
-        api.num_global_devices(device_type), api.num_clients(), api.client_id(),
-        device_type, mesh)
+        api.num_global_devices(device_type), config.num_clients(),
+        config.client_id(), device_type, mesh)
     return mesh
 
   raise ValueError(f'Device type {device_type} is not CPU, GPU or TPU')
@@ -253,12 +254,12 @@ def dtensor_initialize_multi_client(
 
   # Collective GRPC servers are only necessary in multi-client setup.
   # Single clients can use local mode of collectives.
-  if api.num_clients() > 1:
+  if config.num_clients() > 1:
     multi_client_util.initialize_multi_client_cluster(
-        job_name=api.job_name(),
-        dtensor_jobs=api.jobs(),
-        client_id=api.client_id(),
-        collective_leader=api.full_job_name(task_id=0),
+        job_name=config.job_name(),
+        dtensor_jobs=config.jobs(),
+        client_id=config.client_id(),
+        collective_leader=config.full_job_name(task_id=0),
         enable_coordination_service=enable_coordination_service)
 
   # Make sure the server change is fully propagated before returning.

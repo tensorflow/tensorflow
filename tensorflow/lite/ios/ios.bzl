@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "clean_dep")
 # Placeholder for Google-internal load statements.
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
-TFL_MINIMUM_OS_VERSION = "10.0"
+TFL_MINIMUM_OS_VERSION = "11.0"
 
 # Default tags for filtering iOS targets. Targets are restricted to Apple platforms.
 TFL_DEFAULT_TAGS = [

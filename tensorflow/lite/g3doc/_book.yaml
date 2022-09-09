@@ -91,9 +91,8 @@ upper_tabs:
         path: /lite/android/index
       - title: "Quickstart"
         path: /lite/android/quickstart
-      - title: "Run with Play Services"
+      - title: "Google Play services runtime"
         path: /lite/android/play_services
-        status: experimental
       - title: "Development tools"
         path: /lite/android/development
 

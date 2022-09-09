@@ -338,7 +338,7 @@ class PartitionedHlo {
     // to use the tuple sharding. Reshard() implementation assumes this.
     if (hlo_->shape().IsTuple() && !hlo_->sharding().IsTuple()) {
       hlo_->set_sharding(
-          hlo_->sharding().GetTupleSharding(hlo_->shape()).ValueOrDie());
+          hlo_->sharding().GetTupleSharding(hlo_->shape()).value());
     }
   }
 

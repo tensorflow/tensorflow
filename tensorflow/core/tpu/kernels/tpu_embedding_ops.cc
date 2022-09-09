@@ -225,7 +225,7 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
     auto builder = ctx->builder();
     gradient_shapes.reserve(gradients.size());
     for (xla::XlaOp op : gradients) {
-      gradient_shapes.push_back(builder->GetShape(op).ValueOrDie());
+      gradient_shapes.push_back(builder->GetShape(op).value());
     }
 
     std::vector<xla::XlaOp> learning_rates;
@@ -235,7 +235,7 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
     std::vector<xla::Shape> learning_rate_shapes;
     learning_rate_shapes.reserve(learning_rates.size());
     for (xla::XlaOp op : learning_rates) {
-      learning_rate_shapes.push_back(builder->GetShape(op).ValueOrDie());
+      learning_rate_shapes.push_back(builder->GetShape(op).value());
     }
 
     xla::XlaOp deduplication_data = ctx->Input("deduplication_data");

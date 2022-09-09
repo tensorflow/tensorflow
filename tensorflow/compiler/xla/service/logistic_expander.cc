@@ -43,15 +43,15 @@ HloInstruction* ExpandLogisticWithTanh(HloInstruction* logistic) {
   const Shape operand_shape = operand->shape();
   HloInstruction* half_constant = MakeScalarLike(operand, 0.5f);
   HloInstruction* tanh_instr =
-      MakeUnaryHlo(HloOpcode::kTanh,
-                   MakeBinaryHlo(HloOpcode::kMultiply, half_constant, operand)
-                       .ValueOrDie())
-          .ValueOrDie();
+      MakeUnaryHlo(
+          HloOpcode::kTanh,
+          MakeBinaryHlo(HloOpcode::kMultiply, half_constant, operand).value())
+          .value();
   return MakeBinaryHlo(
              HloOpcode::kAdd, half_constant,
              MakeBinaryHlo(HloOpcode::kMultiply, half_constant, tanh_instr)
-                 .ValueOrDie())
-      .ValueOrDie();
+                 .value())
+      .value();
 }
 
 HloInstruction* ExpandLogisticWithExp(HloInstruction* logistic) {
@@ -61,12 +61,11 @@ HloInstruction* ExpandLogisticWithExp(HloInstruction* logistic) {
   HloInstruction* one_constant = MakeScalarLike(operand, 1.0f);
   HloInstruction* exp_instr =
       MakeUnaryHlo(HloOpcode::kExp,
-                   MakeUnaryHlo(HloOpcode::kNegate, operand).ValueOrDie())
-          .ValueOrDie();
+                   MakeUnaryHlo(HloOpcode::kNegate, operand).value())
+          .value();
   HloInstruction* denominator =
-      MakeBinaryHlo(HloOpcode::kAdd, one_constant, exp_instr).ValueOrDie();
-  return MakeBinaryHlo(HloOpcode::kDivide, one_constant, denominator)
-      .ValueOrDie();
+      MakeBinaryHlo(HloOpcode::kAdd, one_constant, exp_instr).value();
+  return MakeBinaryHlo(HloOpcode::kDivide, one_constant, denominator).value();
 }
 
 }  // namespace

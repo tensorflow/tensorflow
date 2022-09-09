@@ -35,9 +35,7 @@ def TilingInterface : OpInterface<"TilingInterface"> {
         }],
         /*retType=*/"SmallVector<Value>",
         /*methodName=*/"getDestinationOperands",
-        /*args=*/(ins "OpBuilder &":$b),
-        /*methodBody=*/"",
-        /*defaultImplementation=*/"return ValueRange{};"
+        /*args=*/(ins "OpBuilder &":$b)
       >,
       InterfaceMethod<
         /*desc=*/[{
@@ -49,9 +47,7 @@ def TilingInterface : OpInterface<"TilingInterface"> {
         }],
         /*retType=*/"SmallVector<StringRef>",
         /*methodName=*/"getLoopIteratorTypes",
-        /*args=*/(ins),
-        /*methodBody=*/"",
-        /*defaultImplementation=*/"return {};"
+        /*args=*/(ins)
       >,
       InterfaceMethod<
         /*desc=*/[{
@@ -60,9 +56,7 @@ def TilingInterface : OpInterface<"TilingInterface"> {
         }],
         /*retTy=*/"SmallVector<Range>",
         /*methodName=*/"getIterationDomain",
-        /*args=*/(ins "OpBuilder &":$b),
-        /*methodBody=*/"",
-        /*defaultImplementation=*/"return {};"
+        /*args=*/(ins "OpBuilder &":$b)
       >,
       InterfaceMethod<
         /*desc=*/[{
@@ -72,40 +66,25 @@ def TilingInterface : OpInterface<"TilingInterface"> {
           `getIterationDomain`. The caller provides the information of the
           tile within this iteration space whose implementation the
           caller needs.
-          - `dest` are the Value into which the result of the tiled
-            operation is to be inserted into. The type of the `dest`
-            Values is same as the types returned by
-            `getDestinationOperands` method.
           - `offsets` provides the offset of the tile in the coordinate system
             of the original iteration space, i.e., if an iteration space
             dimension had non-zero offset, it must be included in the offset
             provided here (as opposed to zero-based offset "relative" to the
             iteration space).
           - `sizes` provides the size of the tile.
-          - `tileDestOperands` specifies whether to also tile `dest` operands
-            or not. Avoiding tiling `dest` operands can be useful for
-            composition with various looping container ops.
 
           The method returns the operation that is the tiled
           implementation.
         }],
-        /*retType=*/"TilingInterface",
+        /*retType=*/"mlir::gml_st::TilingInterface",
         /*methodName=*/"getTiledImplementation",
         /*args=*/(ins
             "OpBuilder &":$b,
-            "ValueRange ":$dest,
-            "ArrayRef<OpFoldResult> ":$offsets,
-            "ArrayRef<OpFoldResult> ":$sizes,
-            "bool ":$tileDestOperands),
-        /*methodBody=*/"",
-        /*defaultImplementation=*/[{
-          return {};
-        }]
+            "ArrayRef<OpFoldResult>":$offsets,
+            "ArrayRef<OpFoldResult>":$sizes)
       >,
       InterfaceMethod<
         /*desc=*/[{
-          Method to generate the code that produces a tile of the result.
-
           Generates the IR that computes the tile of a result of the
           operation.  The `offsets` and `sizes` describe the tile of
           the output required. This is different from
@@ -118,33 +97,20 @@ def TilingInterface : OpInterface<"TilingInterface"> {
           tiled to generate the result tile. In practical terms this
           implies it cannot be tiled and fused with its consumers.
 
-          - `dest` are the Value into which the result of the tiled
-            operation is to be inserted into. The type of the `dest`
-            Values is same as the types returned by
-            `getDestinationOperands` method.
           - `offsets` provides the offset of the tile in the coordinate system
             of the original iteration space, i.e., if an iteration space
             dimension had non-zero offset, it must be included in the offset
             provided here (as opposed to zero-based offset "relative" to the
             iteration space).
           - `sizes` provides the size of the tile.
-          - `tileDestOperands` specifies whether to also tile `dest` operands
-            or not. Avoiding tiling `dest` operands can be useful for
-            composition with various looping container ops.
         }],
         /*retType=*/"FailureOr<Value>",
         /*methodName=*/"generateResultTileValue",
         /*args=*/(ins
           "OpBuilder &":$b,
           "unsigned":$resultNumber,
-          "ValueRange":$dest,
           "ArrayRef<OpFoldResult>":$offsets,
-          "ArrayRef<OpFoldResult>":$sizes,
-          "bool":$tileDestOperands),
-        /*methodBody=*/"",
-        /*defaultImplementation=*/[{
-          return failure();
-        }]
+          "ArrayRef<OpFoldResult>":$sizes)
       >
   ];
 }

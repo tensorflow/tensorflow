@@ -46,7 +46,7 @@ class TransferManagerTest : public LocalClientTestBase {
         }) {
     stream_ptr_ = local_client_->mutable_backend()
                       ->BorrowStream(stream_executor_)
-                      .ValueOrDie();
+                      .value();
     stream_ = stream_ptr_.get();
   }
 
@@ -57,7 +57,7 @@ class TransferManagerTest : public LocalClientTestBase {
         ->AllocateScopedShapedBuffer(
             shape, GetOrCreateAllocator(local_client_->platform()),
             /*device_ordinal=*/0)
-        .ValueOrDie();
+        .value();
   }
 
  protected:

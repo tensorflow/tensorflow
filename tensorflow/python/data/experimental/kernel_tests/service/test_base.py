@@ -198,6 +198,9 @@ class TestCluster:
     # pylint: disable=protected-access
     self.dispatcher._stop()
 
+  def stop_worker(self, index):
+    self.workers[index].stop()
+
   def stop_workers(self):
     for worker in self.workers:
       worker.stop()

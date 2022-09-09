@@ -838,9 +838,10 @@ def tf_cc_shared_library(
                 name = filegroup_name,
                 srcs = [name_os_full],
                 output_group = "main_shared_library_output",
+                visibility = visibility,
             )
-            _create_symlink(name_os, name_os_major)
-            _create_symlink(name_os_major, filegroup_name)
+            _create_symlink(name_os, name_os_major, visibility = visibility)
+            _create_symlink(name_os_major, filegroup_name, visibility = visibility)
 
     if name not in [item for sublist in names for item in sublist]:
         native.filegroup(
@@ -881,7 +882,7 @@ def _tf_cc_shared_library(
     cc_shared_library(
         name = name,
         roots = [cc_library_name] + roots,
-        exports_filter = if_rocm(None, exports_filter),  # b/230048163
+        exports_filter = exports_filter,
         dynamic_deps = dynamic_deps,
         static_deps = static_deps,
         shared_lib_name = shared_lib_name,
@@ -891,13 +892,14 @@ def _tf_cc_shared_library(
         win_def_file = if_windows(win_def_file, otherwise = None),
     )
 
-def _create_symlink(src, dest):
+def _create_symlink(src, dest, visibility = None):
     native.genrule(
         name = src + "_sym",
         outs = [src],
         srcs = [dest],
         output_to_bindir = 1,
         cmd = "ln -sf $$(basename $<) $@",
+        visibility = visibility,
     )
 
 def _get_shared_library_name_os_version_matrix(name, per_os_targets = False, version = None):
@@ -2285,6 +2287,7 @@ def pywrap_tensorflow_macro(
         deps = [],
         dynamic_deps = [],
         static_deps = [],
+        exports_filter = [],
         copts = [],
         version_script = None,
         win_def_file = None):
@@ -2335,18 +2338,6 @@ def pywrap_tensorflow_macro(
     })
     additional_linker_inputs = if_windows([], otherwise = ["%s.lds" % vscriptname])
 
-    # Due to b/149224972 we have to add libtensorflow_framework.so
-    # as a dependency so the linker doesn't try and optimize and
-    # remove it from pywrap_tensorflow_internal.so
-    # Issue: https://github.com/tensorflow/tensorflow/issues/34117
-    # Fix: https://github.com/tensorflow/tensorflow/commit/5caa9e83798cb510c9b49acee8a64efdb746207c
-    extra_deps += if_static(
-        extra_deps = [],
-        otherwise = [
-            clean_dep("//tensorflow:libtensorflow_framework_import_lib"),
-        ],
-    )
-
     tf_cc_shared_library(
         name = cc_shared_library_name,
         srcs = srcs,
@@ -2363,6 +2354,7 @@ def pywrap_tensorflow_macro(
         deps = deps + extra_deps,
         dynamic_deps = dynamic_deps,
         static_deps = static_deps,
+        exports_filter = exports_filter,
         win_def_file = win_def_file,
         additional_linker_inputs = additional_linker_inputs,
     )
@@ -2945,9 +2937,6 @@ def pybind_extension(
     )
 
     if static_deps:
-        if link_in_framework:
-            deps += [clean_dep("//tensorflow:libtensorflow_framework_import_lib")]  # buildifier: disable=list-append
-
         cc_library_name = so_file + "_cclib"
         cc_library(
             name = cc_library_name,
@@ -3143,6 +3132,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@mkl_dnn_v1//:__subpackages__",
         "@nsync//:__subpackages__",
+        "@nccl_archive//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -3183,6 +3173,8 @@ def tf_python_pybind_extension(
     It is used for targets under //third_party/tensorflow/python that link
     against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
     """
+    extended_deps = deps + if_mkl_ml(["//third_party/mkl:intel_binary_blob"])
+    extended_deps += [] if dynamic_deps else if_windows([], ["//tensorflow:libtensorflow_framework_import_lib"]) + tf_binary_pybind_deps()
     pybind_extension(
         name,
         srcs,
@@ -3190,12 +3182,11 @@ def tf_python_pybind_extension(
         hdrs = hdrs,
         dynamic_deps = dynamic_deps,
         static_deps = static_deps,
-        deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+        deps = extended_deps,
         compatible_with = compatible_with,
         copts = copts,
         defines = defines,
         features = features,
-        link_in_framework = True,
         testonly = testonly,
         visibility = visibility,
         win_def_file = win_def_file,

@@ -35,8 +35,8 @@ TEST_F(AliasPassthroughParamsTest, AliasPassThroughParams) {
     sum = f16[2048,1024] add(p0, p1)
     ROOT root = (f16[2048,1024], f16[2048,1024], f16[2048,1024]) tuple(p0, sum, p1)
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(AliasPassthroughParams().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(AliasPassthroughParams().Run(module.get()).value());
   const auto& alias_config = module->input_output_alias_config();
   EXPECT_EQ(0, alias_config.GetAliasedParameter({0})->parameter_number);
   EXPECT_FALSE(alias_config.OutputHasAlias({1}));
@@ -51,8 +51,8 @@ TEST_F(AliasPassthroughParamsTest, DoNotAliasPassThroughParamsMoreThanOnce) {
     p0 = f16[2048,1024] parameter(0)
     ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p0)
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(AliasPassthroughParams().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(AliasPassthroughParams().Run(module.get()).value());
   const auto& alias_config = module->input_output_alias_config();
   EXPECT_EQ(0, alias_config.GetAliasedParameter({0})->parameter_number);
   EXPECT_FALSE(alias_config.OutputHasAlias({1}));
@@ -68,7 +68,7 @@ TEST_F(AliasPassthroughParamsTest, PresetAliases) {
     sum = f16[2048,1024] add(p0, p1)
     ROOT root = (f16[2048,1024], f16[2048,1024], f16[2048,1024]) tuple(p0, sum, p1)
   })")
-                    .ValueOrDie();
+                    .value();
 
   // Presetting an alias for p0 -> Sum. This could happen in a case of
   // `alias_resource_update`.
@@ -77,7 +77,7 @@ TEST_F(AliasPassthroughParamsTest, PresetAliases) {
                                        /*param_number=*/0,
                                        /*param_index=*/{}));
 
-  EXPECT_TRUE(AliasPassthroughParams().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(AliasPassthroughParams().Run(module.get()).value());
   const auto& alias_result = module->input_output_alias_config();
   // Assert that an alias p1 -> p1 is established by `AliasPassthroughParams`.
   EXPECT_EQ(1, alias_result.GetAliasedParameter({2})->parameter_number);

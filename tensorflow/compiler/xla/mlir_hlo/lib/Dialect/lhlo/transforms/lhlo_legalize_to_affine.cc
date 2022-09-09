@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -29,6 +28,10 @@ limitations under the License.
 
 namespace mlir {
 namespace lmhlo {
+
+#define GEN_PASS_DEF_LHLOLEGALIZETOAFFINEPASS
+#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
+
 namespace {
 
 // Builds an affine loop nest iterating from zeros to "upper_bounds" with unit
@@ -645,7 +648,7 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
 }
 
 struct LhloLegalizeToAffinePass
-    : public LhloLegalizeToAffinePassBase<LhloLegalizeToAffinePass> {
+    : public impl::LhloLegalizeToAffinePassBase<LhloLegalizeToAffinePass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, math::MathDialect>();
   }

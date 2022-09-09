@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
-#include "tensorflow/compiler/xla/mlir/utils/to_string.h"
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 
 namespace xla {
 namespace runtime {
@@ -75,7 +75,7 @@ StatusOr<ArgumentConstraint> ResolveArgumentConstraint(
   auto shaped = type.dyn_cast<ShapedType>();
   if (!shaped)
     return InvalidArgumentError(
-        StrCat("unsupported operand type: ", ToString(type)));
+        StrCat("unsupported operand type: ", debugString(type)));
 
   // Resolve `rank` constraint if rank is known at compile time.
   if (constraint == ArgumentConstraint::kRank && shaped.hasRank())
@@ -89,7 +89,7 @@ StatusOr<ArgumentConstraint> ResolveArgumentConstraint(
   if (constraint == ArgumentConstraint::kValue) {
     if (SupportsValueSpecialization(shaped)) return constraint;
     return InvalidArgumentError(
-        StrCat("cannot sink operand type: ", ToString(type)));
+        StrCat("cannot sink operand type: ", debugString(type)));
   }
 
   return constraint;

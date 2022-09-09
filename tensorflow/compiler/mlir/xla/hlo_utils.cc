@@ -98,8 +98,8 @@ StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
   llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
   auto permutation_or = GetPermutationIfAvailable(shape, builder);
   if (!permutation_or.ok()) return permutation_or.status();
-  return MemRefType::get(array, element_type_or.ValueOrDie(),
-                         permutation_or.ValueOrDie());
+  return MemRefType::get(array, element_type_or.value(),
+                         permutation_or.value());
 }
 
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(

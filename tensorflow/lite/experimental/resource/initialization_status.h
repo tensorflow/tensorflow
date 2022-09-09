@@ -48,7 +48,7 @@ class InitializationStatus : public ResourceBase {
   // Returns true if this initialization is done.
   bool IsInitialized() override;
 
-  size_t GetMemoryUsage() override { return 0; };
+  size_t GetMemoryUsage() override { return 0; }
 
  private:
   // True if the initialization process is done.

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -30,6 +29,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_LEGALIZETANHTOAPPROXIMATIONPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 template <typename OpTy>
@@ -161,7 +164,7 @@ class ApproximateTanhLowering
 };
 
 struct LegalizeTrigonometricToApproximationPass
-    : public LegalizeTanhToApproximationPassBase<
+    : public impl::LegalizeTanhToApproximationPassBase<
           LegalizeTrigonometricToApproximationPass> {
   /// Perform the lowering of standard dialect operations to approximations.
   void runOnOperation() override {

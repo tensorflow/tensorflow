@@ -61,7 +61,7 @@ static LogicalResult MlirToTfNodeDef(ModuleOp module,
     return failure();
   }
 
-  output << node_def_or.ValueOrDie()->DebugString();
+  output << node_def_or.value()->DebugString();
   return success();
 }
 

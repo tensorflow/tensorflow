@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_UNARY_BENCHMARK_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_UNARY_BENCHMARK_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_
 
 #include <utility>
 
@@ -291,4 +291,4 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
   }                                                                          \
   BENCHMARK(BM_eigen_v_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_UNARY_BENCHMARK_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_

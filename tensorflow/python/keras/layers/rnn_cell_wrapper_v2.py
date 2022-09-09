@@ -24,6 +24,7 @@
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_wrapper_impl
 from tensorflow.python.keras.utils import tf_inspect
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -90,6 +91,7 @@ class _RNNCellWrapperV2(recurrent.AbstractRNNCell):
     return cls(cell, **config)
 
 
+@deprecated(None, "Please use tf.keras.layers.RNN instead.")
 @tf_export("nn.RNNCellDropoutWrapper", v1=[])
 class DropoutWrapper(rnn_cell_wrapper_impl.DropoutWrapperBase,
                      _RNNCellWrapperV2):
@@ -105,6 +107,7 @@ class DropoutWrapper(rnn_cell_wrapper_impl.DropoutWrapperBase,
   __init__.__doc__ = rnn_cell_wrapper_impl.DropoutWrapperBase.__init__.__doc__
 
 
+@deprecated(None, "Please use tf.keras.layers.RNN instead.")
 @tf_export("nn.RNNCellResidualWrapper", v1=[])
 class ResidualWrapper(rnn_cell_wrapper_impl.ResidualWrapperBase,
                       _RNNCellWrapperV2):
@@ -116,6 +119,7 @@ class ResidualWrapper(rnn_cell_wrapper_impl.ResidualWrapperBase,
   __init__.__doc__ = rnn_cell_wrapper_impl.ResidualWrapperBase.__init__.__doc__
 
 
+@deprecated(None, "Please use tf.keras.layers.RNN instead.")
 @tf_export("nn.RNNCellDeviceWrapper", v1=[])
 class DeviceWrapper(rnn_cell_wrapper_impl.DeviceWrapperBase,
                     _RNNCellWrapperV2):

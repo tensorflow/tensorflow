@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_TYPES_H_
-#define XLA_RUNTIME_TYPES_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_TYPES_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_TYPES_H_
 
 #include <functional>
 #include <memory>
@@ -218,11 +218,11 @@ class UnrankedMemrefType : public llvm::RTTIExtends<UnrankedMemrefType, Type> {
 };
 
 //===----------------------------------------------------------------------===//
-// Corresponds to the RT dialect's KernelContextType.
+// Corresponds to the RT dialect's ExecutionContextType.
 //===----------------------------------------------------------------------===//
 
-class KernelContextOperandType
-    : public llvm::RTTIExtends<KernelContextOperandType, Type> {
+class ExecutionContextOperandType
+    : public llvm::RTTIExtends<ExecutionContextOperandType, Type> {
  public:
   static constexpr char ID = 0;  // NOLINT
 
@@ -255,4 +255,4 @@ class FunctionType {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_TYPES_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_TYPES_H_

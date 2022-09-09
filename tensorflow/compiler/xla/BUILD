@@ -21,10 +21,12 @@ package_group(
     packages = [
         # copybara:uncomment "//learning/infra/mira/...",
         "//third_party/auroraml/...",
+        "//third_party/australis/...",
         "//third_party/iree/...",
         "//third_party/mlcompass/...",
         "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
+        "//third_party/py/t5x/...",
         "//tensorflow/compiler/...",
         "//tensorflow/python/tpu/...",
     ],
@@ -1040,7 +1042,7 @@ cc_library(
 #     testonly = 0,
 #     api_version = 2,
 #     compatible_with = ["//buildenv/target:gce"],
-#     visibility = ["//visibility:public"],
+#     visibility = [":friends"],
 #     deps = [":xla_proto"],
 # )
 # copybara:uncomment_end

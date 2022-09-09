@@ -803,7 +803,7 @@ blas::BlasSupport* GpuExecutor::CreateBlas() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 dnn::DnnSupport* GpuExecutor::CreateDnn() {
@@ -817,7 +817,7 @@ dnn::DnnSupport* GpuExecutor::CreateDnn() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 fft::FftSupport* GpuExecutor::CreateFft() {
@@ -831,7 +831,7 @@ fft::FftSupport* GpuExecutor::CreateFft() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 rng::RngSupport* GpuExecutor::CreateRng() {
@@ -845,7 +845,7 @@ rng::RngSupport* GpuExecutor::CreateRng() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 // TODO(rspringer): Remove in b/18544742.
@@ -1040,23 +1040,23 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     builder.set_threads_per_block_limit(
         GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK,
                                       device)
-            .ValueOrDie());
+            .value());
 
     ThreadDim thread_dim_limit;
     thread_dim_limit.x = GpuDriver::GetDeviceAttribute(
                              CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, device)
-                             .ValueOrDie();
+                             .value();
     thread_dim_limit.y = GpuDriver::GetDeviceAttribute(
                              CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Y, device)
-                             .ValueOrDie();
+                             .value();
     thread_dim_limit.z = GpuDriver::GetDeviceAttribute(
                              CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Z, device)
-                             .ValueOrDie();
+                             .value();
     builder.set_thread_dim_limit(thread_dim_limit);
 
     int clock_rate =
         GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device)
-            .ValueOrDie();
+            .value();
     builder.set_clock_rate_ghz(static_cast<float>(clock_rate) / 1e6);
   }
 
@@ -1079,9 +1079,8 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   if (mem_clock_khz.ok() && mem_bus_width_bits.ok()) {
     // Times 2 because HBM is DDR memory; it gets two data bits per each data
     // lane.
-    builder.set_memory_bandwidth(2 * int64_t{mem_clock_khz.ValueOrDie()} *
-                                 1000 *
-                                 int64_t{mem_bus_width_bits.ValueOrDie()} / 8);
+    builder.set_memory_bandwidth(2 * int64_t{mem_clock_khz.value()} * 1000 *
+                                 int64_t{mem_bus_width_bits.value()} / 8);
   }
 
   {
@@ -1106,21 +1105,19 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   builder.set_device_vendor("NVIDIA Corporation");
   builder.set_cuda_compute_capability(cc_major, cc_minor);
   builder.set_shared_memory_per_core(
-      GpuDriver::GetMaxSharedMemoryPerCore(device).ValueOrDie());
+      GpuDriver::GetMaxSharedMemoryPerCore(device).value());
   builder.set_shared_memory_per_block(
-      GpuDriver::GetMaxSharedMemoryPerBlock(device).ValueOrDie());
-  builder.set_core_count(
-      GpuDriver::GetMultiprocessorCount(device).ValueOrDie());
+      GpuDriver::GetMaxSharedMemoryPerBlock(device).value());
+  builder.set_core_count(GpuDriver::GetMultiprocessorCount(device).value());
   builder.set_threads_per_core_limit(
-      GpuDriver::GetMaxThreadsPerMultiprocessor(device).ValueOrDie());
+      GpuDriver::GetMaxThreadsPerMultiprocessor(device).value());
   builder.set_registers_per_block_limit(
-      GpuDriver::GetMaxRegistersPerBlock(device).ValueOrDie());
-  builder.set_threads_per_warp(
-      GpuDriver::GetThreadsPerWarp(device).ValueOrDie());
+      GpuDriver::GetMaxRegistersPerBlock(device).value());
+  builder.set_threads_per_warp(GpuDriver::GetThreadsPerWarp(device).value());
   builder.set_registers_per_core_limit(
       GpuDriver::GetDeviceAttribute(
           CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR, device)
-          .ValueOrDie());
+          .value());
 
   return builder.Build();
 }

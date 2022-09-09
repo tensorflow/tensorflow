@@ -652,7 +652,7 @@ absl::Status GPUOperationFromNodePart0(
       return absl::OkStatus();
     }
     case OperationType::SOFTMAX: {
-      SelectSoftmax(inputs[0]->tensor.shape, op_def, gpu_op);
+      SelectSoftmax(gpu_info, inputs[0]->tensor.shape, op_def, gpu_op);
       return absl::OkStatus();
     }
     case OperationType::SPACE_TO_DEPTH: {

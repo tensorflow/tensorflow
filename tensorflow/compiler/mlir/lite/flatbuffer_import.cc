@@ -1322,7 +1322,7 @@ StatusOr<FuncOp> ConvertSubgraph(
           return emitError(const_loc, op_or_err.status().ToString()),
                  op_or_err.status();
         }
-        vals_map[input_num] = op_or_err.ValueOrDie()->getResult(0);
+        vals_map[input_num] = op_or_err.value()->getResult(0);
       }
     }
 
@@ -1379,7 +1379,7 @@ StatusOr<FuncOp> ConvertSubgraph(
         return emitError(const_loc, op_or_err.status().ToString()),
                op_or_err.status();
       }
-      vals_map[index] = op_or_err.ValueOrDie()->getResult(0);
+      vals_map[index] = op_or_err.value()->getResult(0);
     }
     return_operands.push_back(vals_map[index]);
   }

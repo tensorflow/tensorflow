@@ -217,8 +217,7 @@ GetTpuDevices(
 
   std::map<int, int> core_id_to_device_ordinal;
   for (int i = 0; i < client->device_count(); ++i) {
-    se::StreamExecutor* executor =
-        client->backend().stream_executor(i).ValueOrDie();
+    se::StreamExecutor* executor = client->backend().stream_executor(i).value();
     tf_tpu::TpuExecutorInterface* tpu_executor =
         tensorflow::down_cast<tf_tpu::TpuExecutorInterface*>(
             executor->implementation());
@@ -291,8 +290,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
   std::vector<std::unique_ptr<LocalDeviceState>> local_device_states;
   local_device_states.reserve(client->device_count());
   for (int i = 0; i < client->device_count(); ++i) {
-    se::StreamExecutor* executor =
-        client->backend().stream_executor(i).ValueOrDie();
+    se::StreamExecutor* executor = client->backend().stream_executor(i).value();
     local_device_states.push_back(std::make_unique<TpuDeviceState>(
         executor, client, max_inflight_computations));
   }

@@ -104,7 +104,7 @@ thread::ThreadPool* GetOrCreateBatchThreadsPool() {
       return nullptr;
     }
     static serving::BoundedExecutor* executor =
-        status_or_executor.ValueOrDie().release();
+        status_or_executor.value().release();
     return new thread::ThreadPool(executor);
   }();
   return shared_thread_pool;
@@ -554,7 +554,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     done(statusor.status());
     return;
   }
-  auto req_ctx = std::move(statusor).ValueOrDie();
+  auto req_ctx = std::move(statusor).value();
 
   int64_t id = req_ctx->id();
   tensorflow::profiler::TraceMeProducer activity(

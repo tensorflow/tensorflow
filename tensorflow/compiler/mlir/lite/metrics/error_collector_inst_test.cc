@@ -120,7 +120,7 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
 
   pm.addInstrumentation(
       std::make_unique<ErrorCollectorInstrumentation>(&context));
-  EXPECT_EQ(succeeded(pm.run(module.ValueOrDie().get())), true);
+  EXPECT_EQ(succeeded(pm.run(module.value().get())), true);
 
   auto collected_errors =
       ErrorCollector::GetErrorCollector()->CollectedErrors();
@@ -148,7 +148,7 @@ TEST(ErrorCollectorTest, TessFailurePass) {
 
   pm.addInstrumentation(
       std::make_unique<ErrorCollectorInstrumentation>(&context));
-  EXPECT_EQ(succeeded(pm.run(module.ValueOrDie().get())), false);
+  EXPECT_EQ(succeeded(pm.run(module.value().get())), false);
 
   auto collected_errors =
       ErrorCollector::GetErrorCollector()->CollectedErrors();

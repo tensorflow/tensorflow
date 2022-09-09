@@ -257,9 +257,6 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
       case FusedComputationType::kUndefined:
         OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));
         break;
-      case FusedComputationType::kBiasAddWithGeluApproximate:
-        OP_REQUIRES_OK(context, errors::Internal("Fusion type is unsupported"));
-        break;
       case FusedComputationType::kBiasAdd:
         conv2d(WithBiasAdd<T>(bias_add_args), context, input, filter, output);
         break;
@@ -303,6 +300,9 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
         conv2d(WithFusedBatchNormAndElu<T>(fusion_args.epsilon,
                                            fused_batch_norm_args),
                context, input, filter, output);
+        break;
+      default:
+        OP_REQUIRES_OK(context, errors::Internal("Fusion type is unsupported"));
         break;
     }
   }
@@ -636,14 +636,14 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                                           dnn_activation_mode};
       auto primary_or = runners.primary->GetOrCreateRunner(config, stream);
       OP_REQUIRES_OK(context, primary_or.status());
-      auto* primary = primary_or.ValueOrDie();
+      auto* primary = primary_or.value();
 
       const se::dnn::FusedConvRunner* no_scratch_fallback = nullptr;
       if (runners.no_scratch_fallback) {
         auto no_scratch_fallback_or =
             runners.no_scratch_fallback->GetOrCreateRunner(config, stream);
         OP_REQUIRES_OK(context, no_scratch_fallback_or.status());
-        no_scratch_fallback = no_scratch_fallback_or.ValueOrDie();
+        no_scratch_fallback = no_scratch_fallback_or.value();
       }
 
       auto runner_and_scratch_or =

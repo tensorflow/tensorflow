@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -31,6 +30,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_HLOLEGALIZETOARITHMETICPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 struct RngGetAndUpdateStatePattern
@@ -106,7 +109,8 @@ struct RngGetAndUpdateStatePattern
 };
 
 struct HloLegalizeToArithmeticPass
-    : public HloLegalizeToArithmeticPassBase<HloLegalizeToArithmeticPass> {
+    : public impl::HloLegalizeToArithmeticPassBase<
+          HloLegalizeToArithmeticPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<arith::ArithmeticDialect, memref::MemRefDialect,
                     tensor::TensorDialect>();

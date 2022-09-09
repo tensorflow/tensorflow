@@ -47,7 +47,7 @@ bool OperandUpcaster::InstructionMatchesPattern(HloInstruction* instruction) {
       !status_or_inferred_shape->has_value()) {
     return false;
   }
-  const Shape& inferred_shape = status_or_inferred_shape.ValueOrDie().value();
+  const Shape& inferred_shape = status_or_inferred_shape.value().value();
   if (inferred_shape.element_type() == instruction->shape().element_type() &&
       absl::c_all_of(instruction->operands(),
                      [&](const HloInstruction* operand) {

@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines a logger for op names.
 
-#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_KERNEL_H_
-#define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_KERNEL_H_
+#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_LOGGER_H_
+#define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_LOGGER_H_
 
 #include <memory>
 
@@ -59,4 +59,4 @@ class OpLogger : public tfrt::SharedContext {
 }  // namespace tfd
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_KERNEL_H_
+#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_LOGGER_H_

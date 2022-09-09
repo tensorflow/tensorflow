@@ -714,7 +714,7 @@ LogicalResult Rewrite(
            << status_or_tpu_device_assignment.status().error_message();
 
   // Create compile op.
-  auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
+  auto& tpu_device_assignment = status_or_tpu_device_assignment.value();
 
   // Create the TPUCompileMlir and TPUCompileSucceededAssert outside of
   // the parallel_execute.

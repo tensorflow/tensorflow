@@ -234,7 +234,7 @@ class HloSharding {
   // ShapeTree object so is not cheap.
   StatusOr<ShapeTree<HloSharding>> AsShapeTree(const Shape& shape) const;
   ShapeTree<HloSharding> GetAsShapeTree(const Shape& shape) const {
-    return AsShapeTree(shape).ValueOrDie();
+    return AsShapeTree(shape).value();
   }
 
   // Retrieves the sub sharding at a given index, out of a tuple sharding.

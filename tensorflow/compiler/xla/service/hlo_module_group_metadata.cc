@@ -305,7 +305,7 @@ std::optional<int64_t> HloModuleGroupMetadata::GetInstructionDevice(
   // In such cases the VerifyChannelInstructions() will return proper errors.
   std::optional<int64_t> device = instruction.sharding_unique_device();
   if (!device) {
-    device = GetModuleId(instruction.parent()->parent());
+    device = GetModuleId(instruction.GetModule());
   }
   return device;
 }

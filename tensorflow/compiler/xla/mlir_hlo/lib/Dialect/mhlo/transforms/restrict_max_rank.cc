@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -34,6 +33,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_RESTRICTMAXRANKPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 // Maximum rank that is allowed. Other Tensors should be restricted to this
@@ -187,7 +190,7 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
 };
 
 struct RestrictMaxRankPass
-    : public RestrictMaxRankPassBase<RestrictMaxRankPass> {
+    : public impl::RestrictMaxRankPassBase<RestrictMaxRankPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect>();
   }

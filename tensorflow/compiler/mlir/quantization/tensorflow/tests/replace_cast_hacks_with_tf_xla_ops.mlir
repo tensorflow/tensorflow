@@ -281,3 +281,38 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK: %[[XLACONVV2_0:.*]] = "tf.XlaConvV2"(%[[PADV2_0]]
 // CHECK: %[[SUB_0:.*]] = "tf.Sub"(%[[XLACONVV2_0]], %[[CONST]])
 }
+
+// -----
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1213 : i32}, tf_saved_model.semantics} {
+  func.func @matmul_with_relu(%arg0: tensor<1x1024xf32> {tf_saved_model.index_path = ["serving_default_input_tensor:0"]}) -> (tensor<1x3xf32> {tf_saved_model.index_path = ["tf.PartitionedCall:0"]}) attributes {tf.entry_function = {inputs = "serving_default_input_tensor:0", outputs = "tf.PartitionedCall:0"}, tf_saved_model.exported_names = ["main"]} {
+    %cst = "tf.Const"() {device = "", value = dense<3.08643539E-5> : tensor<f32>} : () -> tensor<f32>
+    %cst_0 = "tf.Const"() {device = "", value = dense<-1.275000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_1 = "tf.Const"() {device = "", value = dense<-1.280000e+02> : tensor<f32>} : () -> tensor<f32>
+    %cst_2 = "tf.Const"() {device = "", value = dense<1> : tensor<1024x3xi8>} : () -> tensor<1024x3xi8>
+    %cst_3 = "tf.Const"() {device = "", value = dense<0.00392156653> : tensor<f32>} : () -> tensor<f32>
+    %cst_4 = "tf.Const"() {device = "", value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+    %cst_5 = "tf.Const"() {device = "", value = dense<1.270000e+02> : tensor<f32>} : () -> tensor<f32>
+    %0 = "tf.Div"(%arg0, %cst_3) {device = ""} : (tensor<1x1024xf32>, tensor<f32>) -> tensor<1x1024xf32>
+    %1 = "tf.AddV2"(%0, %cst_0) {device = ""} : (tensor<1x1024xf32>, tensor<f32>) -> tensor<1x1024xf32>
+    %2 = "tf.Floor"(%1) {device = ""} : (tensor<1x1024xf32>) -> tensor<1x1024xf32>
+    %3 = "tf.ClipByValue"(%2, %cst_1, %cst_5) {device = ""} : (tensor<1x1024xf32>, tensor<f32>, tensor<f32>) -> tensor<1x1024xf32>
+    %4 = "tf.Cast"(%3) {Truncate = false, device = ""} : (tensor<1x1024xf32>) -> tensor<1x1024xi8>
+    %5 = "tf.Cast"(%4) {Truncate = false, device = ""} : (tensor<1x1024xi8>) -> tensor<1x1024xi32>
+    %6 = "tf.Sub"(%5, %cst_4) {device = ""} : (tensor<1x1024xi32>, tensor<i32>) -> tensor<1x1024xi32>
+    %7 = "tf.Identity"(%cst_2) {device = ""} : (tensor<1024x3xi8>) -> tensor<1024x3xi8>
+    %8 = "tf.Cast"(%7) {Truncate = false, device = ""} : (tensor<1024x3xi8>) -> tensor<1024x3xi32>
+    %9 = "tf.MatMul"(%6, %8) {device = "", transpose_a = false, transpose_b = false} : (tensor<1x1024xi32>, tensor<1024x3xi32>) -> tensor<1x3xi32>
+    %10 = "tf.Cast"(%9) {Truncate = false, device = ""} : (tensor<1x3xi32>) -> tensor<1x3xf32>
+    %11 = "tf.Mul"(%10, %cst) {device = ""} : (tensor<1x3xf32>, tensor<f32>) -> tensor<1x3xf32>
+    %12 = "tf.Relu"(%11) {device = ""} : (tensor<1x3xf32>) -> tensor<1x3xf32>
+    return %12 : tensor<1x3xf32>
+  }
+// CHECK-LABEL: func @matmul_with_relu
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<-131072> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %[[CAST1:.*]] = "tf.Cast"({{.*}}) {Truncate = false} : (tensor<1x1024xi8>) -> tensor<1x1024xi32>
+// CHECK: %[[IDENTITY:.*]] = "tf.Identity"({{.*}}) : (tensor<1024x3xi8>) -> tensor<1024x3xi8>
+// CHECK: %[[CAST2:.*]] = "tf.Cast"(%[[IDENTITY]]) {Truncate = false} : (tensor<1024x3xi8>) -> tensor<1024x3xi32>
+// CHECK: %[[MATMUL:.*]] = "tf.MatMul"(%[[CAST1]], %[[CAST2]]) {transpose_a = false, transpose_b = false}
+// CHECK: %[[SUB:.*]] = "tf.Sub"(%[[MATMUL]], %[[CONST]]) : (tensor<1x3xi32>, tensor<3xi32>) -> tensor<1x3xi32>
+}

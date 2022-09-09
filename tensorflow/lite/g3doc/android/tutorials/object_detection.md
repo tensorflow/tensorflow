@@ -6,6 +6,7 @@ application is designed for a physical Android device. If you are updating an
 existing project, you can use the code sample as a reference and skip ahead to
 the instructions for [modifying your project](#add_dependencies).
 
+![Object detection animated demo](https://storage.googleapis.com/download.tensorflow.org/tflite/examples/obj_detection_cat.gif){: .attempt-right width="250px"}
 ## Object detection overview
 
 *Object detection* is the machine learning task of identifying the presence and

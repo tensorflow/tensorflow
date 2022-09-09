@@ -65,7 +65,7 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
   }
 
   StatusOr<xla::Compiler*> compiler_for_platform =
-      xla::Compiler::GetForPlatform(platform.ValueOrDie());
+      xla::Compiler::GetForPlatform(platform.value());
   if (!compiler_for_platform.ok()) {
     // In some rare cases (usually in unit tests with very small clusters) we
     // may end up transforming an XLA cluster with at least one GPU operation
@@ -80,13 +80,13 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
     const Status& status = compiler_for_platform.status();
     if (status.code() == error::NOT_FOUND) {
       return errors::Unimplemented("Could not find compiler for platform ",
-                                   platform.ValueOrDie()->Name(), ": ",
+                                   platform.value()->Name(), ": ",
                                    status.ToString());
     }
   }
 
   xla::LocalClientOptions client_options;
-  client_options.set_platform(platform.ValueOrDie());
+  client_options.set_platform(platform.value());
   client_options.set_intra_op_parallelism_threads(
       device->tensorflow_cpu_worker_threads()->num_threads);
 
@@ -109,7 +109,7 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
                                    platform_info.device_type().type());
   }
   *cache = new XlaCompilationCache(
-      std::move(cache_config), client.ValueOrDie(),
+      std::move(cache_config), client.value(),
       DeviceType(registration->compilation_device_name));
   return OkStatus();
 }
@@ -158,7 +158,7 @@ std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
     // Stream is not set for the host platform.
     se::Platform* platform =
         se::MultiPlatformManager::PlatformWithId(platform_info.platform_id())
-            .ValueOrDie();
+            .value();
     return std::make_shared<se::TfAllocatorAdapter>(alloc, platform);
   }
   return std::make_shared<se::TfAllocatorAdapter>(alloc, stream);

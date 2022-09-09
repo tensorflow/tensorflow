@@ -61,7 +61,7 @@ def SetOutputOp : RT_Op<"set_output"> {
     Example:
 
       ```mlir
-      func @compute(%ctx: !rt.kernel_context) {
+      func @compute(%ctx: !rt.execution_context) {
         %out0 = ... : memref<?xf32>
         %out1 = ... : memref<?x?xf32>
         rt.set_output %ctx, 0, %out0 : memref<?xf32>
@@ -81,7 +81,7 @@ def SetOutputOp : RT_Op<"set_output"> {
   }];
 
   let arguments = (ins
-    KernelContextType:$ctx,
+    ExecutionContextType:$ctx,
     ConfinedAttr<I64Attr, [IntNonNegative]>:$index,
     AnyType:$value
   );
@@ -107,7 +107,7 @@ def SetErrorOp : RT_Op<"set_error"> {
     Example:
 
       ```mlir
-      func @compute(%ctx: !rt.kernel_context) {
+      func @compute(%ctx: !rt.execution_context) {
         %precondition = arith.cmpi ...
         cond_br %precondition, ^ok, ^err
 
@@ -124,7 +124,7 @@ def SetErrorOp : RT_Op<"set_error"> {
   }];
 
   let arguments = (ins
-    KernelContextType:$ctx,
+    ExecutionContextType:$ctx,
     StrAttr:$error);
 
   let assemblyFormat = "$ctx `,` $error attr-dict";
@@ -163,7 +163,7 @@ def CustomCallOp : RT_Op<"custom_call"> {
     Example:
 
       ```mlir
-      func @compute(%ctx: !rt.kernel_context, %arg0: memref<?xf32>,
+      func @compute(%ctx: !rt.execution_context, %arg0: memref<?xf32>,
                                               %arg1: memref<?xf32>) {
         %status = rt.custom_call %ctx["one_dnn.some_operation"] (%arg0, %arg1)
           : (memref<?xf32>, memref<?xf32>) -> ()
@@ -188,13 +188,13 @@ def CustomCallOp : RT_Op<"custom_call"> {
     implementing the custom call API:
 
       ```
-      bool OneDnnSomeOpImpl(xla::runtime::KernelContext* ctx,
+      bool OneDnnSomeOpImpl(xla::runtime::ExecutionContext* ctx,
                             void** args, void** attrs);
       ```
   }];
 
   let arguments = (ins
-    KernelContextType:$ctx,
+    ExecutionContextType:$ctx,
     StrAttr:$callee,
     UnitAttr:$direct,
     Variadic<AnyType>:$operands

@@ -91,7 +91,7 @@ static StatusOr<HloComputation*> BuilderToHloComputation(
 // after `dim`.
 static XlaOp SplitAtDim(XlaOp instr, int64_t dim, int64_t vect_size) {
   XlaBuilder& b = *instr.builder();
-  Shape shape = b.GetShape(instr).ValueOrDie();
+  Shape shape = b.GetShape(instr).value();
   DimensionVector new_dims(shape.dimensions().begin(),
                            shape.dimensions().end());
   CHECK_EQ(new_dims[dim] % vect_size, 0);
@@ -140,7 +140,7 @@ static XlaOp MoveDim(XlaOp instr, int64_t src, int64_t dst) {
 static XlaOp RevectorizeInstr(XlaOp instr, int64_t dim, int64_t vect_dim,
                               int64_t vect_size) {
   XlaBuilder& b = *instr.builder();
-  Shape shape = b.GetShape(instr).ValueOrDie();
+  Shape shape = b.GetShape(instr).value();
   auto size = [&](int64_t d) { return shape.dimensions(d); };
 
   CHECK_LE(size(vect_dim), vect_size);
@@ -175,7 +175,7 @@ static XlaOp RevectorizeInstr(XlaOp instr, int64_t dim, int64_t vect_dim,
 static XlaOp UnrevectorizeInstr(XlaOp instr, int64_t dim, int64_t vect_dim,
                                 int64_t orig_vect_size) {
   XlaBuilder& b = *instr.builder();
-  Shape shape = b.GetShape(instr).ValueOrDie();
+  Shape shape = b.GetShape(instr).value();
   auto size = [&](int64_t d) { return shape.dimensions(d); };
 
   CHECK_GE(size(vect_dim), orig_vect_size);

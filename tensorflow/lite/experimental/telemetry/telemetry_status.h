@@ -57,6 +57,10 @@ struct TelemetryStatusCode {
   uint64_t code() const {
     return (static_cast<uint64_t>(source) << 32 | status_code);
   }
+
+  bool operator==(const TelemetryStatusCode& other) const {
+    return source == other.source && status_code == other.status_code;
+  }
 };
 
 }  // namespace tflite

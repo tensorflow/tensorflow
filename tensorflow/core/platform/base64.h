@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_BASE64_H_
 
 #include <string>
+
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 

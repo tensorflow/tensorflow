@@ -25,9 +25,11 @@ def CreateXLAConvOpFromTFConv2DOp : NativeCodeCall<
 def CreateXLAConvOpFromTFDepthwiseConv2DOp : NativeCodeCall<
   "CreateXLAConvOpFromTFDepthwiseConv2DOp($_builder, $_loc, $0...)">;
 
+def AddCastHackToTFMatMulOp : NativeCodeCall<
+  "AddCastHackToTFMatMulOp($_builder, $_loc, $0...)">;
+
 // Converts inlined Conv2D pattern to TF XlaConvV2 op. This pattern doesn't
-// support non-constant weights or large weights (where the constant folding
-// fails).
+// support non-constant weights.
 def ConvertTFConv2DToXLAConvOp : Pat<
   (TF_Conv2DOp:$conv
     (TF_SubOp (TF_CastOp $input, $truncate), $input_zp),
@@ -65,8 +67,7 @@ def ConvertTFConv2DWithNoZeroPointToXLAConvOp : Pat<
   (addBenefit 10)>;
 
 // Converts inlined DepthwiseConv2D pattern to TF XlaConvV2 op. This pattern
-// doesn't support non-constant weights or large weights (where the constant
-// folding fails).
+// doesn't support non-constant weights.
 def ConvertTFDepthwiseConv2DToXLAConvOp : Pat<
   (TF_CastOp:$conv
     (TF_DepthwiseConv2dNativeOp
@@ -109,4 +110,23 @@ def ConvertTFDepthwiseConv2DWithNoZeroPointToXLAConvOp : Pat<
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
    (HasStaticShapeAtDimsConstraint<"3"> $input)],
+  (addBenefit 10)>;
+
+
+// Converts inlined MatMul pattern to TF XlaDotV2 op. This pattern doesn't
+// support non-constant weights.
+// TODO(b/242661546): Replace cast-hack Matmul with XlaDotV2Op and add the rule
+// for constant-folded SubOp.
+def ConvertTFMatMulToXLADotV2Op : Pat<
+  (TF_MatMulOp:$matmul
+    (TF_SubOp (TF_CastOp $input, $truncate), $input_zp),
+    (TF_CastOp (TF_IdentityOp $weight), $truncate1),
+    $transpose_a, $transpose_b),
+  (AddCastHackToTFMatMulOp
+    $input, $weight, $input_zp, $matmul, $transpose_a, $transpose_b),
+  [(IsInt8ElementType $input),
+   (IsInt8ElementType $weight),
+   (IsConstTensor $weight),
+   (IsInt32ElementType $matmul),
+   (HasStaticShapeConstraint $weight)],
   (addBenefit 10)>;

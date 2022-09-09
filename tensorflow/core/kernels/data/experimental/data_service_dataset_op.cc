@@ -1136,6 +1136,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (!IsPreemptedError(s)) {
           return s;
         }
+        if (!StrictRoundRobin()) {
+          mutex_lock l(mu_);
+          // Mark the result as skipped so that we try reading from a different
+          // task before returning to this one.
+          result->ready = true;
+          result->skip = true;
+          return Status::OK();
+        }
         {
           mutex_lock l(mu_);
           if (cancelled_) {

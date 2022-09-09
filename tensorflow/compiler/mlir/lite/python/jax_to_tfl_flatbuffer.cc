@@ -107,7 +107,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
     return nullptr;
   }
 
-  auto hlo_module = std::move(hlo_module_error.ValueOrDie());
+  auto hlo_module = std::move(hlo_module_error.value());
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   auto status =

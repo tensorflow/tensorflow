@@ -20,7 +20,6 @@ import os
 
 import lit.formats
 from lit.llvm import llvm_config
-from lit.llvm.subst import ToolSubst
 import lit.util
 
 # Configuration file for the 'lit' test runner.
@@ -66,10 +65,6 @@ tool_dirs = [
 tools = [
     'stablehlo-opt',
     'mlir-cpu-runner',
-    ToolSubst(
-        '%mlir_runner_utils_dir',
-        config.mlir_runner_utils_dir,
-        unresolved='ignore'),
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)

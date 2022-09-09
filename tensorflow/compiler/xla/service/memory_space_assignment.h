@@ -492,6 +492,8 @@ class MemorySpaceAssignment {
       std::function<bool(const HloValue&)>;
   using IsUseAllowedInAlternateMemoryFunction =
       std::function<bool(const HloUse&)>;
+  using IsPositionAllowedInAlternateMemoryFunction =
+      std::function<bool(const HloPosition&)>;
   using ReservedScopedMemoryFunction =
       std::function<int64_t(const HloInstruction*)>;
 
@@ -1039,6 +1041,11 @@ struct Options {
   // the opcode) to be placed on the alternate memory.
   MemorySpaceAssignment::IsUseAllowedInAlternateMemoryFunction
       is_use_allowed_in_alternate_mem_fn = [](const HloUse&) { return true; };
+
+  // Specifies if the given position is allowed in the alternate memory.
+  MemorySpaceAssignment::IsPositionAllowedInAlternateMemoryFunction
+      is_position_allowed_in_alternate_mem_fn =
+          [](const HloPosition&) { return true; };
 
   // This function returns the amount of scoped memory in bytes that should be
   // reserved during the execution of this instruction.

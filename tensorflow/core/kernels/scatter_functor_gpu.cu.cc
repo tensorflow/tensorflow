@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/scatter_functor_gpu.cu.h"
 
+#include "tensorflow/core/framework/register_types.h"
+
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -43,10 +45,15 @@ typedef Eigen::GpuDevice GPUDevice;
 DEFINE_GPU_SPECS(Eigen::half);
 DEFINE_GPU_SPECS(float);
 DEFINE_GPU_SPECS(double);
-DEFINE_GPU_SPECS_OP(bool, int32, scatter_op::UpdateOp::ASSIGN);
-DEFINE_GPU_SPECS_OP(bool, int64, scatter_op::UpdateOp::ASSIGN);
-DEFINE_GPU_SPECS_OP(int64, int64, scatter_op::UpdateOp::ASSIGN);
 
+#define DEFINE_GPU_SPECS_ASSIGN_ONLY(T)                        \
+  DEFINE_GPU_SPECS_OP(T, int32, scatter_op::UpdateOp::ASSIGN); \
+  DEFINE_GPU_SPECS_OP(T, int64, scatter_op::UpdateOp::ASSIGN);
+
+TF_CALL_bool(DEFINE_GPU_SPECS_ASSIGN_ONLY);
+TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_SPECS_ASSIGN_ONLY);
+
+#undef DEFINE_GPU_SPECS_ASSIGN_ONLY
 #undef DEFINE_GPU_SPECS
 #undef DEFINE_GPU_SPECS_INDEX
 #undef DEFINE_GPU_SPECS_OP

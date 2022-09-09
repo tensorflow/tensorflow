@@ -573,3 +573,5 @@ def LegalizeXlaDynamicUpdateSlice : Pat<
   (TFL_DynamicUpdateSliceOp $operand, $update, $start_indices)>;
 
 def LegalizeAtan2 : Pat<(TF_Atan2Op $y, $x), (TFL_Atan2Op $y, $x)>;
+
+def LegalizeSign : Pat<(TF_SignOp $x), (TFL_SignOp $x)>;

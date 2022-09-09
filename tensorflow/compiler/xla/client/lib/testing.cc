@@ -88,7 +88,7 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(
                tensorflow::error::UNIMPLEMENTED);
       return MakeFakeDataViaDeviceOrDie(shape, client, debug_opts);
     }
-    return client->TransferToServer(literal_status.ValueOrDie()).ValueOrDie();
+    return client->TransferToServer(literal_status.value()).value();
   }
 
   // If the data is large, generate it on-device.

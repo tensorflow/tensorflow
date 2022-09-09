@@ -396,6 +396,15 @@ class StreamExecutor {
       bool use_fallback, dnn::ActivationMode activation_mode,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
 
+  port::Status GetFusedMatmulRunners(
+      bool use_cudnn_frontend, dnn::DataType input_type,
+      dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
+      bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
+      int64_t lda, int64_t ldb, int64_t ldc,
+      dnn::ActivationMode activation_mode, bool use_fallback,
+      std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
+          out_exec_plans);
+
   // Returns the list of supported algorithms for the forward convolution
   // operation.
   bool GetMIOpenConvolveAlgorithms(
@@ -841,7 +850,7 @@ inline port::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
   if (!untyped_symbol.ok()) {
     return untyped_symbol.status();
   }
-  return DeviceMemory<T>(untyped_symbol.ValueOrDie());
+  return DeviceMemory<T>(untyped_symbol.value());
 }
 
 template <typename ElemT>

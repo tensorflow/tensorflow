@@ -317,7 +317,7 @@ def index_shuffle(index, seed, max_index):
     paddings = [[1, 0]] + (seed.shape.rank - 1) * [[0, 0]]
   seed = array_ops.pad(seed, paddings, constant_values=498247692)
   return gen_random_index_shuffle_ops.random_index_shuffle(
-      index, seed=seed, max_index=max_index)
+      index, seed=seed, max_index=max_index, rounds=4)
 
 
 @tf_export("random.experimental.stateless_shuffle")

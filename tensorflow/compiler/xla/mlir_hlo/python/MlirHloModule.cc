@@ -311,6 +311,40 @@ PYBIND11_MODULE(_mlirHlo, m) {
           });
 
   mlir::python::adaptors::mlir_attribute_subclass(
+      m, "OutputOperandAlias", mlirMhloAttributeIsAOutputOperandAlias)
+      .def_classmethod(
+          "get",
+          [](py::object cls, const std::vector<int64_t> outputTupleIndices,
+             int64_t operandIndex,
+             const std::vector<int64_t> operandTupleIndices, MlirContext ctx) {
+            return cls(mlirMhloOutputOperandAliasGet(
+                ctx, outputTupleIndices.size(), outputTupleIndices.data(),
+                operandIndex, operandTupleIndices.size(),
+                operandTupleIndices.data()));
+          },
+          py::arg("cls"), py::arg("output_tuple_indices"),
+          py::arg("operand_index"), py::arg("operand_tuple_indices"),
+          py::arg("ctx") = py::none(),
+          "Creates a OutputOperandAlias attribute with the given tuple index.")
+      .def_property_readonly(
+          "output_tuple_indices",
+          [](MlirAttribute self) {
+            return attributePropertyVector(
+                self, mlirMhloOutputOperandAliasGetOutputTupleIndicesSize,
+                mlirMhloOutputOperandAliasGetOutputTupleIndicesElem);
+          })
+      .def_property_readonly(
+          "operand_index",
+          [](MlirAttribute self) {
+            return mlirMhloOutputOperandAliasGetOperandIndex(self);
+          })
+      .def_property_readonly("operand_tuple_indices", [](MlirAttribute self) {
+        return attributePropertyVector(
+            self, mlirMhloOutputOperandAliasGetOperandTupleIndicesSize,
+            mlirMhloOutputOperandAliasGetOperandTupleIndicesElem);
+      });
+
+  mlir::python::adaptors::mlir_attribute_subclass(
       m, "ComparisonDirectionAttr", mlirMhloAttributeIsAComparisonDirectionAttr)
       .def_classmethod(
           "get",

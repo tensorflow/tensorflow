@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_BENCHMARK_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_BENCHMARK_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_
 
 #include <utility>
 
@@ -178,4 +178,4 @@ void RunMatMulEigenBenchmark(::testing::benchmark::State& state) {
   }                                                                          \
   BENCHMARK(BM_eigen_##NAME##_##TYPE)
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_BENCHMARK_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_

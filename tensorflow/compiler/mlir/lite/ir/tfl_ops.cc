@@ -21,6 +21,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 #include <string>
+#include <vector>
 
 #include "absl/strings/escaping.h"
 #include "third_party/eigen3/Eigen/Core"
@@ -3951,6 +3952,51 @@ ParseResult ControlNodeOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse the optional attribute list.
   if (parser.parseOptionalAttrDict(result.attributes)) return failure();
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// EmbeddingLookupOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult EmbeddingLookupOp::fold(ArrayRef<Attribute> operands) {
+  auto lookup_attr = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
+  auto value_attr = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+  if (!lookup_attr || !value_attr) {
+    return {};
+  }
+
+  // Hybrid lookup is not supported.
+  if (value_attr.getType().getElementType() != getType().getElementType()) {
+    return {};
+  }
+
+  // Expect 1d lookup tensor and a non-scalar input.
+  if (lookup_attr.getType().getRank() != 1 ||
+      value_attr.getType().getRank() == 0) {
+    return {};
+  }
+
+  int64_t outer_dim_size = value_attr.getType().getShape()[0];
+  int64_t inner_dims_size = value_attr.getNumElements() / outer_dim_size;
+
+  std::vector<Attribute> new_values;
+  for (auto outer_index : lookup_attr.getValues<int32_t>()) {
+    // Fail if index is out of bounds.
+    if (outer_index < 0 || outer_index >= outer_dim_size) {
+      return {};
+    }
+
+    for (int i = 0; i < inner_dims_size; ++i) {
+      new_values.push_back(
+          value_attr.getValues<Attribute>()[outer_index * inner_dims_size + i]);
+    }
+  }
+
+  std::vector<int64_t> new_shape = value_attr.getType().getShape().vec();
+  new_shape[0] = lookup_attr.getType().getShape()[0];
+  Type new_type = value_attr.getType().clone(new_shape);
+
+  return DenseElementsAttr::get(new_type, new_values);
 }
 
 //===----------------------------------------------------------------------===//

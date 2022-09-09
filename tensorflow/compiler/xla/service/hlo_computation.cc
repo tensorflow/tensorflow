@@ -510,26 +510,18 @@ HloComputation::ComputeChannelDependencies() const {
   return channel_dependencies;
 }
 
-static inline bool HasOnlyTraceUsers(const HloInstruction* instruction) {
-  return absl::c_all_of(instruction->users(),
-                        [](HloInstruction* user) { return false; });
-}
-
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   ChannelDependencyGroup channel_dependencies = ComputeChannelDependencies();
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
-  std::vector<HloInstruction*> trace_instructions;
   absl::flat_hash_map<HloInstruction*, VisitState> visited;
   visited.reserve(instruction_count());
   for (auto& instruction : instructions_) {
-    if (HasOnlyTraceUsers(instruction.get())) {
+    if (instruction->users().empty()) {
       ComputeInstructionPostOrder(instruction.get(), channel_dependencies,
                                   visited, post_order);
     }
   }
-  post_order.insert(post_order.end(), trace_instructions.begin(),
-                    trace_instructions.end());
   CHECK_EQ(instructions_.size(), post_order.size())
       << "number of instructions does not match post order size";
   return post_order;

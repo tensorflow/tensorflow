@@ -61,7 +61,7 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
   }
 };
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_REWRITETFFRAMEWORKASSERT
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 bool IsNotInsideTfEntryFunction(Operation *op) {
@@ -72,7 +72,7 @@ bool IsNotInsideTfEntryFunction(Operation *op) {
 // `tf_framework.report_error` and the required control flow to make
 // execution of the function terminate.
 class RewriteTFFrameworkAssertPass
-    : public RewriteTFFrameworkAssertBase<RewriteTFFrameworkAssertPass> {
+    : public impl::RewriteTFFrameworkAssertBase<RewriteTFFrameworkAssertPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
   }

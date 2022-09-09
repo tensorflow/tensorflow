@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_NORMALIZATION_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_NORMALIZATION_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_MEAN_STDDEV_NORMALIZATION_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_MEAN_STDDEV_NORMALIZATION_H_
 
 #include <map>
 #include <set>
@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
@@ -41,6 +42,11 @@ class MeanStdDevNormalization : public GPUOperation {
       TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override {
+    if (!work_group_reduction_) {
+      GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
+                            work_groups);
+      return;
+    }
     work_groups->push_back(work_group_size_);
   }
   int3 GetGridSize() const override;
@@ -55,6 +61,7 @@ class MeanStdDevNormalization : public GPUOperation {
  private:
   std::string GetNormalizationCode(const GpuInfo& gpu_info, bool channels_x4,
                                    bool two_step);
+  bool work_group_reduction_ = true;
 };
 
 // std dev can be calculated in single step, but two step algorithm can
@@ -101,6 +108,11 @@ class LayerNormalization : public GPUOperation {
       TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override {
+    if (!work_group_reduction_) {
+      GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
+                            work_groups);
+      return;
+    }
     work_groups->push_back(work_group_size_);
   }
   int3 GetGridSize() const override;
@@ -114,6 +126,7 @@ class LayerNormalization : public GPUOperation {
  private:
   std::string GetNormalizationCode(const GpuInfo& gpu_info, bool channels_x4,
                                    bool two_step);
+  bool work_group_reduction_ = true;
 };
 
 // std dev can be calculated in single step, but two step algorithm can
@@ -125,4 +138,4 @@ LayerNormalization CreateLayerNormalization(
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_NORMALIZATION_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_MEAN_STDDEV_NORMALIZATION_H_

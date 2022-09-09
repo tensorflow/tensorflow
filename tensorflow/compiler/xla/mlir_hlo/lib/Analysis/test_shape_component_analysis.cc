@@ -15,19 +15,21 @@ limitations under the License.
 
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Transforms/PassDetail.h"
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+
+#define GEN_PASS_DEF_TESTSHAPECOMPONENTANALYSIS
+#include "mlir-hlo/Transforms/passes.h.inc"
 
 using SymbolicExpr = ShapeComponentAnalysis::SymbolicExpr;
 
 namespace {
 
 struct TestShapeComponentAnalysisPass
-    : public TestShapeComponentAnalysisBase<TestShapeComponentAnalysisPass> {
+    : public impl::TestShapeComponentAnalysisBase<
+          TestShapeComponentAnalysisPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<mlir::mhlo::MhloDialect>();
   }

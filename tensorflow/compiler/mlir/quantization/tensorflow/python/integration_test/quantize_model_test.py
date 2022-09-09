@@ -625,27 +625,25 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertFalse(
         self._contains_op(output_meta_graphdef, 'FusedBatchNormV3'))
 
-  @parameterized.named_parameters(
-      ('none', None, False),
-      ('relu', nn_ops.relu, False),
-      ('relu6', nn_ops.relu6, False),
-      ('with_bias', None, True),
-      ('with_bias_and_relu', nn_ops.relu, True),
-      ('with_bias_and_relu6', nn_ops.relu6, True),
-  )
+  @parameterized.parameters(
+      parameter_combinations([{
+          'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
+          'has_bias': [True, False],
+          'target_opset': [quant_opts_pb2.XLA],
+      }]))
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_ptq_model(self, activation_fn: Optional[ops.Operation],
-                            has_bias: bool):
+                            has_bias: bool, target_opset: quant_opts_pb2.OpSet):
     model = self._create_matmul_model(has_bias, activation_fn)
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(8):
+      for _ in range(500):
         yield {
             'input_tensor':
                 ops.convert_to_tensor(
-                    np.random.uniform(low=0, high=5,
+                    np.random.uniform(low=0.0, high=1.0,
                                       size=(1, 1024)).astype('f4')),
         }
 
@@ -670,6 +668,38 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(
         self._contains_quantized_function_call(output_meta_graphdef))
+
+    input_data = ops.convert_to_tensor(
+        np.random.uniform(low=0.0, high=1.0, size=(1, 1024)).astype('f4'))
+    expected_outputs = model.matmul(input_data)
+    got_outputs = converted_model.signatures['serving_default'](
+        input_tensor=ops.convert_to_tensor(input_data))
+    self.assertAllClose(expected_outputs, got_outputs, atol=0.1674)
+
+    # Check the converted model in the target opset.
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=target_opset)
+
+    output_directory = self.create_tempdir().full_path
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        quantization_options,
+        representative_dataset=data_gen())
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+
+    new_outputs = converted_model.signatures['serving_default'](
+        input_tensor=ops.convert_to_tensor(input_data))
+    # The difference between TF and target path is expected to be small (smaller
+    # or equal to 1 in the quantized domain).
+    self.assertAllClose(new_outputs, got_outputs, atol=0.0734)
+    self.assertAllClose(new_outputs, expected_outputs, atol=0.1023)
 
   @parameterized.named_parameters(
       ('use_constant', False),

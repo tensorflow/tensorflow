@@ -152,9 +152,9 @@ ParseResult ExecuteOpWithAllocator::parse(OpAsmParser &parser,
                               mlir::OpAsmParser::Delimiter::Paren))
     return mlir::failure();
 
-  if (parser.resolveOperands(allocator.front(),
-                             builder.getType<fallback::TFAllocatorType>(),
-                             result.operands))
+  if (parser.resolveOperand(allocator.front(),
+                            builder.getType<fallback::TFAllocatorType>(),
+                            result.operands))
     return mlir::failure();
 
   fallback_common::ParseExecuteOpOptions parse_options;
@@ -181,13 +181,13 @@ ParseResult ExecuteOpSeqWithAllocator::parse(OpAsmParser &parser,
   auto &chain = chain_and_allocator[0];
   auto &allocator = chain_and_allocator[1];
 
-  if (parser.resolveOperands(chain, builder.getType<compiler::ChainType>(),
-                             result.operands))
+  if (parser.resolveOperand(chain, builder.getType<compiler::ChainType>(),
+                            result.operands))
     return mlir::failure();
 
-  if (parser.resolveOperands(allocator,
-                             builder.getType<fallback::TFAllocatorType>(),
-                             result.operands))
+  if (parser.resolveOperand(allocator,
+                            builder.getType<fallback::TFAllocatorType>(),
+                            result.operands))
     return mlir::failure();
 
   // The first result is a chain.

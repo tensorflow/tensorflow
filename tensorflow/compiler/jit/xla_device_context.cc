@@ -235,7 +235,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
       return;
     }
     device_to_host_stream =
-        std::shared_ptr<se::Stream>(std::move(ptr_or_status.ValueOrDie()));
+        std::shared_ptr<se::Stream>(std::move(ptr_or_status.value()));
   }
 
   XlaTensor* xla_tensor = XlaTensor::FromTensor(device_tensor);
@@ -281,7 +281,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
           auto status_or_new_stream = client_->mutable_backend()->BorrowStream(
               stream_->parent()->device_ordinal());
           if (status_or_new_stream.ok()) {
-            status_or_new_stream.ValueOrDie()->ThenDoHostCallback(
+            status_or_new_stream.value()->ThenDoHostCallback(
                 [device_to_host_stream] {});
           }
         }

@@ -251,7 +251,7 @@ std::string ShapeString(const void* shape_ptr, int32_t shape_length) {
   xla::StatusOr<xla::Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   if (shape.ok()) {
-    return xla::ShapeUtil::HumanStringWithLayout(shape.ValueOrDie());
+    return xla::ShapeUtil::HumanStringWithLayout(shape.value());
   }
   return "<invalid shape>";
 }
@@ -705,8 +705,8 @@ xla::RendezvousKey GetRendezvousKey(
           xla::GlobalDeviceId(device_ordinal), device_assignment, group,
           xla::GetCollectiveOpGroupMode(channel_id_present != 0,
                                         use_global_device_ids)
-              .ValueOrDie())
-          .ValueOrDie();
+              .value())
+          .value();
   int num_local_participants = participating_devices.size();
   return xla::RendezvousKey{run_options->run_id(),
                             std::move(participating_devices),
@@ -724,7 +724,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
   absl::string_view replica_groups_serialized(
       static_cast<const char*>(replica_groups_str), replica_groups_str_size);
   std::vector<xla::ReplicaGroup> group =
-      xla::ParseReplicaGroupsOnly(replica_groups_serialized).ValueOrDie();
+      xla::ParseReplicaGroupsOnly(replica_groups_serialized).value();
   xla::RendezvousKey rendezvous_key =
       GetRendezvousKey(run_options, group, channel_id_present,
                        /*use_global_device_ids=*/std::nullopt, op_id);
@@ -738,8 +738,8 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
           *run_options->device_assignment(), group,
           xla::GetCollectiveOpGroupMode(channel_id_present != 0,
                                         /*use_global_device_ids=*/std::nullopt)
-              .ValueOrDie())
-          .ValueOrDie();
+              .value())
+          .value();
   for (int i = 0; i < num_buffers; i++) {
     participant.source_buffers.emplace_back(source_buffers[i], buffer_size);
     participant.destination_buffers.emplace_back(destination_buffers[i],
@@ -767,14 +767,14 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
   absl::string_view replica_groups_serialized(
       static_cast<const char*>(replica_groups_str), replica_groups_str_size);
   std::vector<xla::ReplicaGroup> group =
-      xla::ParseReplicaGroupsOnly(replica_groups_serialized).ValueOrDie();
+      xla::ParseReplicaGroupsOnly(replica_groups_serialized).value();
   xla::RendezvousKey rendezvous_key = GetRendezvousKey(
       run_options, group, channel_id_present, use_global_device_ids, op_id);
   auto shape_str = ShapeString(shape_ptr, shape_length);
   VLOG(2) << "All-reduce input/output shape : " << shape_str;
 
   xla::Shape shape =
-      DecodeSelfDescribingShapeConstant(shape_ptr, shape_length).ValueOrDie();
+      DecodeSelfDescribingShapeConstant(shape_ptr, shape_length).value();
 
   CHECK((num_buffers > 1 && shape.IsTuple()) ||
         (num_buffers == 1 && xla::LayoutUtil::IsDenseArray(shape)));
@@ -813,7 +813,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ReplicaId(
   int32_t replica_id =
       run_options->device_assignment()
           ->ReplicaIdForDevice(xla::GlobalDeviceId(device_ordinal))
-          .ValueOrDie();
+          .value();
   std::memcpy(output_buffer, &replica_id, 4);
 }
 
@@ -823,7 +823,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_PartitionId(
   const xla::DeviceAssignment::LogicalID logical_id =
       run_options->device_assignment()
           ->LogicalIdForDevice(xla::GlobalDeviceId(device_ordinal))
-          .ValueOrDie();
+          .value();
   std::memcpy(output_buffer, &logical_id.computation_id, 4);
 }
 
@@ -838,7 +838,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
   const xla::DeviceAssignment::LogicalID logical_id =
       run_options->device_assignment()
           ->LogicalIdForDevice(xla::GlobalDeviceId(device_ordinal))
-          .ValueOrDie();
+          .value();
   int32_t logical_device_id =
       channel_id_present ? logical_id.computation_id : logical_id.replica_id;
 

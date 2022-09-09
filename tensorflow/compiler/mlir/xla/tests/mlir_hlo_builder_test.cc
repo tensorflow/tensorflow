@@ -201,7 +201,7 @@ TEST_F(XlaBuilderTest, CustomCallWithComputation) {
   // Finally, add the CustomCallOp (with computation) to the module.
   auto custom_call = CustomCallWithComputation(
       &xla_builder_, "test_call_target", {}, test_comparator,
-      output_shape_or.ValueOrDie(),
+      output_shape_or.value(),
       "{\"option1\": foo, \"option2\": bar, \"option3\": \"baz\"}");
 
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());

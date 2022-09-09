@@ -30,7 +30,7 @@ GPUcudaMallocAllocator::GPUcudaMallocAllocator(
     PlatformDeviceId platform_device_id) {
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)
-                     .ValueOrDie();
+                     .value();
 }
 
 void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {

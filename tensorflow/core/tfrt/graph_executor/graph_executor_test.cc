@@ -55,13 +55,13 @@ TEST_F(GraphExecutorTest, Vanilla) {
       CreateDefaultSessionOptions(options), graph_def.library());
   ASSERT_TRUE(statusor_fallback_state.ok());
   tensorflow::tfrt_stub::FallbackState* fallback_state =
-      statusor_fallback_state.ValueOrDie().get();
+      statusor_fallback_state.value().get();
   auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
 
   auto status_or_graph_executor = GraphExecutor::Create(
       std::move(options), *fallback_state, tpu_model_resource.get(), graph_def);
   ASSERT_TRUE(status_or_graph_executor.ok());
-  GraphExecutor* graph_executor = status_or_graph_executor.ValueOrDie().get();
+  GraphExecutor* graph_executor = status_or_graph_executor.value().get();
 
   // Set input 'x' to [[1, 1, 1]]
   std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;

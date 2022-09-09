@@ -68,7 +68,7 @@ Status CpuCallback::PrepareAndCallInternal(void* result, void** arg_ptrs) {
       if (!plan.ok()) {
         return std::move(plan).status();
       }
-      plan.ValueOrDie()->Execute(array.data(), outputs[i]);
+      plan.value()->Execute(array.data(), outputs[i]);
     }
   }
 

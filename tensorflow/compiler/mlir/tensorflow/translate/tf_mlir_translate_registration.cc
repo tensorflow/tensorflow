@@ -85,7 +85,7 @@ static LogicalResult MlirToGraphdefTranslateFunction(
     return mlir::failure();
   }
 
-  output << graphdef_or.ValueOrDie()->DebugString();
+  output << graphdef_or.value()->DebugString();
   return success();
 }
 

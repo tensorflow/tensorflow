@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef STABLEHLO_TEST_INFER_TEST_UTILS_H
-#define STABLEHLO_TEST_INFER_TEST_UTILS_H
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_HLO_STABLEHLO_STABLEHLO_TESTS_TESTUTILS_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_HLO_STABLEHLO_STABLEHLO_TESTS_TESTUTILS_H_
 
 namespace mlir {
 namespace hlo {
@@ -25,4 +25,4 @@ void registerAllTestPasses();
 }  // namespace hlo
 }  // namespace mlir
 
-#endif
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_HLO_STABLEHLO_STABLEHLO_TESTS_TESTUTILS_H_

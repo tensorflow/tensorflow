@@ -16,26 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_LOGGING_H_
 #define TENSORFLOW_CORE_PLATFORM_LOGGING_H_
 
-#include "tensorflow/core/platform/platform.h"  // To pick up PLATFORM_define
 #include "tensorflow/core/platform/types.h"
-
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
-    defined(__EMSCRIPTEN__) || defined(PLATFORM_CHROMIUMOS)
-#include "tensorflow/tsl/platform/google/logging.h"  // IWYU pragma: export
-#else
-#include "tensorflow/tsl/platform/default/logging.h"  // IWYU pragma: export
-#endif
-
-namespace tensorflow {
-
-namespace internal {
-// Emit "message" as a log message to the log for the specified
-// "severity" as if it came from a LOG call at "fname:line"
-void LogString(const char* fname, int line, int severity,
-               const std::string& message);
-}  // namespace internal
-
-}  // namespace tensorflow
+#include "tensorflow/tsl/platform/logging.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_LOGGING_H_

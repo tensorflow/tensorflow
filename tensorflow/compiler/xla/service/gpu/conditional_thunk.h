@@ -57,6 +57,10 @@ class ConditionalThunk : public Thunk {
                     se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  absl::Span<const std::unique_ptr<SequentialThunk>> branch_thunks() {
+    return config_.branch_thunks;
+  }
+
  private:
   const ConditionalThunkConfig config_;
   BufferAllocation::Slice branch_index_buffer_index_;

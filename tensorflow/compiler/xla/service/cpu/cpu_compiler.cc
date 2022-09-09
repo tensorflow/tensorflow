@@ -896,6 +896,10 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
                        mlir::MLIRContext& mlir_context) {
   LoadMLIRDialects(mlir_context);
   mlir::PassManager pm(&mlir_context);
+  if (VLOG_IS_ON(5)) {
+    mlir_context.disableMultithreading();
+    pm.enableIRPrinting();
+  }
   // Resolve all shape constraints (e.g. broadcast constraints that can be
   // proved statically and changed to const witness) early to allow more
   // efficient broadcast operations moving.

@@ -29,6 +29,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #include "absl/base/log_severity.h"
@@ -47,6 +48,11 @@ const int FATAL = 3;           // base_logging::FATAL;
 const int NUM_SEVERITIES = 4;  // base_logging::NUM_SEVERITIES;
 
 namespace internal {
+
+// Emit "message" as a log message to the log for the specified
+// "severity" as if it came from a LOG call at "fname:line"
+void LogString(const char* fname, int line, int severity,
+               const std::string& message);
 
 class LogMessage : public std::basic_ostringstream<char> {
  public:

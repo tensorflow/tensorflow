@@ -60,6 +60,33 @@ struct XlaBuilderFriend {
   static XlaOp BuildAddDependency(XlaBuilder* builder, XlaOp operand,
                                   XlaOp token, const Shape& shape);
 
+  static XlaOp BuildAsyncStart(XlaBuilder* builder,
+                               absl::Span<const XlaOp> operands,
+                               std::string execution_thread, int64_t group_id,
+                               const XlaComputation& called_computation,
+                               const Shape& shape);
+  static XlaOp BuildAsyncStart(XlaBuilder* builder,
+                               absl::Span<const XlaOp> operands,
+                               std::string execution_thread,
+                               const XlaComputation& called_computation,
+                               const Shape& shape);
+  static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
+                                std::string execution_thread, int64_t group_id,
+                                const XlaComputation& called_computation,
+                                const Shape& shape);
+  static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
+                                std::string execution_thread,
+                                const XlaComputation& called_computation,
+                                const Shape& shape);
+  static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
+                              std::string execution_thread, int64_t group_id,
+                              const XlaComputation& called_computation,
+                              const Shape& shape);
+  static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
+                              std::string execution_thread,
+                              const XlaComputation& called_computation,
+                              const Shape& shape);
+
   static XlaOp BuildFusion(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands,
                            absl::string_view fusion_kind,

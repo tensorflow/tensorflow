@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_MLIR_UTILS_RUNTIME_CONSTRAINTS_H_
-#define XLA_MLIR_UTILS_RUNTIME_CONSTRAINTS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_CONSTRAINTS_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_CONSTRAINTS_H_
 
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -48,4 +48,4 @@ inline bool SupportsValueSpecialization(mlir::Type type) {
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_MLIR_UTILS_RUNTIME_CONSTRAINTS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_UTILS_RUNTIME_CONSTRAINTS_H_

@@ -94,7 +94,7 @@ TEST_F(FusionNodeIndexingEvaluationTest, FuseTwoInstructions) {
     add = f32[4,3]{1,0} add(p0, p0)
     ROOT sub = f32[4,3]{1,0} subtract(add, p0)
   })")
-                    .ValueOrDie();
+                    .value();
   HloInstruction* sub = module->entry_computation()->root_instruction();
   HloInstruction* add = sub->mutable_operand(0);
   InstructionFusionForTesting().Fuse(add, sub, module->entry_computation());
@@ -109,7 +109,7 @@ TEST_F(FusionNodeIndexingEvaluationTest, FuseThreeInstructions) {
     slice2 = f32[3]{0} slice(p0), slice={[0:3]}
     ROOT sub = f32[3]{0} subtract(slice1, slice2)
   })")
-                    .ValueOrDie();
+                    .value();
   HloInstruction* sub = module->entry_computation()->root_instruction();
   InstructionFusionForTesting instruction_fusion;
   HloInstruction* slice1 = sub->mutable_operand(0);
@@ -134,7 +134,7 @@ TEST_F(FusionNodeIndexingEvaluationTest, ExponentialDuplicationPattern) {
     slice2.1 = f32[2]{0} slice(add1), slice={[1:3]}
     ROOT add2 = f32[2]{0} add(slice2.0, slice2.1)
   })")
-                    .ValueOrDie();
+                    .value();
   // This corresponds to the following graph:
   //              add0
   //            /      \
@@ -207,7 +207,7 @@ ENTRY entry_computation {
   add0 = f32[4]{0} add(p0, p1)
   ROOT %fusion = f32[2]{0} fusion(add0), kind=kLoop, calls=%fused_computation
 })")
-                    .ValueOrDie();
+                    .value();
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   InstructionFusionForTesting instruction_fusion;
   HloInstruction* add0 = fusion->mutable_operand(0);

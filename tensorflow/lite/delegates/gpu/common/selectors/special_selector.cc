@@ -32,22 +32,26 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 absl::Status GPUSubgraphFromGraph(
-    const GpuInfo& gpu_info, CalculationsPrecision precision,
-    const GraphFloat32& graph, NodeId first_node_id,
+    const ModelHints& hints, const GpuInfo& gpu_info,
+    CalculationsPrecision precision, const GraphFloat32& graph,
+    NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
-  if (TryDepthwiseConvPlus1x1Conv(gpu_info, precision, graph, first_node_id,
+  if (hints.Check(ModelHints::kAllowSpecialKernels) &&
+      TryDepthwiseConvPlus1x1Conv(gpu_info, precision, graph, first_node_id,
                                   tensor_descriptors, consumed_nodes,
                                   gpu_subgraph)
           .ok()) {
     return absl::OkStatus();
   }
-  if (TryFCFCAdd(gpu_info, precision, graph, first_node_id, tensor_descriptors,
+  if (hints.Check(ModelHints::kAllowSpecialKernels) &&
+      TryFCFCAdd(gpu_info, precision, graph, first_node_id, tensor_descriptors,
                  consumed_nodes, gpu_subgraph)
           .ok()) {
     return absl::OkStatus();
   }
-  if (TryFusedPointwiseConv(graph, first_node_id, precision, tensor_descriptors,
+  if (hints.Check(ModelHints::kAllowSpecialKernels) &&
+      TryFusedPointwiseConv(graph, first_node_id, precision, tensor_descriptors,
                             consumed_nodes, gpu_subgraph)
           .ok()) {
     gpu_subgraph->operations[0].name = "slice_mul_mean_concat";

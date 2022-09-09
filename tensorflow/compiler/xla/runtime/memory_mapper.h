@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_MEMORY_MAPPER_H_
-#define XLA_RUNTIME_MEMORY_MAPPER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_MEMORY_MAPPER_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_MEMORY_MAPPER_H_
 
 #include <memory>
 #include <string>
@@ -62,4 +62,4 @@ class XlaRuntimeMemoryMapper final
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_MEMORY_MAPPER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_MEMORY_MAPPER_H_

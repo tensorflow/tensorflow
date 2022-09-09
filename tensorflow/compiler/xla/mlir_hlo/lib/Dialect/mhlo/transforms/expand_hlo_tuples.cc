@@ -20,7 +20,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -34,12 +34,16 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_EXPANDHLOTUPLESPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 // This pass assumes the function to be expanded has no callees, to be specific,
 // the function is more like the main function.
 class ExpandHloTuplesPass
-    : public ExpandHloTuplesPassBase<ExpandHloTuplesPass> {
+    : public impl::ExpandHloTuplesPassBase<ExpandHloTuplesPass> {
  public:
   ExpandHloTuplesPass() = default;
   ExpandHloTuplesPass(const ExpandHloTuplesPass&) = default;

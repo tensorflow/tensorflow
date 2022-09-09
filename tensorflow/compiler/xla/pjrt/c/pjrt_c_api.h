@@ -189,6 +189,7 @@ typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
 typedef struct PJRT_Client PJRT_Client;
 typedef struct PJRT_Device PJRT_Device;
 typedef struct PJRT_Executable PJRT_Executable;
+typedef struct PJRT_Buffer PJRT_Buffer;
 
 typedef struct {
   size_t struct_size;
@@ -335,12 +336,28 @@ const size_t PJRT_CompileOptions_STRUCT_SIZE =
 typedef struct {
   size_t struct_size;
   void* priv;
+  // Serialized code in the specified format below.
+  // String is owned by the caller and should stay alive for the duration of the
+  // compile call.
+  const char* code;
+  size_t code_size;
+  // Supported formats are:
+  // "hlo": code string takes serialized HloModuleProto.
+  // "mlir": code string takes MLIR module string.
+  // String is owned by the caller and should stay alive for the duration of the
+  // compile call.
+  const char* format;
+  size_t format_size;
+} PJRT_Program;
+const size_t PJRT_Program_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Program, format_size);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
   PJRT_Client* client;
-  // Serialized MLIR module. Only needs to stay alive for the duration of the
-  // Compile call.
-  const char* module;
-  size_t module_size;
   // Only needs to stay alive for the duration of the Compile call.
+  PJRT_Program* program;
   PJRT_CompileOptions* options;
   PJRT_Executable* executable;  // out
 } PJRT_Client_Compile_Args;
@@ -348,8 +365,122 @@ typedef struct {
 const size_t PJRT_Client_Compile_Args_STRUCT_SIZE =
     PJRT_STRUCT_SIZE(PJRT_Client_Compile_Args, executable);
 
-// Compiles an MLIR module with given `options`.
+// Compiles a program in specified format (such as MLIR or HLO) with given
+// `options`.
 typedef PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  int num_replicas;
+  int num_partitions;
+  // Must be greater than or equal to `num_replicas * num_partitions`
+  size_t default_assignment_size;
+  // Points to an array of size `default_assignment_size`.
+  // This API writes `num_replicas * num_partitions` ints within that buffer.
+  // The caller retains ownership of this memory.
+  int* default_assignment;  // pointer to array in; values written as out
+} PJRT_Client_DefaultDeviceAssignment_Args;
+
+const size_t PJRT_Client_DefaultDeviceAssignment_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_DefaultDeviceAssignment_Args,
+                     default_assignment);
+
+typedef PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
+    PJRT_Client_DefaultDeviceAssignment_Args* args);
+
+typedef enum {
+  // Invalid primitive type to serve as default.
+  PJRT_Buffer_Type_INVALID,
+
+  // Predicates are two-state booleans.
+  PJRT_Buffer_Type_PRED,
+
+  // Signed integral values of fixed width.
+  PJRT_Buffer_Type_S8,
+  PJRT_Buffer_Type_S16,
+  PJRT_Buffer_Type_S32,
+  PJRT_Buffer_Type_S64,
+
+  // Unsigned integral values of fixed width.
+  PJRT_Buffer_Type_U8,
+  PJRT_Buffer_Type_U16,
+  PJRT_Buffer_Type_U32,
+  PJRT_Buffer_Type_U64,
+
+  // Floating-point values of fixed width.
+  PJRT_Buffer_Type_F16,
+  PJRT_Buffer_Type_F32,
+  PJRT_Buffer_Type_F64,
+
+  // Truncated 16 bit floating-point format. This is similar to IEEE's 16 bit
+  // floating-point format, but uses 1 bit for the sign, 8 bits for the exponent
+  // and 7 bits for the mantissa.
+  PJRT_Buffer_Type_BF16,
+
+  // Complex values of fixed width.
+  //
+  // Paired F32 (real, imag), as in std::complex<float>.
+  PJRT_Buffer_Type_C64,
+  // Paired F64 (real, imag), as in std::complex<double>.
+  PJRT_Buffer_Type_C128,
+} PJRT_Buffer_Type;
+
+typedef enum {
+  // The runtime may not hold references to `data` after the call to
+  // `PJRT_Client_BufferFromHostBuffer` completes. The caller promises that
+  // `data` is immutable and will not be freed only for the duration of the
+  // PJRT_Client_BufferFromHostBuffer call.
+  PJRT_HostBufferSemantics_kImmutableOnlyDuringCall,
+
+  // The PjRtBuffer may alias `data` internally and the runtime may use the
+  // `data` contents as long as the buffer is alive. The caller promises to
+  // keep `data` alive and not to mutate its contents as long as the buffer is
+  // alive; to notify the caller that the buffer may be freed, the runtime
+  // will call `done_with_host_buffer` when the PjRtBuffer is freed.
+  PJRT_HostBufferSemantics_kZeroCopy,
+} PJRT_HostBufferSemantics;
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  // Pointer to the host buffer
+  const void* data;
+  // The type of the `data`, and the type of the resulting output `buffer`
+  PJRT_Buffer_Type type;
+  // The array dimensions of `data`.
+  const int64_t* dims;
+  size_t num_dims;
+  // Number of bytes to traverse per dimension. Must be the same size as `dims`,
+  // or empty. If empty, the array is assumed to have a dense layout with
+  // dimensions in major-to-minor order
+  // Caution: `byte_strides` are allowed to be negative, in which case `data`
+  // may need to point to the interior of the buffer, not necessarily its start.
+  const int64_t* byte_strides;
+  size_t num_byte_strides;
+
+  PJRT_HostBufferSemantics host_buffer_semantics;
+
+  // Device to copy host data to.
+  PJRT_Device* device;
+
+  // Event indicating when it's safe to free `data`. The caller is responsible
+  // for calling PJRT_Event_Destroy.
+  PJRT_Event* done_with_host_buffer;  // out
+
+  // Output device buffer. The caller is responsible for calling
+  // PJRT_Buffer_Destroy.
+  PJRT_Buffer* buffer;  // out
+} PJRT_Client_BufferFromHostBuffer_Args;
+
+const size_t PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_BufferFromHostBuffer_Args, buffer);
+
+// Asynchronously copies a buffer stored on host to device memory.
+typedef PJRT_Error* PJRT_Client_BufferFromHostBuffer(
+    PJRT_Client_BufferFromHostBuffer_Args* args);
 
 // --------------------------------- Devices -----------------------------------
 
@@ -640,7 +771,7 @@ typedef struct {
   Int64List dimensions;         // out
   BoolList dynamic_dimensions;  // out
   bool has_layout;
-  XLA_Layout layout;            // out
+  XLA_Layout layout;  // out
 } PJRT_Buffer_OnDeviceTrimmedShape_Args;
 const size_t PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE =
     PJRT_STRUCT_SIZE(PJRT_Buffer_OnDeviceTrimmedShape_Args, layout);
@@ -649,6 +780,29 @@ const size_t PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE =
 // TODO(b/238999986): Replace this with decomposed shape methods.
 typedef PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
     PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* src;
+
+  // `dst` can be nullptr to query required size which will be set into
+  // `dst_size`.
+  void* dst;  // in/out
+  // Size of `dst` in bytes. If `dst` is nullptr, then `dst_size` is set to the
+  // size needed. Otherwise, `dst_size` must be greater than or equal to the
+  // needed size.
+  size_t dst_size;  // in/out
+
+  // Event that signals when the copy has completed.
+  PJRT_Event* event;  // out
+} PJRT_Buffer_ToHostBuffer_Args;
+const size_t PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_ToHostBuffer_Args, event);
+
+// Asynchronously copies the buffer's value into a preallocated host buffer.
+typedef PJRT_Error* PJRT_Buffer_ToHostBuffer(
+    PJRT_Buffer_ToHostBuffer_Args* args);
 
 typedef struct {
   size_t struct_size;
@@ -780,6 +934,8 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableDevices);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupDevice);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Compile);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_DefaultDeviceAssignment);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_BufferFromHostBuffer);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);
@@ -805,6 +961,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToDevice);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ToHostBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
 } PJRT_Api;

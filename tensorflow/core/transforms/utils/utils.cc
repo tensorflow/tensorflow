@@ -115,9 +115,9 @@ void LoopRegionEraseArgument(Region &region, unsigned index) {
   assert(index < args.size());
 
   // Erase the arguments.
-  SmallVector<unsigned, 2> indices;
-  indices.push_back(args[index].getArgNumber());
-  indices.push_back(GetLoopRegionControlOf(args[index]).getArgNumber());
+  BitVector indices(region.front().getNumArguments());
+  indices.set(args[index].getArgNumber());
+  indices.set(GetLoopRegionControlOf(args[index]).getArgNumber());
   region.front().eraseArguments(indices);
 
   UpdateArgAttrsIfPresent(region, [&](SmallVectorImpl<Attribute> &arg_attrs) {

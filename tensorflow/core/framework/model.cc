@@ -2535,7 +2535,7 @@ void Model::OptimizeStageBasedParallelism(
     return;
   }
   NodeParallelismParameters node_parallelism;
-  std::pair<double, Node*> critical_root = critical_root_status.ValueOrDie();
+  std::pair<double, Node*> critical_root = critical_root_status.value();
   while (critical_root.first > target_time_nsec) {
     Parameter* parallelism_parameter =
         node_parallelism.Get(critical_root.second);
@@ -2573,7 +2573,7 @@ void Model::OptimizeStageBasedParallelism(
     if (!critical_root_status.ok()) {
       break;
     }
-    critical_root = critical_root_status.ValueOrDie();
+    critical_root = critical_root_status.value();
   }
   UpdateStateValues(&tunable_parameters);
 }
@@ -2919,7 +2919,7 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
   auto parallelism_param = node.ParameterValue(kParallelism);
   double parallelism = num_active_inputs;
   if (parallelism_param.ok()) {
-    parallelism = parallelism_param.ValueOrDie();
+    parallelism = parallelism_param.value();
   }
   // After cl/445005635, there should always be `deterministic` parameter for an
   // ASYNC_INTERLEAVE_MANY node. The "not-ok" check is to allow the code to work
@@ -2928,12 +2928,12 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
   auto deterministic_param = node.ParameterValue(kDeterministic);
   bool deterministic = false;
   if (deterministic_param.ok()) {
-    deterministic = deterministic_param.ValueOrDie() == 1.0;
+    deterministic = deterministic_param.value() == 1.0;
   }
   auto cycle_length_param = node.ParameterValue(kCycleLength);
   double cycle_length = num_active_inputs;
   if (cycle_length_param.ok()) {
-    cycle_length = cycle_length_param.ValueOrDie();
+    cycle_length = cycle_length_param.value();
   }
   double input_total_time_nsec = 0.0;
   if (deterministic) {

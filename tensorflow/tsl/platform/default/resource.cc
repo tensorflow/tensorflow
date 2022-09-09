@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/resource.h"
-#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/tsl/platform/resource.h"
 
-namespace tensorflow {
+#include "tensorflow/tsl/platform/stringpiece.h"
+
+namespace tsl {
 
 class ResourceTagger::ResourceTaggerImpl {
  public:
@@ -27,4 +28,4 @@ ResourceTagger::ResourceTagger(StringPiece key, StringPiece value) {}
 
 ResourceTagger::~ResourceTagger() {}
 
-}  // namespace tensorflow
+}  // namespace tsl

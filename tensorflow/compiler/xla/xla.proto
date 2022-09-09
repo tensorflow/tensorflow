@@ -66,13 +66,8 @@ message DebugOptions {
   // Enable flush-to-zero semantics in the GPU backend.
   bool xla_gpu_ftz = 62;
 
-  // Has no effect. Multi-streaming used to be supported in the GPU backend but
-  // no longer is, so multi-streaming is always effectively disabled.
-  bool xla_gpu_disable_multi_streaming = 63;
-
-  // Debugging feature: if enabled, the GPU backend will assign HLO operators to
-  // randomly chosen streams. This is intended to trigger concurrency bugs.
-  bool xla_gpu_use_random_streams = 134;
+  reserved 63;   // Was xla_gpu_disable_multi_streaming
+  reserved 134;  // Was xla_gpu_use_random_streams
 
   // If true, in LLVM-based backends, emit !alias.scope metadata in
   // generated IR.

@@ -208,7 +208,7 @@ XLA_TEST_F(MultiOutputFusionTest, FusionNodeIsRoot) {
       ROOT fusion = (s32[]) fusion(x), kind=kLoop, calls=fused_computation
     }
   )";
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param = LiteralUtil::MakeTupleOwned(
       LiteralUtil::MakeTupleOwned(
           LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<int32_t>(42)),
@@ -239,7 +239,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
       const = f32[4] constant({0, 0, 0, 0})
       ROOT select = f32[4] select(gte0, gte1, const)
     })";
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0, -1.0});
   Literal result = ExecuteNoHloPasses(std::move(module), {&param});
   LiteralTestUtil::ExpectR1Equal<float>({0.0, 4.0, 9.0, 1.0}, result);
@@ -269,7 +269,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
       p1 = f32[3] parameter(0)
       ROOT map = f32[3] map(p1), to_apply=map_computation
     })";
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0});
   Literal result = ExecuteNoHloPasses(std::move(module), {&param});
   LiteralTestUtil::ExpectR1Equal<float>({0.0, 4.0, 9.0}, result);
@@ -309,7 +309,7 @@ XLA_TEST_F(MultiOutputFusionTest,
       ROOT fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(p), kind=kInput,
         calls=fused_reduce
     })");
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
@@ -331,7 +331,7 @@ XLA_TEST_F(MultiOutputFusionTest,
       ROOT fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(p), kind=kInput,
         calls=fused_reduce
     })");
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
@@ -354,7 +354,7 @@ XLA_TEST_F(MultiOutputFusionTest,
       ROOT fusion = (f32[32]{0}, f32[32]{0}, f32[32]{0}) fusion(p), kind=kInput,
         calls=fused_reduce
     })");
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
@@ -377,7 +377,7 @@ XLA_TEST_F(MultiOutputFusionTest,
       ROOT fusion = (f32[2,32,32]{2,1,0}, f32[2,32]{1,0}, f32[2,32]{1,0})
         fusion(p), kind=kInput, calls=fused_reduce
     })");
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
@@ -400,7 +400,7 @@ XLA_TEST_F(MultiOutputFusionTest,
       ROOT fusion = (f32[32,2]{1,0}, f32[32,32,2]{2,1,0}, f32[32,2]{1,0})
         fusion(p), kind=kInput, calls=fused_reduce
     })");
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
@@ -431,7 +431,7 @@ XLA_TEST_F(MultiOutputFusionTest,
       ROOT fusion = (f32[32]{0}, f32[2,32,32]{2,1,0}, f32[2,32,32]{2,1,0})
         fusion(p), kind=kInput, calls=fused_reduce
     })";
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
@@ -454,7 +454,7 @@ XLA_TEST_F(MultiOutputFusionTest,
       ROOT fusion = (f32[2,32]{1,0}, f32[2,32]{1,0}) fusion(p, i, j),
        kind=kInput, calls=fused_reduce
     })");
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
@@ -478,7 +478,7 @@ XLA_TEST_F(MultiOutputFusionTest,
       ROOT fusion = (f32[2,32]{1,0}, f32[2,32]{1,0}, f16[2,32,32]{2,1,0}) fusion(p),
                     kind=kInput, calls=fused_reduce
     })");
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 

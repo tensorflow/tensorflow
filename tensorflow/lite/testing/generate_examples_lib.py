@@ -155,6 +155,7 @@ from tensorflow.lite.testing.op_tests.segment_sum import make_segment_sum_tests
 from tensorflow.lite.testing.op_tests.shape import make_shape_tests
 from tensorflow.lite.testing.op_tests.shape_to_strided_slice import make_shape_to_strided_slice_tests
 from tensorflow.lite.testing.op_tests.sigmoid import make_sigmoid_tests
+from tensorflow.lite.testing.op_tests.sign import make_sign_tests
 from tensorflow.lite.testing.op_tests.slice import make_slice_tests
 from tensorflow.lite.testing.op_tests.softmax import make_softmax_tests
 from tensorflow.lite.testing.op_tests.softplus import make_softplus_tests

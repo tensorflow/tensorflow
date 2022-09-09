@@ -1402,7 +1402,7 @@ Status XlaCompiler::CompileGraph(
     for (const auto& node_name : output_node_token_inputs) {
       auto token_or = GetNodeToken(node_name);
       TF_RETURN_IF_ERROR(token_or.status());
-      token_inputs.push_back(token_or.ValueOrDie());
+      token_inputs.push_back(token_or.value());
     }
     token_output.reset(new xla::XlaOp(xla::AfterAll(&builder, token_inputs)));
   }

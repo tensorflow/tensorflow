@@ -33,8 +33,7 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
       stream_executor::MultiPlatformManager::PlatformWithName(
           "TPU", initialize_platform);
   if (status_or_tpu_platform.ok()) {
-    return static_cast<TpuPlatformInterface*>(
-        status_or_tpu_platform.ValueOrDie());
+    return static_cast<TpuPlatformInterface*>(status_or_tpu_platform.value());
   }
   if (status_or_tpu_platform.status().code() != error::NOT_FOUND) {
     LOG(WARNING) << "Error when getting the TPU platform: "
@@ -62,7 +61,7 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
   // If we find at least one thing, we return the first thing we see.
   if (status_or_other_tpu_platforms.ok() &&
       !status_or_other_tpu_platforms->empty()) {
-    auto other_tpu_platforms = status_or_other_tpu_platforms.ValueOrDie();
+    auto other_tpu_platforms = status_or_other_tpu_platforms.value();
     LOG(WARNING) << other_tpu_platforms.size()
                  << " TPU platforms registered, selecting "
                  << other_tpu_platforms[0]->Name();

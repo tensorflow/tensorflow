@@ -39,6 +39,8 @@ class ForThunk : public Thunk {
                     se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  SequentialThunk* body_thunk_sequence() { return body_thunk_sequence_.get(); }
+
  private:
   const int64_t loop_limit_;
   std::unique_ptr<SequentialThunk> body_thunk_sequence_;

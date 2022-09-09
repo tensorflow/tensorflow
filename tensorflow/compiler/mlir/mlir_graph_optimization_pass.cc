@@ -230,7 +230,7 @@ Status MlirFunctionOptimizationPass::Run(
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
-      std::move(module_ref_status.ValueOrDie());
+      std::move(module_ref_status.value());
   AddDevicesToOp(*module_ref, &device_set);
 
   // Capture stats on graph properties analyzed before running the MLIR
@@ -370,7 +370,7 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
-      std::move(module_ref_status.ValueOrDie());
+      std::move(module_ref_status.value());
   AddDevicesToOp(*module_ref, options.device_set);
 
   llvm::StringRef name = pass->name();

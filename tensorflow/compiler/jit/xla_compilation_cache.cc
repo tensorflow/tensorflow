@@ -645,6 +645,7 @@ Status XlaCompilationCache::CompileAsynchronous(
 }
 
 bool XlaCompilationCache::ShouldCompileCluster(CompileMode compile_mode,
+                                               bool is_megamorphic,
                                                bool is_first_execution,
                                                int64_t current_request_count,
                                                const NameAttrList& function) {
@@ -658,6 +659,15 @@ bool XlaCompilationCache::ShouldCompileCluster(CompileMode compile_mode,
   if (compile_mode == CompileMode::kStrict) {
     // Lazy compilation is disabled.
     return true;
+  }
+
+  if (is_megamorphic) {
+    BroadcastOptimizationRemark(XlaOptimizationRemark::MEGAMORPHIC_FUNCTION,
+                                function.name())
+        .IgnoreError();
+    VLOG(2) << "Not compiling cluster " << function.name()
+            << " because it is megamorphic.";
+    return false;
   }
 
   if (is_first_execution) {
@@ -725,12 +735,29 @@ Status XlaCompilationCache::CompileImpl(
   // most one cluster-compilation's worth of compile time).
   bool is_first_execution;
 
+  // We avoid compiling clusters that have "gone megamorphic" i.e. have an
+  // excessive amount of shape dynamism.
+  bool is_megamorphic;
+
   {
     mutex_lock lock(cluster_compile_stats_mu_);
     auto it =
         cluster_compile_stats_.emplace(function.name(), ClusterCompileStats{})
             .first;
     is_first_execution = it->second.execution_count++ == 0;
+
+    // The is_megamorphic bit is "sticky".  We assume clusters that have been
+    // observed to be megamorphic once stay megamorphic forever.
+    if (!it->second.is_megamorphic &&
+        ShouldBeMegamorphic(/*compile_count=*/it->second.compile_count,
+                            /*execution_count=*/it->second.execution_count)) {
+      VLOG(1) << "Marking " << function.name()
+              << " as megamorphic, compile_count=" << it->second.compile_count
+              << " execution_count=" << it->second.execution_count;
+      it->second.is_megamorphic = true;
+    }
+
+    is_megamorphic = it->second.is_megamorphic;
   }
 
   string human_signature;
@@ -771,7 +798,7 @@ Status XlaCompilationCache::CompileImpl(
 
   if (state == CompileState::kUncompiled) {
     XLA_SCOPED_LOGGING_TIMER("Compilation of XLA executable");
-    if (!ShouldCompileCluster(compile_mode, is_first_execution,
+    if (!ShouldCompileCluster(compile_mode, is_megamorphic, is_first_execution,
                               current_request_count, function)) {
       VLOG(2) << "Not compiling for signature: " << human_signature;
       return OkStatus();

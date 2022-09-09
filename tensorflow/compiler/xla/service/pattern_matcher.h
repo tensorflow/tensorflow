@@ -1879,7 +1879,7 @@ class HloConstantScalarImpl {
       EXPLAIN << "could not convert matched literal to effective scalar";
       return false;
     }
-    Literal const_inst_scalar = std::move(const_inst_scalar_or).ValueOrDie();
+    Literal const_inst_scalar = std::move(const_inst_scalar_or).value();
     if (!const_inst_scalar.IsEqualAt({}, *val_)) {
       EXPLAIN << "HloInstruction's constant value "
               << const_inst_scalar.ToStringWithoutShape()

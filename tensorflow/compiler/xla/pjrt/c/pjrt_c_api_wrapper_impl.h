@@ -99,6 +99,10 @@ PJRT_Error* PJRT_Client_AddressableDevices(
     PJRT_Client_AddressableDevices_Args* args);
 PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args);
 PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
+PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
+    PJRT_Client_DefaultDeviceAssignment_Args* args);
+PJRT_Error* PJRT_Client_BufferFromHostBuffer(
+    PJRT_Client_BufferFromHostBuffer_Args* args);
 
 PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
 PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args);
@@ -127,6 +131,7 @@ PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args);
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args);
+PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
 
@@ -168,6 +173,9 @@ xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
 std::string StructSizeErrorMsg(absl::string_view struct_name,
                                size_t expected_size, size_t actual_size);
 
+// Returns a specific error message when the program format is unknown.
+// Does not check the program format itself.
+std::string ProgramFormatErrorMsg(absl::string_view program_format);
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_WRAPPER_IMPL_H_

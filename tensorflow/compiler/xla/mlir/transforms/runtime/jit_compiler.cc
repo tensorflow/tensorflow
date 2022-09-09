@@ -31,7 +31,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
-#include "tensorflow/compiler/xla/mlir/utils/to_string.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
 namespace xla {
@@ -222,11 +221,11 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
   // Prepare JIT target machine for code generation.
   auto builder = llvm::orc::JITTargetMachineBuilder::detectHost();
-  if (!builder) return InternalError(ToString(builder.takeError()));
+  if (!builder) return InternalError(toString(builder.takeError()));
 
   auto target_machine = builder->createTargetMachine();
   if (!target_machine)
-    return InternalError(ToString(target_machine.takeError()));
+    return InternalError(toString(target_machine.takeError()));
 
   // Name of the compiled module if available.
   auto module_name = compiler->module().getSymName().value_or("<unknown>");

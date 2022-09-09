@@ -1598,6 +1598,8 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
   let results = (outs TFL_TensorOf<[F32, I8, UI8]>:$output);
 
+  let hasFolder = 1;
+
   let extraClassDeclaration = [{
     // DynamicRangeQuantizedOpInterface:
     std::vector<int> GetQuantizableOperandIndices() { return {1}; }
@@ -4928,6 +4930,26 @@ def TFL_Atan2Op: TFL_Op<"atan2", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, F64]>:$y,
+    TFL_TensorOf<[F32, F64]>:$x
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, F64]>:$output
+  );
+}
+
+def TFL_SignOp: TFL_Op<"sign", [
+  NoSideEffect,
+  SameOperandsAndResultShape,
+  SameOperandsAndResultElementType
+  ]> {
+  
+  let summary = "Sign operation";
+  let description = [{
+    Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
+  }];
+
+  let arguments = (ins
     TFL_TensorOf<[F32, F64]>:$x
   );
 

@@ -46,8 +46,7 @@ TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
 class TestAllocator : public se::DeviceMemoryAllocator {
  public:
   TestAllocator()
-      : se::DeviceMemoryAllocator(
-            PlatformUtil::GetDefaultPlatform().ValueOrDie()) {}
+      : se::DeviceMemoryAllocator(PlatformUtil::GetDefaultPlatform().value()) {}
 
   ~TestAllocator() override {
     if (!allocations_.empty()) {
@@ -100,14 +99,12 @@ TEST(ScopedShapedBufferTest, TestMoveAssignmentOperator) {
   Shape s = ShapeUtil::MakeShape(F32, {1});
   TestAllocator allocator;
   ScopedShapedBuffer sb1(s, &allocator, /*device_ordinal=*/0);
-  sb1.set_buffer(
-      allocator.Allocate(/*device_ordinal=*/0, /*size=*/42).ValueOrDie(),
-      /*index=*/{});
+  sb1.set_buffer(allocator.Allocate(/*device_ordinal=*/0, /*size=*/42).value(),
+                 /*index=*/{});
 
   ScopedShapedBuffer sb2(s, &allocator, /*device_ordinal=*/1);
-  sb2.set_buffer(
-      allocator.Allocate(/*device_ordinal=*/1, /*size=*/10).ValueOrDie(),
-      /*index=*/{});
+  sb2.set_buffer(allocator.Allocate(/*device_ordinal=*/1, /*size=*/10).value(),
+                 /*index=*/{});
 
   sb1 = std::move(sb2);
 

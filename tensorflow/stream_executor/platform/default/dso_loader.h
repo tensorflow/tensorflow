@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_
-#define TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_
+#ifndef TENSORFLOW_STREAM_EXECUTOR_PLATFORM_DEFAULT_DSO_LOADER_H_
+#define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_DEFAULT_DSO_LOADER_H_
 
 #include "tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.h"
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_
+#endif  // TENSORFLOW_STREAM_EXECUTOR_PLATFORM_DEFAULT_DSO_LOADER_H_

@@ -589,9 +589,7 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
   auto emit_error = [&exec_ctx, results](const tensorflow::Status& status) {
     // Set the correct TFRT error code according to the error propagated from
     // runtime fallback execution.
-    auto error =
-        EmitErrorAsync(exec_ctx, status.error_message(),
-                       tfrt::ConvertTfErrorCodeToTfrtErrorCode(status));
+    auto error = EmitErrorAsync(exec_ctx, ToAbslStatus(status));
     // Set all results to error.
     std::fill(results.begin(), results.end(), error);
     return error;
@@ -655,8 +653,8 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
   // Get EagerContext.
   auto eager_ctx_expected = GetEagerContext(exec_ctx);
   if (!eager_ctx_expected) {
-    auto error = EmitErrorAsync(exec_ctx, eager_ctx_expected.takeError(),
-                                tfrt::ErrorCode::kUnknown);
+    auto error =
+        EmitErrorAsync(exec_ctx, toString(eager_ctx_expected.takeError()));
     // Set all results to error.
     std::fill(results.begin(), results.end(), error);
     return std::move(error);
@@ -808,7 +806,7 @@ static void EmitErrorAndSetInResults(
     const tfrt::ExecutionContext& exec_ctx,
     const tfrt::DecodedDiagnostic& error,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results) {
-  auto error_av = tfrt::EmitErrorAsync(exec_ctx, error.message, error.code);
+  auto error_av = tfrt::EmitErrorAsync(exec_ctx, error.status);
   std::fill(results.begin(), results.end(), error_av);
 }
 
@@ -912,8 +910,8 @@ void CoreRTTensorHandleToFallbackTensorInternal(
         auto expected_tf_tensor =
             TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host());
         if (!expected_tf_tensor) {
-          auto error =
-              tfrt::EmitErrorAsync(exec_ctx, expected_tf_tensor.takeError());
+          auto error = tfrt::EmitErrorAsync(
+              exec_ctx, toString(expected_tf_tensor.takeError()));
           result_ref->ForwardTo(std::move(error));
         } else {
           auto tf_tensor_ref = tfrt::MakeAvailableAsyncValueRef<
@@ -1080,7 +1078,7 @@ static void RuntimeFallbackExecuteOp(
     StringAttr op_name_attr, tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
     const ExecutionContext& exec_ctx) {
   auto set_error = [&exec_ctx, results](tfrt::string_view msg) {
-    auto error_av = EmitErrorAsync(exec_ctx, msg, tfrt::ErrorCode::kUnknown);
+    auto error_av = EmitErrorAsync(exec_ctx, absl::InternalError(msg));
     // Set all results to error.
     for (int i = 0, n = results.size(); i < n; ++i) results[i] = error_av;
   };

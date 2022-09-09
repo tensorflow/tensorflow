@@ -1938,7 +1938,7 @@ Status DistributedTPURewritePass::GetArgAndRetvalShapes(
           (*arg_shapes)[input_index].shape.DebugString(), " vs. ",
           info->shape.DebugString());
     }
-    (*arg_shapes)[input_index] = status.ValueOrDie();
+    (*arg_shapes)[input_index] = status.value();
     return OkStatus();
   };
 

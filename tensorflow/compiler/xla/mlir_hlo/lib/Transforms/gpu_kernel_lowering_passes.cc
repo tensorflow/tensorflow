@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
-#include "mlir-hlo/Transforms/GPUPassDetail.h"
 #include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
@@ -28,23 +28,29 @@ limitations under the License.
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-using namespace mlir;
+namespace mlir {
+
+#define GEN_PASS_DEF_GPUKERNELTONVVMPASS
+#define GEN_PASS_DEF_GPUKERNELTOROCDLPASS
+#include "mlir-hlo/Transforms/gpu_passes.h.inc"
 
 namespace {
 
 /// A pass that does the final lowering to NVVM. It collects all the patterns
 /// that are currently required, currently mixing std, linalg and gpu.
 class GpuKernelToNVVMPass
-    : public GpuKernelToNVVMPassBase<GpuKernelToNVVMPass> {
+    : public impl::GpuKernelToNVVMPassBase<GpuKernelToNVVMPass> {
   void runOnOperation() override;
 };
 
 /// A pass that does the final lowering to ROCDL. It collects all the patterns
 /// that are currently required, currently mixing std, linalg and gpu.
 class GpuKernelToROCDLPass
-    : public GpuKernelToROCDLPassBase<GpuKernelToROCDLPass> {
+    : public impl::GpuKernelToROCDLPassBase<GpuKernelToROCDLPass> {
   void runOnOperation() override;
 };
 
@@ -88,12 +94,12 @@ void GpuKernelToROCDLPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<gpu::GPUModuleOp> >
-mlir::createGpuKernelToNvvmPass() {
+std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToNvvmPass() {
   return std::make_unique<GpuKernelToNVVMPass>();
 }
 
-std::unique_ptr<OperationPass<gpu::GPUModuleOp> >
-mlir::createGpuKernelToRocdlPass() {
+std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToRocdlPass() {
   return std::make_unique<GpuKernelToROCDLPass>();
 }
+
+}  // namespace mlir

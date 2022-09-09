@@ -33,7 +33,7 @@ namespace xla {
 namespace runtime {
 
 void RegisterDefaultXlaRuntimeDialects(mlir::DialectRegistry& registry) {
-  // Register MLIR dialects supported by the compiled kernels.
+  // Register MLIR dialects supported by the compiled executables.
   registry.insert<mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
                   mlir::func::FuncDialect, RuntimeDialect>();
 

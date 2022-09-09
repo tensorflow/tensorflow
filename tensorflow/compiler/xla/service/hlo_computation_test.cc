@@ -247,7 +247,7 @@ TEST_F(HloComputationTest, DeepCopyArray) {
       LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
-  auto copy = computation->DeepCopyInstruction(constant).ValueOrDie();
+  auto copy = computation->DeepCopyInstruction(constant).value();
 
   EXPECT_THAT(copy, GmockMatch(m::Copy(m::Op().Is(constant))));
 }
@@ -264,7 +264,7 @@ TEST_F(HloComputationTest, DeepCopyTuple) {
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
-  auto tuple_copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
+  auto tuple_copy = computation->DeepCopyInstruction(tuple).value();
 
   EXPECT_THAT(tuple_copy, GmockMatch(m::Tuple(
                               m::Copy(m::GetTupleElement(m::Op().Is(tuple))),
@@ -284,17 +284,17 @@ TEST_F(HloComputationTest, DeepCopyArrayAtIndices) {
   {
     // If the index is true, then a copy should be made.
     ShapeTree<bool> indices_to_copy(constant->shape(), /*init_value=*/true);
-    EXPECT_THAT(computation->DeepCopyInstruction(constant, &indices_to_copy)
-                    .ValueOrDie(),
-                GmockMatch(m::Copy(m::Op().Is(constant))));
+    EXPECT_THAT(
+        computation->DeepCopyInstruction(constant, &indices_to_copy).value(),
+        GmockMatch(m::Copy(m::Op().Is(constant))));
   }
 
   {
     // If the index is false, then no copy should be made.
     ShapeTree<bool> indices_to_copy(constant->shape(), /*init_value=*/false);
-    EXPECT_EQ(computation->DeepCopyInstruction(constant, &indices_to_copy)
-                  .ValueOrDie(),
-              constant);
+    EXPECT_EQ(
+        computation->DeepCopyInstruction(constant, &indices_to_copy).value(),
+        constant);
   }
 }
 
@@ -317,7 +317,7 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
                                             /*init_value=*/nullptr);
     HloInstruction* deep_copy =
         computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
-            .ValueOrDie();
+            .value();
 
     EXPECT_THAT(deep_copy, GmockMatch(m::Tuple(
                                m::Copy(m::GetTupleElement(m::Op().Is(tuple)))
@@ -334,7 +334,7 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
                                             /*init_value=*/nullptr);
     HloInstruction* deep_copy =
         computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
-            .ValueOrDie();
+            .value();
 
     EXPECT_THAT(deep_copy,
                 GmockMatch(m::Tuple(m::GetTupleElement(m::Op().Is(tuple)),
@@ -352,7 +352,7 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
                                             /*init_value=*/nullptr);
     HloInstruction* deep_copy =
         computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
-            .ValueOrDie();
+            .value();
 
     EXPECT_THAT(deep_copy, GmockMatch(m::Tuple(
                                m::Copy(m::GetTupleElement(m::Op().Is(tuple))),
@@ -370,7 +370,7 @@ TEST_F(HloComputationTest, DeepCopyToken) {
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
-  auto copy = computation->DeepCopyInstruction(token).ValueOrDie();
+  auto copy = computation->DeepCopyInstruction(token).value();
 
   // No copy should be added.
   EXPECT_THAT(copy, GmockMatch(m::AfterAll()));
@@ -387,7 +387,7 @@ TEST_F(HloComputationTest, DeepCopyTokenTuple) {
       builder.AddInstruction(HloInstruction::CreateTuple({token, constant}));
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
-  auto copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
+  auto copy = computation->DeepCopyInstruction(tuple).value();
 
   // Only the array (second tuple element) should be copied. The token is passed
   // through transparently.

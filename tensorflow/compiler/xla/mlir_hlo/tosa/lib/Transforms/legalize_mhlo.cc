@@ -206,8 +206,8 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
     llvm::SmallVector<int64_t, 2> outputShape;
     int outputShapeLength = innerShape.size() - 1;
     outputShape.resize(outputShapeLength);
-    for (int i = 0; i < outputShapeLength; i++) {
-      if (i < dimension) {
+    for (int64_t i = 0; i < outputShapeLength; i++) {
+      if (i < static_cast<int64_t>(dimension)) {
         outputShape[i] = innerShape[i];
       } else {
         outputShape[i] = innerShape[i + 1];

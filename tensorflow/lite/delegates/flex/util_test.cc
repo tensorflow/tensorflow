@@ -217,7 +217,7 @@ TEST(UtilTest, CreateTfTensorFromTfLiteTensorFloat) {
 
   auto tf_tensor_or = CreateTfTensorFromTfLiteTensor(&tflite_tensor);
   EXPECT_TRUE(tf_tensor_or.ok());
-  tensorflow::Tensor tf_tensor = tf_tensor_or.ValueOrDie();
+  tensorflow::Tensor tf_tensor = tf_tensor_or.value();
   EXPECT_EQ(tf_tensor.NumElements(), 3);
   auto* tf_data = static_cast<float_t*>(tf_tensor.data());
   for (float weight : data_arr) {
@@ -255,7 +255,7 @@ TEST(UtilTest, CreateTfTensorFromTfLiteTensorString) {
 
   auto tf_tensor_or = CreateTfTensorFromTfLiteTensor(&tflite_tensor);
   EXPECT_TRUE(tf_tensor_or.ok());
-  tensorflow::Tensor tf_tensor = tf_tensor_or.ValueOrDie();
+  tensorflow::Tensor tf_tensor = tf_tensor_or.value();
   EXPECT_EQ(tf_tensor.NumElements(), 2);
   auto* tf_data = static_cast<tensorflow::tstring*>(tf_tensor.data());
   for (const auto& str : data_arr) {

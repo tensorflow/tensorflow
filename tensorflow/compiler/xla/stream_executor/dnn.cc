@@ -156,6 +156,17 @@ port::Status DnnSupport::GetFusedConvolveRunners(
   return port::UnimplementedError("GetFusedConvolveRunners not implemented.");
 }
 
+port::Status DnnSupport::GetFusedMatmulRunners(
+    bool use_cudnn_frontend, dnn::DataType element_type,
+    dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
+    bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k, int64_t lda,
+    int64_t ldb, int64_t ldc, dnn::ActivationMode activation_mode,
+    bool use_fallback,
+    std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
+        out_exec_plans) {
+  return port::UnimplementedError("GetFusedMatmulRunners not implemented.");
+}
+
 port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
 DnnSupport::FusedConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,

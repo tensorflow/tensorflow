@@ -236,7 +236,7 @@ Status AddVariableUpdatesToCores(
             for (int64_t core :
                  proto_arg.sharding().tile_assignment_devices()) {
               xla::Shape per_core_shape =
-                  GetPerDeviceShape(shape, sharding_or.ValueOrDie(), core);
+                  GetPerDeviceShape(shape, sharding_or.value(), core);
               add_to_core(core, per_core_shape);
             }
           } else {
@@ -295,7 +295,7 @@ Status ComputeOutputShapesForEachCore(
       TF_RET_CHECK(sharding_or.ok());
       for (int64_t core : retval.sharding().tile_assignment_devices()) {
         xla::Shape per_core_shape =
-            GetPerDeviceShape(shape, sharding_or.ValueOrDie(), core);
+            GetPerDeviceShape(shape, sharding_or.value(), core);
         add_shape_to_core(core, std::move(per_core_shape));
       }
     } else {
@@ -426,7 +426,7 @@ Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
         DeviceAssignment::Deserialize(metadata->device_assignment());
     TF_RETURN_IF_ERROR(device_assignment_or_error.status());
     const DeviceAssignment& device_assignment =
-        *device_assignment_or_error.ValueOrDie();
+        *device_assignment_or_error.value();
     const int num_replicas = metadata->num_replicas();
     if (device_assignment.replica_count() != num_replicas) {
       return errors::InvalidArgument(

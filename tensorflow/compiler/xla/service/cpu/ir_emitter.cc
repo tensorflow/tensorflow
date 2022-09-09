@@ -3534,7 +3534,7 @@ llvm::Value* IrEmitter::GetBufferForGlobalCallReturnValue(
   }
 
   const BufferAllocation::Slice root_buffer =
-      assignment_.GetUniqueTopLevelSlice(root_inst).ValueOrDie();
+      assignment_.GetUniqueTopLevelSlice(root_inst).value();
   return EmitBufferPointer(root_buffer, root_inst->shape());
 }
 

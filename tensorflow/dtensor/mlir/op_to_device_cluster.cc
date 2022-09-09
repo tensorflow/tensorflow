@@ -79,7 +79,7 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
           llvm::formatv("failed to wrap to device cluster. {0}",
                         status_or_mesh.status().error_message()));
 
-    const auto mesh_config = status_or_mesh.ValueOrDie();
+    const auto mesh_config = status_or_mesh.value();
     if (mesh_config)
       cluster->setAttr(kMeshAttr,
                        builder->getStringAttr(mesh_config->ToString()));

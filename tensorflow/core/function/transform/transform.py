@@ -14,8 +14,9 @@
 # ==============================================================================
 """High level TF Function transformation API."""
 
-from typing import Optional, Callable, Union, List
+from typing import Optional, Callable, Union, List, Iterator
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.function import runtime_client
 from tensorflow.python.eager import def_function
@@ -25,7 +26,12 @@ from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import custom_gradient as custom_gradient_lib
+from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import handle_data_util
+from tensorflow.python.util import compat
+
+_TensorType = Union[ops.EagerTensor, ops.Tensor]
 
 
 def transform_function(
@@ -139,7 +145,11 @@ def transform_function(
   if "_input_shapes" in fndef.attr:
     del fndef.attr["_input_shapes"]
 
-  # Get the new ConcreteFunction
+  # Replicate custom gradients to the new Graph.
+  with ops.init_scope():
+    _replicate_gradient_functions(cf._func_graph, func_graph)  # pylint: disable=protected-access
+
+  # Get the new ConcreteFunction.
   updated_cf = function_lib.ConcreteFunction(func_graph, attrs=fndef.attr)
 
   # Set arg_keywords and positional_args
@@ -147,11 +157,110 @@ def transform_function(
   updated_cf._arg_keywords = cf._arg_keywords
   updated_cf._num_positional_args = cf._num_positional_args
   function_saved_model_utils.restore_captures(updated_cf, cf.captured_inputs)
-  # pyling: enable=protected-access
+  # pylint: enable=protected-access
 
-  # TODO(b/232961485) - handle tf.custom_gradient re-writes.
-
-  # Register the ConcreteFunction with the python Graph
+  # Register the ConcreteFunction with the python Graph.
   updated_cf.add_to_graph(graph)
 
   return updated_cf
+
+
+def _replicate_gradient_functions(
+    original_graph: func_graph_module.FuncGraph,
+    replicated_graph: func_graph_module.FuncGraph) -> None:
+  """Copies over any custom_gradients defined within the original Graph."""
+  seen_ops = set()
+  for gradient_op_type, op in _ops_with_custom_gradients(
+      replicated_graph.get_operations()):
+    # Soft-cache processed ops so we do not repeat the computation.
+    if gradient_op_type in seen_ops:
+      continue
+    seen_ops.add(gradient_op_type)
+
+    # Lookup the custom_gradient implementation if it exists. Currently all
+    # custom_gradients are stored as python functions in a gradient_registry.
+    # The gradient_registry returns a LookupError when a lookup fails.
+    try:
+      custom_gradient = ops.gradient_registry.lookup(gradient_op_type)
+    except LookupError:
+      continue
+
+    # Convert the custom_gradient to a `ConcreteFunction`. This is done so we
+    # can replicate the custom gradient and update any python captures.
+    try:
+      grad_fn = def_function.function(custom_gradient).get_concrete_function(
+          None, *op.inputs)
+    except Exception as e:
+      raise ValueError("Error when tracing gradients for",
+                       replicated_graph) from e
+
+    # Re-bind all captures to values within the replicated graph.
+    remapped_captures = []
+    for capture in grad_fn.captured_inputs:
+      outer_graph, outer_capture = _get_outer_most_capture(
+          original_graph, capture)
+
+      # We only need to re-bind captures originating from the `original_graph`.
+      if outer_graph is not original_graph:
+        continue
+
+      if outer_capture.graph is not outer_graph:
+        raise ValueError(
+            f"Cannot replicate graph: {original_graph}. It utilizes a "
+            f"`tf.custom_gradient` for op: {op} which has a "
+            f"non-replicable capture: {capture}. Consider re-factoring your "
+            f"custom_gradient to avoid the capture.")
+
+      remapped_captures.append(
+          replicated_graph.get_tensor_by_name(outer_capture.name))
+    function_saved_model_utils.restore_captures(grad_fn, remapped_captures)
+    new_gradient_op_type = custom_gradient_lib.generate_name()
+    op._set_attr(  # pylint: disable=protected-access
+        "_gradient_op_type",
+        attr_value_pb2.AttrValue(s=compat.as_bytes(new_gradient_op_type)))
+    ops.RegisterGradient(new_gradient_op_type)(_gen_gradient_func(grad_fn))
+
+
+def _gen_gradient_func(func):
+  """Wraps a ConcreteFunction to be compatible with the gradient registry."""
+
+  def gradient_func(unused_op, *result_grads):
+    result_grads = [
+        x if x is not None else default_gradient.zeros_like(t)
+        for (x, t) in zip(result_grads, func.graph.inputs)
+    ]
+    return func(*result_grads)
+
+  return gradient_func
+
+
+def _get_outer_most_capture(
+    original_graph: func_graph_module.FuncGraph,
+    capture: _TensorType) -> tuple[func_graph_module.FuncGraph, _TensorType]:
+  """Tries to find the original captured tensor."""
+  outer_graph = original_graph
+  while outer_graph is not None and not isinstance(capture, ops.EagerTensor):
+    if capture.graph is not outer_graph:
+      outer_graph = outer_graph.outer_graph
+    else:
+      try:
+        capture_index = outer_graph.internal_captures.index(capture)
+      except ValueError:
+        # Capture is a tensor inside the function and is not captured from
+        # another external function
+        break
+      capture = outer_graph.external_captures[capture_index]
+      outer_graph = outer_graph.outer_graph
+
+  return outer_graph, capture
+
+
+def _ops_with_custom_gradients(
+    operations: List[ops.Operation]) -> Iterator[tuple[str, ops.Operation]]:
+  """Returns an iterator over ops having custom_gradients."""
+  for op in operations:
+    try:
+      gradient_op_type = op.get_attr("_gradient_op_type")
+    except ValueError:
+      continue
+    yield gradient_op_type, op

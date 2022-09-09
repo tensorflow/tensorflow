@@ -31,12 +31,13 @@ export TF_NEED_ROCM=0
 yes "" | $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
+# xla/mlir_hlo/tests/Dialect/gml_st tests disabled in 09/08/22 sync
 bazel test \
       -k \
       --test_tag_filters=-no_oss,-oss_serial,-gpu,-multi_gpu,-tpu,-no_rocm,-benchmark-test,-v1only \
       --jobs=${N_BUILD_JOBS} \
       --local_test_jobs=${N_BUILD_JOBS} \
-      --test_timeout 600,900,2400,7200 \
+      --test_timeout 900,2400,7200,9600 \
       --build_tests_only \
       --test_output=errors \
       --test_sharding_strategy=disabled \
@@ -50,3 +51,5 @@ bazel test \
       -//tensorflow/c/eager:c_api_distributed_test \
       -//tensorflow/python/data/experimental/kernel_tests/service:local_workers_test \
       -//tensorflow/python/data/experimental/kernel_tests/service:worker_tags_test \
+      -//tensorflow/compiler/xla/mlir_hlo/tests/Dialect/gml_st:fusion.mlir.test \
+      -//tensorflow/compiler/xla/mlir_hlo/tests/Dialect/gml_st:tiling.mlir.test \

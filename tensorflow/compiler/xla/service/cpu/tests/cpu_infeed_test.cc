@@ -151,8 +151,8 @@ TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
   tensorflow::Thread* computation_thread =
       tensorflow::Env::Default()->StartThread(
           tensorflow::ThreadOptions{}, "computation_thread", [&] {
-            result = client_->Execute(computation, {}, &execution_options_)
-                         .ValueOrDie();
+            result =
+                client_->Execute(computation, {}, &execution_options_).value();
           });
 
   // Send 5 Infeed data of shape F32[3].
@@ -267,8 +267,8 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
   tensorflow::Thread* computation_thread =
       tensorflow::Env::Default()->StartThread(
           tensorflow::ThreadOptions{}, "computation_thread", [&] {
-            result = client_->Execute(computation, {}, &execution_options_)
-                         .ValueOrDie();
+            result =
+                client_->Execute(computation, {}, &execution_options_).value();
           });
 
   // Wait for a second to ensure testing that the execution is waiting on the

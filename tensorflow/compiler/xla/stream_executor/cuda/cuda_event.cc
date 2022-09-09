@@ -31,14 +31,14 @@ Event::Status GpuEvent::PollForStatus() {
     return Event::Status::kError;
   }
 
-  switch (status.ValueOrDie()) {
+  switch (status.value()) {
     case CUDA_SUCCESS:
       return Event::Status::kComplete;
     case CUDA_ERROR_NOT_READY:
       return Event::Status::kPending;
     default:
       LOG(INFO) << "Error condition returned for event status: "
-                << status.ValueOrDie();
+                << status.value();
       return Event::Status::kError;
   }
 }

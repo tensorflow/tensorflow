@@ -72,8 +72,8 @@ class SVDTest : public ClientLibraryTestBase {
   }
 
   XlaOp ComputeMatmulUDVT(SVDResult result, XlaBuilder* builder) {
-    Shape u_shape = builder->GetShape(result.u).ValueOrDie();
-    Shape v_shape = builder->GetShape(result.v).ValueOrDie();
+    Shape u_shape = builder->GetShape(result.u).value();
+    Shape v_shape = builder->GetShape(result.v).value();
 
     int64_t m = ShapeUtil::GetDimension(u_shape, -1);
     int64_t n = ShapeUtil::GetDimension(v_shape, -1);
@@ -97,7 +97,7 @@ class SVDTest : public ClientLibraryTestBase {
   }
 
   XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {
-    Shape shape = builder->GetShape(m1).ValueOrDie();
+    Shape shape = builder->GetShape(m1).value();
     int64_t size = 1;
     for (auto d : shape.dimensions()) {
       size *= d;

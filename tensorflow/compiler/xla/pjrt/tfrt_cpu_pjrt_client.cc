@@ -153,7 +153,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous,
   int num_threads = std::max(DefaultThreadPoolSize(), cpu_device_count);
   auto host_context = std::make_unique<tfrt::HostContext>(
       [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(ERROR) << "Encountered runtime error: " << diag.message << "\n";
+        LOG(ERROR) << "Encountered runtime error: " << diag.message() << "\n";
       },
       tfrt::CreateMallocAllocator(),
       tfrt::CreateMultiThreadedWorkQueue(
@@ -802,7 +802,8 @@ StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> TfrtCpuBuffer::Release(
     for (const auto& av : events) {
       client_->GetHostContext()->Await(av.CopyRCRef());
       if (auto* error = av.GetErrorIfPresent()) {
-        first_error.Update(InternalError("Error Execute: %s", error->message));
+        first_error.Update(
+            InternalError("Error Execute: %s", error->message()));
       }
     }
     if (!first_error.ok()) return std::move(first_error);
@@ -874,7 +875,7 @@ StatusOr<Shape> TfrtCpuBuffer::logical_on_device_shape() {
   const auto& av = device_buffer->definition_event();
   client_->GetHostContext()->Await(av.CopyRCRef());
   if (auto* error = av.GetErrorIfPresent()) {
-    return InternalError("Error Execute: %s", error->message);
+    return InternalError("Error Execute: %s", error->message());
   }
 
   ShapedBuffer shaped_buffer = AsShapedBuffer(
@@ -969,8 +970,8 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
           // Errors in src buffer are surfaced to user.
           for (const auto& av : device_buffer_wait_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
-              ready_event.emplace(
-                  Internal("Error converting to literal: %s", error->message));
+              ready_event.emplace(Internal("Error converting to literal: %s",
+                                           error->message()));
               return;
             }
           }
@@ -1118,8 +1119,9 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
 
   if (definition_event.IsAvailable()) {
     if (definition_event.IsError()) {
-      return PjRtFuture<Status>(FailedPrecondition(
-          "Buffer Definition Event: %s", definition_event.GetError().message));
+      return PjRtFuture<Status>(
+          FailedPrecondition("Buffer Definition Event: %s",
+                             definition_event.GetError().message()));
     }
     return PjRtFuture<Status>(OkStatus());
   } else {
@@ -1131,7 +1133,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
           if (definition_event.IsError()) {
             status_event.emplace(
                 FailedPrecondition("Buffer Definition Event: %s",
-                                   definition_event.GetError().message));
+                                   definition_event.GetError().message()));
           } else {
             status_event.emplace(OkStatus());
           }
@@ -1529,7 +1531,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           for (const auto& av : input_deps_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
               execute_event.SetError(absl::StrCat(
-                  "Error dispatching computation: %s", error->message));
+                  "Error dispatching computation: %s", error->message()));
               return;
             }
           }
@@ -1601,7 +1603,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
         [done_event = done_event.CopyRef(), event = execute_event.CopyRef()]() {
           Status s;
           if (auto* error = event.GetErrorIfPresent()) {
-            s = InternalError("Compute error: %s", error->message);
+            s = InternalError("Compute error: %s", error->message());
           }
           done_event.emplace(std::move(s));
         });

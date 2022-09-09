@@ -96,7 +96,7 @@ namespace tensorflow {
 #define OP_REQUIRES_VALUE_IMPL(statusor, lhs, ctx, rexpr) \
   auto statusor = (rexpr);                                \
   OP_REQUIRES_OK(ctx, statusor.status());                 \
-  lhs = std::move(statusor.ValueOrDie())
+  lhs = std::move(statusor.value())
 
 }  // namespace tensorflow
 

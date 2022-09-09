@@ -311,7 +311,7 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
       CompileGpuAsmOrGetCached(executor->device_ordinal(), redzone_checker_ptx,
                                gpu_compilation_opts_);
   if (compiled_ptx_or.ok()) {
-    compiled_ptx = compiled_ptx_or.ValueOrDie();
+    compiled_ptx = compiled_ptx_or.value();
   } else {
     static absl::once_flag ptxas_not_found_logged;
     absl::call_once(ptxas_not_found_logged, [&]() {

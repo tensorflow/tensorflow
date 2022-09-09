@@ -25,8 +25,8 @@ namespace se = stream_executor;
 
 TEST(HostStream, EnforcesFIFOOrder) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
-  se::StreamExecutor* executor = platform->ExecutorForDevice(0).ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName("Host").value();
+  se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   se::Stream stream(executor);
   stream.Init();
 
@@ -49,8 +49,8 @@ TEST(HostStream, EnforcesFIFOOrder) {
 
 TEST(HostStream, ReportsHostCallbackError) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
-  se::StreamExecutor* executor = platform->ExecutorForDevice(0).ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName("Host").value();
+  se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   se::Stream stream(executor);
   stream.Init();
 
@@ -64,8 +64,8 @@ TEST(HostStream, ReportsHostCallbackError) {
 
 TEST(HostStream, ReportsFirstHostCallbackError) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
-  se::StreamExecutor* executor = platform->ExecutorForDevice(0).ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName("Host").value();
+  se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   se::Stream stream(executor);
   stream.Init();
 

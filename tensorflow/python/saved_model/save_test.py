@@ -430,20 +430,12 @@ class SaveTest(test.TestCase, parameterized.TestCase):
 
   def test_variable_args_cannot_be_used_as_signature(self):
 
-    @def_function.function(input_signature=[
-        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
-    ])
-    def f(unused_v):
-      return 1
-
-    root = autotrackable.AutoTrackable()
-    root.f = f.get_concrete_function()
-    with self.assertRaisesRegex(ValueError,
-                                "tf.Variable inputs cannot be exported"):
-      save.save(
-          root,
-          os.path.join(self.get_temp_dir(), "saved_model"),
-          signatures=root.f)
+    with self.assertRaises(TypeError):
+      @def_function.function(input_signature=[
+          resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
+      ])
+      def f(unused_v):
+        return 1
 
   def test_export_correct_output_shapes(self):
     """Asserts that nodes are exported with the correct number of output shapes.

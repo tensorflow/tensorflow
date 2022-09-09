@@ -418,6 +418,7 @@ class PjRtClient {
   // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
 
+  // TODO(b/244756954): Rethink this function altogether
   // Returns an enum that identifies the type of runtime being used under this
   // client.
   virtual PjRtRuntimeType runtime_type() const = 0;

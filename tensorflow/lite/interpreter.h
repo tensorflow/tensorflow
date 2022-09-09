@@ -725,12 +725,11 @@ class Interpreter {
   const Subgraph& primary_subgraph() const {
     return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
   }
+#endif  // DOXYGEN_SKIP
 
   /// WARNING: Experimental interface, subject to change
-  // Get the error reporter associated with this interpreter.
+  /// Get the error reporter associated with this interpreter.
   ErrorReporter* error_reporter() const { return error_reporter_; }
-
-#endif  // DOXYGEN_SKIP
 
  private:
   friend class InterpreterBuilder;

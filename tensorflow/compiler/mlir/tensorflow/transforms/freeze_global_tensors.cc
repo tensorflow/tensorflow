@@ -95,7 +95,12 @@ void FreezeGlobalTensorsPass::runOnOperation() {
 
       // Don't freeze mutable tensors.
       Operation *op = *latticeElement->getValue().ops.begin();
-      if (llvm::cast<GlobalTensorOp>(op).is_mutable()) {
+      GlobalTensorOp globalTensor = llvm::dyn_cast<GlobalTensorOp>(op);
+
+      if (!globalTensor)
+        continue;  // happens if the name is e.g. in a VarHandleOp.
+
+      if (globalTensor.is_mutable()) {
         freezeable[val] = false;
         continue;
       }
@@ -129,7 +134,9 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       const TF::ResourceDataflowAnalysis::StateT *latticeElement =
           solver.lookupState<TF::ResourceDataflowAnalysis::StateT>(val);
       Operation *op = *latticeElement->getValue().ops.begin();
-      GlobalTensorOp global_tensor = llvm::cast<GlobalTensorOp>(op);
+      GlobalTensorOp global_tensor = llvm::dyn_cast<GlobalTensorOp>(op);
+      if (!global_tensor)
+        continue;  // happens if the name is e.g. in a VarHandleOp.
 
       SmallVector<TF::ReadVariableOp, 4> read_variable_ops_to_erase;
       frozen_global_tensors.insert(global_tensor);

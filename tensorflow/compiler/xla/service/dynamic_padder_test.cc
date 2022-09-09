@@ -86,7 +86,7 @@ class DynamicPadderTest : public HloTestBase {
 
   std::unique_ptr<HloModule> GetHloModule(const std::string& hlo_text) {
     std::unique_ptr<HloModule> module =
-        ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+        ParseAndReturnVerifiedModule(hlo_text).value();
     return module;
   }
 
@@ -466,7 +466,7 @@ ENTRY main {
 )";
 
   const int kNumParams = 2;
-  module_ = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  module_ = ParseAndReturnVerifiedModule(hlo_text).value();
   // Set up dynamic parameter binding.
   for (int i = 0; i < kNumParams; ++i) {
     TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
@@ -528,7 +528,7 @@ class ExecutionTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> GetHloModule(const std::string& hlo_text) {
     std::unique_ptr<HloModule> module =
-        ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+        ParseAndReturnVerifiedModule(hlo_text).value();
     return module;
   }
   Literal PadAndExecute(std::unique_ptr<HloModule> module,
@@ -2057,9 +2057,9 @@ ENTRY gds {
   size1 = s32[] get-dimension-size(p), dimensions={1}
   ROOT mul = s32[] multiply(size0, size1)
 })")
-                    .ValueOrDie();
+                    .value();
   DynamicPadder pass;
-  EXPECT_TRUE(pass.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(pass.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Multiply(op::Constant(), op::Constant()));
 }
@@ -2075,9 +2075,9 @@ ENTRY gds {
   size1 = s32[] get-dimension-size(p_copy_dynamic), dimensions={0}
   ROOT mul = s32[] multiply(size0, size1)
 })")
-                    .ValueOrDie();
+                    .value();
   DynamicPadder pass;
-  EXPECT_TRUE(pass.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(pass.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Multiply(op::Constant(), op::Constant()));
 }
@@ -2089,7 +2089,7 @@ ENTRY gds {
   p = s32[3]{0} parameter(0)
   ROOT gds = s64[] get-dimension-size(p), dimensions={0}
 })")
-                    .ValueOrDie();
+                    .value();
   DynamicPadder pass;
   EXPECT_FALSE(pass.Run(module.get()).ok());
 }
@@ -2101,7 +2101,7 @@ ENTRY gds {
   p = f32[2,5] parameter(0)
   ROOT gds = s32[] get-dimension-size(p), dimensions={2}
 })")
-                    .ValueOrDie();
+                    .value();
   DynamicPadder pass;
   EXPECT_FALSE(pass.Run(module.get()).ok());
 }
@@ -2122,7 +2122,7 @@ ENTRY gds {
   dynamic_arg_1 = s32[<=4] set-dimension-size(arg, size_1), dimensions={0}
   ROOT add = s32[<=4] add(dynamic_arg_0, dynamic_arg_1)
 })")
-                    .ValueOrDie();
+                    .value();
   auto options = DynamicPadderOptions();
   options.shape_check_mode =
       DynamicDimensionInference::ShapeCheckMode::kCompileTime;
@@ -2144,7 +2144,7 @@ ENTRY gds {
   dynamic_arg_1 = s32[<=4] set-dimension-size(arg, size_1), dimensions={0}
   ROOT add = s32[<=4] add(dynamic_arg_0, dynamic_arg_1)
 })")
-                    .ValueOrDie();
+                    .value();
   auto options = DynamicPadderOptions();
   options.shape_check_mode =
       DynamicDimensionInference::ShapeCheckMode::kCompileTime;

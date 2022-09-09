@@ -298,9 +298,9 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
       continue;
     }
     GPUOperationsSubgraph gpu_subgraph;
-    if (create_info.hints.Check(ModelHints::kAllowSpecialKernels) &&
-        GPUSubgraphFromGraph(gpu_info, create_info.precision, graph, node.id,
-                             tensor_descriptors, &consumed_nodes, &gpu_subgraph)
+    if (GPUSubgraphFromGraph(create_info.hints, gpu_info, create_info.precision,
+                             graph, node.id, tensor_descriptors,
+                             &consumed_nodes, &gpu_subgraph)
             .ok()) {
       // Mapping of subgraph (set of nodes) to GPU operations. Should happen
       // before straigtforward mapping.

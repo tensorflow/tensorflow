@@ -34,7 +34,7 @@ TpuTransferManagerInterface::GetRegisteredTpuTransferManager() {
                << platform->Name() << " and ID " << platform->id();
     return nullptr;
   }
-  return static_cast<TpuTransferManagerInterface*>(tm.ValueOrDie());
+  return static_cast<TpuTransferManagerInterface*>(tm.value());
 }
 
 }  // namespace xla

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_MLIR_RUNTIME_RT_OPS_H_
-#define XLA_MLIR_RUNTIME_RT_OPS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_OPS_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_OPS_H_
 
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
@@ -28,4 +28,4 @@ limitations under the License.
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h.inc"
 
-#endif  // XLA_MLIR_RUNTIME_RT_OPS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_OPS_H_

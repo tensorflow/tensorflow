@@ -298,7 +298,7 @@ int main(int argc, char **argv) {
   llvm::Optional<tensorflow::Session *> session = llvm::None;
   if (bundle) session = bundle->GetSession();
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
-      module.ValueOrDie().get(), output_mlir, toco_flags, pass_config, tags,
+      module.value().get(), output_mlir, toco_flags, pass_config, tags,
       /*saved_model_dir=*/"", session, &result);
   if (!status.ok()) return kTrFailure;
 
@@ -313,6 +313,6 @@ int main(int argc, char **argv) {
 
   // Print out debugging info related to function mapping.
   if (print_function_result_mapping)
-    return PrintFunctionResultMapping(result, module.ValueOrDie().get());
+    return PrintFunctionResultMapping(result, module.value().get());
   return kTrSuccess;
 }

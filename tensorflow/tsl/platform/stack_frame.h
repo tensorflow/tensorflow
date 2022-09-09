@@ -1,5 +1,5 @@
-#ifndef TSL_PLATFORM_STACK_FRAME_H_
-#define TSL_PLATFORM_STACK_FRAME_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_STACK_FRAME_H_
+#define TENSORFLOW_TSL_PLATFORM_STACK_FRAME_H_
 
 /* Copyright 2020 Google LLC. All Rights Reserved.
 
@@ -36,4 +36,4 @@ struct StackFrame {
 
 }  // namespace tsl
 
-#endif  // TSL_PLATFORM_STACK_TRACE_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_STACK_FRAME_H_

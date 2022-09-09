@@ -28,5 +28,6 @@ def HLO_Dialect : Dialect {
 include "stablehlo/dialect/Base.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_enums.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_attrs.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_typedefs.td"
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON

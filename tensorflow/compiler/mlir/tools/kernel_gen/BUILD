@@ -48,11 +48,11 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:bufferize",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:gpu_passes",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:gpu_passes",  # fixdeps: keep
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf_no_fallback",
         "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:all_passes",  # fixdeps: keep
         "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo_pass",
         "//tensorflow/compiler/xla/mlir_hlo:gpu_passes",
         "//tensorflow/compiler/xla/mlir_hlo:shape_simplification",
@@ -80,7 +80,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
-        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:SCFToGPU",
         "@llvm-project//mlir:SCFTransforms",
@@ -132,18 +131,14 @@ tf_cc_binary(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:gpu_passes",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:gpu_passes",  # fixdeps: keep
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/mlir_hlo/stablehlo:register",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -163,7 +158,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:strcat",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ExecutionEngine",
         "@llvm-project//mlir:ExecutionEngineUtils",

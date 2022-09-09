@@ -10,7 +10,6 @@ astunparse ~= 1.6.3
 flatbuffers ~= 2.0
 google_pasta ~= 0.2
 h5py ~= 3.6.0
-keras_preprocessing ~= 1.1.2
 numpy ~= 1.21.4
 opt_einsum ~= 3.3.0
 packaging ~= 21.3

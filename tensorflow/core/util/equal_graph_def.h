@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_EQUAL_GRAPH_DEF_H_
-#define TENSORFLOW_GRAPH_EQUAL_GRAPH_DEF_H_
+#ifndef TENSORFLOW_CORE_UTIL_EQUAL_GRAPH_DEF_H_
+#define TENSORFLOW_CORE_UTIL_EQUAL_GRAPH_DEF_H_
 
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -97,4 +97,4 @@ uint64 RepeatedNodeDefHash(const protobuf::RepeatedPtrField<NodeDef>& ndefs,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_EQUAL_GRAPH_DEF_H_
+#endif  // TENSORFLOW_CORE_UTIL_EQUAL_GRAPH_DEF_H_

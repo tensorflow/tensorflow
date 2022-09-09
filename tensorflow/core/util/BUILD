@@ -680,7 +680,6 @@ check_deps(
     ),
     deps = [
         "//tensorflow:tensorflow_cc",
-        "//tensorflow/python:pywrap_tensorflow_internal",
     ],
 )
 

@@ -474,7 +474,7 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
       });
   n1.WaitForNotification();
   TF_ASSERT_OK(ret.status());
-  EXPECT_EQ(ret.ValueOrDie(), "value0");
+  EXPECT_EQ(ret.value(), "value0");
   // Get key with redundant slashes
   absl::Notification n2;
   coord_service_->GetKeyValueAsync(
@@ -483,7 +483,7 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
         n2.Notify();
       });
   n2.WaitForNotification();
-  EXPECT_EQ(ret.ValueOrDie(), "value1");
+  EXPECT_EQ(ret.value(), "value1");
 
   // Delete single key-value
   TF_ASSERT_OK(coord_service_->DeleteKeyValue("key0"));
@@ -498,7 +498,7 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
   // Insert the previously deleted key again
   TF_ASSERT_OK(coord_service_->InsertKeyValue("key0", "value0_new"));
   n3.WaitForNotification();
-  EXPECT_EQ(ret.ValueOrDie(), "value0_new");
+  EXPECT_EQ(ret.value(), "value0_new");
 
   // Delete key-values recursively
   TF_ASSERT_OK(coord_service_->DeleteKeyValue("/path"));
@@ -529,7 +529,7 @@ TEST(CoordinationServiceTest, TryGetKeyValue) {
   // Insert key value.
   TF_ASSERT_OK(coord_service->InsertKeyValue("test_key", "test_value"));
   result = coord_service->TryGetKeyValue("test_key");
-  EXPECT_EQ(result.ValueOrDie(), "test_value");
+  EXPECT_EQ(result.value(), "test_value");
 
   // Delete Key, and try to get the key again.
   TF_ASSERT_OK(coord_service->DeleteKeyValue("test_key"));

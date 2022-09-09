@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_SERVICE_XLA_COMPILATION_ENVIRONMENTS_H_
-#define TENSORFLOW_COMPILER_SERVICE_XLA_COMPILATION_ENVIRONMENTS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COMPILATION_ENVIRONMENTS_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_COMPILATION_ENVIRONMENTS_H_
 
 #include <cstdint>
 #include <memory>
@@ -123,4 +123,4 @@ const T& CompilationEnvironments::GetEnv() {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_SERVICE_XLA_COMPILATION_ENVIRONMENTS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_COMPILATION_ENVIRONMENTS_H_

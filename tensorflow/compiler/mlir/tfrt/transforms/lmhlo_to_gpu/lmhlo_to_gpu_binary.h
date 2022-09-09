@@ -19,47 +19,15 @@
 #include <string>
 
 #include "mlir/Pass/Pass.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
-#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk.h"
 
 namespace tensorflow {
 
-struct GpuBinaryOptions {
-  static GpuBinaryOptions DefaultGpuBinaryOptions() {
-    GpuBinaryOptions options;
-    options.platform_name = "CUDA";
-
-    options.gpu_device_info.threads_per_block_limit = 1024;
-    options.gpu_device_info.threads_per_warp = 32;
-    options.gpu_device_info.shared_memory_per_block =
-        49152;  // static shmem limit.
-    // Should be 1024 for sm7.5, 1536 for sm8.6. This results in more blocks
-    // than SMs on those architectures, but doesn't hit any resource limit.
-    options.gpu_device_info.threads_per_core_limit = 2048;
-    // This is higher than any SKU, resulting in more blocks than SMs.
-    options.gpu_device_info.core_count = 128;
-    options.gpu_device_info.block_dim_limit_x = 2147483647;
-    options.gpu_device_info.block_dim_limit_y = 65535;
-    options.gpu_device_info.block_dim_limit_z = 65535;
-
-    options.cuda_compute_capability = {5, 2};
-    options.rocm_compute_capability =
-        stream_executor::RocmComputeCapability("gfx900");
-    return options;
-  }
-
-  std::string platform_name;
-  xla::gpu::GpuDeviceInfo gpu_device_info;
-  stream_executor::CudaComputeCapability cuda_compute_capability;
-  stream_executor::RocmComputeCapability rocm_compute_capability{"unknown"};
-};
-
-// Creates a pass that lowers lmhlo.fusion ops to a gpu.module with a binary
-// device code attribute plus a gpu.launch_func.
+// Creates a pass that lowers kernel-launching lmhlo ops to a gpu.module with a
+// gpu.launch_func. Pass in the corresponding thunk sequence to lower
+// gpu.memcpy, gpu.memset, gpu.launch_func ops from.
 std::unique_ptr<mlir::Pass> createConvertLmhloToGpuBinaryPass(
-    GpuBinaryOptions options = GpuBinaryOptions::DefaultGpuBinaryOptions());
-
-void registerConvertLmhloToGpuBinaryPass();
+    xla::gpu::ThunkSequence* thunk_sequence);
 
 }  // namespace tensorflow
 

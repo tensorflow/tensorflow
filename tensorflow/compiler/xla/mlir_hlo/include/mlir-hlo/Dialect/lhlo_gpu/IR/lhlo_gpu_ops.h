@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines the operations used in the LHLO dialect.
 
-#ifndef MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H
-#define MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -42,4 +42,4 @@ class OpBuilder;
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h.inc"
 
-#endif  // MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H_

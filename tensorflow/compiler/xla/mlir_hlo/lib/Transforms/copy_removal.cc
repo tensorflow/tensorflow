@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "mlir-hlo/Analysis/userange_analysis.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/Interfaces/CopyOpInterface.h"
@@ -23,6 +22,9 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+
+#define GEN_PASS_DEF_COPYREMOVAL
+#include "mlir-hlo/Transforms/passes.h.inc"
 
 namespace {
 
@@ -229,7 +231,7 @@ class CopyRemoval : bufferization::BufferPlacementTransformationBase {
   DominanceInfo dominators;
 };
 
-struct CopyRemovalPass : public CopyRemovalBase<CopyRemovalPass> {
+struct CopyRemovalPass : public impl::CopyRemovalBase<CopyRemovalPass> {
   void runOnOperation() override {
     Operation *funcOp = getOperation();
     CopyRemoval removal(funcOp);

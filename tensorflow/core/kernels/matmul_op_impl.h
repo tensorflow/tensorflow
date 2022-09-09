@@ -337,11 +337,13 @@ class BlasScratchAllocator : public se::ScratchAllocator {
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
+    total_byte_size_ += byte_size;
     return se::port::StatusOr<DeviceMemoryBytes>(
         DeviceMemoryBytes::MakeFromByteSize(
             temporary_memory.flat<uint8>().data(),
             temporary_memory.flat<uint8>().size()));
   }
+  int64 TotalByteSize() { return total_byte_size_; }
 
  private:
   int64_t memory_limit_;

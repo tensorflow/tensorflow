@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -27,6 +26,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_LEGALIZEEINSUMTODOTGENERALPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
@@ -167,7 +170,7 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
 };
 
 struct LegalizeEinsumToDotGeneralPass
-    : public LegalizeEinsumToDotGeneralPassBase<
+    : public impl::LegalizeEinsumToDotGeneralPassBase<
           LegalizeEinsumToDotGeneralPass> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());

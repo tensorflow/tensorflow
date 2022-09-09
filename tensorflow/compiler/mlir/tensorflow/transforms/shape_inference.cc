@@ -2744,7 +2744,7 @@ FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations) {
                << "Skipping inference; " << producer_or.status().ToString());
     return true;
   }
-  int64_t producer = producer_or.ValueOrDie();
+  int64_t producer = producer_or.value();
   // TODO(jpienaar): Clean up propagate_NextIterationSinkOp_callee_constants if
   // it is no longer needed.
   ShapeInference context(producer, module,

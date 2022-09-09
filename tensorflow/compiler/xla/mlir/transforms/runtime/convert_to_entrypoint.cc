@@ -147,7 +147,9 @@ static void ConvertReturnOperations(func::FuncOp func, Value exec_ctx) {
 static void ConvertAssertOperations(func::FuncOp func, Value exec_ctx) {
   // Collect all assert operations in the function body.
   llvm::SmallVector<cf::AssertOp> asserts;
-  func.walk([&](cf::AssertOp op) { asserts.push_back(op); });
+  func.walk([&](cf::AssertOp op) {
+    if (op->getParentOp() == func) asserts.push_back(op);
+  });
 
   // Rewrite all asserts to the Runtime API calls.
   for (cf::AssertOp assert : asserts) {
@@ -173,7 +175,7 @@ static void ConvertAssertOperations(func::FuncOp func, Value exec_ctx) {
 }
 
 static Value PrependExecutionContextArgument(func::FuncOp func) {
-  Type new_type = KernelContextType::get(func.getContext());
+  Type new_type = ExecutionContextType::get(func.getContext());
   DictionaryAttr attr = DictionaryAttr::get(func.getContext());
   func.insertArguments({0}, {new_type}, {attr}, {func.getLoc()});
   return func.getArgument(0);

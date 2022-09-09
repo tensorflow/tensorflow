@@ -422,7 +422,7 @@ static std::unique_ptr<::tensorflow::NodeDef> GetTensorFlowNodeDef(
               status_or_node_def.status().ToString()));
     return {};
   }
-  return std::move(status_or_node_def.ValueOrDie());
+  return std::move(status_or_node_def.value());
 }
 
 // Converts a mlir padding StringRef to TfLitePadding.
@@ -807,7 +807,7 @@ Translator::BuildTFVariantType(mlir::Type element_type) {
   }
   mlir::TensorType tensor_type = variant_type.getSubtypes().front();
   tflite::TensorType tflite_element_type =
-      GetTFLiteType(tensor_type.getElementType()).ValueOrDie();
+      GetTFLiteType(tensor_type.getElementType()).value();
   std::vector<int32_t> shape;
   if (tensor_type.hasRank()) {
     llvm::ArrayRef<int64_t> shape_ref = tensor_type.getShape();
@@ -838,7 +838,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
 
   auto element_type = tensor_type.getElementType();
   tflite::TensorType tflite_element_type =
-      GetTFLiteType(tensor_type.getElementType()).ValueOrDie();
+      GetTFLiteType(tensor_type.getElementType()).value();
   Optional<std::vector<BufferOffset<tflite::VariantSubType>>> variant_params =
       BuildTFVariantType(element_type);
   if (!variant_params.hasValue()) {
@@ -930,7 +930,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
   Type element_type = type.getElementType();
   tflite::TensorType tflite_element_type =
-      GetTFLiteType(type.getElementType()).ValueOrDie();
+      GetTFLiteType(type.getElementType()).value();
 
   Optional<std::vector<BufferOffset<tflite::VariantSubType>>> variant_params =
       BuildTFVariantType(element_type);
@@ -1134,7 +1134,7 @@ Translator::CreateFlexBuilderWithNodeAttrs(
       case ::tensorflow::AttrValue::kType: {
         auto status_or_tfl_type = tflite::TfTypeToTflType(attr.type());
         if (status_or_tfl_type.ok()) {
-          flex_builder->Int(key, status_or_tfl_type.ValueOrDie());
+          flex_builder->Int(key, status_or_tfl_type.value());
         } else {
           emitWarning(loc, "ignoring unsupported tensorflow type: ")
               << std::to_string(attr.type());

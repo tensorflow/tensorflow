@@ -42,15 +42,6 @@ class RaiseBfloat16Error : public OpKernel {
 
 #define REGISTER_CPU(T)                                                       \
   REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"),               \
-      RaiseBfloat16Error);                                                    \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Conv2DBackpropFilter").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      RaiseBfloat16Error);                                                    \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Conv2DBackpropInput").Device(DEVICE_CPU).TypeConstraint<T>("T"),  \
-      RaiseBfloat16Error);                                                    \
-  REGISTER_KERNEL_BUILDER(                                                    \
       Name("_FusedConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"),         \
       RaiseBfloat16Error);                                                    \
   REGISTER_KERNEL_BUILDER(                                                    \

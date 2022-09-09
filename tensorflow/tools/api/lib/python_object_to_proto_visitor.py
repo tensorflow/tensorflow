@@ -179,8 +179,7 @@ def _SanitizedMRO(obj):
     str_repr = _NormalizeType(str(cls))
     return_list.append(str_repr)
     # Class type that has keras in their name should also be monitored. This
-    # will cover any class that imported from third_party/py/keras or
-    # keras_preprocessing.
+    # will cover any class imported from third_party/py/keras.
     if 'tensorflow' not in str_repr and 'keras' not in str_repr:
       break
 
