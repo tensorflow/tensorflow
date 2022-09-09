@@ -85,7 +85,6 @@ using mlir::lmhlo::AllGatherOp;
 using mlir::lmhlo::AllReduceOp;
 using mlir::lmhlo::AllToAllOp;
 using mlir::lmhlo::CollectivePermuteOp;
-using mlir::lmhlo::FftOp;
 using mlir::lmhlo::PartitionIdOp;
 using mlir::lmhlo::ReduceScatterOp;
 using mlir::lmhlo::ReplicaIdOp;
@@ -406,53 +405,6 @@ class ConvForwardFusedSideInputOpLowering
     : public ConvOpLowering<ConvForwardFusedSideInputOp> {
  public:
   using ConvOpLowering::ConvOpLowering;
-};
-
-// -------------------------------------------------------------------------- //
-
-class FftOpLowering : public OpRewritePattern<FftOp> {
- private:
-  static constexpr const char kCustomCallTarget[] = "xla.gpu.fft";
-
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(FftOp op,
-                                PatternRewriter& rewriter) const override {
-    MLIRContext* ctx = this->getContext();
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    ModuleOp module = op->getParentOfType<ModuleOp>();
-
-    // Custom call target.
-    NamedAttribute target(b.getStringAttr(kDirectCustomCall),
-                          b.getStringAttr(kCustomCallTarget));
-
-    // Create a custom call function declaration.
-    auto custom_call_type =
-        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
-    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
-    auto custom_call = FuncOp::create(op.getLoc(), kCustomCallTarget,
-                                      custom_call_type, custom_call_attrs);
-    custom_call.setPrivate();
-
-    SymbolTable sym_table(module);
-    auto inserted = sym_table.insert(custom_call);
-    rewriter.notifyOperationInserted(custom_call);
-
-    // Convert Fft to a function call.
-    auto call = rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(),
-                                        op.getOperands());
-
-    // Copy backend specific attributes.
-    call->setAttr(b.getStringAttr("fft_length"), op.getFftLengthAttr());
-    call->setAttr(b.getStringAttr("fft_type"), op.getFftTypeAttr());
-
-    // Erase the original Fft operation.
-    rewriter.eraseOp(op);
-
-    return success();
-  }
 };
 
 // -------------------------------------------------------------------------- //
@@ -1017,10 +969,10 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
 
   // Patterns for every other Gpu operation.
   patterns
-      .insert<FftOpLowering, CholeskyOpLowering, PartitionIdOpLowering,
-              ReplicaIdOpLowering, ConvForwardOpLowering,
-              ConvForwardFusedOpLowering, ConvForwardFusedSideInputOpLowering,
-              ConvBackwardFilterOpLowering, ConvBackwardInputOpLowering>(ctx);
+      .insert<CholeskyOpLowering, PartitionIdOpLowering, ReplicaIdOpLowering,
+              ConvForwardOpLowering, ConvForwardFusedOpLowering,
+              ConvForwardFusedSideInputOpLowering, ConvBackwardFilterOpLowering,
+              ConvBackwardInputOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

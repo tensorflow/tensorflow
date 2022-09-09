@@ -48,6 +48,7 @@ using mlir::gpu::MemcpyOp;
 
 using mlir::lmhlo::CaseOp;
 using mlir::lmhlo::CustomCallOp;
+using mlir::lmhlo::FftOp;
 using mlir::lmhlo::InfeedOp;
 using mlir::lmhlo::OutfeedOp;
 using mlir::lmhlo::TerminatorOp;
@@ -173,6 +174,37 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
         op, callee.getName(), TypeRange(), operands);
     AppendCustomCallAttrs(call, custom_call_attrs);
 
+    return success();
+  }
+
+ private:
+  CustomCalls& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
+class FftOpLowering : public OpRewritePattern<FftOp> {
+ private:
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.fft";
+
+ public:
+  FftOpLowering(MLIRContext* ctx, CustomCalls& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(FftOp op,
+                                PatternRewriter& rewriter) const override {
+    // Create a custom call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee = custom_calls_.GetOrCreate(b, kCustomCallTarget, op);
+
+    llvm::SmallVector<NamedAttribute> custom_call_attrs = {
+        {b.getStringAttr("fft_length"), op.getFftLengthAttr()},
+        {b.getStringAttr("fft_type"), op.getFftTypeAttr()}};
+
+    // Convert Fft to a function call.
+    auto call = rewriter.replaceOpWithNewOp<func::CallOp>(
+        op, callee.getName(), TypeRange(), op.getOperands());
+    AppendCustomCallAttrs(call, custom_call_attrs);
     return success();
   }
 
@@ -332,8 +364,8 @@ void ConvertLmhloToGpuRuntimePass::runOnOperation() {
   // Convert lmhlo operations to XLA gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<TerminatorOpLowering, CaseOpLowering, WhileOpLowering>(ctx);
-  patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering>(
-      ctx, custom_calls);
+  patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering,
+                  FftOpLowering>(ctx, custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();
