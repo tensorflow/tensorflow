@@ -68,6 +68,11 @@ TEST_F(OpenCLOperationTest, LinkingComplex0) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, LinkingConvElem2InputAddElemsOp) {
+  auto status = TestLinkingConvElem2InputAddElemsOp(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 }  // namespace
 }  // namespace cl
 }  // namespace gpu

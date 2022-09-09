@@ -424,6 +424,8 @@ absl::Status GPUOperation::AddOperation(const GpuInfo& gpu_info,
   linkable_count_ += (operation->linkable_count_ + 1);
   std::string code = operation->elementwise_code_;
   std::string unique_postfix = absl::StrCat("_link", linkable_count_);
+  code = absl::StrReplaceAll(
+      code, {{"interm_value", "interm_value" + unique_postfix}});
   operation->args_.RenameArgs(unique_postfix, &code);
   operation->second_elementwise_tensor_name_ += unique_postfix;
   if (elementwise_code_.empty()) {
