@@ -621,9 +621,9 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
         "//tensorflow/python/eager/polymorphic_function:quarantine",
+        "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
     ],
 )
 
@@ -918,8 +918,8 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python/distribute/parallel_device",
-        "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/trackable:base",
     ],

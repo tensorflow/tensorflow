@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Polymorphic Function implementation."""
+"""Tracing Compiler implementation."""
 
 import threading
 import types as types_lib
@@ -46,7 +46,7 @@ _graph_building_time_counter = monitoring.Counter(
 
 
 # TODO(fmuham): Revamp the API of this class to be 100% compiler-focused.
-class PolymorphicCompiler:
+class TracingCompiler:
   """Generates, caches and dispatchs traced Monomorphic Concrete Functions.
 
   The tracing is done using the Python source function with respect to inputs
@@ -55,12 +55,12 @@ class PolymorphicCompiler:
   See the documentation for `tf.function` for more information on the semantics
   of defined functions.
 
-  `PolymorphicCompiler` class is thread-compatible meaning that minimal usage of
+  `TracingCompiler` class is thread-compatible meaning that minimal usage of
   tf.function (defining and calling) is thread-safe, but if users call other
   methods or invoke the base `python_function` themselves, external
   synchronization is necessary.
 
-  In addition, PolymorphicCompiler is not reentrant, so recursive functions need
+  In addition, TracingCompiler is not reentrant, so recursive functions need
   to call the wrapped function, not the wrapper.
   """
 
@@ -75,7 +75,7 @@ class PolymorphicCompiler:
                capture_by_value=None,
                jit_compile=None,
                experimental_follow_type_hints=False):
-    """Initializes a `PolymorphicCompiler`.
+    """Initializes a `TracingCompiler`.
 
     Args:
       python_function: the function to be wrapped.
@@ -124,7 +124,7 @@ class PolymorphicCompiler:
     self._captures_container = func_graph_module.CapturesContainer()
     self._lock = threading.RLock()
     # _descriptor_cache is a of instance of a class to an instance-specific
-    # `PolymorphicCompiler`, used to make sure tf.function-decorated methods
+    # `TracingCompiler`, used to make sure tf.function-decorated methods
     # create different functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._jit_compile = jit_compile
@@ -239,7 +239,7 @@ class PolymorphicCompiler:
   def __get__(self, instance, owner):
     """Makes it possible to decorate instance methods."""
     del owner
-    # `instance` here is the instance that this `PolymorphicCompiler` was
+    # `instance` here is the instance that this `TracingCompiler` was
     # accessed through e.g., for
     #
     #   class Foo:
@@ -252,22 +252,22 @@ class PolymorphicCompiler:
     #   foo.bar()  # `foo.bar` is a `tf.function` instance
     #
     # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
-    # new instance of `PolymorphicCompiler` here to allow different instances
+    # new instance of `TracingCompiler` here to allow different instances
     # to create variables once, thereby allowing methods to be decorated with
     # tf.function. Keeps a cache to avoid retracing the function every time the
     # descriptor is accessed.
     if instance not in self._descriptor_cache:
       if instance is None:
         return self
-      # If there is no instance-specific `PolymorphicCompiler` in the cache, we
-      # construct an instance-specific `PolymorphicCompiler` that uses a weak
+      # If there is no instance-specific `TracingCompiler` in the cache, we
+      # construct an instance-specific `TracingCompiler` that uses a weak
       # reference to the instance (so that the instance will be correctly gc'd).
 
       # And finally add the wrapped function to the description cache
       self._descriptor_cache[instance] = class_method_to_instance_method(
           self, instance)
 
-    # Return the cached `PolymorphicCompiler` for the instance
+    # Return the cached `TracingCompiler` for the instance
     return self._descriptor_cache[instance]
 
   def _create_concrete_function(self, args, kwargs):
@@ -413,7 +413,7 @@ class TfMethodTarget:
 
 
 def class_method_to_instance_method(original_function, instance):
-  """Constructs a new `PolymorphicCompiler` with `self` bound."""
+  """Constructs a new `TracingCompiler` with `self` bound."""
   weak_instance = weakref.ref(instance)
 
   # Note: while we could bind to a weakref proxy instead, that causes the
@@ -422,7 +422,7 @@ def class_method_to_instance_method(original_function, instance):
       original_function.python_function,
       TfMethodTarget(weak_instance, original_function.python_function))
 
-  # original_function is expected to be either `PolymorphicCompiler` or
+  # original_function is expected to be either `TracingCompiler` or
   # def_function.Function
   assert hasattr(original_function, "_name")
   assert hasattr(original_function, "_autograph")

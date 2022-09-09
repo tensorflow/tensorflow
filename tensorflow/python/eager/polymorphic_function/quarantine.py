@@ -16,7 +16,7 @@
 """Internal APIs to be removed in the future."""
 
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
-from tensorflow.python.eager.polymorphic_function import polymorphic_function
+from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
@@ -408,7 +408,7 @@ def defun_with_attributes(func=None,
       name = "function"
     return tf_decorator.make_decorator(
         function,
-        polymorphic_function.PolymorphicCompiler(
+        tracing_compiler.TracingCompiler(
             function,
             name,
             input_signature=input_signature,
@@ -452,7 +452,7 @@ def register(func, *args, **kwargs):
   Raises:
     ValueError: When the input function is not a defun wrapped python function.
   """
-  if not isinstance(func, polymorphic_function.PolymorphicCompiler):
+  if not isinstance(func, tracing_compiler.TracingCompiler):
     raise ValueError("Only defun function is allowed to be registered. "
                      f"Got {func} with type {type(func)}.")
   concrete_func = func.get_concrete_function(*args, **kwargs)

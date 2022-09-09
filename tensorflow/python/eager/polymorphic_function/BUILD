@@ -33,8 +33,8 @@ py_library(
 )
 
 py_library(
-    name = "polymorphic_function",
-    srcs = ["polymorphic_function.py"],
+    name = "tracing_compiler",
+    srcs = ["tracing_compiler.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
@@ -49,6 +49,6 @@ py_library(
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
         ":monomorphic_function",
-        ":polymorphic_function",
+        ":tracing_compiler",
     ],
 )

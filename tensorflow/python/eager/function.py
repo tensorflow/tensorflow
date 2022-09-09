@@ -25,11 +25,11 @@ from tensorflow.python.eager.polymorphic_function.monomorphic_function import _I
 
 # Function Classes
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import ConcreteFunction
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import PolymorphicCompiler as Function
+from tensorflow.python.eager.polymorphic_function.tracing_compiler import TracingCompiler as Function
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _EagerDefinedFunction
 
 # Utilities
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import TfMethodTarget
+from tensorflow.python.eager.polymorphic_function.tracing_compiler import TfMethodTarget
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _inference_name
 
 # TODO(b/244360504): Remove in favor of graph transformation API.

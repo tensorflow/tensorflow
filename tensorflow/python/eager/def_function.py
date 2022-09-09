@@ -15,8 +15,8 @@
 # pylint: disable=unidiomatic-typecheck
 """API for defining graph functions with some additional eager semantics.
 
-def_function.function wraps the PolymorphicCompiler concept in
-polymorphic_function.py to allow initializing `tf.Variable`s with subgraphs of
+def_function.function wraps the TracingCompiler concept in
+tracing_compiler.py to allow initializing `tf.Variable`s with subgraphs of
 the function. For example:
 
 ```python
@@ -41,7 +41,7 @@ class M(tf.Module):
     return self.v_opinit + self.v_arginit + x
 ```
 
-These patterns with using "PolymorphicCompiler" directly throw an error asking
+These patterns with using "TracingCompiler" directly throw an error asking
 the user to put the variable's initializer in a lambda. With tf.function they
 work with eager semantics either by lifting the subgraph out of the function and
 using it to initialize the variable, or by initializing variables on the first
@@ -76,7 +76,7 @@ from tensorflow.python.eager import function_spec as function_spec_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
-from tensorflow.python.eager.polymorphic_function import polymorphic_function
+from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -203,7 +203,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
   Instances of this variable, when created, build a graph which runs their
   initializer inside a tf.cond(is_initialized) block.
 
-  This can only be created inside a PolymorphicCompiler called from
+  This can only be created inside a TracingCompiler called from
   (eventually) eager mode. That is, non-function-building graphs are not
   supported.
   """
@@ -369,7 +369,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         def not_assign_fn():
           return ops.convert_to_tensor(0)
         # Note: this cond is always guaranteed to run because we're inside a
-        # PolymorphicCompiler which will insert automatic control dependencies.
+        # TracingCompiler which will insert automatic control dependencies.
         # It will only execute assign_fn if lifting failed.
         graph = ops.get_default_graph()
 
@@ -652,7 +652,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     return self._python_function
 
   def _compiler_with_scope(self, scope):
-    """Creates a PolymorphicCompiler wrapped inside a variable creator scope."""
+    """Creates a TracingCompiler wrapped inside a variable creator scope."""
 
     weak_wrapped_fn = None
     compile_with_xla = self._jit_compile
@@ -708,7 +708,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     return attributes
 
   def _compiler(self, fn):
-    """Returns a PolymorphicCompiler generated from the input function."""
+    """Returns a TracingCompiler generated from the input function."""
     attributes = {}
 
     if self._implements is not None:
@@ -730,7 +730,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     except AttributeError:
       name = "function"
 
-    return polymorphic_function.PolymorphicCompiler(
+    return tracing_compiler.TracingCompiler(
         fn,
         name,
         input_signature=self.input_signature,
@@ -1001,7 +1001,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     canon_args, canon_kwds, filtered_flat_args = (
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
             args, kwds))
-    return polymorphic_function.PolymorphicCompiler(
+    return tracing_compiler.TracingCompiler(
         fn_with_cond, "fn_with_cond")(canon_args, canon_kwds,
                                       filtered_flat_args)
 
@@ -1086,10 +1086,10 @@ class Function(core.GenericFunction, trackable.Trackable):
         v.assign(op_map[init], read_value=False)
 
     with ops.init_scope():
-      # Note: using PolymorphicCompiler here avoids an infinite recursion.
+      # Note: using TracingCompiler here avoids an infinite recursion.
       # Most of the code in this function runs eagerly with init_scope, where
       # autograph is not necessary.
-      return polymorphic_function.PolymorphicCompiler(
+      return tracing_compiler.TracingCompiler(
           initialize_variables, "initialize_variables",
           autograph=False).get_concrete_function()()
 
@@ -1131,8 +1131,8 @@ class Function(core.GenericFunction, trackable.Trackable):
             lift_to_graph.lift_to_graph([init], ops.get_default_graph())[init],
             read_value=False)
 
-    # Note: using PolymorphicCompiler here avoids an infinite recursion.
-    return polymorphic_function.PolymorphicCompiler(
+    # Note: using TracingCompiler here avoids an infinite recursion.
+    return tracing_compiler.TracingCompiler(
         initialize_variables, "initialize_variables").get_concrete_function()
 
   def _list_all_concrete_functions(self):
@@ -1272,7 +1272,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       # It's unclear whether we need the tf-decorator, or could just call
       # MethodType(self.clone(), instance)
       self._descriptor_cache[instance] = (
-          polymorphic_function.class_method_to_instance_method(self, instance))
+          tracing_compiler.class_method_to_instance_method(self, instance))
     return self._descriptor_cache[instance]
 
 
