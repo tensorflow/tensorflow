@@ -134,7 +134,6 @@ struct type_caster<xla::PyArray> : type_caster_generic {
   static constexpr auto name = const_name<xla::PyArray>();
 
   using holder_type = std::unique_ptr<xla::PyArray>;
-  static_assert(std::is_same_v<default_holder_type<xla::PyArray>, holder_type>);
 
   static_assert(sizeof(holder_type) <= sizeof(void*),
                 "PyArray's holder must have a simple layout (i.e. fit into the "
