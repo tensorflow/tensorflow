@@ -1806,6 +1806,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:while_loop_trip_count_annotator",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
+        "//tensorflow/compiler/xla/mlir/transforms/gpu:passes",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
@@ -1821,7 +1822,6 @@ cc_library(
         ":is_xlir_enabled": [
             ":jitrt_custom_calls",
             "//tensorflow/compiler/xla/runtime:jit_executable",
-            "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:pass_utils",
             "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline_gpu",
         ],
         "//conditions:default": [],
