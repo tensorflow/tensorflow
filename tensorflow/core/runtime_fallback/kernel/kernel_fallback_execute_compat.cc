@@ -270,8 +270,9 @@ static void KernelFallbackExecuteCompatAsyncInternal(
                        tfrt::StrCat("error running kernel fallback kernel ",
                                     context.op_kernel().name(), ": ",
                                     context.status().error_message())));
-      for (auto& result : async_state->result_refs) result.SetError(diag);
-      async_state->chain.SetError(diag);
+      for (auto& result : async_state->result_refs)
+        result.SetError(diag.status);
+      async_state->chain.SetError(diag.status);
       return;
     }
 

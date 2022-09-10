@@ -87,7 +87,7 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
     host->Await(results);
 
     if (auto* error = results[0]->GetErrorIfPresent()) {
-      return CreateTfErrorStatus(*error);
+      return CreateTfErrorStatus(DecodedDiagnostic(*error));
     }
   } else {
     DCHECK_EQ(func->result_types().size(), 0);
