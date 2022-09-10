@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -61,7 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
-#include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
+#include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #endif  // XLA_ENABLE_XLIR
 
 namespace xla {
@@ -158,7 +159,7 @@ class GpuExecutable::JitRtExecutable {
         std::move(debug_options));
   }
 
-  JitRtKernelsCache& kernels_cache() { return kernels_cache_; }
+  GpuExecutableKernelsCache& kernels_cache() { return kernels_cache_; }
   JitRtGemmConfigCache& gemm_configs_cache() { return gemm_configs_cache_; }
   JitRtCollectiveSupport& collectives() { return collectives_; }
 
@@ -207,7 +208,7 @@ class GpuExecutable::JitRtExecutable {
   DebugOptions debug_options_;
 
   // Keep a cache of kernels instantiated by this executable.
-  JitRtKernelsCache kernels_cache_;
+  GpuExecutableKernelsCache kernels_cache_;
 
   // Keep a cache of gemm configs for all gemm operation in the program.
   JitRtGemmConfigCache gemm_configs_cache_;
@@ -1063,8 +1064,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   mlir::MLIRContext context;
 
   mlir::DialectRegistry registry;
-  tfrt::RegisterTFRTDialects(registry);
-  tfrt::RegisterTFRTCompiledDialects(registry);
+  runtime::RegisterDefaultXlaGpuRuntimeDialects(registry);
   context.appendDialectRegistry(registry);
 
   auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_module, &context);
