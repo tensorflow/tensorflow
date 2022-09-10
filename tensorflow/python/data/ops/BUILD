@@ -22,6 +22,20 @@ py_library(
 )
 
 py_library(
+    name = "rebatch_op",
+    srcs = ["rebatch_op.py"],
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_util",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "dataset_ops",
     srcs = ["dataset_ops.py"],
     srcs_version = "PY3",
@@ -33,6 +47,7 @@ py_library(
         ":iterator_ops",
         ":load_ops",
         ":options",
+        ":rebatch_op",
         ":save_ops",
         ":structured_function",
         "//tensorflow/python:constant_op",

@@ -110,6 +110,7 @@ This release contains contributions from many people at Google, as well as:
     *   Graduated experimental APIs:
         * [`tf.data.Dataset.counter`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#counter), which creates `Dataset`s of indefinite sequences of numbers.
         * [`tf.data.Dataset.ignore_errors`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#ignore_errors), which drops erroneous elements from `Dataset`s.
+    *   Added [`tf.data.Dataset.rebatch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#rebatch), a new API for rebatching the elements of a dataset.
 
 *   `tf.distribute`:
 

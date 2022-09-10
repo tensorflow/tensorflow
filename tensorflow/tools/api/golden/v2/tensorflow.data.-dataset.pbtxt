@@ -119,6 +119,10 @@ tf_class {
     argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
+    name: "rebatch"
+    argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "reduce"
     argspec: "args=[\'self\', \'initial_state\', \'reduce_func\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

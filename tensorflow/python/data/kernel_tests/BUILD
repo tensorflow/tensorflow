@@ -1129,6 +1129,26 @@ py_strict_test(
     ],
 )
 
+py_strict_test(
+    name = "rebatch_test",
+    srcs = ["rebatch_test.py"],
+    deps = [
+        ":test_base",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_py_test(
     name = "window_test",
     size = "medium",
