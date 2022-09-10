@@ -1102,7 +1102,7 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
       root, m::CustomCall("test_target", m::Parameter(1), m::Parameter(0))));
 }
 
-TEST_F(PatternMatcherTest, UnaryOpAnyOfOrOperand) {
+TEST_F(PatternMatcherTest, UnaryOpAnyOf) {
   constexpr char kModuleStr[] = R"(
     HloModule test_module
 
@@ -1115,21 +1115,41 @@ TEST_F(PatternMatcherTest, UnaryOpAnyOfOrOperand) {
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto* root = hlo_module->entry_computation()->root_instruction();
 
-  int match_index;
   EXPECT_TRUE(Match(
-      root, m::UnaryOpAnyOfOrOperand(m::Abs(m::Parameter(0)),
-                                     {HloOpcode::kBitcast, HloOpcode::kCos},
-                                     &match_index)));
-  EXPECT_EQ(match_index, -1);
-  EXPECT_TRUE(
-      Match(root, m::UnaryOpAnyOfOrOperand(m::Bitcast(m::Parameter(0)),
-                                           {HloOpcode::kCos, HloOpcode::kAbs},
-                                           &match_index)));
-  EXPECT_EQ(match_index, 1);
+      root, m::UnaryOpAnyOf(m::Abs(), {HloOpcode::kBitcast, HloOpcode::kCos})));
+  EXPECT_TRUE(Match(
+      root, m::UnaryOpAnyOf(m::Bitcast(), {HloOpcode::kCos, HloOpcode::kAbs})));
   EXPECT_FALSE(Match(
-      root, m::UnaryOpAnyOfOrOperand(m::Bitcast(m::Parameter(0)),
-                                     {HloOpcode::kCos, HloOpcode::kBitcast},
-                                     &match_index)));
+      root,
+      m::UnaryOpAnyOf(m::Bitcast(), {HloOpcode::kCos, HloOpcode::kBitcast})));
+
+  std::string description = absl::StrCat(
+      "an HloInstruction which matches the operand or has any opcode of {",
+      HloOpcodeString(HloOpcode::kCos), ", ",
+      HloOpcodeString(HloOpcode::kBitcast), "}.");
+  std::string explanation = absl::StrCat(
+      "HloInstruction doesn't have opcode ",
+      HloOpcodeString(HloOpcode::kBitcast),
+      "\nin out = f32[] abs(f32[] p0) HloInstruction also doesn't have any of "
+      "opcodes {",
+      HloOpcodeString(HloOpcode::kCos), ", ",
+      HloOpcodeString(HloOpcode::kBitcast), "}.\nin out = f32[] abs(f32[] p0)");
+  EXPECT_DESC_AND_EXPLANATION(
+      root,
+      m::UnaryOpAnyOf(m::Bitcast(), {HloOpcode::kCos, HloOpcode::kBitcast}),
+      description.c_str(), explanation.c_str());
+
+  HloInstruction* instr;
+  EXPECT_TRUE(
+      Match(root, m::UnaryOpAnyOf(&instr, m::Abs(),
+                                  {HloOpcode::kBitcast, HloOpcode::kCos})));
+  EXPECT_EQ(instr->opcode(), HloOpcode::kAbs);
+  EXPECT_TRUE(Match(root, m::UnaryOpAnyOf(&instr, m::Bitcast(),
+                                          {HloOpcode::kCos, HloOpcode::kAbs})));
+  EXPECT_EQ(instr->opcode(), HloOpcode::kAbs);
+  EXPECT_FALSE(
+      Match(root, m::UnaryOpAnyOf(&instr, m::Bitcast(),
+                                  {HloOpcode::kCos, HloOpcode::kBitcast})));
 }
 }  // namespace
 }  // namespace xla

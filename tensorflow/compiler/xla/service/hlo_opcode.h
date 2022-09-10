@@ -180,7 +180,7 @@ enum {
 // Returns a string representation of the opcode.
 std::string HloOpcodeString(HloOpcode opcode);
 
-std::string HloOpcodeString(absl::InlinedVector<HloOpcode, 1> opcodes);
+std::string HloOpcodeString(absl::Span<const HloOpcode> opcodes);
 
 // Retrieves the opcode enum by name if the opcode exists.
 StatusOr<HloOpcode> StringToHloOpcode(const std::string& opcode_name);
