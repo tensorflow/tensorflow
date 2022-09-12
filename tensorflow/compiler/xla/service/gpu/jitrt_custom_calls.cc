@@ -972,36 +972,41 @@ enum class MemcpyDirection { kDeviceToDevice, kDeviceToHost, kHostToDevice };
 template <MemcpyDirection direction>
 struct Memcpy {
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          runtime::FlatMemrefView dst,
-                          runtime::FlatMemrefView src) const;
+                          runtime::StridedMemrefView dst,
+                          runtime::StridedMemrefView src) const;
   static Memcpy Handler() { return Memcpy(); }
 };
 }  // namespace
 
 template <MemcpyDirection direction>
 absl::Status Memcpy<direction>::operator()(
-    const ServiceExecutableRunOptions* run_options, runtime::FlatMemrefView dst,
-    runtime::FlatMemrefView src) const {
+    const ServiceExecutableRunOptions* run_options,
+    runtime::StridedMemrefView dst, runtime::StridedMemrefView src) const {
   se::Stream* stream = run_options->stream();
 
-  if (dst.size_in_bytes != src.size_in_bytes) {
+  if (dst.sizes != src.sizes) {
     return absl::InvalidArgumentError(
-        "Source memref size does not match destination memref size");
+        "Source memref sizes do not match destination memref sizes");
+  }
+
+  if (dst.strides != src.strides) {
+    return absl::InvalidArgumentError(
+        "Source memref strides do not match destination memref strides");
   }
 
   switch (direction) {
     case MemcpyDirection::kDeviceToDevice: {
       se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
       se::DeviceMemoryBase src_data = GetDeviceAddress(src);
-      stream->ThenMemcpy(&dst_data, src_data, src.size_in_bytes);
+      stream->ThenMemcpy(&dst_data, src_data, src_data.size());
     } break;
     case MemcpyDirection::kDeviceToHost: {
       se::DeviceMemoryBase src_data = GetDeviceAddress(src);
-      stream->ThenMemcpy(dst.data, src_data, src.size_in_bytes);
+      stream->ThenMemcpy(dst.data, src_data, src_data.size());
     } break;
     case MemcpyDirection::kHostToDevice: {
       se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
-      stream->ThenMemcpy(&dst_data, src.data, src.size_in_bytes);
+      stream->ThenMemcpy(&dst_data, src.data, dst_data.size());
     } break;
   }
 
@@ -1021,8 +1026,8 @@ static bool MemcpyFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
                      void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
                              .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::FlatMemrefView>()  // dst
-                             .Arg<runtime::FlatMemrefView>()  // src
+                             .Arg<runtime::StridedMemrefView>()  // dst
+                             .Arg<runtime::StridedMemrefView>()  // src
                              .To<RuntimeChecks()>(Memcpy<direction>::Handler())
                              .release();
 
