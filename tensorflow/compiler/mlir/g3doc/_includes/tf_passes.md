@@ -869,6 +869,23 @@ will be transformed into this functional operation
     then_branch = @then_branch_func, else_branch = @else_branch_func, is_stateless = false
   } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
 ```
+### `-tf-remove-unused-arguments`: Removes unused args from private functions & their callers.
+Removes arguments from functions that aren't used in the function
+body. Also adjusts the callers of said functions.
+
+For example, the code
+  func.func @f(%arg0, %arg1) {
+    return %arg0
+  }
+  ...
+  call @x_1(x, y)
+
+would be transformed into
+  func.func @f(%arg0) {
+    return %arg0
+  }
+  ...
+  call @x_1(x)
 ### `-tf-replica-id-to-device-ordinal`: Set device ordinal with replica id
 This pass sets the device ordinal attribute of the ops using the replica id
 attribute. This is run immediately after the replica_to_island pass which
