@@ -9,21 +9,25 @@
 // CHECK-SAME:  %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>
 func.func @add(%lhs : tensor<?x?xf32>, %rhs : tensor<?x?xf32>)
     -> tensor<?x?xf32> {
-  // CHECK:     %[[INIT:.*]] = linalg.init_tensor
+  // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+  // CHECK-DAG:  %[[C4:.*]] = arith.constant 4
+  // CHECK-DAG:  %[[C256:.*]] = arith.constant 256
+  // CHECK-DAG:  %[[C512:.*]] = arith.constant 512
+  // CHECK:      %[[INIT:.*]] = linalg.init_tensor
+  // CHECK:      %[[LOOP:.*]] = gml_st.parallel
+  // CHECK:        %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]]
+  // CHECK:        %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]]
+  // CHECK:        %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]]
 
-  // CHECK:     %[[OUTER_LOOP:.*]] = gml_st.parallel
-  // CHECK:       %[[INIT_SUB:.*]] = gml_st.materialize
-
-  // CHECK:       %[[INNER_LOOP:.*]] = gml_st.parallel
-  // CHECK:     %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]]
-  // CHECK:     %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]]
-  // CHECK:     %[[INIT_SUB_SUB:.*]] = gml_st.materialize %[[INIT_SUB]]
-  // CHECK:         %[[GENERIC:.*]] = linalg.generic
-  // CHECK-SAME:      ins(%[[LHS_SUB]], %[[RHS_SUB]]
-  // CHECK-SAME:      outs(%[[INIT_SUB_SUB]]
-  // CHECK:         gml_st.set_yield %[[GENERIC]] into %[[INIT_SUB]]
-  // CHECK:       gml_st.set_yield %[[INNER_LOOP]] into %[[INIT]]
-  // CHECK:     return %[[OUTER_LOOP]]
+  // CHECK:        %[[LOOP_:.*]] = gml_st.parallel
+  // CHECK:          %[[LHS_SUB_2:.*]] = gml_st.materialize %[[LHS_SUB]]
+  // CHECK:          %[[RHS_SUB_2:.*]] = gml_st.materialize %[[RHS_SUB]]
+  // CHECK:          %[[INIT_SUB_2:.*]] = gml_st.materialize %[[INIT_SUB]]
+  // CHECK:          %[[GENERIC:.*]] = linalg.generic
+  // CHECK:          gml_st.set_yield %[[GENERIC]] into %[[INIT_SUB]]
+  // CHECK:        gml_st.set_yield %[[LOOP_]] into %[[INIT]]
+  // CHECK:      return %[[LOOP]]
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %d0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
