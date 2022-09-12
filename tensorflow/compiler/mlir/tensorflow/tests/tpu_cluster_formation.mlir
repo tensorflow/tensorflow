@@ -789,22 +789,22 @@ func.func @mixed_replicated_non_replicated_ops() {
 // -----
 
 func.func @cyclic_control_dependency_no_replication() {
-  "tf.opA"() {_xla_compile_device_type = "CPU"} : () -> ()
+  "tf.opA"() {_xla_compile_device_type = "TPU"} : () -> ()
   // expected-warning@+1 {{op has cyclic dependency with a compilation cluster}}
   "tf.opB"() : () -> ()
-  "tf.opC"() {_xla_compile_device_type = "CPU"} : () -> ()
+  "tf.opC"() {_xla_compile_device_type = "TPU"} : () -> ()
   func.return
 }
 
 // -----
 
 func.func @cyclic_data_dependency_no_replication() {
-  %0 = "tf.opA"() {_xla_compile_device_type = "GPU", is_stateless = true} : () -> (tensor<i32>)
+  %0 = "tf.opA"() {_xla_compile_device_type = "TPU", is_stateless = true} : () -> (tensor<i32>)
   // expected-warning@+2 {{op has cyclic dependency with a compilation cluster}}
   // expected-error@+1 {{operand #0 does not dominate this use}}
   %1 = "tf.opB"(%0) {is_stateless = true} : (tensor<i32>) -> (tensor<i32>)
   // expected-note@+1 {{operand defined here (op in the same block)}}
-  "tf.opC"(%1) {_xla_compile_device_type = "GPU", is_stateless = true} : (tensor<i32>) -> ()
+  "tf.opC"(%1) {_xla_compile_device_type = "TPU", is_stateless = true} : (tensor<i32>) -> ()
   func.return
 }
 
@@ -903,3 +903,25 @@ func.func @one_arg_per_TRI(%arg0: tensor<i32>, %arg1: tensor<i32>) -> () {
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "replicate", device = "/device:TPU:0", num_replicas = 2, topology = "topology"} : () -> ()
   func.return
 }
+
+// -----
+
+// Check that for non-TPU device types we don't cluster.
+
+// CHECK-LABEL: func @cpu_device
+// CHECK-NOT: tf_device.cluster
+func.func @cpu_device() {
+  "tf.opA"() { _xla_compile_device_type = "CPU"} : () -> ()
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @gpu_device
+// CHECK-NOT: tf_device.cluster
+func.func @gpu_device() {
+  "tf.opA"() { _xla_compile_device_type = "GPU"} : () -> ()
+  func.return
+}
+
+

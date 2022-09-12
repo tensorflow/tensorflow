@@ -151,7 +151,11 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
     // (checked later).
     auto device_type_attr =
         op.getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
-    if (device_type_attr) device_types.insert(device_type_attr);
+    if (device_type_attr) {
+      device_types.insert(device_type_attr);
+      // Stop here for ops with non-TPU devices, they are handled elsewhere.
+      if (device_type_attr.getValue() != TF::kTpuDevice) continue;
+    }
 
     if (op.hasAttr(TF::kReplicationInfoAttr)) {
       // For replicated case, borrow cluster structure from replication info.
