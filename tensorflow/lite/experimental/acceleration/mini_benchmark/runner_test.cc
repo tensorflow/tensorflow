@@ -82,7 +82,7 @@ struct RunnerTest : ::testing::Test {
     EntryPoint function = Load(symbol_name);
     ASSERT_TRUE(function);
     runner = std::make_unique<ProcessRunner>(::testing::TempDir(), symbol_name,
-                                             function);
+                                             function, timeout_ms);
     ASSERT_EQ(runner->Init(), kMinibenchmarkSuccess);
   }
 
@@ -95,6 +95,7 @@ struct RunnerTest : ::testing::Test {
   }
   int exitcode = 0;
   int signal = 0;
+  int timeout_ms = 0;
   std::string output;
   std::unique_ptr<ProcessRunner> runner;
   std::string entry_point_file;
@@ -156,8 +157,8 @@ TEST_F(RunnerTest, NullFunctionPointer) {
 }
 
 #ifdef __ANDROID__
-TEST_F(RunnerTest, SigKill) {
-  ASSERT_NO_FATAL_FAILURE(Init("SigKill"));
+TEST_F(RunnerTest, SigKillSubprocess) {
+  ASSERT_NO_FATAL_FAILURE(Init("SigKillSelf"));
   EXPECT_EQ(runner->Run(nullptr, {}, &output, &exitcode, &signal),
             kMinibenchmarkCommandFailed);
   EXPECT_EQ(exitcode, 0);
@@ -214,6 +215,27 @@ TEST_F(RunnerTest, ReadModelFromPipe) {
             std::string((char*)model.GetBufferPointer(), model.GetSize()));
 }
 
+TEST_F(RunnerTest, ProcessTimedOut) {
+  timeout_ms = 1000;
+  ASSERT_NO_FATAL_FAILURE(Init("WritePidThenSleepNSec"));
+  // Process will sleep for 30 seconds.
+  EXPECT_EQ(runner->Run(nullptr, {"30"}, &output, &exitcode, &signal),
+            kMinibenchmarkCommandTimedOut);
+  EXPECT_EQ(signal, SIGKILL);
+  EXPECT_EQ(output, "");
+  EXPECT_EQ(exitcode, 0);
+}
+
+TEST_F(RunnerTest, ProcessDoNotTimedOut) {
+  timeout_ms = 3000;
+  ASSERT_NO_FATAL_FAILURE(Init("WritePidThenSleepNSec"));
+  // Process will sleep for 1 second.
+  EXPECT_EQ(runner->Run(nullptr, {"1"}, &output, &exitcode, &signal),
+            kMinibenchmarkSuccess);
+  EXPECT_EQ(signal, 0);
+  EXPECT_EQ(output, "");
+  EXPECT_EQ(exitcode, kMinibenchmarkSuccess);
+}
 #else  // __ANDROID__
 
 TEST_F(RunnerTest, ReadModelFromPipeNonAndroid) {
