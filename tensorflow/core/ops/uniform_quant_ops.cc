@@ -34,14 +34,14 @@ Status ScalesZeroPointsShapeValid(shape_inference::InferenceContext* context,
   // Skip validation when rank is unknown.
   if (scales_rank == shape_inference::InferenceContext::kUnknownRank ||
       zero_points_rank == shape_inference::InferenceContext::kUnknownRank) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (scales_rank != zero_points_rank) {
     return InvalidArgument("scales and zero_points must have same rank.");
   }
   if (scales_rank == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   DimensionHandle scales_size = context->Dim(scales, 0);
   DimensionHandle zero_points_size = context->Dim(zero_points, 0);
@@ -51,7 +51,7 @@ Status ScalesZeroPointsShapeValid(shape_inference::InferenceContext* context,
   DimensionHandle merged_zero_points;
   TF_RETURN_IF_ERROR(context->Merge(zero_points_size, match_dimension_handle,
                                     &merged_zero_points));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DotShape(shape_inference::InferenceContext* context) {

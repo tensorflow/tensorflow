@@ -178,7 +178,7 @@ Status EvalLhsPerTensorAndRhsPerChannelQuantizedDot(
             output_zero_points_data[is_output_scales_scalar ? 0 : out_c],
             output_quantization_min_val, output_quantization_max_val);
       });
-  return Status::OK();
+  return OkStatus();
 }
 
 // Performs dot on per-batch (dimension 0) quantized lhs and per-tensor
@@ -298,7 +298,7 @@ Status EvalHybridDot(OpKernelContext* context, const Tensor& lhs,
         rhs_scales.scalar<float>()(), rhs_zero_points.scalar<int32_t>()(),
         output);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
