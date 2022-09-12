@@ -323,9 +323,12 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(int first_node, int last_node) {
   TfLiteTensor* tensors = graph_info_->tensors();
   for (const auto& tensor_index : tensor_order) {
     TfLiteTensor& tensor = tensors[tensor_index];
-    if (tensor.allocation_type == kTfLiteArenaRw &&
-        allocs_[tensor_index].size != 0) {
-      TF_LITE_ENSURE_STATUS(arena_.Deallocate(context_, allocs_[tensor_index]));
+    if (allocs_[tensor_index].size < tensor.bytes) {
+      if (tensor.allocation_type == kTfLiteArenaRw &&
+          allocs_[tensor_index].size != 0) {
+        TF_LITE_ENSURE_STATUS(
+            arena_.Deallocate(context_, allocs_[tensor_index]));
+      }
     }
   }
 
@@ -333,19 +336,23 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(int first_node, int last_node) {
   for (const auto& tensor_index : tensor_order) {
     TfLiteTensor& tensor = tensors[tensor_index];
     if (tensor.allocation_type == kTfLiteArenaRw) {
-      TF_LITE_ENSURE_STATUS(
-          arena_.Allocate(context_, tensor_alignment_, tensor.bytes,
-                          tensor_index, alloc_node_[tensor_index],
-                          dealloc_node_[tensor_index], &allocs_[tensor_index]));
+      if (allocs_[tensor_index].size < tensor.bytes) {
+        TF_LITE_ENSURE_STATUS(arena_.Allocate(
+            context_, tensor_alignment_, tensor.bytes, tensor_index,
+            alloc_node_[tensor_index], dealloc_node_[tensor_index],
+            &allocs_[tensor_index]));
+      }
     }
     // Check allocs_[].size to prevent from reallocation of persistent tensors.
     if (tensor.allocation_type == kTfLiteArenaRwPersistent &&
         allocs_[tensor_index].size == 0) {
-      TF_LITE_ENSURE_STATUS(persistent_arena_.Allocate(
-          context_, tensor_alignment_, tensor.bytes, tensor_index,
-          /*first_node=*/alloc_node_[tensor_index],
-          /*last_node=*/std::numeric_limits<int32_t>::max(),
-          &allocs_[tensor_index]));
+      if (allocs_[tensor_index].size < tensor.bytes) {
+        TF_LITE_ENSURE_STATUS(persistent_arena_.Allocate(
+            context_, tensor_alignment_, tensor.bytes, tensor_index,
+            /*first_node=*/alloc_node_[tensor_index],
+            /*last_node=*/std::numeric_limits<int32_t>::max(),
+            &allocs_[tensor_index]));
+      }
     }
   }
   return kTfLiteOk;
