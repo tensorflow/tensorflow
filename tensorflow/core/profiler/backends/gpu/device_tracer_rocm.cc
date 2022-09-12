@@ -894,7 +894,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       host_plane->ForEachLine([&](XLineBuilder line) {
         line.SetName(absl::StrCat("Host Threads/", line.Id()));
       });
-      size_t num_events = events.size();
       events.clear();
     }
 
@@ -1080,10 +1079,10 @@ Status GpuTracer::Stop() {
   return Status::OK();
 }
 
-Status GpuTracer::DoCollectData(XSpace* space) {
-  if (rocm_trace_collector_) rocm_trace_collector_->Export(space);
-  return Status::OK();
-}
+// Status GpuTracer::DoCollectData(XSpace* space) {
+//   if (rocm_trace_collector_) rocm_trace_collector_->Export(space);
+//   return Status::OK();
+// }
 
 Status GpuTracer::CollectData(XSpace* space) {
   switch (profiling_state_) {
@@ -1099,7 +1098,7 @@ Status GpuTracer::CollectData(XSpace* space) {
       VLOG(3) << "No trace data collected";
       return Status::OK();
     case State::kStoppedOk: {
-      DoCollectData(space);
+      if (rocm_trace_collector_) rocm_trace_collector_->Export(space);
       return Status::OK();
     }
   }
