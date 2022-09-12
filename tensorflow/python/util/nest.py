@@ -1123,11 +1123,18 @@ def assert_shallow_structure(shallow_tree,
                      shallow_tree._type_spec)._without_tensor_names()
       type_spec_2 = (input_tree if _is_type_spec(input_tree) else
                      input_tree._type_spec)._without_tensor_names()
-      # pylint: enable=protected-access
-      result = type_spec_1.most_specific_common_supertype([type_spec_2])
+      # TODO(b/246356867): Replace the most_specific_common_supertype below
+      # with get_structure.
+      if hasattr(type_spec_1, "_get_structure") and hasattr(type_spec_2,
+                                                            "_get_structure"):
+        result = (type_spec_1._get_structure() == type_spec_2._get_structure()
+                  or None)
+      else:
+        result = type_spec_1.most_specific_common_supertype([type_spec_2])
       if result is None:
         raise ValueError("Incompatible CompositeTensor TypeSpecs: %s vs. %s" %
                          (type_spec_1, type_spec_2))
+      # pylint: enable=protected-access
 
     elif _is_type_spec(shallow_tree):
       if not _is_type_spec(input_tree):
