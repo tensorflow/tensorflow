@@ -413,7 +413,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:constants",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -451,7 +451,6 @@ cc_library(
     name = "validator_runner_entrypoint_without_affinity_deps",
     srcs = ["validator_runner_entrypoint.cc"],
     deps = [
-        ":constants",
         ":fb_storage",
         ":model_loader",
         ":set_big_core_affinity_h",
@@ -546,9 +545,7 @@ cc_library(
     hdrs = ["runner.h"],
     deps = [
         ":big_little_affinity",
-        ":constants",
         ":status_codes",
-        "@com_google_absl//absl/strings",
         "@flatbuffers//:runtime_cc",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite:minimal_logging",
@@ -703,11 +700,6 @@ cc_test(
     ],
 )
 
-cc_library(
-    name = "constants",
-    hdrs = ["constants.h"],
-)
-
 #
 # Test targets for separate process.
 # Unit tests using cc_test and turned into Android tests with tflite_portable_test_suite().
@@ -717,11 +709,9 @@ cc_binary(
     srcs = ["runner_test_entry_points.cc"],
     linkshared = True,
     deps = [
-        ":constants",
         ":model_loader",
         ":status_codes",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
-        "@com_google_absl//absl/strings",
         "@flatbuffers//:runtime_cc",
     ],
 )
@@ -730,11 +720,9 @@ cc_library(
     name = "runner_unit_test_entry_points_library",
     srcs = ["runner_test_entry_points.cc"],
     deps = [
-        ":constants",
         ":model_loader",
         ":status_codes",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
-        "@com_google_absl//absl/strings",
         "@flatbuffers//:runtime_cc",
     ],
 )
@@ -784,7 +772,6 @@ cc_binary(
     srcs = ["validator_runner_entrypoint.cc"],
     linkshared = True,
     deps = [
-        ":constants",
         ":fb_storage",
         ":model_loader",
         ":runner",

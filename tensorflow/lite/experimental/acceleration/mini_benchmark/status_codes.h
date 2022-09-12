@@ -71,7 +71,6 @@ enum MinibenchmarkStatus {
   kMinibenchmarkCouldntChmodTemporaryFile = 508,
   kMinibenchmarkPopenFailed = 509,
   kMinibenchmarkCommandFailed = 510,
-  kMinibenchmarkCommandTimedOut = 514,
   kMiniBenchmarkCannotLoadSupportLibrary = 511,
   kMiniBenchmarkInvalidSupportLibraryConfiguration = 512,
   kMinibenchmarkPipeFailed = 513,

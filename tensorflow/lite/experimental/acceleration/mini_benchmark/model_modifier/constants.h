@@ -12,21 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_CONSTANTS_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_CONSTANTS_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_MODEL_MODIFIER_CONSTANT_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_MODEL_MODIFIER_CONSTANT_H_
 
 namespace tflite {
 namespace acceleration {
 
-// Model modification.
 inline constexpr int kModelSchemaVersion = 3;
 inline constexpr char kValidationGraphName[] = "VALIDATION:main";
-
-// Process Execution.
-// Number of bytes used to store process id.
-inline constexpr int kPidBufferLength = 20;
 
 }  // namespace acceleration
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_CONSTANTS_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_MODEL_MODIFIER_CONSTANT_H_

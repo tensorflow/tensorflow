@@ -20,11 +20,8 @@ limitations under the License.
 
 #include <iostream>
 #include <memory>
-#include <string>
 
-#include "absl/strings/numbers.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/schema/mutable/schema_generated.h"
@@ -41,28 +38,13 @@ int ReturnSuccess(int argc, char** argv) {
   return ::tflite::acceleration::kMinibenchmarkSuccess;
 }
 
-int SigKillSelf(int argc, char** argv) {
+int SigKill(int argc, char** argv) {
   kill(getpid(), SIGKILL);
   return 1;
 }
 
 int WriteOk(int argc, char** argv) {
   write(kStdOutFd, "ok\n", 3);
-  return ::tflite::acceleration::kMinibenchmarkSuccess;
-}
-
-// Write the pid to output stream and then sleep N seconds. N is parsed from
-// argv[3].
-int WritePidThenSleepNSec(int argc, char** argv) {
-  std::string pid = std::to_string(getpid());
-  pid.resize(::tflite::acceleration::kPidBufferLength);
-  write(kStdOutFd, pid.data(), ::tflite::acceleration::kPidBufferLength);
-
-  int sleep_sec;
-  if (!absl::SimpleAtoi(argv[3], &sleep_sec)) {
-    return 1;
-  }
-  sleep(sleep_sec);
   return ::tflite::acceleration::kMinibenchmarkSuccess;
 }
 
