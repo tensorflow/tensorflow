@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -317,8 +318,8 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         }
 
         llvm::SmallVector<llvm::StringRef, 4> iteratorTypes(
-            parallel_exprs.size(), toString(mlir::IteratorType::Parallel));
-        iteratorTypes.push_back(toString(mlir::IteratorType::Reduction));
+            parallel_exprs.size(), mlir::getParallelIteratorTypeName());
+        iteratorTypes.push_back(mlir::getReductionIteratorTypeName());
         builder->create<mlir::linalg::GenericOp>(
             function.getLoc(),
             /*inputs=*/mlir::ValueRange{b, c},

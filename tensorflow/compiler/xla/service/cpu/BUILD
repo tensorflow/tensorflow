@@ -670,6 +670,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",
         "@llvm-project//mlir:ArithmeticUtils",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
