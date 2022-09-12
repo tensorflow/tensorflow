@@ -19,14 +19,11 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
@@ -54,10 +51,8 @@ void RemoveUnusedArgumentsPass::runOnOperation() {
 
   // Find all users of functions that are not through a CallOp. Those
   // are functions we need to leave alone.
-  module->walk([&](Operation* op) {
-    if (!llvm::dyn_cast<SymbolUserOpInterface>(op) ||
-        llvm::dyn_cast<CallOpInterface>(op))
-      return;
+  module->walk([&](SymbolUserOpInterface op) {
+    if (llvm::isa<CallOpInterface>(op.getOperation())) return;
     // SymbolUserOpInterface doesn't tell us which attributes contain
     // the symbols, so we have to scan through all of them.
     for (auto attr : op->getAttrs()) {
@@ -71,16 +66,15 @@ void RemoveUnusedArgumentsPass::runOnOperation() {
   });
 
   // Find all functions
-  module->walk([&](Operation* op) {
-    auto symbol = llvm::dyn_cast<SymbolOpInterface>(op);
-    if (!symbol || !symbol.isPrivate()) return;
+  module->walk([&](SymbolOpInterface op) {
+    if (!op.isPrivate()) return;
 
-    auto call = llvm::dyn_cast<CallableOpInterface>(op);
+    auto call = llvm::dyn_cast<CallableOpInterface>(op.getOperation());
     if (!call) return;
     Region* region = call.getCallableRegion();
     if (!region) return;  // happens e.g. for external functions
 
-    auto func = llvm::dyn_cast<FunctionOpInterface>(op);
+    auto func = llvm::dyn_cast<FunctionOpInterface>(op.getOperation());
     if (!func || do_not_touch.count(func)) return;
     llvm::BitVector unused(func.getNumArguments());
     for (BlockArgument arg : func.getArguments()) {
@@ -93,15 +87,13 @@ void RemoveUnusedArgumentsPass::runOnOperation() {
   });
 
   // Find all callers
-  module->walk([&](Operation* op) {
-    if (auto call = llvm::dyn_cast<CallOpInterface>(op)) {
-      auto callable = call.getCallableForCallee();
-      mlir::SymbolRefAttr sym = callable.dyn_cast<mlir::SymbolRefAttr>();
-      if (!sym) return;
-      Operation* func = mlir::SymbolTable::lookupNearestSymbolFrom(op, sym);
-      if (!args_to_erase.count(func)) return;
-      op->eraseOperands(args_to_erase.lookup(func));
-    }
+  module->walk([&](CallOpInterface op) {
+    auto callable = op.getCallableForCallee();
+    mlir::SymbolRefAttr sym = callable.dyn_cast<mlir::SymbolRefAttr>();
+    if (!sym) return;
+    Operation* func = mlir::SymbolTable::lookupNearestSymbolFrom(op, sym);
+    if (!args_to_erase.count(func)) return;
+    op->eraseOperands(args_to_erase.lookup(func));
   });
 }
 
