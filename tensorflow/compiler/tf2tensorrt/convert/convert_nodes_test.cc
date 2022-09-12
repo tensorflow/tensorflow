@@ -155,6 +155,27 @@ void ValidateWeights(const TRT_ShapedWeights& weights,
   }
 }
 
+// TRT >= 8.2 optimizes memory management in the builder. When all builders
+// are destroyed, it unloads many resources. This test fixture will create and
+// destroy hundreds of builders when run sequentially for parameterized
+// tests. We can hold open an IBuilder in order to prevent TRT from unloading
+// shared resources between engine builds when using TRT shared library. This
+// greatly speeds up unit tests and is safe to do.
+void PreventUnloadBuilderResources() {
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+  static thread_local absl::once_flag once;
+  static TrtUniquePtrType<nvinfer1::IBuilder> hold_builder = nullptr;
+  absl::call_once(
+      once,
+      [](TrtUniquePtrType<nvinfer1::IBuilder>& builder) {
+        if (!builder) {
+          builder.reset(nvinfer1::createInferBuilder(*Logger::GetLogger()));
+        }
+      },
+      hold_builder);
+#endif
+}
+
 TEST(TRT_ShapedWeights_Test, Basic) {
   // Test constructor with no arguments.
   {
@@ -286,7 +307,7 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
 
 class ValidatorTest : public ::testing::Test {
  public:
-  ValidatorTest() {}
+  ValidatorTest() { PreventUnloadBuilderResources(); }
   Status ConvertToTensorOrWeights(const Scope& scope, const Node* node,
                                   int output_port,
                                   TRT_TensorOrWeights* tensor_or_weights) {
@@ -492,6 +513,7 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
 class ConverterTest : public ::testing::Test {
  public:
   ConverterTest() {
+    PreventUnloadBuilderResources();
     Reset();
   }
 
@@ -1107,6 +1129,7 @@ class OpConverterTest : public ::testing::Test {
   OpConverterTest()
       : tensor_buffer_allocator_(new GpuManagedAllocator()),
         scope_(Scope::NewRootScope()) {
+    PreventUnloadBuilderResources();
     QCHECK_EQ(0, cudaStreamCreate(&stream_));
     Reset();
   }
@@ -9653,23 +9676,5 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
-
-int main(int argc, char** argv) {
-// TRT >= 8.2 optimizes memory management in the builder. When all builders
-// are destroyed, it unloads many resources. This test fixture will create and
-// destroy hundreds of builders when run sequentially for parameterized
-// tests. We can hold open an IBuilder in order to prevent TRT from unloading
-// shared resources between engine builds when using TRT shared library. This
-// greatly speeds up unit tests and is safe to do.
-#if IS_TRT_VERSION_GE(8, 2, 0, 0)
-  // This builder holds a copy of cask::KernelLibrary, which is shared with
-  // other builders. Other builders used during testing won't trigger costly
-  // loading of cask::KernelLibrary.
-  std::unique_ptr<nvinfer1::IBuilder> const holder{
-      nvinfer1::createInferBuilder(*tensorflow::tensorrt::Logger::GetLogger())};
-#endif
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
