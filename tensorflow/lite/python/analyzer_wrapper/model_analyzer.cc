@@ -402,7 +402,7 @@ class StreamErrorReporter : public ErrorReporter {
 std::string get_printable_string(const std::string& src) {
   std::stringstream out;
   for (auto it = src.begin(); it != src.end(); ++it) {
-    out << (isprint(*it) ? *it : '.');
+    out << ((*it == '\n' || isprint(*it)) ? *it : '.');
   }
   return out.str();
 }
