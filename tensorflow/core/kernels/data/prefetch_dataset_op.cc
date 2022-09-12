@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <deque>
+#include <limits>
 
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -230,12 +231,17 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
+      double buffer_size_min = buffer_size_min_;
+      double buffer_size_max = std::numeric_limits<int64_t>::max();
+      if (buffer_size_->value != model::kAutotune && buffer_size_->value != 0) {
+        buffer_size_min = buffer_size_->value;
+        buffer_size_max = buffer_size_->value;
+      }
       return model::MakeAsyncKnownRatioNode(
           std::move(args),
           /*ratio=*/1,
-          {model::MakeParameter(kBufferSize, buffer_size_,
-                                /*min=*/buffer_size_min_,
-                                /*max=*/std::numeric_limits<int64_t>::max())});
+          {model::MakeParameter(kBufferSize, buffer_size_, buffer_size_min,
+                                buffer_size_max)});
     }
 
     Status SaveInternal(SerializationContext* ctx,
