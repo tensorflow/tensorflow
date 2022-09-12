@@ -1075,6 +1075,31 @@ Status Converter::Init(nvinfer1::ILogger* trt_logger) {
   VLOG(1) << "Creating TensorRT builder";
   trt_builder_.reset(nvinfer1::createInferBuilder(*trt_logger));
 
+  // Check if the current platform supports the enabled precision mode.
+  if ((precision_mode_ == TrtPrecisionMode::FP16 && !trt_builder_->platformHasFastFp16())
+      || (precision_mode_ == TrtPrecisionMode::INT8 && !trt_builder_->platformHasFastInt8())) {
+    string precision_mode_str;
+    TF_RETURN_IF_ERROR(
+        TrtPrecisionModeToName(precision_mode_, &precision_mode_str));
+    const string error_message = StrCat(
+      "The GPU in your current configuration does not support the requested precision mode (", precision_mode_str, ").",
+      "\nSupported Precisions on your platform:",
+      "\n\t- FP32: true",
+      "\n\t- FP16: ", trt_builder_->platformHasFastFp16() ? "true" : "false",
+      "\n\t- INT8: ", trt_builder_->platformHasFastInt8() ? "true" : "false",
+      "\n",
+      "\nFor more information, please refer to: ",
+      "https://docs.nvidia.com/deeplearning/tensorrt/support-matrix/index.html#hardware-precision-matrix",
+      "\n",
+      "\nRequired Compute Capabilities:",
+      "\nINT8 = 6.1 || 7.0 || 7.2+",
+      "\nFP16 = 5.3 || 6.0 || 6.2 || 7.0+",
+      "\n",
+      "\nPlease reconvert & rebuild your model with a supported precision."
+    );
+    return errors::Unimplemented(error_message);
+  }
+
   VLOG(1) << "Creating TensorRT network";
   uint32_t flags =
       use_implicit_batch_

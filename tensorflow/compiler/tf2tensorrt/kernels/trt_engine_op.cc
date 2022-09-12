@@ -1203,6 +1203,11 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
                                 /*use_calibration=*/false,
                                 /*calibrator=*/nullptr, cache_res, ctx);
       if (!result.ok()) {
+        // Return the error if it is an Unimplemented error (i.e. unsupported
+        // requested precision for this platform).
+        if (errors::IsUnimplemented(result.status())) {
+          return result.status();
+        }
         return std::pair<EngineContext*, int>(&empty_context, 0);
       }
       static_engine = std::move(result.value());
@@ -1277,6 +1282,11 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
         BuildEngine(input_concrete_shapes, batch_size, use_calibration_,
                     calibrator_.get(), cache_res, ctx);
     if (!result.ok()) {
+      // Return the error if it is an Unimplemented error (i.e. unsupported
+      // requested precision for this platform).
+      if (errors::IsUnimplemented(result.status())) {
+        return result.status();
+      }
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine = std::move(result.value());
@@ -1393,6 +1403,11 @@ Status TRTEngineOp::AllocateCalibrationResources(
       LOG(ERROR) << "Calibration failed: " << s;
       cres->calibrator_->setDone();  // Ignore further pushes
       cache_res->cache_.emplace(shapes, std::make_unique<EngineContext>());
+      // Fail if engine build failed with Unimplemented error (i.e. unsupported
+      // requested precision for this platform).
+      DummyAsyncHelper dummy_async_helper;
+      OP_REQUIRES_ASYNC(
+          ctx, !errors::IsUnimplemented(s), s, dummy_async_helper);
     } else {
       // Transfer the ownership of the engine to the engine cache, so we can
       // dump it out during conversion for TF 2.0.

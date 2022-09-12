@@ -870,6 +870,10 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
   ITensorProxyPtr input;
   ITensorProxyPtr not_infer;
   Logger& logger = *Logger::GetLogger();
+  auto* builder = nvinfer1::createInferBuilder(logger);
+  if (!builder->platformHasFastInt8()) {
+    GTEST_SKIP();
+  }
   auto int8_converter = Converter::Create(TrtPrecisionMode::INT8,
                                           /*use_calibration=*/true, &logger,
                                           /*use_implicit_batch=*/true,
@@ -1099,6 +1103,12 @@ std::vector<float> GetDataAsFloat(InputOutputData& data) {
   return {};
 }
 
+#define SKIP_PLATFORM_NOT_SUPPORTED(x)                           \
+  if ((x == TrtPrecisionMode::INT8 && !platform_has_int8_)       \
+      || (x == TrtPrecisionMode::FP16 && !platform_has_fp16_)) { \
+    GTEST_SKIP();                                                \
+  }
+
 // Class to test various op converters, using both a TrtNodeValidator and
 // Converter.
 class OpConverterTest : public ::testing::Test {
@@ -1106,6 +1116,9 @@ class OpConverterTest : public ::testing::Test {
   OpConverterTest()
       : tensor_buffer_allocator_(new GpuManagedAllocator()),
         scope_(Scope::NewRootScope()) {
+    auto* builder = nvinfer1::createInferBuilder(*Logger::GetLogger());
+    platform_has_fp16_ = builder->platformHasFastFp16();
+    platform_has_int8_ = builder->platformHasFastInt8();
     QCHECK_EQ(0, cudaStreamCreate(&stream_));
     Reset();
   }
@@ -1532,6 +1545,8 @@ class OpConverterTest : public ::testing::Test {
   }
 
  protected:
+  bool platform_has_fp16_;
+  bool platform_has_int8_;
   template <typename T>
   void AdjustVectorByDims(std::vector<T>& values, size_t num_elements,
                           const string& name, const char* callingFunc) {
@@ -3840,6 +3855,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertAddN) {
 }
 
 TEST_P(OpConverter_FP32_Test, ConvertQDQDynamicRangeMode) {
+  SKIP_PLATFORM_NOT_SUPPORTED(TrtPrecisionMode::INT8);
   {
     // FakeQuantWithMinMaxArgs attributes are empty, should fail.
     Reset(TrtPrecisionMode::INT8);

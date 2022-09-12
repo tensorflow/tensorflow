@@ -1031,7 +1031,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
     with disable_tensorfloat32():
       with trace.Trace(run_params.test_name):
-        should_run, reason_for_skipping = self.ShouldRunTest(run_params)
+        should_run, reason_for_skipping = trt_utils.is_platform_supported(
+          run_params.precision_mode
+        )
+        if should_run:
+          should_run, reason_for_skipping = self.ShouldRunTest(run_params)
         if not should_run:
           return self.skipTest(reason_for_skipping)
 

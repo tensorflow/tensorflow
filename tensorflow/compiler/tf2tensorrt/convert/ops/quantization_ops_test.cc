@@ -297,6 +297,11 @@ std::vector<QDQTestOptions> EnumerateQDQTestOptions() {
 class QDQExplicitTest : public ::testing::Test,
                         public ::testing::WithParamInterface<QDQTestOptions> {
  public:
+  QDQExplicitTest() {
+    auto* builder = nvinfer1::createInferBuilder(*Logger::GetLogger());
+    platform_has_int8_ = builder->platformHasFastInt8();
+  }
+
   static StatusOr<PartialTensorShape> GetShape(const std::string& name,
                                                const GraphShapeInfo& shapes) {
     TRT_ENSURE(shapes.find(name) != shapes.end());
@@ -425,6 +430,7 @@ class QDQExplicitTest : public ::testing::Test,
  protected:
   TfTrtConversionParams params_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
+  bool platform_has_int8_;
 };
 
 class TestQDQSuite : public QDQExplicitTest {};
@@ -466,8 +472,14 @@ class TestQDQSuite : public QDQExplicitTest {};
     GTEST_SKIP();                              \
   }
 
+#define SKIP_PLATFORM_NOT_SUPPORTED() \
+  if (!platform_has_int8_) {          \
+    GTEST_SKIP();                     \
+  }
+
 // Tests single convolution operation conversion.
 TEST_P(TestQDQSuite, TestConv2DBasic) {
+  SKIP_PLATFORM_NOT_SUPPORTED();
   SKIP_TRT7(GetParam().qdq_on_output);
   SKIP_TRT7(GetParam().data_format != "NCHW");
   SKIP_TRT7(!GetParam().final_qdq);
@@ -493,6 +505,7 @@ TEST_P(TestQDQSuite, TestConv2DBasic) {
 
 // Tests single convolution operation conversion.
 TEST_P(TestQDQSuite, TestMatMulBasic) {
+  SKIP_PLATFORM_NOT_SUPPORTED();
   // Some param's don't apply, so pick one combination and skip otherwise.
   if (GetParam().data_format != "NCHW" || !GetParam().conv_has_bias ||
       GetParam().qdq_on_output ||
@@ -510,6 +523,7 @@ TEST_P(TestQDQSuite, TestMatMulBasic) {
 // A single input goes through two different Conv2D. Outputs of Conv2D are
 // added together, with QQQ on both branches of ADD.
 TEST_P(TestQDQSuite, AddBothBranchesQDQConvSingleInput) {
+  SKIP_PLATFORM_NOT_SUPPORTED();
   SKIP_TRT7(!GetParam().final_qdq);
   SKIP_TRT7(GetParam().data_format != "NCHW");
 
@@ -547,6 +561,7 @@ TEST_P(TestQDQSuite, AddBothBranchesQDQConvSingleInput) {
 
 // Tests adding a single tensor to itself, with QQQ on both branches of ADD.
 TEST_P(TestQDQSuite, AddBothBranchesQDQMultipleInput) {
+  SKIP_PLATFORM_NOT_SUPPORTED();
   // TRT7 QDQ optimizer makes single-input restriction.
   SKIP_TRT7(true);
 
@@ -563,6 +578,7 @@ TEST_P(TestQDQSuite, AddBothBranchesQDQMultipleInput) {
 
 // Tests Conv-MaxPool combination
 TEST_P(TestQDQSuite, TestConvMaxpool) {
+  SKIP_PLATFORM_NOT_SUPPORTED();
   SKIP_TRT7(!GetParam().final_qdq);
   SKIP_TRT7(GetParam().data_format != "NCHW");
 
@@ -586,6 +602,7 @@ TEST_P(TestQDQSuite, TestConvMaxpool) {
 
 // Tests QDQ(Conv(QDQ(MaxPool(Conv(QDQ(x))))))
 TEST_P(TestQDQSuite, TestConvMaxpoolConv) {
+  SKIP_PLATFORM_NOT_SUPPORTED();
   SKIP_TRT7(!GetParam().final_qdq);
   SKIP_TRT7(GetParam().data_format != "NCHW");
 

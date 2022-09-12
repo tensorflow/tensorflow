@@ -28,6 +28,7 @@ from tensorflow.compiler.tf2tensorrt.utils.trt_engine_instance_pb2 import TRTEng
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
+from tensorflow.python.compiler.tensorrt import utils as trt_utils
 from tensorflow.python.compiler.tensorrt.test import test_utils
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
@@ -352,6 +353,19 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     """Test case for trt_convert.TrtGraphConverter()."""
 
     for need_calibration in [False, True]:
+
+      if device is None or "GPU" in device:
+        if need_calibration:
+          precision_mode = trt_convert.TrtPrecisionMode.INT8
+        else:
+          precision_mode = trt_convert.TrtPrecisionMode.FP32
+
+        should_run, reason_for_skipping = trt_utils.is_platform_supported(
+          precision_mode
+        )
+        if not should_run:
+          continue
+
       # Use GraphDef as input.
       self._TestTrtGraphConverter(device)
 
@@ -627,6 +641,14 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testTrtGraphConverter_Int8Conversion_v2(self):
 
+    precision_mode = trt_convert.TrtPrecisionMode.INT8
+
+    should_run, reason_for_skipping = trt_utils.is_platform_supported(
+      precision_mode
+    )
+    if not should_run:
+      self.skipTest(reason_for_skipping)
+
     np_input1, np_input2 = self._RandomInput([4, 1, 1])
 
     # Create a model and save it.
@@ -639,7 +661,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # Run TRT conversion.
     converter = self._CreateConverterV2(
         input_saved_model_dir,
-        precision_mode=trt_convert.TrtPrecisionMode.INT8,
+        precision_mode=precision_mode,
         maximum_cached_engines=3)
 
     # Convert and perform INT8 calibration
@@ -1080,6 +1102,13 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testTrtGraphConverter_SaveGPUSpecificEngine(self, save_engine_flag):
     """Test case for trt_convert.TrtGraphConverter()."""
 
+    precision_mode = trt_convert.TrtPrecisionMode.INT8
+    should_run, reason_for_skipping = trt_utils.is_platform_supported(
+      precision_mode
+    )
+    if not should_run:
+      self.skipTest(reason_for_skipping)
+
     np_input1, np_input2 = self._RandomInput([4, 1, 1])
 
     # Create a model and save it.
@@ -1090,7 +1119,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Run TRT conversion.
     converter = self._CreateConverterV2(
-        input_saved_model_dir, precision_mode=trt_convert.TrtPrecisionMode.INT8)
+        input_saved_model_dir, precision_mode=precision_mode)
 
     # Run the converted function to populate the engine cache.
     def CalibrationFn():

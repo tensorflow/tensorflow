@@ -15,14 +15,18 @@
 """Exposes the Python wrapper conversion to trt_graph."""
 
 import collections
+import functools
 import os
 import re
 
-from packaging import version
+from packaging.version import Version
 
 from tensorflow.compiler.tf2tensorrt import _pywrap_py_utils
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.client import device_lib
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import gpu_util
 
 
 def disable_non_trt_optimizers_in_rewriter_config(rewriter_config):
@@ -60,8 +64,8 @@ def version_tuple_to_string(ver_tuple):
 
 
 def _is_tensorrt_version_greater_equal(trt_ver, target_ver):
-  trt_ver = version.Version(version_tuple_to_string(trt_ver))
-  target_ver = version.Version(version_tuple_to_string(target_ver))
+  trt_ver = Version(version_tuple_to_string(trt_ver))
+  target_ver = Version(version_tuple_to_string(target_ver))
 
   return trt_ver >= target_ver
 
@@ -257,3 +261,95 @@ def draw_graphdef_as_graphviz(graphdef, dot_output_filename):
   print("  - `sudo apt install -y graphviz`")
   print("  - `dot -Tpng <input_filename>.dot -o <output_filename>.png`")
   print("===================================================================\n")
+
+
+@functools.lru_cache
+def _get_nvidia_gpu_desc_dict():
+
+  try:
+    all_devices = device_lib.list_local_devices()
+    cuda_devices = [d for d in all_devices if d.device_type == "GPU"]
+
+    local_devices = list()
+
+    for device in cuda_devices:
+      gpu_info = gpu_util.compute_capability_from_device_desc(device)
+      cc = gpu_info.compute_capability
+
+      if cc == (0, 0):
+        continue
+
+      local_devices.append({
+        "name": device.name,
+        "device": device.physical_device_desc,
+        "compute_capability": ".".join([str(s) for s in cc])
+      })
+
+    return sorted(local_devices, key=lambda x: x["name"], reverse=False)
+
+  except errors_impl.NotFoundError as e:
+    if not all(x in str(e) for x in ["CUDA", "not find"]):
+      raise e
+
+    else:
+      logging.error(str(e))
+      return False
+
+
+@functools.lru_cache
+def is_platform_supported(precision, gpu_id=0):
+  """If a TensorRT compute precision is supported by the current machine.
+
+  This function determines if the current NVIDIA GPU platform supports the
+  requested TensorRT compute precision. FP16 and INT8 precisions are only
+  supported on some GPUs, depending on the device's compute capability.
+
+  Required Compute Capabilities:
+  - FP16 = 5.3 || 6.0 || 6.2 || 7.0+
+  - INT8 = 6.1 || 7.0 || 7.2+
+
+  Args:
+    precision: one of the strings in
+      TrtPrecisionMode.supported_precision_modes().
+    gpu_id: the index of the GPU that should be checked.
+
+  Raises:
+      ValueError: if the requested precision mode is unknown.
+      IndexError: if there is no GPU at the requested index.
+
+  Returns:
+      A (bool, str) tuple indicating if the precision is supported by the GPU,
+      and if not, the reason why.
+  """
+  from tensorflow.python.compiler.tensorrt.trt_convert import TrtPrecisionMode
+
+  gpu_cc = Version(_get_nvidia_gpu_desc_dict()[gpu_id]["compute_capability"])
+
+  if precision == TrtPrecisionMode.FP32:
+    return True, ""
+
+  elif precision == TrtPrecisionMode.FP16:
+    if (
+      gpu_cc == Version("5.3") or
+      gpu_cc == Version("6.0") or
+      gpu_cc == Version("6.2") or
+      gpu_cc >= Version("7.0")):
+      return True, ""
+
+  elif precision == TrtPrecisionMode.INT8:
+    if (
+      gpu_cc == Version("6.1") or
+      gpu_cc == Version("7.0") or
+      gpu_cc >= Version("7.2")):
+      return True, ""
+
+  else:
+    raise ValueError(f"Unknown Precision Received: {precision}")
+
+  return False, (
+    "Platform does not support the requested TensorRTcompute precision: "
+    f"{precision}.\n"
+    "Required Compute Capabilities:\n"
+    "- FP16 = 5.3 || 6.0 || 6.2 || 7.0+\n"
+    "- INT8 = 6.1 || 7.0 || 7.2+"
+  )
