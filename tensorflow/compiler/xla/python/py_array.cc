@@ -57,7 +57,7 @@ CreatePjRtBuffersFromSingleShardedPyArrays(
 }  // namespace
 
 PyArray::PyArray(py::object aval, py::object sharding,
-                 absl::Span<const PyArray* const> py_arrays, bool committed,
+                 const std::vector<const PyArray*>& py_arrays, bool committed,
                  bool skip_checks, py::object fast_path_args)
     : PyArray(aval, pybind11::cast<bool>(aval.attr("weak_type")),
               DtypeToPrimitiveType(aval.attr("dtype")).ValueOrDie(),
@@ -160,7 +160,7 @@ void PyArray::RegisterTypes(py::module& m) {
            py::arg("aval"), py::arg("sharding"), py::arg("arrays"),
            py::arg("committed"), py::arg("_skip_checks") = false,
            py::arg("_fast_path_args") = py::none())
-      .def(py::init<py::object, py::object, absl::Span<const PyArray* const>,
+      .def(py::init<py::object, py::object, const std::vector<const PyArray*>&,
                     bool, bool, py::object>(),
            py::arg("aval"), py::arg("sharding"), py::arg("arrays"),
            py::arg("committed"), py::arg("_skip_checks") = false,
