@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
@@ -309,6 +310,33 @@ struct TilingResult {
   Operation *loop;
 };
 
+// Compute tile size for the tile that starts at `offset`, has size `tileSize`
+// for the tensor with the dimension size `dimSize`.
+// The tile size is static when `tileSize` divides `dimSize` or when the
+// `tileSize` is 1.
+// Otherwise, it is minimum of `tileSize` and `dimSize - offset` to avoid out of
+// bounds access.
+OpFoldResult computeTileSizeInDim(OpBuilder &builder, Location loc,
+                                  OpFoldResult tileSize, OpFoldResult dimSize,
+                                  OpFoldResult offset) {
+  Optional<int64_t> tileCst = getConstantIntValue(tileSize);
+  Optional<int64_t> dimCst = getConstantIntValue(dimSize);
+
+  bool hasTileSizeOne = tileCst && *tileCst == 1;
+  bool dividesEvenly = tileCst && dimCst && ((*dimCst % *tileCst) == 0);
+  if (hasTileSizeOne || dividesEvenly) return tileSize;
+
+  AffineExpr d0, s0;
+  bindDims(builder.getContext(), d0);
+  bindSymbols(builder.getContext(), s0);
+  OpFoldResult residualTileSize =
+      makeComposedFoldedAffineApply(builder, loc, s0 - d0, {offset, dimSize});
+
+  return makeComposedFoldedAffineMin(
+      builder, loc, AffineMap::getMultiDimIdentityMap(2, loc.getContext()),
+      {residualTileSize, tileSize});
+}
+
 /// Generate an empty loop nest that represents the tiled loop nest shell.
 /// - `loopRanges` specifies the lb, ub and step of the untiled iteration space.
 /// - `tileSizeVals` is the tile sizes to use. Zero represent untiled loops.
@@ -325,23 +353,15 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
          "expected as many tile sizes as loop ranges");
   OpBuilder::InsertionGuard guard(builder);
 
-  // The tile size to use (to avoid out of bounds access) is  minimum of
-  // `tileSize` and `ub - iv`, where `iv` is the induction variable
-  // of the tiled loop.
-  AffineExpr s0, s1, d0;
-  bindDims(builder.getContext(), d0);
-  bindSymbols(builder.getContext(), s0, s1);
-  AffineMap minMap = AffineMap::get(1, 2, {s0, s1 - d0}, builder.getContext());
-
-  SmallVector<Value> lbs, ubs, steps;
+  SmallVector<OpFoldResult> lbs, ubs, steps;
   SmallVector<unsigned> nonemptyRangeIndices;
   for (auto &loopRange : llvm::enumerate(loopRanges)) {
     Value offset =
         getValueOrCreateConstantIndexOp(builder, loc, loopRange.value().offset);
     Value size =
         getValueOrCreateConstantIndexOp(builder, loc, loopRange.value().size);
-    // No loops if tile size is zero. Set offset and size to the loop
-    // offset and size.
+    // No loops if tile size is zero. Set offset and size to the loop offset and
+    // size.
     offsets.push_back(offset);
     sizes.push_back(size);
     if (matchPattern(tileSizeVals[loopRange.index()], m_Zero())) continue;
@@ -353,34 +373,36 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
 
   auto buildBody = [&](OpBuilder &nestedBuilder, Location bodyLoc,
                        ValueRange ivs) {
-    for (const auto &en : llvm::enumerate(ivs)) {
-      Value iv = en.value();
-      size_t index = en.index();
-      Value boundedTileSize = nestedBuilder.create<AffineMinOp>(
-          bodyLoc, minMap, ValueRange{iv, steps[index], ubs[index]});
-      sizes[nonemptyRangeIndices[index]] = boundedTileSize;
+    for (const auto &[index, iv] : llvm::enumerate(ivs)) {
       offsets[nonemptyRangeIndices[index]] = iv;
+      sizes[nonemptyRangeIndices[index]] = computeTileSizeInDim(
+          nestedBuilder, bodyLoc, steps[index], ubs[index], iv);
     }
   };
   Operation *loop =
-      distribute
-          ? builder
-                .create<gml_st::ParallelOp>(
-                    loc, TypeRange(ValueRange{dstOperands}), lbs, ubs, steps,
-                    [&](OpBuilder &nestedBuilder, Location bodyLoc,
-                        ValueRange ivs) {
-                      buildBody(nestedBuilder, bodyLoc, ivs);
-                    })
-                .getOperation()
-          : builder
-                .create<gml_st::ForOp>(
-                    loc, TypeRange(ValueRange{dstOperands}), lbs, ubs, steps,
-                    dstOperands,
-                    [&](OpBuilder &nestedBuilder, Location bodyLoc,
-                        ValueRange ivs, ValueRange /*inits*/) {
-                      buildBody(nestedBuilder, bodyLoc, ivs);
-                    })
-                .getOperation();
+      distribute ? builder
+                       .create<gml_st::ParallelOp>(
+                           loc, TypeRange(ValueRange{dstOperands}),
+                           getValueOrCreateConstantIndexOp(builder, loc, lbs),
+                           getValueOrCreateConstantIndexOp(builder, loc, ubs),
+                           getValueOrCreateConstantIndexOp(builder, loc, steps),
+                           [&](OpBuilder &nestedBuilder, Location bodyLoc,
+                               ValueRange ivs) {
+                             buildBody(nestedBuilder, bodyLoc, ivs);
+                           })
+                       .getOperation()
+                 : builder
+                       .create<gml_st::ForOp>(
+                           loc, TypeRange(ValueRange{dstOperands}),
+                           getValueOrCreateConstantIndexOp(builder, loc, lbs),
+                           getValueOrCreateConstantIndexOp(builder, loc, ubs),
+                           getValueOrCreateConstantIndexOp(builder, loc, steps),
+                           dstOperands,
+                           [&](OpBuilder &nestedBuilder, Location bodyLoc,
+                               ValueRange ivs, ValueRange /*inits*/) {
+                             buildBody(nestedBuilder, bodyLoc, ivs);
+                           })
+                       .getOperation();
   return loop;
 }
 
