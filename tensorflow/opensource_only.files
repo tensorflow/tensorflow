@@ -288,6 +288,7 @@ third_party/repo.bzl:
 third_party/six.BUILD:
 third_party/snappy.BUILD:
 third_party/sqlite.BUILD:
+third_party/stablehlo/BUILD:
 third_party/systemlibs/BUILD.tpl:
 third_party/systemlibs/BUILD:
 third_party/systemlibs/absl_py.BUILD:

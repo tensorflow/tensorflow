@@ -1,0 +1,32 @@
+--- stablehlo/stablehlo/tests/lit.cfg.py
++++ stablehlo/stablehlo/tests/lit.cfg.py
+@@ -20,7 +20,6 @@
+ 
+ import lit.formats
+ from lit.llvm import llvm_config
+-from lit.llvm.subst import ToolSubst
+ import lit.util
+ 
+ # Configuration file for the 'lit' test runner.
+@@ -66,10 +65,6 @@
+ tools = [
+     'stablehlo-opt',
+     'mlir-cpu-runner',
+-    ToolSubst(
+-        '%mlir_runner_utils_dir',
+-        config.mlir_runner_utils_dir,
+-        unresolved='ignore'),
+ ]
+ 
+ llvm_config.add_tool_substitutions(tools, tool_dirs)
+--- stablehlo/stablehlo/tests/lit.site.cfg.py.in
++++ stablehlo/stablehlo/tests/lit.site.cfg.py.in
+@@ -44,7 +44,6 @@
+ config.host_arch = "@HOST_ARCH@"
+ config.stablehlo_src_root = "@STABLEHLO_SOURCE_DIR@"
+ config.stablehlo_obj_root = "@CMAKE_BINARY_DIR@"
+-config.mlir_runner_utils_dir = os.path.join(config.llvm_obj_root, "lib")
+ 
+ # Support substitution of the tools_dir with user parameters. This is
+ # used when we can't determine the tool dir at configuration time.
+
