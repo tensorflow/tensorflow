@@ -349,6 +349,38 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_xla_runtime_pipeline",
+    srcs = ["hlo_xla_runtime_pipeline.cc"],
+    hdrs = ["hlo_xla_runtime_pipeline.h"],
+    deps = [
+        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_bufferizable_op_interface",
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_legalize_to_memref",
+        "//tensorflow/compiler/xla/mlir_hlo:legalize_to_linalg",
+        "//tensorflow/compiler/xla/mlir_hlo:lower_index_cast",
+        "//tensorflow/compiler/xla/mlir_hlo:shape_simplification",
+        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:BufferizationToMemRef",
+        "@llvm-project//mlir:BufferizationTransforms",
+        "@llvm-project//mlir:ComplexToStandard",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:MemRefTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFTransforms",
+        "@llvm-project//mlir:ShapeToStandard",
+        "@llvm-project//mlir:ShapeTransforms",
+        "@llvm-project//mlir:SparseTensorTransforms",
+        "@llvm-project//mlir:TensorTransforms",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorToSCF",
+        "@llvm-project//mlir:VectorTransforms",
+    ],
+    alwayslink = 1,  # has pipeline registration
+)
+
+cc_library(
     name = "simple_orc_jit",
     srcs = [
         "simple_orc_jit.cc",
