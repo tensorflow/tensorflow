@@ -97,6 +97,11 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
     return AllocatorMemoryType::kDevice;
   }
 
+  // cuMemFreeAsync cannot be called from within a stream callback.
+  bool IsSafeInGpuCallback() const override { return false; }
+
+  bool IsGpuStreamOrdered() const override { return true; }
+
  private:
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   se::StreamExecutor* stream_exec_;  // Not owned.

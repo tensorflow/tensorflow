@@ -170,8 +170,14 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
       LogMemory::RecordRawDeallocation(operation_, step_id_, buffer, allocator_,
                                        true);
     }
+    // Allocators that use CUDA API calls (such as cuMemFree or cuMemFreeAsync)
+    // cannot be used inside stream callbacks. For those allocators, we use
+    // the callback only for logging purposes, and call allocator->DeallocateRaw
+    // immediately (synchronizing first if necessary).
+    const bool allocator_is_callback_safe = allocator_->IsSafeInGpuCallback();
     AsyncFreeData* afData =
-        new AsyncFreeData(allocator_, buffer, operation_, step_id_);
+        new AsyncFreeData(allocator_, buffer, operation_, step_id_,
+                          /*do_logging_only=*/!allocator_is_callback_safe);
 #if GOOGLE_CUDA
     cudaError_t err = cudaStreamAddCallback(*stream_, asyncFree, afData, 0);
     CHECK_EQ(err, cudaSuccess);
@@ -179,6 +185,21 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
     hipError_t err = hipStreamAddCallback(*stream_, asyncFree, afData, 0);
     CHECK_EQ(err, hipSuccess);
 #endif
+    if (!allocator_is_callback_safe) {
+      if (!allocator_->IsGpuStreamOrdered()) {
+        // We must synchronize with the stream here to ensure stream-ordered
+        // behavior. This is not a big deal because cuMemFree is expected
+        // (though not guaranteed) to synchronize anyway.
+#if GOOGLE_CUDA
+        err = cudaStreamSynchronize(*stream_);
+        CHECK_EQ(err, cudaSuccess);
+#elif TENSORFLOW_USE_ROCM
+        err = hipStreamSynchronize(*stream_);
+        CHECK_EQ(err, hipSuccess);
+#endif
+      }
+      allocator_->DeallocateRaw(buffer);
+    }
   }
 
   // Return a pointer to a per stream scratchpad of 1024 bytes residing
@@ -196,12 +217,17 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
  private:
   struct AsyncFreeData {
     AsyncFreeData(::tensorflow::Allocator* a, void* p, const string& o,
-                  const int64_t s)
-        : allocator_(a), address_(p), operation_(o), step_id_(s) {}
+                  const int64_t s, const bool do_logging_only)
+        : allocator_(a),
+          address_(p),
+          operation_(o),
+          step_id_(s),
+          do_logging_only_(do_logging_only) {}
     ::tensorflow::Allocator* allocator_;
     void* address_;
     const string operation_;
     const int64_t step_id_;
+    const bool do_logging_only_;
   };
 
 #if GOOGLE_CUDA
@@ -216,7 +242,9 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
       LogMemory::RecordRawDeallocation(data->operation_, data->step_id_,
                                        data->address_, data->allocator_, false);
     }
-    data->allocator_->DeallocateRaw(data->address_);
+    if (!data->do_logging_only_) {
+      data->allocator_->DeallocateRaw(data->address_);
+    }
     delete data;
   }
 

@@ -29,6 +29,9 @@ class GpuManagedAllocator : public Allocator {
   string Name() override { return "GpuManagedAllocator"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
+
+  // cudaFree cannot be called from within a stream callback.
+  bool IsSafeInGpuCallback() const override { return false; }
 };
 
 }  // namespace tensorflow

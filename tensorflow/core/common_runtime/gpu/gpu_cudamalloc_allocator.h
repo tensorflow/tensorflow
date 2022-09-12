@@ -40,6 +40,9 @@ class GPUcudaMallocAllocator : public Allocator {
     return AllocatorMemoryType::kDevice;
   }
 
+  // cuMemFree cannot be called from within a stream callback.
+  bool IsSafeInGpuCallback() const override { return false; }
+
  private:
   se::StreamExecutor* stream_exec_;  // Not owned.
 

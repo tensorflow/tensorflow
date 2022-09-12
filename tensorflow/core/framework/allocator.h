@@ -230,6 +230,14 @@ class Allocator {
   virtual AllocatorMemoryType GetMemoryType() const {
     return AllocatorMemoryType::kUnknown;
   }
+
+  // Returns whether allocations and deallocations can be made from within a GPU
+  // stream callback.
+  virtual bool IsSafeInGpuCallback() const { return true; }
+
+  // Returns whether allocations and deallocations are ordered with respect to
+  // the compute stream.
+  virtual bool IsGpuStreamOrdered() const { return false; }
 };
 
 // An implementation of Allocator that delegates all calls to another Allocator.
