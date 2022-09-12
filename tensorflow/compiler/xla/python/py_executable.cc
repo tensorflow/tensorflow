@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/pjrt/host_callback.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 
 namespace xla {
 
@@ -62,7 +62,7 @@ PyExecutable::PyExecutable(std::shared_ptr<PyClient> client,
   }
   options_.untuple_result = true;
   if (fingerprint_) {
-    options_.launch_id = tensorflow::Fingerprint32(*fingerprint_);
+    options_.launch_id = tsl::Fingerprint32(*fingerprint_);
     VLOG(1) << "Fingerprint for executable " << executable_->name() << ": "
             << *fingerprint_;
   }

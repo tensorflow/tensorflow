@@ -35,10 +35,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logger.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/tsl/platform/logger.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -187,7 +187,7 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
     for (const AutotuneResult& result : results) {
       *log.add_results() = result;
     }
-    tensorflow::Logger::GetSingleton()->LogProto(log);
+    tsl::Logger::GetSingleton()->LogProto(log);
   }
 
   StatusOr<AutotuneResult> best = PickBestResult(results, gemm);

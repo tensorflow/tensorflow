@@ -34,6 +34,7 @@ namespace tpu {
 class TpuExecutorInterface
     : public stream_executor::internal::StreamExecutorInterface {
  public:
+  using Status = stream_executor::port::Status;
   template <typename T>
   using StatusOr = stream_executor::port::StatusOr<T>;
 

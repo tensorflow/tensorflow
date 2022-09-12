@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {

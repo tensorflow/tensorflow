@@ -19,7 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/node_hash_map.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 

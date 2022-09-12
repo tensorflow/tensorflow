@@ -232,6 +232,19 @@ class ExecutionContextOperandType
 };
 
 //===----------------------------------------------------------------------===//
+// Corresponds to the RT dialect's OpaqueType.
+//===----------------------------------------------------------------------===//
+
+class OpaqueOperandType : public llvm::RTTIExtends<OpaqueOperandType, Type> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  absl::StatusOr<ArgumentAbi> AsArgument() const final;
+
+  std::string ToString() const final;
+};
+
+//===----------------------------------------------------------------------===//
 // Compiled function signature type corresponding to the mlir::FunctionType.
 //===----------------------------------------------------------------------===//
 

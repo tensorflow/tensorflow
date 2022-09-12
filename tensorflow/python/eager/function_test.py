@@ -441,6 +441,33 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
+  def testReduceTracingWithNestedTFFunction(self):
+    v = resource_variable_ops.ResourceVariable([1., 2.])
+
+    @def_function.function(reduce_retracing=True)
+    def inner_test_fn(x):
+      x.assign_add([2., 2.])
+      return x
+
+    @def_function.function(reduce_retracing=True)
+    def test_fn(x):
+      x.assign_add([1., 1.])
+      return inner_test_fn(x)
+
+    with backprop.GradientTape() as tape:
+      y = test_fn(v)
+
+    grad = tape.gradient(y, v)
+    self.assertAllEqual(y, [4., 5.])
+    self.assertAllEqual(grad, [1., 1.])
+
+    with backprop.GradientTape() as tape:
+      y = test_fn(v)
+
+    grad = tape.gradient(y, v)
+    self.assertAllEqual(y, [7., 8.])
+    self.assertAllEqual(grad, [1., 1.])
+
   def testInputShapeRelaxationOnInstanceMethod(self):
     # Test that reduce_retracing is passed during
     # instance method bounding.
@@ -2915,6 +2942,44 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     graph_function = bar.get_concrete_function(v)
     self.assertEqual(float(graph_function(v)), 1.0)
     self.assertEqual(float(graph_function(w)), 1.0)
+
+  def testVariableAliasIdInStructuredInputSignature(self):
+
+    @def_function.function
+    def foo(v1, v2):
+      return v1 + v2
+
+    v1 = resource_variable_ops.ResourceVariable(1.0)
+    v2 = resource_variable_ops.ResourceVariable(2.0)
+    graph_function = foo.get_concrete_function(v1, v1)
+    args_sig, _ = graph_function.graph.structured_input_signature
+    expected_spec = resource_variable_ops.VariableSpec([], alias_id=0)
+    self.assertLen(args_sig, 2)
+    self.assertEqual(args_sig[0], expected_spec)
+    self.assertEqual(args_sig[1], expected_spec)
+
+    graph_function = foo.get_concrete_function(v1, v2)
+    args_sig, _ = graph_function.graph.structured_input_signature
+    expected_spec1 = resource_variable_ops.VariableSpec([], alias_id=0)
+    expected_spec2 = resource_variable_ops.VariableSpec([], alias_id=1)
+    self.assertLen(args_sig, 2)
+    self.assertEqual(args_sig[0], expected_spec1)
+    self.assertEqual(args_sig[1], expected_spec2)
+
+  def testStructuredSignatureAndMultipleVariables(self):
+    self.skipTest('b/209081027: Enable this test after Variable becomes a '
+                  'CompositeTensor and Variable gets expand to handle tensor.')
+
+    @def_function.function
+    def foo(v1, v2):
+      return v1 + v2
+
+    v1 = resource_variable_ops.ResourceVariable(1.0)
+    v2 = resource_variable_ops.ResourceVariable(2.0)
+    graph_function = foo.get_concrete_function(v1, v1)
+    self.assertAllEqual(graph_function(v1, v1), 2.0)
+    with self.assertRaises(TypeError):
+      graph_function(v1, v2)
 
   def testCallingFunctionWithNonTensorsFails(self):
 

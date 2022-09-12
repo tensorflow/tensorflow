@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/tsl/platform/resource_loader.h"
 
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/tsl/platform/logging.h"
 #include "tools/cpp/runfiles/runfiles.h"
 
 using bazel::tools::cpp::runfiles::Runfiles;
 
-namespace tensorflow {
+namespace tsl {
 
 std::string GetDataDependencyFilepath(const std::string& relative_path) {
   std::string error;
@@ -34,4 +34,4 @@ std::string GetDataDependencyFilepath(const std::string& relative_path) {
   return runfiles->Rlocation(io::JoinPath("org_tensorflow", relative_path));
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

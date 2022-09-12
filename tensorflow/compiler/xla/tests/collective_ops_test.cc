@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/blocking_counter.h"
 
 // Tests cross-GPU operations.
 //
@@ -381,7 +381,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
   opts.use_threads = true;
   opts.arguments.push_back(&input_literal);
 
-  tensorflow::BlockingCounter done(kNumThreads * kRunsPerThread);
+  tsl::BlockingCounter done(kNumThreads * kRunsPerThread);
   tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), TestName(),
                                       kNumThreads);
   for (int64_t i = 0; i < kNumThreads * kRunsPerThread; ++i) {

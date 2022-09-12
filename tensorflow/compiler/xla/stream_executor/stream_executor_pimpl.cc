@@ -956,7 +956,7 @@ port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
                                   mem.opaque(), device_ordinal);
     executor->Deallocate(&mem);
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::StatusOr<StreamExecutor*>

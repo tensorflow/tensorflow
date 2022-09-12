@@ -142,6 +142,23 @@ absl::Status TestLinkingConvolutionFirstTanhSecondCos2InputDiff(
 //     output
 absl::Status TestLinkingComplex0(TestExecutionEnvironment* env);
 
+//                input1
+//                  |
+//              convolution
+//                  |
+//         input0  cos
+//             \   /
+//              add
+//               |
+//              cos
+//               |
+//              sin
+//               |
+//              abs
+//               |
+//             output
+absl::Status TestLinkingConvElem2InputAddElemsOp(TestExecutionEnvironment* env);
+
 }  // namespace gpu
 }  // namespace tflite
 

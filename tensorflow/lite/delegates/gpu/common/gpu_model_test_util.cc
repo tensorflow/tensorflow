@@ -1296,5 +1296,196 @@ absl::Status TestLinkingComplex0(TestExecutionEnvironment* env) {
   return absl::OkStatus();
 }
 
+//                input1
+//                  |
+//              convolution
+//                  |
+//         input0  cos0
+//             \   /
+//              add
+//               |
+//              cos1
+//               |
+//              sin
+//               |
+//              abs
+//               |
+//             output
+absl::Status TestLinkingConvElem2InputAddElemsOp(
+    TestExecutionEnvironment* env) {
+  GraphFloat32 graph;
+  auto input0 = graph.NewValue();
+  auto input1 = graph.NewValue();
+  input0->tensor.type = DataType::FLOAT32;
+  input0->tensor.shape = BHWC(1, 32, 32, 16);
+  input1->tensor.type = DataType::FLOAT32;
+  input1->tensor.shape = BHWC(1, 32, 32, 8);
+
+  auto conv_node = graph.NewNode();
+  conv_node->operation.type =
+      ToString(tflite::gpu::OperationType::CONVOLUTION_2D);
+
+  Convolution2DAttributes conv_attr;
+  conv_attr.padding.prepended = HW(0, 0);
+  conv_attr.padding.appended = HW(0, 0);
+  conv_attr.strides = HW(1, 1);
+  conv_attr.dilations = HW(1, 1);
+  conv_attr.weights.shape = OHWI(16, 1, 1, 8);
+  conv_attr.weights.data.resize(conv_attr.weights.shape.DimensionsProduct());
+  for (int i = 0; i < conv_attr.weights.data.size(); ++i) {
+    conv_attr.weights.data[i] = std::sin(i * 0.12345f);
+  }
+  conv_attr.bias.shape = Linear(16);
+  conv_attr.bias.data.resize(conv_attr.bias.shape.DimensionsProduct());
+  for (int i = 0; i < conv_attr.bias.data.size(); ++i) {
+    conv_attr.bias.data[i] = std::sin(i * 0.12345f);
+  }
+  conv_node->operation.attributes = conv_attr;
+  auto conv_output = graph.NewValue();
+  conv_output->tensor.type = DataType::FLOAT32;
+  conv_output->tensor.shape = BHWC(1, 32, 32, 16);
+  RETURN_IF_ERROR(graph.AddConsumer(conv_node->id, input1->id));
+  RETURN_IF_ERROR(graph.SetProducer(conv_node->id, conv_output->id));
+
+  auto cos0_node = graph.NewNode();
+  cos0_node->operation.type = ToString(OperationType::COS);
+  auto cos0_output = graph.NewValue();
+  cos0_output->tensor.type = DataType::FLOAT32;
+  cos0_output->tensor.shape = BHWC(1, 32, 32, 16);
+  RETURN_IF_ERROR(graph.AddConsumer(cos0_node->id, conv_output->id));
+  RETURN_IF_ERROR(graph.SetProducer(cos0_node->id, cos0_output->id));
+
+  auto add_node = graph.NewNode();
+  add_node->operation.type = ToString(OperationType::ADD);
+  auto add_output = graph.NewValue();
+  add_output->tensor.type = DataType::FLOAT32;
+  add_output->tensor.shape = BHWC(1, 32, 32, 16);
+  RETURN_IF_ERROR(graph.AddConsumer(add_node->id, input0->id));
+  RETURN_IF_ERROR(graph.AddConsumer(add_node->id, cos0_output->id));
+  RETURN_IF_ERROR(graph.SetProducer(add_node->id, add_output->id));
+
+  auto cos1_node = graph.NewNode();
+  cos1_node->operation.type = ToString(OperationType::COS);
+  auto cos1_output = graph.NewValue();
+  cos1_output->tensor.type = DataType::FLOAT32;
+  cos1_output->tensor.shape = BHWC(1, 32, 32, 16);
+  RETURN_IF_ERROR(graph.AddConsumer(cos1_node->id, add_output->id));
+  RETURN_IF_ERROR(graph.SetProducer(cos1_node->id, cos1_output->id));
+
+  auto sin_node = graph.NewNode();
+  sin_node->operation.type = ToString(OperationType::SIN);
+  auto sin_output = graph.NewValue();
+  sin_output->tensor.type = DataType::FLOAT32;
+  sin_output->tensor.shape = BHWC(1, 32, 32, 16);
+  RETURN_IF_ERROR(graph.AddConsumer(sin_node->id, cos1_output->id));
+  RETURN_IF_ERROR(graph.SetProducer(sin_node->id, sin_output->id));
+
+  auto abs_node = graph.NewNode();
+  abs_node->operation.type = ToString(OperationType::ABS);
+  auto abs_output = graph.NewValue();
+  abs_output->tensor.type = DataType::FLOAT32;
+  abs_output->tensor.shape = BHWC(1, 32, 32, 16);
+  RETURN_IF_ERROR(graph.AddConsumer(abs_node->id, sin_output->id));
+  RETURN_IF_ERROR(graph.SetProducer(abs_node->id, abs_output->id));
+
+  RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&graph));
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      CreateGpuModelInfo create_info;
+      create_info.precision = precision;
+      create_info.storage_type = storage;
+      create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+
+      GpuModel gpu_model;
+      RETURN_IF_ERROR(
+          GraphToGpuModel(graph, create_info, env->GetGpuInfo(), &gpu_model));
+
+      if (gpu_model.nodes.size() != 1) {
+        return absl::InternalError("Expected model with one node.");
+      }
+
+      TensorFloat32 src0_tensor, src1_tensor;
+      src0_tensor.shape = input0->tensor.shape;
+      src0_tensor.data.resize(src0_tensor.shape.DimensionsProduct());
+      for (int i = 0; i < src0_tensor.data.size(); ++i) {
+        src0_tensor.data[i] = std::sin(i * 0.12345f);
+      }
+      src1_tensor.shape = input1->tensor.shape;
+      src1_tensor.data.resize(src1_tensor.shape.DimensionsProduct());
+      for (int i = 0; i < src1_tensor.data.size(); ++i) {
+        src1_tensor.data[i] = std::sin(i * 0.12345f);
+      }
+
+      TensorFloat32 dst_tensor_v1;
+      RETURN_IF_ERROR(env->ExecuteGpuModel({src1_tensor, src0_tensor},
+                                           {&dst_tensor_v1}, &gpu_model));
+
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+
+      OperationDef op_def_two_input;
+      op_def_two_input.precision = precision;
+      op_def_two_input.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def_two_input.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def_two_input.dst_tensors.push_back({data_type, storage, Layout::HWC});
+
+      ConvGeneric conv_operation =
+          CreateConvGeneric(env->GetGpuInfo(), op_def, conv_attr);
+      TensorFloat32 intermediate1;
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src1_tensor, std::make_unique<ConvGeneric>(std::move(conv_operation)),
+          conv_output->tensor.shape, &intermediate1));
+
+      GPUOperation cos0_operation = CreateElementwiseOneInput(
+          env->GetGpuInfo(), op_def, OperationType::COS);
+      TensorFloat32 intermediate2;
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          intermediate1,
+          std::make_unique<GPUOperation>(std::move(cos0_operation)),
+          cos0_output->tensor.shape, &intermediate2));
+
+      GPUOperation add_operation = CreateElementwiseTwoInput(
+          op_def_two_input, OperationType::ADD, add_output->tensor.shape);
+      TensorFloat32 intermediate3;
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          {src0_tensor, intermediate2},
+          std::make_unique<GPUOperation>(std::move(add_operation)),
+          add_output->tensor.shape, &intermediate3));
+
+      GPUOperation cos1_operation = CreateElementwiseOneInput(
+          env->GetGpuInfo(), op_def, OperationType::COS);
+      TensorFloat32 intermediate4;
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          intermediate3,
+          std::make_unique<GPUOperation>(std::move(cos1_operation)),
+          cos1_output->tensor.shape, &intermediate4));
+
+      GPUOperation sin_operation = CreateElementwiseOneInput(
+          env->GetGpuInfo(), op_def, OperationType::SIN);
+      TensorFloat32 intermediate5;
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          intermediate4,
+          std::make_unique<GPUOperation>(std::move(sin_operation)),
+          sin_output->tensor.shape, &intermediate5));
+
+      GPUOperation abs_operation = CreateElementwiseOneInput(
+          env->GetGpuInfo(), op_def, OperationType::ABS);
+      TensorFloat32 dst_tensor_v0;
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          intermediate5,
+          std::make_unique<GPUOperation>(std::move(abs_operation)),
+          abs_output->tensor.shape, &dst_tensor_v0));
+
+      RETURN_IF_ERROR(
+          PointWiseNear(dst_tensor_v0.data, dst_tensor_v1.data, 0.0f));
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace tflite

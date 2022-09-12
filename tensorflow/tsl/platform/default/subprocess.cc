@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/subprocess.h"
+#include "tensorflow/tsl/platform/subprocess.h"
 
 #include <fcntl.h>
 #include <poll.h>
@@ -27,7 +27,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 // Android versions older than 28 do not have posix_spawn().
 #define USE_POSIX_SPAWN !defined(__ANDROID_API__) || __ANDROID_API__ >= 28
@@ -76,7 +76,7 @@ extern char** environ;
 
 }  // extern "C"
 
-namespace tensorflow {
+namespace tsl {
 
 SubProcess::SubProcess(int nfds)
     : running_(false), pid_(-1), exec_path_(nullptr), exec_argv_(nullptr) {
@@ -661,4 +661,4 @@ std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv) {
   return proc;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

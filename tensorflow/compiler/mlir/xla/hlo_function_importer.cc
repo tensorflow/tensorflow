@@ -1031,6 +1031,70 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                             attributes)
           .getOperation();
     }
+    case HloOpcode::kAllGatherStart: {
+      auto all_gather_start = Cast<HloAllGatherInstruction>(instruction);
+      auto result_types = result_type.cast<mlir::TupleType>().getTypes();
+      auto func_type =
+          mlir::FunctionType::get(context_, result_types[0], result_types[1]);
+
+      auto function =
+          mlir::OpBuilder(module_.getBodyRegion())
+              .create<FuncOp>(
+                  loc, "HLO_INTERNAL_all_gather_" + std::to_string(fresh_++),
+                  func_type);
+      function.setPrivate();
+
+      attributes.push_back(builder_->getNamedAttr(
+          "all_gather_dim", builder_->getI64IntegerAttr(
+                                all_gather_start->all_gather_dimension())));
+      attributes.push_back(
+          ConvertReplicaGroups(all_gather_start->replica_groups(), builder_));
+      if (all_gather_start->channel_id().has_value())
+        attributes.push_back(
+            ConvertChannelHandle(all_gather_start->channel_id().value()));
+      auto async_builder = mlir::OpBuilder(function.getBody());
+      auto ag_operand =
+          async_builder
+              .createBlock(&function.getBody(), {}, result_types[0], {loc})
+              ->getArguments();
+      auto all_gather_sync = async_builder.create<mlir::mhlo::AllGatherOp>(
+          loc, result_types[1], ag_operand, attributes);
+      async_builder.create<mlir::func::ReturnOp>(loc,
+                                                 all_gather_sync->getResults());
+
+      attributes = {};
+      attributes.push_back(builder_->getNamedAttr(
+          "called_computation",
+          mlir::FlatSymbolRefAttr::get(builder_->getContext(),
+                                       function.getName())));
+      attributes.push_back(builder_->getNamedAttr(
+          "execution_thread", builder_->getStringAttr("main")));
+      function->setAttr("execution_thread", builder_->getStringAttr("main"));
+
+      auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
+          context_, result_type.cast<mlir::TupleType>().getTypes());
+      return func_builder
+          ->create<mlir::mhlo::AsyncStartOp>(loc, bundle_result_type, operands,
+                                             attributes)
+          .getOperation();
+    }
+    case HloOpcode::kAllGatherDone: {
+      auto async_start = operands[0].getDefiningOp<mlir::mhlo::AsyncStartOp>();
+      if (!async_start)
+        return tensorflow::errors::InvalidArgument(
+            "kAllGatherDone requires kAllGatherStart as input");
+      attributes.push_back(builder_->getNamedAttr(
+          "called_computation",
+          mlir::FlatSymbolRefAttr::get(builder_->getContext(),
+                                       async_start.called_computation())));
+      attributes.push_back(builder_->getNamedAttr(
+          "execution_thread", builder_->getStringAttr("main")));
+
+      return func_builder
+          ->create<mlir::mhlo::AsyncDoneOp>(loc, result_type, operands,
+                                            attributes)
+          .getOperation();
+    }
     case HloOpcode::kAllReduce: {
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
       attributes.push_back(

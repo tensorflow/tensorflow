@@ -726,9 +726,16 @@ typedef struct {
   // allocated and deallocated by the caller. PJRT_Buffer_Destroy must be called
   // on the output PJRT_Buffer*.
   PJRT_Buffer*** output_lists;  // in/out
+  // If `device_complete_events` isn't nullptr, `device_complete_events` needs
+  // to be the same length as `output_lists` (i.e. of length `num_devices`), and
+  // each `PJRT_Event` will become ready once the corresponding device execution
+  // is complete. If Execute returns an error, then `device_complete_events`
+  // will not be populated. The caller is responsible for calling
+  // PJRT_Event_Destroy on the returned PJRT_Event*s.
+  PJRT_Event** device_complete_events;  // in/out
 } PJRT_Executable_Execute_Args;
 const size_t PJRT_Executable_Execute_Args_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Executable_Execute_Args, output_lists);
+    PJRT_STRUCT_SIZE(PJRT_Executable_Execute_Args, device_complete_events);
 
 // Executes on devices addressable by the client.
 typedef PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args);

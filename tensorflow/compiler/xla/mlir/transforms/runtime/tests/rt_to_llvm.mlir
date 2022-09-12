@@ -434,3 +434,42 @@ func.func @custom_call(%ctx: !rt.execution_context) -> (f32) {
   %status, %0 = rt.custom_call %ctx["f32_reduce"] () : () -> (f32)
   return %0 : f32
 }
+
+// -----
+
+// CHECK: func @opaque_arg(
+// CHECK-SAME:   %[[ARG0:.*]]: !llvm.ptr<i8>,
+// CHECK-SAME:   %[[ARG1:.*]]: !llvm.ptr
+// CHECK-SAME: )
+func.func @opaque_arg(%ctx: !rt.execution_context, %arg: !rt.opaque) {
+  return
+}
+
+// -----
+
+// CHECK: func @opaque_custom_call_arg(
+// CHECK-SAME:   %[[ARG0:.*]]: !llvm.ptr<i8>,
+// CHECK-SAME:   %[[ARG1:.*]]: !llvm.ptr
+// CHECK-SAME: )
+func.func @opaque_custom_call_arg(%ctx: !rt.execution_context,
+                                  %arg: !rt.opaque) {
+  // CHECK: %[[ALLOCA:.*]] = llvm.alloca {{.*}} x !llvm.ptr
+  // CHECK: llvm.mlir.addressof @__type_id_opaque : !llvm.ptr<i64>
+  // CHECK: llvm.store %[[ARG1]], %[[ALLOCA]] : !llvm.ptr<ptr>
+  // CHECK: call @runtimeCustomCall
+  %status = rt.custom_call %ctx["target"] (%arg) : (!rt.opaque) -> ()
+  return
+}
+
+// -----
+
+// CHECK: func @opaque_custom_call_res(
+// CHECK-SAME:   %[[ARG0:.*]]: !llvm.ptr<i8>
+// CHECK-SAME: )
+func.func @opaque_custom_call_res(%ctx: !rt.execution_context) {
+  // CHECK: %[[ALLOCA:.*]] = llvm.alloca {{.*}} x !llvm.ptr
+  // CHECK: call @runtimeCustomCall
+  %status, %res = rt.custom_call %ctx["target"] () : () -> (!rt.opaque)
+  // CHECK: llvm.load %[[ALLOCA]] : !llvm.ptr<ptr>
+  return
+}

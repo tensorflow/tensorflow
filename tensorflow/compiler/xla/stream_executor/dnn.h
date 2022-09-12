@@ -2643,7 +2643,7 @@ class DnnSupport {
       DeviceMemory<uint8_t>* scratch_memory) {
     *algorithm_desc = {};
     *scratch_memory = {};
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
 
   virtual port::Status DoPrepareForCtcLoss(
@@ -2656,7 +2656,7 @@ class DnnSupport {
       ScratchAllocator* scratch_allocator,
       DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) {
     *scratch_memory = {};
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
 
   SE_DISALLOW_COPY_AND_ASSIGN(DnnSupport);

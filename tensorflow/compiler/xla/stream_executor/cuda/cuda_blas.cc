@@ -70,7 +70,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -389,7 +389,7 @@ port::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   ScopedCublasMathMode math_mode{blas_};
 #if CUBLAS_VER_MAJOR >= 11
   if (math_type == CUBLAS_TF32_TENSOR_OP_MATH &&
-      tensorflow::tensor_float_32_execution_enabled()) {
+      tsl::tensor_float_32_execution_enabled()) {
 #else
   if (math_type == CUBLAS_TENSOR_OP_MATH) {
 #endif
@@ -407,7 +407,7 @@ port::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   }
   cublasStatus_t ret = cublas_func(blas_, args...);
   if (ret == CUBLAS_STATUS_SUCCESS) {
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
   return port::InternalError(ToString(ret));
 }
@@ -626,7 +626,7 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
             CudaComputeCapability::AMPERE)) {
       // TODO(reedwm): Remove or make this VLOG(1) once TensorFloat-32 is more
       // well tested.
-      if (tensorflow::tensor_float_32_execution_enabled()) {
+      if (tsl::tensor_float_32_execution_enabled()) {
         LOG_FIRST_N(INFO, 1) << "TensorFloat-32 will be used for the matrix "
                                 "multiplication. This will only be logged "
                                 "once.";
@@ -951,7 +951,7 @@ static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
             "Algorithm ", algorithm,
             " uses tensor ops, but tensor ops are not available in sm",
             cc.major, "X devices for float input types."));
-      } else if (!tensorflow::tensor_float_32_execution_enabled()) {
+      } else if (!tsl::tensor_float_32_execution_enabled()) {
         return port::InternalError(absl::StrCat(
             "Algorithm ", algorithm,
             " uses tensor ops, but tensor ops are disabled for fp32 inputs"));
@@ -1013,7 +1013,7 @@ static port::Status PopulateProfileFromTimer(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status CUDABlas::DoBlasGemmWithAlgorithm(
@@ -1044,7 +1044,7 @@ port::Status CUDABlas::DoBlasGemmWithAlgorithm(
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
                                               output_profile_result, stream));
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
@@ -1099,7 +1099,7 @@ port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
                                               output_profile_result, stream));
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 bool CUDABlas::GetBlasGemmAlgorithms(
@@ -1276,7 +1276,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
       // DoBlassInternalImpl will switch math_type back to CUBLAS_DEFAULT_MATH
       // if TensorFloat-32 is disabled.
       math_type = CUBLAS_TF32_TENSOR_OP_MATH;
-      algo = tensorflow::tensor_float_32_execution_enabled()
+      algo = tsl::tensor_float_32_execution_enabled()
                  ? CUBLAS_GEMM_DFALT_TENSOR_OP
                  : CUBLAS_GEMM_DFALT;
 #endif
@@ -1310,7 +1310,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
         const_cast<const CUDA_T **>(GpuMemory(b)), ldb, GpuComplex(&cb_beta),
         const_cast<CUDA_T **>(GpuMemory(c)), ldc, batch_count);
     if (ok) {
-      return ::tensorflow::OkStatus();
+      return ::tsl::OkStatus();
     }
     return port::Status(port::error::INTERNAL,
                         "failed BLAS call, see log for details");
@@ -1325,7 +1325,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
           a_matrix, lda, b_matrix, ldb, &beta, c_matrix, ldc,
           blas::kDefaultComputePrecision));
     }
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
 }
 
@@ -1501,7 +1501,7 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
             b_matrix, SE_CUDA_DATA_HALF, ldb, static_cast<const float *>(beta),
             c_matrix, SE_CUDA_DATA_HALF, ldc));
       }
-      return ::tensorflow::OkStatus();
+      return ::tsl::OkStatus();
     }
     case dnn::kFloat: {
       return DoBlasInternalImpl(
@@ -1676,7 +1676,7 @@ port::Status CUDABlas::GetVersion(std::string *version) {
     return port::InternalError(ToString(status));
   }
   *version = std::to_string(v);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 void initialize_cublas() {

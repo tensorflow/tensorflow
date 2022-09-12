@@ -1267,8 +1267,8 @@ ENTRY main {
   ROOT root = f32[] add(param_0, constant)
 }
   )")
-                    .ValueOrDie();
-  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
 class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {

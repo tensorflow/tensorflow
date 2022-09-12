@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
@@ -461,23 +461,21 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
       {1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {Tile({10, 10})});
   EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
-              tensorflow::testing::StatusIs(
+              tsl::testing::StatusIs(
                   tensorflow::error::INVALID_ARGUMENT,
                   ::testing::HasSubstr(
                       "layout has tiles, but the shape is a sparse array")));
   shape.mutable_layout()->clear_tiles();
-  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
-              tensorflow::testing::IsOk());
+  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape), tsl::testing::IsOk());
   *shape.mutable_layout()->mutable_physical_shape() =
       ShapeUtil::MakeShape(F32, {6});
-  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
-              tensorflow::testing::IsOk());
+  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape), tsl::testing::IsOk());
   *shape.mutable_layout()
        ->mutable_physical_shape()
        ->mutable_layout()
        ->mutable_physical_shape() = ShapeUtil::MakeShape(S32, {10});
   EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
-              tensorflow::testing::StatusIs(
+              tsl::testing::StatusIs(
                   tensorflow::error::INVALID_ARGUMENT,
                   ::testing::HasSubstr("layout has a physical_shape, whose "
                                        "layout also has a physical shape")));
@@ -485,7 +483,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
   shape.mutable_layout()->clear_dim_level_types();
   EXPECT_THAT(
       LayoutUtil::ValidateLayoutInShape(shape),
-      tensorflow::testing::StatusIs(
+      tsl::testing::StatusIs(
           tensorflow::error::INVALID_ARGUMENT,
           ::testing::HasSubstr(
               "layout has a physical_shape, but is not a sparse array")));

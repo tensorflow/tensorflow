@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/subprocess.h"
+#include "tensorflow/tsl/platform/subprocess.h"
 
 #include <io.h>
 #include <signal.h>
@@ -24,12 +24,12 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/strcat.h"
 
 #define PIPE_BUF_SIZE 4096
 
-namespace tensorflow {
+namespace tsl {
 
 namespace {
 
@@ -453,4 +453,4 @@ std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv) {
   return proc;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

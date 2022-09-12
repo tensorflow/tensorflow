@@ -178,78 +178,6 @@ package_group(
 # -----------------------------------------------------------------------------
 # Public targets
 
-# Protos which are needed for core tensorflow, including on mobile builds.
-#
-# Note that some protos are in neither additional_core_proto_srcs nor this
-# filegroup; e.g.  ones with individual proto_library targets.
-COMMON_PROTO_SRCS = [
-    "//tensorflow/core/protobuf:bfc_memory_map.proto",
-    "//tensorflow/core/protobuf:config.proto",
-    "//tensorflow/core/protobuf:cluster.proto",
-    "//tensorflow/core/protobuf:debug.proto",
-    "//tensorflow/core/protobuf:device_filters.proto",
-    "//tensorflow/core/protobuf:device_properties.proto",
-    "//tensorflow/core/protobuf:graph_debug_info.proto",
-    "//tensorflow/core/protobuf:queue_runner.proto",
-    "//tensorflow/core/protobuf:rewriter_config.proto",
-    "//tensorflow/core/protobuf:tensor_bundle.proto",
-    "//tensorflow/core/protobuf:saver.proto",
-    "//tensorflow/core/protobuf:status.proto",
-    "//tensorflow/core/protobuf:verifier_config.proto",
-]
-
-EXAMPLE_PROTO_SRCS = [
-    "//tensorflow/core/example:example.proto",
-    "//tensorflow/core/example:feature.proto",
-]
-
-UTIL_PROTO_SRCS = [
-    "//tensorflow/core/util:event.proto",
-    "//tensorflow/core/util:memmapped_file_system.proto",
-    "//tensorflow/core/util:saved_tensor_slice.proto",
-]
-
-FRAMEWORK_PROTO_SRCS = [
-    "//tensorflow/core/framework:allocation_description.proto",
-    "//tensorflow/core/framework:api_def.proto",
-    "//tensorflow/core/framework:attr_value.proto",
-    "//tensorflow/core/framework:cost_graph.proto",
-    "//tensorflow/core/framework:device_attributes.proto",
-    "//tensorflow/core/framework:function.proto",
-    "//tensorflow/core/framework:graph.proto",
-    "//tensorflow/core/framework:graph_transfer_info.proto",
-    "//tensorflow/core/framework:kernel_def.proto",
-    "//tensorflow/core/framework:log_memory.proto",
-    "//tensorflow/core/framework:model.proto",
-    "//tensorflow/core/framework:node_def.proto",
-    "//tensorflow/core/framework:op_def.proto",
-    "//tensorflow/core/framework:dataset_metadata.proto",
-    "//tensorflow/core/framework:dataset_options.proto",
-    "//tensorflow/core/framework:reader_base.proto",
-    "//tensorflow/core/framework:resource_handle.proto",
-    "//tensorflow/core/framework:step_stats.proto",
-    "//tensorflow/core/framework:summary.proto",
-    "//tensorflow/core/framework:tensor.proto",
-    "//tensorflow/core/framework:tensor_description.proto",
-    "//tensorflow/core/framework:tensor_shape.proto",
-    "//tensorflow/core/framework:tensor_slice.proto",
-    "//tensorflow/core/framework:types.proto",
-    "//tensorflow/core/framework:variable.proto",
-    "//tensorflow/core/framework:versions.proto",
-]
-
-PROFILER_PROTO_SRCS = [
-    "//tensorflow/core/profiler/protobuf:xplane.proto",
-    "//tensorflow/core/profiler:profiler_options.proto",
-]
-
-ERROR_CODES_PROTO_SRCS = [
-    "//tensorflow/core/protobuf:error_codes.proto",
-    "//tensorflow/core/lib/core:error_codes.proto",
-]
-
-CORE_PROTO_SRCS = COMMON_PROTO_SRCS + EXAMPLE_PROTO_SRCS + FRAMEWORK_PROTO_SRCS + UTIL_PROTO_SRCS + PROFILER_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
-
 tf_proto_library(
     name = "protos_all",
     srcs = [],
@@ -410,6 +338,7 @@ cc_library(
         "//tensorflow/core/lib/core:legacy_lib_core_status_test_util_header",
         "//tensorflow/core/platform:test_hdrs",
         "//tensorflow/core/util:test_hdrs",
+        "//tensorflow/tsl/platform:test_hdrs",
     ],
     copts = tf_copts(),
     linkopts = select({
@@ -963,6 +892,7 @@ filegroup(
         "//tensorflow/core/lib/random:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/strings:mobile_srcs_only_runtime",
         "//tensorflow/core/platform:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/platform:mobile_srcs_only_runtime",
 
         # Wav io files
         "//tensorflow/core/lib/wav:wav_io.h",
@@ -1694,14 +1624,7 @@ tf_cuda_library(
         "//tensorflow/core/util:framework_internal_impl_srcs",
         "//tensorflow/core/util:memmapped_file_system_srcs",
         "//tensorflow/core/util/sparse:framework_internal_impl_group",
-    ] + glob(
-        [
-        ],
-        exclude = [
-            "**/*test*",
-            "**/*main.cc",
-        ],
-    ),
+    ],
     hdrs = [":framework_internal_public_headers"],
     copts = tf_copts(),
     linkopts = select({

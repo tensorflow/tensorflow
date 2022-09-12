@@ -46,7 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 namespace xla {
 
@@ -1064,7 +1064,7 @@ class XlaBuilder {
   Status first_error_;
 
   // The saved stack trace from the point at which the first error occurred.
-  tensorflow::SavedStackTrace first_error_backtrace_;
+  tsl::SavedStackTrace first_error_backtrace_;
 
   // The instructions of this computation.
   // Use a deque so pointers into this are stable, for example the return

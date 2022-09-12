@@ -21,6 +21,7 @@ from tensorflow.python.framework import config as tf_config
 from tensorflow.python.util.tf_export import tf_export
 
 _DT_CLIENT_ID = "DTENSOR_CLIENT_ID"
+# DTENSOR_NUM_CLIENTS is removed, but some DTensor users still use this symbol.
 _DT_NUM_CLIENTS = "DTENSOR_NUM_CLIENTS"
 _DT_JOB_NAME = "DTENSOR_JOB_NAME"
 _DT_JOBS = "DTENSOR_JOBS"
@@ -48,13 +49,9 @@ def client_id() -> int:
 @tf_export("experimental.dtensor.num_clients", v1=[])
 def num_clients() -> int:
   """Returns the number of clients in this DTensor cluster."""
-  # If missing, assume running with a single client with num_clients of 1.
-  num_clients_value = int(os.environ.get(_DT_NUM_CLIENTS, "1"))
-  if num_clients_value <= 0:
-    raise ValueError(f"Environment variable {_DT_NUM_CLIENTS} "
-                     f"must be > 0, got {num_clients_value}.")
-
-  return num_clients_value
+  if is_local_mode():
+    return 1
+  return len(jobs())
 
 
 @tf_export("experimental.dtensor.job_name", v1=[])
@@ -123,6 +120,11 @@ def heartbeat_enabled() -> bool:
   return os.environ.get(_DT_HEARTBEAT_ENABLED, "true").lower() in ("true", "1")
 
 
+def is_local_mode() -> bool:
+  """Returns true if DTensor shall run in local mode."""
+  return not jobs()
+
+
 def is_tpu_present() -> bool:
   """Returns true if TPU devices are present."""
   # Check if TPU is present from initialized context.
@@ -136,6 +138,7 @@ def is_gpu_present() -> bool:
   return bool(tf_config.list_physical_devices("GPU"))
 
 
+@tf_export("experimental.dtensor.preferred_device_type", v1=[])
 def preferred_device_type() -> str:
   """Returns the preferred device type for the accelerators.
 

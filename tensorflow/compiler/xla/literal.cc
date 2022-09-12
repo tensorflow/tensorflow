@@ -43,8 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mem.h"
 
 namespace xla {
 namespace {
@@ -587,8 +587,8 @@ void LiteralBase::Piece::AllocateBuffers() {
   if (bytes > kMaxInlinedBytes) {
     CHECK_EQ(buffer(), nullptr);
     rep_.emplace<ArrayRep>();
-    set_buffer(static_cast<char*>(
-        tensorflow::port::AlignedMalloc(bytes, kMinimumAlignment)));
+    set_buffer(
+        static_cast<char*>(tsl::port::AlignedMalloc(bytes, kMinimumAlignment)));
   } else {
     rep_.emplace<InlinedRep>();
   }
@@ -596,7 +596,7 @@ void LiteralBase::Piece::AllocateBuffers() {
 
 void LiteralBase::Piece::DeallocateBuffers() {
   if (auto* array_rep = GetArrayRep()) {
-    tensorflow::port::AlignedFree(array_rep->data);
+    tsl::port::AlignedFree(array_rep->data);
     rep_.emplace<Uninitialized>();
   }
 }

@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace tensorflow {
 namespace tpu {

@@ -63,6 +63,7 @@ class SimpleTestGraph : public GraphInfo {
   }
   size_t num_tensors() const override { return tensors_.size(); }
   TfLiteTensor* tensor(size_t index) override { return &tensors_[index]; }
+  TfLiteTensor* tensors() override { return tensors_.data(); }
   const std::vector<int>& inputs() const override { return inputs_; }
   const std::vector<int>& outputs() const override { return outputs_; }
   const std::vector<int>& variables() const override { return variables_; }

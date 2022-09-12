@@ -22,9 +22,11 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
 
-namespace tensorflow {
-
+namespace tsl {
 class Status;
+}
+namespace tensorflow {
+using tsl::Status;
 
 Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out);

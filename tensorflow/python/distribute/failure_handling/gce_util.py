@@ -73,7 +73,9 @@ def on_gcp():
 
 @enum.unique
 class PlatformDevice(enum.Enum):
-  INTERNAL = 'internal'
+  INTERNAL_CPU = 'internal_CPU'
+  INTERNAL_GPU = 'internal_GPU'
+  INTERNAL_TPU = 'internal_TPU'
   GCE_GPU = 'GCE_GPU'
   GCE_TPU = 'GCE_TPU'
   GCE_CPU = 'GCE_CPU'
@@ -91,4 +93,9 @@ def detect_platform():
       return PlatformDevice.GCE_CPU
 
   else:
-    return PlatformDevice.INTERNAL
+    if context.context().list_physical_devices('GPU'):
+      return PlatformDevice.INTERNAL_GPU
+    elif context.context().list_physical_devices('TPU'):
+      return PlatformDevice.INTERNAL_TPU
+    else:
+      return PlatformDevice.INTERNAL_CPU

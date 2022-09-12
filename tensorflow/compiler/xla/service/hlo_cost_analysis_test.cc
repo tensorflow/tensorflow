@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -510,7 +510,7 @@ ENTRY fusion.50 {
   ROOT reduce-window.159 = f32[2,3,1024,1024]{2,3,1,0} reduce-window(param0, constant.367), window={size=1x1x1x2047 pad=0_0x0_0x0_0x1023_1023}, to_apply=region_0.868
 }
 )";
-  auto hlo_module = ParseAndReturnUnverifiedModule(hlo_text).ValueOrDie();
+  auto hlo_module = ParseAndReturnUnverifiedModule(hlo_text).value();
   HloCostAnalysis analysis(ShapeSize);
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));

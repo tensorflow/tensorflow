@@ -69,6 +69,12 @@ def CollapseParallelLoopsTo1DPass : Pass<"collapse-parallel-loops-to-1d"> {
   let constructor = "createCollapseParallelLoopsTo1DPass()";
 }
 
+def DetensorizeScfOpsPass : Pass<"detensorize-scf-ops", "func::FuncOp"> {
+  let summary = "Detensorize arguments of SCF ops where possible.";
+  let constructor = "createDetensorizeScfOpsPass()";
+  let dependentDialects = ["scf::SCFDialect", "tensor::TensorDialect"];
+}
+
 def TileLoopsPass : Pass<"tile-loops", "func::FuncOp"> {
   let summary = "Tiles parallel loops.";
   let description = [{ The pass converts an `scf.parallel` loop into a nested,

@@ -53,7 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/casts.h"
+#include "tensorflow/tsl/platform/casts.h"
 
 namespace xla {
 
@@ -201,16 +201,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const override {
-    return Unimplemented("SerializeExecutable not implemented on %s",
-                         platform_name());
-  }
+      const PjRtLoadedExecutable& executable) const override;
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override {
-    return Unimplemented("DeserializeExecutable not implemented on %s",
-                         platform_name());
-  }
+      absl::string_view serialized, CompileOptions options) override;
 
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
 
@@ -786,6 +780,8 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;
   }
+
+  std::vector<std::unique_ptr<AotCompilationResult>> aot_executables_;
 
  protected:
   bool parameter_is_tupled_arguments() const {

@@ -31,15 +31,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
-using ::tensorflow::testing::IsOkAndHolds;
 using ::testing::AllOf;
+using ::tsl::testing::IsOkAndHolds;
 
 using LayoutAssignmentTest = HloTestBase;
 

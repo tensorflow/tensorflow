@@ -318,13 +318,13 @@ class PyTpuBuffer {
 class PyTpuToken {
  public:
   PyTpuToken() {}
-  Status Await() { return Status::OK(); }
+  Status Await() { return OkStatus(); }
 };
 
 class PyShardedTpuToken {
  public:
   PyShardedTpuToken() {}
-  Status Await() { return Status::OK(); }
+  Status Await() { return OkStatus(); }
   PyTpuToken GetPyToken(int i) { return PyTpuToken(); }
 };
 

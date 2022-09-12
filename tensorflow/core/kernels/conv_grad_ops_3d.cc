@@ -679,6 +679,24 @@ TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
+#define REGISTER_CPU_KERNEL(T)                                                 \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Conv3DBackpropInputV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      Conv3DCustomBackpropInputOp<CPUDevice, T>);                              \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")                        \
+                              .Device(DEVICE_CPU)                              \
+                              .Label("custom")                                 \
+                              .TypeConstraint<T>("T"),                         \
+                          Conv3DCustomBackpropInputOp<CPUDevice, T>);          \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")                        \
+                              .Device(DEVICE_CPU)                              \
+                              .Label("eigen_tensor")                           \
+                              .TypeConstraint<T>("T"),                         \
+                          Conv3DBackpropInputOp<CPUDevice, T>);
+
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
+#undef REGISTER_CPU_KERNEL
+
 // Backprop for filter that offloads computation to
 // Eigen::CuboidConvolutionBackwardFilter.
 template <typename Device, class T>
@@ -1154,6 +1172,25 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
 
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
+#undef REGISTER_CPU_KERNEL
+
+#define REGISTER_CPU_KERNEL(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropFilterV2")               \
+                              .Device(DEVICE_CPU)                      \
+                              .TypeConstraint<T>("T"),                 \
+                          Conv3DCustomBackpropFilterOp<CPUDevice, T>); \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropFilterV2")               \
+                              .Device(DEVICE_CPU)                      \
+                              .Label("custom")                         \
+                              .TypeConstraint<T>("T"),                 \
+                          Conv3DCustomBackpropFilterOp<CPUDevice, T>); \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropFilterV2")               \
+                              .Device(DEVICE_CPU)                      \
+                              .Label("eigen_tensor")                   \
+                              .TypeConstraint<T>("T"),                 \
+                          Conv3DBackpropFilterOp<CPUDevice, T>);
+
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
 // WARNING: Eigen::half is not trivially copyable and can't be used in

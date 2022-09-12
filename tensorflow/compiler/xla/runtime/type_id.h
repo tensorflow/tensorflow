@@ -48,8 +48,6 @@ using ::mlir::TypeID;  // NOLINT
 // external symbols corresponding to type ids in compiled XLA executables.
 class TypeIDNameRegistry {
  public:
-  using RegistrationFn = std::function<void(TypeIDNameRegistry&)>;
-
   TypeIDNameRegistry() = default;
   ~TypeIDNameRegistry() = default;
 

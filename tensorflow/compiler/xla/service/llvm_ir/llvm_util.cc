@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -257,8 +257,7 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
   const char* data = static_cast<const char*>(literal.untyped_data());
-  CHECK_EQ(module->getDataLayout().isLittleEndian(),
-           tensorflow::port::kLittleEndian);
+  CHECK_EQ(module->getDataLayout().isLittleEndian(), tsl::port::kLittleEndian);
   return llvm::ConstantDataArray::getString(
       module->getContext(), llvm::StringRef(data, literal.size_bytes()),
       /*AddNull=*/false);

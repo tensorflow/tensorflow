@@ -237,6 +237,7 @@ class CompiledMemoryStats:
   output_size_in_bytes: int
   alias_size_in_bytes: int
   temp_size_in_bytes: int
+  serialized_hlo_proto: bytes
   def __str__(self) -> str: ...
 
 
@@ -453,7 +454,8 @@ class DeviceArray(DeviceArrayBase):
   traceback: Traceback
   def clone(self) -> DeviceArray: ...
 
-class ShardedBuffer():
+class ShardedBuffer:
+  def __init__(self, buffers: Sequence[DeviceArray]): ...
   @staticmethod
   def create_sharded_buffer(buffers: Sequence[DeviceArray]) -> ShardedBuffer: ...
   def get_device_buffers(self) -> List[DeviceArray]: ...
@@ -463,6 +465,21 @@ class ShardedBuffer():
 
 PyLocalBuffer = DeviceArray
 Buffer = DeviceArray
+
+class Array:
+  def __init__(self,
+               aval: Any,
+               sharding: Any,
+               arrays: Sequence[DeviceArray],
+               committed: bool,
+               _skip_checks: bool = ...,
+               _fast_path_args: Optional[Any] = ...): ...
+  def block_until_ready(self) -> Array: ...
+  dtype: np.dtype
+  shape: Tuple[int, ...]
+  _arrays: Any
+  _fast_path_args: Any
+  _npy_value: Any
 
 class Token:
   def block_until_ready(self): ...
@@ -489,6 +506,7 @@ class Executable:
       self,
       arguments: Sequence[Union[ShardedBuffer, List[DeviceArray]]]) -> Tuple[List[Union[ShardedBuffer, List[DeviceArray]]], ShardedToken]: ...
   def hlo_modules(self) -> List[HloModule]: ...
+  def get_compiled_memory_stats(self) -> CompiledMemoryStats: ...
   def keep_alive(self) -> None: ...
   traceback: Traceback
   fingerprint: Optional[bytes]

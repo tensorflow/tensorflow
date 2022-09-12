@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 
@@ -56,7 +56,7 @@ port::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
 port::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
                                             DeviceMemoryBase mem) {
   wrapped_->DeallocateRaw(mem.opaque());
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::StatusOr<Stream *> TfAllocatorAdapter::GetStream(int device_ordinal) {

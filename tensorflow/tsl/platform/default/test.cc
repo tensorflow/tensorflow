@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 #include <cstdlib>
 
@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace testing {
 
 string TmpDir() {
@@ -53,7 +53,9 @@ int RandomSeed() {
   return 301;
 }
 
-int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }
+int PickUnusedPortOrDie() {
+  return tensorflow::internal::PickUnusedPortOrDie();
+}
 
 string TensorFlowSrcRoot() {
   // 'bazel test' sets TEST_SRCDIR, and also TEST_WORKSPACE if a new
@@ -62,9 +64,9 @@ string TensorFlowSrcRoot() {
   const char* workspace = getenv("TEST_WORKSPACE");
   if (env && env[0] != '\0') {
     if (workspace && workspace[0] != '\0') {
-      return io::JoinPath(env, workspace, "tensorflow");
+      return tensorflow::io::JoinPath(env, workspace, "tensorflow");
     }
-    return io::JoinPath(env, "tensorflow");
+    return tensorflow::io::JoinPath(env, "tensorflow");
   }
   LOG(WARNING) << "TEST_SRCDIR environment variable not set: "
                << "using $PWD/tensorflow as TensorFlowSrcRoot() for tests.";
@@ -72,4 +74,4 @@ string TensorFlowSrcRoot() {
 }
 
 }  // namespace testing
-}  // namespace tensorflow
+}  // namespace tsl

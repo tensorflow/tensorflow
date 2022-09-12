@@ -66,4 +66,12 @@ def StatusType : RT_Type<"Status", "status"> {
   }];
 }
 
+def OpaqueValueType : RT_Type<"Opaque", "opaque"> {
+  let summary = "Opaque type";
+  let description = [{
+    Opaque type for passing opaque values (at run time just `void*`) to and from
+    compiled executables and custom calls.
+  }];
+}
+
 #endif // RT_BASE

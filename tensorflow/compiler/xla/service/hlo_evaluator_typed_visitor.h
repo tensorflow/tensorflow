@@ -1795,7 +1795,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Shape window_shape = ShapeUtil::MakeShape(
         input_arrays[0]->shape().element_type(), window_dimension_sizes);
 
-    const int num_threads = tensorflow::port::MaxParallelism() + 1;
+    const int num_threads = tsl::port::MaxParallelism() + 1;
     std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
     embedded_evaluators.reserve(num_threads);
     for (int i = 0; i < num_threads; ++i) {

@@ -62,6 +62,9 @@ void populateTilingPatterns(MLIRContext *context, OpFilterFn filterFn,
 void populateFusionPatterns(MLIRContext *context, OpFilterFn filterFn,
                             RewritePatternSet *patterns);
 
+void populateCollapseMaterializeOpsPatterns(MLIRContext *, bool reverse,
+                                            RewritePatternSet *);
+
 }  // namespace gml_st
 }  // namespace mlir
 

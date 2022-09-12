@@ -48,14 +48,14 @@ TEST(ConditionVariable, WaitForMilliseconds_Timeout) {
   mutex m;
   mutex_lock l(m);
   condition_variable cv;
-  ConditionResult result = kCond_MaybeNotified;
+  ConditionResult result = tsl::kCond_MaybeNotified;
   time_t start = time(nullptr);
   // Condition variables are subject to spurious wakeups on some platforms,
   // so need to check for a timeout within a loop.
-  while (result == kCond_MaybeNotified) {
+  while (result == tsl::kCond_MaybeNotified) {
     result = WaitForMilliseconds(&l, &cv, 3000);
   }
-  EXPECT_EQ(result, kCond_Timeout);
+  EXPECT_EQ(result, tsl::kCond_Timeout);
   time_t finish = time(nullptr);
   EXPECT_GE(finish - start, 3);
 }
@@ -73,7 +73,7 @@ TEST(ConditionVariable, WaitForMilliseconds_Signalled) {
     mutex_lock l(m);
     cv.notify_all();
   });
-  EXPECT_EQ(WaitForMilliseconds(&l, &cv, 3000), kCond_MaybeNotified);
+  EXPECT_EQ(WaitForMilliseconds(&l, &cv, 3000), tsl::kCond_MaybeNotified);
   time_t finish = time(nullptr);
   EXPECT_LT(finish - start, 3);
 }

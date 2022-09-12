@@ -222,7 +222,7 @@ std::vector<py::array> TfJitRtExecutor::Execute(
 
   if (executable->IsError())
     throw std::runtime_error(
-        StrCat("Failed to get Executable: ", executable->GetError()));
+        StrCat("Failed to get Executable: ", executable->GetError().message()));
 
   // Prepare storage for returned values.
   unsigned num_results = (*executable)->num_results();
@@ -247,7 +247,8 @@ std::vector<py::array> TfJitRtExecutor::Execute(
   ret_values.reserve(result_storage.size());
   for (auto& result : result_storage) {
     if (result->IsError())
-      throw std::runtime_error(StrCat("result error: ", result->GetError()));
+      throw std::runtime_error(
+          StrCat("result error: ", result->GetError().message()));
     py::array& result_array = result->get<py::array>();
     TF_ANNOTATE_MEMORY_IS_INITIALIZED(result_array.data(),
                                       result_array.nbytes());

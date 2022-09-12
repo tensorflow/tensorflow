@@ -44,11 +44,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 #if defined(PLATFORM_GOOGLE)
 #include "util/readline/readline.h"
 #endif
@@ -487,7 +487,7 @@ void RenderAndDisplayGraph(
   // Try to create a unique file inside of temp_dirs.front().  Notably, this
   // file's name must end with ".html", otherwise web browsers will treat it as
   // plain text, so we can't use Env::CreateUniqueFileName().
-  std::string temp_file_path = tensorflow::io::JoinPath(
+  std::string temp_file_path = tsl::io::JoinPath(
       temp_dirs.front(),
       absl::StrFormat("interactive_graphviz.%d.html", env->NowMicros()));
   auto status = tensorflow::WriteStringToFile(env, temp_file_path,
@@ -769,7 +769,7 @@ int main(int argc, char** argv) {
   };
   std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  tsl::port::InitMain(argv[0], &argc, &argv);
   if (argc != 1 || !parse_ok || need_help) {
     LOG(QFATAL) << usage;
   }

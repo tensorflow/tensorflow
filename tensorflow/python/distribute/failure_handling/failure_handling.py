@@ -32,6 +32,7 @@ from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute.failure_handling import gce_util
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -496,13 +497,21 @@ class PreemptionCheckpointHandler(object):
       # are the same on Borg, GCE CPU VM and GPU VM are different in terms
       # of live migration, grace period, etc. We can make it work upon request.
       raise NotImplementedError('PreemptionCheckpointHandler does not support '
-                                'training with TPU or CPU device on GCP.')
+                                'usage with TPU or CPU device on GCP.')
+
+    if self._platform_device == gce_util.PlatformDevice.INTERNAL_TPU:
+      raise NotImplementedError('PreemptionCheckpointHandler does not support '
+                                'usage with TPU yet.')
 
     completed_termination_config = _complete_config_for_environment(
         self._platform_device, termination_config)
     self._termination_watcher_fn = completed_termination_config.termination_watcher_fn
     self._exit_fn = completed_termination_config.exit_fn
     self._grace_period = completed_termination_config.grace_period
+
+    distribution_strategy_api_counter.get_cell(
+        self._platform_device.name,
+        'PreemptionCheckpointHandler').increase_by(1)
 
     if not self._local_mode:
       # When training is interrupted, we explicitly call the cleanup methods for
@@ -773,6 +782,9 @@ class PreemptionCheckpointHandler(object):
 
   def _save_checkpoint(self):
     """Saves the checkpoint and exit program."""
+    distribution_strategy_api_counter.get_cell(
+        self._platform_device.name,
+        'PreemptionCheckpointHandler Saving Checkpoint').increase_by(1)
     logging.info('PreemptionCheckpointHandler: Starting saving a checkpoint.')
     self._checkpointed_runs.assign(self.total_run_calls)
 
@@ -964,3 +976,11 @@ class PreemptionCheckpointHandler(object):
 # TODO(wxinyi): remove this line after we move the Keras callback prototype and
 # change gce test usage.
 WorkerPreemptionHandler = PreemptionCheckpointHandler
+
+# ------------------------------------------------------------------------------
+# Metrics to track which distribution strategy APIs (reusable by future APIs)
+distribution_strategy_api_counter = monitoring.Counter(
+    '/tensorflow/api/distribution_strategy/api',
+    'Counter to track the usage of the distribute strategy APIs',
+    'platform or accelerator',
+    'api')

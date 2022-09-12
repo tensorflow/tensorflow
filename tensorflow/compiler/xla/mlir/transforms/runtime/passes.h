@@ -72,10 +72,10 @@ struct ConvertRuntimeToLLvmOpts {
   std::function<void(CustomCallArgEncodingSet&)> populate_arg_encodings;
 
   // Add user-defined attributes type encoding to the custom call lowering.
-  std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
+  std::function<void(CustomCallRetEncodingSet&)> populate_ret_encodings;
 
   // Add user-defined attributes type encoding to the custom call lowering.
-  std::function<void(CustomCallRetEncodingSet&)> populate_ret_encodings;
+  std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
 };
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

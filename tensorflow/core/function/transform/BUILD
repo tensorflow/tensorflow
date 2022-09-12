@@ -3,7 +3,6 @@ load("//tensorflow:tensorflow.bzl", "py_strict_test")
 
 package(
     default_visibility = [
-        "//learning/brain/experimental/tfq:__subpackages__",
         "//tensorflow/core/function:__subpackages__",
     ],
 )
@@ -16,6 +15,10 @@ pytype_strict_library(
         "transform.py",
     ],
     srcs_version = "PY3",
+    visibility = [
+        "//learning/brain/experimental/tfq:__subpackages__",
+        "//smartass/brain/configure/compile_service/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/framework:function_proto_py",

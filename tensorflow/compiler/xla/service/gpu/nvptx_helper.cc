@@ -46,7 +46,7 @@ std::string CantFindCudaMessage(absl::string_view msg,
 std::string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
   for (const std::string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
     std::string libdevice_dir =
-        tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
+        tsl::io::JoinPath(cuda_root, "nvvm", "libdevice");
     VLOG(2) << "Looking for libdevice at " << libdevice_dir;
     if (tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok()) {
       VLOG(2) << "Found libdevice dir " << libdevice_dir;

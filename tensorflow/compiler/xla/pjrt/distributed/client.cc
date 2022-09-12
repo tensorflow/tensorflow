@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 class DistributedRuntimeClientImpl : public DistributedRuntimeClient {

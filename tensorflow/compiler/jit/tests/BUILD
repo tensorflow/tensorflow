@@ -83,7 +83,7 @@ tf_cc_test(
         "xla_compilation_cache_serialize_test.cc",
     ],
     env = {
-        "XLA_FLAGS": "--xla_gpu_jitrt_executable",
+        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
     },
     tags = [
         "config-cuda-only",
@@ -105,7 +105,7 @@ tf_cc_test(
         "xla_compilation_cache_serialize_options_test.cc",
     ],
     env = {
-        "XLA_FLAGS": "--xla_gpu_jitrt_executable",
+        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
     },
     tags = [
         "config-cuda-only",

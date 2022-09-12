@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/blocking_counter.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 

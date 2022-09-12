@@ -47,7 +47,7 @@ xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
     return tensorflow::errors::InvalidArgument(
         StructSizeErrorMsg(struct_name, expected_size, actual_size));
   }
-  return tensorflow::OkStatus();
+  return tsl::OkStatus();
 }
 
 std::string StructSizeErrorMsg(absl::string_view struct_name,
@@ -228,11 +228,12 @@ ConvertCCompileOptionstoCppCompileOptions(PJRT_CompileOptions* c_option) {
   ret.executable_build_options.set_allow_spmd_sharding_propagation_to_output(
       c_option->allow_spmd_sharding_propagation_to_output);
   if (c_option->device_assignment_size > 0) {
-    absl::string_view device_assignment_sv(c_option->device_assignment,
-                                           c_option->device_assignment_size);
-    std::string device_assignment_str(device_assignment_sv);
     xla::DeviceAssignmentProto proto;
-    proto.ParseFromString(device_assignment_str);
+    // Using ParseFromArray from input directly, instead of ParseFromString from
+    // a string_view or std::string, as open source ParseFromString doesn't
+    // support string_view, and copying to a std::string adds cost.
+    proto.ParseFromArray(c_option->device_assignment,
+                         c_option->device_assignment_size);
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::DeviceAssignment> device_assignment,
         xla::DeviceAssignment::Deserialize(proto));
@@ -257,21 +258,21 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
 
   absl::string_view format_str(args->program->format,
                                args->program->format_size);
-  absl::string_view module_sv(args->program->code, args->program->code_size);
+  absl::string_view module_str(args->program->code, args->program->code_size);
 
   std::unique_ptr<xla::PjRtLoadedExecutable> executable;
   if (format_str == pjrt::kMlirFormat) {
     mlir::MLIRContext context;
     PJRT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          xla::ParseMlirModuleString(module_sv, context));
+                          xla::ParseMlirModuleString(module_str, context));
 
     PJRT_ASSIGN_OR_RETURN(executable,
                           args->client->client->Compile(*module, options));
   } else if (format_str == pjrt::kHloFormat) {
     xla::HloModuleProto module_proto;
-    // Open source ParseFromString doesn't support string_view.
-    std::string module_str(module_sv);
-    module_proto.ParseFromString(module_str);
+    // Using ParseFromArray instead of ParseFromString, as open source
+    // ParseFromString doesn't support string_view.
+    module_proto.ParseFromArray(module_str.data(), module_str.size());
     xla::XlaComputation computation(module_proto);
     PJRT_ASSIGN_OR_RETURN(executable,
                           args->client->client->Compile(computation, options));
@@ -524,10 +525,23 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
       Convert2DCBuffersToCppBuffers(args->argument_lists, args->num_devices,
                                     args->num_args);
 
-  PJRT_ASSIGN_OR_RETURN(
-      std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>
-          cpp_buffer_lists,
-      args->executable->executable->Execute(cpp_argument_lists, options));
+  std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> cpp_buffer_lists;
+  if (args->device_complete_events != nullptr) {
+    std::optional<std::vector<xla::PjRtFuture<xla::Status>>> returned_futures;
+    returned_futures.emplace();
+
+    PJRT_ASSIGN_OR_RETURN(cpp_buffer_lists,
+                          args->executable->executable->Execute(
+                              cpp_argument_lists, options, returned_futures));
+    for (int i = 0; i < returned_futures->size(); ++i) {
+      args->device_complete_events[i] =
+          new PJRT_Event{std::move((*returned_futures)[i])};
+    }
+  } else {
+    PJRT_ASSIGN_OR_RETURN(
+        cpp_buffer_lists,
+        args->executable->executable->Execute(cpp_argument_lists, options));
+  }
 
   for (int i = 0; i < cpp_buffer_lists.size(); ++i) {
     for (int j = 0; j < cpp_buffer_lists[i].size(); ++j) {

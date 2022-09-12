@@ -47,10 +47,6 @@ objc_library(
     hdrs = ["coreml_delegate.h"],
     copts = ["-std=c++17"],
     module_name = "TensorFlowLiteCCoreML",
-    # By setting CoreML as weak_framework, the TensorFlow Lite can be built for older iOS versions.
-    weak_sdk_frameworks = [
-        "CoreML",
-    ],
     deps = [
         ":coreml_delegate_kernel",
         ":mlmodel_proto_cc",
