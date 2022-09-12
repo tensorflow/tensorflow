@@ -2795,7 +2795,7 @@ Status ReplaceMulMaximumWithLeakyRelu(
     (*nodes_to_delete)[node_index] = true;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReplaceSigmoidMulWithSwish(
