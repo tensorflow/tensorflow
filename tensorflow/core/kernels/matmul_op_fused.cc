@@ -500,14 +500,14 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
       se::dnn::FusedMatmulOp::Config config;
       auto primary_or = runners.primary->GetOrCreateRunner(config, stream);
       OP_REQUIRES_OK(context, primary_or.status());
-      auto* primary = primary_or.ValueOrDie();
+      auto* primary = primary_or.value();
 
       const se::dnn::FusedMatmulRunner* no_scratch_fallback = nullptr;
       if (runners.no_scratch_fallback) {
         auto no_scratch_fallback_or =
             runners.no_scratch_fallback->GetOrCreateRunner(config, stream);
         OP_REQUIRES_OK(context, no_scratch_fallback_or.status());
-        no_scratch_fallback = no_scratch_fallback_or.ValueOrDie();
+        no_scratch_fallback = no_scratch_fallback_or.value();
       }
 
       auto runner_and_scratch_or =
@@ -526,7 +526,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
 
     auto epilog_op_or = GetBlasLtEpilogOp(fusion);
     OP_REQUIRES_OK(context, epilog_op_or.status());
-    se::cuda::BlasLt::Epilogue epilog_op = epilog_op_or.ValueOrDie();
+    se::cuda::BlasLt::Epilogue epilog_op = epilog_op_or.value();
 
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose};

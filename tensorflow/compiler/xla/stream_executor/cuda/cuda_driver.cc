@@ -891,7 +891,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   CUmemAllocationProp props = {};
   props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
   props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  props.location.id = device.ValueOrDie();
+  props.location.id = device.value();
 
   CUmemGenericAllocationHandle mem_handle;
   CUresult res = cuMemCreate(&mem_handle, bytes, &props, 0);
