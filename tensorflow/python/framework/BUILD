@@ -1089,15 +1089,9 @@ cuda_py_test(
     srcs = ["config_test.py"],
     python_version = "PY3",
     tags = [
-<<<<<<< HEAD
         "no_pip",  # test_ops are not available in pip
         "no_rocm",
     ],
-=======
-        "multi_gpu",
-        "no_pip",
-    ],  # test_ops are not available in pip.
->>>>>>> upstream/master
     deps = [
         ":config",
         ":constant_op",
