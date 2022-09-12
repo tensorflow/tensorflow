@@ -25,8 +25,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "rocm/include/miopen/miopen.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
@@ -45,6 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/platform/hash.h"
 
 namespace {
 
@@ -387,13 +387,11 @@ uint64_t GetHashValue(miopenTensorDescriptor_t tensor_desc) {
   int strides[kMaxMIOpenTensorSize] = {0};
   wrap::miopenGetTensorDescriptor(tensor_desc, &datatype, dims, strides);
 
-  uint64_t hash_value = tensorflow::hash<int>()(datatype);
+  uint64_t hash_value = tsl::hash<int>()(datatype);
   for (int dim : dims)
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, tensorflow::hash<int>()(dim));
+    hash_value = tsl::Hash64Combine(hash_value, tsl::hash<int>()(dim));
   for (int stride : strides)
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, tensorflow::hash<int>()(stride));
+    hash_value = tsl::Hash64Combine(hash_value, tsl::hash<int>()(stride));
 
   return hash_value;
 }
@@ -411,9 +409,9 @@ uint64_t GetHashValue(miopenConvolutionDescriptor_t conv_desc) {
   wrap::miopenGetConvolutionNdDescriptor(
       conv_desc, nd, &nd, pad.data(), stride.data(), dilation.data(), &c_mode);
 
-  uint64_t hash_value = tensorflow::hash<int>()(c_mode);
+  uint64_t hash_value = tsl::hash<int>()(c_mode);
   auto hash64Combine = [&hash_value](int element) {
-    tensorflow::Hash64Combine(hash_value, tensorflow::hash<int>()(element));
+    tsl::Hash64Combine(hash_value, tsl::hash<int>()(element));
   };
   std::for_each(pad.begin(), pad.end(), hash64Combine);
   std::for_each(stride.begin(), stride.end(), hash64Combine);
@@ -1049,13 +1047,10 @@ class ScopedActivationDescriptor {
   miopenActivationDescriptor_t handle() const { return handle_; }
 
   uint64_t GetHashValue() {
-    uint64_t hash_value = tensorflow::hash<int>()(miopen_activation_mode_);
-    hash_value = tensorflow::Hash64Combine(hash_value,
-                                           tensorflow::hash<double>()(alpha_));
-    hash_value = tensorflow::Hash64Combine(hash_value,
-                                           tensorflow::hash<double>()(beta_));
-    hash_value = tensorflow::Hash64Combine(hash_value,
-                                           tensorflow::hash<double>()(gamma_));
+    uint64_t hash_value = tsl::hash<int>()(miopen_activation_mode_);
+    hash_value = tsl::Hash64Combine(hash_value, tsl::hash<double>()(alpha_));
+    hash_value = tsl::Hash64Combine(hash_value, tsl::hash<double>()(beta_));
+    hash_value = tsl::Hash64Combine(hash_value, tsl::hash<double>()(gamma_));
 
     return hash_value;
   }
@@ -1367,21 +1362,18 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
       miopenConvolutionDescriptor_t conv_descriptor,
       miopenTensorDescriptor_t bias_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
-    uint64_t hash_value = tensorflow::Hash64("ConvolutionBiasActivation");
+    uint64_t hash_value = tsl::Hash64("ConvolutionBiasActivation");
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+    hash_value = tsl::Hash64Combine(hash_value,
+                                    tsl::hash<miopenHandle_t>()(miopen_handle));
 
+    hash_value = tsl::Hash64Combine(hash_value, GetHashValue(input_descriptor));
     hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(input_descriptor));
+        tsl::Hash64Combine(hash_value, GetHashValue(filter_descriptor));
+    hash_value = tsl::Hash64Combine(hash_value, GetHashValue(conv_descriptor));
+    hash_value = tsl::Hash64Combine(hash_value, GetHashValue(bias_descriptor));
     hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(filter_descriptor));
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(conv_descriptor));
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(bias_descriptor));
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, activation_descriptor.GetHashValue());
+        tsl::Hash64Combine(hash_value, activation_descriptor.GetHashValue());
     return hash_value;
   }
 
@@ -1471,19 +1463,18 @@ class ScopedFusionPlanBatchNormActivationInference
       miopenHandle_t miopen_handle, miopenTensorDescriptor_t input_descriptor,
       miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
-    uint64_t hash_value = tensorflow::Hash64("BatchNormActivationInference");
+    uint64_t hash_value = tsl::Hash64("BatchNormActivationInference");
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+    hash_value = tsl::Hash64Combine(hash_value,
+                                    tsl::hash<miopenHandle_t>()(miopen_handle));
 
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(input_descriptor));
+    hash_value = tsl::Hash64Combine(hash_value, GetHashValue(input_descriptor));
 
-    hash_value = tensorflow::Hash64Combine(
+    hash_value = tsl::Hash64Combine(
         hash_value, GetHashValue(scale_offset_mean_variance_descriptor));
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, activation_descriptor.GetHashValue());
+    hash_value =
+        tsl::Hash64Combine(hash_value, activation_descriptor.GetHashValue());
     return hash_value;
   }
 
@@ -1571,19 +1562,18 @@ class ScopedFusionPlanBatchNormActivationForward : public ScopedFusionPlanBase {
       miopenHandle_t miopen_handle, miopenTensorDescriptor_t input_descriptor,
       miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
-    uint64_t hash_value = tensorflow::Hash64("BatchNormActivationForward");
+    uint64_t hash_value = tsl::Hash64("BatchNormActivationForward");
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+    hash_value = tsl::Hash64Combine(hash_value,
+                                    tsl::hash<miopenHandle_t>()(miopen_handle));
 
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(input_descriptor));
+    hash_value = tsl::Hash64Combine(hash_value, GetHashValue(input_descriptor));
 
-    hash_value = tensorflow::Hash64Combine(
+    hash_value = tsl::Hash64Combine(
         hash_value, GetHashValue(scale_offset_mean_variance_descriptor));
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, activation_descriptor.GetHashValue());
+    hash_value =
+        tsl::Hash64Combine(hash_value, activation_descriptor.GetHashValue());
     return hash_value;
   }
 
@@ -1673,19 +1663,18 @@ class ScopedFusionPlanBatchNormActivationBackward
       miopenHandle_t miopen_handle, miopenTensorDescriptor_t input_descriptor,
       miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
-    uint64_t hash_value = tensorflow::Hash64("BatchNormActivationBackward");
+    uint64_t hash_value = tsl::Hash64("BatchNormActivationBackward");
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+    hash_value = tsl::Hash64Combine(hash_value,
+                                    tsl::hash<miopenHandle_t>()(miopen_handle));
 
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(input_descriptor));
+    hash_value = tsl::Hash64Combine(hash_value, GetHashValue(input_descriptor));
 
-    hash_value = tensorflow::Hash64Combine(
+    hash_value = tsl::Hash64Combine(
         hash_value, GetHashValue(scale_offset_mean_variance_descriptor));
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, activation_descriptor.GetHashValue());
+    hash_value =
+        tsl::Hash64Combine(hash_value, activation_descriptor.GetHashValue());
     return hash_value;
   }
 

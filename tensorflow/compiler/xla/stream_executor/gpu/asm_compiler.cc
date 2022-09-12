@@ -32,11 +32,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/tsl/platform/cuda_libdevice_path.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/subprocess.h"
 
 namespace stream_executor {
 
@@ -53,9 +53,9 @@ static port::StatusOr<absl::string_view> GetPtxasVersionString(
     return absl::string_view(it->second);
   }
 
-  tensorflow::SubProcess binary;
+  tsl::SubProcess binary;
   binary.SetProgram(binary_path, {binary_path, "--version"});
-  binary.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
+  binary.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
   if (!binary.Start()) {
     return port::InternalError(
         absl::StrFormat("Couldn't invoke %s --version", binary_path));
@@ -279,7 +279,7 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
     // produce TF error.
     tensorflow::Env::Default()->DeleteFile(cubin_path).IgnoreError();
   };
-  tensorflow::SubProcess ptxas_info_dumper;
+  tsl::SubProcess ptxas_info_dumper;
   std::vector<std::string> ptxas_args = {
       ptxas_path,
       ptx_path,
@@ -296,8 +296,7 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
   }
 
   ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
-  ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
-                                     tensorflow::ACTION_PIPE);
+  ptxas_info_dumper.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!ptxas_info_dumper.Start()) {
     return port::InternalError("Failed to launch ptxas");
   }
@@ -313,7 +312,7 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
         absl::StrContains(stderr_output,
                           "is not defined for option 'gpu-name'")) {
       LogPtxasTooOld(ptxas_path, cc_major, cc_minor);
-      return tensorflow::errors::Unimplemented(
+      return tsl::errors::Unimplemented(
           ptxas_path, " ptxas too old. Falling back to the driver to compile.");
     }
 
@@ -380,7 +379,7 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   AppendArgsFromOptions(options, ptxas_options);
 
   // Invoke fatbinary and collect its output.
-  tensorflow::SubProcess fatbinary;
+  tsl::SubProcess fatbinary;
   std::vector<std::string> fatbinary_args = {
       fatbinary_path, "--64", "--link", "--compress-all",
       absl::StrCat("--create=", result_path)};
@@ -397,7 +396,7 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
     VLOG(3) << absl::StrJoin(fatbinary_args, " ");
   }
   fatbinary.SetProgram(fatbinary_path, fatbinary_args);
-  fatbinary.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
+  fatbinary.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!fatbinary.Start()) {
     return port::InternalError("Failed to launch fatbinary.");
   }
@@ -481,7 +480,7 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   };
 
   // Invoke clang_offload_bundler and collect its output.
-  tensorflow::SubProcess clang_offload_bundler;
+  tsl::SubProcess clang_offload_bundler;
   std::vector<std::string> clang_offload_bundler_args = {
       clang_offload_bundler_path, absl::StrCat("--inputs=", inputs_list.str()),
       absl::StrCat("--targets=", targets_list.str()), "--type=o",
@@ -491,8 +490,7 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   }
   clang_offload_bundler.SetProgram(clang_offload_bundler_path,
                                    clang_offload_bundler_args);
-  clang_offload_bundler.SetChannelAction(tensorflow::CHAN_STDERR,
-                                         tensorflow::ACTION_PIPE);
+  clang_offload_bundler.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!clang_offload_bundler.Start()) {
     return port::InternalError("Failed to launch clang_offload_bundler.");
   }
