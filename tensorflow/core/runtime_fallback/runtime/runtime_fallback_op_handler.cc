@@ -201,8 +201,10 @@ struct RuntimeFallbackOpHandlerTraits {
       }
       auto expected_device = GetDeviceFromFallbackTensor(
           result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx);
-      result_device.emplace(GetDeviceFromFallbackTensor(
-          result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx));
+      tfrt::Emplace(
+          result_device,
+          GetDeviceFromFallbackTensor(
+              result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx));
     });
     return std::move(result_device);
   }
