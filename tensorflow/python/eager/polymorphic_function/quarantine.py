@@ -16,7 +16,9 @@
 """Internal APIs to be removed in the future."""
 
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
@@ -508,3 +510,39 @@ def remove_function_callback(function_callback):
 def clear_function_callbacks():
   """Clear all function callbacks, if any have been regisered."""
   monomorphic_function._function_callbacks.clear()  # pylint: disable=protected-access
+
+
+@deprecation.deprecated(
+    None,
+    "Use `tf.config.run_functions_eagerly` instead of the experimental "
+    "version.")
+@tf_export("config.experimental_run_functions_eagerly")
+def experimental_run_functions_eagerly(run_eagerly):
+  """Enables / disables eager execution of `tf.function`s.
+
+  Calling `tf.config.experimental_run_functions_eagerly(True)` will make all
+  invocations of `tf.function` run eagerly instead of running as a traced graph
+  function.
+
+  See `tf.config.run_functions_eagerly` for an example.
+
+  Note: This flag has no effect on functions passed into tf.data transformations
+  as arguments. tf.data functions are never executed eagerly and are always
+  executed as a compiled Tensorflow Graph.
+
+  Args:
+    run_eagerly: Boolean. Whether to run functions eagerly.
+
+  Returns:
+    None
+  """
+  return polymorphic_function.run_functions_eagerly(run_eagerly)
+
+
+@deprecation.deprecated(
+    None,
+    "Use tf.config.functions_run_eagerly instead of the experimental version.")
+@tf_export("config.experimental_functions_run_eagerly")
+def experimental_functions_run_eagerly():
+  """Returns the value of the `experimental_run_functions_eagerly` setting."""
+  return polymorphic_function.functions_run_eagerly()

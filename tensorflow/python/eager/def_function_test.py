@@ -255,7 +255,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       def compute(self, val):
         self._var = variables.Variable(val)
 
-    def_function.ALLOW_DYNAMIC_VARIABLE_CREATION = True
+    def_function.set_dynamic_variable_creation(True)
     foo = Foo()
     self.assertAllEqual(foo(0.3), 0.3)
     self.assertAllEqual(
@@ -282,7 +282,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
           else:
             self._flag_keyed_vars[var_creation_flag] = variables.Variable(2.0)
 
-    def_function.ALLOW_DYNAMIC_VARIABLE_CREATION = True
+    def_function.set_dynamic_variable_creation(True)
     foo = Foo()
     self.assertAllEqual(foo(True), 1.0)
     self.assertEqual(foo.trace_count, 2)
@@ -312,7 +312,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
           else:
             self._flag_keyed_vars[var_creation_flag] = variables.Variable(2.0)
 
-    def_function.ALLOW_DYNAMIC_VARIABLE_CREATION = False
+    def_function.set_dynamic_variable_creation(False)
     foo = Foo()
     self.assertAllEqual(foo(True), 1.0)
     self.assertEqual(foo.trace_count, 2)

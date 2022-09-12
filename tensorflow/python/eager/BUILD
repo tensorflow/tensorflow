@@ -906,22 +906,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":context",
-        ":function_spec",
-        ":lift_to_graph",
-        "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:control_flow_util",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
-        "//tensorflow/python/distribute/parallel_device",
-        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
-        "//tensorflow/python/profiler:trace",
-        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/eager/polymorphic_function",
     ],
 )
 
