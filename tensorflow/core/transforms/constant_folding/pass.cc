@@ -462,7 +462,20 @@ bool OpPropertyHelper::MaybeFoldable(TFOp op) {
   // Don't fold stateful ops such as TruncatedNormal.
   if (!IsFreeOfSideEffect(op)) return false;
 
-  // TODO(chiahungduan): Handle preserve nodes
+  // Fold fetch nodes iff it has a single fanout. Note that if a fetch node
+  // has a single fanout, it would be rewritten as a constant with the same
+  // node name, and therefore users are still able to fetch it. This is not
+  // the case if the node has multiple fanouts, and constant folding would
+  // replace the node with multiple constants (each for one fanout) with
+  // new names, and as a result users would not be able to fetch the node any
+  // more with the original node name.
+  if (ShouldPreserveOp(op) &&
+      !(llvm::any_of(  // Is a fetch node
+            op->getResults().drop_back().getUsers(),
+            [&](TFOp child_op) { return dialect_->IsReturn(child_op); }) &&
+        op->getNumResults() == 2  // Has single non-control output
+        ))
+    return false;
 
   // Skips ops that don't benefit from folding.
   if (dialect_->IsPlaceholder(op)) return false;
@@ -518,12 +531,6 @@ bool OpPropertyHelper::MaybeFoldable(TFOp op) {
     }
   }
 
-  // Don't fold nodes that have no outgoing edges except allowlisted nodes.
-  // Such nodes could be introduced by an earlier constant folding pass and are
-  // preserved in case users want to fetch their values; re-processing them
-  // would lead to an error of adding a duplicated node to graph.
-  // TODO(chiahungduan): Op has no users and doesn't in nodes_allowlist_ can't
-  // be folded.
   return true;
 }
 
@@ -3666,34 +3673,19 @@ void ConstantFolding::runOnOperation() {
   // operation creation.
 
   GraphFuncOp func = getOperation();
-  TFOp return_op = func.getBody()->getTerminator();
-  DenseSet<Operation *> unfoldable_ops;
-  for (Value v : return_op.getControlOperands())
-    unfoldable_ops.insert(v.getDefiningOp());
 
   // The max iteration is the same as the max default iteration in
   // applyPatternsAndFoldGreedily.
   constexpr int max_iterations = 10;
   int iteration = 0;
 
-  SmallVector<Operation *> foldable_ops;
+  SmallVector<Operation *> ops;
   do {
-    // We need to collect the valid operations before each run because the ops
-    // may be updated or removed.
-    foldable_ops.clear();
+    ops.clear();
     for (Operation &op : func.getBody()->without_terminator()) {
-      if (unfoldable_ops.contains(&op)) continue;
-      foldable_ops.push_back(&op);
+      ops.push_back(&op);
     }
-
-    // Unfoldable ops can't be folded. You may update its operands but the op
-    // kind needs to be the same. For example, you may update an operand of an
-    // AddOp with a constant but you can't fold the AddOp into a ConstOp even if
-    // all its operands are constants. Therefore, we can't use
-    // applyPatternsAndFoldGreedily which may optimize the ops as much as
-    // possible.
-    if (!applyOpPatternsAndFold(foldable_ops, final_patterns_, /*strict=*/true))
-      break;
+    if (!applyOpPatternsAndFold(ops, final_patterns_, /*strict=*/true)) break;
   } while (iteration++ < max_iterations);
 
   // TODO(chiahungduan): This is used to avoid evaluating a node multiple times.
