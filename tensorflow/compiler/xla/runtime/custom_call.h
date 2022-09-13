@@ -928,6 +928,22 @@ class CustomCallHandler : public CustomCall {
       return success();
     }
 
+    if constexpr (kIsStatusOrResult) {
+      auto status_or = fn_(std::move(*std::get<ArgsIs>(fn_args))...);
+      if (!status_or.ok()) {
+        return diagnostic->EmitError(status_or.status());
+      }
+
+      if constexpr (sizeof...(RetsIs) == 1) {
+        (*std::get<RetsIs...>(fn_args)).Set(status_or.value());
+        return success();
+      } else {
+        // TODO(b/244763765): Support handlers that return a tuple.
+        return diagnostic->EmitError(InvalidArgument(
+            "Wrong number of rets: expected 1 got %d", sizeof...(RetsIs)));
+      }
+    }
+
     llvm_unreachable("unexpected custom call type");
   }
 

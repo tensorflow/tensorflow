@@ -291,6 +291,44 @@ TEST(CustomCallTest, ScalarRets) {
   EXPECT_EQ(f64, 42.0);
 }
 
+TEST(CustomCallTest, StatusOrRet) {
+  absl::string_view module = R"(
+    func.func private @custom_call_return(%arg0: i32) -> (i64)
+      attributes { rt.custom_call = "test.custom_call_return" }
+
+    func.func private @custom_call(%arg64 : i64)
+      attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = arith.constant 42 : i32
+      %1 = call @custom_call_return(%0) : (i32) -> (i64)
+      call @custom_call(%1) : (i64) -> ()
+      return
+    }
+  )";
+
+  int64_t i64 = 0;
+  auto f_result = [](int32_t arg) -> absl::StatusOr<int64_t> { return arg; };
+  auto f = [&](int64_t arg) {
+    i64 = arg;
+    return success();
+  };
+
+  TestOpts opts;
+  opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call_return")
+                          .Arg<int32_t>()
+                          .Ret<int64_t>()
+                          .To(f_result));
+
+    registry.Register(
+        CustomCall::Bind("test.custom_call").Arg<int64_t>().To(f));
+  };
+
+  ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
+  EXPECT_EQ(i64, 42);
+}
+
 TEST(CustomCallTest, OpaqueArgs) {
   absl::string_view module = R"(
     func.func private @use(%arg0: !rt.opaque)
