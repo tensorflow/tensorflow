@@ -78,12 +78,9 @@ exports_files(
         "cpu_info.h",
         "bfloat16.h",
         "demangle.h",
-        "env.cc",
         "env.h",
         "env_time.h",
-        "file_system.cc",
         "file_system.h",
-        "file_system_helper.cc",
         "file_system_helper.h",
         "host_info.h",
         "human_readable_json.h",
@@ -102,7 +99,6 @@ exports_files(
         "stacktrace_handler.h",
         "subprocess.h",
         "test.h",
-        "threadpool.cc",
         "threadpool.h",
         "tracing.cc",
         "tracing.h",
@@ -255,7 +251,35 @@ cc_library(
         "file_system_helper.h",
         "threadpool.h",
     ],
-    deps = tf_windows_aware_platform_deps("env"),
+    deps = [
+        "//tensorflow/core/platform",
+        "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:context",
+        "//tensorflow/core/platform:cord",
+        "//tensorflow/core/platform:denormal",
+        "//tensorflow/core/platform:env_time",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:file_statistics",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:scanner",
+        "//tensorflow/core/platform:setround",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:stringprintf",
+        "//tensorflow/core/platform:threadpool_interface",
+        "//tensorflow/core/platform:tracing",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform:env",
+    ] + tf_windows_aware_platform_deps("env"),
 )
 
 cc_library(
@@ -267,7 +291,9 @@ cc_library(
     name = "env_time",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["env_time.h"],
-    deps = tf_windows_aware_platform_deps("env_time"),
+    deps = [
+        "//tensorflow/tsl/platform:env_time",
+    ] + tf_windows_aware_platform_deps("env_time"),
 )
 
 cc_library(
@@ -290,7 +316,10 @@ cc_library(
 cc_library(
     name = "file_statistics",
     hdrs = ["file_statistics.h"],
-    deps = [":types"],
+    deps = [
+        ":types",
+        "//tensorflow/tsl/platform:file_statistics",
+    ],
 )
 
 cc_library(
@@ -1794,12 +1823,10 @@ filegroup(
         "demangle.h",
         "denormal.h",
         "dynamic_annotations.h",
-        "env.cc",
         "env.h",
         "env_time.h",
         "errors.h",
         "file_statistics.h",
-        "file_system.cc",
         "file_system.h",
         "file_system_helper.h",
         "hash.h",
@@ -1846,8 +1873,6 @@ filegroup(
         "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
             "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
-            "file_system_helper.cc",
-            "threadpool.cc",
             "tracing.cc",
         ],
     }) + tf_platform_alias("additional_mobile_srcs_no_runtime"),

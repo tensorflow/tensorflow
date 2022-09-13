@@ -21,14 +21,15 @@ limitations under the License.
 #include <cstdlib>
 #include <unordered_set>
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/windows/error_windows.h"
 
 #undef ERROR
 
 namespace tensorflow {
 namespace internal {
+using namespace tsl::internal;  // NOLINT
 
 namespace {
 
@@ -43,7 +44,8 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   CHECK_GE(*port, 0);
   CHECK_LE(*port, 65535);
   if (sock == INVALID_SOCKET) {
-    LOG(ERROR) << "socket() failed: " << WindowsWSAGetLastErrorMessage();
+    LOG(ERROR) << "socket() failed: "
+               << tsl::internal::WindowsWSAGetLastErrorMessage();
     return false;
   }
 
@@ -52,7 +54,8 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   int result = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
                           reinterpret_cast<const char*>(&one), sizeof(one));
   if (result == SOCKET_ERROR) {
-    LOG(ERROR) << "setsockopt() failed: " << WindowsWSAGetLastErrorMessage();
+    LOG(ERROR) << "setsockopt() failed: "
+               << tsl::internal::WindowsWSAGetLastErrorMessage();
     closesocket(sock);
     return false;
   }
@@ -63,8 +66,8 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   addr.sin_port = htons((uint16_t)*port);
   result = bind(sock, (struct sockaddr*)&addr, sizeof(addr));
   if (result == SOCKET_ERROR) {
-    LOG(WARNING) << "bind(port=" << *port
-                 << ") failed: " << WindowsWSAGetLastErrorMessage();
+    LOG(WARNING) << "bind(port=" << *port << ") failed: "
+                 << tsl::internal::WindowsWSAGetLastErrorMessage();
     closesocket(sock);
     return false;
   }
@@ -72,7 +75,8 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   // Get the bound port number.
   result = getsockname(sock, (struct sockaddr*)&addr, &addr_len);
   if (result == SOCKET_ERROR) {
-    LOG(WARNING) << "getsockname() failed: " << WindowsWSAGetLastErrorMessage();
+    LOG(WARNING) << "getsockname() failed: "
+                 << tsl::internal::WindowsWSAGetLastErrorMessage();
     closesocket(sock);
     return false;
   }

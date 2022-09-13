@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/tsl/platform/file_system.h"
 
 #include <sys/stat.h>
 
@@ -26,17 +26,21 @@ limitations under the License.
 #if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
 #include <fnmatch.h>
 #else
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/tsl/platform/regexp.h"
 #endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
 
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/scanner.h"
-#include "tensorflow/core/platform/str_util.h"
-#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/platform.h"
+#include "tensorflow/tsl/platform/str_util.h"
+#include "tensorflow/tsl/platform/strcat.h"
 
-namespace tensorflow {
+namespace tsl {
+// TODO(aminim): remove after tensorflow/core/platform/scanner.h migration.
+namespace strings {
+using tensorflow::strings::Scanner;  // NOLINT
+}  // namespace strings
 
 bool FileSystem::Match(const string& filename, const string& pattern) {
 #if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
@@ -79,7 +83,7 @@ Status FileSystem::IsDirectory(const string& name, TransactionToken* token) {
   if (stat.is_directory) {
     return OkStatus();
   }
-  return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
+  return Status(tsl::error::FAILED_PRECONDITION, "Not a directory");
 }
 
 Status FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
@@ -194,7 +198,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname,
       Status directory_status = IsDirectory(current_entry);
       if (directory_status.ok()) {
         break;  // We need to start creating directories from here.
-      } else if (directory_status.code() == tensorflow::error::UNIMPLEMENTED) {
+      } else if (directory_status.code() == tsl::error::UNIMPLEMENTED) {
         return directory_status;
       } else {
         return errors::FailedPrecondition(remaining_dir, " is not a directory");
@@ -218,7 +222,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname,
   for (const StringPiece sub_dir : sub_dirs) {
     built_path = this->JoinPath(built_path, sub_dir);
     Status status = CreateDir(this->CreateURI(scheme, host, built_path));
-    if (!status.ok() && status.code() != tensorflow::error::ALREADY_EXISTS) {
+    if (!status.ok() && status.code() != tsl::error::ALREADY_EXISTS) {
       return status;
     }
   }
@@ -488,4 +492,4 @@ std::string FileSystem::DecodeTransaction(const TransactionToken* token) {
   return "No Transaction";
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

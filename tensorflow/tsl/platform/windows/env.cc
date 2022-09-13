@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 #include <Shlwapi.h>
 #include <Windows.h>
@@ -30,18 +30,18 @@ limitations under the License.
 
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/ram_file_system.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/ram_file_system.h"
 #include "tensorflow/tsl/platform/windows/wide_char.h"
 #include "tensorflow/tsl/platform/windows/windows_file_system.h"
 
 #pragma comment(lib, "Shlwapi.lib")
 
-namespace tensorflow {
+namespace tsl {
 
 namespace {
 
-mutex name_mutex(tensorflow::LINKER_INITIALIZED);
+mutex name_mutex(tsl::LINKER_INITIALIZED);
 
 std::map<std::thread::id, string>& GetThreadNameRegistry()
     TF_EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
@@ -229,4 +229,4 @@ int setenv(const char* name, const char* value, int overwrite) {
 
 int unsetenv(const char* name) { return _putenv_s(name, ""); }
 
-}  // namespace tensorflow
+}  // namespace tsl

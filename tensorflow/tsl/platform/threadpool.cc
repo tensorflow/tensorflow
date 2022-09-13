@@ -13,22 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 #define EIGEN_USE_THREADS
 
 #include "absl/types/optional.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/context.h"
-#include "tensorflow/core/platform/denormal.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/tsl/platform/blocking_counter.h"
+#include "tensorflow/tsl/platform/denormal.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/numa.h"
 #include "tensorflow/tsl/platform/setround.h"
 
-namespace tensorflow {
+namespace tsl {
+// TODO(aminim): remove after tensorflow/core/platform/context.h migration.
+using tensorflow::Context;
+using tensorflow::ContextKind;
+using tensorflow::WithContext;
+// TODO(aminim): remove after tensorflow/core/platform/setround.h migration.
+namespace port {
+using namespace tensorflow::port;  // NOLINT
+}  // namespace port
+// TODO(aminim): remove after tensorflow/core/platform/tracing.h migration.
+namespace tracing {
+using namespace tensorflow::tracing;  // NOLINT
+}  // namespace tracing
+
 namespace thread {
 
 struct EigenEnvironment {
@@ -269,4 +282,4 @@ Eigen::ThreadPoolInterface* ThreadPool::AsEigenThreadPool() const {
   return underlying_threadpool_;
 }
 }  // namespace thread
-}  // namespace tensorflow
+}  // namespace tsl

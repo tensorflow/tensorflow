@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 #include <sys/stat.h>
 
@@ -21,13 +21,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/tsl/platform/env_time.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/host_info.h"
+#include "tensorflow/tsl/platform/platform.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/stringprintf.h"
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -48,7 +48,11 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
-namespace tensorflow {
+namespace tsl {
+// TODO(aminim): remove after tensorflow/core/platform/path.h migration.
+namespace io {
+using namespace tensorflow::io;  // NOLINT
+}  // namespace io
 
 // 128KB copy buffer
 constexpr size_t kCopyFileBufferSize = 128 * 1024;
@@ -632,4 +636,4 @@ Status ReadTextOrBinaryProto(Env* env, const string& fname,
   return ReadBinaryProto(env, fname, proto);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

@@ -27,10 +27,12 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 
+namespace tsl {
+class Env;
+}  // namespace tsl
 namespace tensorflow {
 class CoordinationServiceConfig;
 class CoordinatedTask;
-class Env;
 class ServerDef;
 
 // CoordinationServiceAgent defines the interface for tasks to communicate with
@@ -70,14 +72,15 @@ class CoordinationServiceAgent {
 
   // Initialize coordination service agent.
   virtual Status Initialize(
-      Env* env, const ServerDef& server_def,
+      tsl::Env* env, const ServerDef& server_def,
       std::unique_ptr<CoordinationClientCache> client_cache,
       StatusCallback error_fn) = 0;
-  virtual Status Initialize(Env* env, const std::string& job_name, int task_id,
+  virtual Status Initialize(tsl::Env* env, const std::string& job_name,
+                            int task_id,
                             const CoordinationServiceConfig& configs,
                             std::unique_ptr<CoordinationClient> leader_client,
                             StatusCallback error_fn) = 0;
-  virtual Status Initialize(Env* env, const CoordinatedTask& task,
+  virtual Status Initialize(tsl::Env* env, const CoordinatedTask& task,
                             const CoordinationServiceConfig& configs,
                             std::unique_ptr<CoordinationClient> leader_client,
                             StatusCallback error_fn) = 0;
@@ -249,7 +252,7 @@ class CoordinationServiceAgent {
                                   StatusCallback done) = 0;
 
   // Get unowned Env* that the agent was initialized with.
-  virtual StatusOr<Env*> GetEnv() = 0;
+  virtual StatusOr<tsl::Env*> GetEnv() = 0;
 
  protected:
   // Set the service agent to error status and invoke the error callback.

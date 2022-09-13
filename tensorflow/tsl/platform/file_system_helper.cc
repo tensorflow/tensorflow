@@ -13,24 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/file_system_helper.h"
+#include "tensorflow/tsl/platform/file_system_helper.h"
 
 #include <deque>
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/str_util.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/file_system.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/platform.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/str_util.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
-namespace tensorflow {
+namespace tsl {
+// TODO(aminim): remove after tensorflow/core/platform/path.h migration.
+namespace io {
+using namespace tensorflow::io;  // NOLINT
+}  // namespace io
 namespace internal {
 
 namespace {
@@ -125,7 +129,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
                         std::vector<string>* results) {
   // Check that `fs`, `env` and `results` are non-null.
   if (fs == nullptr || env == nullptr || results == nullptr) {
-    return Status(tensorflow::error::INVALID_ARGUMENT,
+    return Status(tsl::error::INVALID_ARGUMENT,
                   "Filesystem calls GetMatchingPaths with nullptr arguments");
   }
 
@@ -206,7 +210,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
       // Get all children of `parent`. If this fails, return early.
       std::vector<std::string> children;
       Status s = fs->GetChildren(parent, &children);
-      if (s.code() == tensorflow::error::PERMISSION_DENIED) {
+      if (s.code() == tsl::error::PERMISSION_DENIED) {
         return;
       }
 
@@ -226,7 +230,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
         const std::string path = io::JoinPath(parent, children[j]);
         if (!fs->Match(path, match_pattern)) {
           children_status[j] =
-              Status(tensorflow::error::CANCELLED, "Operation not needed");
+              Status(tsl::error::CANCELLED, "Operation not needed");
         } else {
           children_status[j] = fs->IsDirectory(path);
         }
@@ -243,7 +247,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
       // remaining children get added to the result.
       // Otherwise, only the directories get added to the next queue.
       for (size_t j = 0; j < children.size(); j++) {
-        if (children_status[j].code() == tensorflow::error::CANCELLED) {
+        if (children_status[j].code() == tsl::error::CANCELLED) {
           continue;
         }
 
@@ -276,4 +280,4 @@ StatusOr<bool> FileExists(Env* env, const string& fname) {
 }
 
 }  // namespace internal
-}  // namespace tensorflow
+}  // namespace tsl

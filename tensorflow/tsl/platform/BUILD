@@ -5,6 +5,7 @@
 #   to other TF components outside of TSL.
 
 # buildifier: disable=same-origin-load
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -16,6 +17,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_cuda_libdevice_path_deps",
     "tf_fingerprint_deps",
+    "tf_google_mobile_srcs_no_runtime",
     "tf_logging_deps",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
@@ -90,6 +92,24 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
+)
+
+cc_library(
+    name = "env",
+    textual_hdrs = [
+        "env.h",
+        "file_system.h",
+        "file_system_helper.h",
+        "threadpool.h",
+    ],
+    deps = tf_windows_aware_platform_deps("env"),
+)
+
+cc_library(
+    name = "env_time",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["env_time.h"],
+    deps = tf_windows_aware_platform_deps("env_time"),
 )
 
 cc_library(
@@ -345,7 +365,11 @@ filegroup(
         "cpu_info.h",
         "crash_analysis.h",
         "dynamic_annotations.h",
+        "env.h",
         "errors.h",
+        "file_statistics.h",
+        "file_system.h",
+        "file_system_helper.h",
         "fingerprint.h",
         "init_main.h",
         "logger.h",
@@ -355,6 +379,7 @@ filegroup(
         "path.h",
         "prefetch.h",
         "protobuf.h",
+        "ram_file_system.h",
         "random.h",
         "resource.h",
         "stack_frame.h",
@@ -379,7 +404,9 @@ filegroup(
     name = "base_hdrs",
     srcs = [
         "byte_order.h",
+        "env_time.h",
         "macros.h",
+        "threadpool.h",
         "threadpool_interface.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -417,8 +444,15 @@ filegroup(
         "denormal.cc",
         "denormal.h",
         "dynamic_annotations.h",
+        "env.cc",
+        "env.h",
+        "env_time.h",
         "errors.cc",
         "errors.h",
+        "file_statistics.h",
+        "file_system.cc",
+        "file_system.h",
+        "file_system_helper.h",
         "hash.cc",
         "hash.h",
         "host_info.h",
@@ -437,6 +471,7 @@ filegroup(
         "protobuf.cc",
         "protobuf.h",
         "protobuf_util.cc",
+        "ram_file_system.h",
         "raw_coding.h",
         "regexp.h",
         "resource.h",
@@ -459,8 +494,15 @@ filegroup(
         "stringprintf.cc",
         "stringprintf.h",
         "thread_annotations.h",
+        "threadpool.h",
         "threadpool_interface.h",
-    ],
+    ] + selects.with_or({
+        "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
+        "//conditions:default": [
+            "file_system_helper.cc",
+            "threadpool.cc",
+        ],
+    }),
     compatible_with = get_compatible_with_portable(),
 )
 
@@ -527,11 +569,19 @@ exports_files(
         "crash_analysis.h",
         "cuda_libdevice_path.h",
         "demangle.h",
+        "env.cc",
+        "env.h",
+        "env_time.h",
+        "file_system.cc",
+        "file_system.h",
+        "file_system_helper.cc",
+        "file_system_helper.h",
         "init_main.h",
         "logging.h",
         "mem.h",
         "net.h",
         "numa.h",
+        "ram_file_system.h",
         "resource_loader.h",
         "resource.h",
         "snappy.h",
@@ -542,6 +592,8 @@ exports_files(
         "logging.h",
         "rocm_rocdl_path.h",
         "subprocess.h",
+        "threadpool.cc",
+        "threadpool.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -665,6 +717,7 @@ filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
         "dynamic_annotations.h",
+        "env_time.h",
         "macros.h",
         "platform.h",
     ],
@@ -983,6 +1036,14 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["cuda_libdevice_path.h"],
     deps = tf_cuda_libdevice_path_deps(),
+)
+
+cc_library(
+    name = "file_statistics",
+    hdrs = ["file_statistics.h"],
+    deps = [
+        ":types",
+    ],
 )
 
 cc_library(

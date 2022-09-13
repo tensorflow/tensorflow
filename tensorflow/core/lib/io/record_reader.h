@@ -28,9 +28,10 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
-
+namespace tsl {
 class RandomAccessFile;
+}  // namespace tsl
+namespace tensorflow {
 
 namespace io {
 
@@ -87,7 +88,7 @@ class RecordReader {
   // Create a reader that will return log records from "*file".
   // "*file" must remain live while this Reader is in use.
   explicit RecordReader(
-      RandomAccessFile* file,
+      tsl::RandomAccessFile* file,
       const RecordReaderOptions& options = RecordReaderOptions());
 
   virtual ~RecordReader() = default;
@@ -136,7 +137,7 @@ class SequentialRecordReader {
   // Create a reader that will return log records from "*file".
   // "*file" must remain live while this Reader is in use.
   explicit SequentialRecordReader(
-      RandomAccessFile* file,
+      tsl::RandomAccessFile* file,
       const RecordReaderOptions& options = RecordReaderOptions());
 
   virtual ~SequentialRecordReader() = default;

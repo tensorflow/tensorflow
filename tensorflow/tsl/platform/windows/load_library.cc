@@ -37,7 +37,7 @@ Status LoadDynamicLibrary(const char* library_filename, void** handle) {
   string file_name = library_filename;
   std::replace(file_name.begin(), file_name.end(), '/', '\\');
 
-  std::wstring ws_file_name(Utf8ToWideChar(file_name));
+  std::wstring ws_file_name(tsl::Utf8ToWideChar(file_name));
 
   HMODULE hModule =
       LoadLibraryExW(ws_file_name.c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
