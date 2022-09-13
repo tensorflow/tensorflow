@@ -348,7 +348,7 @@ Status Executable::ReturnResults(const ResultConverter& results,
                                  CallFrame* call_frame) const {
   // If execution failed, forward error to all results.
   if (call_frame->is_error) {
-    auto err = InternalError(StrCat("run time error: %s", call_frame->error));
+    auto err = InternalError(StrCat("run time error: ", call_frame->error));
     return (results.ReturnError(err), err);
   }
 
