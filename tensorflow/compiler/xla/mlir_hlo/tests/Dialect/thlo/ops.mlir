@@ -33,6 +33,10 @@ func.func @scatter(%indices: tensor<3x2xi64>,
   %scatter = thlo.scatter
       ins(%indices: tensor<3x2xi64>, %updates: tensor<3xf32>)
       outs(%dst: tensor<3x3xf32>)
+      (%in: f32, %out: f32) {
+        %0 = arith.addf %in, %out: f32
+        thlo.yield %0: f32
+      }
   func.return %scatter : tensor<3x3xf32>
 }
 // CHECK-LABEL: func @scatter

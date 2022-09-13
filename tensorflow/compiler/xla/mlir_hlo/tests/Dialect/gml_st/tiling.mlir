@@ -1,14 +1,14 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:     --gml-tiling="tile-sizes=256,512 distribute=false op-label=tile-2d" \
-// RUN:     --gml-tiling="tile-sizes=1,1 distribute=false op-label=tile-2d-point" \
-// RUN:     --gml-tiling="tile-sizes=256,512 distribute=false op-label=tile-3d" \
-// RUN:     --cse | \
+// RUN: --gml-tiling="tile-sizes=256,512 distribute=false op-label=tile-2d" \
+// RUN: --gml-tiling="tile-sizes=1,1 distribute=false op-label=tile-2d-point" \
+// RUN: --gml-tiling="tile-sizes=256,512 distribute=false op-label=tile-3d" \
+// RUN: --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-SEQUENTIAL
 
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:     --gml-tiling="tile-sizes=256,512 distribute=true op-label=tile-2d" \
-// RUN:     --gml-tiling="tile-sizes=1,1 distribute=true op-label=tile-2d-point" \
-// RUN:     --cse | \
+// RUN: --gml-tiling="tile-sizes=256,512 distribute=true op-label=tile-2d" \
+// RUN: --gml-tiling="tile-sizes=1,1 distribute=true op-label=tile-2d-point" \
+// RUN: --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-PARALLEL
 
 #id_map = affine_map<(d0, d1) -> (d0, d1)>
@@ -378,6 +378,10 @@ func.func @scatter_i32_i64(%indices: tensor<?x2xi32>, %updates: tensor<?xi64>,
   %result = thlo.scatter
     ins (%indices: tensor<?x2xi32>, %updates: tensor<?xi64>)
     outs (%init: tensor<?x?xi64>) { op_label = "tile-2d-point" }
+    (%in: i64, %out: i64) {
+      %0 = arith.addi %in, %out: i64
+      thlo.yield %0: i64
+    }
   return %result : tensor<?x?xi64>
 }
 
@@ -430,6 +434,10 @@ func.func @scatter_i32_f32(%indices: tensor<?x2xi32>, %updates: tensor<?xf32>,
   %result = thlo.scatter
     ins (%indices: tensor<?x2xi32>, %updates: tensor<?xf32>)
     outs (%init: tensor<?x?xf32>) { op_label = "tile-2d-point" }
+    (%in: f32, %out: f32) {
+      %0 = arith.addf %in, %out: f32
+      thlo.yield %0: f32
+    }
   return %result : tensor<?x?xf32>
 }
 
@@ -451,6 +459,10 @@ func.func @scatter_2d_indices(%indices: tensor<?x?x2xi32>,
   %result = thlo.scatter
     ins (%indices: tensor<?x?x2xi32>, %updates: tensor<?x?xf32>)
     outs (%init: tensor<?x?xf32>) { op_label = "tile-2d-point" }
+    (%in: f32, %out: f32) {
+      %0 = arith.addf %in, %out: f32
+      thlo.yield %0: f32
+    }
   return %result : tensor<?x?xf32>
 }
 
@@ -479,6 +491,10 @@ func.func @scatter_small_vector_dim(%indices: tensor<?x?x2xi32>,
   %result = thlo.scatter
     ins (%indices: tensor<?x?x2xi32>, %updates: tensor<?x?xf32>)
     outs (%init: tensor<?x?x?xf32>) { op_label = "tile-2d-point" }
+    (%in: f32, %out: f32) {
+      %0 = arith.addf %in, %out: f32
+      thlo.yield %0: f32
+    }
   return %result : tensor<?x?x?xf32>
 }
 

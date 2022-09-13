@@ -738,10 +738,30 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
 //===----------------------------------------------------------------------===//
 
 ParseResult ScatterOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseDstStyleOp(parser, result);
+  if (parseDstStyleOp(parser, result)) return failure();
+
+  SmallVector<OpAsmParser::Argument> regionArgs;
+  if (parser.parseArgumentList(regionArgs, OpAsmParser::Delimiter::Paren,
+                               /*allowType=*/true, /*allowAttrs=*/true)) {
+    return failure();
+  }
+
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, regionArgs)) return failure();
+
+  return success();
 }
 
-void ScatterOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
+void ScatterOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<ScatterOp>(*this, p);
+
+  p << "(";
+  llvm::interleaveComma(update_computation().getArguments(), p,
+                        [&](auto arg) { p.printRegionArgument(arg); });
+  p << ") ";
+
+  p.printRegion(update_computation(), /*printEntryBlockArgs=*/false);
+}
 
 LogicalResult ScatterOp::verify() {
   if (failed(verifyDestinationStyleOp(getOperation()))) return failure();
@@ -867,10 +887,11 @@ mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
   Value initSlice =
       getMaterializedTile(b, loc, init(), sliceOffsets, sliceSizes);
 
-  return b
-      .create<ScatterOp>(loc, TypeRange{initSlice.getType()},
-                         ValueRange{zeroIndexVector, updateScalar, initSlice})
-      .getOperation();
+  auto oldScatterOp =
+      cast<linalg::DestinationStyleOpInterface>(this->getOperation());
+  return oldScatterOp.clone(
+      b, loc, TypeRange{initSlice.getType()},
+      ValueRange{zeroIndexVector, updateScalar, initSlice});
 }
 
 FailureOr<Value> ScatterOp::generateResultTileValue(

@@ -327,19 +327,21 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
   }
 };
 
-static bool isInBodyOfThloReduction(Operation* op) {
+bool isInBodyOfThloOp(Operation* op) {
   auto* parentOp = op->getParentRegion()->getParentOp();
-  return isa<thlo::ReductionOp>(*parentOp);
+  return isa<thlo::MapOp>(*parentOp) || isa<thlo::ReductionOp>(*parentOp) ||
+         isa<thlo::ScatterOp>(*parentOp);
 }
 
 // Rewrites a mhlo::ReturnOp inside a thlo::ReductionOp to thlo::YieldOp.
-struct ReduceRegionReturnOpConversion
+struct ThloRegionReturnOpConversion
     : public OpConversionPattern<mhlo::ReturnOp> {
   using OpConversionPattern<mhlo::ReturnOp>::OpConversionPattern;
+
   LogicalResult matchAndRewrite(
       mhlo::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    if (!isInBodyOfThloReduction(op)) return failure();
+    if (!isInBodyOfThloOp(op)) return failure();
     SmallVector<Value, 4> operands(adaptor.getOperands());
     auto loc = op.getLoc();
     for (size_t i = 0; i < operands.size(); ++i) {
@@ -362,10 +364,6 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
     // The variadic case is not supported.
     if (op.updates().size() != 1) return failure();
 
-    // update_computation is sum.
-    if (matchUpdateComputation(op.update_computation()).failed())
-      return failure();
-
     const auto& dims = op.scatter_dimension_numbers();
     auto scatterIndicesType =
         adaptor.scatter_indices().getType().dyn_cast<RankedTensorType>();
@@ -387,30 +385,28 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
     if (!opType)
       return failure();  // Type is a tensor in the non-variadic case.
 
-    rewriter.replaceOpWithNewOp<thlo::ScatterOp>(
-        op, opType, adaptor.scatter_indices(), adaptor.updates().front(),
+    Location loc = op.getLoc();
+    auto thloScatter = rewriter.create<thlo::ScatterOp>(
+        loc, opType, adaptor.scatter_indices(), adaptor.updates().front(),
         adaptor.operands().front());
+
+    Region& region = thloScatter.update_computation();
+    rewriter.inlineRegionBefore(op.getRegion(), region, region.end());
+
+    // Convert the signature of the body by inserting
+    // tensor.from_elements/tensor.extract.
+    TypeConverter::SignatureConversion signatureConverter(2);
+    for (const auto& [idx, val] :
+         llvm::enumerate(thloScatter.update_computation().getArgumentTypes())) {
+      signatureConverter.addInputs(
+          idx, typeConverter->convertType(
+                   val.cast<RankedTensorType>().getElementType()));
+    }
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
+
+    rewriter.replaceOp(op, thloScatter.getResults());
     return success();
-  }
-
-  LogicalResult matchUpdateComputation(mlir::Region& computation) const {
-    Block& block = computation.front();
-    if (block.getNumArguments() != 2) return failure();
-
-    mhlo::ReturnOp returnOp = dyn_cast<mhlo::ReturnOp>(block.getTerminator());
-    if (!returnOp || returnOp.getNumOperands() != 1) return failure();
-
-    auto* returnOperand = returnOp.getOperand(0).getDefiningOp();
-    auto addOp = dyn_cast<mhlo::AddOp>(returnOperand);
-    if (!addOp || addOp->getNumOperands() != 2) return failure();
-
-    auto lhs = addOp->getOperand(0);
-    auto rhs = addOp->getOperand(1);
-    auto arg0 = block.getArgument(0);
-    auto arg1 = block.getArgument(1);
-
-    return success((lhs == arg0 && rhs == arg1) ||
-                   (lhs == arg1 && rhs == arg0));
   }
 };
 
@@ -437,9 +433,9 @@ class LegalizeMHLOToTHLOPass
         ConcatenateOpPattern,
         DynamicBroadcastInDimOpPattern,
         GatherPattern,
-        ReduceRegionReturnOpConversion,
         ReductionPattern,
-        ScatterPattern>(*typeConverter, ctx);
+        ScatterPattern,
+        ThloRegionReturnOpConversion>(*typeConverter, ctx);
     // clang-format on
 
     if (failed(applyPartialConversion(getOperation(), target,

@@ -226,7 +226,7 @@ func.func @yield_op_inside_mhlo_reduce(
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%init: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %init, %arg3 : tensor<f32>
-    // expected-error @+1{{'thlo.yield' op expects parent op to be one of 'thlo.map, thlo.reduction'}}
+    // expected-error @+1{{'thlo.yield' op expects parent op to be one of 'thlo.map, thlo.reduction, thlo.scatter'}}
     thlo.yield %1: tensor<f32>
   }) {dimensions = dense<1> : tensor<1xi64>} :
     (tensor<5x4xf32>, tensor<f32>) -> tensor<5xf32>
@@ -288,8 +288,11 @@ func.func @scatter_output_result_mismatch(
     %indices: tensor<3x3xi64>, %updates: tensor<3xf32>, %dst: tensor<3x3xf32>)
     -> () {
   // expected-error@+1{{'thlo.scatter' op expected the number of results (0) to be equal to the number of output tensors (1)}}
-  "thlo.scatter"(%indices, %updates, %dst) :
-      (tensor<3x3xi64>, tensor<3xf32>, tensor<3x3xf32>) -> ()
+  "thlo.scatter"(%indices, %updates, %dst) ({
+  ^bb0(%in: f32, %out: f32):
+    %1 = "arith.addf"(%in, %out) : (f32, f32) -> f32
+    "thlo.yield"(%1) : (f32) -> ()
+  }) : (tensor<3x3xi64>, tensor<3xf32>, tensor<3x3xf32>) -> ()
   func.return
 }
 
