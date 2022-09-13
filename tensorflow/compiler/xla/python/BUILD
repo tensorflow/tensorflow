@@ -268,6 +268,7 @@ cc_library(
         "py_executable.cc",
         "py_values.cc",
         "sharded_device_array.cc",
+        "sharding.cc",
     ] + if_cuda_or_rocm([
         "py_client_gpu.cc",
     ]),
@@ -279,6 +280,7 @@ cc_library(
         "py_executable.h",
         "py_values.h",
         "sharded_device_array.h",
+        "sharding.h",
     ] + if_cuda_or_rocm([
         "py_client_gpu.h",
     ]),

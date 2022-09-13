@@ -35,11 +35,13 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
+#include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
+#include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -55,10 +57,14 @@ namespace {
 // from `sharding_specs` and the argument shape, we cache derived computations
 // for performance.
 struct InputSpec {
-  InputSpec(ShardingSpec sharding_spec, py::object indices)
-      : sharding_spec(std::move(sharding_spec)), indices(std::move(indices)) {}
+  InputSpec(ShardingSpec sharding_spec, py::object indices,
+            py::object array_sharding)
+      : sharding_spec(std::move(sharding_spec)),
+        indices(std::move(indices)),
+        array_sharding(std::move(array_sharding)) {}
   ShardingSpec sharding_spec;
   py::object indices;
+  py::object array_sharding;
 };
 
 // An object containing the arguments to create ShardedDeviceArray from the
@@ -110,6 +116,41 @@ xla::StatusOr<ShardArgResult> ShardArg(
     py::handle arg, absl::Span<xla::PjRtDevice* const> devices,
     const InputSpec& input_spec, py::handle py_devices,
     const py::function& python_fallback) {
+  if (arg.get_type() == xla::PyArray::type()) {
+    auto* py_array = py::cast<xla::PyArray*>(arg);
+
+    if (py_array->sharding().get_type() ==
+        input_spec.array_sharding.get_type()) {
+      auto* pmap_sharding = py_array->sharding().cast<jax::PmapSharding*>();
+      auto* cached_pmap_sharding =
+          input_spec.array_sharding.cast<jax::PmapSharding*>();
+
+      if (pmap_sharding->sharding_spec() ==
+          cached_pmap_sharding->sharding_spec()) {
+        ShardArgResult result;
+        result.owning_sda = py::reinterpret_borrow<py::object>(arg);
+        auto& per_device_buffers = result.per_device_buffers;
+        per_device_buffers.reserve(devices.size());
+
+        DCHECK_EQ(py_array->num_shards(), devices.size());
+
+        for (int i = 0; i < devices.size(); ++i) {
+          auto* pjrt_buffer = py_array->GetBuffer(i);
+          if (devices[i] == pjrt_buffer->device()) {
+            per_device_buffers.push_back(pjrt_buffer);
+          } else {
+            TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> out,
+                                pjrt_buffer->CopyToDevice(devices[i]));
+            per_device_buffers.push_back(out.get());
+            result.owned_buffers.push_back(std::move(out));
+          }
+        }
+
+        return result;
+      }
+    }
+  }
+
   if (ShardedDeviceArray::IsShardedDeviceArray(arg)) {
     ShardedDeviceArray* sda =
         ShardedDeviceArray::AsShardedDeviceArrayUnchecked(arg);
@@ -174,6 +215,11 @@ struct PmapCacheEntry {
   xla::PyTreeDef out_pytree_def;
   // Objects necessary to build the out ShardedDeviceArray objects.
   std::vector<ResultSpec> out_result_specs;
+
+  std::vector<py::object> out_array_shardings;
+  std::vector<xla::PrimitiveType> out_dtypes;
+  std::vector<std::vector<int64_t>> out_shapes;
+  std::vector<bool> out_committed;
 
   // Ensures a single thread performs the compilation for a given executable.
   //
@@ -386,11 +432,24 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   cache_entry.py_devices = pmap_data.attr("input_devices");
   auto input_devices =
       py::cast<std::vector<xla::PjRtDevice*>>(pmap_data.attr("input_devices"));
+
+  py::list input_array_shardings = pmap_data.attr("input_array_shardings");
+
   CHECK_EQ(input_sharding_specs.size(), input_indices.size());
   cache_entry.input_specs.reserve(input_sharding_specs.size());
-  for (int i = 0; i < input_sharding_specs.size(); ++i) {
-    cache_entry.input_specs.emplace_back(input_sharding_specs[i],
-                                         input_indices[i]);
+
+  if (input_array_shardings.empty()) {
+    for (int i = 0; i < input_sharding_specs.size(); ++i) {
+      cache_entry.input_specs.emplace_back(input_sharding_specs[i],
+                                           input_indices[i],
+                                           /*array_sharding=*/py::object());
+    }
+  } else {
+    DCHECK_EQ(input_array_shardings.size(), input_sharding_specs.size());
+    for (int i = 0; i < input_sharding_specs.size(); ++i) {
+      cache_entry.input_specs.emplace_back(
+          input_sharding_specs[i], input_indices[i], input_array_shardings[i]);
+    }
   }
 
   // Outputs specs.
@@ -404,9 +463,36 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   CHECK_EQ(out_indices.size(), out_sharding_specs.size());
 
   cache_entry.out_result_specs.reserve(out_avals.size());
+  cache_entry.out_dtypes.reserve(out_avals.size());
+  cache_entry.out_shapes.reserve(out_avals.size());
+
   for (int i = 0; i < out_avals.size(); ++i) {
+    cache_entry.out_dtypes.push_back(
+        xla::DtypeToPrimitiveType(out_avals[i].attr("dtype")).ValueOrDie());
+    cache_entry.out_shapes.push_back(
+        py::cast<std::vector<int64_t>>(out_avals[i].attr("shape")));
     cache_entry.out_result_specs.emplace_back(
         out_avals[i], std::move(out_sharding_specs[i]), out_indices[i]);
+  }
+
+  py::list out_array_shardings = pmap_data.attr("out_array_shardings");
+
+  DCHECK(out_array_shardings.empty() ||
+         out_avals.size() == out_array_shardings.size());
+
+  cache_entry.out_array_shardings.reserve(out_array_shardings.size());
+  for (py::handle out_array_sharding : out_array_shardings) {
+    cache_entry.out_array_shardings.push_back(
+        py::reinterpret_borrow<py::object>(out_array_sharding));
+  }
+
+  py::list out_committed = pmap_data.attr("out_committed");
+
+  DCHECK(out_committed.empty() || out_avals.size() == out_committed.size());
+
+  cache_entry.out_committed.reserve(out_committed.size());
+  for (py::handle c : out_committed) {
+    cache_entry.out_committed.push_back(py::cast<bool>(c));
   }
 }
 
@@ -525,31 +611,52 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
   // Convert the PjRtBuffer objects to PyBuffer, and invert the order from
   // [num_devices, num_args] to [num_args, num_devices].
   const int num_outputs = output_buffers[0].size();
-  std::vector<std::vector<xla::PyBuffer::object>> outputs;
-  outputs.resize(num_outputs);
-  for (int output_id = 0; output_id < num_outputs; ++output_id) {
-    outputs[output_id].reserve(num_computations);
-    for (int computation = 0; computation < num_computations; ++computation) {
-      outputs[output_id].push_back(xla::PyBuffer::Make(
-          client, std::move(output_buffers[computation][output_id]),
-          traceback));
+  std::vector<py::object> flat_sharded_device_arrays;
+  flat_sharded_device_arrays.reserve(num_outputs);
+
+  const auto& output_specs = cache_entry.out_result_specs;
+
+  if (!cache_entry.out_array_shardings.empty()) {
+    for (int i = 0; i < num_outputs; ++i) {
+      std::vector<std::shared_ptr<xla::PjRtBuffer>> outputs;
+      outputs.reserve(num_computations);
+      for (int j = 0; j < num_computations; ++j) {
+        outputs.push_back(std::move(output_buffers[j][i]));
+      }
+
+      const ResultSpec& result_spec = output_specs[i];
+
+      xla::PyArray py_array(
+          result_spec.out_aval, result_spec.weak_type,
+          cache_entry.out_dtypes[i], cache_entry.out_shapes[i],
+          cache_entry.out_array_shardings[i], client, traceback,
+          std::move(outputs), cache_entry.out_committed[i]);
+
+      flat_sharded_device_arrays.push_back(py::cast(std::move(py_array)));
+    }
+  } else {
+    std::vector<std::vector<xla::PyBuffer::object>> outputs;
+    outputs.resize(num_outputs);
+    for (int output_id = 0; output_id < num_outputs; ++output_id) {
+      outputs[output_id].reserve(num_computations);
+      for (int computation = 0; computation < num_computations; ++computation) {
+        outputs[output_id].push_back(xla::PyBuffer::Make(
+            client, std::move(output_buffers[computation][output_id]),
+            traceback));
+      }
+    }
+
+    for (int i = 0; i < num_outputs; ++i) {
+      const ResultSpec& result_spec = output_specs[i];
+      flat_sharded_device_arrays.push_back(ShardedDeviceArray::Make(
+          /*aval=*/result_spec.out_aval,
+          /*sharding_spec=*/result_spec.out_spec,
+          /*device_buffers=*/py::cast(std::move(outputs[i])),
+          /*indices=*/result_spec.out_indices,
+          /*weak_type=*/result_spec.weak_type));
     }
   }
 
-  py::list outputs_as_python_objects;
-  const auto& output_specs = cache_entry.out_result_specs;
-
-  std::vector<py::object> flat_sharded_device_arrays;
-  flat_sharded_device_arrays.reserve(num_outputs);
-  for (int i = 0; i < num_outputs; ++i) {
-    const ResultSpec& result_spec = output_specs[i];
-    flat_sharded_device_arrays.push_back(ShardedDeviceArray::Make(
-        /*aval=*/result_spec.out_aval,
-        /*sharding_spec=*/result_spec.out_spec,
-        /*device_buffers=*/py::cast(std::move(outputs[i])),
-        /*indices=*/result_spec.out_indices,
-        /*weak_type=*/result_spec.weak_type));
-  }
   py::object out =
       cache_entry.out_pytree_def.Unflatten(flat_sharded_device_arrays);
 

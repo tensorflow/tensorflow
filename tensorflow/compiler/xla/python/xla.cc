@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
+#include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
@@ -365,6 +366,7 @@ PYBIND11_MODULE(xla_extension, m) {
 
   TF_CHECK_OK(PyBuffer::RegisterTypes(m));
   PyArray::RegisterTypes(m);
+  jax::RegisterSharding(m);
 
   py::class_<CompiledMemoryStats>(m, "CompiledMemoryStats")
       .def_readwrite("generated_code_size_in_bytes",

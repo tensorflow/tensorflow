@@ -51,7 +51,8 @@ class PyArray {
           std::shared_ptr<PyClient> py_client,
           std::shared_ptr<Traceback> traceback,
           std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers, bool committed,
-          bool skip_checks, pybind11::object fast_path_args = pybind11::none());
+          bool skip_checks = true,
+          pybind11::object fast_path_args = pybind11::none());
 
   const pybind11::object& aval() const { return aval_; }
   void set_aval(pybind11::object aval) { aval_ = std::move(aval); }
