@@ -558,6 +558,35 @@ def _run_static_range_qat(
   return graph_pb2.GraphDef.FromString(graph_def_serialized)
 
 
+def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
+  """Adds calibration statistics to the graph def.
+
+  This function must be run after running the graph with a representative
+  dataset. Retrieves calibration statistics from the global calibrator and adds
+  them to the corresponding nodes as attributes.
+
+  Args:
+    graph_def: GraphDef to add calibration statistics to.
+  """
+  for function_def in graph_def.library.function:
+    for node_def in function_def.node_def:
+      if node_def.op != 'CustomAggregator':
+        continue
+
+      node_id = node_def.attr['id'].s
+      try:
+        min_val = quantize_model_wrapper.get_min_from_calibrator(node_id)
+        max_val = quantize_model_wrapper.get_max_from_calibrator(node_id)
+        quantize_model_wrapper.clear_data_from_calibrator(node_id)
+        node_def.attr['min'].f = float(min_val)
+        node_def.attr['max'].f = float(max_val)
+      except ValueError:
+        logging.warn(
+            'CustomAggregator id "%s" from FunctionDef "%s" does not have '
+            'min or max values. Parts of this function are not quantized.',
+            node_id.decode('utf-8'), function_def.signature.name)
+
+
 def _run_static_range_ptq(
     saved_model_path: str,
     signature_def_keys: Sequence[str],
@@ -626,22 +655,7 @@ def _run_static_range_ptq(
   # in a global CalibratorSingleton instance.
   _run_graph_for_calibration(float_model_dir, signature_def_keys, tags,
                              representative_dataset)
-
-  for function_def in graph_def.library.function:
-    for node_def in function_def.node_def:
-      if node_def.op == 'CustomAggregator':
-        node_id = node_def.attr['id'].s
-        try:
-          min_val = quantize_model_wrapper.get_min_from_calibrator(node_id)
-          max_val = quantize_model_wrapper.get_max_from_calibrator(node_id)
-          quantize_model_wrapper.clear_data_from_calibrator(node_id)
-          node_def.attr['min'].f = float(min_val)
-          node_def.attr['max'].f = float(max_val)
-        except ValueError:
-          warnings.warn(
-              f'CustomAggregator id "{node_id.decode("utf-8")}" from '
-              f'FunctionDef "{function_def.signature.name}" does not have '
-              'min or max values. This function may not be quantized.')
+  _add_calibration_statistics(graph_def)
 
   calibrated_model_dir = tempfile.mkdtemp()
   v1_builder = builder.SavedModelBuilder(calibrated_model_dir)
