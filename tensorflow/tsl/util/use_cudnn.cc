@@ -13,18 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/use_cudnn.h"
+#include "tensorflow/tsl/util/use_cudnn.h"
 
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/env_var.h"
+#include <cstdint>
+
+#include "tensorflow/tsl/platform/str_util.h"
+#include "tensorflow/tsl/platform/stringpiece.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
 #endif  // GOOGLE_CUDA
 
-namespace tensorflow {
+namespace tsl {
 
 #define ADD_BOOL_CUDNN_FLAG(func_name, flag_name, default_value)           \
   bool func_name() {                                                       \
@@ -122,4 +123,4 @@ bool ShouldCudnnGroupedConvolutionBeUsed(const int32_t filter_rows,
           filter_rows == 7);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl
