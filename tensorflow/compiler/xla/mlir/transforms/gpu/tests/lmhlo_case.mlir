@@ -31,8 +31,9 @@ module attributes {gpu.container_module} {
     // CHECK: %[[PRED:.*]] = memref.load %[[HOST]][] : memref<i1>
     // CHECK: %[[IDX:.*]] = arith.select %[[PRED]], %[[C0]], %[[C1]]
 
+    // CHECK: scf.execute_region
     // CHECK: cf.switch %[[IDX]] : i32
-    // CHECK:   default: ^[[CONT:.*]],
+    // CHECK:   default: ^[[YIELD:.*]],
     // CHECK:         0: ^[[CASE0:.*]],
     // CHECK:         1: ^[[CASE1:.*]]
     "lmhlo.case"(%arg1) ({
@@ -49,13 +50,15 @@ module attributes {gpu.container_module} {
 
     // CHECK: ^[[CASE0]]:
     // CHECK: gpu.launch_func @case0::@fn
-    // CHECK: cf.br ^[[CONT]]
+    // CHECK: cf.br ^[[YIELD]]
 
     // CHECK: ^[[CASE1]]:
     // CHECK: gpu.launch_func @case1::@fn
-    // CHECK: cf.br ^[[CONT]]
+    // CHECK: cf.br ^[[YIELD]]
 
-    // CHECK: ^[[CONT]]:
+    // CHECK: ^[[YIELD]]:
+    // CHECK-NEXT: scf.yield
+
     // CHECK: return
     "lmhlo.terminator"() : () -> ()
   }
@@ -79,8 +82,9 @@ module attributes {gpu.container_module} {
     // CHECK: %[[OOR:.*]] = arith.ori %[[SMALL]], %[[LARGE]] : i1
     // CHECK: %[[IDX:.*]] = arith.select %[[OOR]], %[[C1]], %[[PRED]] : i32
 
+    // CHECK: scf.execute_region
     // CHECK: cf.switch %[[IDX]] : i32
-    // CHECK:   default: ^[[CONT:.*]],
+    // CHECK:   default: ^[[YIELD:.*]],
     // CHECK:         0: ^[[CASE0:.*]],
     // CHECK:         1: ^[[CASE1:.*]]
     "lmhlo.case"(%arg1) ({
@@ -97,13 +101,15 @@ module attributes {gpu.container_module} {
 
     // CHECK: ^[[CASE0]]:
     // CHECK: gpu.launch_func @case0::@fn
-    // CHECK: cf.br ^[[CONT]]
+    // CHECK: cf.br ^[[YIELD]]
 
     // CHECK: ^[[CASE1]]:
     // CHECK: gpu.launch_func @case1::@fn
-    // CHECK: cf.br ^[[CONT]]
+    // CHECK: cf.br ^[[YIELD]]
 
-    // CHECK: ^[[CONT]]:
+    // CHECK: ^[[YIELD]]:
+    // CHECK-NEXT: scf.yield
+
     // CHECK: return
     "lmhlo.terminator"() : () -> ()
   }

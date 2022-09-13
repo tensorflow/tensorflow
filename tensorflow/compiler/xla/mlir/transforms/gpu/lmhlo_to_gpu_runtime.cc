@@ -270,9 +270,18 @@ class CaseOpLowering : public OpRewritePattern<CaseOp> {
       index = b.create<arith::SelectOp>(out_of_range, cN, index);
     }
 
-    // Split block right at the case operation.
-    Block* cont = rewriter.splitBlock(op->getBlock(), op->getIterator());
-    Block* orig = cont->getPrevNode();
+    // Wrap the CFG constructed from the `lmhlo.case` operation in an
+    // `scf.execute_region` operation, so that we do not introduce the CFG
+    // into regions that expect a single block (e.g. inside the loop body).
+    auto execute = b.create<scf::ExecuteRegionOp>(TypeRange());
+
+    // Add an entry block to the execute region operation.
+    Block& entry = execute.getRegion().emplaceBlock();
+
+    // Create a block with `scf.yield` terminator.
+    Block& yield = execute.getRegion().emplaceBlock();
+    b.setInsertionPointToStart(&yield);
+    b.create<scf::YieldOp>();
 
     // Prepare case destinations for the `scf.switch` operation.
     llvm::SmallVector<llvm::APInt> case_values;
@@ -281,16 +290,16 @@ class CaseOpLowering : public OpRewritePattern<CaseOp> {
 
     // Create blocks from each of the case regions.
     for (Region& region : op->getRegions()) {
-      // Move `lmhlo.case` block before the continuation.
+      // Move `lmhlo.case` block into the execute region.
       Block& block = region.front();
-      block.moveBefore(cont);
+      block.moveBefore(&yield);
 
       // Erase original `lmhlo.terminator`.
       rewriter.eraseOp(block.getTerminator());
 
-      // Branch into the continuation block.
+      // Branch into the yield block.
       b.setInsertionPointToEnd(&block);
-      b.create<cf::BranchOp>(cont);
+      b.create<cf::BranchOp>(&yield);
 
       // Add a `cf.switch` case.
       int32_t idx = case_blocks.size();
@@ -299,10 +308,10 @@ class CaseOpLowering : public OpRewritePattern<CaseOp> {
       case_operands.push_back({});
     }
 
-    // Replace `lmhlo.case` with a `cf.switch` operation on the host.
-    b.setInsertionPointToEnd(orig);
-    b.create<cf::SwitchOp>(index, cont, ValueRange(), case_values, case_blocks,
-                           case_operands);
+    // Create a `cf.switch` operation in the execute region entry block.
+    b.setInsertionPointToEnd(&entry);
+    b.create<cf::SwitchOp>(index, &yield, ValueRange(), case_values,
+                           case_blocks, case_operands);
 
     // Erase the original case operation.
     rewriter.eraseOp(op);
