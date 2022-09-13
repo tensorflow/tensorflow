@@ -561,6 +561,52 @@ struct NumRets<T> {
   static constexpr int64_t value = IsResult<T>::value;
 };
 
+// A helper template to concatenate index + index sequence.
+template <size_t, typename>
+struct ConsIdx;
+
+template <size_t idx, size_t... Is>
+struct ConsIdx<idx, std::index_sequence<Is...>> {
+  using Type = std::index_sequence<idx, Is...>;
+};
+
+// Get indices of the variadic template type parameters corresponding to
+// results. This template will produce an `std::index_sequence` type with
+// indices of custom call result arguments.
+template <size_t idx, typename... Ts>
+struct IndexRets;
+
+template <size_t idx>
+struct IndexRets<idx> {
+  using Is = std::index_sequence<>;
+};
+
+template <size_t idx, typename T, typename... Ts>
+struct IndexRets<idx, T, Ts...> {
+  using Is = std::conditional_t<
+      IsResult<T>::value,
+      typename ConsIdx<idx, typename IndexRets<idx + 1, Ts...>::Is>::Type,
+      typename IndexRets<idx + 1, Ts...>::Is>;
+};
+
+// Get indices of the variadic template type parameters corresponding to
+// all arguments excluding results.
+template <size_t idx, typename... Ts>
+struct IndexArgs;
+
+template <size_t idx>
+struct IndexArgs<idx> {
+  using Is = std::index_sequence<>;
+};
+
+template <size_t idx, typename T, typename... Ts>
+struct IndexArgs<idx, T, Ts...> {
+  using Is = std::conditional_t<
+      !IsResult<T>::value,
+      typename ConsIdx<idx, typename IndexArgs<idx + 1, Ts...>::Is>::Type,
+      typename IndexArgs<idx + 1, Ts...>::Is>;
+};
+
 // When decoding input data we need to keep track of how many arguments,
 // attributes, and returns we decoded so far to index into the correct data
 // strucuture.
@@ -776,27 +822,33 @@ class CustomCallHandler : public CustomCall {
       }
     }
 
+    // Define index sequences to access custom call operands.
+    using Is = std::make_index_sequence<kSize>;
+    using ArgsIs = typename internal::IndexArgs<0, Ts...>::Is;
+    using RetsIs = typename internal::IndexRets<0, Ts...>::Is;
+
     return call(decoded_args, decoded_attrs, decoded_rets, user_data,
-                diagnostic, std::make_index_sequence<kSize>{});
+                diagnostic, Is{}, ArgsIs{}, RetsIs{});
   }
 
-  template <size_t... Is>
+  template <size_t... Is, size_t... ArgsIs, size_t... RetsIs>
   LLVM_ATTRIBUTE_ALWAYS_INLINE LogicalResult
   call(internal::DecodedArgs args, internal::DecodedAttrs attrs,
        internal::DecodedRets rets, const UserData* user_data,
-       const DiagnosticEngine* diagnostic, std::index_sequence<Is...>) const {
+       const DiagnosticEngine* diagnostic, std::index_sequence<Is...>,
+       std::index_sequence<ArgsIs...>, std::index_sequence<RetsIs...>) const {
     // A helper structure to allow each decoder find the correct offset in the
-    // arguments or attributes.
+    // arguments, attributes or results.
     internal::DecodingOffsets offsets;
 
-    // Check if all arguments and attributes were decoded.
+    // Check if all operands and results were decoded.
     bool all_decoded = true;
     auto check_all_decoded = [&](auto result) {
       all_decoded &= succeeded(result);
       return std::move(result);
     };
 
-    // Decode all arguments into FailureOr containers. It is guaranteed
+    // Decode all operands into FailureOr containers. It is guaranteed
     // that initializer list will be evaluated left-to-right, and we can rely
     // on correct offsets computation.
     std::tuple<FailureOr<FnArgType<Ts>>...> fn_args = {
