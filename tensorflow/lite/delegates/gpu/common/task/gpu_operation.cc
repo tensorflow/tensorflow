@@ -496,21 +496,10 @@ absl::Status GPUOperation::ResolveSecondElementwiseInput() {
 
 absl::Status GPUOperation::GetTensorDescriptor(const std::string& tensor_name,
                                                TensorDescriptor** resutl) {
-  for (int i = 0; i < src_tensors_names_.size(); ++i) {
-    if (src_tensors_names_[i] == tensor_name) {
-      int index = elementwise_ ? i + 1 : i;
-      *resutl = &definition_.src_tensors[index];
-      return absl::OkStatus();
-    }
-  }
-  for (int i = 0; i < dst_tensors_names_.size(); ++i) {
-    if (dst_tensors_names_[i] == tensor_name) {
-      int index = elementwise_ ? i + 1 : i;
-      *resutl = &definition_.dst_tensors[index];
-      return absl::OkStatus();
-    }
-  }
-  return absl::NotFoundError("Can not find tensor with this name");
+  GPUObjectDescriptor* desc_ptr;
+  RETURN_IF_ERROR(args_.GetDescriptor(tensor_name, &desc_ptr));
+  *resutl = static_cast<TensorDescriptor*>(desc_ptr);
+  return absl::OkStatus();
 }
 
 void GPUOperation::AddSrcTensor(const std::string& tensor_name,
