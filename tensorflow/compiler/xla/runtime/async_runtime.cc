@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "llvm/Support/MathExtras.h"
-#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/tsl/platform/mem.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
@@ -45,8 +45,8 @@ using tfrt::MakeConstructedAsyncValueRef;
 
 using xla::runtime::AsyncRuntimeObject;
 
-using tensorflow::port::AlignedFree;
-using tensorflow::port::AlignedMalloc;
+using tsl::port::AlignedFree;
+using tsl::port::AlignedMalloc;
 
 class AsyncToken : public AsyncRuntimeObject {
  public:

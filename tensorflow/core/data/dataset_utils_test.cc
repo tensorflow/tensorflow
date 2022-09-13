@@ -187,13 +187,33 @@ TEST(DatasetUtilsTest, BoolConstructor) {
   EXPECT_FALSE(DeterminismPolicy(false).IsDefault());
 }
 
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_0", 0);
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_1", 1);
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_5", 5);
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_10", 10);
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_50", 50);
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_99", 99);
-REGISTER_DATASET_EXPERIMENT("test_only_experiment_100", 100);
+template <int64_t rollout_pct>
+bool RandomJobSamplePercentage(std::function<uint64(const string&)> hash_func,
+                               const std::string& experiment_name,
+                               const std::string& job_name) {
+  return hash_func(strings::StrCat(job_name, experiment_name)) % 100 <
+         rollout_pct;
+}
+bool IndependentHostTasks(int64_t task_id) { return (task_id & 0x2) == 0x2; }
+bool AllTasks(int64_t task_id) { return true; }
+
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_0",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_1",
+                            RandomJobSamplePercentage<1>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_5",
+                            RandomJobSamplePercentage<5>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_10",
+                            RandomJobSamplePercentage<10>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_50",
+                            RandomJobSamplePercentage<50>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_99",
+                            RandomJobSamplePercentage<99>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment_100",
+                            RandomJobSamplePercentage<100>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("test_only_task_experiment_100",
+                            RandomJobSamplePercentage<100>,
+                            IndependentHostTasks);
 
 struct GetExperimentsHashTestCase {
   uint64 hash;
@@ -207,9 +227,10 @@ class GetExperimentsHashTest
 TEST_P(GetExperimentsHashTest, DatasetUtils) {
   const GetExperimentsHashTestCase test_case = GetParam();
   uint64 hash_result = test_case.hash;
-  auto job_name = "job";
+  const std::string job_name = "job";
+  const int64_t task_id = 0;
   auto hash_func = [hash_result](const string& str) { return hash_result; };
-  auto experiments = GetExperiments(job_name, hash_func);
+  auto experiments = GetExperiments(job_name, task_id, hash_func);
 
   absl::flat_hash_set<string> experiment_set(experiments.begin(),
                                              experiments.end());
@@ -315,9 +336,10 @@ TEST_P(GetExperimentsOptTest, DatasetUtils) {
     setenv("TF_DATA_EXPERIMENT_OPT_OUT", str_util::Join(opt_outs, ",").c_str(),
            1);
   }
-  auto job_name = "job";
+  const std::string job_name = "job";
+  const int64_t task_id = 0;
   auto hash_func = [](const string& str) { return 0; };
-  auto experiments = GetExperiments(job_name, hash_func);
+  auto experiments = GetExperiments(job_name, task_id, hash_func);
 
   absl::flat_hash_set<string> experiment_set(experiments.begin(),
                                              experiments.end());
@@ -437,6 +459,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 struct GetExperimentsJobNameTestCase {
   string job_name;
+  int64_t task_id;
   std::vector<string> expected_in;
   std::vector<string> expected_out;
 };
@@ -447,8 +470,9 @@ class GetExperimentsJobNameTest
 TEST_P(GetExperimentsJobNameTest, DatasetUtils) {
   const GetExperimentsJobNameTestCase test_case = GetParam();
   auto job_name = test_case.job_name;
+  auto task_id = test_case.task_id;
   auto hash_func = [](const string& str) { return 0; };
-  auto experiments = GetExperiments(job_name, hash_func);
+  auto experiments = GetExperiments(job_name, task_id, hash_func);
 
   absl::flat_hash_set<string> experiment_set(experiments.begin(),
                                              experiments.end());
@@ -464,22 +488,71 @@ TEST_P(GetExperimentsJobNameTest, DatasetUtils) {
 
 INSTANTIATE_TEST_SUITE_P(
     Test, GetExperimentsJobNameTest,
-    ::testing::Values(GetExperimentsJobNameTestCase{
-                          /*job_name=*/"",
-                          /*expected_in=*/{},
-                          /*expected_out=*/
-                          {"test_only_experiment_0", "test_only_experiment_1",
-                           "test_only_experiment_5", "test_only_experiment_10",
-                           "test_only_experiment_50", "test_only_experiment_99",
-                           "test_only_experiment_100"}},
-                      GetExperimentsJobNameTestCase{
-                          /*job_name=*/"job_name",
-                          /*expected_in=*/
-                          {"test_only_experiment_1", "test_only_experiment_5",
-                           "test_only_experiment_10", "test_only_experiment_50",
-                           "test_only_experiment_99",
-                           "test_only_experiment_100"},
-                          /*expected_out=*/{"test_only_experiment_0"}}));
+    ::testing::Values(
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"",
+            /*task_id=*/0,
+            /*expected_in=*/{},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_experiment_1",
+             "test_only_experiment_5", "test_only_experiment_10",
+             "test_only_experiment_50", "test_only_experiment_99",
+             "test_only_experiment_100", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"",
+            /*task_id=*/-1,
+            /*expected_in=*/{},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_experiment_1",
+             "test_only_experiment_5", "test_only_experiment_10",
+             "test_only_experiment_50", "test_only_experiment_99",
+             "test_only_experiment_100", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"",
+            /*task_id=*/2,
+            /*expected_in=*/{},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_experiment_1",
+             "test_only_experiment_5", "test_only_experiment_10",
+             "test_only_experiment_50", "test_only_experiment_99",
+             "test_only_experiment_100", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"job_name",
+            /*task_id=*/-1,
+            /*expected_in=*/{},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_experiment_1",
+             "test_only_experiment_5", "test_only_experiment_10",
+             "test_only_experiment_50", "test_only_experiment_99",
+             "test_only_experiment_100", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"job_name",
+            /*task_id=*/0,
+            /*expected_in=*/
+            {"test_only_experiment_1", "test_only_experiment_5",
+             "test_only_experiment_10", "test_only_experiment_50",
+             "test_only_experiment_99", "test_only_experiment_100"},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"job_name",
+            /*task_id=*/1,
+            /*expected_in=*/
+            {"test_only_experiment_1", "test_only_experiment_5",
+             "test_only_experiment_10", "test_only_experiment_50",
+             "test_only_experiment_99", "test_only_experiment_100"},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*job_name=*/"job_name",
+            /*task_id=*/2,
+            /*expected_in=*/
+            {"test_only_experiment_1", "test_only_experiment_5",
+             "test_only_experiment_10", "test_only_experiment_50",
+             "test_only_experiment_99", "test_only_experiment_100",
+             "test_only_task_experiment_100"},
+            /*expected_out=*/
+            {"test_only_experiment_0"}}));
 
 struct GetOptimizationsTestCase {
   Options options;
@@ -585,7 +658,8 @@ TEST(DeterministicOpsTest, GetOptimizations) {
   EXPECT_EQ(actual_disabled.size(), 0);
 }
 
-REGISTER_DATASET_EXPERIMENT("test_only_experiment", 42);
+REGISTER_DATASET_EXPERIMENT("test_only_experiment",
+                            RandomJobSamplePercentage<42>, AllTasks);
 
 TEST(DatasetUtilsTest, DatasetExperimentRegistry) {
   auto experiments = DatasetExperimentRegistry::Experiments();

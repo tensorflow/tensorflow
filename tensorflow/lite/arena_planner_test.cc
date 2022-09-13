@@ -154,6 +154,7 @@ class TestGraphInfo : public GraphInfo {
   explicit TestGraphInfo(TestGraph* graph) : graph_(graph) {}
 
   size_t num_tensors() const override { return graph_->tensors()->size(); }
+  TfLiteTensor* tensors() override { return graph_->tensors()->data(); }
   TfLiteTensor* tensor(size_t index) override {
     return &graph_->tensors()->at(index);
   }

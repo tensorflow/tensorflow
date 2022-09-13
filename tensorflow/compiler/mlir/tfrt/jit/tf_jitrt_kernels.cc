@@ -660,7 +660,7 @@ struct DebugListener : public SpecializationListener {
 template <typename Error>
 static void ReturnErrors(RemainingResults results, Error error,
                          const ExecutionContext& exec_ctx) {
-  EmitError(exec_ctx, StrCat(error));
+  EmitError(exec_ctx, error);
   ReturnErrors(results, std::move(error));
 }
 
@@ -746,7 +746,8 @@ static void ExecuteImpl(JitExecutable& jit_executable,
 
   // ... or maybe return errors.
   if (LLVM_UNLIKELY(executable->IsError()))
-    return ReturnErrors(results, executable->GetError(), exec_ctx);
+    return ReturnErrors(
+        results, MakeStringError(executable->GetError().message()), exec_ctx);
 
   // Otherwise execute it when the executable will become available. This
   // requires careful lifetime extension of all async values passed as operands
@@ -771,7 +772,8 @@ static void ExecuteImpl(JitExecutable& jit_executable,
     RemainingResults results(results_storage);
 
     if (executable.IsError()) {
-      ReturnErrors(results, executable.GetError(), exec_ctx);
+      ReturnErrors(results, MakeStringError(executable.GetError().message()),
+                   exec_ctx);
     } else {
       ExecuteImpl(*executable, memrefs, operands, results, exec_ctx);
     }
@@ -820,7 +822,9 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
 
   // ... or maybe return errors.
   if (LLVM_UNLIKELY(jit_executable->IsError()))
-    return ReturnErrors(results, jit_executable->GetError(), exec_ctx);
+    return ReturnErrors(results,
+                        MakeStringError(jit_executable->GetError().message()),
+                        exec_ctx);
 
   // Otherwise execute it when the executable will become available. This
   // requires careful lifetime extension of all async values passed as operands
@@ -844,7 +848,9 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
     RemainingResults results(results_storage);
 
     if (jit_executable.IsError()) {
-      ReturnErrors(results, jit_executable.GetError(), exec_ctx);
+      ReturnErrors(results,
+                   MakeStringError(jit_executable.GetError().message()),
+                   exec_ctx);
     } else {
       ExecuteImpl(*jit_executable, operands, results, exec_ctx, debug);
     }

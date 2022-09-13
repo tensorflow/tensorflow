@@ -456,10 +456,11 @@ LogicalResult GraphFuncOp::verifyBody() {
     Type expected_type = indexed_type.value();
     int res_num = indexed_type.index();
     Type actual_type = return_op->getOperand(res_num).getType();
-    if (expected_type == actual_type) continue;
-    return emitOpError() << "type mismatch for returned value #" << res_num
-                         << ", expected " << expected_type << " but got "
-                         << actual_type;
+    if (!tf_type::AreCastCompatible({expected_type, actual_type})) {
+      return emitOpError() << "type mismatch for returned value #" << res_num
+                           << ", expected " << expected_type << " but got "
+                           << actual_type;
+    }
   }
   Type control_type = getDialect()->getControlType();
   for (auto &indexed_type : llvm::enumerate(llvm::drop_begin(

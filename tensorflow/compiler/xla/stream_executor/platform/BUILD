@@ -22,8 +22,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:types",
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/platform:logging",
     ] + tf_stream_executor_deps("platform", "//tensorflow/compiler/xla/stream_executor/platform/"),
 )
 

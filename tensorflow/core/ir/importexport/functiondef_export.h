@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_FUNCTIONDEF_EXPORT_H_
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace mlir {
 namespace tfg {

@@ -98,7 +98,7 @@ add_mlir_library(GmlStPasses
   fusion.cc
   gml_st_to_scf.cc
   tiling.cc
-  uncollapse_materialize_ops.cc
+  collapse_materialize_ops.cc
   vectorization.cc
 
   DEPENDS

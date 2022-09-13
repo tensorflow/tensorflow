@@ -238,6 +238,7 @@ def HLO_CosineOp: HLO_UnaryElementwiseOp<"cosine",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 
+  let hasFolder = 1;
   let hasCustomHLOConverter = 1;
 }
 
@@ -250,6 +251,7 @@ def HLO_ExpOp: HLO_UnaryElementwiseOp<"exponential",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
 }
 def HLO_Expm1Op: HLO_UnaryElementwiseOp<"exponential_minus_one",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
@@ -327,6 +329,7 @@ def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
 }
 def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_PredOrIntTensor> {
@@ -441,6 +444,7 @@ def HLO_SineOp: HLO_UnaryElementwiseOp<"sine",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
   let hasCustomHLOConverter = 1;
 }
 
@@ -466,6 +470,7 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
 }
 //===----------------------------------------------------------------------===//
 // MHLO binary elementwise op definitions.

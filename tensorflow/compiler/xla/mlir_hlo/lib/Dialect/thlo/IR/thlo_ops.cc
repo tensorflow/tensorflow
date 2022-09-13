@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Arithmetic/Utils/Utils.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
@@ -318,14 +317,13 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
     // concat dimension. The remaining offset is subtracted by the operand's
     // size but must remain >= 0.
     if (operand != allOperands.back()) {
-      remainingTileOffsetInConcatDim = builder.create<arith::SelectOp>(
-          loc,
-          builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ule,
-                                        remainingTileOffsetInConcatDim,
-                                        operandSizeInConcatDim),
-          zeroCst,
-          builder.create<arith::SubIOp>(loc, remainingTileOffsetInConcatDim,
-                                        operandSizeInConcatDim));
+      Value cmp = builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ule,
+                                                remainingTileOffsetInConcatDim,
+                                                operandSizeInConcatDim);
+      Value sub = builder.create<arith::SubIOp>(
+          loc, remainingTileOffsetInConcatDim, operandSizeInConcatDim);
+      remainingTileOffsetInConcatDim =
+          builder.create<arith::SelectOp>(loc, cmp, zeroCst, sub);
     }
   }
 
@@ -811,7 +809,7 @@ mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
   SmallVector<Value> materializedOffsets;
   for (auto &offset : offsets)
     materializedOffsets.push_back(
-        linalg::materializeOpFoldResult(b, loc, offset));
+        getValueOrCreateConstantIndexOp(b, loc, offset));
   Value isCorrectIndex =
       b.create<arith::ConstantOp>(loc, b.getIntegerAttr(b.getI1Type(), 1));
   auto indexInIndices = ivs;

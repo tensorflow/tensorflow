@@ -321,7 +321,7 @@ static const HloInstruction* GetOutputInstruction(
 
 std::string BufferAllocation::ToString() const {
   std::string output;
-  StrAppendFormat(&output, "allocation %d: %p, size %d", index_, this, size());
+  StrAppendFormat(&output, "allocation %d: size %d", index_, size());
   if (color() != 0) {
     StrAppend(&output, ", color ", color());
   }

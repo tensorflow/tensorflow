@@ -21,9 +21,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -33,6 +33,12 @@ namespace runtime {
 // Forward declare.
 class DiagnosticEngine;
 
+// XLA runtime diagnostic engine enables XLA runtime custom calls and compiled
+// programs to pass diagnostic information (e.g. detailed run time error
+// information attached to the absl::Status) to the caller via the side channel,
+// because the API (and ABI) of the compiled executable is very simple, and
+// doesn't allow to pass complex C++ tyopes.
+//
 // XLA runtime diagnostics borrows a lot of ideas from the MLIR compile time
 // diagnostics (which is largely based on the Swift compiler diagnostics),
 // however in contrast to MLIR compilation pipelines we need to emit diagnostics
@@ -40,67 +46,38 @@ class DiagnosticEngine;
 // location in the input module.
 //
 // See MLIR Diagnostics documentation: https://mlir.llvm.org/docs/Diagnostics.
-//
-// TODO(ezhulenev): Add location tracking, so that we can correlate emitted
-// diagnostics to the location in the input module, and from there rely on the
-// MLIR location to correlate events back to the user program (e.g. original
-// JAX program written in Python).
-//
-// TODO(ezhulenev): In contrast to MLIR we don't have notes. Add them if needed.
-
-enum class DiagnosticSeverity { kWarning, kError, kRemark };
 
 //===----------------------------------------------------------------------===//
 // Diagnostic
 //===----------------------------------------------------------------------===//
 
+// TODO(ezhulenev): Add location tracking to diagnostic, so that we can
+// correlate emitted diagnostic to the location in the input module, and from
+// there rely on the MLIR location to correlate events back to the user program
+// (e.g. original JAX program written in Python).
 class Diagnostic {
  public:
-  explicit Diagnostic(DiagnosticSeverity severity) : severity_(severity) {}
+  explicit Diagnostic(absl::Status status) : status_(std::move(status)) {}
 
   Diagnostic(Diagnostic &&) = default;
   Diagnostic &operator=(Diagnostic &&) = default;
 
-  // TODO(ezhulenev): Instead of relying on `<<` implementation pass diagnostic
-  // arguments explicitly, similar to MLIR?
-
-  template <typename Arg>
-  Diagnostic &operator<<(Arg &&arg) {
-    llvm::raw_string_ostream(message_) << std::forward<Arg>(arg);
-    return *this;
-  }
-
-  template <typename Arg>
-  Diagnostic &append(Arg &&arg) {
-    *this << std::forward<Arg>(arg);
-    return *this;
-  }
-
-  template <typename T>
-  Diagnostic &appendRange(const T &c, const char *delim = ", ") {
-    llvm::interleave(
-        c, [this](const auto &a) { *this << a; }, [&]() { *this << delim; });
-    return *this;
-  }
-
-  DiagnosticSeverity severity() const { return severity_; }
-
-  std::string str() const { return message_; }
+  absl::Status status() const { return status_; }
 
  private:
   Diagnostic(const Diagnostic &rhs) = delete;
   Diagnostic &operator=(const Diagnostic &rhs) = delete;
 
-  DiagnosticSeverity severity_;
-  std::string message_;
+  absl::Status status_;
 };
 
 //===----------------------------------------------------------------------===//
 // InFlightDiagnostic
 //===----------------------------------------------------------------------===//
 
-// In flight diagnostic gives an opportunity to build a diagnostic before
-// reporting it to the engine, similar to the builder pattern.
+// RAII wrapper around constructed, but but not yet emitted diagnostic. In
+// flight diagnostic gives an opportunity to build a diagnostic before reporting
+// it to the engine, similar to the builder pattern.
 class InFlightDiagnostic {
  public:
   InFlightDiagnostic(InFlightDiagnostic &&other)
@@ -113,27 +90,6 @@ class InFlightDiagnostic {
     if (IsInFlight()) Report();
   }
 
-  template <typename Arg>
-  InFlightDiagnostic &operator<<(Arg &&arg) & {
-    return append(std::forward<Arg>(arg));
-  }
-  template <typename Arg>
-  InFlightDiagnostic &&operator<<(Arg &&arg) && {
-    return std::move(append(std::forward<Arg>(arg)));
-  }
-
-  template <typename Arg>
-  InFlightDiagnostic &append(Arg &&arg) & {
-    assert(IsActive() && "diagnostic not active");
-    if (IsInFlight()) diagnostic_->append(std::forward<Arg>(arg));
-    return *this;
-  }
-
-  template <typename Arg>
-  InFlightDiagnostic &&append(Arg &&arg) && {
-    return std::move(append(std::forward<Arg>(arg)));
-  }
-
   void Report();
   void Abandon();
 
@@ -142,7 +98,7 @@ class InFlightDiagnostic {
   // Example:
   //
   //   LogicalResult call(DiagnosticEngine diag, ...) {
-  //     if (<check failed>) return diag.EmitError() << "Oops";
+  //     if (<check failed>) return diag.EmitError(InternalError("oops"));
   //     ...
   //   }
   //
@@ -185,12 +141,8 @@ class DiagnosticEngine {
   // Returns the default instance of the diagnostic engine.
   static const DiagnosticEngine *DefaultDiagnosticEngine();
 
-  InFlightDiagnostic Emit(DiagnosticSeverity severity) const {
-    return InFlightDiagnostic(this, Diagnostic(severity));
-  }
-
-  InFlightDiagnostic EmitError() const {
-    return Emit(DiagnosticSeverity::kError);
+  InFlightDiagnostic EmitError(absl::Status status) const {
+    return InFlightDiagnostic(this, Diagnostic(std::move(status)));
   }
 
   void AddHandler(HandlerTy handler) {
@@ -203,8 +155,7 @@ class DiagnosticEngine {
     }
 
     // Log unhandled errors to the warning log.
-    if (diagnostic.severity() == DiagnosticSeverity::kError)
-      LOG(WARNING) << "XLA runtime error: " << diagnostic.str();
+    LOG(WARNING) << "XLA runtime error: " << diagnostic.status();
   }
 
  private:

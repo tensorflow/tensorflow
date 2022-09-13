@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/windows_compatibility.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 // Provided by compiler-rt and MLIR.
 // Converts an F32 value to a BF16.

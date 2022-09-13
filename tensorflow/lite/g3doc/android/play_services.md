@@ -70,6 +70,10 @@ dependencies {
 }
 ```
 
+Caution: The TensorFlow Lite Tasks Audio library version 0.4.2
+maven repository is incomplete. Use version 0.4.2.1 for this library instead:
+`org.tensorflow:tensorflow-lite-task-audio-play-services:0.4.2.1`.
+
 #### 2. Add initialization of TensorFlow Lite
 
 Initialize the TensorFlow Lite component of the Google Play services API

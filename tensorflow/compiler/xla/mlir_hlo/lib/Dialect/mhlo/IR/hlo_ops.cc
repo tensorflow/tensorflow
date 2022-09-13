@@ -6569,80 +6569,6 @@ void CaseOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 //===----------------------------------------------------------------------===//
-// SqrtOp
-//===----------------------------------------------------------------------===//
-
-OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
-  auto val = operands[0].dyn_cast_or_null<DenseElementsAttr>();
-  if (!val) return {};
-
-  auto type = getElementTypeOrSelf(getType());
-  if (!type.isF16() && !type.isBF16() && !type.isF32() && !type.isF64())
-    return {};
-
-  auto shapedType = getType().cast<ShapedType>();
-  if (!shapedType.hasStaticShape()) return {};
-
-  // Prevent folding if the result is too large.
-  if (val.getNumElements() > kFoldOpEltLimit) return {};
-
-  llvm::SmallVector<APFloat, 4> values;
-  values.reserve(val.getNumElements());
-  for (auto it : val.getValues<APFloat>()) {
-    if (it.isNegative()) return {};
-
-    const llvm::fltSemantics& oldSemantics = it.getSemantics();
-
-    bool unusedLoseInfo;
-    it.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
-               &unusedLoseInfo);
-
-    APFloat result(std::sqrt(it.convertToDouble()));
-    result.convert(oldSemantics, APFloat::rmNearestTiesToEven, &unusedLoseInfo);
-
-    values.push_back(result);
-  }
-  return DenseFPElementsAttr::get(shapedType, values);
-}
-
-//===----------------------------------------------------------------------===//
-// RsqrtOp
-//===----------------------------------------------------------------------===//
-
-OpFoldResult RsqrtOp::fold(ArrayRef<Attribute> operands) {
-  auto val = operands[0].dyn_cast_or_null<DenseElementsAttr>();
-  if (!val) return {};
-
-  auto type = getElementTypeOrSelf(getType());
-  if (!type.isF16() && !type.isBF16() && !type.isF32() && !type.isF64())
-    return {};
-
-  auto shapedType = getType().cast<ShapedType>();
-  if (!shapedType.hasStaticShape()) return {};
-
-  // Prevent folding if the result is too large.
-  if (val.getNumElements() > kFoldOpEltLimit) return {};
-
-  llvm::SmallVector<APFloat, 4> values;
-  values.reserve(val.getNumElements());
-  for (auto it : val.getValues<APFloat>()) {
-    if (it.isNegative()) return {};
-
-    const llvm::fltSemantics& oldSemantics = it.getSemantics();
-
-    bool unusedLoseInfo;
-    it.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
-               &unusedLoseInfo);
-
-    APFloat result(1.0 / std::sqrt(it.convertToDouble()));
-    result.convert(oldSemantics, APFloat::rmNearestTiesToEven, &unusedLoseInfo);
-
-    values.push_back(result);
-  }
-  return DenseFPElementsAttr::get(shapedType, values);
-}
-
-//===----------------------------------------------------------------------===//
 // UnaryOps
 //===----------------------------------------------------------------------===//
 
@@ -6691,8 +6617,23 @@ void printUnaryOp(Operation* op, OpAsmPrinter& p) {
   p << " : " << resultType;
 }
 
-template <typename Op, typename ElementType = Type, typename ValType,
-          typename Convert>
+template <typename ValType>
+struct AnyValue {
+  bool operator()(const ValType&) { return true; }
+};
+
+template <typename ValType>
+struct NonNegativeValue {
+  bool operator()(const ValType& v) { return !v.isNegative(); }
+};
+
+template <typename ValType>
+struct PositiveValue {
+  bool operator()(const ValType& v) { return !v.isNegative() && !v.isZero(); }
+};
+
+template <typename Op, typename ElementType, typename ValType, typename Convert,
+          typename Validate = AnyValue<ValType>>
 static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   if (!attrs[0]) return {};
 
@@ -6717,14 +6658,17 @@ static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   SmallVector<ValType, 6> values;
   values.reserve(val.getNumElements());
   for (const auto v : val.getValues<ValType>()) {
-    values.push_back(Convert()(v));
+    if (!Validate()(v)) return {};
+    Optional<ValType> r = Convert()(v);
+    if (!r) return {};
+    values.push_back(r.value());
   }
 
   return DenseElementsAttr::get(type, values);
 }
 
 struct Round {
-  APFloat operator()(const APFloat& f) {
+  Optional<APFloat> operator()(const APFloat& f) {
     APFloat r = f;
     r.roundToIntegral(llvm::RoundingMode::NearestTiesToAway);
     return r;
@@ -6732,7 +6676,7 @@ struct Round {
 };
 
 struct RoundNearestEven {
-  APFloat operator()(const APFloat& f) {
+  Optional<APFloat> operator()(const APFloat& f) {
     APFloat r = f;
     r.roundToIntegral(llvm::RoundingMode::NearestTiesToEven);
     return r;
@@ -6740,7 +6684,7 @@ struct RoundNearestEven {
 };
 
 struct LogicalNot {
-  APInt operator()(const APInt& i) {
+  Optional<APInt> operator()(const APInt& i) {
     return APInt(i.getBitWidth(), static_cast<uint64_t>(!i));
   }
 };
@@ -6765,9 +6709,14 @@ struct Sign {
     return APInt(r.getBitWidth(), 1, /*isSigned=*/true);
   }
 
-  FloatOrInt operator()(const FloatOrInt& fi) { return compute(fi); }
+  Optional<FloatOrInt> operator()(const FloatOrInt& fi) { return compute(fi); }
 };
 
+double rsqrt(double d) { return 1.0 / std::sqrt(d); }
+
+double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
+
+// NOLINTBEGIN(bugprone-macro-parentheses)
 #define UNARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
@@ -6791,15 +6740,48 @@ struct Sign {
     return {};                                                       \
   }
 
+#define UNARY_FOLDER_UPCAST_TO_F64(Op, Func, Validate)               \
+  struct Op##Folder {                                                \
+    Optional<APFloat> operator()(const APFloat& input) {             \
+      APFloat f = input;                                             \
+      const llvm::fltSemantics& oldSemantics = f.getSemantics();     \
+                                                                     \
+      bool unusedLoseInfo;                                           \
+      f.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, \
+                &unusedLoseInfo);                                    \
+                                                                     \
+      APFloat result(Func(f.convertToDouble()));                     \
+      result.convert(oldSemantics, APFloat::rmNearestTiesToEven,     \
+                     &unusedLoseInfo);                               \
+      return result;                                                 \
+    }                                                                \
+  };                                                                 \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                 \
+    if (getElementTypeOrSelf(getType()).isa<FloatType>())            \
+      return UnaryFolder<Op, FloatType, APFloat, Op##Folder,         \
+                         Validate<APFloat>>(this, attrs);            \
+    return {};                                                       \
+  }
+// NOLINTEND(bugprone-macro-parentheses)
+
 UNARY_FOLDER(NegOp, std::negate)
 UNARY_FOLDER(SignOp, Sign)
 UNARY_FOLDER_INT(NotOp, LogicalNot)
 UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven)
 UNARY_FOLDER_FLOAT(RoundOp, Round)
 
+UNARY_FOLDER_UPCAST_TO_F64(CosineOp, std::cos, AnyValue)
+UNARY_FOLDER_UPCAST_TO_F64(ExpOp, std::exp, AnyValue)
+UNARY_FOLDER_UPCAST_TO_F64(LogisticOp, logistic, AnyValue)
+UNARY_FOLDER_UPCAST_TO_F64(RsqrtOp, rsqrt, PositiveValue)
+UNARY_FOLDER_UPCAST_TO_F64(SineOp, std::sin, AnyValue)
+UNARY_FOLDER_UPCAST_TO_F64(SqrtOp, std::sqrt, NonNegativeValue)
+UNARY_FOLDER_UPCAST_TO_F64(TanhOp, std::tanh, AnyValue)
+
 #undef UNARY_FOLDER
 #undef UNARY_FOLDER_INT
 #undef UNARY_FOLDER_FLOAT
+#undef UNARY_FOLDER_UPCAST_TO_F64
 
 //===----------------------------------------------------------------------===//
 // BinaryOps

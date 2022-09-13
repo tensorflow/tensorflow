@@ -271,8 +271,11 @@ class TrtShapeOptimizationProfile {
   // Whether the optimization profiles describe input that can be handled with
   // a static engine (only 1 profile with min=max).
   bool IsStaticCompatible() {
-    return strategy_ == ProfileStrategy::kOptimal && profiles_.size() == 1 &&
-           !HasShapeTensor();
+    return strategy_ == ProfileStrategy::kOptimal && profiles_.size() == 1
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
+           && !HasShapeTensor()
+#endif
+        ;
     // TODO(tfeher): remove !HasShapeTensor() condition once the
     // FixShapeValueProfile workaround is turned off.
   }

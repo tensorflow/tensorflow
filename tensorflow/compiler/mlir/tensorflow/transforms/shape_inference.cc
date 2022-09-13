@@ -1801,6 +1801,12 @@ bool ShapeInference::InferShapeForXlaConvV2Op(XlaConvV2Op op) {
 bool ShapeInference::RefineWithInferTypeOpInterface(
     InferTypeOpInterface infer_ti) {
   Operation* op = infer_ti.getOperation();
+  if (none_of(op->getResultTypes(), CanBeRefined)) {
+    LLVM_DEBUG(llvm::dbgs() << "Skipping inference for statically shaped op '"
+                            << op->getName() << "'.\n");
+    return false;
+  }
+
   SmallVector<Type, 4> inferred;
   LogicalResult res = infer_ti.inferReturnTypes(
       op->getContext(), op->getLoc(), op->getOperands(),

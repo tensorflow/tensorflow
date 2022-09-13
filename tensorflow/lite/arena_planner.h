@@ -91,7 +91,7 @@ class ArenaPlanner : public MemoryPlanner {
 
   // Assign absolute memory location to a tensor, based on its relative
   // position inside the corresponding arena buffer.
-  TfLiteStatus ResolveTensorAllocation(int tensor_index);
+  TfLiteStatus ResolveTensorAllocation(int tensor_index, TfLiteTensor& tensor);
 
   // Register an allocation for all internal (temporary) tensors of
   // 'node_index'.

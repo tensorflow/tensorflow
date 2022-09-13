@@ -707,7 +707,7 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
         params_, *input_a, *input_b, descriptor_a->layout == EinsumLayout::BCF,
         descriptor_b->layout == EinsumLayout::BFC);
     TF_RETURN_IF_ERROR(result.status());
-    ITensorProxyPtr output = result.ValueOrDie();
+    ITensorProxyPtr output = result.value();
 
     // Reshape and permute the output.
     TF_RETURN_IF_ERROR(ShuffleEinsumOutput(

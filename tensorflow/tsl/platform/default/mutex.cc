@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/platform/mutex.h"
 
 #include <time.h>
 
@@ -22,16 +22,16 @@ limitations under the License.
 #include "nsync_mu_wait.h"  // NOLINT
 #include "nsync_time.h"     // NOLINT
 
-namespace tensorflow {
+namespace tsl {
 
 // Check that the MuData struct used to reserve space for the mutex
-// in tensorflow::mutex is big enough.
+// in tsl::mutex is big enough.
 static_assert(sizeof(nsync::nsync_mu) <= sizeof(internal::MuData),
-              "tensorflow::internal::MuData needs to be bigger");
+              "tsl::internal::MuData needs to be bigger");
 
 // Cast a pointer to internal::MuData to a pointer to the mutex
 // representation.  This is done so that the header files for nsync_mu do not
-// need to be included in every file that uses tensorflow's mutex.
+// need to be included in every file that uses tsl's mutex.
 static inline nsync::nsync_mu *mu_cast(internal::MuData *mu) {
   return reinterpret_cast<nsync::nsync_mu *>(mu);
 }
@@ -71,13 +71,13 @@ bool mutex::AwaitWithDeadline(const Condition &cond, uint64 abs_deadline_ns) {
 }
 
 // Check that the CVData struct used to reserve space for the
-// condition variable in tensorflow::condition_variable is big enough.
+// condition variable in tsl::condition_variable is big enough.
 static_assert(sizeof(nsync::nsync_cv) <= sizeof(internal::CVData),
-              "tensorflow::internal::CVData needs to be bigger");
+              "tsl::internal::CVData needs to be bigger");
 
 // Cast a pointer to internal::CVData to a pointer to the condition
 // variable representation.  This is done so that the header files for nsync_cv
-// do not need to be included in every file that uses tensorflow's
+// do not need to be included in every file that uses tsl's
 // condition_variable.
 static inline nsync::nsync_cv *cv_cast(internal::CVData *cv) {
   return reinterpret_cast<nsync::nsync_cv *>(cv);
@@ -107,4 +107,4 @@ std::cv_status wait_until_system_clock(
 }
 }  // namespace internal
 
-}  // namespace tensorflow
+}  // namespace tsl

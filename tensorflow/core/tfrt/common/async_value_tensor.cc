@@ -41,7 +41,9 @@ void AsyncValueTensor::SetAsyncRef(tfrt::RCReference<tfrt::AsyncValue> av_ref) {
   av_ref_ = std::move(av_ref);
 }
 
-xla::PjRtBuffer* AsyncValueTensor::GetBuffer() { return buffer_.get(); }
+std::shared_ptr<xla::PjRtBuffer> AsyncValueTensor::GetBuffer() {
+  return buffer_;
+}
 
 void AsyncValueTensor::SetBuffer(std::shared_ptr<xla::PjRtBuffer> buffer) {
   buffer_ = std::move(buffer);

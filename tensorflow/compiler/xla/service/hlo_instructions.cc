@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -467,7 +467,7 @@ namespace {
 // Currently implements a small subset of cases; feel free to add more as
 // needed.
 std::vector<std::string> AttributeProtoToStringVector(
-    const tensorflow::protobuf::Message& message) {
+    const tsl::protobuf::Message& message) {
   const tensorflow::protobuf::Reflection* reflection = message.GetReflection();
   std::vector<const tensorflow::protobuf::FieldDescriptor*> fields;
   reflection->ListFields(message, &fields);

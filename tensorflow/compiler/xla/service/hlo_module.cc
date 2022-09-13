@@ -46,11 +46,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -805,7 +805,7 @@ class FingerprintMap {
     auto result = fingerprint_map_.try_emplace(computation, 0);
     if (result.second) {
       result.first->second =
-          tensorflow::Fingerprint64(computation->ToString(print_options_));
+          tsl::Fingerprint64(computation->ToString(print_options_));
     }
     return result.first->second;
   }
@@ -823,6 +823,10 @@ void SortComputationsByContent(std::vector<HloComputation*>* computations) {
     if (a->instruction_count() != b->instruction_count()) {
       return a->instruction_count() < b->instruction_count();
     }
+    // Avoid computing fingerprints of (potentially) giant computation strings
+    // just to compare when a == b
+    if (a == b) return false;
+
     return fingerprint_map.GetFingerprint(a) <
            fingerprint_map.GetFingerprint(b);
   };

@@ -399,6 +399,14 @@ class StreamErrorReporter : public ErrorReporter {
   std::stringstream* out_stream_;
 };
 
+std::string get_printable_string(const std::string& src) {
+  std::stringstream out;
+  for (auto it = src.begin(); it != src.end(); ++it) {
+    out << (isprint(*it) ? *it : '.');
+  }
+  return out.str();
+}
+
 std::string model_analyzer(const std::string& model_file_or_buffer,
                            bool input_is_filepath,
                            bool check_gpu_compatibility) {
@@ -428,9 +436,9 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
 
   dump_model_summary(out_stream, model);
 
-  bool model_is_gpu_compatibile = true;
+  bool model_is_gpu_compatible = true;
   for (int i = 0; i < subgraphs->Length(); ++i) {
-    std::vector<int> gpu_incompatibile_nodes;
+    std::vector<int> gpu_incompatible_nodes;
     const SubGraph* subgraph = subgraphs->Get(i);
     out_stream << subgraph_str(i);
     if (subgraph->name()) {
@@ -451,17 +459,17 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
         auto status =
             CheckGpuDelegateCompatibility(op_code, op, subgraph, model);
         if (!status.ok()) {
-          gpu_incompatibile_nodes.push_back(j);
+          gpu_incompatible_nodes.push_back(j);
           out_stream << "GPU COMPATIBILITY WARNING: " << status.message()
                      << "\n";
         }
       }
     }
-    if (!gpu_incompatibile_nodes.empty()) {
-      model_is_gpu_compatibile = false;
+    if (!gpu_incompatible_nodes.empty()) {
+      model_is_gpu_compatible = false;
       out_stream << "\nGPU COMPATIBILITY WARNING: Subgraph#" << i
                  << " has GPU delegate compatibility issues at nodes "
-                 << absl::StrJoin(gpu_incompatibile_nodes, ", ")
+                 << absl::StrJoin(gpu_incompatible_nodes, ", ")
                  << " with TFLite runtime version " << TF_VERSION_STRING
                  << "\n";
     }
@@ -476,9 +484,9 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
     }
     out_stream << "\n";
   }
-  if (check_gpu_compatibility && model_is_gpu_compatibile) {
+  if (check_gpu_compatibility && model_is_gpu_compatible) {
     out_stream
-        << "\nYour model looks compatibile with GPU delegate"
+        << "\nYour model looks compatible with GPU delegate"
         << " with TFLite runtime version " << TF_VERSION_STRING
         << ".\nBut it doesn't guarantee that your model works well with GPU "
            "delegate.\nThere could be some runtime incompatibililty happen.\n";
@@ -487,7 +495,7 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
   dump_model_signature_defs(out_stream, model);
   dump_model_stats(out_stream, model, fb_model->allocation()->bytes(), &stats);
 
-  return out_stream.str();
+  return get_printable_string(out_stream.str());
 }
 
 }  // namespace tflite

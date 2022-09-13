@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -384,7 +384,7 @@ TEST_F(HloCreationUtilsTest, DynamicUpdateSliceVectorStartIndices) {
   HloComputation* entry_computation = module->AddEntryComputation(
       CreateComputationWithSignature({&input_shape, &update_shape}, input_shape,
                                      "entry")
-          .ValueOrDie());
+          .value());
   auto zero = module->entry_computation()->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
   auto one = module->entry_computation()->AddInstruction(
@@ -394,7 +394,7 @@ TEST_F(HloCreationUtilsTest, DynamicUpdateSliceVectorStartIndices) {
       MakeDynamicUpdateSliceHlo(entry_computation->parameter_instruction(0),
                                 entry_computation->parameter_instruction(1),
                                 {zero, one})
-          .ValueOrDie();
+          .value();
   entry_computation->set_root_instruction(dus);
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(

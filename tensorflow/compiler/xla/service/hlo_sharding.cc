@@ -778,6 +778,14 @@ Shape HloSharding::TileShape(const Shape& shape, int64_t device) const {
   return result_shape;
 }
 
+int64_t HloSharding::TotalNumTiles() const {
+  if (IsTileMaximal()) {
+    return 1;
+  }
+  CHECK(!IsManual());
+  return Product(absl::Span<const int64_t>(tile_assignment_.dimensions()));
+}
+
 int64_t HloSharding::NumTiles() const {
   if (IsTileMaximal()) {
     return 1;

@@ -36,6 +36,7 @@ class Buffer : public GPUObject {
  public:
   Buffer() {}  // just for using Buffer as a class members
   Buffer(cl_mem buffer, size_t size_in_bytes, bool is_sub_buffer = false);
+  explicit Buffer(cl_mem buffer);
 
   // Move only
   Buffer(Buffer&& buffer);
@@ -73,7 +74,10 @@ class Buffer : public GPUObject {
   cl_mem buffer_ = nullptr;
   size_t size_ = 0;
   bool is_sub_buffer_ = false;
+  bool owner_ = true;
 };
+
+Buffer CreateBufferShared(cl_mem buffer);
 
 absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, CLContext* context,
                                   Buffer* result);

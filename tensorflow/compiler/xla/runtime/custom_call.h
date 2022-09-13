@@ -35,9 +35,9 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Compiler.h"
-#include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
+#include "tensorflow/compiler/xla/runtime/errors.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/map_by_type.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
@@ -282,25 +282,6 @@ inline CustomCallBinding<> CustomCall::Bind(std::string callee) {
 
 template <typename T>
 class Result;
-
-#define XLA_RUNTIME_REGISTER_SCALAR_RESULT(T)          \
-  template <>                                          \
-  struct Result<T> {                                   \
-   public:                                             \
-    explicit Result(T* storage) : storage_(storage) {} \
-    void Set(T value) { *storage_ = value; }           \
-                                                       \
-   private:                                            \
-    T* storage_;                                       \
-  };  // namespace runtime
-
-XLA_RUNTIME_REGISTER_SCALAR_RESULT(bool);
-XLA_RUNTIME_REGISTER_SCALAR_RESULT(int32_t);
-XLA_RUNTIME_REGISTER_SCALAR_RESULT(int64_t);
-XLA_RUNTIME_REGISTER_SCALAR_RESULT(float);
-XLA_RUNTIME_REGISTER_SCALAR_RESULT(double);
-
-#undef XLA_RUNTIME_REGISTER_SCALAR_RESULT
 
 // Custom call arguments decoding must be defined by specializing this template.
 //
@@ -726,10 +707,10 @@ class CustomCallHandler : public CustomCall {
       std::is_invocable_r_v<LogicalResult, Fn, FnArgType<Ts>...>;
 
   // Custom call can signal error together with a detailed error message.
-  static constexpr bool kIsDetailedErr =
-      std::is_invocable_r_v<llvm::Error, Fn, FnArgType<Ts>...>;
+  static constexpr bool kIsStatusErr =
+      std::is_invocable_r_v<absl::Status, Fn, FnArgType<Ts>...>;
 
-  static_assert(kIsLogicalErr || kIsDetailedErr,
+  static_assert(kIsLogicalErr || kIsStatusErr,
                 "incompatible custom call handler types");
 
  public:
@@ -770,28 +751,28 @@ class CustomCallHandler : public CustomCall {
       // individual argument decoding will check the actual type.
       if (internal::HasRemainingArgs<Ts...>::value) {
         if (LLVM_UNLIKELY(num_args < kNumArgs - 1))
-          return diagnostic->EmitError()
-                 << "Wrong number of arguments: expected at least "
-                 << (kNumArgs - 1) << " got " << num_args;
+          return diagnostic->EmitError(InvalidArgument(
+              "Wrong number of arguments: expected at least %d got %d",
+              kNumArgs - 1, num_args));
       } else {
         if (LLVM_UNLIKELY(num_args != kNumArgs))
-          return diagnostic->EmitError()
-                 << "Wrong number of arguments: expected " << kNumArgs
-                 << " got " << num_args;
+          return diagnostic->EmitError(
+              InvalidArgument("Wrong number of arguments: expected %d got %d",
+                              kNumArgs, num_args));
       }
 
       // Check that we have enough attributes passed to the custom call. Each
       // individual attribute decoding will check the name and the type.
       if (LLVM_UNLIKELY(num_attrs < attrs_.size()))
-        return diagnostic->EmitError()
-               << "Wrong number of attributes: expected at least "
-               << attrs_.size() << " got " << num_attrs;
+        return diagnostic->EmitError(InvalidArgument(
+            "Wrong number of attributes: expected at least %d got %d",
+            attrs_.size(), num_attrs));
 
       // Check that the number of returns matches the signature. The return
       // decoding will check the actual type.
       if (LLVM_UNLIKELY(num_rets != kNumRets)) {
-        return diagnostic->EmitError() << "Wrong number of returns: expected "
-                                       << kNumRets << " got " << num_rets;
+        return diagnostic->EmitError(InvalidArgument(
+            "Wrong number of returns: expected %d got %d", kNumRets, num_rets));
       }
     }
 
@@ -823,17 +804,19 @@ class CustomCallHandler : public CustomCall {
             offsets, args, rets, attrs_, attrs_idx_, attrs, values_,
             user_data))...};
     if (LLVM_UNLIKELY(!all_decoded))
-      return diagnostic->EmitError() << "Failed to decode all custom call "
-                                        "arguments, attributes and returns";
+      return diagnostic->EmitError(
+          InvalidArgument("Failed to decode all custom call operands"));
 
     // Custom call returns logical result to signal failures.
-    if constexpr (kIsLogicalErr)
+    if constexpr (kIsLogicalErr) {
       return fn_(std::move(*std::get<Is>(fn_args))...);
+    }
 
     // Custom call returns detailed error to signal failures.
-    if constexpr (kIsDetailedErr) {
-      if (auto err = fn_(std::move(*std::get<Is>(fn_args))...))
-        return diagnostic->EmitError() << std::move(err);
+    if constexpr (kIsStatusErr) {
+      if (auto st = fn_(std::move(*std::get<Is>(fn_args))...); !st.ok()) {
+        return diagnostic->EmitError(std::move(st));
+      }
       return success();
     }
 
@@ -883,7 +866,8 @@ template <CustomCall::RuntimeChecks checks, typename Fn, typename... Ts>
 constexpr int64_t CustomCallHandler<checks, Fn, Ts...>::kNumRets;
 
 //===----------------------------------------------------------------------===//
-// Custom arguments attributes decoding.
+// Custom arguments decoding.
+//===----------------------------------------------------------------------===//
 
 // A view into the memref argument. Corresponds to the MemrefDesc, however it
 // doesn't own the sizes/strides vectors, and cheap to pass around. Memrefs with
@@ -1002,27 +986,6 @@ XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(double);
 
 #undef XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING
 
-#define XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(T)                  \
-  template <CustomCall::RuntimeChecks checks>                        \
-  struct CustomCallRetDecoding<T, checks> {                          \
-    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Result<T>> Decode( \
-        TypeID type_id, void* value) {                               \
-      if (!CustomCall::Isa<T>(checks, type_id)) {                    \
-        return mlir::failure();                                      \
-      }                                                              \
-                                                                     \
-      return Result<T>(reinterpret_cast<T*>(value));                 \
-    }                                                                \
-  }
-
-XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(bool);
-XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(int32_t);
-XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(int64_t);
-XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(float);
-XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(double);
-
-#undef XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING
-
 template <CustomCall::RuntimeChecks checks>
 struct CustomCallArgDecoding<Eigen::half, checks> {
   LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Eigen::half> Decode(
@@ -1038,7 +1001,105 @@ struct CustomCallArgDecoding<Eigen::half, checks> {
 };
 
 //===----------------------------------------------------------------------===//
+
+// Opaque arguments at run time passed as pointers and decoded by wrapping them
+// into a reference type, for example `AsyncValue *` pointer can be wrapped into
+// a typed `AsyncValuePtr<T>` pointer wrapper.
+
+#define XLA_RUNTIME_REGISTER_OPAQUE_ARG_DECODING(T, PTR)                    \
+  template <CustomCall::RuntimeChecks checks>                               \
+  struct CustomCallArgDecoding<T, checks> {                                 \
+    static_assert(std::is_pointer_v<PTR>, "must be a pointer");             \
+    static_assert(std::is_trivially_destructible_v<T>,                      \
+                  "must be a trivially destructible reference type");       \
+                                                                            \
+    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(TypeID type_id, \
+                                                            void* value) {  \
+      if (!CustomCall::Isa<T>(checks, type_id)) {                           \
+        return failure();                                                   \
+      }                                                                     \
+                                                                            \
+      auto* src = reinterpret_cast<PTR*>(value);                            \
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(PTR));              \
+      return (T){*src};                                                     \
+    }                                                                       \
+  }
+
+XLA_RUNTIME_REGISTER_OPAQUE_ARG_DECODING(void*, void*);
+
+//===----------------------------------------------------------------------===//
+// Custom call results decoding.
+//===----------------------------------------------------------------------===//
+
+#define XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(T)                  \
+  template <>                                                        \
+  class Result<T> {                                                  \
+   public:                                                           \
+    explicit Result(T* storage) : storage_(storage) {}               \
+    void Set(T value) { *storage_ = value; }                         \
+                                                                     \
+   private:                                                          \
+    T* storage_;                                                     \
+  };                                                                 \
+                                                                     \
+  template <CustomCall::RuntimeChecks checks>                        \
+  struct CustomCallRetDecoding<T, checks> {                          \
+    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Result<T>> Decode( \
+        TypeID type_id, void* value) {                               \
+      if (!CustomCall::Isa<T>(checks, type_id)) {                    \
+        return failure();                                            \
+      }                                                              \
+                                                                     \
+      return Result<T>(reinterpret_cast<T*>(value));                 \
+    }                                                                \
+  }
+
+XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(bool);
+XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(int32_t);
+XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(int64_t);
+XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(float);
+XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(double);
+
+#undef XLA_RUNTIME_REGISTER_SCALAR_RESULT
+#undef XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING
+
+//===----------------------------------------------------------------------===//
+
+// Opaque results at run time passed as pointers, and a typed wrapper binds
+// together the reference type and the underlying pointer type.
+
+#define XLA_RUNTIME_REGISTER_OPAQUE_RET_DECODING(T, PTR)             \
+  template <>                                                        \
+  class Result<T> {                                                  \
+    static_assert(std::is_pointer_v<PTR>, "must be a pointer type"); \
+                                                                     \
+   public:                                                           \
+    explicit Result(PTR* storage) : storage_(storage) {}             \
+    void Set(PTR value) { *storage_ = value; }                       \
+                                                                     \
+   private:                                                          \
+    PTR* storage_;                                                   \
+  };                                                                 \
+                                                                     \
+  template <CustomCall::RuntimeChecks checks>                        \
+  struct CustomCallRetDecoding<T, checks> {                          \
+    static_assert(std::is_pointer_v<PTR>, "must be a pointer type"); \
+                                                                     \
+    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Result<T>> Decode( \
+        TypeID type_id, void* value) {                               \
+      if (!CustomCall::Isa<T>(checks, type_id)) {                    \
+        return failure();                                            \
+      }                                                              \
+                                                                     \
+      return Result<T>(reinterpret_cast<PTR*>(value));               \
+    }                                                                \
+  }
+
+XLA_RUNTIME_REGISTER_OPAQUE_RET_DECODING(void*, void*);
+
+//===----------------------------------------------------------------------===//
 // Custom call attributes decoding.
+//===----------------------------------------------------------------------===//
 
 template <CustomCall::RuntimeChecks checks>
 struct CustomCallAttrDecoding<std::string_view, checks> {

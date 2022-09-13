@@ -20,7 +20,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace runtime {

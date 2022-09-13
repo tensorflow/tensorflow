@@ -22,9 +22,11 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
+#define GEN_PASS_DECL_COLLAPSEMATERIALIZEOPSPASS
 #define GEN_PASS_DECL_DEPRECATEDTILINGPASS
 #define GEN_PASS_DECL_FUSIONPASS
 #define GEN_PASS_DECL_TILINGPASS
+
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 namespace mlir {
@@ -52,9 +54,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
 /// Pass to compose set operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createComposeSetOpsPass();
 
-/// Pass to uncollapse materialize operations.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createUncollapseMaterializeOpsPass();
+/// Pass to collapse (or uncollapse) materialize operations.
+std::unique_ptr<OperationPass<func::FuncOp>> createCollapseMaterializeOpsPass(
+    bool reverse = false);
 
 /// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
 /// loops and memref.load/memref.store accesses.

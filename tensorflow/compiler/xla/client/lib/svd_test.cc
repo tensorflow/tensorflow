@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 
@@ -57,7 +57,7 @@ class SVDTest : public ClientLibraryTestBase {
     };
 
     // Test fails with TensorFloat-32 enabled
-    tensorflow::enable_tensor_float_32_execution(false);
+    tsl::enable_tensor_float_32_execution(false);
   }
   void TearDown() override { ClientLibraryTestBase::TearDown(); }
 

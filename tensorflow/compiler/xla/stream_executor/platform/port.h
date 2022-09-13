@@ -18,19 +18,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_PORT_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_PORT_H_
 
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace stream_executor {
 
-using tensorflow::int16;
-using tensorflow::int32;
-using tensorflow::int8;
+using tsl::int16;
+using tsl::int32;
+using tsl::int8;
 
-using tensorflow::uint16;
-using tensorflow::uint32;
-using tensorflow::uint64;
-using tensorflow::uint8;
+using tsl::uint16;
+using tsl::uint32;
+using tsl::uint64;
+using tsl::uint8;
 
 #if !defined(PLATFORM_GOOGLE)
 using std::string;

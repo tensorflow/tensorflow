@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
+#include "tensorflow/tsl/platform/mem.h"
 
 namespace stream_executor {
 namespace host {
@@ -58,11 +58,11 @@ port::Status HostExecutor::Init(int device_ordinal,
           it->second));
     }
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 bool HostExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
-  tensorflow::port::MemoryInfo mem_info = tensorflow::port::GetMemoryInfo();
+  tsl::port::MemoryInfo mem_info = tsl::port::GetMemoryInfo();
   *free = (mem_info.free != INT64_MAX) ? mem_info.free : -1;
   *total = (mem_info.total != INT64_MAX) ? mem_info.total : -1;
   return true;
@@ -72,9 +72,9 @@ DeviceMemoryBase HostExecutor::Allocate(uint64_t size, int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
   // Use a minimum alignment of 64 bytes to be friendly to AVX512 code.
   // This should probably be kept in sync with
-  // tensorflow::Allocator::kAllocatorAlignment.
+  // tsl::Allocator::kAllocatorAlignment.
   return DeviceMemoryBase(
-      tensorflow::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
+      tsl::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
 }
 
 void* HostExecutor::GetSubBuffer(DeviceMemoryBase* parent,
@@ -83,19 +83,19 @@ void* HostExecutor::GetSubBuffer(DeviceMemoryBase* parent,
 }
 
 void HostExecutor::Deallocate(DeviceMemoryBase* mem) {
-  tensorflow::port::AlignedFree(mem->opaque());
+  tsl::port::AlignedFree(mem->opaque());
 }
 
 port::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
                                               uint64_t size) {
   memset(location->opaque(), 0, size);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase* location,
                                              int value, uint64_t size) {
   memset(location->opaque(), value, size);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 bool HostExecutor::Memcpy(Stream* stream, void* host_dst,
@@ -139,7 +139,7 @@ port::Status HostExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size]() { memset(gpu_mem, 0, size); });
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
@@ -149,7 +149,7 @@ port::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status HostExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
@@ -159,27 +159,27 @@ port::Status HostExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
                                              const void* host_src,
                                              uint64_t size) {
   memcpy(gpu_dst->opaque(), host_src, size);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status HostExecutor::SynchronousMemcpy(void* host_dst,
                                              const DeviceMemoryBase& gpu_src,
                                              uint64_t size) {
   memcpy(host_dst, gpu_src.opaque(), size);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
     DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src, uint64_t size) {
   memcpy(gpu_dst->opaque(), gpu_src.opaque(), size);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 bool HostExecutor::HostCallback(Stream* stream,
@@ -224,11 +224,11 @@ static HostEvent* AsHostEvent(Event* event) {
 }
 
 port::Status HostExecutor::AllocateEvent(Event* /*event*/) {
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status HostExecutor::DeallocateEvent(Event* /*event*/) {
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
@@ -238,7 +238,7 @@ port::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
     CHECK(!notification->HasBeenNotified());
     notification->Notify();
   });
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status HostExecutor::WaitForEvent(Stream* stream, Event* event) {
@@ -246,7 +246,7 @@ port::Status HostExecutor::WaitForEvent(Stream* stream, Event* event) {
       AsHostEvent(event)->notification();
   AsHostStream(stream)->EnqueueTask(
       [notification]() { notification->WaitForNotification(); });
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 Event::Status HostExecutor::PollForEventStatus(Event* event) {

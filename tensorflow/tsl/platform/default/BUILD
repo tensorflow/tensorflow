@@ -116,7 +116,6 @@ cc_library(
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:scanner",
-        "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:str_util",
@@ -126,6 +125,7 @@ cc_library(
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/platform:tracing",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform:setround",
         "//third_party/eigen3",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
@@ -167,17 +167,17 @@ cc_library(
 cc_library(
     name = "human_readable_json",
     srcs = ["human_readable_json.cc"],
-    hdrs = ["//tensorflow/core/platform:human_readable_json.h"],
+    hdrs = ["//tensorflow/tsl/platform:human_readable_json.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:protobuf",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:strcat",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:protobuf",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:strcat",
     ],
 )
 
@@ -231,8 +231,8 @@ cc_library(
     srcs = [
         "mutex.cc",
         "mutex_data.h",
+        "//tensorflow/tsl/platform:mutex.h",
     ],
-    hdrs = ["//tensorflow/core/platform:mutex.h"],
     tags = [
         "manual",
         "no_oss",
@@ -240,10 +240,10 @@ cc_library(
     ],
     textual_hdrs = ["mutex.h"],
     deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:thread_annotations",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "//tensorflow/tsl/platform:types",
         "@nsync//:nsync_cpp",
     ],
 )
@@ -349,7 +349,7 @@ cc_library(
     name = "resource_loader",
     testonly = 1,
     srcs = ["resource_loader.cc"],
-    hdrs = ["//tensorflow/core/platform:resource_loader.h"],
+    hdrs = ["//tensorflow/tsl/platform:resource_loader.h"],
     tags = [
         "manual",
         "no_oss",
@@ -365,7 +365,7 @@ cc_library(
 cc_library(
     name = "rocm_rocdl_path",
     srcs = ["rocm_rocdl_path.cc"],
-    hdrs = ["//tensorflow/core/platform:rocm_rocdl_path.h"],
+    hdrs = ["//tensorflow/tsl/platform:rocm_rocdl_path.h"],
     compatible_with = [],
     tags = [
         "manual",
@@ -373,9 +373,9 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:types",
         "@local_config_rocm//rocm:rocm_headers",
     ],
 )
@@ -386,6 +386,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
+        "//tensorflow/tsl/platform",
     ],
 )
 
@@ -404,7 +405,7 @@ cc_library(
 cc_library(
     name = "subprocess",
     srcs = ["subprocess.cc"],
-    hdrs = ["//tensorflow/core/platform:subprocess.h"],
+    hdrs = ["//tensorflow/tsl/platform:subprocess.h"],
     tags = [
         "manual",
         "no_oss",
@@ -412,11 +413,11 @@ cc_library(
     ],
     textual_hdrs = ["subprocess.h"],
     deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -425,20 +426,20 @@ cc_library(
     name = "test",
     testonly = True,
     srcs = ["test.cc"],
-    hdrs = ["//tensorflow/core/platform:test.h"],
+    hdrs = ["//tensorflow/tsl/platform:test.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:net",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:net",
+        "//tensorflow/tsl/platform:types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -544,8 +545,8 @@ filegroup(
         "resource.cc",
         "stacktrace.h",
         "tracing_impl.h",
-        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
-        "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
+        "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
     visibility = ["//tensorflow/core/platform:__pkg__"],
 )

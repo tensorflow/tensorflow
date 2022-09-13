@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -49,20 +50,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/core/platform/random.h"
 
 #if XLA_ENABLE_XLIR
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
-#include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
+#include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #endif  // XLA_ENABLE_XLIR
 
 namespace xla {
@@ -70,10 +71,10 @@ namespace gpu {
 
 bool IsJitRtExecutableEnabled(const HloModuleConfig& config) {
 #if !XLA_ENABLE_XLIR
-  CHECK(!config.debug_options().xla_gpu_jitrt_executable())
-      << "Failed to enable JitRt backend, because it was not compiled.";
+  CHECK(!config.debug_options().xla_gpu_enable_xla_runtime_executable())
+      << "Failed to enable XLA Runtime backend, because it was not compiled.";
 #endif  // !XLA_ENABLE_XLIR
-  return config.debug_options().xla_gpu_jitrt_executable();
+  return config.debug_options().xla_gpu_enable_xla_runtime_executable();
 }
 
 namespace {
@@ -101,7 +102,7 @@ class GpuExecutable::JitRtExecutable {
     runtime::CompilationPipelineOptions copts;
 
     // Populate mapping from XLA (SE) enums/structs type id to symbol names.
-    copts.populate_type_id_names = PopulateXlaTypeIdNames;
+    copts.populate_type_id_names = PopulateXlaGpuTypeIdNames;
 
     // For passing LMHLO attributes as XLA (SE) enums/structs to custom calls.
     copts.populate_attr_encodings = PopulateLmhloToXlaAttrEncoding;
@@ -110,14 +111,14 @@ class GpuExecutable::JitRtExecutable {
     runtime::JitExecutable::Options opts;
     opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
     opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-      runtime::RegisterDefaultXlaRuntimeDialects(registry);
+      runtime::RegisterDefaultXlaGpuRuntimeDialects(registry);
       // For the encoding of attributes to custom calls.
       registry.insert<mlir::lmhlo_gpu::LmhloGpuDialect>();
     };
 
     // Register XLA Gpu runtime custom calls with the linker.
     opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
-        JitRtGpuCustomCalls(), PopulateXlaTypeIdNames);
+        PopulateXlaGpuCustomCalls, PopulateXlaGpuTypeIdNames);
 
     // We just use the default compilation pipeline provided by the XLA runtime.
     // Alternatively instead of having a separate JitRtProgram (LMHLO lowered to
@@ -125,7 +126,7 @@ class GpuExecutable::JitRtExecutable {
     // starting from the LMHLO dialect. However this intermediate step helps
     // with debugging, by materializing IR with XLA runtime custom calls.
     opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
-      runtime::CreateDefaultXlaRuntimeCompilationPipeline(pm, copts);
+      runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
     };
 
     // TODO(b/241296710): LLVM optimizations interact badly with the memory
@@ -159,7 +160,7 @@ class GpuExecutable::JitRtExecutable {
         std::move(debug_options));
   }
 
-  JitRtKernelsCache& kernels_cache() { return kernels_cache_; }
+  GpuExecutableKernelsCache& kernels_cache() { return kernels_cache_; }
   JitRtGemmConfigCache& gemm_configs_cache() { return gemm_configs_cache_; }
   JitRtCollectiveSupport& collectives() { return collectives_; }
 
@@ -208,7 +209,7 @@ class GpuExecutable::JitRtExecutable {
   DebugOptions debug_options_;
 
   // Keep a cache of kernels instantiated by this executable.
-  JitRtKernelsCache kernels_cache_;
+  GpuExecutableKernelsCache kernels_cache_;
 
   // Keep a cache of gemm configs for all gemm operation in the program.
   JitRtGemmConfigCache gemm_configs_cache_;
@@ -681,7 +682,7 @@ static Status ExecuteJitRt(const std::string& module_name,
   runtime::DiagnosticEngine diagnostic_engine;
   std::string diagnostic;
   diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
-    llvm::raw_string_ostream(diagnostic) << d.str();
+    llvm::raw_string_ostream(diagnostic) << d.status().message();
     return mlir::success();
   });
 
@@ -1073,8 +1074,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   mlir::MLIRContext context;
 
   mlir::DialectRegistry registry;
-  tfrt::RegisterTFRTDialects(registry);
-  tfrt::RegisterTFRTCompiledDialects(registry);
+  runtime::RegisterDefaultXlaGpuRuntimeDialects(registry);
   context.appendDialectRegistry(registry);
 
   auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_module, &context);
@@ -1122,8 +1122,8 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   runtime::FunctionType signature(std::move(args), /*results=*/{});
   runtime::FunctionType rt_signature(std::move(rt_args), /*results=*/{});
 
-  auto symbol_map =
-      runtime::ToSymbolsBinding(JitRtGpuCustomCalls(), PopulateXlaTypeIdNames);
+  auto symbol_map = runtime::ToSymbolsBinding(PopulateXlaGpuCustomCalls,
+                                              PopulateXlaGpuTypeIdNames);
 
   // Load JitRt executable from an object file, and link it with Gpu runtime
   // intrinsics implementing Gpu custom calls.

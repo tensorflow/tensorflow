@@ -311,7 +311,9 @@ void TrtShapeOptimizationProfile::InitProfiles(
   if (input_partial_shapes.size() > 0) {
     for (OptimizationProfileConfig& prof : profiles_) {
       // TODO: Remove this when the bug is fixed.
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
       FixShapeValueProfile(&prof, is_shape_tensor_);
+#endif
       for (int i = 0; i < input_partial_shapes.size(); i++) {
         auto network_input = input_partial_shapes[i];
         EnforceCompatibility(&prof.min[i], network_input);

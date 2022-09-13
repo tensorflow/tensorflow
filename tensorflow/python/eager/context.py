@@ -322,7 +322,7 @@ class LogicalDeviceConfiguration(
   def __new__(cls,
               memory_limit=None,
               experimental_priority=None,
-              experimental_device_ordinal=0):
+              experimental_device_ordinal=None):
     return super().__new__(cls, memory_limit, experimental_priority,
                            experimental_device_ordinal)
 
@@ -1205,7 +1205,8 @@ class Context:
         device_limits = []
         priority = []
         for virt_dev in vdevs:
-          device_ordinals.append(virt_dev.experimental_device_ordinal)
+          if virt_dev.experimental_device_ordinal is not None:
+            device_ordinals.append(virt_dev.experimental_device_ordinal)
           device_limits.append(virt_dev.memory_limit)
           if virt_dev.experimental_priority is not None:
             priority.append(virt_dev.experimental_priority)
@@ -1213,6 +1214,11 @@ class Context:
         # devices.
         if priority and len(device_limits) != len(priority):
           raise ValueError("priority must be specified for all virtual devices")
+        # If device_ordinals is specified, it must be specified for all virtual
+        # devices.
+        if device_ordinals and len(device_limits) != len(device_ordinals):
+          raise ValueError(
+              "device_ordinals must be specified for all virtual devices")
 
         virtual_devices.append(
             config_pb2.GPUOptions.Experimental.VirtualDevices(
@@ -1658,7 +1664,7 @@ class Context:
         if vdev.experimental_priority is not None:
           raise ValueError("Setting experimental_priority on CPU virtual "
                            " devices is currently not supported")
-        if vdev.experimental_device_ordinal != 0:
+        if vdev.experimental_device_ordinal is not None:
           raise ValueError("Setting experimental_device_ordinal on CPU virtual "
                            " devices is currently not supported")
     elif dev.device_type == "GPU":

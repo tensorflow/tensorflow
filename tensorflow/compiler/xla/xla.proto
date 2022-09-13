@@ -387,8 +387,8 @@ message DebugOptions {
   reserved 161;  // Was xla_gpu_bef_executable
   reserved 162;  // Was xla_gpu_bef_thunk
 
-  // If true, enable XLIR to compile gpu programs to JitRt.
-  bool xla_gpu_jitrt_executable = 169;
+  // If true, enable XLIR to compile gpu programs to XLA Runtime.
+  bool xla_gpu_enable_xla_runtime_executable = 169;
 
   // Timeout in seconds before terminating jobs that are stuck in a NCCL
   // Rendezvous. Negative value disables the timeout and will not terminate.

@@ -42,7 +42,7 @@ static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
     if (transfer_stream && transfer_stream != stream) {
       stream->ThenWaitFor(transfer_stream);
     }
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   } else {
     return transfer_manager->WriteTupleIndexTablesAsync(stream, result);
   }
@@ -89,7 +89,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
                 alias->ToString());
           }
         }
-        return ::tensorflow::OkStatus();
+        return ::tsl::OkStatus();
       }));
 
   if (VLOG_IS_ON(3)) {

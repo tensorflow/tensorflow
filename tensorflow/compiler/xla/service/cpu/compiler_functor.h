@@ -28,7 +28,7 @@ limitations under the License.
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace cpu {

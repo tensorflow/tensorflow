@@ -3546,7 +3546,7 @@ filegroup(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
         "//tensorflow/core/util:determinism",  # determinism
-        "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
+        "//tensorflow/tsl/platform:tensor_float_32_utils",  # tensor_float_32
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",  # profiler
@@ -4147,6 +4147,7 @@ cc_library(
     visibility = ["//tensorflow/python/framework/experimental:__pkg__"],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/core/config:flags_headers",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
@@ -4190,6 +4191,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/py/numpy:headers",
         "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/core/config:flags_headers",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",

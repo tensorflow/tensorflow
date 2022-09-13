@@ -98,6 +98,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
     ] + if_cuda_or_rocm(
         [
             "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",

@@ -112,13 +112,19 @@ TFL_CAPI_EXPORT extern const char* TfLiteVersion(void);
 
 // Returns a model from the provided buffer, or null on failure.
 //
-// NOTE: The caller retains ownership of the `model_data` and should ensure that
-// the lifetime of the `model_data` must be at least as long as the lifetime
-// of the `TfLiteModel`.
+// NOTE: The caller retains ownership of the `model_data` buffer and should
+// ensure that the lifetime of the `model_data` buffer must be at least as long
+// as the lifetime of the `TfLiteModel` and of any `TfLiteInterpreter` objects
+// created from that `TfLiteModel`, and furthermore the contents of the
+// `model_data` buffer must not be modified during that time."
 TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreate(const void* model_data,
                                                       size_t model_size);
 
 // Returns a model from the provided file, or null on failure.
+//
+// NOTE: The file's contents must not be modified during the lifetime of the
+// `TfLiteModel` or of any `TfLiteInterpreter` objects created from that
+// `TfLiteModel`.
 TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreateFromFile(
     const char* model_path);
 
@@ -233,9 +239,17 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddRegistrationExternal(
 // failure.
 //
 // * `model` must be a valid model instance. The caller retains ownership of the
-//   object, and the model must outlive the interpreter.
+//   object, and may destroy it (via TfLiteModelDelete) immediately after
+//   creating the interpreter.  However, if the TfLiteModel was allocated with
+//   TfLiteModelCreate, then the `model_data` buffer that was passed to
+//   TfLiteModelCreate must outlive the lifetime of the TfLiteInterpreter object
+//   that this function returns, and must not be modified during that time;
+//   and if the TfLiteModel was allocated with TfLiteModelCreateFromFile, then
+//   the contents of the model file must not be modified during the lifetime of
+//   the TfLiteInterpreter object that this function returns.
 // * `optional_options` may be null. The caller retains ownership of the object,
-//   and can safely destroy it immediately after creating the interpreter.
+//   and can safely destroy it (via TfLiteInterpreterOptionsDelete) immediately
+//   after creating the interpreter.
 //
 // NOTE: The client *must* explicitly allocate tensors before attempting to
 // access input tensor data or invoke the interpreter.

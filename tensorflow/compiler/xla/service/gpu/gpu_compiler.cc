@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/gpu_passes.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -176,27 +177,28 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_trip_count_annotator.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/platform/blocking_counter.h"
+#include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
 
 #if XLA_ENABLE_XLIR
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 #endif  // XLA_ENABLE_XLIR
@@ -893,6 +895,27 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 }
 
 #if XLA_ENABLE_XLIR
+
+// Lowers MLIR module to the XLA Gpu runtime custom calls.
+static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
+                                   llvm::StringRef entry_function_name,
+                                   llvm::ArrayRef<int64_t> buffer_sizes,
+                                   ThunkSequence* thunk_sequence) {
+  if (!module) {
+    return InternalError("No MLIR module to lower.");
+  }
+
+  mlir::PassManager pm(module.getContext(),
+                       mlir::PassManager::Nesting::Implicit);
+  populateXlaGpuRuntimePasses(pm, thunk_sequence);
+
+  if (pm.run(module).failed()) {
+    return InternalError("Failed to lower LMHLO to Gpu runtime custom calls.");
+  }
+
+  return OkStatus();
+}
+
 static StatusOr<OwnedJitRtProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module,
@@ -909,7 +932,7 @@ static StatusOr<OwnedJitRtProgram> LowerToJitRt(
   func->setAttr("num_partitions", num_partitions_attr);
 
   // Lower LMHLO operations to the JitRt compatible custom calls.
-  TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToJitRt(
+  TF_RETURN_IF_ERROR(LowerToXlaGpuRuntime(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},
       buffer_sizes, thunk_sequence.get()));
   // Serialize module to pass it to GpuExecutable for compilation.
@@ -1299,7 +1322,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 
   std::vector<StatusOr<BackendCompileResult>> compile_results(
       llvm_modules.size());
-  tensorflow::BlockingCounter counter(llvm_modules.size());
+  tsl::BlockingCounter counter(llvm_modules.size());
   for (int i = 0; i < llvm_modules.size(); i++) {
     thread_pool->Schedule(
         [&compile_results, compile_single_module, i, &llvm_modules, &counter] {
@@ -1519,14 +1542,14 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     runtime::JitExecutable::Options opts;
     opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
     opts.compiler.register_dialects =
-        runtime::RegisterDefaultXlaRuntimeDialects;
+        runtime::RegisterDefaultXlaGpuRuntimeDialects;
 
     // Register JitRt Gpu runtime custom calls with the linker.
     opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
-        JitRtGpuCustomCalls(), PopulateXlaTypeIdNames);
+        PopulateXlaGpuCustomCalls, PopulateXlaGpuTypeIdNames);
 
     opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
-      runtime::CreateDefaultXlaRuntimeCompilationPipeline(pm, copts);
+      runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
     };
 
     // Instantiate new JitExecutable from the MLIR source.

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_EXECUTABLE_H_
 #define TENSORFLOW_COMPILER_XLA_RUNTIME_EXECUTABLE_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,13 +48,13 @@ class JitCompiler;
 ExecutionEngine::SymbolsBinding RuntimeSymbolsBinding(
     ExecutionEngine::SymbolsBinding custom_binding);
 
-// Converts a custom call library and custom type id name registration function
-// (types required by the library) to the execution engine symbols binding. This
-// function automatically registeres type id symbols for all canonical types
-// supported by the XLA runtime custom calls.
+// Converts a direct custom call and custom type id name registration functions
+// (types required by the library) to the execution engine symbols binding.
+// Returned symbols binding always includes type id symbols for all
+// canonical types supported by the XLA runtime custom calls.
 ExecutionEngine::SymbolsBinding ToSymbolsBinding(
-    DirectCustomCallRegistry custom_calls,
-    TypeIDNameRegistry::RegistrationFn types = {});
+    std::function<void(DirectCustomCallRegistry&)> custom_calls = {},
+    std::function<void(TypeIDNameRegistry&)> types = {});
 
 class Executable {
  public:

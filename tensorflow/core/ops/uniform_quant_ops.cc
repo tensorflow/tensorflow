@@ -54,6 +54,49 @@ Status ScalesZeroPointsShapeValid(shape_inference::InferenceContext* context,
   return Status::OK();
 }
 
+Status DotShape(shape_inference::InferenceContext* context) {
+  ShapeHandle lhs;
+  TF_RETURN_IF_ERROR(context->WithRank(context->input(0), 2, &lhs));
+  ShapeHandle rhs;
+  TF_RETURN_IF_ERROR(context->WithRank(context->input(1), 2, &rhs));
+  // lhs scales and zero_points must be scalar tensors.
+  ShapeHandle lhs_scales;
+  TF_RETURN_IF_ERROR(
+      context->WithRankAtMost(context->input(2), 0, &lhs_scales));
+  ShapeHandle lhs_zero_points;
+  TF_RETURN_IF_ERROR(
+      context->WithRankAtMost(context->input(3), 0, &lhs_zero_points));
+  ShapeHandle rhs_scales;
+  TF_RETURN_IF_ERROR(
+      context->WithRankAtMost(context->input(4), 1, &rhs_scales));
+  ShapeHandle rhs_zero_points;
+  TF_RETURN_IF_ERROR(
+      context->WithRankAtMost(context->input(5), 1, &rhs_zero_points));
+  ShapeHandle output_scales;
+  TF_RETURN_IF_ERROR(
+      context->WithRankAtMost(context->input(6), 1, &output_scales));
+  ShapeHandle output_zero_points;
+  TF_RETURN_IF_ERROR(
+      context->WithRankAtMost(context->input(7), 1, &output_zero_points));
+
+  // Validate that the inner shapes are compatible.
+  DimensionHandle inner_lhs = context->Dim(lhs, 1);
+  DimensionHandle inner_rhs = context->Dim(rhs, 0);
+  DimensionHandle merged;
+  TF_RETURN_IF_ERROR(context->Merge(inner_lhs, inner_rhs, &merged));
+
+  DimensionHandle output_rows = context->Dim(lhs, 0);
+  DimensionHandle output_cols = context->Dim(rhs, 1);
+
+  TF_RETURN_IF_ERROR(ScalesZeroPointsShapeValid(context, output_cols,
+                                                rhs_scales, rhs_zero_points));
+  TF_RETURN_IF_ERROR(ScalesZeroPointsShapeValid(
+      context, output_cols, output_scales, output_zero_points));
+
+  context->set_output(0, context->Matrix(output_rows, output_cols));
+  return OkStatus();
+}
+
 Status DotHybridShape(shape_inference::InferenceContext* context) {
   ShapeHandle lhs;
   TF_RETURN_IF_ERROR(context->WithRank(context->input(0), 2, &lhs));
@@ -124,6 +167,29 @@ REGISTER_OP("UniformDequantize")
     .Attr("quantization_min_val: int")
     .Attr("quantization_max_val: int")
     .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("UniformQuantizedDot")
+    .Input("lhs: Tin")
+    .Input("rhs: Tin")
+    .Input("lhs_scales: float")
+    .Input("lhs_zero_points: int32")
+    .Input("rhs_scales: float")
+    .Input("rhs_zero_points: int32")
+    .Input("output_scales: float")
+    .Input("output_zero_points: int32")
+    .Output("output: Tout")
+    .Attr("Tin: {qint8}")
+    .Attr("Tout: {qint32}")
+    .Attr("lhs_quantization_axis: int = -1")
+    .Attr("lhs_quantization_min_val: int")
+    .Attr("lhs_quantization_max_val: int")
+    .Attr("rhs_quantization_axis: int = -1")
+    .Attr("rhs_quantization_min_val: int")
+    .Attr("rhs_quantization_max_val: int")
+    .Attr("output_quantization_axis: int = -1")
+    .Attr("output_quantization_min_val: int")
+    .Attr("output_quantization_max_val: int")
+    .SetShapeFn(DotShape);
 
 REGISTER_OP("UniformQuantizedDotHybrid")
     .Input("lhs: Tlhs")

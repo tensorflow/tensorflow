@@ -172,6 +172,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:lib",
         "//tensorflow/python:bfloat16_lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@pybind11",
@@ -229,6 +230,7 @@ cc_library(
         ":exceptions",
         ":python_ref_manager",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
@@ -249,8 +251,8 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/container:flat_hash_map",
         "@pybind11",
     ],
@@ -260,6 +262,7 @@ cc_library(
     name = "py_client",
     srcs = [
         "callback.cc",
+        "py_array.cc",
         "py_buffer.cc",
         "py_client.cc",
         "py_executable.cc",
@@ -270,6 +273,7 @@ cc_library(
     ]),
     hdrs = [
         "callback.h",
+        "py_array.h",
         "py_buffer.h",
         "py_client.h",
         "py_executable.h",
@@ -290,6 +294,7 @@ cc_library(
         ":pprof_profile_builder",
         ":python_ref_manager",
         ":python_utils",
+        ":status_casters",
         ":traceback",
         ":transfer_guard_lib",
         ":types",
@@ -302,6 +307,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
         "//tensorflow/compiler/xla/pjrt:host_callback",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:statusor",
@@ -316,9 +322,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core/platform:fingerprint",
-        "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python/lib/core:numpy_lib",
+        "//tensorflow/tsl/platform:fingerprint",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
@@ -376,8 +383,8 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:lru_cache",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/platform:status",
         "//third_party/python_runtime:headers",  # build_cleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -457,8 +464,8 @@ cc_library(
         ":types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/core/platform:logging",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -528,7 +535,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":exceptions",
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -677,6 +684,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -716,6 +724,18 @@ config_setting(
     },
 )
 
+bool_flag(
+    name = "enable_plugin_device",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "plugin_device_enabled",
+    flag_values = {
+        ":enable_plugin_device": "True",
+    },
+)
+
 pybind_extension(
     name = "xla_extension",
     srcs = [
@@ -727,6 +747,9 @@ pybind_extension(
     }) + select({
         ":tpu_enabled": ["XLA_PYTHON_ENABLE_TPU=1"],
         "//conditions:default": [],
+    }) + select({
+        ":plugin_device_enabled": ["XLA_PYTHON_ENABLE_PLUGIN_DEVICE=1"],
+        "//conditions:default": [],
     }),
     pytype_deps = [
         "//third_party/py/numpy",
@@ -734,63 +757,66 @@ pybind_extension(
     pytype_srcs = glob(["xla_extension/*.pyi"]),
     visibility = ["//visibility:public"],
     deps = [
-               ":dlpack",
-               ":jax_jit",
-               ":mlir",
-               ":ops",
-               ":pmap_lib",
-               ":weakref_lru_cache",
-               ":pprof_profile_builder",
-               ":profiler",
-               ":transfer_guard_lib",
-               ":py_client",
-               ":pytree",
-               ":python_ref_manager",
-               ":traceback",
-               ":outfeed_receiver_py",
-               ":types",
-               ":xla_compiler",
-               "@com_google_absl//absl/strings",
-               "@com_google_absl//absl/strings:str_format",
-               "@com_google_absl//absl/types:span",
-               "@pybind11",
-               "//third_party/python_runtime:headers",  # buildcleaner: keep
-               "//tensorflow/compiler/xla:literal",
-               "//tensorflow/compiler/xla:shape_util",
-               "//tensorflow/compiler/xla:status",
-               "//tensorflow/compiler/xla:statusor",
-               "//tensorflow/compiler/xla:types",
-               "//tensorflow/compiler/xla:util",
-               "//tensorflow/compiler/xla/pjrt:cpu_device",
-               "//tensorflow/compiler/xla/pjrt:interpreter_device",
-               "//tensorflow/compiler/xla/pjrt:pjrt_client",
-               "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
-               "//tensorflow/compiler/xla/pjrt/distributed",
-               "//tensorflow/compiler/xla/pjrt/distributed:client",
-               "//tensorflow/compiler/xla/pjrt/distributed:service",
-               "//tensorflow/core:lib",
-               "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
-               # Do NOT remove this dependency. The XLA Python extension must not
-               # depend on any part of TensorFlow at runtime, **including**
-               # libtensorflow_framework.so. The XLA module is deployed self-contained
-               # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
-               # not require Tensorflow.
-               "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
-               "//tensorflow/core/distributed_runtime/preemption:preemption_sync_manager",
-               "//tensorflow/python:bfloat16_lib",
-           ] + select({
-               ":gpu_enabled": [
-                   "//tensorflow/compiler/xla/pjrt:gpu_device",
-               ],
-               "//conditions:default": [],
-           }) + select({
-               ":link_gpu_plugin": ["//tensorflow/compiler/xla/service:gpu_plugin"],
-               "//conditions:default": [],
-           }) +
-           select({
-               ":tpu_enabled": [
-                   "//tensorflow/compiler/xla/pjrt:tpu_client",
-               ],
-               "//conditions:default": [],
-           }),
+        ":dlpack",
+        ":jax_jit",
+        ":mlir",
+        ":ops",
+        ":pmap_lib",
+        ":weakref_lru_cache",
+        ":pprof_profile_builder",
+        ":profiler",
+        ":transfer_guard_lib",
+        ":py_client",
+        ":pytree",
+        ":python_ref_manager",
+        ":traceback",
+        ":outfeed_receiver_py",
+        ":types",
+        ":xla_compiler",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/pjrt:cpu_device",
+        "//tensorflow/compiler/xla/pjrt:interpreter_device",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla/pjrt/distributed",
+        "//tensorflow/compiler/xla/pjrt/distributed:client",
+        "//tensorflow/compiler/xla/pjrt/distributed:service",
+        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
+        # Do NOT remove this dependency. The XLA Python extension must not
+        # depend on any part of TensorFlow at runtime, **including**
+        # libtensorflow_framework.so. The XLA module is deployed self-contained
+        # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
+        # not require Tensorflow.
+        "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
+        "//tensorflow/core/distributed_runtime/preemption:preemption_sync_manager",
+        "//tensorflow/python:bfloat16_lib",
+    ] + select({
+        ":gpu_enabled": [
+            "//tensorflow/compiler/xla/pjrt:gpu_device",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        ":link_gpu_plugin": ["//tensorflow/compiler/xla/service:gpu_plugin"],
+        "//conditions:default": [],
+    }) + select({
+        ":tpu_enabled": ["//tensorflow/compiler/xla/pjrt:tpu_client"],
+        "//conditions:default": [],
+    }) + select({
+        ":plugin_device_enabled": [
+            "//tensorflow/compiler/xla/pjrt:pjrt_plugin_device_client",
+        ],
+        "//conditions:default": [],
+    }),
 )

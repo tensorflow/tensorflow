@@ -168,7 +168,8 @@ void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,
 
 RefCountedIntraProcessRendezvous::RefCountedIntraProcessRendezvous(
     const DeviceMgr* device_mgr)
-    : device_mgr_(device_mgr), local_(this) {}
+    : device_mgr_(device_mgr),
+      local_(this, /*num_shards=*/device_mgr->NumDevices()) {}
 
 RefCountedIntraProcessRendezvous::~RefCountedIntraProcessRendezvous() {}
 
@@ -197,7 +198,8 @@ Status RefCountedIntraProcessRendezvous::GetLocalRendezvousStatus() {
 
 PrivateIntraProcessRendezvous::PrivateIntraProcessRendezvous(
     const DeviceMgr* device_mgr)
-    : device_mgr_(device_mgr), local_(nullptr) {}
+    : device_mgr_(device_mgr),
+      local_(nullptr, /*num_shards=*/device_mgr->NumDevices()) {}
 
 PrivateIntraProcessRendezvous::~PrivateIntraProcessRendezvous() {}
 

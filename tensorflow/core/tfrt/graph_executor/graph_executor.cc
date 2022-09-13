@@ -59,6 +59,7 @@ limitations under the License.
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
@@ -237,14 +238,14 @@ tensorflow::Status GraphExecutionRunOnFunction(
   tensorflow::StatusGroup status_group;
 
   if (chain->IsError()) {
-    status_group.Update(CreateTfErrorStatus(chain->GetError()));
+    status_group.Update(FromAbslStatus(chain->GetError()));
   }
 
   for (tfrt::RCReference<tfrt::AsyncValue>& result : results) {
     DCHECK(result->IsAvailable());
 
     if (result->IsError()) {
-      status_group.Update(CreateTfErrorStatus(result->GetError()));
+      status_group.Update(FromAbslStatus(result->GetError()));
       outputs->push_back(tensorflow::Tensor());
       continue;
     }

@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/tsl/platform/mem.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
@@ -41,7 +41,7 @@ class MaybeOwningCpuMemory {
 
   // Owning.
   using OwnedDataPtr =
-      std::unique_ptr<uint8_t[], decltype(tensorflow::port::AlignedFree)*>;
+      std::unique_ptr<uint8_t[], decltype(tsl::port::AlignedFree)*>;
   explicit MaybeOwningCpuMemory(OwnedDataPtr data, size_t size)
       : buf_(data.get()), data_(std::move(data)), size_(size) {}
 
@@ -54,13 +54,13 @@ class MaybeOwningCpuMemory {
   // Owning.
   static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> AllocateShared(
       size_t size) {
-    uint8_t* data = static_cast<uint8_t*>(tensorflow::port::AlignedMalloc(
-        size, cpu_function_runtime::MinAlign()));
+    uint8_t* data = static_cast<uint8_t*>(
+        tsl::port::AlignedMalloc(size, cpu_function_runtime::MinAlign()));
     if (!data) {
       return ResourceExhausted("Out of memory allocating %d bytes.", size);
     }
     return std::make_shared<MaybeOwningCpuMemory>(
-        OwnedDataPtr{data, tensorflow::port::AlignedFree}, size);
+        OwnedDataPtr{data, tsl::port::AlignedFree}, size);
   }
 
   void* data() const { return buf_; }

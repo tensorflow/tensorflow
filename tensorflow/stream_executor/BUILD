@@ -4,7 +4,7 @@
 # Throughout this file, all targets are built with the standard crosstool and
 # do not link against restricted binary blobs.
 
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library", "transitive_hdrs")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
@@ -371,6 +371,11 @@ cc_library(
         "trace_listener.h",
     ],
     deps = [":stream_executor_headers"] + if_static([":stream_executor_impl"]),
+)
+
+transitive_hdrs(
+    name = "stream_executor_install_hdrs",
+    deps = [":stream_executor_headers"],
 )
 
 cc_library(

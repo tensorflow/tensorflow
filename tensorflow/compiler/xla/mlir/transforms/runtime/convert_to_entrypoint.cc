@@ -120,8 +120,11 @@ static void ConvertCustomCallOperations(func::FuncOp func, Value exec_ctx) {
     custom_call.call.erase();
   }
 
-  // Erase all converted custom calls declarations.
-  for (auto func : erase_declarations) sym_table.erase(func);
+  // Erase unused converted custom calls declarations.
+  for (auto func : erase_declarations) {
+    if (SymbolTable::symbolKnownUseEmpty(func, sym_table.getOp()))
+      sym_table.erase(func);
+  }
 }
 
 static void ConvertReturnOperations(func::FuncOp func, Value exec_ctx) {

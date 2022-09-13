@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -387,7 +387,7 @@ TEST_P(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
   // We use a socket connection for this test case because the in-process API
   // does not react well to the server being told to shutdown while there are
   // active clients.
-  int port = tensorflow::testing::PickUnusedPortOrDie();
+  int port = tsl::testing::PickUnusedPortOrDie();
   StartService(num_nodes, GetParam().use_coordination_service,
                /*service_options=*/{}, absl::StrCat("[::]:", port));
 

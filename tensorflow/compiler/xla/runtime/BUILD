@@ -48,7 +48,7 @@ cc_library(
     hdrs = ["async_runtime.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/tsl/platform:platform_port",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/status",
@@ -62,7 +62,7 @@ cc_library(
     hdrs = ["async_values_cache.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/core/platform:platform",
+        "//tensorflow/tsl/platform:platform",
     ] + tf_platform_deps(
         "async_values_cache",
         platform_dir = "//tensorflow/compiler/xla/runtime/",
@@ -89,6 +89,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":diagnostics",
+        ":errors",
         ":logical_result",
         ":map_by_type",
         ":type_id",
@@ -110,7 +111,9 @@ tf_cc_test(
         ":diagnostics",
         ":executable",
         ":jit_executable",
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline",
+        "//tensorflow/compiler/xla/mlir/ir/runtime/tests:testlib",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline_gpu",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:custom_call_encoding",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -135,6 +138,7 @@ cc_library(
     deps = [
         ":logical_result",
         "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -146,7 +150,7 @@ tf_cc_test(
         ":diagnostics",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -155,6 +159,8 @@ cc_library(
     hdrs = ["errors.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -263,7 +269,7 @@ cc_library(
     hdrs = ["memory_mapper.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/core/platform:platform",
+        "//tensorflow/tsl/platform:platform",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:Support",
     ] + tf_platform_deps(

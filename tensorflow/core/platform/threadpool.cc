@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
-#include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/tsl/platform/setround.h"
 
 namespace tensorflow {
 namespace thread {
@@ -55,7 +55,7 @@ struct EigenEnvironment {
       // Set the processor flag to flush denormals to zero.
       port::ScopedFlushDenormal flush;
       // Set the processor rounding mode to ROUND TO NEAREST.
-      port::ScopedSetRound round(FE_TONEAREST);
+      tsl::port::ScopedSetRound round(FE_TONEAREST);
       if (thread_options_.numa_node != port::kNUMANoAffinity) {
         port::NUMASetThreadNodeAffinity(thread_options_.numa_node);
       }

@@ -200,6 +200,7 @@ class InterpreterInfo : public GraphInfo {
   explicit InterpreterInfo(Subgraph* subgraph) : subgraph_(subgraph) {}
 
   size_t num_tensors() const override { return subgraph_->tensors_size(); }
+  TfLiteTensor* tensors() override { return subgraph_->tensors(); }
   TfLiteTensor* tensor(size_t index) override {
     return subgraph_->tensor(index);
   }

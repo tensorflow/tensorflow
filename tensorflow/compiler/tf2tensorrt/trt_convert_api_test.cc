@@ -253,7 +253,7 @@ class TrtConverterTest
         meta_graph_def.graph_def(), {"input"}, {"output"}, input_tensors_,
         param_.conv_params);
     TF_ASSERT_OK(result.status());
-    const GraphDef& converted_graph_def = result.ValueOrDie();
+    const GraphDef& converted_graph_def = result.value();
     CheckTrtNode(converted_graph_def);
 
     // Create a session to execute the original graph.
@@ -272,7 +272,7 @@ class TrtConverterTest
     StatusOr<GraphDef> result = tensorrt::ConvertAndBuild(
         &bundle, "serving_default", input_tensors_, param_.conv_params);
     TF_ASSERT_OK(result.status());
-    const GraphDef& converted_graph_def = result.ValueOrDie();
+    const GraphDef& converted_graph_def = result.value();
     CheckTrtNode(converted_graph_def);
 
     RunAndCompareResults(bundle.GetSession(), converted_graph_def);

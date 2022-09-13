@@ -18,6 +18,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
@@ -226,6 +227,27 @@ StatusOr<DevicePutResult> HandlePyBuffer(py::handle obj, PjRtDevice* to_device,
                         to_device);
 }
 
+StatusOr<DevicePutResult> HandlePyArray(py::handle obj, PjRtDevice* to_device,
+                                        const DevicePutOptions& options) {
+  const auto* py_array = obj.cast<PyArray*>();
+
+  if (py_array->num_shards() != 1) {
+    return InvalidArgument(
+        "Only single-sharded Array is expected in device_put.");
+  }
+
+  PjRtBuffer* buffer = py_array->GetBuffer(0);
+  if (buffer->device() == to_device) {
+    return DevicePutResult(
+        buffer, py_array->weak_type(),
+        /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
+  } else {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> copied_buffer,
+                        buffer->CopyToDevice(to_device));
+    return DevicePutResult(std::move(copied_buffer), py_array->weak_type());
+  }
+}
+
 StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
                                             PjRtDevice* to_device,
                                             const DevicePutOptions& options) {
@@ -316,6 +338,10 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
 
         return p;
       }();
+
+  if (arg.get_type() == xla::PyArray::type()) {
+    return HandlePyArray(arg, to_device, options);
+  }
 
   // Fast-path for the most common case of PyBuffer.
   if (arg.get_type().ptr() == PyBuffer::type()) {
@@ -519,6 +545,11 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
 
         return p;
       }();
+
+  if (arg.get_type() == xla::PyArray::type()) {
+    auto* array = arg.cast<PyArray*>();
+    return PyArgSignature(array->dtype(), array->shape(), array->weak_type());
+  }
 
   // Fast-path for the most common case of PyBuffer.
   if (arg.get_type().ptr() == PyBuffer::type()) {

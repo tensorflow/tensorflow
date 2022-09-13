@@ -611,7 +611,6 @@ def tflite_custom_c_library(
         srcs = ["//tensorflow/lite/c:c_api_srcs"],
         hdrs = [
             "//tensorflow/lite/c:c_api.h",
-            "//tensorflow/lite/c:c_api_internal.h",
             "//tensorflow/lite/c:c_api_experimental.h",
             "//tensorflow/lite/c:c_api_opaque.h",
         ],

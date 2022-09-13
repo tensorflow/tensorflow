@@ -99,7 +99,6 @@ class DTensorDevice {
 
   void AddMesh(std::unique_ptr<MeshWithParallelDevice> mesh,
                bool is_host_mesh) {
-    // TODO(b/168730933): Consider passing a cheaper int64_t mesh identifier.
     if (is_host_mesh) {
       std::string& tpu_host_mesh = Mesh::tpu_host_mesh();
       const std::string new_tpu_host_mesh = mesh->mesh_config().ToString();
@@ -1519,9 +1518,6 @@ void DTensorDevice::ExecuteRegularOperation(
 
   int num_global_outputs = 0;
 
-  // TODO(b/168730933): Lookup is slow as it takes all the devices in the Mesh
-  // object. Ideally we'd just use a fingerprinted int64_t as a unique
-  // identifier for a mesh.
   std::map<std::string, const MeshWithParallelDevice*>
       function_name_and_mesh_mapping;
   absl::flat_hash_set<std::string> excluded_fn_names;
@@ -1540,9 +1536,6 @@ void DTensorDevice::ExecuteRegularOperation(
                         .c_str());
     }
     const Mesh& mesh = *maybe_converted_mesh;
-    // TODO(b/168730933): Lookup is slow as it takes all the devices in the Mesh
-    // object. Ideally we'd just use a fingerprinted int64_t as a unique
-    // identifier for a mesh.
     const MeshWithParallelDevice* parallel_device_mesh =
         mesh_to_device_map_.contains(mesh) ? mesh_to_device_map_[mesh].get()
                                            : default_mesh_;
@@ -1703,9 +1696,6 @@ void DTensorDevice::ExecuteRegularOperation(
       continue;
     }
     const Mesh& mesh = function.function_mesh;
-    // TODO(b/168730933): Lookup is slow as it takes all the devices in the Mesh
-    // object. Ideally we'd just use a fingerprinted int64_t as a unique
-    // identifier for a mesh.
     const MeshWithParallelDevice* parallel_device_mesh =
         function_name_and_mesh_mapping[function.translated_function_name];
 

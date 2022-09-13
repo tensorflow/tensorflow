@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -132,7 +132,7 @@ port::Status CUDAFftPlan::Initialize(
             LOG(ERROR) << "Failed to create cuFFT 1d plan: " << ret;
             return port::InternalError("Failed to create cuFFT 1d plan.");
           }
-          return ::tensorflow::OkStatus();
+          return ::tsl::OkStatus();
         case 2:
           // cufftPlan2d
           ret = cufftPlan2d(&plan_, elem_count_[0], elem_count_[1],
@@ -141,7 +141,7 @@ port::Status CUDAFftPlan::Initialize(
             LOG(ERROR) << "Failed to create cuFFT 2d plan: " << ret;
             return port::InternalError("Failed to create cuFFT 2d plan.");
           }
-          return ::tensorflow::OkStatus();
+          return ::tsl::OkStatus();
         case 3:
           // cufftPlan3d
           ret = cufftPlan3d(&plan_, elem_count_[0], elem_count_[1],
@@ -150,7 +150,7 @@ port::Status CUDAFftPlan::Initialize(
             LOG(ERROR) << "Failed to create cuFFT 3d plan: " << ret;
             return port::InternalError("Failed to create cuFFT 3d plan.");
           }
-          return ::tensorflow::OkStatus();
+          return ::tsl::OkStatus();
         default:
           LOG(ERROR) << "Invalid rank value for cufftPlan. "
                         "Requested 1, 2, or 3, given: "
@@ -250,7 +250,7 @@ port::Status CUDAFftPlan::Initialize(
       return UpdateScratchAllocator(stream, scratch_allocator);
     }
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status CUDAFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
@@ -282,7 +282,7 @@ port::Status CUDAFftPlan::UpdateScratchAllocator(
     LOG(ERROR) << "Failed to set work area for cuFFT plan: " << ret;
     return port::InternalError("Failed to set work area for cuFFT plan.");
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 CUDAFftPlan::~CUDAFftPlan() {

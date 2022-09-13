@@ -278,9 +278,10 @@ void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
     "/tmp",
   };
 
+  std::vector<std::string> paths;  // Only in case of errors.
   for (const char* d : candidates) {
     if (!d || d[0] == '\0') continue;  // Empty env var
-
+    paths.emplace_back(d);
     // Make sure we don't surprise anyone who's expecting a '/'
     string dstr = d;
     if (dstr[dstr.size() - 1] != '/') {
@@ -295,6 +296,12 @@ void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
       return;
     }
   }
+  LOG(WARNING) << "We are not able to find a directory for temporary files.\n"
+               << "Verify the directory access and available space under: "
+               << absl::StrJoin(paths, ",") << ". "
+               << "You can also provide a directory for temporary files with"
+               << " the environment variable TMP or TMPDIR. "
+               << "Example under bash: `export TMP=/my_new_temp_directory;`";
 }
 
 int setenv(const char* name, const char* value, int overwrite) {

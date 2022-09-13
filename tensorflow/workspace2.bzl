@@ -554,10 +554,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "boringssl",
-        sha256 = "542dd328952cea08785b58990b12e0832c49123807c8854e136136830c8b115c",
-        strip_prefix = "boringssl-da7997d97fa17f22cc3eb9c681c8494af7a98eef",
+        sha256 = "fd0e06a8a57dcba1132f91fef1c1327191e913b6c50a84633f7175090972196c",
+        strip_prefix = "boringssl-f9eff21461cf79556a0fb8ca9b1bf60c3b283ce8",
         system_build_file = "//third_party/systemlibs:boringssl.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/boringssl/archive/da7997d97fa17f22cc3eb9c681c8494af7a98eef.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/boringssl/archive/f9eff21461cf79556a0fb8ca9b1bf60c3b283ce8.tar.gz"),
     )
 
     # Note: if you update this, you have to update libpng too. See cl/437813808

@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace tflite {
 
-// Test helper for accessing private Intrepreter members and methods.
+// Test helper for accessing private Interpreter members and methods.
 class InterpreterTest : public ::testing::Test {
  public:
   InterpreterTest() : interpreter_(new Interpreter) {}
