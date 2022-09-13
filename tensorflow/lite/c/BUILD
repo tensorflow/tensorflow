@@ -1,5 +1,6 @@
 load(
     "//tensorflow/lite:build_def.bzl",
+    "tflite_cc_library_with_c_headers_test",
     "tflite_cc_shared_object",
     "tflite_copts",
     "tflite_custom_c_library",
@@ -43,7 +44,7 @@ tflite_cc_shared_object(
     ],
 )
 
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "c_api",
     hdrs = [
         "c_api.h",
@@ -60,7 +61,7 @@ cc_library(
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "c_api_for_testing",
     testonly = True,
     srcs = ["c_api_for_testing.cc"],
@@ -71,7 +72,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "c_api_without_op_resolver",
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
@@ -94,7 +95,7 @@ cc_library(
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "c_api_experimental",
     srcs = [
         "c_api_experimental.cc",
@@ -118,7 +119,7 @@ cc_library(
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "c_api_types",
     hdrs = ["c_api_types.h"],
     compatible_with = get_compatible_with_portable(),
@@ -223,7 +224,7 @@ cc_test(
     ],
 )
 
-cc_library(
+tflite_cc_library_with_c_headers_test(
     name = "common",
     srcs = ["common.cc"],
     hdrs = [
