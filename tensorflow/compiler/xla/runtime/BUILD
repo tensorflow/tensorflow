@@ -96,6 +96,8 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
     ],
 )

@@ -30,6 +30,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/dynamic_annotations.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -565,6 +567,19 @@ struct NumRets<T> {
   static constexpr int64_t value = IsResult<T>::value;
 };
 
+// Unwrap return type to get the type expected by result `Set` method.
+//
+// TODO(ezhulenev): Result template itself should define what type `T` it
+// expects to see in the `Set` method, because it's not necessery the same as
+// the template type of the result.
+template <typename T>
+struct UnwrapRet;
+
+template <typename T>
+struct UnwrapRet<Result<T>> {
+  using Type = T;
+};
+
 // A helper template to concatenate index + index sequence.
 template <size_t, typename>
 struct ConsIdx;
@@ -752,6 +767,9 @@ class CustomCallHandler : public CustomCall {
   template <typename T>
   using FnArgType = typename internal::FnArgType<T>::Type;
 
+  template <typename T>
+  using UnwrapRet = typename internal::UnwrapRet<T>::Type;
+
   // Custom call can signal error using a LogicalError result.
   static constexpr bool kIsLogicalErr =
       std::is_invocable_r_v<LogicalResult, Fn, FnArgType<Ts>...>;
@@ -760,7 +778,41 @@ class CustomCallHandler : public CustomCall {
   static constexpr bool kIsStatusErr =
       std::is_invocable_r_v<absl::Status, Fn, FnArgType<Ts>...>;
 
-  static_assert(kIsLogicalErr || kIsStatusErr,
+  // Custom call returns results as `absl::StatusOr<std::tuple<Ts...>>`
+  // (multiple results) or `absl::StatusOr<T>` (single result).
+  template <size_t... RetsIs, size_t... ArgsIs>
+  static constexpr bool IsStatusOrInvocable(std::index_sequence<RetsIs...>,
+                                            std::index_sequence<ArgsIs...>) {
+    // Define a tuple to help extracting type by index.
+    using ArgsTuple = std::tuple<FnArgType<Ts>...>;
+
+    // Custom call doesn't have any results.
+    if constexpr (sizeof...(RetsIs) == 0) return false;
+
+    // Custom call returns a single result.
+    if constexpr (sizeof...(RetsIs) == 1) {
+      using StatusOr =
+          absl::StatusOr<UnwrapRet<std::tuple_element_t<RetsIs, ArgsTuple>>...>;
+      return std::is_invocable_r_v<StatusOr, Fn,
+                                   std::tuple_element_t<ArgsIs, ArgsTuple>...>;
+    }
+
+    // Custom call returns multiple results as a tuple.
+    if constexpr (sizeof...(RetsIs) > 1) {
+      using StatusOr = absl::StatusOr<
+          std::tuple<UnwrapRet<std::tuple_element_t<RetsIs, ArgsTuple>>...>>;
+      return std::is_invocable_r_v<StatusOr, Fn,
+                                   std::tuple_element_t<ArgsIs, ArgsTuple>...>;
+    }
+
+    llvm_unreachable("unsupported result rank");
+  }
+
+  static constexpr bool kIsStatusOrResult =
+      IsStatusOrInvocable(typename internal::IndexRets<0, Ts...>::Is{},
+                          typename internal::IndexArgs<0, Ts...>::Is{});
+
+  static_assert(kIsLogicalErr || kIsStatusErr || kIsStatusOrResult,
                 "incompatible custom call handler types");
 
  public:
