@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/strings/str_replace.h"
 #include "tensorflow/lite/delegates/gpu/common/flops_util.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
@@ -105,7 +106,8 @@ bool IsElementwiseOneInput(const OperationType& op_type) {
 class ThinPointwiseFuser {
  public:
   void Init(CalculationsPrecision precision, const GraphFloat32* graph,
-            const std::map<ValueId, TensorDescriptor>* tensor_descriptors);
+            const std::map<ValueId, TensorDescriptor>* tensor_descriptors,
+            std::set<NodeId>* consumed_nodes);
   bool Finalize(const GpuInfo& gpu_info, GPUOperationsSubgraph* gpu_subgraph);
 
   bool ReserveNode(const GpuInfo& gpu_info, Node* node);
@@ -124,14 +126,16 @@ class ThinPointwiseFuser {
   bool IsConvNode(Node* node) const;
   bool IsDwConvNode(Node* node) const;
   uint64_t GetNodeFlops(Node* node) const;
-  void AddNode(const GpuInfo& gpu_info, Node* node);
+  // node_index for std::vector<Node*> nodes_
+  void AddNode(const GpuInfo& gpu_info, int node_index);
   void AddElementwiseNode(ElementwiseDescriptor&& op_desc);
   void AddConv1x1Node(const GpuInfo& gpu_info,
-                      const Convolution2DAttributes& attr);
+                      const Convolution2DAttributes& attr, bool last_op);
   void AddConv2dNode(const GpuInfo& gpu_info,
                      const Convolution2DAttributes& attr);
   void AddReluNode(const ReLUAttributes& attr);
   void AddPreluNode(const PReLUAttributes& attr);
+  void AddAddNode(ValueId add_new_input_id);
   void AddElementwiseOneInputNode(const GpuInfo& gpu_info,
                                   const OperationType& op_type);
   void AddDepthwiseConvNode(const GpuInfo& gpu_info,
@@ -142,6 +146,7 @@ class ThinPointwiseFuser {
   void CreateConstantsGpuBuffer(const GpuInfo& gpu_info);
   std::vector<Node*> nodes_;
   OperationDef op_def_;
+  std::vector<Value*> inputs_;
   Arguments args_;
   std::string code_;
   std::vector<std::string> outputs_;
@@ -150,11 +155,10 @@ class ThinPointwiseFuser {
   int buffer_size_ = 0;
   std::string op_name_;
   int link_counter_ = 0;
-  bool last_op_ = false;
-  bool first_op_ = false;
   int convs_count_ = 0;
   const GraphFloat32* graph_;
   const std::map<ValueId, TensorDescriptor>* tensor_descriptors_;
+  const std::set<NodeId>* consumed_nodes_;
 };
 
 void ThinPointwiseFuser::AddDepthwiseConvData(
@@ -289,10 +293,12 @@ void ThinPointwiseFuser::CreateConstantsGpuBuffer(const GpuInfo& gpu_info) {
 
 void ThinPointwiseFuser::Init(
     CalculationsPrecision precision, const GraphFloat32* graph,
-    const std::map<ValueId, TensorDescriptor>* tensor_descriptors) {
+    const std::map<ValueId, TensorDescriptor>* tensor_descriptors,
+    std::set<NodeId>* consumed_nodes) {
   op_def_.precision = precision;
   graph_ = graph;
   tensor_descriptors_ = tensor_descriptors;
+  consumed_nodes_ = consumed_nodes;
   weights_counter_ = 0;
 }
 
@@ -302,12 +308,44 @@ bool ThinPointwiseFuser::IsNodeSupported(const GpuInfo& gpu_info,
     return false;
   }
   auto op_type = OperationTypeFromString(node->operation.type);
+  if (op_type == OperationType::ADD) {
+    if (nodes_.empty()) {
+      return false;
+    }
+    auto add_inputs = graph_->FindInputs(node->id);
+    if (add_inputs.size() != 2) {
+      return false;
+    }
+    auto last_node_outputs = graph_->FindOutputs(nodes_.back()->id);
+    Value* add_new_input = add_inputs[0]->id != last_node_outputs[0]->id
+                               ? add_inputs[0]
+                               : add_inputs[1];
+
+    const auto prev_shape = last_node_outputs[0]->tensor.shape;
+    const auto add_new_shape = add_new_input->tensor.shape;
+    if (prev_shape != add_new_shape) {
+      return false;
+    }
+    Node* producer = graph_->FindProducer(add_new_input->id);
+    if (!producer) {
+      // add_new_input_id is global input without producer
+      return true;
+    }
+    if (consumed_nodes_->find(producer->id) == consumed_nodes_->end()) {
+      return false;
+    }
+    return true;
+  }
   if (op_type == OperationType::RELU || op_type == OperationType::PRELU) {
     return !nodes_.empty();
   } else if (IsElementwiseOneInput(op_type)) {
     return !nodes_.empty();
   } else if (op_type == OperationType::DEPTHWISE_CONVOLUTION) {
     if (!nodes_.empty()) {
+      return false;
+    }
+    auto inputs = graph_->FindInputs(node->id);
+    if (inputs.size() != 1) {
       return false;
     }
     DepthwiseConvolution2DAttributes* dw_attr =
@@ -340,6 +378,10 @@ bool ThinPointwiseFuser::IsNodeSupported(const GpuInfo& gpu_info,
       }
     }
   } else if (op_type == OperationType::CONVOLUTION_2D) {
+    auto inputs = graph_->FindInputs(node->id);
+    if (inputs.size() != 1) {
+      return false;
+    }
     Convolution2DAttributes* conv_attr =
         absl::any_cast<Convolution2DAttributes>(&node->operation.attributes);
     if (conv_attr->groups != 1) {
@@ -432,7 +474,8 @@ uint64_t ThinPointwiseFuser::GetNodeFlops(Node* node) const {
   return 0;
 }
 
-void ThinPointwiseFuser::AddNode(const GpuInfo& gpu_info, Node* node) {
+void ThinPointwiseFuser::AddNode(const GpuInfo& gpu_info, int node_index) {
+  Node* node = nodes_[node_index];
   auto op_type = OperationTypeFromString(node->operation.type);
   if (op_type == OperationType::RELU) {
     ReLUAttributes* attr =
@@ -442,6 +485,15 @@ void ThinPointwiseFuser::AddNode(const GpuInfo& gpu_info, Node* node) {
     PReLUAttributes* attr =
         absl::any_cast<PReLUAttributes>(&node->operation.attributes);
     AddPreluNode(*attr);
+  } else if (op_type == OperationType::ADD) {
+    Node* prev_node = nodes_[node_index - 1];
+    auto add_inputs = graph_->FindInputs(node->id);
+    auto prev_node_outputs = graph_->FindOutputs(prev_node->id);
+    Value* add_new_input = add_inputs[0]->id != prev_node_outputs[0]->id
+                               ? add_inputs[0]
+                               : add_inputs[1];
+    inputs_.push_back(add_new_input);
+    AddAddNode(add_new_input->id);
   } else if (IsElementwiseOneInput(op_type)) {
     AddElementwiseOneInputNode(gpu_info, op_type);
   } else if (op_type == OperationType::DEPTHWISE_CONVOLUTION) {
@@ -452,8 +504,8 @@ void ThinPointwiseFuser::AddNode(const GpuInfo& gpu_info, Node* node) {
   } else if (op_type == OperationType::CONVOLUTION_2D) {
     Convolution2DAttributes* attr =
         absl::any_cast<Convolution2DAttributes>(&node->operation.attributes);
-    if (IsConv1x1(*attr) && !first_op_) {
-      AddConv1x1Node(gpu_info, *attr);
+    if (IsConv1x1(*attr) && node_index != 0) {
+      AddConv1x1Node(gpu_info, *attr, node_index == nodes_.size() - 1);
     } else {
       AddConv2dNode(gpu_info, *attr);
     }
@@ -463,7 +515,7 @@ void ThinPointwiseFuser::AddNode(const GpuInfo& gpu_info, Node* node) {
 bool ThinPointwiseFuser::IsElementwiseNode(Node* node) const {
   auto op_type = OperationTypeFromString(node->operation.type);
   return op_type == OperationType::RELU || op_type == OperationType::PRELU ||
-         IsElementwiseOneInput(op_type);
+         op_type == OperationType::ADD || IsElementwiseOneInput(op_type);
 }
 
 bool ThinPointwiseFuser::IsConvNode(Node* node) const {
@@ -582,6 +634,20 @@ void ThinPointwiseFuser::AddPreluNode(const PReLUAttributes& attr) {
   AddElementwiseNode(std::move(op_desc));
 }
 
+void ThinPointwiseFuser::AddAddNode(ValueId add_new_input_id) {
+  op_name_ += "->add";
+  const std::string tensor_name =
+      absl::StrCat("src_tensor", op_def_.src_tensors.size());
+  const TensorDescriptor& src_desc =
+      tensor_descriptors_->find(add_new_input_id)->second;
+  op_def_.src_tensors.push_back(src_desc);
+  for (int i = 0; i < outputs_.size(); ++i) {
+    code_ += "  if (" + std::to_string(i) + " < args." + tensor_name +
+             ".Slices()) {\n" + outputs_[i] + " += args." + tensor_name +
+             ".Read(X, Y, " + std::to_string(i) + ");\n}\n";
+  }
+}
+
 void ThinPointwiseFuser::AddElementwiseOneInputNode(
     const GpuInfo& gpu_info, const OperationType& op_type) {
   ElementwiseDescriptor op_desc =
@@ -590,7 +656,8 @@ void ThinPointwiseFuser::AddElementwiseOneInputNode(
 }
 
 void ThinPointwiseFuser::AddConv1x1Node(const GpuInfo& gpu_info,
-                                        const Convolution2DAttributes& attr) {
+                                        const Convolution2DAttributes& attr,
+                                        bool last_op) {
   AddConv1x1Data(attr);
   op_name_ += "->conv1x1";
   const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
@@ -622,7 +689,7 @@ void ThinPointwiseFuser::AddConv1x1Node(const GpuInfo& gpu_info,
       code_ += "  " + MAC(gpu_info, dst, c2, src + ".z") + ";\n";
       code_ += "  " + MAC(gpu_info, dst, c3, src + ".w") + ";\n";
     }
-    if (last_op_) {
+    if (last_op) {
       code_ += "  if(" + std::to_string(d) + " < args.dst_tensor.Slices()) {\n";
       code_ += "    args.dst_tensor.Write(" + dst + ", X, Y, " +
                std::to_string(d) + ");\n";
@@ -760,7 +827,7 @@ bool ThinPointwiseFuser::Finalize(const GpuInfo& gpu_info,
   if (non_elementwise_nodes_count <= 1) {
     return false;
   }
-  auto first_node_inputs = graph_->FindInputs(nodes_.front()->id);
+  inputs_ = graph_->FindInputs(nodes_.front()->id);
   auto last_node_outputs = graph_->FindOutputs(nodes_.back()->id);
   const TensorDescriptor& dst_desc =
       tensor_descriptors_->find(last_node_outputs[0]->id)->second;
@@ -784,9 +851,7 @@ bool ThinPointwiseFuser::Finalize(const GpuInfo& gpu_info,
   code_ += "  } \n";
 
   for (int i = 0; i < nodes_.size(); ++i) {
-    first_op_ = i == 0;
-    last_op_ = i == nodes_.size() - 1;
-    AddNode(gpu_info, nodes_[i]);
+    AddNode(gpu_info, i);
   }
   code_ += "}\n";
 
@@ -803,13 +868,16 @@ bool ThinPointwiseFuser::Finalize(const GpuInfo& gpu_info,
       return false;
     }
   }
-
   CreateConstantsGpuBuffer(gpu_info);
   std::unique_ptr<GPUOperation>* gpu_op =
-      InitSingleOpSubgraph(first_node_inputs, last_node_outputs, gpu_subgraph);
+      InitSingleOpSubgraph(inputs_, last_node_outputs, gpu_subgraph);
   GPUOperation operation(op_def_);
   operation.args_ = std::move(args_);
   operation.AddSrcTensor("src_tensor", op_def_.src_tensors[0]);
+  for (int i = 1; i < op_def_.src_tensors.size(); ++i) {
+    const std::string tensor_name = absl::StrCat("src_tensor", i);
+    operation.AddSrcTensor(tensor_name, op_def_.src_tensors[i]);
+  }
   operation.AddDstTensor("dst_tensor", op_def_.dst_tensors[0]);
   operation.code_ = code_;
   operation.flops_ = 0;
@@ -826,10 +894,6 @@ bool ThinPointwiseFuser::Finalize(const GpuInfo& gpu_info,
 }
 
 Node* GetNextLinearNode(const GraphFloat32& graph, NodeId current_node) {
-  auto inputs = graph.FindInputs(current_node);
-  if (inputs.size() != 1) {
-    return nullptr;
-  }
   auto outputs = graph.FindOutputs(current_node);
   if (outputs.size() != 1) {
     return nullptr;
@@ -860,7 +924,7 @@ absl::Status TryThinPointwiseFuser(
   }
 
   ThinPointwiseFuser fuser;
-  fuser.Init(precision, &graph, &tensor_descriptors);
+  fuser.Init(precision, &graph, &tensor_descriptors, consumed_nodes);
   while (fuser.ReserveNode(gpu_info, node)) {
     node = GetNextLinearNode(graph, node->id);
     if (node == nullptr ||
