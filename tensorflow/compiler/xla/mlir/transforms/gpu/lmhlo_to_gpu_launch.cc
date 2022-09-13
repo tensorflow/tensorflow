@@ -82,6 +82,12 @@ class ConvertLmhloToGpuLaunchPass
 
 static Value MakeBitPatternConstant(OpBuilder& b, Location loc, Type type,
                                     uint32_t bit_pattern) {
+  // For zero bit pattern always memset with a zero value of the same type.
+  // TODO(ezhulenev): Add Memzero operation to MLIR gpu dialect.
+  if (bit_pattern == 0) {
+    return b.create<arith::ConstantOp>(loc, b.getZeroAttr(type));
+  }
+
   // In XLA a 1-byte bit pattern copied to fill a 32-byte word when
   // `Memset32BitValueThunk` is constructed, so to get back an `i1` constant we
   // only need to check if any bit is set to `1`.
@@ -99,7 +105,7 @@ static Value MakeBitPatternConstant(OpBuilder& b, Location loc, Type type,
     return b.create<arith::ConstantFloatOp>(loc, f32, type.cast<FloatType>());
   }
 
-  llvm_unreachable("unsupported type");
+  llvm_unreachable("unsupported type and bit pattern");
 }
 
 // Replaces lmhlo ops within a module with gpu.launch_func and gpu.memcpy ops.
@@ -207,7 +213,6 @@ static void LowerThunkToGpuOp(Operation* op, PatternRewriter& rewriter,
 
   auto rewrite_memset = [&](const xla::BufferAllocation::Slice& slice,
                             uint32_t memset_value, Value buffer_arg) {
-    assert(slice.offset() == 0);
     auto element_type =
         buffer_arg.getType().cast<MemRefType>().getElementType();
     rewriter.setInsertionPoint(op);

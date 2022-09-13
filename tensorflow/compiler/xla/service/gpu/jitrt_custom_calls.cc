@@ -1065,6 +1065,8 @@ absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
     set_zero = true;
   else if (auto f32 = constant.get<float>(); succeeded(f32) && *f32 == 0.0)
     set_zero = true;
+  else if (auto f64 = constant.get<double>(); succeeded(f64) && *f64 == 0.0)
+    set_zero = true;
 
   if (set_zero) {
     stream->ThenMemZero(&dst_data, dst.size_in_bytes);
