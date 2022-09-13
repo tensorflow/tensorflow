@@ -1,3 +1,68 @@
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -434,7 +434,7 @@
+ 
+   // All operands of nested ops must be defined in the body or declared by the
+   // cluster.
+-  Block* body = getBody();
++  Block* body = SingleBlock::getBody();
+   for (Operation& nested : body->without_terminator()) {
+     if (!llvm::all_of(nested.getOpOperands(), [&](OpOperand& operand) {
+           Operation* def = operand.get().getDefiningOp();
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -54,7 +54,7 @@
+     dialects.
+   }];
+ 
+-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
++  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+ }
+ 
+ class CHLO_Op<string mnemonic, list<Trait> traits> :
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -1855,8 +1855,7 @@
+ }
+ 
+ LogicalResult CollectivePermuteOp::verify() {
+-  return verifyCollectivePermuteSourceTargetPairs(*this,
+-                                                       source_target_pairs());
++  return verifyCollectivePermuteSourceTargetPairs(*this, source_target_pairs());
+ }
+ 
+ //===----------------------------------------------------------------------===//
+@@ -5500,12 +5499,13 @@
+ /// assignment ::= ssa-value `=` ssa-value
+ void WhileOp::print(OpAsmPrinter& p) {
+   p << '(';
+-  llvm::interleaveComma(llvm::zip(getBody()->getArguments(), getOperands()), p,
+-                        [&](auto zip) {
+-                          p.printOperand(std::get<0>(zip));
+-                          p << " = ";
+-                          p.printOperand(std::get<1>(zip));
+-                        });
++  llvm::interleaveComma(
++      llvm::zip(SingleBlock::getBody()->getArguments(), getOperands()), p,
++      [&](auto zip) {
++        p.printOperand(std::get<0>(zip));
++        p << " = ";
++        p.printOperand(std::get<1>(zip));
++      });
+   p << ")";
+   if (getNumOperands()) {
+     p << " : ";
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -35,7 +35,7 @@
+     a portability layer between ML frameworks and ML compilers.
+   }];
+ 
+-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
++  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
+ }
 --- stablehlo/stablehlo/tests/lit.cfg.py
 +++ stablehlo/stablehlo/tests/lit.cfg.py
 @@ -20,7 +20,6 @@
