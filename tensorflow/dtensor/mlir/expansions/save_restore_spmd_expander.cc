@@ -489,20 +489,9 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
       mlir::OpBuilder::atBlockBegin(else_fn_block);
   mlir::Value checkpoint_prefixes = else_fn_block->getArgument(0);
 
-  bool allow_missing_files = false;
-  bool dtensor_checkpoint_v2 = !merge_v2.allow_missing_files();
-
-  // To differentiate DTensorCheckpoint V1 from V2, allow_missing_files,
-  // a boolean attribute, will be used. If allow_missing_files is set to True
-  // (the default value is False), this means this op was explicitly called by
-  // DTensor and thus it is V1. This special casing will be removed once
-  // full migration to V2 occurs.
-  if (dtensor_checkpoint_v2) {
-    allow_missing_files = true;
-    TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
-    checkpoint_prefixes = GetAllCandidateCheckpointPrefixes(
-        else_fn_builder, checkpoint_prefixes, mesh);
-  }
+  TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
+  checkpoint_prefixes = GetAllCandidateCheckpointPrefixes(
+      else_fn_builder, checkpoint_prefixes, mesh);
 
   mlir::Value destination_prefixes = else_fn_block->getArgument(1);
 
@@ -510,7 +499,7 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
       location, checkpoint_prefixes, destination_prefixes,
       /*delete_old_dirs=*/
       else_fn_builder.getBoolAttr(merge_v2.delete_old_dirs()),
-      /*allow_missing_files=*/else_fn_builder.getBoolAttr(allow_missing_files));
+      /*allow_missing_files=*/else_fn_builder.getBoolAttr(true));
 
   else_fn_builder.create<mlir::func::ReturnOp>(location);
 
