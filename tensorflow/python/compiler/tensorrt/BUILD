@@ -3,7 +3,12 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "cuda_py_test",
+    "tf_copts",
+    "tf_python_pybind_extension",
+)
 
 # cuda_py_test and cuda_py_tests enable XLA tests by default. We can't
 # combine XLA with TensorRT currently and should set
@@ -36,6 +41,7 @@ py_library(
         "lazy_utils.py",
         "model_opt.py",
         "trt_convert.py",
+        "trt_convert_cpp.py",
         "trt_convert_v1.py",
         "trt_convert_v2.py",
         "trt_utils.py",
@@ -43,6 +49,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":_pywrap_trt_convert",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_engine_instance_proto_py",
         "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
@@ -137,4 +144,26 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/estimator",
     ],
+)
+
+tf_python_pybind_extension(
+   name = "_pywrap_trt_convert",
+   srcs = ["trt_convert_wrapper.cc"],
+   hdrs = [
+       "//tensorflow/compiler/tf2tensorrt:headers",
+       "//tensorflow/python/lib/core:ndarray_tensor_hdr",
+       "//tensorflow/python/lib/core:safe_ptr_hdr",
+   ],
+   copts = tf_copts(),
+   deps = [
+       "//tensorflow/c:tf_status_helper",
+       "//tensorflow/core:framework_headers_lib",
+       "//tensorflow/core:lib_headers_for_pybind",
+       "//tensorflow/core:protos_all_cc",
+       "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+       "//tensorflow/core/common_runtime/gpu:gpu_id",
+       "//tensorflow/python/lib/core:pybind11_status",
+       "//tensorflow/python/lib/core:safe_pyobject_ptr",
+       "@pybind11",
+   ],
 )

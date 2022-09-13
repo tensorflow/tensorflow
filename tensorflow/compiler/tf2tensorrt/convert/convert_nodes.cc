@@ -916,7 +916,7 @@ Status TrtNodeValidator::ConvertToTensorOrWeights(
     AttrSlice attrs(node_def);
     DataType dtype;
     TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "dtype", &dtype));
-    if (dtype == DataType::DT_RESOURCE) {
+    if (node_def.op() == "VarHandleOp" || dtype == DataType::DT_RESOURCE) {
       // The converter doesn't use the input resource at the validation stage
       // (it gets the dtype and shape from attributes). A fake resource can be
       // used.

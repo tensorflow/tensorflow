@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_PARAMETERS_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_PARAMETERS_H_
 
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -68,5 +66,4 @@ Status ProfileStrategyFromName(const string& name, ProfileStrategy* strategy);
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_PARAMETERS_H_

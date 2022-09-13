@@ -24,6 +24,10 @@ from tensorflow.python.compiler.tensorrt.trt_convert_v1 import create_inference_
 from tensorflow.python.compiler.tensorrt.trt_convert_v1 import get_tensorrt_rewriter_config
 from tensorflow.python.compiler.tensorrt.trt_convert_v2 import TrtGraphConverterV2
 
+from tensorflow.python.compiler.tensorrt import trt_utils
+if trt_utils.is_experimental_feature_activated("using_cpp_api"):
+  from tensorflow.python.compiler.tensorrt.trt_convert_cpp import TrtGraphConverterV2
+
 __all__ = [
     # Publicly accessible helper objects
     "DEFAULT_TRT_CONVERSION_PARAMS",

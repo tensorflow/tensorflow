@@ -35,7 +35,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compiler.tensorrt import model_opt
 from tensorflow.python.compiler.tensorrt import model_opt
 from tensorflow.python.compiler.tensorrt import trt_convert
-from tensorflow.python.compiler.tensorrt.constants import TrtPrecisionMode
+from tensorflow.python.compiler.tensorrt.trt_convert import TrtPrecisionMode
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import graph_io
@@ -345,7 +345,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     elif run_params.precision_mode == "INT8":
       return 3.e-1
     else:
-      raise ValueError("Unknown `precision_mode`: {run_params.precision_mode}")
+      raise ValueError(f"Unknown `precision_mode`: {run_params.precision_mode}")
 
   def ExpectedRelativeTolerance(self, run_params):
     """The relative tolerance to compare floating point results."""
@@ -356,7 +356,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     elif run_params.precision_mode == "INT8":
       return 1.e-1
     else:
-      raise ValueError("Unknown `precision_mode`: {run_params.precision_mode}")
+      raise ValueError(f"Unknown `precision_mode`: {run_params.precision_mode}")
 
   def _GetParamsCached(self):
     if self._trt_test_params is None:

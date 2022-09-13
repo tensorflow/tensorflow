@@ -30,6 +30,8 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compiler.tensorrt import gen_trt_ops
 from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.compiler.tensorrt import trt_convert_v2
+from tensorflow.python.compiler.tensorrt import trt_utils
+from tensorflow.python.compiler.tensorrt import trt_convert_cpp
 from tensorflow.python.compiler.tensorrt.test import test_utils
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
@@ -1137,7 +1139,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     converter.convert()
 
     # Patch save function with mock.
-    with mock.patch.object(trt_convert_v2, "save") as mock_save:
+    convert_obj = trt_convert_v2
+    if trt_utils.is_experimental_feature_activated("using_cpp_api"):
+      convert_obj = trt_convert_cpp
+    with mock.patch.object(convert_obj, "save") as mock_save:
       mock_save.save = mock.MagicMock()
       # Save converted model with options.
       output_saved_model_dir = self.mkdtemp()
@@ -1214,7 +1219,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     converted_model = None
     # Specify device on which converted model should be placed
-    with self.assertRaisesRegex(ValueError, r"Specified device is not a GPU"):
+    exception = ValueError
+    if trt_utils.is_experimental_feature_activated("using_cpp_api"):
+      exception = errors.InvalidArgumentError
+    with self.assertRaisesRegex(exception, r"Specified device is not a GPU"):
       with ops.device("CPU"):
         converted_model = converter.convert()
 

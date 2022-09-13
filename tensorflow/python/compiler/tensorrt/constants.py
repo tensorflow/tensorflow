@@ -20,7 +20,9 @@ from dataclasses import dataclass
 from functools import total_ordering
 
 from tensorflow.python.compiler.tensorrt import _pywrap_py_utils
+from tensorflow.python.compiler.tensorrt import _pywrap_trt_convert
 from tensorflow.python.compiler.tensorrt.lazy_utils import LazyObj
+from tensorflow.python.compiler.tensorrt.types import _EnumMeta
 from tensorflow.python.compiler.tensorrt.types import ExtendedEnum
 from tensorflow.python.compiler.tensorrt.types import TrtVersion
 from tensorflow.python.platform import tf_logging as logging
@@ -119,27 +121,36 @@ class TrtVersionEnv(object):
     return self.loaded < other and self.linked < other
 
 
-@tf_export("experimental.tensorrt.TrtPrecisionMode", v1=[])
-class TrtPrecisionMode(ExtendedEnum):
-  FP32 = "FP32"
-  FP16 = "FP16"
-  INT8 = "INT8"
+def _get_trt_precision_mode():
+  @tf_export("experimental.tensorrt.TrtPrecisionMode", v1=[])
+  class TrtPrecisionMode(ExtendedEnum):
+    FP32 = _pywrap_trt_convert.TrtPrecisionMode.FP32
+    FP16 = _pywrap_trt_convert.TrtPrecisionMode.FP16
+    INT8 = _pywrap_trt_convert.TrtPrecisionMode.INT8
+  return TrtPrecisionMode
+
+TrtPrecisionMode = LazyObj(_EnumMeta)(_get_trt_precision_mode)
 
 
-@tf_export("experimental.tensorrt.TrtProfileStrategy", v1=[])
-class TrtProfileStrategy(ExtendedEnum):
-  RANGE = "Range"
-  OPTIMAL = "Optimal"
-  RANGE_OPTIMAL = "Range+Optimal"
-  IMPLICIT_BATCH_MODE_COMPATIBLE = "ImplicitBatchModeCompatible"
+def _get_trt_profile_strategy():
+  @tf_export("experimental.tensorrt.TrtProfileStrategy", v1=[])
+  class TrtProfileStrategy(ExtendedEnum):
+    RANGE =  _pywrap_trt_convert.TrtProfileStrategy.kRange
+    OPTIMAL = _pywrap_trt_convert.TrtProfileStrategy.kOptimal
+    RANGE_OPTIMAL = _pywrap_trt_convert.TrtProfileStrategy.kRangeOptimal
+    IMPLICIT_BATCH_MODE_COMPATIBLE = (
+        _pywrap_trt_convert.TrtProfileStrategy.kImplicitBatchModeCompatible)
 
-  def __validate__(self):
-    if self == TrtProfileStrategy.IMPLICIT_BATCH_MODE_COMPATIBLE:
-      logging.warn(
-          "ImplicitBatchModeCompatible strategy is deprecated, and"
-          " using it may result in errors during engine building. Please"
-          " consider using a different profile strategy."
-      )
+    def __validate__(self):
+      if self == TrtProfileStrategy.IMPLICIT_BATCH_MODE_COMPATIBLE:
+        logging.warn(
+            "ImplicitBatchModeCompatible strategy is deprecated, and"
+            " using it may result in errors during engine building. Please"
+            " consider using a different profile strategy."
+        )
+  return TrtProfileStrategy
+
+TrtProfileStrategy = LazyObj(_EnumMeta)(_get_trt_profile_strategy)
 
 
 def _get_default_max_trt_workspace_size():

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/trt_parameters.h"
 
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-
 #include <algorithm>
 #include <cctype>
 
@@ -100,5 +98,3 @@ Status ProfileStrategyFromName(const string& name, ProfileStrategy* strategy) {
 
 }  // namespace tensorrt
 }  // namespace tensorflow
-
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

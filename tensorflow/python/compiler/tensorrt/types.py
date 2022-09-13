@@ -54,6 +54,9 @@ class ExtendedEnum(Enum, metaclass=_EnumMeta):
     """Returns a list of all the enum values."""
     return cls.to_dict().items()
 
+  def __eq__(self, other):
+    return self.value == other
+
   def __validate__(self):
     pass
 

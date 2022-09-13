@@ -192,6 +192,7 @@ tf_cuda_library(
         "//conditions:default": [],
     }) + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:trt_convert_api",
+        "//tensorflow/compiler/tf2tensorrt:experimental_trt_convert_api",
     ]),
 )
 

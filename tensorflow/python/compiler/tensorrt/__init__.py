@@ -24,6 +24,10 @@ _pywrap_py_utils = LazyLoader(
     "_pywrap_py_utils", globals(),
     "tensorflow.compiler.tf2tensorrt._pywrap_py_utils")
 
+_pywrap_trt_convert = LazyLoader(
+    "_pywrap_trt_convert", globals(),
+    "tensorflow.python.compiler.tensorrt._pywrap_trt_convert")
+
 # Register TRT ops in python, so that when users import this module they can
 # execute a TRT-converted graph without calling any of the methods in this
 # module.

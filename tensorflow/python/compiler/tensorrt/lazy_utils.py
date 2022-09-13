@@ -52,8 +52,7 @@ def LazyObj(base_cls):
 
     def __getattribute__(self, name):
       if name not in _LazyObj.__bypass_getattribute__:
-        wrapped_obj = self.wrapped
-        return wrapped_obj.__getattribute__(wrapped_obj, name)
+        return getattr(self.wrapped, name)
       else:
         return super().__getattribute__(name)
 
@@ -76,7 +75,7 @@ def LazyObj(base_cls):
           k: v if not isinstance(v, _LazyObj) else v.wrapped
           for k, v in kwargs.items()
       }
-      return self.wrapped.__getattribute__(func_name)(*args, **kwargs)
+      return getattr(self.wrapped, func_name)(*args, **kwargs)
 
     return inner
 

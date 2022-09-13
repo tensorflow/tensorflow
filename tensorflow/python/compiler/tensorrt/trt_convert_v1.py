@@ -169,6 +169,7 @@ class TrtGraphConverter(object):
     self._calibration_graph = None
     self._calibration_data_collected = False
 
+    # pylint: disable-next=not-callable
     self._precision_mode = TrtPrecisionMode(precision_mode)
     self._need_calibration = (
         self._precision_mode == TrtPrecisionMode.INT8 and use_calibration

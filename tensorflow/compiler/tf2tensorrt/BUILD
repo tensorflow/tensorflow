@@ -12,6 +12,7 @@ load(
     "tf_cuda_library",
     "tf_custom_op_library_additional_deps",
     "tf_gen_op_wrapper_py",
+    "tf_gen_op_wrapper_cc",
 )
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_cuda_cc_test", "tf_custom_op_py_library", "tf_gen_op_libs")
 load(
@@ -113,6 +114,82 @@ tf_cuda_cc_test(
 )
 
 cc_library(
+    name = "experimental_trt_convert_api",
+    srcs = [
+        "experimental/trt_convert_api.cc",
+        "experimental/utils/model_optim.h",
+        "experimental/utils/model_optim.cc",
+        "experimental/utils/session_utils.h",
+        "experimental/utils/session_utils.cc",
+        "experimental/utils/trt_op_utils.h",
+        "experimental/utils/trt_op_utils.cc",
+    ],
+    hdrs = [
+        "experimental/trt_convert_api.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":trt_parameters",
+        ":trt_resources",
+        ":trt_cc_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc/tools:freeze_saved_model",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:single_machine",
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/strings",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
+tf_cuda_cc_test(
+    name = "experimental_trt_convert_api_test",
+    size = "small",
+    srcs = ["experimental/trt_convert_api_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":common_utils",
+        ":testutils",
+        ":trt_conversion",
+        ":experimental_trt_convert_api",
+        ":trt_logging",
+        ":trt_op_kernels",
+        ":trt_resources",
+        ":utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:function_ops_op_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:no_op_op_lib",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:state_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:assign_op",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:partitioned_function_ops",
+        "//tensorflow/core/kernels:resource_variable_ops",
+        "//tensorflow/core/platform:status_matchers",
+    ],
+)
+
+cc_library(
     name = "trt_convert_api",
     srcs = ["trt_convert_api.cc"],
     hdrs = [
@@ -135,6 +212,9 @@ cc_library(
 filegroup(
     name = "headers",
     srcs = [
+        "common/utils.h",
+        "convert/trt_parameters.h",
+        "experimental/trt_convert_api.h",
         "trt_convert_api.h",
     ],
 )
@@ -375,6 +455,29 @@ tf_gen_op_libs(
         "trt_engine_op",
         "get_calibration_data_op",
         "trt_engine_resource_ops",
+    ],
+)
+
+tf_gen_op_wrapper_cc(
+    name = "trt_ops_gen",
+    out_ops_file = "ops/trt_ops",
+    deps = [
+        ":get_calibration_data_op_op_lib",
+        ":trt_engine_resource_ops_op_lib",
+    ],
+)
+
+cc_library(
+    name = "trt_cc_ops",
+    srcs = ["ops/trt_ops.cc"],
+    hdrs = ["ops/trt_ops.h"],
+    deps = [
+        ":get_calibration_data_op_op_lib",
+        ":trt_engine_resource_ops_op_lib",
+        "//tensorflow/cc:const_op",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
     ],
 )
 
