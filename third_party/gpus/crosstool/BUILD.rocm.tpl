@@ -87,16 +87,14 @@ cc_toolchain_config(
         "-fuse-ld=gold",
         "-Wl,-no-as-needed",
         "-Wl,-z,relro,-z,now",
-#        "-pass-exit-codes",
+        "-pass-exit-codes",
         "-lstdc++",
         "-lm",
-        "-L%{rocm_toolkit_path}/lib",
-        "-Wl,-rpath,%{rocm_toolkit_path}/lib",
-        "-lamdhip64"
     ],
     link_libs = [],
     opt_link_flags = [],
     unfiltered_compile_flags = [
+        "-fno-canonical-system-headers",
         "-Wno-builtin-macro-redefined",
         "-D__DATE__=\"redacted\"",
         "-D__TIMESTAMP__=\"redacted\"",

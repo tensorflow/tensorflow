@@ -393,14 +393,12 @@ def _impl(ctx):
                             flag_group(
                                 flags = [
                                     "-Wl,-rpath,$EXEC_ORIGIN/%{runtime_library_search_directories}",
-#                                    "-Wl,-rpath,$ROCM_PATH/lib",
                                 ],
                                 expand_if_true = "is_cc_test",
                             ),
                             flag_group(
                                 flags = [
                                     "-Wl,-rpath,$ORIGIN/%{runtime_library_search_directories}",
-#                                    "-Wl,-rpath,$ROCM_PATH/lib",
                                 ],
                                 expand_if_false = "is_cc_test",
                             ),
@@ -1048,6 +1046,7 @@ def _impl(ctx):
                     flag_group(
                         flags = [
                             "-no-canonical-prefixes",
+                            "-fno-canonical-system-headers",
                         ]
                     ),
                 ],
