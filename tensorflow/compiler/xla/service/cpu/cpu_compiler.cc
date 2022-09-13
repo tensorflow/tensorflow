@@ -946,6 +946,8 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::createConvertTensorToLinalgPass());
 
+  // Detensorize SCF iter args.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createDetensorizeScfOpsPass());
   // mhlo ops on unit tensors generate trivial linalg.generics, which
   // one-shot-bufferize generates unnecessary allocs for. The detensorize pass
   // replaces these linalg.generics with scalar ops.
