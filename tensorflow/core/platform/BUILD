@@ -1215,9 +1215,9 @@ tf_cc_tests(
         "scanner_test.cc",
         "str_util_test.cc",
         "strcat_test.cc",
-        "stringpiece_test.cc",
         "stringprintf_test.cc",
         "vmodule_benchmark_test.cc",
+        "//tensorflow/tsl/platform:stringpiece_test.cc",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils_test.cc",
     ],
     create_named_test_suite = True,
@@ -1326,17 +1326,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "ctstring_test",
-    size = "small",
-    srcs = ["ctstring_test.cc"],
-    deps = [
-        ":tstring",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "status_matchers_test",
     size = "small",
     srcs = ["status_matchers_test.cc"],
@@ -1348,19 +1337,6 @@ tf_cc_test(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-    ],
-)
-
-tf_cc_test(
-    name = "tstring_test",
-    size = "small",
-    srcs = ["tstring_test.cc"],
-    deps = [
-        ":cord",
-        ":stringpiece",
-        ":tstring",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 

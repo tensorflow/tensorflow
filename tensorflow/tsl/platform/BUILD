@@ -41,8 +41,12 @@ package(
 exports_files(
     [
         "mutex.h",
+        "stringpiece_test.cc",
     ],
-    visibility = ["//tensorflow/tsl:__subpackages__"],
+    visibility = [
+        "//tensorflow/core/platform:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
+    ],
 )
 
 cc_library(
@@ -1118,4 +1122,28 @@ cc_library(
     name = "tensor_float_32_hdr_lib",
     hdrs = [":tensor_float_32_hdr"],
     compatible_with = get_compatible_with_portable(),
+)
+
+tf_cc_test(
+    name = "ctstring_test",
+    size = "small",
+    srcs = ["ctstring_test.cc"],
+    deps = [
+        ":tstring",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "tstring_test",
+    size = "small",
+    srcs = ["tstring_test.cc"],
+    deps = [
+        ":cord",
+        ":stringpiece",
+        ":tstring",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )

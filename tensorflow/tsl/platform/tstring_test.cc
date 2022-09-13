@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/tsl/platform/tstring.h"
 
 #include <memory>
 #include <string>
 
-#include "tensorflow/core/platform/cord.h"
-#include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/cord.h"
+#include "tensorflow/tsl/platform/stringpiece.h"
+#include "tensorflow/tsl/platform/test.h"
 
-using tensorflow::tstring;
+using ::tsl::tstring;
 
 static const char kLongString[] =
     "abcdefghij"
@@ -37,7 +37,7 @@ TEST(TF_TStringTest, Construction) {
   tstring s11("a\0a", 3);
   tstring s12(kLongString);
   tstring s13(3, 'b');
-  tstring s14(tensorflow::StringPiece("hi"));
+  tstring s14(tsl::StringPiece("hi"));
   tstring s15(std::string("bye"));
 
   EXPECT_EQ("", s10);
@@ -125,7 +125,7 @@ TEST(TF_TStringTest, Assignment) {
   EXPECT_EQ(tstring::Type::SMALL, s33.type());
   EXPECT_EQ(1, s33.size());
 
-  s32 = tensorflow::StringPiece(kLongString);
+  s32 = tsl::StringPiece(kLongString);
 
   EXPECT_EQ(kLongString, s32);
   EXPECT_EQ(tstring::Type::LARGE, s32.type());
@@ -134,8 +134,7 @@ TEST(TF_TStringTest, Assignment) {
   // LARGE -> SMALL but still LARGE
   s32.resize(TF_TString_SmallCapacity * 2);
 
-  EXPECT_EQ(tensorflow::StringPiece(kLongString, TF_TString_SmallCapacity * 2),
-            s32);
+  EXPECT_EQ(tsl::StringPiece(kLongString, TF_TString_SmallCapacity * 2), s32);
   EXPECT_EQ(tstring::Type::LARGE, s32.type());
   EXPECT_EQ(TF_TString_SmallCapacity * 2, s32.size());
 
@@ -174,7 +173,7 @@ TEST(TF_TStringTest, Assignment) {
 
   EXPECT_EQ(2, s33.size());
 
-  s32.assign_as_view(tensorflow::StringPiece(kLongString));
+  s32.assign_as_view(tsl::StringPiece(kLongString));
 
   EXPECT_EQ(tstring::Type::VIEW, s32.type());
   EXPECT_EQ(kLongString, s32.c_str());
@@ -255,7 +254,7 @@ TEST(TF_TStringTest, Comparison) {
 TEST(TF_TStringTest, Conversion) {
   tstring s50(kLongString);
   std::string s51(s50);
-  tensorflow::StringPiece s52(s50);
+  tsl::StringPiece s52(s50);
   EXPECT_EQ(kLongString, s51);
   EXPECT_EQ(kLongStringLen, s51.size());
   EXPECT_EQ(kLongString, s52);

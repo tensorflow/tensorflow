@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/ctstring.h"
+#include "tensorflow/tsl/platform/ctstring.h"
 
 #include <memory>
 #include <string>
 
-#include "tensorflow/core/platform/ctstring_internal.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/ctstring_internal.h"
+#include "tensorflow/tsl/platform/test.h"
 
 static const char kLongString[] =
     "abcdefghij"
