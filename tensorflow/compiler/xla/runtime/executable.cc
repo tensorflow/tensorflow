@@ -440,9 +440,8 @@ const DiagnosticEngine* Executable::GetDiagnosticEngine(ExecutionContext* ctx) {
   return ctx->diagnostic_engine;
 }
 
-mlir::LogicalResult Executable::Call(ExecutionContext* ctx,
-                                     class CustomCall& call, void** args,
-                                     void** attrs, void** rets) {
+LogicalResult Executable::Call(ExecutionContext* ctx, class CustomCall& call,
+                               void** args, void** attrs, void** rets) {
   return call.call(args, attrs, rets, ctx->custom_call_data,
                    ctx->diagnostic_engine);
 }
