@@ -1294,6 +1294,12 @@ class HloInstructionPatternOpcodeOrOperandImpl {
               << HloOpcodeString(opcodes_) << "}.";
       return false;
     }
+    // Operands must match.
+    if (!operand_.Match(HloOperand(inst, 0), option)) {
+      EXPLAIN << " Matched HloInstruction " << HloOpcodeString(inst->opcode())
+              << ", but operands differ.";
+      return false;
+    }
     return true;
   }
 
@@ -2215,8 +2221,8 @@ XLA_NULLOP_PATTERN(PartitionId)
 XLA_NULLOP_PATTERN(ReplicaId)
 #undef XLA_NULLOP_PATTERN
 
-// Matches any of a set of unary ops including the operand and optionally
-// returns the index of the matched op.
+// Matches if the instruction is unary and has any of the given opcodes or is
+// the operand.
 template <typename Arg>
 inline auto UnaryOpAnyOf(Arg&& arg, absl::Span<const HloOpcode> ops) {
   return Op().WithOpcodeOrOperand(ops, std::forward<Arg>(arg));

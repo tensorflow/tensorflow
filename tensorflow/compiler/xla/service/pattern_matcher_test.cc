@@ -1108,7 +1108,8 @@ TEST_F(PatternMatcherTest, UnaryOpAnyOf) {
 
     ENTRY test {
       p0 = f32[] parameter(0)
-      ROOT out = f32[] abs(p0)
+      cos = cosine(p0)
+      ROOT out = f32[] abs(cos)
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
@@ -1117,11 +1118,15 @@ TEST_F(PatternMatcherTest, UnaryOpAnyOf) {
 
   EXPECT_TRUE(Match(
       root, m::UnaryOpAnyOf(m::Abs(), {HloOpcode::kBitcast, HloOpcode::kCos})));
+  EXPECT_TRUE(
+      Match(root, m::UnaryOpAnyOf(m::Abs(m::Cos()),
+                                  {HloOpcode::kBitcast, HloOpcode::kCos})));
   EXPECT_TRUE(Match(
+      root, m::UnaryOpAnyOf(m::Cos(), {HloOpcode::kCos, HloOpcode::kAbs})));
+  EXPECT_FALSE(Match(
       root, m::UnaryOpAnyOf(m::Bitcast(), {HloOpcode::kCos, HloOpcode::kAbs})));
   EXPECT_FALSE(Match(
-      root,
-      m::UnaryOpAnyOf(m::Bitcast(), {HloOpcode::kCos, HloOpcode::kBitcast})));
+      root, m::UnaryOpAnyOf(m::Cos(), {HloOpcode::kCos, HloOpcode::kBitcast})));
 
   std::string description = absl::StrCat(
       "an HloInstruction which matches the operand or has any opcode of {",
@@ -1130,10 +1135,11 @@ TEST_F(PatternMatcherTest, UnaryOpAnyOf) {
   std::string explanation = absl::StrCat(
       "HloInstruction doesn't have opcode ",
       HloOpcodeString(HloOpcode::kBitcast),
-      "\nin out = f32[] abs(f32[] p0) HloInstruction also doesn't have any of "
+      "\nin out = f32[] abs(f32[] cos) HloInstruction also doesn't have any of "
       "opcodes {",
       HloOpcodeString(HloOpcode::kCos), ", ",
-      HloOpcodeString(HloOpcode::kBitcast), "}.\nin out = f32[] abs(f32[] p0)");
+      HloOpcodeString(HloOpcode::kBitcast),
+      "}.\nin out = f32[] abs(f32[] cos)");
   EXPECT_DESC_AND_EXPLANATION(
       root,
       m::UnaryOpAnyOf(m::Bitcast(), {HloOpcode::kCos, HloOpcode::kBitcast}),
@@ -1143,10 +1149,16 @@ TEST_F(PatternMatcherTest, UnaryOpAnyOf) {
   EXPECT_TRUE(
       Match(root, m::UnaryOpAnyOf(&instr, m::Abs(),
                                   {HloOpcode::kBitcast, HloOpcode::kCos})));
+  EXPECT_TRUE(
+      Match(root, m::UnaryOpAnyOf(&instr, m::Abs(m::Cos()),
+                                  {HloOpcode::kBitcast, HloOpcode::kCos})));
   EXPECT_EQ(instr->opcode(), HloOpcode::kAbs);
-  EXPECT_TRUE(Match(root, m::UnaryOpAnyOf(&instr, m::Bitcast(),
+  EXPECT_TRUE(Match(root, m::UnaryOpAnyOf(&instr, m::Cos(),
                                           {HloOpcode::kCos, HloOpcode::kAbs})));
   EXPECT_EQ(instr->opcode(), HloOpcode::kAbs);
+  EXPECT_FALSE(
+      Match(root, m::UnaryOpAnyOf(&instr, m::Bitcast(),
+                                  {HloOpcode::kCos, HloOpcode::kAbs})));
   EXPECT_FALSE(
       Match(root, m::UnaryOpAnyOf(&instr, m::Bitcast(),
                                   {HloOpcode::kCos, HloOpcode::kBitcast})));
