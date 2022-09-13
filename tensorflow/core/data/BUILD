@@ -169,7 +169,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/util:determinism_test_util",
+        "//tensorflow/tsl/util:determinism_test_util",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )

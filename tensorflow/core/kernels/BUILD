@@ -3457,7 +3457,7 @@ tf_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
-        "//tensorflow/core/util:determinism_test_util",
+        "//tensorflow/tsl/util:determinism_test_util",
         "@com_google_absl//absl/strings",
     ],
 )

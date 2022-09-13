@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 #include <stdlib.h>
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/numbers.h"
-#include "tensorflow/core/platform/str_util.h"
-#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/str_util.h"
+#include "tensorflow/tsl/platform/strcat.h"
 
-namespace tensorflow {
+namespace tsl {
 
 Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
                           bool* value) {
@@ -94,4 +94,4 @@ Status ReadStringsFromEnvVar(StringPiece env_var_name, StringPiece default_val,
   return OkStatus();
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

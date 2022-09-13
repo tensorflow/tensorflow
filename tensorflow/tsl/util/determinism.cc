@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/determinism.h"
+#include "tensorflow/tsl/util/determinism.h"
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/util/env_var.h"
 
-namespace tensorflow {
+namespace tsl {
 
 namespace {
 
@@ -31,9 +31,8 @@ class DeterminismState {
 
     if (state_ == Value::NOT_SET) {
       bool env_var_set = false;
-      TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(env_var_,
-                                                 /*default_val=*/false,
-                                                 &env_var_set));
+      TF_CHECK_OK(tsl::ReadBoolFromEnvVar(env_var_,
+                                          /*default_val=*/false, &env_var_set));
       state_ = env_var_set ? Value::ENABLED : Value::DISABLED;
     }
 
@@ -61,4 +60,4 @@ bool OpDeterminismRequired() { return OpDeterminismState.Required(); }
 void EnableOpDeterminism(bool enabled) { OpDeterminismState.Enable(enabled); }
 bool OpOrderDeterminismRequired() { return OpOrderDeterminismState.Required(); }
 
-}  // namespace tensorflow
+}  // namespace tsl
