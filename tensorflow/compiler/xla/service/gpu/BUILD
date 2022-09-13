@@ -1701,6 +1701,7 @@ cc_library(
         ":reduction_layout_normalizer",
         ":reduction_splitter",
         ":hlo_fusion_stats",
+        ":scatter_slice_simplifier",
         ":stream_executor_util",
         ":target_constants",
         ":tree_reduction_rewriter",
@@ -2957,5 +2958,29 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "scatter_slice_simplifier",
+    srcs = ["scatter_slice_simplifier.cc"],
+    hdrs = ["scatter_slice_simplifier.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+tf_cc_test(
+    name = "scatter_slice_simplifier_test",
+    srcs = ["scatter_slice_simplifier_test.cc"],
+    deps = [
+        ":scatter_slice_simplifier",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
