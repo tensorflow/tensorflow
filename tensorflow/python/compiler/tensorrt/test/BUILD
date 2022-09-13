@@ -66,6 +66,7 @@ oss_tests = [
     "batch_matmul_test",
     "biasadd_matmul_test",
     "binary_tensor_weight_broadcast_test",
+    "bool_test",
     "cast_test",
     "concatenation_test",
     "const_broadcast_test",
