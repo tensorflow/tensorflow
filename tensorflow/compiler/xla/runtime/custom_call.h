@@ -280,6 +280,9 @@ inline CustomCallBinding<> CustomCall::Bind(std::string callee) {
   return CustomCallBinding<>(std::move(callee));
 }
 
+// Custom calls return results to the caller through the template
+// specializations of the `Result`. Each template specialization is responsible
+// for definining the result encoding/decoding to/from opaque memory.
 template <typename T>
 class Result;
 
@@ -320,12 +323,10 @@ struct CustomCallAttrDecoding;
 template <typename T, CustomCall::RuntimeChecks>
 struct CustomCallRetDecoding;
 
-// A type tag to represent empty arrays of unknown element type.
-struct EmptyArrayRef {};
-
 //===----------------------------------------------------------------------===//
 // C structures corresponding to the `rt-to-llvm` pass LLVM structs encoding
 // various types of arguments/attributes.
+//===----------------------------------------------------------------------===//
 
 namespace internal {
 struct EncodedMemref {
@@ -352,6 +353,7 @@ struct EncodedDenseElements {
 
 //===----------------------------------------------------------------------===//
 // Helpers for decoding opaque arguments and attributes memory.
+//===----------------------------------------------------------------------===//
 
 namespace internal {
 
@@ -425,6 +427,7 @@ using DecodedRets = DecodedArgs;
 //===----------------------------------------------------------------------===//
 // CustomCall remaining arguments wraps the type-erased `DecodedArg` container,
 // and provides a type-safe API for accessing individual arguments.
+//===----------------------------------------------------------------------===//
 
 class CustomCall::RemainingArgs {
  public:
@@ -506,6 +509,7 @@ class CustomCall::VariantAttr {
 // A little bit of template metaprogramming to implement type safe binding
 // of custom calls to C++ functions. This is internal implementation details,
 // and must not be relied on in any of the client code.
+//===----------------------------------------------------------------------===//
 
 namespace internal {
 
@@ -1053,10 +1057,10 @@ struct CustomCallArgDecoding<Eigen::half, checks> {
 };
 
 //===----------------------------------------------------------------------===//
-
 // Opaque arguments at run time passed as pointers and decoded by wrapping them
 // into a reference type, for example `AsyncValue *` pointer can be wrapped into
 // a typed `AsyncValuePtr<T>` pointer wrapper.
+//===----------------------------------------------------------------------===//
 
 #define XLA_RUNTIME_REGISTER_OPAQUE_ARG_DECODING(T, PTR)                    \
   template <CustomCall::RuntimeChecks checks>                               \
@@ -1116,9 +1120,9 @@ XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(double);
 #undef XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING
 
 //===----------------------------------------------------------------------===//
-
 // Opaque results at run time passed as pointers, and a typed wrapper binds
 // together the reference type and the underlying pointer type.
+//===----------------------------------------------------------------------===//
 
 #define XLA_RUNTIME_REGISTER_OPAQUE_RET_DECODING(T, PTR)             \
   template <>                                                        \
@@ -1194,6 +1198,9 @@ XLA_RUNTIME_REGISTER_SCALAR_ATTR_DECODING(float);
 XLA_RUNTIME_REGISTER_SCALAR_ATTR_DECODING(double);
 
 #undef XLA_RUNTIME_REGISTER_SCALAR_ATTR_DECODING
+
+// A type tag to represent empty arrays of unknown element type.
+struct EmptyArrayRef {};
 
 // Both EncodedArray and 1-D EncodedDenseElements can be decoded as an
 // llvm::ArrayRef. Pointers to both EncodedArray and 1-D EncodedDenseElements
