@@ -1674,7 +1674,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
     Type elementType = gather.getType().cast<TensorType>().getElementType();
     auto sliceType = RankedTensorType::get(sliceShape, elementType);
     Value result = rewriter.create<SliceOp>(
-        gather.getLoc(), sliceType, gather.getOperand(0),
+        gather.getLoc(), sliceType, gather.getOperand(),
         rewriter.getI64TensorAttr(sliceStart),
         rewriter.getI64TensorAttr(sliceEnd),
         rewriter.getI64TensorAttr(sliceStride));
@@ -8661,12 +8661,13 @@ LogicalResult WhileOp::verify() {
 /// assignment ::= ssa-value `=` ssa-value
 void WhileOp::print(OpAsmPrinter& p) {
   p << '(';
-  llvm::interleaveComma(llvm::zip(getBody()->getArguments(), getOperands()), p,
-                        [&](auto zip) {
-                          p.printOperand(std::get<0>(zip));
-                          p << " = ";
-                          p.printOperand(std::get<1>(zip));
-                        });
+  llvm::interleaveComma(
+      llvm::zip(SingleBlock::getBody()->getArguments(), getOperands()), p,
+      [&](auto zip) {
+        p.printOperand(std::get<0>(zip));
+        p << " = ";
+        p.printOperand(std::get<1>(zip));
+      });
   p << ")";
   if (getNumOperands()) {
     p << " : ";
@@ -8736,8 +8737,8 @@ static LogicalResult whileCanonicalization(WhileOp whileOp,
   // Check if there is at least one value is forwarded from one iteration to the
   // next, or one of the yielded value is an implicit capture already. Otherwise
   // there is nothing to do here.
-  Block* cond = whileOp.getBody(0);
-  Block* body = whileOp.getBody(1);
+  Block* cond = whileOp.SingleBlock::getBody(0);
+  Block* body = whileOp.SingleBlock::getBody(1);
   auto bodyReturnOp = cast<ReturnOp>(body->getTerminator());
   if (!llvm::any_of(llvm::zip(whileOp->getOperands(), body->getArguments(),
                               bodyReturnOp->getOperands()),
