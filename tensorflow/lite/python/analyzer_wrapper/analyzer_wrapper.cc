@@ -14,11 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
-#include <unordered_map>
-#include <vector>
 
 #include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
 #include "tensorflow/lite/python/analyzer_wrapper/model_analyzer.h"
 
 PYBIND11_MODULE(_pywrap_analyzer_wrapper, m) {
@@ -28,17 +25,6 @@ PYBIND11_MODULE(_pywrap_analyzer_wrapper, m) {
          bool gpu_compatibility) {
         return ::tflite::model_analyzer(model_path, input_is_filepath,
                                         gpu_compatibility);
-      },
-      R"pbdoc(
-    Returns txt dump of the given TFLite file.
-  )pbdoc");
-  m.def(
-      "ModelAnalyzer",
-      [](const std::vector<std::string>& checked_delegates,
-         const std::unordered_map<std::string, std::string>& delegate_configs,
-         const std::string& model_path, bool input_is_filepath) {
-        return ::tflite::model_analyzer(checked_delegates, delegate_configs,
-                                        model_path, input_is_filepath);
       },
       R"pbdoc(
     Returns txt dump of the given TFLite file.
