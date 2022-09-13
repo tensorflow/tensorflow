@@ -52,7 +52,7 @@ tensorflow::Status FuncToGraph(GraphFuncOp func) {
     }
   }
 
-  for (Operation &op : func.getBody()->without_terminator()) {
+  for (Operation &op : func.SingleBlock::getBody()->without_terminator()) {
     StringRef op_name = TFOp(op).name();
     auto it = referred_ops.find(op_name);
     if (it != referred_ops.end()) it->second = &op;
@@ -94,7 +94,7 @@ tensorflow::Status FuncToGraph(GraphFuncOp func) {
   auto graph = builder.create<GraphOp>(func.getLoc(), version);
 
   // Remove the terminator.
-  func.getBody()->getTerminator()->erase();
+  func.SingleBlock::getBody()->getTerminator()->erase();
   graph.getRegion().takeBody(func.getRegion());
   func.erase();
 

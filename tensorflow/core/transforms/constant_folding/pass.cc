@@ -3682,7 +3682,7 @@ void ConstantFolding::runOnOperation() {
   SmallVector<Operation *> ops;
   do {
     ops.clear();
-    for (Operation &op : func.getBody()->without_terminator()) {
+    for (Operation &op : func.SingleBlock::getBody()->without_terminator()) {
       ops.push_back(&op);
     }
     if (!applyOpPatternsAndFold(ops, final_patterns_, /*strict=*/true)) break;

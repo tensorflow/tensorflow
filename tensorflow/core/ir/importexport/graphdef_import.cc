@@ -540,7 +540,7 @@ Status GraphDefImporter::ConvertFunctionDef(
 
   func_op.body().push_back(new Block);
   Block *body = &func_op.body().front();
-  auto builder = OpBuilder::atBlockBegin(func_op.getBody());
+  auto builder = OpBuilder::atBlockBegin(func_op.SingleBlock::getBody());
 
   // Convert the attributes.
   NamedAttrList func_attrs;
