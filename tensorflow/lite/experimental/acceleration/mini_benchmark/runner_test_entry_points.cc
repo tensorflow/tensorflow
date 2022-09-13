@@ -33,27 +33,27 @@ extern "C" {
 
 constexpr int kStdOutFd = 1;
 
-int JustReturnZero(int argc, char** argv) { return 0; }
+int TfLiteJustReturnZero(int argc, char** argv) { return 0; }
 
-int ReturnOne(int argc, char** argv) { return 1; }
+int TfLiteReturnOne(int argc, char** argv) { return 1; }
 
-int ReturnSuccess(int argc, char** argv) {
+int TfLiteReturnSuccess(int argc, char** argv) {
   return ::tflite::acceleration::kMinibenchmarkSuccess;
 }
 
-int SigKillSelf(int argc, char** argv) {
+int TfLiteSigKillSelf(int argc, char** argv) {
   kill(getpid(), SIGKILL);
   return 1;
 }
 
-int WriteOk(int argc, char** argv) {
+int TfLiteWriteOk(int argc, char** argv) {
   write(kStdOutFd, "ok\n", 3);
   return ::tflite::acceleration::kMinibenchmarkSuccess;
 }
 
 // Write the pid to output stream and then sleep N seconds. N is parsed from
 // argv[3].
-int WritePidThenSleepNSec(int argc, char** argv) {
+int TfLiteWritePidThenSleepNSec(int argc, char** argv) {
   std::string pid = std::to_string(getpid());
   pid.resize(::tflite::acceleration::kPidBufferLength);
   write(kStdOutFd, pid.data(), ::tflite::acceleration::kPidBufferLength);
@@ -66,7 +66,7 @@ int WritePidThenSleepNSec(int argc, char** argv) {
   return ::tflite::acceleration::kMinibenchmarkSuccess;
 }
 
-int Write10kChars(int argc, char** argv) {
+int TfLiteWrite10kChars(int argc, char** argv) {
   char buffer[10000];
   memset(buffer, 'A', 10000);
   return write(kStdOutFd, buffer, 10000) == 10000
@@ -74,7 +74,7 @@ int Write10kChars(int argc, char** argv) {
              : 1;
 }
 
-int WriteArgs(int argc, char** argv) {
+int TfLiteWriteArgs(int argc, char** argv) {
   for (int i = 3; i < argc; i++) {
     write(1, argv[i], strlen(argv[i]));
     write(1, "\n", 1);
@@ -82,7 +82,7 @@ int WriteArgs(int argc, char** argv) {
   return ::tflite::acceleration::kMinibenchmarkSuccess;
 }
 
-int ReadFromPipe(int argc, char** argv) {
+int TfLiteReadFromPipe(int argc, char** argv) {
   std::unique_ptr<tflite::acceleration::ModelLoader> model_loader =
       tflite::acceleration::CreateModelLoaderFromPath(argv[3]);
   if (model_loader->Init() != tflite::acceleration::kMinibenchmarkSuccess) {
@@ -99,7 +99,7 @@ int ReadFromPipe(int argc, char** argv) {
              : 1;
 }
 
-int ReadFromPipeInProcess(int argc, char** argv) {
+int TfLiteReadFromPipeInProcess(int argc, char** argv) {
   std::unique_ptr<tflite::acceleration::ModelLoader> model_loader =
       tflite::acceleration::CreateModelLoaderFromPath(argv[3]);
   return model_loader->Init();
