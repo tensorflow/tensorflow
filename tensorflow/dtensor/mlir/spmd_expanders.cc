@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/conv_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/cumsum_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/dataparallel_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/disable_copy_on_read_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/dtensor_op_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/einsum_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/elementwise_spmd_expander.h"
@@ -506,6 +507,7 @@ REGISTER_SPMD(TensorListSetItem, TF::TensorListSetItemOp,
 
 // IO ops
 REGISTER_SPMD(WriteSummary, TF::WriteSummaryOp, IOOpSPMDExpander);
-
+REGISTER_SPMD(DisableCopyOnRead, TF::DisableCopyOnReadOp,
+              DisableCopyOnReadSPMDExpander);
 }  // namespace dtensor
 }  // namespace tensorflow
