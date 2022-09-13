@@ -7163,14 +7163,23 @@ TEST_P(OpConverter_INT32_Test, ConvertDataFormatVecPermute) {
   }
 }
 
-TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
+NodeDef CreateGatherOp(DataType tf_type, int batch_dims) {
   // Get the NodeDef for GatherV2.
   Scope s = Scope::NewRootScope();
-  auto params = ops::Placeholder(s.WithOpName("params"), tf_type_);
+  auto params = ops::Placeholder(s.WithOpName("params"), tf_type);
   auto indices = ops::Placeholder(s.WithOpName("indices"), DT_INT32);
   auto axis = ops::Placeholder(s.WithOpName("axis"), DT_INT32);
-  auto gather = ops::GatherV2(s.WithOpName("my_gather"), params, indices, axis);
+  ops::GatherV2::Attrs op_attrs;
+  op_attrs.batch_dims_ = batch_dims;
+  auto gather = ops::GatherV2(s.WithOpName("my_gather"), params, indices, axis, op_attrs);
   const NodeDef& node_def = gather.operation.node()->def();
+  return node_def;
+}
+
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
+
+  auto node_def = CreateGatherOp(tf_type_, /*batch_dims*/ 0);
+
   {
     // Axis is a tensor, should fail.
     Reset();
@@ -7192,6 +7201,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                                "range [-4, 4)");
   }
 
+
   struct TestParams {
     // TF shape of the input 'params' (including batch dimension).
     std::vector<int> params_shape;
@@ -7199,6 +7209,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
     std::vector<int> indices_shape;
     std::vector<int> indices;
     int axis;
+    int batch_dims;
     // Expected TF shape of the output (including batch dimension).
     std::vector<int> expected_output_shape;
     std::vector<int> expected_output;
@@ -7218,6 +7229,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                  /*indices_shape=*/{2},
                  /*indices=*/{1, 0},
                  /*axis=*/0,
+                 /*batch_dims=*/0,
                  /*expected_output_shape=*/{2, 1, 1, 3},
                  /*expected_output=*/{4, 5, 6, 1, 2, 3},
                  /*params_is_tensor=*/true,
@@ -7232,6 +7244,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                  /*indices_shape=*/{2, 1},
                  /*indices=*/{2, 0},
                  /*axis=*/2,
+                 /*batch_dims=*/0,
                  /*expected_output_shape=*/{2, 1, 2, 1},
                  /*expected_output=*/{3, 1, 6, 4},
                  /*params_is_tensor=*/true,
@@ -7249,6 +7262,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                  /*indices_shape=*/{2, 1},
                  /*indices=*/{2, 0},
                  /*axis=*/2,
+                 /*batch_dims=*/0,
                  /*expected_output_shape=*/{2, 1, 2, 1},
                  /*expected_output=*/{3, 1, 6, 4},
                  /*params_is_tensor=*/true,
@@ -7260,6 +7274,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                  /*indices_shape=*/{2},
                  /*indices=*/{1, 2},
                  /*axis=*/2,
+                 /*batch_dims=*/0,
                  /*expected_output_shape=*/{2, 1, 2},
                  /*expected_output=*/{2, 3, 5, 6},
                  /*params_is_tensor=*/false,
@@ -7275,6 +7290,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{2},
           /*indices=*/{1, 3},
           /*axis=*/0,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{2},
           /*expected_output=*/{2, 4},
           /*params_is_tensor=*/true,
@@ -7297,6 +7313,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{1},
           /*indices=*/{0},
           /*axis=*/3,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{1, 1, 2, 1},
           /*expected_output=*/{1, 4},
           /*params_is_tensor=*/true,
@@ -7307,6 +7324,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{1},
           /*indices=*/{1},
           /*axis=*/2,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{1, 1, 1, 3},
           /*expected_output=*/{4, 5, 6},
           /*params_is_tensor=*/true,
@@ -7319,6 +7337,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{1, 1},
           /*indices=*/{0},
           /*axis=*/3,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{1, 1, 2, 1, 1},
           /*expected_output=*/{1, 4},
           /*params_is_tensor=*/true,
@@ -7329,6 +7348,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{1, 1},
           /*indices=*/{1},
           /*axis=*/3,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{1, 1, 2, 1, 1},
           /*expected_output=*/{2, 5},
           /*params_is_tensor=*/true,
@@ -7339,6 +7359,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{1, 1},
           /*indices=*/{2},
           /*axis=*/-1,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{1, 1, 2, 1, 1},
           /*expected_output=*/{3, 6},
           /*params_is_tensor=*/true,
@@ -7349,6 +7370,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{1, 3},
           /*indices=*/{2, 0, 1},
           /*axis=*/3,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{1, 1, 2, 1, 3},
           /*expected_output=*/{3, 1, 2, 6, 4, 5},
           /*params_is_tensor=*/true,
@@ -7359,6 +7381,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{1, 2, 2},
           /*indices=*/{0, 0, 1, 0},
           /*axis=*/2,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{1, 3, 1, 2, 2},
           /*expected_output=*/{1, 1, 2, 1, 3, 3, 4, 3, 5, 5, 6, 5},
           /*params_is_tensor=*/true,
@@ -7369,6 +7392,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{1},
           /*indices=*/{0},
           /*axis=*/0,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{1, 2, 3},
           /*expected_output=*/{1, 2, 3, 4, 5, 6},
           /*params_is_tensor=*/false,
@@ -7379,6 +7403,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{1, 2},
           /*indices=*/{0, 1},
           /*axis=*/0,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{1, 2, 2},
           /*expected_output=*/{1, 2, 3, 4},
           /*params_is_tensor=*/false,
@@ -7389,6 +7414,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{1, 1, 2},
           /*indices=*/{0, 1},
           /*axis=*/0,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{1, 1, 2, 3},
           /*expected_output=*/{1, 2, 3, 4, 5, 6},
           /*params_is_tensor=*/false,
@@ -7399,6 +7425,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{2, 2},
           /*indices=*/{0, 2, 1, 0},
           /*axis=*/0,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{2, 2, 2},
           /*expected_output=*/{1, 2, 5, 6, 3, 4, 1, 2},
           /*params_is_tensor=*/false,
@@ -7410,6 +7437,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*indices_shape=*/{1, 1},
           /*indices=*/{0},
           /*axis=*/3,
+          /*batch_dims=*/0,
           /*expected_output_shape=*/{1, 1, 2, 1, 1},
           /*expected_output=*/{1, 4},
           /*params_is_tensor=*/true,
@@ -7420,6 +7448,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                  /*indices_shape=*/{1},
                  /*indices=*/{0},
                  /*axis=*/0,
+                 /*batch_dims=*/0,
                  /*expected_output_shape=*/{1, 2, 3},
                  /*expected_output=*/{1, 2, 3, 4, 5, 6},
                  /*params_is_tensor=*/false,
@@ -7435,6 +7464,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                  /*indices_shape=*/{2, 2},
                  /*indices=*/{0, 2, 1, 0},
                  /*axis=*/0,
+                 /*batch_dims=*/0,
                  /*expected_output_shape=*/{2, 2, 2},
                  /*expected_output=*/{1, 2, 5, 6, 3, 4, 1, 2},
                  /*params_is_tensor=*/false,
@@ -7446,10 +7476,25 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                               "both tensors or both"
                               " constants."}
                      : OkStatus()},
+      TestParams{/*params_shape=*/{2, 3},
+                 /*indices_shape=*/{2, 2},
+                 /*indices=*/{0, 1, 1, 2},
+                 /*axis=*/1,
+                 /*batch_dims=*/1,
+                 /*expected_output_shape=*/{2, 2},
+                 /*expected_output=*/{1, 2, 5, 6},
+                 /*params_is_tensor=*/false,
+                 /*indices_is_tensor=*/false,
+                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+                     ? Status{error::UNIMPLEMENTED,
+                              "The input axis must be zero when params is a weight."}
+                     : OkStatus()},
   };
 
   for (auto p : test_params) {
     Reset();
+
+    auto node_def = CreateGatherOp(tf_type_, p.batch_dims);
 
     if (p.params_is_tensor) {
       AddTestTensor("params", p.params_shape, params_input);
