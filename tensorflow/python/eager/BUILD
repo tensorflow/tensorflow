@@ -502,8 +502,6 @@ cuda_py_test(
         ":backprop",
         ":cancellation",
         ":context",
-        ":def_function",
-        ":function",
         ":test",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",
@@ -526,6 +524,9 @@ cuda_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:quarantine",
         "@absl_py//absl/testing:parameterized",
     ],
 )
