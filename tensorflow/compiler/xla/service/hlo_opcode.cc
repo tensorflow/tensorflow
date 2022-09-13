@@ -31,17 +31,6 @@ std::string HloOpcodeString(HloOpcode opcode) {
   }
 }
 
-std::string HloOpcodeString(absl::Span<const HloOpcode> opcodes) {
-  std::string opcode_str;
-  for (int i = 0; i < opcodes.size(); ++i) {
-    if (!opcode_str.empty()) {
-      absl::StrAppend(&opcode_str, ", ");
-    }
-    absl::StrAppend(&opcode_str, HloOpcodeString(opcodes[i]));
-  }
-  return opcode_str;
-}
-
 StatusOr<HloOpcode> StringToHloOpcode(const std::string& opcode_name) {
   static auto* opcode_map = new absl::flat_hash_map<std::string, HloOpcode>({
 #define STRING_TO_OPCODE_ENTRY(enum_name, opcode_name, ...) \
