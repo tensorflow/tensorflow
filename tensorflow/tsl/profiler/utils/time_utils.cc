@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/tsl/profiler/utils/time_utils.h"
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
 int64_t GetCurrentTimeNanos() {
@@ -38,4 +38,4 @@ void SpinForNanos(int64_t ns) {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
