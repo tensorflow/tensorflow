@@ -2156,6 +2156,24 @@ cc_library(
 )
 
 cc_library(
+    name = "scalarization",
+    srcs = ["lib/Transforms/scalarization.cc"],
+    hdrs = ["include/mlir-hlo/Transforms/passes.h"],
+    deps = [
+        ":mlir_hlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "tile_loops_pass",
     srcs = [
         "lib/Transforms/tile_loops_pass.cc",
@@ -2263,6 +2281,7 @@ cc_library(
         ":legalize_to_linalg",
         ":mlir_hlo",
         ":propagate_static_shapes_to_kernel",
+        ":scalarization",
         ":tile_loops_pass",
         ":unbufferize_pass",
         "@llvm-project//mlir:AffineToStandard",
