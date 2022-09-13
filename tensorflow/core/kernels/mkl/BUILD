@@ -142,6 +142,7 @@ tf_cc_test_mkl(
 tf_mkl_kernel_library(
     name = "mkl_quantize_op",
     srcs = ["mkl_quantize_op.cc"],
+    hdrs = ["mkl_quant_dequant.h"],
     deps = [
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/graph:mkl_graph_util",
@@ -280,6 +281,7 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_dequantize_op",
     srcs = ["mkl_dequantize_op.cc"],
+    hdrs = ["mkl_quant_dequant.h"],
     deps = [
         "@gemmlowp",
         "//tensorflow/core:array_ops_op_lib",

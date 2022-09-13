@@ -2368,25 +2368,16 @@ Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
           << " contraction=" << contraction.name();
 
   NodeDef fused_node;
-  fused_node.set_name(contraction.name());
-  fused_node.set_device(contraction.device());
-  fused_node.add_input(pad_node_def.input(0));  // 0: input
-  fused_node.add_input(contraction.input(1));   // 1: filter
+  // Note: Currently, the attributes of fused op are superset of contraction
+  // node. So copy it from contraction node before mutation.
+  fused_node.CopyFrom(contraction);
+  // 0-th input is the 0-th input of pad node, while the remainder inputs are
+  // same as the contraction node.
+  fused_node.set_input(0, pad_node_def.input(0));
   fused_node.set_op(kFusedConv3D);
-
   auto* attr = fused_node.mutable_attr();
-  auto& src_attr = contraction.attr();
-  (*attr)["T"] = src_attr.at("T");
-  (*attr)["strides"] = src_attr.at("strides");
-  (*attr)["data_format"] = src_attr.at("data_format");
-  (*attr)["padding"] = src_attr.at("padding");
-  (*attr)["dilations"] = src_attr.at("dilations");
-
-  if (contraction.op() == kFusedConv3D) {
-    fused_node.add_input(contraction.input(2));  // 2: bias
-    (*attr)["fused_ops"] = src_attr.at("fused_ops");
-    (*attr)["num_args"] = src_attr.at("num_args");
-  } else {
+  // Set num_args attr explicitly, since there is no default value.
+  if (!attr->contains("num_args")) {
     SetAttrValue(0, &(*attr)["num_args"]);
   }
 
@@ -2400,6 +2391,10 @@ Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
       paddings.push_back(const_value(i));
       SetAttrValue(paddings, &(*attr)["padding_list"]);
     }
+  } else {
+    VLOG(2) << "Pad fusion with " << contraction.op() << " is invalidated, "
+            << "it requires padding dim sizes to be constant.";
+    return OkStatus();
   }
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();

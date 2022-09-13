@@ -17,16 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "dnnl.hpp"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/type_traits.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/mkl_util.h"
+#include "tensorflow/core/kernels/mkl/mkl_quant_dequant.h"
 
 using dnnl::primitive_attr;
 using dnnl::stream;
@@ -71,10 +64,6 @@ class MklDequantizeOp : public OpKernel {
       MklDnnData<T> src(&cpu_engine);
       MklDnnData<float> dst(&cpu_engine);
 
-      std::shared_ptr<stream> reorder_stream;
-      MklDnnThreadPool eigen_tp(ctx);
-      reorder_stream.reset(CreateStream(&eigen_tp, cpu_engine));
-
       memory::format_tag dst_layout_type;
       switch (src_tf_shape.dims()) {
         case 1:
@@ -105,7 +94,6 @@ class MklDequantizeOp : public OpKernel {
       auto src_md = memory::desc(src_dims, MklDnnType<T>(), dst_layout_type);
 
       src.SetUsrMem(src_md, &src_tensor);
-      src.SetUsrMemDataHandle(&src_tensor, reorder_stream);
 
       Tensor* output_tensor = nullptr;
       MklDnnShape output_mkl_shape;
@@ -122,7 +110,6 @@ class MklDequantizeOp : public OpKernel {
       AllocateOutputSetMklShape(ctx, 0, &output_tensor, output_tf_shape,
                                 output_mkl_shape, native_format);
       dst.SetUsrMem(dst_md, output_tensor);
-      dst.SetUsrMemDataHandle(output_tensor, reorder_stream);
 
       // The quantization logic here for mode SCALED is similar to the logic
       // in QuantizeAndDequantizeV2 and QuantizeAndDequantizeV3.
@@ -145,21 +132,19 @@ class MklDequantizeOp : public OpKernel {
       } else {
         scale_factor = max_range / v_max;
       }
-      std::vector<float> scales;
-      scales.push_back(scale_factor);
-      primitive_attr attr;
-      attr.set_output_scales(0, scales);
-      std::vector<primitive> net;
+      MklReorderWithScaleFwdParams fwdParams(src_dims, src_md, dst_md);
+      fwdParams.dtypes.append(typeid(T).name());
+      fwdParams.post_op_params.name = "scale";
+      fwdParams.post_op_params.param.push_back(scale_factor);
+      MklReorderWithScalePrimitive* reorder_prim =
+          MklReorderWithScalePrimitiveFactory<T>::Get(src.GetUsrMem(),
+                                                      dst.GetUsrMem(), fwdParams);
+      std::shared_ptr<stream> cpu_stream;
+      MklDnnThreadPool eigen_tp(ctx);
+      cpu_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
+      reorder_prim->Execute(src.GetUsrMemDataHandle(), dst.GetUsrMemDataHandle(),
+                          cpu_stream);
 
-      // Create reorder primitive and then execute.
-      auto reorder_pd =
-          ReorderPd(cpu_engine, src.GetUsrMem()->get_desc(), cpu_engine,
-                    dst.GetUsrMem()->get_desc(), attr);
-      net.push_back(reorder(reorder_pd));
-      std::vector<std::unordered_map<int, memory>> reorder_net_args;
-      reorder_net_args.push_back(
-          {{DNNL_ARG_FROM, *src.GetUsrMem()}, {DNNL_ARG_TO, *dst.GetUsrMem()}});
-      execute_primitives(net, reorder_stream, reorder_net_args);
     } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
