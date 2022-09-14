@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -328,6 +329,57 @@ TEST(CustomCallTest, StatusOrRet) {
 
   ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
   EXPECT_EQ(i64, 42);
+}
+
+TEST(CustomCallTest, StatusOrTupleRets) {
+  absl::string_view module = R"(
+    func.func private @custom_call_return(%arg0 : i64, %arg1 : i64) -> (i64,
+                                                                        i64)
+      attributes { rt.custom_call = "test.custom_call_return" }
+
+    func.func private @custom_call(%arg0 : i64, %arg1 : i64)
+      attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = arith.constant 42 : i64
+      %1 = arith.constant 43 : i64
+      %2, %3 = call @custom_call_return(%0, %1) : (i64, i64) -> (i64, i64)
+      call @custom_call(%2, %3) : (i64, i64) -> ()
+      return
+    }
+  )";
+
+  int64_t a = 0;
+  int64_t b = 0;
+  auto f_result =
+      [](int64_t arg0,
+         int64_t arg1) -> absl::StatusOr<std::tuple<int64_t, int64_t>> {
+    return std::make_tuple(arg0, arg1);
+  };
+  auto f = [&](int64_t arg0, int64_t arg1) {
+    a = arg0;
+    b = arg1;
+    return success();
+  };
+
+  TestOpts opts;
+  opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call_return")
+                          .Arg<int64_t>()
+                          .Ret<int64_t>()
+                          .Arg<int64_t>()
+                          .Ret<int64_t>()
+                          .To(f_result));
+
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Arg<int64_t>()
+                          .Arg<int64_t>()
+                          .To(f));
+  };
+
+  ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
+  EXPECT_EQ(a, 42);
+  EXPECT_EQ(b, 43);
 }
 
 TEST(CustomCallTest, OpaqueArgs) {

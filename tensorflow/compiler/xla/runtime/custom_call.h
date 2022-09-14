@@ -626,6 +626,13 @@ struct IndexArgs<idx, T, Ts...> {
       typename IndexArgs<idx + 1, Ts...>::Is>;
 };
 
+template <size_t... FnArgsIs, size_t... ResultIs, typename FnArgs,
+          typename Result>
+void SetResultsFromTuple(std::index_sequence<ResultIs...>, FnArgs fn_args,
+                         Result tuple) {
+  ((*std::get<FnArgsIs>(fn_args)).Set(std::get<ResultIs>(tuple)), ...);
+}
+
 // When decoding input data we need to keep track of how many arguments,
 // attributes, and returns we decoded so far to index into the correct data
 // strucuture.
@@ -937,10 +944,13 @@ class CustomCallHandler : public CustomCall {
       if constexpr (sizeof...(RetsIs) == 1) {
         (*std::get<RetsIs...>(fn_args)).Set(status_or.value());
         return success();
-      } else {
-        // TODO(b/244763765): Support handlers that return a tuple.
-        return diagnostic->EmitError(InvalidArgument(
-            "Wrong number of rets: expected 1 got %d", sizeof...(RetsIs)));
+      }
+
+      if constexpr (sizeof...(RetsIs) > 1) {
+        using ResultIs = std::make_index_sequence<kNumRets>;
+        internal::SetResultsFromTuple<RetsIs...>(ResultIs{}, std::move(fn_args),
+                                                 std::move(status_or.value()));
+        return success();
       }
     }
 
