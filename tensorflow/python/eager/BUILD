@@ -606,6 +606,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager/polymorphic_function:composite_tensor_utils",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
