@@ -217,7 +217,7 @@ struct PmapCacheEntry {
   std::vector<ResultSpec> out_result_specs;
 
   std::vector<py::object> out_array_shardings;
-  std::vector<xla::PrimitiveType> out_dtypes;
+  std::vector<py::dtype> out_dtypes;
   std::vector<std::vector<int64_t>> out_shapes;
   std::vector<bool> out_committed;
 
@@ -467,8 +467,7 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   cache_entry.out_shapes.reserve(out_avals.size());
 
   for (int i = 0; i < out_avals.size(); ++i) {
-    cache_entry.out_dtypes.push_back(
-        xla::DtypeToPrimitiveType(out_avals[i].attr("dtype")).ValueOrDie());
+    cache_entry.out_dtypes.push_back(out_avals[i].attr("dtype"));
     cache_entry.out_shapes.push_back(
         py::cast<std::vector<int64_t>>(out_avals[i].attr("shape")));
     cache_entry.out_result_specs.emplace_back(

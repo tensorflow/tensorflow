@@ -46,7 +46,7 @@ class PyArray {
           bool skip_checks, pybind11::object fast_path_args);
 
   // Only used in C++
-  PyArray(pybind11::object aval, bool weak_type, PrimitiveType dtype,
+  PyArray(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
           std::vector<int64_t> shape, pybind11::object sharding,
           std::shared_ptr<PyClient> py_client,
           std::shared_ptr<Traceback> traceback,
@@ -87,7 +87,7 @@ class PyArray {
   }
 
   bool weak_type() const { return weak_type_; }
-  PrimitiveType dtype() const { return dtype_; }
+  const pybind11::dtype& dtype() const { return dtype_; }
   absl::Span<const int64_t> shape() const { return shape_; }
 
   Status BlockUntilReady() const {
@@ -106,7 +106,7 @@ class PyArray {
 
   pybind11::object aval_;
   bool weak_type_ = false;
-  PrimitiveType dtype_;
+  pybind11::dtype dtype_;
   std::vector<int64_t> shape_;
 
   pybind11::object sharding_;

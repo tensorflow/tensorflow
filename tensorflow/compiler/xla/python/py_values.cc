@@ -548,7 +548,8 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
 
   if (arg.get_type() == xla::PyArray::type()) {
     auto* array = arg.cast<PyArray*>();
-    return PyArgSignature(array->dtype(), array->shape(), array->weak_type());
+    auto dtype = array->GetBuffer(0)->on_device_shape().element_type();
+    return PyArgSignature(dtype, array->shape(), array->weak_type());
   }
 
   // Fast-path for the most common case of PyBuffer.
