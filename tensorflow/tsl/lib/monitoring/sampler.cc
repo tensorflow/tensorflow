@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/tsl/lib/monitoring/sampler.h"
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/tsl/platform/platform.h"
 // clang-format on
 
 // We replace this implementation with a null implementation for mobile
@@ -26,7 +26,7 @@ limitations under the License.
 // Do nothing.
 #else
 
-namespace tensorflow {
+namespace tsl {
 namespace monitoring {
 namespace {
 
@@ -117,6 +117,6 @@ std::unique_ptr<Buckets> Buckets::Exponential(double scale,
 }
 
 }  // namespace monitoring
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // IS_MOBILE_PLATFORM
