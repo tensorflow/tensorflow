@@ -57,7 +57,7 @@ static Status AssertOnGpu(void* stream_handle, void* buffer,
     return InternalError("%s", error_msg);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 static void AssertionCustomCall(void* stream_handle, void** buffers,
