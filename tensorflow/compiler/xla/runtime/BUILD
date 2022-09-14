@@ -206,6 +206,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:AArch64AsmParser",
+        "@llvm-project//llvm:AArch64CodeGen",
         "@llvm-project//llvm:ARMAsmParser",
         "@llvm-project//llvm:ARMCodeGen",
         "@llvm-project//llvm:Core",
