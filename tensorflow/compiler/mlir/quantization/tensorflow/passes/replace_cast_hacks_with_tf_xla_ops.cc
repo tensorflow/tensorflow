@@ -207,10 +207,11 @@ Value CreateXLAConvOpFromTFDepthwiseConv2DOp(
                          feature_group_cnt);
 }
 
-// Helper function to create an XlaDotV2Op.
-Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
-                       Value weight, Value input_zp, Value output,
-                       const xla::DotDimensionNumbers &dnums) {
+// Helper function to create cast-hack Matmul.
+// TODO(b/242661546): Replace cast-hack Matmul with XlaDotV2Op.
+Value CreateCastHackMatmul(OpBuilder &builder, Location loc, Value input,
+                           Value weight, Value input_zp, Value output,
+                           BoolAttr transpose_a) {
   int32_t input_zp_value;
   if (!GetSplatValue(input_zp, input_zp_value)) {
     emitError(loc,
@@ -218,15 +219,24 @@ Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
     return {};
   }
 
-  Value dot_result = builder
-                         .create<TF::XlaDotV2Op>(
-                             loc, /*output=*/output.getType(),
-                             /*lhs=*/input,
-                             /*rhs=*/weight,
-                             /*dimension_numbers=*/
-                             builder.getStringAttr(dnums.SerializeAsString()),
-                             /*precision_config=*/builder.getStringAttr(""))
-                         .getResult();
+  TensorType input_type = input.getType().dyn_cast<TensorType>();
+  Value input_i32 = builder.create<TF::CastOp>(
+      loc, input_type.clone(builder.getIntegerType(32)), input);
+
+  TensorType weight_type = weight.getType().dyn_cast<TensorType>();
+  Value weight_identity =
+      builder.create<TF::IdentityOp>(loc, weight.getType(), weight);
+  Value weight_i32 = builder.create<TF::CastOp>(
+      loc, weight_type.clone(builder.getIntegerType(32)), weight_identity);
+
+  Value dot_result =
+      builder
+          .create<TF::MatMulOp>(loc, /*output=*/output.getType(),
+                                /*lhs=*/input_i32,
+                                /*rhs=*/weight_i32,
+                                /*transpose_a=*/transpose_a,
+                                /*transpose_b=*/builder.getBoolAttr(false))
+          .getResult();
 
   ShapedType weight_shape = weight.getType().template cast<ShapedType>();
   SmallVector<int64_t> filter_non_output_indices = {0};
@@ -237,26 +247,18 @@ Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
   return builder.create<TF::SubOp>(loc, dot_result, zp_offset);
 }
 
-Value CreateXlaDotV2OpFromTfMatMulOp(OpBuilder &builder, Location loc,
-                                     Value input, Value weight, Value input_zp,
-                                     Value output, BoolAttr transpose_a,
-                                     BoolAttr transpose_b) {
-  // Transpose and constant-fold the weight if needed.
+Value AddCastHackToTFMatMulOp(OpBuilder &builder, Location loc, Value input,
+                              Value weight, Value input_zp, Value output,
+                              BoolAttr transpose_a, BoolAttr transpose_b) {
+  // Transpose and constantf-fold the weight if needed.
   if (transpose_b.getValue()) {
     Value perm = Create1DConstValue<int32_t>(builder, loc, {1, 0});
     auto transpose_op = builder.create<TF::TransposeOp>(loc, weight, perm);
     weight = ConstantFoldOpIfPossible(transpose_op).front();
   }
 
-  xla::DotDimensionNumbers dnums;
-  dnums.add_rhs_contracting_dimensions(0);
-  if (transpose_a.getValue()) {
-    dnums.add_lhs_contracting_dimensions(0);
-  } else {
-    dnums.add_lhs_contracting_dimensions(1);
-  }
-
-  return CreateXlaDotV2Op(builder, loc, input, weight, input_zp, output, dnums);
+  return CreateCastHackMatmul(builder, loc, input, weight, input_zp, output,
+                              transpose_a);
 }
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/replace_cast_hacks_with_tf_xla_ops.inc"

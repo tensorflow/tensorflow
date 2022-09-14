@@ -309,9 +309,10 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     return %12 : tensor<1x3xf32>
   }
 // CHECK-LABEL: func @matmul_with_relu
-// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() {device = "", value = dense<1> : tensor<1024x3xi8>} : () -> tensor<1024x3xi8>
 // CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<-131072> : tensor<3xi32>} : () -> tensor<3xi32>
-// CHECK: %[[MATMUL:.*]] = "tf.XlaDotV2"({{.*}}, %[[WEIGHT]])
-// CHECK-SAME: (tensor<1x1024xi8>, tensor<1024x3xi8>) -> tensor<1x3xi32>
+// CHECK: %[[CAST1:.*]] = "tf.Cast"({{.*}}) {Truncate = false} : (tensor<1x1024xi8>) -> tensor<1x1024xi32>
+// CHECK: %[[IDENTITY:.*]] = "tf.Identity"({{.*}}) : (tensor<1024x3xi8>) -> tensor<1024x3xi8>
+// CHECK: %[[CAST2:.*]] = "tf.Cast"(%[[IDENTITY]]) {Truncate = false} : (tensor<1024x3xi8>) -> tensor<1024x3xi32>
+// CHECK: %[[MATMUL:.*]] = "tf.MatMul"(%[[CAST1]], %[[CAST2]]) {transpose_a = false, transpose_b = false}
 // CHECK: %[[SUB:.*]] = "tf.Sub"(%[[MATMUL]], %[[CONST]]) : (tensor<1x3xi32>, tensor<3xi32>) -> tensor<1x3xi32>
 }
