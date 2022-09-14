@@ -334,12 +334,15 @@ ConversionTarget FusionRewritePattern::getRewritableTarget(MLIRContext* ctx) {
       });
   // For now, use an explicit allow-list of hlo ops inside the fusion. If any
   // other op is present, the fusion will not be rewritten.
-  target.addLegalOp<
-      mhlo::AddOp, mhlo::AbsOp, mhlo::CbrtOp, mhlo::CeilOp, mhlo::CosineOp,
-      mhlo::DivOp, mhlo::ExpOp, mhlo::Expm1Op, mhlo::FloorOp, mhlo::LogOp,
-      mhlo::Log1pOp, mhlo::LogisticOp, mhlo::MulOp, mhlo::NegOp, mhlo::RoundOp,
-      mhlo::RoundNearestEvenOp, mhlo::RsqrtOp, mhlo::SignOp, mhlo::SineOp,
-      mhlo::SqrtOp, mhlo::SubtractOp, mhlo::TanhOp>();
+  target.addLegalOp<mhlo::AddOp, mhlo::AbsOp, mhlo::CbrtOp, mhlo::CeilOp,
+                    mhlo::CosineOp, mhlo::DivOp, mhlo::ExpOp, mhlo::Expm1Op,
+                    mhlo::FloorOp, mhlo::LogOp, mhlo::Log1pOp, mhlo::LogisticOp,
+                    mhlo::MulOp, mhlo::NegOp, mhlo::RoundOp,
+#if !TENSORFLOW_USE_ROCM
+                    mhlo::RoundNearestEvenOp,
+#endif
+                    mhlo::RsqrtOp, mhlo::SignOp, mhlo::SineOp, mhlo::SqrtOp,
+                    mhlo::SubtractOp, mhlo::TanhOp>();
   return target;
 }
 
