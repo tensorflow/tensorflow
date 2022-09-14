@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -581,6 +582,79 @@ TEST(CustomCallTest, CustomArgsAndRets) {
   ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
 
   EXPECT_EQ(message, "foo");
+}
+
+TEST(CustomCallTest, MemRefRets) {
+  absl::string_view module = R"(
+    func.func private @custom_call_result() -> (memref<2x2xf32>,
+                                                memref<?x?xf32>)
+      attributes { rt.custom_call = "test.custom_call_result" }
+
+    func.func private @custom_call(%arg0: memref<2x2xf32>,
+                                   %arg1: memref<?x?xf32>)
+      attributes { rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0, %1 = call @custom_call_result()
+        : () -> (memref<2x2xf32>, memref<?x?xf32>)
+      call @custom_call(%0, %1) : (memref<2x2xf32>,  memref<?x?xf32>)
+                                -> ()
+      return
+    }
+  )";
+
+  // Allocate storage for arguments.
+  std::vector<float> input = {1.0, 2.0, 3.0, 4.0};
+
+  float f32_param = 0.0;
+  float f32_param_1 = 0.0;
+  float f32_param_2 = 0.0;
+  float f32_param_3 = 0.0;
+  int64_t dim1 = 0.0;
+  int64_t dim2 = 0.0;
+
+  auto f_result = [&](Result<MemrefView> ret0, Result<MemrefView> ret1) {
+    auto dims = ret0.GetDims();
+    std::vector<int64_t> vec_dims = {dims.begin(), dims.end()};
+    MemrefView mv = {ret0.GetDType(), input.data(), vec_dims};
+    MemrefView dmv = {ret1.GetDType(), input.data(), vec_dims};
+    ret0.Set(mv);
+    ret1.Set(dmv);
+    return success();
+  };
+
+  auto f = [&](MemrefView arg0, MemrefView arg1) {
+    (f32_param = static_cast<float*>(arg0.data)[0],
+     f32_param_1 = static_cast<float*>(arg0.data)[1],
+     f32_param_2 = static_cast<float*>(arg1.data)[2],
+     f32_param_3 = static_cast<float*>(arg1.data)[3]);
+    dim1 = arg1.sizes[0];
+    dim2 = arg1.sizes[1];
+
+    return success();
+  };
+
+  TestOpts opts;
+  opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call_result")
+                          .Ret<MemrefView>()
+                          .Ret<MemrefView>()
+                          .To(f_result));
+
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Arg<MemrefView>()
+                          .Arg<MemrefView>()
+                          .To(f));
+  };
+
+  ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
+
+  EXPECT_EQ(f32_param, 1.0);
+  EXPECT_EQ(f32_param_1, 2.0);
+  EXPECT_EQ(f32_param_2, 3.0);
+  EXPECT_EQ(f32_param_3, 4.0);
+  EXPECT_EQ(dim1, 2);
+  EXPECT_EQ(dim2, 2);
 }
 
 TEST(CustomCallTest, ArgSizeCheck) {

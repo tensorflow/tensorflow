@@ -78,7 +78,7 @@ void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
   r.Register<Tagged<StridedMemrefView>>("__type_id_strided_memref_view");
   r.Register<Tagged<EmptyArrayRef>>("__type_id_empty_array");
 
-  r.Register<Tagged<ArrayRef<int8_t>>>("__type_id_arrayr_int8");
+  r.Register<Tagged<ArrayRef<int8_t>>>("__type_id_array_int8");
   r.Register<Tagged<ArrayRef<int16_t>>>("__type_id_array_int16");
   r.Register<Tagged<ArrayRef<int32_t>>>("__type_id_array_int32");
   r.Register<Tagged<ArrayRef<int64_t>>>("__type_id_array_int64");

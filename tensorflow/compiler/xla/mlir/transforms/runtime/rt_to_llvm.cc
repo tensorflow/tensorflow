@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"  // from @llvm-project
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Async/IR/Async.h"  // from @llvm-project
@@ -34,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -396,22 +398,28 @@ static FailureOr<EncodedResults> EncodeResults(
   b.create<LLVM::StoreOp>(arr, mem);
 
   // Return a pointer to the first element of the results array.
-  Type ptr_ptr = mlir::LLVM::LLVMPointerType::get(ptr);
+  Type ptr_ptr = LLVM::LLVMPointerType::get(ptr);
   Value c0 = b.create<ConstantOp>(b.getI64IntegerAttr(0));
   Value gep = b.create<LLVM::GEPOp>(ptr_ptr, mem, ValueRange({c0, c0}));
   results.result_array_ptr = gep;
   return results;
 }
 
-// TODO(yijiagu): Add memref support
-static SmallVector<Value> GenResult(CallOp op, ImplicitLocOpBuilder b,
-                                    ArrayRef<LLVM::AllocaOp> allocas) {
+static FailureOr<SmallVector<Value>> DecodeResults(
+    CallOp op, ImplicitLocOpBuilder b, CustomCallRetEncodingSet &encodings,
+    TypeRange ret_types, TypeRange converted_types,
+    SmallVector<LLVM::AllocaOp> &allocas) {
   SmallVector<Value> load_results;
   load_results.push_back(op.getResult(0));
-  for (auto v : allocas) {
-    auto load_value = b.create<LLVM::LoadOp>(v);
-    load_results.push_back(load_value);
+
+  for (auto tuple : llvm::zip(llvm::drop_begin(ret_types),
+                              llvm::drop_begin(converted_types), allocas)) {
+    auto decoded_ret = encodings.Decode(b, std::get<0>(tuple),
+                                        std::get<1>(tuple), std::get<2>(tuple));
+    if (failed(decoded_ret)) return failure();
+    load_results.push_back(*decoded_ret);
   }
+
   return load_results;
 }
 
@@ -466,8 +474,11 @@ class CustomCallOpLowering : public OpConversionPattern<CustomCallOp> {
       auto call_op = b.create<CallOp>(
           op.callee(), TypeRange(rewriter.getI1Type()),
           ValueRange({adaptor.ctx(), *args, *attrs, rets->result_array_ptr}));
-      auto load_rets = GenResult(call_op, b, rets->allocas);
-      rewriter.replaceOp(op, ValueRange(load_rets));
+      auto load_rets = DecodeResults(call_op, b, ret_encoding_, ret_types,
+                                     converted_ret_types, rets->allocas);
+      if (failed(load_rets))
+        return op.emitOpError() << "failed to decode results";
+      rewriter.replaceOp(op, ValueRange(*load_rets));
     } else {
       // Otherwise pass the custom call callee to the generic custom call API.
       auto callee = Globals::OpaqueAddrOf(
@@ -480,10 +491,12 @@ class CustomCallOpLowering : public OpConversionPattern<CustomCallOp> {
                            ValueRange({adaptor.ctx(), callee, *args, *attrs,
                                        rets->result_array_ptr}));
 
-      auto load_rets = GenResult(call_op, b, rets->allocas);
-      rewriter.replaceOp(op, ValueRange(load_rets));
+      auto load_rets = DecodeResults(call_op, b, ret_encoding_, ret_types,
+                                     converted_ret_types, rets->allocas);
+      if (failed(load_rets))
+        return op.emitOpError() << "failed to decode results";
+      rewriter.replaceOp(op, ValueRange(*load_rets));
     }
-
     return success();
   }
 

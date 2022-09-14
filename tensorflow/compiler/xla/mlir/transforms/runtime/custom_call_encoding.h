@@ -28,8 +28,11 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
@@ -137,8 +140,12 @@ class CustomCallRetEncoding {
 
   virtual mlir::FailureOr<Encoded> Encode(Globals &g,
                                           mlir::ImplicitLocOpBuilder &b,
-                                          mlir::Type value,
+                                          mlir::Type type,
                                           mlir::Type converted) const = 0;
+
+  virtual mlir::FailureOr<mlir::Value> Decode(
+      mlir::ImplicitLocOpBuilder &b, mlir::Type type, mlir::Type converted,
+      mlir::LLVM::AllocaOp alloca) const = 0;
 };
 
 // A set of registered custom call results encodings.
@@ -149,7 +156,13 @@ class CustomCallRetEncodingSet {
   // Finds matching result encoding and tries to encode the values. Returns
   // failure if didn't match values to any of the result encodings.
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::Type value, mlir::Type converted) const;
+                                  mlir::Type type, mlir::Type converted) const;
+
+  // Convert the encoded value in alloca back to a value with the converted
+  // type. Return failure if the convertion failed.
+  mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b,
+                                      mlir::Type type, mlir::Type converted,
+                                      mlir::LLVM::AllocaOp alloca) const;
 
   template <typename... Ts, typename = std::enable_if_t<sizeof...(Ts) != 0>>
   CustomCallRetEncodingSet &Add() {
@@ -566,19 +579,6 @@ class MemrefArgEncoding : public CustomCallArgEncoding {
   mlir::LogicalResult Match(mlir::Value, mlir::Value) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
                                   mlir::Value, mlir::Value) const final;
-
- private:
-  // Encodes memref as LLVM struct value:
-  //
-  //   { i8: dtype, i8: rank, ptr<i8>: data,
-  //     array<2*rank x i64>: sizes_and_strides }
-  //
-  // This is a type erased version of the MLIR memref descriptor without base
-  // pointer. We pack sizes and strides as a single array member, so that on
-  // the runtime side we can read it back using C flexible array member.
-  mlir::Value EncodeMemRef(mlir::ImplicitLocOpBuilder &b,
-                           mlir::MemRefType memref_ty,
-                           mlir::Value descriptor) const;
 };
 
 //===----------------------------------------------------------------------===//
@@ -591,6 +591,9 @@ class ScalarRetEncoding : public CustomCallRetEncoding {
   mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
                                   mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                      mlir::Type,
+                                      mlir::LLVM::AllocaOp) const final;
 };
 
 // Encodes custom call results returned as an opaque LLVM pointer (!llvm.ptr)
@@ -604,6 +607,9 @@ class OpaqueRetEncoding : public CustomCallRetEncoding {
   mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
                                   mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                      mlir::Type,
+                                      mlir::LLVM::AllocaOp) const final;
 
   template <typename T>
   static auto Match() {
@@ -613,6 +619,17 @@ class OpaqueRetEncoding : public CustomCallRetEncoding {
  private:
   std::function<bool(mlir::Type)> match_;
   TypeID type_id_;
+};
+
+// Encodes MemRef results according to the MemrefView ABI.
+class MemrefRetEncoding : public CustomCallRetEncoding {
+ public:
+  mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+                                  mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                      mlir::Type,
+                                      mlir::LLVM::AllocaOp) const final;
 };
 
 //===----------------------------------------------------------------------===//

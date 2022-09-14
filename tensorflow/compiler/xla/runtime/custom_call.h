@@ -1184,7 +1184,6 @@ XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(int64_t);
 XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(float);
 XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(double);
 
-#undef XLA_RUNTIME_REGISTER_SCALAR_RESULT
 #undef XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING
 
 //===----------------------------------------------------------------------===//
@@ -1220,6 +1219,61 @@ XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(double);
   }
 
 XLA_RUNTIME_REGISTER_OPAQUE_RET_DECODING(void*, void*);
+
+//===----------------------------------------------------------------------===//
+
+// Custom call memref result decoding
+template <>
+class Result<MemrefView> {
+  using EncodedMemref = internal::EncodedMemref;
+
+ public:
+  explicit Result(EncodedMemref* storage) : storage_(storage) {}
+  void Set(MemrefView value) {
+    assert(IsCompatible(value) &&
+           "Custom call return types is not compatible with types in MLIR");
+    storage_->data = value.data;
+    for (unsigned i = 0; i < storage_->rank; ++i) {
+      storage_->dims[i] = value.sizes[i];
+    }
+  }
+
+  PrimitiveType GetDType() { return PrimitiveType{storage_->dtype}; }
+  absl::Span<const int64_t> GetDims() {
+    return absl::Span<const int64_t>(storage_->dims, storage_->rank);
+  }
+
+ private:
+  bool IsCompatible(MemrefView value) {
+    bool is_compatible =
+        storage_->dtype == value.dtype && storage_->rank == value.sizes.size();
+    if (!is_compatible) return false;
+
+    for (unsigned i = 0; i < storage_->rank; ++i) {
+      is_compatible = (storage_->dims[i] == value.sizes[i]) ||
+                      (storage_->dims[i] == /*MemrefType::kDynamicSize=*/-1);
+    }
+    return is_compatible;
+  }
+
+  EncodedMemref* storage_;
+};
+
+template <CustomCall::RuntimeChecks checks>
+struct CustomCallRetDecoding<MemrefView, checks> {
+  using EncodedMemref = internal::EncodedMemref;
+
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  static FailureOr<Result<MemrefView>> Decode(TypeID type_id, void* value) {
+    if (!CustomCall::Isa<MemrefView>(checks, type_id)) return failure();
+
+    auto* encoded = reinterpret_cast<EncodedMemref*>(value);
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+        encoded, sizeof(EncodedMemref) + encoded->rank * sizeof(int64_t));
+    return Result<MemrefView>(encoded);
+  }
+};
 
 //===----------------------------------------------------------------------===//
 // Custom call attributes decoding.
