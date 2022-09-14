@@ -22,7 +22,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "passes_detail.h"
+
+#define GEN_PASS_DEF_TOSALEGALIZEMHLOPASS
+#include "mhlo_tosa/Transforms/passes.h.inc"
 
 #define PASS_NAME "tosa-legalize-tf"
 #define DEBUG_TYPE PASS_NAME
@@ -33,7 +35,7 @@ namespace mlir {
 namespace tosa {
 namespace {
 
-struct LegalizeMhlo : TosaLegalizeMhloPassBase<LegalizeMhlo> {
+struct LegalizeMhlo : ::impl::TosaLegalizeMhloPassBase<LegalizeMhlo> {
   void runOnOperation() final;
 
   LogicalResult initialize(MLIRContext* ctx) override;

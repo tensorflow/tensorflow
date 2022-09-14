@@ -61,9 +61,6 @@ cc_library(
         "include/mhlo_tosa/Transforms/passes.h",
     ],
     includes = ["include"],
-    textual_hdrs = [
-        "lib/Transforms/passes_detail.h",
-    ],
     deps = [
         ":MHLOTOSAPDLLPatternsIncGen",
         ":MHLOTOSATransformsPassIncGen",
