@@ -227,6 +227,7 @@ class Options:
   """All options for example generation."""
 
   def __init__(self):
+    self.multi_gen_state = None
     # Directory where the outputs will be go.
     self.output_path = None
     # Particular zip to output.
@@ -261,8 +262,6 @@ class Options:
     # State of multiple test set generation. This stores state values those
     # should be kept and updated while generating examples over multiple
     # test sets.
-    # TODO(juhoha): Separate the state from the options.
-    self.multi_gen_state = None
     self.mlir_quantizer = False
     # The list of ops' name that should exist in the converted model.
     # This feature is currently only supported in MLIR conversion path.
