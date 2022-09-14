@@ -318,6 +318,7 @@ cc_library(
     deps = XLA_DEVICE_DEPS + [
         ":flags_headers",
         ":xla_compilation_cache",
+        "//tensorflow/core/tpu:tpu_defs",
     ],
     alwayslink = 1,
 )
@@ -553,7 +554,6 @@ cc_library(
         ":xla_device_no_jit_rewrite_registration",
         ":xla_launch_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
