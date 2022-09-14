@@ -27,13 +27,18 @@ limitations under the License.
 namespace tflite {
 namespace tools {
 
+// Default runtime feature level used when no parameters are specified.
+inline constexpr int kDefaultRuntimeFeatureLevel = 8;
+
 // Class to check if an operation or a model is compatible with NNAPI delegate.
 // Supported parameters:
 //   - nnapi-runtime_feature_level: Between 1 and 8 (default value: 8)
 class NnapiDelegateCompatibilityChecker
     : public DelegateCompatibilityCheckerBase {
  public:
-  NnapiDelegateCompatibilityChecker() { runtime_feature_level_ = 8; }
+  NnapiDelegateCompatibilityChecker() {
+    runtime_feature_level_ = kDefaultRuntimeFeatureLevel;
+  }
 
   absl::Status checkModelCompatibilityOnline(
       tflite::FlatBufferModel* model_buffer,
