@@ -28,8 +28,6 @@ td_library(
     compatible_with = get_compatible_with_cloud(),
     includes = ["include"],
     deps = [
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:base_td_files",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops_td_files",
         "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:CopyOpInterfaceTdFiles",
@@ -41,6 +39,8 @@ td_library(
         "@llvm-project//mlir:ShapeOpsTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
         "@llvm-project//mlir:ViewLikeInterfaceTdFiles",
+        "@stablehlo//:base_td_files",
+        "@stablehlo//:chlo_ops_td_files",
     ],
 )
 
@@ -462,9 +462,6 @@ cc_library(
         ":hlo_ops_inc_gen",
         ":hlo_ops_pattern_gen",
         ":hlo_ops_typedefs_inc_gen",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:base",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:broadcast_utils",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithmeticDialect",
@@ -484,6 +481,9 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:base",
+        "@stablehlo//:broadcast_utils",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -574,7 +574,7 @@ cc_library(
     deps = [
         ":mlir_hlo",
         # Backward compatibility with the old way of registering CHLO dialect
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -647,8 +647,8 @@ cc_library(
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_chlo_to_hlo_op.h"],
     deps = [
         ":mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@llvm-project//mlir:IR",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -755,7 +755,6 @@ cc_library(
     deps = [
         ":map_mhlo_to_scalar_op",
         ":mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:BufferizationDialect",
@@ -770,6 +769,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -786,7 +786,6 @@ cc_library(
         ":map_mhlo_to_scalar_op",
         ":mlir_hlo",
         ":type_conversion",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:BufferizationDialect",
@@ -802,6 +801,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -1022,7 +1022,6 @@ cc_library(
     deps = [
         ":MhloPassIncGen",
         ":mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ControlFlowDialect",
@@ -1034,6 +1033,7 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -1482,8 +1482,6 @@ cc_library(
         ":chlo_legalize_to_hlo_inc_gen",
         ":map_chlo_to_hlo_op",
         ":mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:broadcast_utils",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -1492,6 +1490,8 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:broadcast_utils",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -1518,7 +1518,6 @@ cc_library(
         ":MhloPassIncGen",
         ":chlo_legalize_to_hlo",
         ":mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -1528,6 +1527,7 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -1573,7 +1573,6 @@ cc_library(
         ":transforms_pass_inc_gen",
         ":unfuse_batch_norm",  # build-cleaner: keep
         ":userange_analysis",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithmeticDialect",
@@ -1590,6 +1589,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -1984,7 +1984,6 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexDialect",
@@ -1993,6 +1992,7 @@ cc_library(
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -2010,7 +2010,6 @@ cc_library(
         ":lhlo",
         ":mlir_hlo",
         ":type_conversion",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:BufferizationDialect",
@@ -2036,6 +2035,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorTransforms",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -2058,7 +2058,6 @@ cc_library(
         ":mlir_hlo",
         ":transforms_pass_inc_gen",
         ":type_conversion",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithmeticDialect",
@@ -2085,6 +2084,7 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorTransforms",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -2422,13 +2422,13 @@ cc_binary(
         ":lhlo",
         ":lhlo_gpu",
         ":thlo",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:register",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@stablehlo//:register",
     ],
 )
 

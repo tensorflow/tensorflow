@@ -39,6 +39,7 @@ load("//third_party/pasta:workspace.bzl", pasta = "repo")
 load("//third_party/psimd:workspace.bzl", psimd = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
+load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 
@@ -74,6 +75,7 @@ def _initialize_third_party():
     pybind11_abseil()
     ruy()
     sobol_data()
+    stablehlo()
     vulkan_headers()
     tensorrt()
 

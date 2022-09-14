@@ -7928,6 +7928,7 @@ tf_cc_shared_library(
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
         "@snappy//:__subpackages__",
+        "@stablehlo//:__subpackages__",
         "//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",

@@ -3146,6 +3146,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@ruy//:__subpackages__",
         "@snappy//:__subpackages__",
         "@sobol_data//:__subpackages__",
+        "@stablehlo//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
     ]

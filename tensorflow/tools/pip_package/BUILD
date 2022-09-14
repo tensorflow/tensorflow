@@ -229,6 +229,7 @@ filegroup(
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@sobol_data//:LICENSE",
+        "@stablehlo//:LICENSE",
         "@tblib_archive//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
         "@typing_extensions_archive//:LICENSE",

@@ -1,3 +1,4 @@
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
 --- stablehlo/stablehlo/dialect/ChloOps.cpp
 +++ stablehlo/stablehlo/dialect/ChloOps.cpp
 @@ -434,7 +434,7 @@
@@ -9,6 +10,7 @@
    for (Operation& nested : body->without_terminator()) {
      if (!llvm::all_of(nested.getOpOperands(), [&](OpOperand& operand) {
            Operation* def = operand.get().getDefiningOp();
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
 --- stablehlo/stablehlo/dialect/ChloOps.td
 +++ stablehlo/stablehlo/dialect/ChloOps.td
 @@ -54,7 +54,7 @@
@@ -20,6 +22,7 @@
  }
  
  class CHLO_Op<string mnemonic, list<Trait> traits> :
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
 @@ -1855,8 +1855,7 @@
@@ -52,6 +55,7 @@
    p << ")";
    if (getNumOperands()) {
      p << " : ";
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
 @@ -35,7 +35,7 @@
@@ -63,6 +67,19 @@
    let useDefaultAttributePrinterParser = 0;
    let useDefaultTypePrinterParser = 0;
  }
+diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/chlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/chlo.py
+--- stablehlo/stablehlo/integrations/python/mlir/dialects/chlo.py
++++ stablehlo/stablehlo/integrations/python/mlir/dialects/chlo.py
+@@ -21,3 +21,8 @@
+ def register_dialect(context, load=True):
+   from .._mlir_libs import _chlo
+   _chlo.register_dialect(context, load=load)
++
++
++# Backward compatibility with the old way of registering CHLO dialect
++def register_chlo_dialect(context, load=True):
++  register_dialect(context, load)
+diff --ruN a/stablehlo/stablehlo/tests/lit.cfg.py b/stablehlo/stablehlo/tests/lit.cfg.py
 --- stablehlo/stablehlo/tests/lit.cfg.py
 +++ stablehlo/stablehlo/tests/lit.cfg.py
 @@ -20,7 +20,6 @@
@@ -84,6 +101,7 @@
  ]
  
  llvm_config.add_tool_substitutions(tools, tool_dirs)
+diff --ruN a/stablehlo/stablehlo/tests/lit.site.cfg.py.in b/stablehlo/stablehlo/tests/lit.site.cfg.py.in
 --- stablehlo/stablehlo/tests/lit.site.cfg.py.in
 +++ stablehlo/stablehlo/tests/lit.site.cfg.py.in
 @@ -44,7 +44,6 @@

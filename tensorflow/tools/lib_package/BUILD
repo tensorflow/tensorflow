@@ -161,6 +161,7 @@ genrule(
         "@nsync//:LICENSE",
         "@png//:LICENSE",
         "@snappy//:COPYING",
+        "@stablehlo//:LICENSE",
         "@zlib//:zlib.h",
     ] + select({
         "//tensorflow:android": [],
@@ -233,6 +234,7 @@ genrule(
         "@nsync//:LICENSE",
         "@png//:LICENSE",
         "@snappy//:COPYING",
+        "@stablehlo//:LICENSE",
         "@zlib//:zlib.h",
     ] + select({
         "//tensorflow:android": [],
