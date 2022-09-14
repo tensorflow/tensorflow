@@ -26,7 +26,7 @@ limitations under the License.
 #define GEN_PASS_DECL_DEPRECATEDTILINGPASS
 #define GEN_PASS_DECL_FUSIONPASS
 #define GEN_PASS_DECL_TILINGPASS
-
+#define GEN_PASS_DECL_GMLSTTOGPUPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 namespace mlir {

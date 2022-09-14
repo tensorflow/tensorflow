@@ -1627,6 +1627,7 @@ cc_library(
         ":gml_st_fusion",
         ":gml_st_passes_inc_gen",
         ":gml_st_tiling",
+        ":gml_st_to_gpu",
         ":gml_st_to_scf",
         ":group_reduction_dimensions",
         ":hlo_legalize_shape_ops_to_standard",
@@ -2866,6 +2867,25 @@ cc_library(
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:VectorDialect",
+    ],
+)
+
+cc_library(
+    name = "gml_st_to_gpu",
+    srcs = ["lib/Dialect/gml_st/transforms/gml_st_to_gpu.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/gml_st/transforms/passes.h"],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        ":gml_st_passes_inc_gen",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
