@@ -109,7 +109,7 @@ case "${TENSORFLOW_TARGET}" in
   riscv64)
     RISCVCC_PREFIX=riscv64-unknown-linux-gnu-
     RISCVCC_FLAGS="-g -march=rv64imafdc -mabi=lp64d"
-    RISCVCC_FLAGS="${RISCVCC_FLAGS} -I/usr/include/python3.8 -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"
+    RISCVCC_FLAGS="${RISCVCC_FLAGS} -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"
     cmake \
       -DCMAKE_C_COMPILER=${RISCVCC_PREFIX}gcc \
       -DCMAKE_CXX_COMPILER=${RISCVCC_PREFIX}g++ \
@@ -117,6 +117,7 @@ case "${TENSORFLOW_TARGET}" in
       -DCMAKE_CXX_FLAGS="${RISCVCC_FLAGS}" \
       -DCMAKE_SYSTEM_NAME=Linux \
       -DCMAKE_SYSTEM_PROCESSOR=riscv64 \
+      -DTFLITE_ENABLE_XNNPACK=OFF \
       "${TENSORFLOW_LITE_DIR}"
     ;;
   native)
