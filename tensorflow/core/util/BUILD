@@ -80,6 +80,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "activation_mode.h",
         "batch_util.cc",
         "batch_util.h",
         "bcast.cc",

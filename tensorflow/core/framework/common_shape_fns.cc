@@ -589,7 +589,8 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
     data_format_str = "NHWC";
   }
   if (!c->GetAttr("filter_format", &filter_format_str).ok()) {
-    filter_format_str = "HWIO";
+    filter_format_str =
+        data_format_str == "NCHW_VECT_C" ? "OIHW_VECT_I" : "HWIO";
   }
 
   TensorFormat data_format;

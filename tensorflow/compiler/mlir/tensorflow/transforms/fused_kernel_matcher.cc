@@ -193,6 +193,19 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     attrs.push_back(
         NamedAttribute(StringAttr::get(context, "epsilon"), epsilon));
 
+    if (std::is_same<FusedOpT, _FusedConv2DOp>::value) {
+      SmallVector<Attribute, 4> targs_values;
+      // Here TArgs types do not include types of the first two parameters,
+      // i.e. the convolution input and the filter. TArgs are parameters for
+      // the extras like the bias etc.
+      for (int i = 0; i < operands.size() - 2; ++i) {
+        targs_values.push_back(TypeAttr::get(contraction.T()));
+      }
+      ArrayAttr targs_attr = ArrayAttr::get(context, targs_values);
+      attrs.push_back(
+          NamedAttribute(StringAttr::get(context, "TArgs"), targs_attr));
+    }
+
     // Insert fused operation right before the BiasAdd operation to guarantee
     // that bias value dominates the fused operation. We already verified that
     // original operation has a single use, so this is safe to do.

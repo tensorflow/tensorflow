@@ -2136,6 +2136,12 @@ void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d,
   auto& src_attr = conv2d.attr();
 
   (*attr)["T"] = src_attr.at("T");
+  int num_args = fused_conv2d->input_size() - 2;
+  for (int i = 0; i < num_args; ++i) {
+    (*attr)["TArgs"].mutable_list()->add_type(src_attr.at("T").type());
+  }
+  (*attr)["num_args"].set_i(num_args);
+  (*attr)["num_host_args"].set_i(0);
   (*attr)["strides"] = src_attr.at("strides");
   (*attr)["padding"] = src_attr.at("padding");
   (*attr)["explicit_paddings"] = src_attr.at("explicit_paddings");
