@@ -1150,6 +1150,19 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "hash_test",
+    size = "small",
+    srcs = ["hash_test.cc"],
+    deps = [
+        ":hash",
+        ":logging",
+        ":test",
+        ":test_benchmark",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "tstring_test",
     size = "small",
     srcs = ["tstring_test.cc"],

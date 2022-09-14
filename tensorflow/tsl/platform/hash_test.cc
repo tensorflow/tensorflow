@@ -17,12 +17,12 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/hash.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
-namespace tensorflow {
+namespace tsl {
 
 TEST(Hash, SignedUnsignedIssue) {
   const unsigned char d1[1] = {0x62};
@@ -155,4 +155,4 @@ TEST(StringPieceHasher, HashMap) {
   EXPECT_EQ(found[2], true);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

@@ -95,7 +95,6 @@ filegroup(
     name = "legacy_lib_hash_all_tests",
     srcs = [
         "crc32c_test.cc",
-        "hash_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
