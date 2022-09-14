@@ -168,6 +168,7 @@ enum class AppleGpu {
   kA13,
   kA14,
   kA15,
+  kA16,
   kM1,
   kM1Pro,
   kM1Max,
