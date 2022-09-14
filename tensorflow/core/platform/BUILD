@@ -155,13 +155,12 @@ cc_library(
 
 cc_library(
     name = "coding",
-    srcs = ["coding.cc"],
     hdrs = ["coding.h"],
     deps = [
-        ":byte_order",
         ":raw_coding",
         ":stringpiece",
         ":types",
+        "//tensorflow/tsl/platform:coding",
     ],
 )
 
@@ -1790,7 +1789,6 @@ filegroup(
         "blocking_counter.h",
         "byte_order.h",
         "casts.h",
-        "coding.cc",
         "coding.h",
         "context.h",
         "cord.h",

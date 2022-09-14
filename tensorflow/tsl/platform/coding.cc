@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/coding.h"
+#include "tensorflow/tsl/platform/coding.h"
 
-#include "tensorflow/core/platform/byte_order.h"
+#include "tensorflow/tsl/platform/byte_order.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace core {
 
 void EncodeFixed16(char* buf, uint16 value) {
@@ -216,4 +216,4 @@ bool GetVarint64(StringPiece* input, uint64* value) {
 }
 
 }  // namespace core
-}  // namespace tensorflow
+}  // namespace tsl

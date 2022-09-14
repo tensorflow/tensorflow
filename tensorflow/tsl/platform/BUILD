@@ -76,6 +76,17 @@ cc_library(
 )
 
 cc_library(
+    name = "coding",
+    srcs = ["coding.cc"],
+    hdrs = ["coding.h"],
+    deps = [
+        ":byte_order",
+        ":stringpiece",
+        ":types",
+    ],
+)
+
+cc_library(
     name = "denormal",
     srcs = ["denormal.cc"],
     hdrs = ["denormal.h"],
@@ -366,6 +377,7 @@ filegroup(
     srcs = [
         "bfloat16.h",
         "casts.h",
+        "coding.h",
         "cpu_info.h",
         "crash_analysis.h",
         "dynamic_annotations.h",
@@ -442,6 +454,8 @@ filegroup(
         "blocking_counter.h",
         "byte_order.h",
         "casts.h",
+        "coding.cc",
+        "coding.h",
         "cpu_info.cc",
         "cpu_info.h",
         "demangle.h",
