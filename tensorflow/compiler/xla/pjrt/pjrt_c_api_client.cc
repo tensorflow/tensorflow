@@ -909,7 +909,7 @@ PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
           promise.Set(s);
           ::pjrt::MakeErrorDeleter(api)(error);
         } else {
-          promise.Set(Status::OK());
+          promise.Set(OkStatus());
         }
         ::pjrt::MakeEventDeleter(api)(pjrt_event);
       });

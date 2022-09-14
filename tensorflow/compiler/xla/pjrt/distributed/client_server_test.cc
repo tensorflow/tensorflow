@@ -521,7 +521,7 @@ TEST_P(ClientServerTest, WaitAtBarrier_Succeed) {
         client->WaitAtBarrier("barrier_2", absl::Milliseconds(100)));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return xla::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -559,7 +559,7 @@ TEST_P(ClientServerTest, WaitAtBarrier_Timeout) {
     TF_RETURN_IF_ERROR(barrier_status);
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return xla::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -607,7 +607,7 @@ TEST_P(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
         client->WaitAtBarrier(barrier_id, absl::Milliseconds(100)));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return xla::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
@@ -638,7 +638,7 @@ TEST_P(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
         client->WaitAtBarrier("barrier_1", absl::Milliseconds(100)));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return xla::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);

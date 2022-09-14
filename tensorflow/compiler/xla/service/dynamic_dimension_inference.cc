@@ -99,7 +99,7 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
       CHECK(assertion_generator);
       assertion_generator(visitor.shape_assertion_);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleParameter(HloInstruction* hlo) override;
@@ -1857,7 +1857,7 @@ Status DynamicDimensionInferenceVisitor::InsertShapeCheck(
     bool support_implicit_broadcast) {
   switch (shape_check_mode_) {
     case DynamicDimensionInference::kIgnore:
-      return Status::OK();
+      return OkStatus();
     case DynamicDimensionInference::kCompileTime:
       return InvalidArgument(
           "Fail to proof the equality of two dimensions at compile time: "

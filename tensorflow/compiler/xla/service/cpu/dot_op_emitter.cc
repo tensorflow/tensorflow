@@ -999,7 +999,7 @@ Status DotOpEmitter::EmitCallToBatchRuntime() {
        b_->getInt64(mat_mult_dims.k), b_->getInt64(lhs_shape.dimensions(0)),
        b_->getInt32(static_cast<uint32_t>(transpose_lhs)),
        b_->getInt32(static_cast<uint32_t>(transpose_rhs))});
-  return Status::OK();
+  return OkStatus();
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {

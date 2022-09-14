@@ -343,7 +343,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
       xla::PjRtFuture<xla::Status>::CreatePromise();
 
   std::function<void()> on_done_with_host_buffer = [promise]() mutable {
-    promise.Set(xla::Status::OK());
+    promise.Set(xla::OkStatus());
   };
 
   PJRT_ASSIGN_OR_RETURN(
