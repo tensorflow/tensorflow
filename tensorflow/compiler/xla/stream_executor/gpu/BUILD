@@ -285,7 +285,7 @@ cc_library(
         "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/core/platform:env",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:subprocess",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:cuda_libdevice_path",

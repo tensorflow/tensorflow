@@ -43,8 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/tsl/platform/hash.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace {
 
@@ -593,18 +593,18 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
   return_best_algo_only_ = false;
   // but if the env var TF_ROCM_RETURN_BEST_ALGO_ONLY is set, only the best
   // (i.e. most efficient) algorithm will be returned
-  tensorflow::ReadBoolFromEnvVar("TF_ROCM_RETURN_BEST_ALGO_ONLY", false,
-                                 &return_best_algo_only_);
+  tsl::ReadBoolFromEnvVar("TF_ROCM_RETURN_BEST_ALGO_ONLY", false,
+                          &return_best_algo_only_);
 
   // by default, use Find Mode APIs for convolution
   use_immediate_mode_ = false;
   // swich to Find Mode if env var TF_ROCM_USE_IMMEDIATE_MODE is set
-  tensorflow::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
-                                 &use_immediate_mode_);
+  tsl::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
+                          &use_immediate_mode_);
 
   bool enable_pooling_cache = false;
-  tensorflow::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
-                                 &enable_pooling_cache);
+  tsl::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
+                          &enable_pooling_cache);
   if (enable_pooling_cache) m_pooling_cache_allowed = true;
 }
 

@@ -30,13 +30,13 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/tsl/platform:stacktrace",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:stacktrace",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
     ] + if_static([
-        "//tensorflow/core/platform:env_impl",
+        "//tensorflow/tsl/platform:env_impl",
     ]),
 )

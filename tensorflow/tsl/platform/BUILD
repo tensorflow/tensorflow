@@ -121,6 +121,11 @@ cc_library(
 )
 
 cc_library(
+    name = "env_impl",
+    deps = tf_windows_aware_platform_deps("env_impl"),
+)
+
+cc_library(
     name = "env_time",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["env_time.h"],

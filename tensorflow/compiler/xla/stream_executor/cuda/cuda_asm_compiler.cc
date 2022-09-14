@@ -44,7 +44,7 @@ port::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
     // Get the highest version of CUDA supported by this driver.
     RETURN_IF_CUDA_ERROR(cuDriverGetVersion(&driver_cuda_version));
     if (driver_cuda_version < CUDA_VERSION) {
-      return tensorflow::errors::Unimplemented(
+      return tsl::errors::Unimplemented(
           "CUDA version unsupported by NVIDIA driver version.");
     }
   }

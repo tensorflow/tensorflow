@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -76,7 +76,7 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
   LOG(INFO)
       << "No TPU platform registered. Waiting 1 second and trying again... ("
       << tries_left << " tries left)";
-  Env::Default()->SleepForMicroseconds(1000000);  // 1 second
+  tsl::Env::Default()->SleepForMicroseconds(1000000);  // 1 second
   return GetRegisteredPlatformStatic(initialize_platform, tries_left);
 }
 }  // namespace
