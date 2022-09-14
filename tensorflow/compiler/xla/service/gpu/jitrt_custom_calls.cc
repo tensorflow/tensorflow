@@ -1040,7 +1040,7 @@ namespace {
 
 struct Memset {
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          runtime::FlatMemrefView dst,
+                          runtime::StridedMemrefView dst,
                           CustomCall::VariantArg constant) const;
   static Memset Handler() { return Memset(); }
 };
@@ -1048,7 +1048,7 @@ struct Memset {
 }  // namespace
 
 absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
-                                runtime::FlatMemrefView dst,
+                                runtime::StridedMemrefView dst,
                                 CustomCall::VariantArg constant) const {
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
@@ -1069,7 +1069,7 @@ absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
     set_zero = true;
 
   if (set_zero) {
-    stream->ThenMemZero(&dst_data, dst.size_in_bytes);
+    stream->ThenMemZero(&dst_data, dst_data.size());
     return absl::OkStatus();
   }
 
@@ -1083,10 +1083,10 @@ absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
   else
     return absl::InvalidArgumentError("Unsupported memset bit pattern type");
 
-  if (dst.size_in_bytes % 4 != 0)
+  if (dst_data.size() % 4 != 0)
     return absl::InvalidArgumentError("Memref size is not divisible by 4");
 
-  stream->ThenMemset32(&dst_data, pattern, dst.size_in_bytes);
+  stream->ThenMemset32(&dst_data, pattern, dst_data.size());
 
   return absl::OkStatus();
 }
@@ -1095,8 +1095,8 @@ static bool MemsetFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
                      void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.memset")
                              .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::FlatMemrefView>()  // dst
-                             .Arg<CustomCall::VariantArg>()   // constant
+                             .Arg<runtime::StridedMemrefView>()  // dst
+                             .Arg<CustomCall::VariantArg>()      // constant
                              .To<RuntimeChecks()>(Memset::Handler())
                              .release();
 
