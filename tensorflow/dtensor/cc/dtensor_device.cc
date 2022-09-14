@@ -2000,12 +2000,69 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
   return TFE_TensorHandleCopySharingTensor(typed_input->get_tensor(0), status);
 }
 
+bool PinToDTensorDevice(const TFE_Op* op, TF_Status* s) {
+  // Always pin to the dtensor device if any of its input is a dtensor.
+  // Note that if this function is called, the caller guarantees
+  // that all inputs that are on a custom device is a single dtensor device.
+
+  // Exception 1:
+  // If there is a non-dtensor resource tensor and other dtensor inputs
+  // are not on a CPU mesh, then pin to the physical device.
+  //
+  // This is because our resource upcast to a dtensor only supports broadcasting
+  // to a CPU mesh. If any other dtensor inputs are on a TPU mesh,
+  // then the mesh that is broadcasted will be the TPU mesh.
+  int num_inputs = TFE_OpGetFlatInputCount(op, s);
+  std::vector<TFE_TensorHandle*> inputs_vector;
+  inputs_vector.reserve(num_inputs);
+
+  absl::flat_hash_set<Mesh> input_meshes;
+
+  bool has_non_dtensor_resource = false;
+
+  for (int input_index = 0; input_index < num_inputs; ++input_index) {
+    TFE_TensorHandle* input = TFE_OpGetFlatInput(op, input_index, s);
+
+    std::string input_device_name =
+        std::string(TFE_TensorHandleDeviceName(input, s));
+    if (!absl::StrContains(absl::AsciiStrToLower(input_device_name),
+                           "custom")) {
+      TF_DataType dtype = TFE_TensorHandleDataType(input);
+      if (dtype == TF_RESOURCE) {
+        has_non_dtensor_resource = true;
+      }
+      continue;
+    }
+
+    // Handle input which is on DTensor device already.
+    TensorWithLayout* t = reinterpret_cast<TensorWithLayout*>(
+        TFE_TensorHandleDevicePointer(input, s));
+
+    if (!t->layout().mesh().IsEmpty()) {
+      input_meshes.insert(t->layout().mesh());
+    }
+  }
+
+  const Mesh* broadcast_mesh =
+      input_meshes.size() == 1 ? &(*input_meshes.begin()) : nullptr;
+
+  // Place on physical device as dtensor does not support upcasting resource
+  // tensor to a non-cpu mesh.
+  if (has_non_dtensor_resource && broadcast_mesh &&
+      !broadcast_mesh->is_cpu_mesh()) {
+    return false;
+  }
+
+  return true;
+}
+
 void AllocateDTensorDevice(absl::string_view device_name,
                            TFE_CustomDevice* device, void** device_info) {
   device->copy_tensor_to_device = &CopyToDTensorDevice;
   device->copy_tensor_from_device = &CopyFromDTensorDevice;
   device->delete_device = &DeleteDTensorDevice;
   device->execute = &ExecuteOnDTensorDevice;
+  device->shall_pin_to_this_device = &PinToDTensorDevice;
   *device_info = new DTensorDevice(device_name);
 }
 
