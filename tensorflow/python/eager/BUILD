@@ -489,48 +489,6 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "function_test",
-    size = "medium",
-    srcs = ["function_test.py"],
-    python_version = "PY3",
-    shard_count = 15,
-    tags = [
-        "nomac",  # b/157056289
-    ],
-    deps = [
-        ":backprop",
-        ":cancellation",
-        ":context",
-        ":test",
-        "//tensorflow/python:clip_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:data_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:indexed_slices",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:layers",
-        "//tensorflow/python:list_ops",
-        "//tensorflow/python:logging_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_seed",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:script_ops",
-        "//tensorflow/python:sendrecv_ops_gen",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:test_ops",
-        "//tensorflow/python/eager/polymorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:quarantine",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
 py_library(
     name = "test",
     srcs = ["test.py"],

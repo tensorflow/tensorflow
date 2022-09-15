@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     licenses = ["notice"],
 )
@@ -67,6 +69,47 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "polymorphic_function_test",
+    size = "medium",
+    srcs = ["polymorphic_function_test.py"],
+    python_version = "PY3",
+    shard_count = 15,
+    tags = [
+        "nomac",  # b/157056289
+    ],
+    deps = [
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:indexed_slices",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:list_ops",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:sendrecv_ops_gen",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:test_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:cancellation",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_library(
     name = "quarantine",
     srcs = ["quarantine.py"],
@@ -89,5 +132,43 @@ py_library(
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/util",
+    ],
+)
+
+cuda_py_test(
+    name = "quarantine_test",
+    size = "medium",
+    srcs = ["quarantine_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:indexed_slices",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:list_ops",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:sendrecv_ops_gen",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:test_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:cancellation",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:quarantine",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
