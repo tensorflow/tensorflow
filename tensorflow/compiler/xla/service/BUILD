@@ -5232,6 +5232,7 @@ tf_cc_test(
         ":hlo",
         ":hlo_domain_isolator",
         ":hlo_domain_remover",
+        ":hlo_domain_verifier",
         ":hlo_parser",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:test",
