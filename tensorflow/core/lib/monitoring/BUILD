@@ -124,6 +124,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:types",
         "//tensorflow/tsl/lib/monitoring:counter",
     ],
 )
