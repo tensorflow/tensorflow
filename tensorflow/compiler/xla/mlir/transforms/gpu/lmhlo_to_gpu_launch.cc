@@ -22,8 +22,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/Error.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
@@ -36,6 +34,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -71,7 +70,7 @@ class ConvertLmhloToGpuLaunchPass
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mlir::gpu::GPUDialect>();
+    registry.insert<mlir::gpu::GPUDialect, xla::runtime::RuntimeDialect>();
   }
 
  private:
@@ -85,6 +84,17 @@ static Value MakeBitPatternConstant(OpBuilder& b, Location loc, Type type,
   // For zero bit pattern always memset with a zero value of the same type.
   // TODO(ezhulenev): Add Memzero operation to MLIR gpu dialect.
   if (bit_pattern == 0) {
+    // Because `arith` dialect doesn't support unsigned constants, we have to
+    // create signless constant first, and then use `rt.unsigned_cast` operation
+    // to make it unsigned. When lowering to LLVM and function calls, this
+    // casting operation will be erased.
+    if (type.isUnsignedInteger()) {
+      auto signless =
+          IntegerType::get(type.getContext(), type.getIntOrFloatBitWidth());
+      auto zero = b.create<arith::ConstantOp>(loc, b.getZeroAttr(signless));
+      return b.create<runtime::UnsignedCastOp>(loc, type, zero.getResult());
+    }
+
     return b.create<arith::ConstantOp>(loc, b.getZeroAttr(type));
   }
 

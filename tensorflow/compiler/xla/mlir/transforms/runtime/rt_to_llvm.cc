@@ -540,6 +540,23 @@ class SetErrorOpLowering : public OpConversionPattern<SetErrorOp> {
 };
 
 //===----------------------------------------------------------------------===//
+// Convert rt.unsigned_cast to no-op.
+//===----------------------------------------------------------------------===//
+
+class UnsignedCastOpLowering : public OpConversionPattern<UnsignedCastOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      UnsignedCastOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    // Just pass through the argument value.
+    rewriter.replaceOp(op, adaptor.value());
+    return success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
 
 class ConvertRuntimeToLLVMPass
     : public ConvertRuntimeToLLVMPassBase<ConvertRuntimeToLLVMPass> {
@@ -612,6 +629,10 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // Lower from the runtime operations to the runtime API function calls.
   patterns.add<SetOutputOpLowering, IsOkOpLowering>(llvm_converter, ctx);
   patterns.add<SetErrorOpLowering>(llvm_converter, ctx, globals);
+
+  // Erase special signless-unsigned casting operation that we added to work
+  // around the unsigned constants limitation.
+  patterns.add<UnsignedCastOpLowering>(llvm_converter, ctx);
 
   // Use default custom call encoding for canonical types.
   CustomCallArgEncodingSet args = DefaultArgEncodings();
