@@ -153,21 +153,7 @@ cc_library(
     name = "timespan",
     hdrs = ["timespan.h"],
     copts = tf_profiler_copts(),
-    deps = [
-        ":math_utils",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "timespan_test",
-    srcs = ["timespan_test.cc"],
-    deps = [
-        ":timespan",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
+    deps = ["//tensorflow/tsl/profiler/utils:timespan"],
 )
 
 cc_library(
@@ -309,6 +295,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
+        ":math_utils",
         ":timespan",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

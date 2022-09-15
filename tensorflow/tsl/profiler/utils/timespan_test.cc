@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
 TEST(TimespanTests, NonInstantSpanIncludesSingleTimeTests) {
@@ -81,4 +81,4 @@ TEST(TimespanTests, InstantSpanNonInstantSpanOverlappedDuration) {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
