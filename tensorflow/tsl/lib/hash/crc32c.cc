@@ -16,12 +16,12 @@ limitations under the License.
 // A portable implementation of crc32c, optimized to handle
 // four bytes at a time.
 
-#include "tensorflow/core/lib/hash/crc32c.h"
+#include "tensorflow/tsl/lib/hash/crc32c.h"
 
 #include <stdint.h>
-#include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/tsl/platform/raw_coding.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace crc32c {
 
 extern bool CanAccelerate();
@@ -273,4 +273,4 @@ uint32 Extend(uint32 crc, const absl::Cord &cord) {
 #endif
 
 }  // namespace crc32c
-}  // namespace tensorflow
+}  // namespace tsl

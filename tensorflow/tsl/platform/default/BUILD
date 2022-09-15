@@ -458,7 +458,6 @@ cc_library(
     ],
     textual_hdrs = ["tracing_impl.h"],
     deps = [
-        "//tensorflow/core/lib/hash",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:logging",

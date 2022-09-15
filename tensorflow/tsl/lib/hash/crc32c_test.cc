@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/hash/crc32c.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/lib/hash/crc32c.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace crc32c {
 
 TEST(CRC, StandardResults) {
@@ -94,4 +94,4 @@ static void BM_CRC(::testing::benchmark::State& state) {
 BENCHMARK(BM_CRC)->Range(1, 256 * 1024);
 
 }  // namespace crc32c
-}  // namespace tensorflow
+}  // namespace tsl

@@ -41,7 +41,7 @@ limitations under the License.
 #include <nmmintrin.h>
 #endif
 
-namespace tensorflow {
+namespace tsl {
 namespace crc32c {
 
 #ifndef USE_SSE_CRC32C
@@ -96,4 +96,4 @@ uint32_t AcceleratedExtend(uint32_t crc, const char *buf, size_t size) {
 #endif
 
 }  // namespace crc32c
-}  // namespace tensorflow
+}  // namespace tsl
