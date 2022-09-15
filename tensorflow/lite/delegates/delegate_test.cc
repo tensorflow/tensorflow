@@ -17,6 +17,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -423,9 +424,18 @@ struct DelegateState {
   bool copy_from_buffer_handle_called;
   bool free_buffer_handle_called;
   int buffer_handle;
+
+  void Reset() {
+    delegate_prepared = false;
+    copy_from_buffer_handle_called = false;
+    free_buffer_handle_called = false;
+    buffer_handle = -1;
+  }
 };
 
 struct OpaqueTestDelegate {
+  static constexpr int kTestDelegateOutput = 42;
+
   static inline TfLiteStatus Prepare(
       TfLiteOpaqueContext* opaque_context,
       struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
@@ -465,7 +475,7 @@ struct OpaqueTestDelegate {
     for (int i = 0; i < TfLiteOpaqueTensorNumDims(opaque_tensor); ++i) {
       total_num_elements *= TfLiteOpaqueTensorDim(opaque_tensor, i);
     }
-    std::vector<float> meaning_of_life(total_num_elements, 42);
+    std::vector<float> meaning_of_life(total_num_elements, kTestDelegateOutput);
     memcpy(output, meaning_of_life.data(),
            meaning_of_life.size() * sizeof(float));
 
@@ -487,19 +497,14 @@ struct OpaqueTestDelegate {
 //    kernel.
 // 2. Associates the model's output tensor with the delegate and marks the
 //    output tensor's data as stale, to prompt the runtime to use the delegate's
-//    'CopyFromBufferHandle' callback.  Our test delegates simply writes the
-//    value 42 into every cell of the output tensor.
+//    'CopyFromBufferHandle' callback.
 // 3. The test driver will overwrite the output tensor's buffer handle, to
 //    prompt the runtime to use the delegate's 'FreeBufferHandle' callback.
 // 4. Eventually the test driver destroys the interpreter, and checks that
 //    also the second buffer handle gets deallocated via the delegate callback.
 TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
-  DelegateState delegate_state{
-      false,  // delegate_prepared
-      false,  // copy_from_buffer_handle_called
-      false,  // free_buffer_handle_called
-      -1      // buffer_handle
-  };
+  DelegateState delegate_state;
+  delegate_state.Reset();
 
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromFile(
@@ -527,16 +532,14 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
   ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
 
   // Fill input buffers
-  std::vector<float> floats(kNumTensorElements, 1);
-  memcpy(interpreter->typed_input_tensor<float>(0), floats.data(),
-         floats.size() * sizeof(float));
+  float* input = interpreter->typed_input_tensor<float>(0);
+  std::fill(input, input + kNumTensorElements, 1);
 
   // We set the buffer handle of the output tensor and mark its data as stale.
   // This will make the interpreter call 'CopyFromBufferHandle' to refresh the
-  // output tensor's data.  We simply hardcode the values that will be copied
-  // to the output tensor to 42.
+  // output tensor's data.
   EXPECT_FALSE(delegate_state.free_buffer_handle_called);
-  int first_buffer_handle = 33;
+  int first_buffer_handle = 1;
   const int kOutputTensorIndex = 2;
   interpreter->SetBufferHandle(kOutputTensorIndex, first_buffer_handle,
                                &tflite_delegate);
@@ -545,20 +548,16 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
 
   // Run inference
   ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
-
+  EXPECT_TRUE(delegate_state.delegate_prepared);
   EXPECT_TRUE(delegate_state.copy_from_buffer_handle_called);
   EXPECT_EQ(delegate_state.buffer_handle, first_buffer_handle);
   EXPECT_FALSE(delegate_state.free_buffer_handle_called);
-  std::vector<float> outputs(kNumTensorElements, 0);
-  memcpy(outputs.data(), interpreter->typed_output_tensor<float>(0),
-         outputs.size() * sizeof(float));
-  for (int i = 0; i < outputs.size(); ++i) {
-    EXPECT_EQ(outputs[i], 42);
+  float* outputs = interpreter->typed_output_tensor<float>(0);
+  for (int i = 0; i < kNumTensorElements; ++i) {
+    EXPECT_EQ(outputs[i], OpaqueTestDelegate::kTestDelegateOutput);
   }
 
-  delegate_state.copy_from_buffer_handle_called = false;
-  delegate_state.free_buffer_handle_called = false;
-  delegate_state.buffer_handle = -1;
+  delegate_state.Reset();
   // Setting a buffer handle on a tensor that already has a buffer handle
   // associated with it will free the previously installed buffer handle.
   int second_buffer_handle = first_buffer_handle + 1;
@@ -570,9 +569,7 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
 
   // Destroying the interpreter will release any buffer handles that are
   // associated with the tensors owner by the interpreter.
-  delegate_state.copy_from_buffer_handle_called = false;
-  delegate_state.free_buffer_handle_called = false;
-  delegate_state.buffer_handle = -1;
+  delegate_state.Reset();
   interpreter.reset();
   EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
   EXPECT_EQ(delegate_state.buffer_handle, second_buffer_handle);
@@ -1099,7 +1096,52 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
   TfLiteDelegate delegate_;
 };
 
+class TestOpaqueDelegateBuilderWithDynamicTensors
+    : public TestDelegateWithDynamicTensors {
+ public:
+  void SetUp() override {
+    // Re-use the base class setup in terms of nodes, tensors and registrations.
+    TestDelegateWithDynamicTensors::SetUp();
+    // But with the difference that we'll apply a delegate to the graph that
+    // uses its opaque_delegate_builder field.
+    delegate_.Prepare = nullptr;
+    delegate_.opaque_delegate_builder = &delegate_external_;
+    delegate_external_.Prepare =
+        [](TfLiteOpaqueContext* opaque_context,
+           struct TfLiteOpaqueDelegateStruct* opaque_delegate,
+           void* data) -> TfLiteStatus {
+      // Note, ideally this function should not perform any casts on the
+      // provided opaque context or opaque delegate. However, the APIs that
+      // allow a caller to load an execution plan by providing an opaque
+      // context, or replace nodes with a delegate kernel by providing an opaque
+      // delegate, are added in child CLs.
+      TfLiteIntArray* execution_plan;
+      TfLiteContext* context = reinterpret_cast<TfLiteContext*>(opaque_context);
+      TfLiteDelegate* delegate =
+          reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
+      TF_LITE_ENSURE_STATUS(
+          context->GetExecutionPlan(context, &execution_plan));
+      TfLiteStatus status = context->ReplaceNodeSubsetsWithDelegateKernels(
+          context, DelegateRegistration(), execution_plan, delegate);
+      return status;
+    };
+    delegate_external_.flags = kTfLiteDelegateFlagsNone;
+  }
+
+ private:
+  TfLiteOpaqueDelegateBuilder delegate_external_;
+};
+
 TEST_F(TestDelegateWithDynamicTensors, DisallowDynamicTensors) {
+  interpreter_->ModifyGraphWithDelegate(&delegate_);
+
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+  // The interpreter should not call delegate's `Prepare` when dynamic tensors
+  // exist. So the node ID isn't changed.
+  ASSERT_EQ(interpreter_->execution_plan()[0], 0);
+}
+
+TEST_F(TestOpaqueDelegateBuilderWithDynamicTensors, DisallowDynamicTensors) {
   interpreter_->ModifyGraphWithDelegate(&delegate_);
 
   ASSERT_EQ(interpreter_->execution_plan().size(), 1);
@@ -1118,11 +1160,36 @@ TEST_F(TestDelegateWithDynamicTensors, AllowDynamicTensors) {
   ASSERT_EQ(interpreter_->execution_plan()[0], 1);
 }
 
+TEST_F(TestOpaqueDelegateBuilderWithDynamicTensors, AllowDynamicTensors) {
+  delegate_.opaque_delegate_builder->flags =
+      kTfLiteDelegateFlagsAllowDynamicTensors;
+  interpreter_->ModifyGraphWithDelegate(&delegate_);
+
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+  // The node should be replaced because dynamic tensors are allowed. Therefore
+  // only node ID in the execution plan is changed from 0 to 1.
+  ASSERT_EQ(interpreter_->execution_plan()[0], 1);
+}
+
 TEST_F(TestDelegateWithDynamicTensors, ModifyGraphAfterAllocate) {
   // Trigger allocation *before* delegate application.
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 
   delegate_.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate_), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+  ASSERT_EQ(interpreter_->execution_plan()[0], 1);
+
+  // Allocation should still succeed.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+}
+
+TEST_F(TestOpaqueDelegateBuilderWithDynamicTensors, ModifyGraphAfterAllocate) {
+  // Trigger allocation *before* delegate application.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  delegate_.opaque_delegate_builder->flags =
+      kTfLiteDelegateFlagsAllowDynamicTensors;
   ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate_), kTfLiteOk);
   ASSERT_EQ(interpreter_->execution_plan().size(), 1);
   ASSERT_EQ(interpreter_->execution_plan()[0], 1);
@@ -1145,11 +1212,44 @@ TEST_F(TestDelegateWithDynamicTensors, ShapePropagation_FlagSet) {
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 }
 
+TEST_F(TestOpaqueDelegateBuilderWithDynamicTensors, ShapePropagation_FlagSet) {
+  // Trigger allocation *before* delegate application.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  delegate_.opaque_delegate_builder->flags =
+      kTfLiteDelegateFlagsAllowDynamicTensors |
+      kTfLiteDelegateFlagsRequirePropagatedShapes;
+
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate_), kTfLiteOk);
+
+  // Allocation before & after resizing tensors should work.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {4}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+}
+
 TEST_F(TestDelegateWithDynamicTensors, ShapePropagation_FlagNotSet) {
   // Trigger allocation *before* delegate application.
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 
   delegate_.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate_), kTfLiteOk);
+
+  // Allocation after resizing tensors should NOT work, since runtime won't
+  // propagate shape - causing delegate kernel to fail.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(0, {4}), kTfLiteOk);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteError);
+}
+
+TEST_F(TestOpaqueDelegateBuilderWithDynamicTensors,
+       ShapePropagation_FlagNotSet) {
+  // Trigger allocation *before* delegate application.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  delegate_.opaque_delegate_builder->flags =
+      kTfLiteDelegateFlagsAllowDynamicTensors;
+
   ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate_), kTfLiteOk);
 
   // Allocation after resizing tensors should NOT work, since runtime won't

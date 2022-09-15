@@ -98,4 +98,9 @@ TfLiteStatus TfLiteDelegateFreeBufferHandleInternal(
     TfLiteContext* context, TfLiteDelegate* delegate,
     TfLiteBufferHandle* buffer_handle);
 
+// Returns the 'delegate' flags value.  Note, if the delegate contains a valid
+// opaque_delegate_builder field, then the flags of the delegate external are
+// returned.  Otherwise, the flags field inside `TfLiteDelegate` is returned.
+int64_t TfLiteDelegateGetFlagsInternal(TfLiteDelegate* delegate);
+
 #endif  // TENSORFLOW_LITE_C_COMMON_INTERNAL_H_

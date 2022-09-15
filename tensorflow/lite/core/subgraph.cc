@@ -1147,7 +1147,7 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   bool prepare_original_plan = false;
   if (!pre_delegation_execution_plan_.empty()) {
     for (int i = 0; i < delegates_applied_.size(); ++i) {
-      if ((delegates_applied_[i]->flags &
+      if ((TfLiteDelegateGetFlagsInternal(delegates_applied_[i]) &
            kTfLiteDelegateFlagsRequirePropagatedShapes)) {
         prepare_original_plan = true;
         break;
@@ -1831,7 +1831,8 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 
   const bool delegate_supports_dynamic_shapes =
-      delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors;
+      TfLiteDelegateGetFlagsInternal(delegate) &
+      kTfLiteDelegateFlagsAllowDynamicTensors;
   const auto pre_delegation_state = state_;
 
   if (state_ == kStateInvokableAndImmutable) {

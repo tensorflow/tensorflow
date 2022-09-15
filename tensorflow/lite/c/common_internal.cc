@@ -80,3 +80,10 @@ TfLiteStatus TfLiteDelegateFreeBufferHandleInternal(
   // We failed to free the buffer handle.
   return kTfLiteError;
 }
+
+int64_t TfLiteDelegateGetFlagsInternal(TfLiteDelegate* delegate) {
+  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+    return delegate->opaque_delegate_builder->flags;
+  }
+  return delegate->flags;
+}
