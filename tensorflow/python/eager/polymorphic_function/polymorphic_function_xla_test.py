@@ -13,20 +13,20 @@
 # limitations under the License.
 # ==============================================================================
 from tensorflow.compiler.tests import xla_test
-from tensorflow.python.eager import def_function
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class DefFunctionTests(xla_test.XLATestCase):
+class FunctionTests(xla_test.XLATestCase):
 
   def testVarInitializedInFunction(self):
     with self.test_scope():
       v_holder = []
 
-      @def_function.function
+      @polymorphic_function.function
       def add_var(x):
         if not v_holder:
           v = variables.Variable([1., 2.])

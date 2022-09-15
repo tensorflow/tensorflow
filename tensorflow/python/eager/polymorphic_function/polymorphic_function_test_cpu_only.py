@@ -15,14 +15,14 @@
 
 from absl.testing import parameterized
 
-from tensorflow.python.eager import def_function
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-class DefFunctionCpuOnlyTest(test.TestCase, parameterized.TestCase):
+class FunctionCpuOnlyTest(test.TestCase, parameterized.TestCase):
   """Test that jit_compile=True correctly throws an exception if XLA is not available.
 
   This test should only be run without `--config=cuda`, as that implicitly links
@@ -36,7 +36,7 @@ class DefFunctionCpuOnlyTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(errors.UnimplementedError,
                                 'support for that platform linked in'):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def fn(x):
         return x + x
 

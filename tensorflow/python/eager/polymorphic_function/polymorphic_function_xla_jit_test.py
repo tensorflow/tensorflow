@@ -19,7 +19,7 @@ import re
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -41,7 +41,7 @@ from tensorflow.python.platform import test
 
 
 @test_util.with_eager_op_as_function
-class DefFunctionTest(xla_test.XLATestCase):
+class FunctionTest(xla_test.XLATestCase):
 
   def testAutoclusteringWithTfFunction(self):
     if 'tpu' in self.device.lower():
@@ -49,11 +49,11 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=False)
+      @polymorphic_function.function(jit_compile=False)
       def outer(a, b, c):
         return a * inner(b, c) + c
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def inner(b, c):
         return b + c * b
 
@@ -75,8 +75,8 @@ class DefFunctionTest(xla_test.XLATestCase):
       def fn(x, a):
         return x + a
 
-      func = def_function.function(fn, jit_compile=False)
-      xla_func = def_function.function(fn, jit_compile=True)
+      func = polymorphic_function.function(fn, jit_compile=False)
+      xla_func = polymorphic_function.function(fn, jit_compile=True)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       self.assertAllClose([2, 3, 3, 4, 4], func(inputs, 1))
@@ -85,7 +85,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testBasicInt32(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def fn(x, a):
         return x + a
 
@@ -98,7 +98,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       def fn(x, a):
         return 2 * x + a
 
-      xla_func = def_function.function(fn, jit_compile=True)
+      xla_func = polymorphic_function.function(fn, jit_compile=True)
 
       with backprop.GradientTape() as tape:
         inputs = constant_op.constant([1., 2., 2., 3., 3.])
@@ -124,11 +124,11 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def fn(x, a):
         return x + a
 
-      @def_function.function(jit_compile=False)
+      @polymorphic_function.function(jit_compile=False)
       def fn2(x, a):
         return fn(x, a)
 
@@ -145,12 +145,12 @@ class DefFunctionTest(xla_test.XLATestCase):
         return string_ops.string_length(
             string_ops.string_format('{}', x))
 
-      xla_func = def_function.function(fn, jit_compile=True)
+      xla_func = polymorphic_function.function(fn, jit_compile=True)
 
       def fn2(x):
         return xla_func(x)
 
-      func = def_function.function(fn2, jit_compile=False)
+      func = polymorphic_function.function(fn2, jit_compile=False)
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       with self.assertRaisesRegex(
           errors.InvalidArgumentError, 'legalization failed'
@@ -164,7 +164,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         return string_ops.string_length(
             string_ops.string_format('{}', x))
 
-      xla_func = def_function.function(fn, jit_compile=True)
+      xla_func = polymorphic_function.function(fn, jit_compile=True)
 
       with self.assertRaisesRegex(
           errors.InvalidArgumentError, 'legalization failed'
@@ -174,7 +174,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testCollectiveReduceChannelId(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def fn(x, y):
         t0 = collective_ops.all_reduce_v2(
             t=x, group_size=2, group_key=1, instance_key=1)
@@ -196,7 +196,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def fn(x):
         group_size, group_key = collective_ops.assign_group_v2(
             group_assignment=[[0]], device_index=0, base_key=1000)
@@ -215,12 +215,12 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testPythonLocationInMetadata(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def fn(x, y):
         return x + y
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      self.assertIn('def_function_xla_jit_test',
+      self.assertIn('polymorphic_function_xla_jit_test',
                     fn.experimental_get_compiler_ir(inputs, inputs)())
 
   @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
@@ -228,22 +228,22 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testPythonLocationNestedInMetadata(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x, y):
         return x + y
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def g(x, y):
         return f(x, y)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      self.assertIn('def_function_xla_jit_test',
+      self.assertIn('polymorphic_function_xla_jit_test',
                     g.experimental_get_compiler_ir(inputs, inputs)())
 
   def testPythonStackTrace(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def fn(x):
         return string_ops.string_length(
             string_ops.string_format('{}', x))  # COMMENT2
@@ -255,12 +255,12 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testPythonStackTraceUncompiledWithinCompiled(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function
+      @polymorphic_function.function
       def fn(x):
         return string_ops.string_length(
             string_ops.string_format('{}', x))  # COMMENT3
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def outer(x):
         return fn(x)
 
@@ -273,12 +273,12 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testPythonStackTraceCompiledWithinUncompiled(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def fn(x):
         return string_ops.string_length(
             string_ops.string_format('{}', x))  # COMMENT1
 
-      @def_function.function
+      @polymorphic_function.function
       def outer(x):
         return fn(x)
 
@@ -291,12 +291,12 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testPythonStackTraceCompiledWithinCompiled(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def fn(x):
         return string_ops.string_length(
             string_ops.string_format('{}', x))  # COMMENT4
 
-      @def_function.function
+      @polymorphic_function.function
       def outer(x):
         return fn(x)
 
@@ -311,8 +311,8 @@ class DefFunctionTest(xla_test.XLATestCase):
       def fn(x):
         return v * x
 
-      func = def_function.function(fn, jit_compile=False)
-      xla_func = def_function.function(fn, jit_compile=True)
+      func = polymorphic_function.function(fn, jit_compile=False)
+      xla_func = polymorphic_function.function(fn, jit_compile=True)
 
       def run_and_check(test_func):
         x = constant_op.constant(3.0)
@@ -332,7 +332,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x):
         assert control_flow_util.GraphOrParentsInXlaContext(
             ops.get_default_graph())
@@ -347,7 +347,7 @@ class DefFunctionTest(xla_test.XLATestCase):
             body, (constant_op.constant(0), constant_op.constant(3.)),
             maximum_iterations=10)[1]
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def g(x):
         x = ops.convert_to_tensor(x)
         with backprop.GradientTape() as tape:
@@ -370,7 +370,8 @@ class DefFunctionTest(xla_test.XLATestCase):
       # We define a signature that specifies unknown vector shape, then test
       # that tf.shape constness gets properly propagated into the while_loop
       # even when carried as part of the loop state.
-      @def_function.function(input_signature=signature, jit_compile=True)
+      @polymorphic_function.function(
+          input_signature=signature, jit_compile=True)
       def g(x):
         return control_flow_ops.while_loop_v2(
             lambda *_: True,
@@ -384,7 +385,8 @@ class DefFunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
       signature = [tensor_spec.TensorSpec(shape=[None], dtype=dtypes.float32)]
 
-      @def_function.function(input_signature=signature, jit_compile=True)
+      @polymorphic_function.function(
+          input_signature=signature, jit_compile=True)
       def g(x):
 
         def inner(z, shp):
@@ -409,7 +411,8 @@ class DefFunctionTest(xla_test.XLATestCase):
           tensor_spec.TensorSpec(shape=[None, None], dtype=dtypes.float32)
       ]
 
-      @def_function.function(input_signature=signature, jit_compile=True)
+      @polymorphic_function.function(
+          input_signature=signature, jit_compile=True)
       def g(x):
 
         def inner(z, shp):
@@ -440,7 +443,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       class C(object):
 
-        @def_function.function(jit_compile=True)
+        @polymorphic_function.function(jit_compile=True)
         def f1(self, x, a):
           return x + a
 
@@ -453,7 +456,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       class C(object):
 
-        @def_function.function(jit_compile=True)
+        @polymorphic_function.function(jit_compile=True)
         def f1(self, x):
           return string_ops.string_length(
               string_ops.string_format('{}', x))
@@ -471,15 +474,15 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f():
         return constant_op.constant([0, 2, 1], dtype=dtypes.int32)
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def g(a, b):
         return array_ops.transpose(a, b)
 
-      @def_function.function
+      @polymorphic_function.function
       def z():
         return g(array_ops.ones([3, 4, 3], dtype=dtypes.float32), f())
 
@@ -488,11 +491,11 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testArgMinMax(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def argmax(x):
         return math_ops.argmax(x)
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def argmin(x):
         return math_ops.argmin(x)
 
@@ -505,7 +508,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testErrorMessagePassingTensorArray(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x):
         ta = tensor_array_ops.TensorArray(
             dtype=dtypes.float32, size=1, element_shape=[])
@@ -533,7 +536,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         ta = ta.write(1, 3 * x)
         return ta.concat()
 
-      compiled_f = def_function.function(jit_compile=True)(f)
+      compiled_f = polymorphic_function.function(jit_compile=True)(f)
 
       inputs = constant_op.constant([3.14, 2.68, 7.69])
 
@@ -553,7 +556,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         ta = ta.write(1, 3 * x)
         return ta.concat()
 
-      compiled_f = def_function.function(jit_compile=True)(f)
+      compiled_f = polymorphic_function.function(jit_compile=True)(f)
 
       inputs = constant_op.constant([[3.14, 21.1], [2.68, 22.2], [7.69, 23.3]])
       self.assertAllClose(f(inputs), compiled_f(inputs))
@@ -570,7 +573,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         ta = ta.write(1, 3 * x)
         return ta.concat()
 
-      compiled_f = def_function.function(jit_compile=True)(f)
+      compiled_f = polymorphic_function.function(jit_compile=True)(f)
       inputs = constant_op.constant([3.14])
       self.assertAllClose(f(inputs), compiled_f(inputs))
 
@@ -593,7 +596,7 @@ class DefFunctionTest(xla_test.XLATestCase):
           y = f(x)
           return tape.gradient(y, x)
 
-      compiled_g = def_function.function(jit_compile=True)(g)
+      compiled_g = polymorphic_function.function(jit_compile=True)(g)
 
       self.assertAllClose([5.0, 5.0, 5.0], g())
       self.assertAllClose(compiled_g(), g())
@@ -603,7 +606,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testTensorListConcatGradNestedCompile(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x):
         ta = tensor_array_ops.TensorArray(
             dtype=dtypes.float32, size=2, element_shape=[3])
@@ -611,7 +614,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         ta = ta.write(1, 3 * x)
         return ta.concat()
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def g():
         x = constant_op.constant([3.14, 2.68, 7.69])
         with backprop.GradientTape() as tape:
@@ -628,7 +631,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x):
         return math_ops.cumsum(x)
 
@@ -639,7 +642,7 @@ class DefFunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
       inner_retracings = 0
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def inner(a, b):
         nonlocal inner_retracings
         inner_retracings += 1
@@ -650,7 +653,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       func_input = random_ops.random_normal([10, 10])
       for _ in range(2):
-        def_function.function(outer)(func_input, func_input)
+        polymorphic_function.function(outer)(func_input, func_input)
 
       self.assertEqual(inner_retracings, 1)
 
@@ -658,7 +661,7 @@ class DefFunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
       v = variables.Variable([0.0, 0.0])
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f():
         v.assign([3.1, 2.3])
 
@@ -673,7 +676,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x, y):
         return array_ops.unique(x).y + array_ops.unique(y).y
 
@@ -687,7 +690,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testUniqueCompilability(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x):
         return array_ops.unique(x).y
 
@@ -699,7 +702,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       on_gpu = 'gpu' in self.device.lower()
       v = variables.Variable([3.1, 3.2])
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def update_var(a, b):
         v.assign_add(a * b)
 
@@ -726,7 +729,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       # test a signature of (compile-time const, arg, res_var). The compile-time
       # const will be optimized away so that the kernel signature will become
       # (arg, res_var).
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def update_var(shape, arg):
         v.assign_add(array_ops.broadcast_to(arg, shape))
 
@@ -751,7 +754,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       class C(object):
 
-        @def_function.function(jit_compile=True)
+        @polymorphic_function.function(jit_compile=True)
         def update_var(self, a, b):
           if not hasattr(self, 'v'):
             self.v = variables.Variable(3.1)
@@ -759,7 +762,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       c = C()
 
-      @def_function.function
+      @polymorphic_function.function
       def outer():
         c.update_var(constant_op.constant(0.7), constant_op.constant(0.6))
 
@@ -770,7 +773,7 @@ class DefFunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
       v = variables.Variable(3.1)
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def update_var(a, b):
         v.assign_add(a * b)
         return a * b + v
@@ -782,7 +785,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testReturnIdentity(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(a, b):
         return (a, b)
 
@@ -807,7 +810,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(a, b):
         return array_ops.transpose(a, b)
 
@@ -824,7 +827,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       v = variables.Variable([3.1, 3.2])
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(a, b):
         v.assign_add(a * b)
 
@@ -837,7 +840,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testGetCompilerIrNotCompiled(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function
+      @polymorphic_function.function
       def f(x):
         return x + 1
 
@@ -849,11 +852,11 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testGetCompilerIrNested(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def fn(x, a):
         return x + a
 
-      @def_function.function(jit_compile=False)
+      @polymorphic_function.function(jit_compile=False)
       def fn2(x, a):
         fn.experimental_get_compiler_ir(x, a)()
         return fn(x, a)
@@ -867,7 +870,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       v = variables.Variable([0.1, 0.1])
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(a, b):
         return (a + b) * v
 
@@ -880,7 +883,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testGetCompilerIrDot(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(a, b):
         return a + b
 
@@ -895,7 +898,7 @@ class DefFunctionTest(xla_test.XLATestCase):
     if 'gpu' not in self.device.lower():
       self.skipTest('Testing get_compiler_ir on GPUs without placement')
 
-    @def_function.function(jit_compile=True)
+    @polymorphic_function.function(jit_compile=True)
     def f(a, b):
       return a + b
 
@@ -909,7 +912,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testGetCompilerIrNonTensors(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(l):
         return l[0] + l[1]
 
@@ -921,7 +924,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testGetCompilerIrSerialized(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def fn(x):
         return x - x
 
@@ -937,7 +940,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       a = random_ops.random_normal([100, 100])
       b = random_ops.random_normal([100, 100])
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(a, b):
         return math_ops.matmul(a, b)
 
@@ -950,7 +953,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       s = random_ops.random_uniform([2], 1, 10, dtypes.int32)
       l = random_ops.random_normal([s[0] * s[1]])
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(l):
         return array_ops.reshape(l, s)
 
@@ -966,7 +969,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       a = variables.Variable(50.0)
       b = variables.Variable(2.0)
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x):
         return array_ops.reshape(
             x, [math_ops.cast(a, dtypes.int32),
@@ -986,7 +989,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       a = variables.Variable(50.0)
       b = variables.Variable(2.0)
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x, val1, val2):
         a.assign(math_ops.cast(val1, dtypes.float32))
         b.assign(math_ops.cast(val2, dtypes.float32))
@@ -1011,7 +1014,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       a = variables.Variable(50.0)
       b = variables.Variable(2.0)
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x, val1, val2):
         out = array_ops.reshape(
             x, [math_ops.cast(a, dtypes.int32),
@@ -1031,7 +1034,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testTfAssert(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x):
         control_flow_ops.Assert(x == 1, ['Wrong value'])
 
@@ -1040,7 +1043,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testTensorArrayErrorMessage(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f():
         # The error message as old and new bridge differ in which op they flag.
         # The one points to the creation of the unitialized tensor array, the
@@ -1062,13 +1065,13 @@ class DefFunctionTest(xla_test.XLATestCase):
           f()
 
   def testCounter(self):
-    cell_nojit = def_function._tf_function_counter.get_cell('0')
-    cell_jit = def_function._tf_function_counter.get_cell('1')
+    cell_nojit = polymorphic_function._tf_function_counter.get_cell('0')
+    cell_jit = polymorphic_function._tf_function_counter.get_cell('1')
     orig_nojit = cell_nojit.value()
     orig_jit = cell_jit.value()
 
     with ops.device('device:{}:0'.format(self.device)):
-      @def_function.function
+      @polymorphic_function.function
       def f(a):
         return a + a
       f(constant_op.constant(1))
@@ -1077,19 +1080,19 @@ class DefFunctionTest(xla_test.XLATestCase):
       f(constant_op.constant(1.))  # Calling again does not increment
       self.assertEqual(cell_nojit.value(), orig_nojit + 1)
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f1(a):
         return a + a
       f1(constant_op.constant(1))
       self.assertEqual(cell_nojit.value(), orig_nojit + 1)
       self.assertEqual(cell_jit.value(), orig_jit + 1)
 
-      @def_function.function
+      @polymorphic_function.function
       def f2(a):
-        @def_function.function
+        @polymorphic_function.function
         def g(a):
           return a + a
-        @def_function.function(jit_compile=True)
+        @polymorphic_function.function(jit_compile=True)
         def h(a):
           return a + a
         return g(a) + h(a)
@@ -1097,12 +1100,12 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertEqual(cell_nojit.value(), orig_nojit + 2)
       self.assertEqual(cell_jit.value(), orig_jit + 2)
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f3(a):
-        @def_function.function
+        @polymorphic_function.function
         def g(a):
           return a + a
-        @def_function.function(jit_compile=True)
+        @polymorphic_function.function(jit_compile=True)
         def h(a):
           return a + a
         return g(a) + h(a)
@@ -1121,7 +1124,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @polymorphic_function.function(experimental_compile=True)
       def update_var(a):
         v.assign_add(a)
 
@@ -1133,7 +1136,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testMustBeConstantInsideCondition(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x, d):
         if math_ops.reduce_all(
             math_ops.greater(x, random_ops.random_normal([10, 10]))):
@@ -1147,7 +1150,7 @@ class DefFunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
       with backprop.GradientTape():
 
-        @def_function.function(jit_compile=True, autograph=False)
+        @polymorphic_function.function(jit_compile=True, autograph=False)
         def f(x):
           return control_flow_ops.cond(
               math_ops.reduce_all(x > 1), lambda: 1. / x, lambda: x)
@@ -1162,7 +1165,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       v = variables.Variable([3.1, 3.2])
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(samples):
         v.assign(array_ops.zeros(samples))  # assignment
 
@@ -1181,7 +1184,7 @@ class DefFunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
       writer = summary_ops_v2.create_file_writer(self.get_temp_dir())
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def my_func_temp():
         with writer.as_default():
           summary_ops_v2.scalar('my_metric', 0.5, step=10)
@@ -1193,7 +1196,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testSinglePassArgmax(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(jit_compile=True)
+      @polymorphic_function.function(jit_compile=True)
       def f(x):
         return math_ops.argmax(x)
 
