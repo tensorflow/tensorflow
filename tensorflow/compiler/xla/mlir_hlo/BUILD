@@ -2854,18 +2854,18 @@ cc_library(
 cc_library(
     name = "gml_st_vectorization",
     srcs = ["lib/Dialect/gml_st/transforms/vectorization.cc"],
-    hdrs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
-    ],
+    hdrs = ["include/mlir-hlo/Dialect/gml_st/transforms/passes.h"],
     includes = ["include"],
     deps = [
         ":gml_st",
         ":gml_st_passes_inc_gen",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
     ],
 )

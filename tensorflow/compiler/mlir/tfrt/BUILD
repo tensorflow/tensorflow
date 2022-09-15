@@ -118,6 +118,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_vectorization",
         "//tensorflow/compiler/xla/mlir_hlo:legalize_to_linalg",
         "//tensorflow/compiler/xla/mlir_hlo:lower_index_cast",
         "//tensorflow/compiler/xla/mlir_hlo:shape_simplification",
