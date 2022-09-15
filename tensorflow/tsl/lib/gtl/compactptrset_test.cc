@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/gtl/compactptrset.h"
+#include "tensorflow/tsl/lib/gtl/compactptrset.h"
 
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/hash.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace gtl {
 namespace {
 
@@ -101,4 +101,4 @@ TEST(CompactPointerSetTest, Simple) {
 
 }  // namespace
 }  // namespace gtl
-}  // namespace tensorflow
+}  // namespace tsl

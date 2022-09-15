@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
 
 #include <map>
 #include <set>
 #include <string>
-#include "tensorflow/core/platform/types.h"
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 
 TEST(MapUtil, Find) {
   typedef std::map<string, string> Map;
@@ -58,4 +58,4 @@ TEST(MapUtil, InsertIfNotPresent) {
   EXPECT_EQ(s.count(0), 1);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

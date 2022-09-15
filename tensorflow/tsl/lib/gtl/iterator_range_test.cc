@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/gtl/iterator_range.h"
+#include "tensorflow/tsl/lib/gtl/iterator_range.h"
 
 #include <vector>
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
+
+namespace tsl {
 namespace gtl {
 namespace {
 
@@ -73,4 +74,4 @@ TEST(IteratorRange, ArrayMakeRange) {
 }
 }  // namespace
 }  // namespace gtl
-}  // namespace tensorflow
+}  // namespace tsl

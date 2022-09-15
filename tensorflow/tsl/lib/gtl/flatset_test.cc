@@ -13,16 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/tsl/lib/gtl/flatset.h"
 
 #include <algorithm>
 #include <string>
 #include <vector>
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
+#include "tensorflow/tsl/platform/hash.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
+
+namespace tsl {
 namespace gtl {
 namespace {
 
@@ -622,4 +623,4 @@ TEST(FlatSet, MutableIterator_ShouldNotCompile) {
 
 }  // namespace
 }  // namespace gtl
-}  // namespace tensorflow
+}  // namespace tsl

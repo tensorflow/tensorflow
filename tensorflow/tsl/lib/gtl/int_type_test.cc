@@ -15,25 +15,25 @@ limitations under the License.
 
 // Unit test cases for IntType.
 
-#include "tensorflow/core/lib/gtl/int_type.h"
+#include "tensorflow/tsl/lib/gtl/int_type.h"
 
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 
-TF_LIB_GTL_DEFINE_INT_TYPE(Int8_IT, int8);
-TF_LIB_GTL_DEFINE_INT_TYPE(UInt8_IT, uint8);
-TF_LIB_GTL_DEFINE_INT_TYPE(Int16_IT, int16);
-TF_LIB_GTL_DEFINE_INT_TYPE(UInt16_IT, uint16);
-TF_LIB_GTL_DEFINE_INT_TYPE(Int32_IT, int32);
-TF_LIB_GTL_DEFINE_INT_TYPE(Int64_IT, int64_t);
-TF_LIB_GTL_DEFINE_INT_TYPE(UInt32_IT, uint32);
-TF_LIB_GTL_DEFINE_INT_TYPE(UInt64_IT, uint64);
-TF_LIB_GTL_DEFINE_INT_TYPE(Long_IT, long);  // NOLINT
+TSL_LIB_GTL_DEFINE_INT_TYPE(Int8_IT, int8);
+TSL_LIB_GTL_DEFINE_INT_TYPE(UInt8_IT, uint8);
+TSL_LIB_GTL_DEFINE_INT_TYPE(Int16_IT, int16);
+TSL_LIB_GTL_DEFINE_INT_TYPE(UInt16_IT, uint16);
+TSL_LIB_GTL_DEFINE_INT_TYPE(Int32_IT, int32);
+TSL_LIB_GTL_DEFINE_INT_TYPE(Int64_IT, int64_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(UInt32_IT, uint32);
+TSL_LIB_GTL_DEFINE_INT_TYPE(UInt64_IT, uint64);
+TSL_LIB_GTL_DEFINE_INT_TYPE(Long_IT, long);  // NOLINT
 
 template <typename IntType_Type>
 class IntTypeTest : public ::testing::Test {};
@@ -291,4 +291,4 @@ TYPED_TEST(IntTypeTest, TestMove) {
   EXPECT_EQ(321, *foo.ptr);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

@@ -274,16 +274,10 @@ filegroup(
     name = "legacy_lib_gtl_tests",
     srcs = [
         "cleanup_test.cc",
-        "compactptrset_test.cc",
         "edit_distance_test.cc",
         "flatmap_test.cc",
-        "flatset_test.cc",
-        "int_type_test.cc",
-        "iterator_range_test.cc",
         "manual_constructor_test.cc",
-        "map_util_test.cc",
         "top_n_test.cc",
-        "//tensorflow/tsl/lib/gtl:legacy_lib_gtl_tests",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
