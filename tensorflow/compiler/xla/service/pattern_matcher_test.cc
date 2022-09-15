@@ -1135,16 +1135,17 @@ TEST_F(PatternMatcherTest, OptionalUnaryOp) {
       "an HloInstruction which optionally matches a unary operand with one of "
       "the opcodes {",
       HloOpcodeString(HloOpcode::kCos), ", ", HloOpcodeString(HloOpcode::kAbs),
-      "} before matching the given pattern, an HloInstruction with opcode ",
+      "} before matching an HloInstruction with opcode ",
       HloOpcodeString(HloOpcode::kBitcast), ".");
   std::string explanation = absl::StrCat(
       "HloInstruction doesn't have opcode ",
       HloOpcodeString(HloOpcode::kBitcast),
       "\nin cos = f32[] cosine(f32[] p0) ",
-      "\nExpected the operand of the instruction to match the prescribed "
-      "operand pattern. HloInstruction doesn't have opcode ",
+      "\nThe operand of the HloInstruction doesn't match an HloInstruction "
+      "with opcode ",
       HloOpcodeString(HloOpcode::kBitcast),
-      "\nin out = f32[] abs(f32[] cos)\nin out = f32[] abs(f32[] cos)");
+      " and the HloInstruction doesn't have opcode ",
+      HloOpcodeString(HloOpcode::kBitcast), "\nin out = f32[] abs(f32[] cos)");
   EXPECT_DESC_AND_EXPLANATION(
       root,
       m::OptionalUnaryOp({HloOpcode::kCos, HloOpcode::kAbs}, m::Bitcast()),
@@ -1155,15 +1156,14 @@ TEST_F(PatternMatcherTest, OptionalUnaryOp) {
       "the opcodes {",
       HloOpcodeString(HloOpcode::kCos), ", ",
       HloOpcodeString(HloOpcode::kBitcast),
-      "} before matching the given pattern, an HloInstruction with opcode ",
+      "} before matching an HloInstruction with opcode ",
       HloOpcodeString(HloOpcode::kCos), ".");
   explanation = absl::StrCat(
-      "HloInstruction doesn't have one of the opcodes {",
+      "The HloInstruction doesn't have one of the opcodes {",
       HloOpcodeString(HloOpcode::kCos), ", ",
       HloOpcodeString(HloOpcode::kBitcast),
-      "}. HloInstruction doesn't have opcode ",
-      HloOpcodeString(HloOpcode::kCos),
-      "\nin out = f32[] abs(f32[] cos)\nin out = f32[] abs(f32[] cos)");
+      "} and the HloInstruction doesn't have opcode ",
+      HloOpcodeString(HloOpcode::kCos), "\nin out = f32[] abs(f32[] cos)");
   EXPECT_DESC_AND_EXPLANATION(
       root,
       m::OptionalUnaryOp({HloOpcode::kCos, HloOpcode::kBitcast}, m::Cos()),
