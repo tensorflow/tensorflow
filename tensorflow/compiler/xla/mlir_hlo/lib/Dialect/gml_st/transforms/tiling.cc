@@ -324,7 +324,7 @@ OpFoldResult computeTileSizeInDim(OpBuilder &builder, Location loc,
 
   bool hasTileSizeOne = tileCst && *tileCst == 1;
   bool dividesEvenly = tileCst && dimCst && ((*dimCst % *tileCst) == 0);
-  if (hasTileSizeOne || dividesEvenly) return tileSize;
+  if (hasTileSizeOne || dividesEvenly) return builder.getIndexAttr(*tileCst);
 
   AffineExpr d0, s0;
   bindDims(builder.getContext(), d0);
