@@ -1821,7 +1821,7 @@ cc_library(
 # Main program for tests
 alias(
     name = "test_main",
-    actual = "//tensorflow/core/platform:test_main",
+    actual = "//tensorflow/tsl/platform:test_main",
     visibility = ["//tensorflow:internal"],
 )
 
@@ -1852,15 +1852,19 @@ tf_cc_tests(
         ":protos_all_cc",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
+        "//third_party/eigen3",
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:stringprintf",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
+        # TODO(ddunleavy) only for math_util_test.cc, remove after TSL
+        # test rule is made
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:types",
         "@zlib",
     ],
 )

@@ -252,7 +252,6 @@ cc_library(
     name = "net",
     srcs = ["net.cc"],
     hdrs = [
-        "//tensorflow/core/platform:net.h",
         "//tensorflow/tsl/platform:net.h",
     ],
     tags = [
@@ -261,8 +260,8 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:strcat",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:strcat",
     ],
     alwayslink = True,
 )
@@ -356,8 +355,8 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:path",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
         "@bazel_tools//tools/cpp/runfiles",
     ],
 )
@@ -373,8 +372,8 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:path",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:types",
         "@local_config_rocm//rocm:rocm_headers",
     ],
@@ -393,11 +392,11 @@ cc_library(
 cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
-    hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
+    hdrs = ["//tensorflow/tsl/platform:stacktrace_handler.h"],
     linkstatic = 1,
     deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:stacktrace",
     ],
     alwayslink = 1,
 )
@@ -433,12 +432,12 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:strcat",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:net",
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:strcat",
         "//tensorflow/tsl/platform:types",
         "@com_google_googletest//:gtest",
     ],

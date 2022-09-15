@@ -27,7 +27,7 @@ limitations under the License.
 
 #undef ERROR
 
-namespace tensorflow {
+namespace tsl {
 namespace internal {
 using namespace tsl::internal;  // NOLINT
 
@@ -146,4 +146,4 @@ int PickUnusedPortOrDie() {
 }
 
 }  // namespace internal
-}  // namespace tensorflow
+}  // namespace tsl

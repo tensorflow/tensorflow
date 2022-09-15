@@ -13,20 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/core/bitmap.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
 
 #include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace core {
 namespace {
 
 // Return next size to test after n.
 size_t NextSize(size_t n) { return n + ((n < 75) ? 1 : 25); }
 
-static void MakeRandomBitmap(random::SimplePhilox* rnd, Bitmap* bitmap) {
+static void MakeRandomBitmap(tensorflow::random::SimplePhilox* rnd,
+                             Bitmap* bitmap) {
   size_t n = rnd->Uniform(200);
   bitmap->Reset(n);
   for (size_t i = 0; i < n; i++) {
@@ -95,8 +96,8 @@ TEST(BitmapTest, FirstUnset) {
 }
 
 TEST(BitmapTest, FirstUnsetRandom) {
-  random::PhiloxRandom philox(301, 17);
-  random::SimplePhilox rnd(&philox);
+  tensorflow::random::PhiloxRandom philox(301, 17);
+  tensorflow::random::SimplePhilox rnd(&philox);
   for (int iter = 0; iter < 10000; iter++) {
     Bitmap bitmap;
     MakeRandomBitmap(&rnd, &bitmap);
@@ -125,4 +126,4 @@ TEST(BitmapTest, FirstUnsetRandom) {
 
 }  // namespace
 }  // namespace core
-}  // namespace tensorflow
+}  // namespace tsl

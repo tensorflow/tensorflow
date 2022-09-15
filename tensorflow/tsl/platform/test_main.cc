@@ -21,13 +21,13 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/match.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/stacktrace_handler.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/platform.h"
+#include "tensorflow/tsl/platform/stacktrace_handler.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 GTEST_API_ int main(int argc, char** argv) {
-  tensorflow::testing::InstallStacktraceHandler();
+  tsl::testing::InstallStacktraceHandler();
 
   for (int i = 1; i < argc; i++) {
     if (absl::StartsWith(argv[i], "--benchmark_filter=")) {

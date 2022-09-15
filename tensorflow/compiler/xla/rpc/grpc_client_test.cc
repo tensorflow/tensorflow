@@ -48,7 +48,7 @@ class GRPCClientTestBase : public ::testing::Test {
     std::string test_srcdir = tsl::testing::TensorFlowSrcRoot();
     std::string service_main_path = tsl::io::JoinPath(
         test_srcdir, "compiler/xla/rpc/grpc_service_main_cpu");
-    int port = tensorflow::internal::PickUnusedPortOrDie();
+    int port = tsl::internal::PickUnusedPortOrDie();
     subprocess_.SetProgram(
         service_main_path,
         {service_main_path, absl::StrFormat("--port=%d", port)});

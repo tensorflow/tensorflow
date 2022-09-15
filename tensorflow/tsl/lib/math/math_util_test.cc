@@ -19,12 +19,12 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 // Number of arguments for each test of the CeilOrRatio method
@@ -359,4 +359,4 @@ TEST(MathUtil, Sign) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl
