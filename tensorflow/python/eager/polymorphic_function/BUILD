@@ -82,7 +82,9 @@ cuda_py_test(
     tags = [
         "nomac",  # b/157056289
     ],
+    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:data_flow_ops",
@@ -104,12 +106,15 @@ cuda_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
+        "//tensorflow/python/autograph/core",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/saved_model:save_options",
         "@absl_py//absl/testing:parameterized",
     ],
 )

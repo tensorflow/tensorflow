@@ -895,23 +895,6 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "def_function_test",
-    srcs = ["def_function_test.py"],
-    python_version = "PY3",
-    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
-    deps = [
-        ":def_function",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/autograph/core",
-        "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/saved_model:save_options",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
 py_library(
     name = "wrap_function",
     srcs = ["wrap_function.py"],
