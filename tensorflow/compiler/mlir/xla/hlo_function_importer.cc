@@ -1026,6 +1026,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (all_gather->channel_id().has_value())
         attributes.push_back(
             ConvertChannelHandle(all_gather->channel_id().value()));
+      if (all_gather->use_global_device_ids())
+        attributes.push_back(ConvertUseGlobalDeviceIds());
       return func_builder
           ->create<mlir::mhlo::AllGatherOp>(loc, result_type, operands,
                                             attributes)
@@ -1303,6 +1305,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (reduce_scatter->channel_id().has_value())
         attributes.push_back(
             ConvertChannelHandle(reduce_scatter->channel_id().value()));
+      if (reduce_scatter->use_global_device_ids())
+        attributes.push_back(ConvertUseGlobalDeviceIds());
       auto reduce_scatter_op =
           func_builder->create<mlir::mhlo::ReduceScatterOp>(
               loc, result_type, operands, attributes);

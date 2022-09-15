@@ -756,9 +756,11 @@ LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
   auto all_gather_dim = op.all_gather_dim();
   int64_t shard_count = result_type.getDimSize(all_gather_dim) /
                         operand_type.getDimSize(all_gather_dim);
-  value_map[op] = xla::AllGather(operand, all_gather_dim, shard_count,
-                                 Convert_replica_groups(op.replica_groups()),
-                                 Convert_channel_handle(op.channel_handle()));
+  value_map[op] =
+      xla::AllGather(operand, all_gather_dim, shard_count,
+                     Convert_replica_groups(op.replica_groups()),
+                     Convert_channel_handle(op.channel_handle()), std::nullopt,
+                     Convert_use_global_device_ids(op.use_global_device_ids()));
   return success();
 }
 
@@ -798,10 +800,11 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  value_map[op] =
-      xla::ReduceScatter(operand, computation, scatter_dim, shard_count,
-                         Convert_replica_groups(op.replica_groups()),
-                         Convert_channel_handle(op.channel_handle()));
+  value_map[op] = xla::ReduceScatter(
+      operand, computation, scatter_dim, shard_count,
+      Convert_replica_groups(op.replica_groups()),
+      Convert_channel_handle(op.channel_handle()), std::nullopt,
+      Convert_use_global_device_ids(op.use_global_device_ids()));
   return success();
 }
 

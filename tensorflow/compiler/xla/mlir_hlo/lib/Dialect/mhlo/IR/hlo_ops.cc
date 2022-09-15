@@ -695,13 +695,13 @@ LogicalResult TypeExtensionsAttr::verifyEncoding(
 // AllReduceOp
 //===----------------------------------------------------------------------===//
 
-void AllReduceOp::build(
-    ::mlir::OpBuilder& ods_builder, ::mlir::OperationState& ods_state,
-    ::mlir::Type result_type, ::mlir::Value operand,
-    ::mlir::DenseIntElementsAttr replica_groups,
-    /*optional*/ ::mlir::mhlo::ChannelHandleAttr channel_handle) {
-  AllReduceOp::build(ods_builder, ods_state, result_type, operand,
-                     replica_groups, channel_handle, nullptr);
+void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                        Type resultType, Value operand,
+                        DenseIntElementsAttr replicaGroups,
+                        ChannelHandleAttr channelHandle) {
+  AllReduceOp::build(odsBuilder, odsState, resultType, operand, replicaGroups,
+                     channelHandle,
+                     /*use_global_device_ids=*/nullptr);
 }
 
 //===----------------------------------------------------------------------===//
@@ -727,6 +727,26 @@ LogicalResult ReduceScatterOp::verify() {
       /*operand_types=*/{operand().getType()},
       /*result_types=*/{getType()},
       /*scatter_dimension=*/scatter_dimension());
+}
+
+void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                            Type resultType, Value operand,
+                            IntegerAttr scatterDimension,
+                            DenseIntElementsAttr replicaGroups,
+                            ChannelHandleAttr channelHandle) {
+  ReduceScatterOp::build(odsBuilder, odsState, resultType, operand,
+                         scatterDimension, replicaGroups, channelHandle,
+                         /*use_global_device_ids=*/nullptr);
+}
+
+void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                            Type resultType, Value operand,
+                            uint64_t scatterDimension,
+                            DenseIntElementsAttr replicaGroups,
+                            ChannelHandleAttr channelHandle) {
+  ReduceScatterOp::build(odsBuilder, odsState, resultType, operand,
+                         scatterDimension, replicaGroups, channelHandle,
+                         /*use_global_device_ids=*/false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3102,6 +3122,25 @@ LogicalResult AllGatherOp::verify() {
            << operandType.getDimSize(allGatherDimIndex);
 
   return success();
+}
+
+void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                        Type resultType, Value operand,
+                        IntegerAttr allGatherDim,
+                        DenseIntElementsAttr replicaGroups,
+                        ChannelHandleAttr channelHandle) {
+  AllGatherOp::build(odsBuilder, odsState, resultType, operand, allGatherDim,
+                     replicaGroups, channelHandle,
+                     /*use_global_device_ids=*/nullptr);
+}
+
+void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                        Type resultType, Value operand, uint64_t allGatherDim,
+                        DenseIntElementsAttr replicaGroups,
+                        ChannelHandleAttr channelHandle) {
+  AllGatherOp::build(odsBuilder, odsState, resultType, operand, allGatherDim,
+                     replicaGroups, channelHandle,
+                     /*use_global_device_ids=*/false);
 }
 
 //===----------------------------------------------------------------------===//

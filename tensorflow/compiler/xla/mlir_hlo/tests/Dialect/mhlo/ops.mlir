@@ -21,7 +21,8 @@ func.func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
-      scatter_dimension = 1 : i64} : (tensor<4x16xf32>) -> tensor<4x4xf32>
+      scatter_dimension = 1 : i64,
+      use_global_device_ids} : (tensor<4x16xf32>) -> tensor<4x4xf32>
   func.return %0 : tensor<4x4xf32>
 }
 
@@ -329,7 +330,8 @@ func.func @allgather_dynamic_gather_dim(%arg0: tensor<128x32xf32>) -> tensor<128
   %0 = "mhlo.all_gather"(%arg0) {
     all_gather_dim = 1 : i64,
     channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
-    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    use_global_device_ids
   } : (tensor<128x32xf32>) -> tensor<128x?xf32>
   func.return %0 : tensor<128x?xf32>
 }
