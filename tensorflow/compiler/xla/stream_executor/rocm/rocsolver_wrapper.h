@@ -50,7 +50,7 @@ namespace wrap {
       void* f;                                                                \
       auto s = stream_executor::port::Env::Default()->GetSymbolFromLibrary(   \
           stream_executor::internal::CachedDsoLoader::GetRocsolverDsoHandle() \
-              .ValueOrDie(),                                                  \
+              .value(),                                                  \
           kName, &f);                                                         \
       CHECK(s.ok()) << "could not find " << kName                             \
                     << " in rocsolver lib; dlerror: " << s.error_message();   \

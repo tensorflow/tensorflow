@@ -50,7 +50,7 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
     static void* GetDsoHandle() {                                         \
       auto s = GetRocblasDsoHandle();                                     \
-      return s.ValueOrDie();                                              \
+      return s.value();                                              \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
       void* f;                                                            \

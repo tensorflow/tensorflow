@@ -49,7 +49,7 @@ namespace wrap {
       void* f;                                                                \
       auto s = tsl::Env::Default()->GetSymbolFromLibrary(                     \
           stream_executor::internal::CachedDsoLoader::GetRoctracerDsoHandle() \
-              .ValueOrDie(),                                                  \
+              .value(),                                                  \
           kName, &f);                                                         \
       CHECK(s.ok()) << "could not find " << kName                             \
                     << " in roctracer DSO; dlerror: " << s.error_message();   \

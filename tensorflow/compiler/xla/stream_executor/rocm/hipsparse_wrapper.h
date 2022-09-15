@@ -48,7 +48,7 @@ namespace wrap {
     static void* GetDsoHandle() {                                              \
       auto s =                                                                 \
           stream_executor::internal::CachedDsoLoader::GetHipsparseDsoHandle(); \
-      return s.ValueOrDie();                                                   \
+      return s.value();                                                   \
     }                                                                          \
     static FuncPtrT LoadOrDie() {                                              \
       void* f;                                                                 \

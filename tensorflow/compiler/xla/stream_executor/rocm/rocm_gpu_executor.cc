@@ -670,7 +670,7 @@ blas::BlasSupport* GpuExecutor::CreateBlas() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 dnn::DnnSupport* GpuExecutor::CreateDnn() {
@@ -684,7 +684,7 @@ dnn::DnnSupport* GpuExecutor::CreateDnn() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 fft::FftSupport* GpuExecutor::CreateFft() {
@@ -698,7 +698,7 @@ fft::FftSupport* GpuExecutor::CreateFft() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 rng::RngSupport* GpuExecutor::CreateRng() {
@@ -712,7 +712,7 @@ rng::RngSupport* GpuExecutor::CreateRng() {
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 // TODO(rspringer): Remove in b/18544742.
@@ -957,17 +957,17 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   builder.set_rocm_compute_capability(gcn_arch_name);
 
   builder.set_shared_memory_per_core(
-      GpuDriver::GetMaxSharedMemoryPerCore(device).ValueOrDie());
+      GpuDriver::GetMaxSharedMemoryPerCore(device).value());
   builder.set_shared_memory_per_block(
-      GpuDriver::GetMaxSharedMemoryPerBlock(device).ValueOrDie());
+      GpuDriver::GetMaxSharedMemoryPerBlock(device).value());
   builder.set_core_count(
-      GpuDriver::GetMultiprocessorCount(device).ValueOrDie());
+      GpuDriver::GetMultiprocessorCount(device).value());
   builder.set_threads_per_core_limit(
-      GpuDriver::GetMaxThreadsPerMultiprocessor(device).ValueOrDie());
+      GpuDriver::GetMaxThreadsPerMultiprocessor(device).value());
   builder.set_registers_per_block_limit(
-      GpuDriver::GetMaxRegistersPerBlock(device).ValueOrDie());
+      GpuDriver::GetMaxRegistersPerBlock(device).value());
   builder.set_threads_per_warp(
-      GpuDriver::GetThreadsPerWarp(device).ValueOrDie());
+      GpuDriver::GetThreadsPerWarp(device).value());
   builder.set_registers_per_core_limit(64 * 1024);
 
   return builder.Build();
