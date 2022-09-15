@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/default/util.h"
+#include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 
 namespace tflite {
 namespace gpu {

@@ -19,6 +19,5 @@ cc_library(
 cc_library(
     name = "util",
     srcs = ["util.cc"],
-    hdrs = ["util.h"],
     deps = ["//tensorflow/lite/delegates/gpu/cl:opencl_wrapper"],
 )
