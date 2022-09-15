@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
+#include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -230,6 +231,10 @@ StatusOr<DevicePutResult> HandlePyBuffer(py::handle obj, PjRtDevice* to_device,
 StatusOr<DevicePutResult> HandlePyArray(py::handle obj, PjRtDevice* to_device,
                                         const DevicePutOptions& options) {
   const auto* py_array = obj.cast<PyArray*>();
+
+  if (py_array->sharding().get_type() == jax::PmapSharding::type()) {
+    return InvalidArgument("PmapSharding is not supported in jit path.");
+  }
 
   if (py_array->num_shards() != 1) {
     return InvalidArgument(
