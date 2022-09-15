@@ -315,6 +315,8 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
 // Once the pipeline stabilizes, and most models convert successfully this may
 // be removed so only pipeline passes run.
 void initAllPasses() {
+  mlir::registerPassManagerCLOptions();
+  mlir::registerAsmPrinterCLOptions();
   mlir::registerAllPasses();
   mlir::registerTensorFlowPasses();
   mlir::mhlo::registerAllMhloPasses();
