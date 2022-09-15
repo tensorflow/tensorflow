@@ -122,6 +122,16 @@ void TfLiteInterpreterOptionsAddDelegate(TfLiteInterpreterOptions* options,
   options->delegates.push_back(delegate);
 }
 
+void TfLiteInterpreterOptionsAddOpaqueDelegate(
+    TfLiteInterpreterOptions* options,
+    TfLiteOpaqueDelegateStruct* opaque_delegate) {
+  // The following cast is safe only because this code is part of the TF Lite
+  // runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  TfLiteDelegate* delegate = reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
+  TfLiteInterpreterOptionsAddDelegate(options, delegate);
+}
+
 void TfLiteInterpreterOptionsSetErrorReporter(
     TfLiteInterpreterOptions* options,
     void (*reporter)(void* user_data, const char* format, va_list args),

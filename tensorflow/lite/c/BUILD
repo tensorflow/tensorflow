@@ -247,10 +247,13 @@ tflite_cc_library_with_c_headers_test(
 
 cc_library(
     name = "common_internal",
+    srcs = ["common_internal.cc"],
     hdrs = ["common_internal.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    visibility = ["//tensorflow/lite:__pkg__"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
     deps = [
         ":c_api_types",
         ":common",

@@ -24,6 +24,9 @@ limitations under the License.
 
 #include "ruy/denormal.h"  // from @ruy
 #include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
@@ -88,9 +91,8 @@ TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                  tensor->delegate == nullptr || tensor->delegate == delegate);
   tensor->delegate = delegate;
   if (tensor->buffer_handle != kTfLiteNullBufferHandle) {
-    TF_LITE_ENSURE(context_, tensor->delegate->FreeBufferHandle != nullptr);
-    tensor->delegate->FreeBufferHandle(context_, tensor->delegate,
-                                       &tensor->buffer_handle);
+    TF_LITE_ENSURE_STATUS(TfLiteDelegateFreeBufferHandleInternal(
+        context_, tensor->delegate, &(tensor->buffer_handle)));
   }
   tensor->buffer_handle = buffer_handle;
 

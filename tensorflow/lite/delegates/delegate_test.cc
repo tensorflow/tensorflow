@@ -23,6 +23,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_opaque.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/interpreter.h"
@@ -412,6 +414,169 @@ TEST_F(TestDelegate, TestCopyFromBuffer) {
   for (int i = 0; i < tensor->dims->data[0]; ++i) {
     ASSERT_EQ(tensor->data.f[i], 6.0f);
   }
+}
+
+// A utility struct, intended to be used to record the interaction between a
+// test delegate and the runtime.
+struct DelegateState {
+  bool delegate_prepared;
+  bool copy_from_buffer_handle_called;
+  bool free_buffer_handle_called;
+  int buffer_handle;
+};
+
+struct OpaqueTestDelegate {
+  static inline TfLiteStatus Prepare(
+      TfLiteOpaqueContext* opaque_context,
+      struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+    DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
+    delegate_state->delegate_prepared = true;
+
+    TfLiteRegistration registration{};
+    registration.prepare = [](TfLiteContext* context,
+                              TfLiteNode* node) -> TfLiteStatus {
+      return kTfLiteOk;
+    };
+    registration.invoke = [](TfLiteContext* context,
+                             TfLiteNode* node) -> TfLiteStatus {
+      return kTfLiteOk;
+    };
+
+    TfLiteContext* context = reinterpret_cast<TfLiteContext*>(opaque_context);
+    TfLiteIntArray* execution_plan;
+    context->GetExecutionPlan(context, &execution_plan);
+    context->ReplaceNodeSubsetsWithDelegateKernels(
+        context, registration, execution_plan,
+        reinterpret_cast<TfLiteDelegate*>(opaque_delegate));
+    return kTfLiteOk;
+  }
+
+  static inline TfLiteStatus CopyFromBufferHandle(
+      TfLiteOpaqueContext* context, struct TfLiteOpaqueDelegateStruct* delegate,
+      void* data, TfLiteBufferHandle buffer_handle,
+      TfLiteOpaqueTensor* opaque_tensor) {
+    DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
+    delegate_state->copy_from_buffer_handle_called = true;
+    delegate_state->buffer_handle = buffer_handle;
+
+    auto* output =
+        reinterpret_cast<float*>(TfLiteOpaqueTensorData(opaque_tensor));
+    int total_num_elements = 1;
+    for (int i = 0; i < TfLiteOpaqueTensorNumDims(opaque_tensor); ++i) {
+      total_num_elements *= TfLiteOpaqueTensorDim(opaque_tensor, i);
+    }
+    std::vector<float> meaning_of_life(total_num_elements, 42);
+    memcpy(output, meaning_of_life.data(),
+           meaning_of_life.size() * sizeof(float));
+
+    return kTfLiteOk;
+  }
+
+  static inline void FreeBufferHandle(
+      TfLiteOpaqueContext* context, struct TfLiteOpaqueDelegateStruct* delegate,
+      void* data, TfLiteBufferHandle* buffer_handle) {
+    DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
+    delegate_state->free_buffer_handle_called = true;
+    delegate_state->buffer_handle = *buffer_handle;
+  }
+};
+
+// Ensure that the runtime correctly interacts with a delegate that uses the
+// 'TfLiteOpaqueDelegateBuilder'.  This test:
+// 1. Defines a delegate that will replace the full graph will a delegate
+//    kernel.
+// 2. Associates the model's output tensor with the delegate and marks the
+//    output tensor's data as stale, to prompt the runtime to use the delegate's
+//    'CopyFromBufferHandle' callback.  Our test delegates simply writes the
+//    value 42 into every cell of the output tensor.
+// 3. The test driver will overwrite the output tensor's buffer handle, to
+//    prompt the runtime to use the delegate's 'FreeBufferHandle' callback.
+// 4. Eventually the test driver destroys the interpreter, and checks that
+//    also the second buffer handle gets deallocated via the delegate callback.
+TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
+  DelegateState delegate_state{
+      false,  // delegate_prepared
+      false,  // copy_from_buffer_handle_called
+      false,  // free_buffer_handle_called
+      -1      // buffer_handle
+  };
+
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      tflite::FlatBufferModel::BuildFromFile(
+          "third_party/tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+  constexpr int kNumTensorElements = 1 * 8 * 8 * 3;
+
+  TfLiteOpaqueDelegateBuilder opaque_delegate{};
+  opaque_delegate.data = &delegate_state;
+  opaque_delegate.CopyFromBufferHandle =
+      OpaqueTestDelegate::CopyFromBufferHandle;
+  opaque_delegate.FreeBufferHandle = OpaqueTestDelegate::FreeBufferHandle;
+  opaque_delegate.Prepare = OpaqueTestDelegate::Prepare;
+
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::InterpreterBuilder builder(*model, resolver);
+  TfLiteDelegate tflite_delegate{};
+  tflite_delegate.opaque_delegate_builder = &opaque_delegate;
+  builder.AddDelegate(&tflite_delegate);
+  std::unique_ptr<tflite::Interpreter> interpreter;
+  builder(&interpreter);
+  ASSERT_NE(interpreter, nullptr);
+
+  // Allocate tensor buffers.
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
+
+  // Fill input buffers
+  std::vector<float> floats(kNumTensorElements, 1);
+  memcpy(interpreter->typed_input_tensor<float>(0), floats.data(),
+         floats.size() * sizeof(float));
+
+  // We set the buffer handle of the output tensor and mark its data as stale.
+  // This will make the interpreter call 'CopyFromBufferHandle' to refresh the
+  // output tensor's data.  We simply hardcode the values that will be copied
+  // to the output tensor to 42.
+  EXPECT_FALSE(delegate_state.free_buffer_handle_called);
+  int first_buffer_handle = 33;
+  const int kOutputTensorIndex = 2;
+  interpreter->SetBufferHandle(kOutputTensorIndex, first_buffer_handle,
+                               &tflite_delegate);
+  TfLiteTensor* output_t = interpreter->output_tensor(0);
+  output_t->data_is_stale = true;
+
+  // Run inference
+  ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
+
+  EXPECT_TRUE(delegate_state.copy_from_buffer_handle_called);
+  EXPECT_EQ(delegate_state.buffer_handle, first_buffer_handle);
+  EXPECT_FALSE(delegate_state.free_buffer_handle_called);
+  std::vector<float> outputs(kNumTensorElements, 0);
+  memcpy(outputs.data(), interpreter->typed_output_tensor<float>(0),
+         outputs.size() * sizeof(float));
+  for (int i = 0; i < outputs.size(); ++i) {
+    EXPECT_EQ(outputs[i], 42);
+  }
+
+  delegate_state.copy_from_buffer_handle_called = false;
+  delegate_state.free_buffer_handle_called = false;
+  delegate_state.buffer_handle = -1;
+  // Setting a buffer handle on a tensor that already has a buffer handle
+  // associated with it will free the previously installed buffer handle.
+  int second_buffer_handle = first_buffer_handle + 1;
+  interpreter->SetBufferHandle(kOutputTensorIndex, second_buffer_handle,
+                               &tflite_delegate);
+  EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
+  EXPECT_EQ(delegate_state.buffer_handle, first_buffer_handle);
+  EXPECT_TRUE(delegate_state.free_buffer_handle_called);
+
+  // Destroying the interpreter will release any buffer handles that are
+  // associated with the tensors owner by the interpreter.
+  delegate_state.copy_from_buffer_handle_called = false;
+  delegate_state.free_buffer_handle_called = false;
+  delegate_state.buffer_handle = -1;
+  interpreter.reset();
+  EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
+  EXPECT_EQ(delegate_state.buffer_handle, second_buffer_handle);
+  EXPECT_TRUE(delegate_state.free_buffer_handle_called);
 }
 
 TEST_F(TestDelegate, DelegateCustomOpResolution) {
