@@ -914,8 +914,29 @@ absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
   if (args.size() != dest_buffers->leaf_count())
     return absl::InvalidArgumentError("Incorrect number of arguments");
 
-  size_t index = 0;
-  for (auto& dest : dest_buffers->leaves()) {
+  int64_t leaf_count = dest_buffers->leaf_count();
+  auto dest_leaf_it = dest_buffers->leaf_begin();
+
+  for (int64_t index = 0; index < leaf_count; ++index) {
+    const ShapeIndex& shape_index = dest_leaf_it->first;
+    std::unique_ptr<OutfeedBuffer>& buffer = dest_leaf_it->second;
+
+    // NOTE: This code needs deal with the `dest_buffers` object getting
+    // deleted when it is executing. Specifically, objects in the outfeed queue
+    // are pointers to instances of stack-allocated objects in
+    // `GpuTransferManager::TransferLiteralFromOutfeed`. When all leaf node
+    // buffers are notified via "buffer->Done()" below in the stream host
+    // callback, `TransferLiteralFromOutfeed` deletes this stack-allocated
+    // object when it returns. This means that it is possible that during the
+    // last iteration, after the call to "buffer->Done()" is scheduled onto the
+    // stream, the `dest_buffers` object might get deleted, so we should avoid
+    // accessing the object after that.
+    //
+    // To achieve that, increment the leaf iterator here before the last "Done"
+    // is enqueued, instead of in the loop increment, which would be after the
+    // "Done" is scheduled.
+    ++dest_leaf_it;
+
     // Get the source buffer.
     auto source = args.get<runtime::StridedMemrefView>(index);
     if (failed(source))
@@ -923,7 +944,7 @@ absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
 
     // Get the source buffer shape.
     const Shape& dest_shape =
-        ShapeUtil::GetSubshape(dest_buffers->shape(), dest.first);
+        ShapeUtil::GetSubshape(dest_buffers->shape(), shape_index);
 
     // Check that destination shape matches the source shape.
     Shape source_shape = ToShape(*source);
@@ -933,14 +954,11 @@ absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
     }
 
     se::DeviceMemoryBase source_address = GetDeviceAddress(*source);
-    std::unique_ptr<OutfeedBuffer>& buffer = dest.second;
 
     // Schedule the memory transfer.
     auto* dest_address = buffer->destination()->untyped_data();
     stream->ThenMemcpy(dest_address, source_address, buffer->length())
         .ThenDoHostCallback([&buffer]() { buffer->Done(); });
-
-    ++index;
   }
 
   Status block_status = stream->BlockHostUntilDone();
