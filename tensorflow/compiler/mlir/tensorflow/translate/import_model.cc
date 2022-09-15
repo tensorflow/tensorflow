@@ -86,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
@@ -1110,7 +1111,7 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
       TF_RETURN_IF_ERROR(
           ConvertDataType(element_dtype->type(), builder, &etype));
     }
-    return mlir::RankedTensorType::get(
+    return GetTypeFromTFTensorShape(
         {}, mlir::TF::VariantType::get({mlir::UnrankedTensorType::get(etype)},
                                        etype.getContext()));
   }
@@ -1166,7 +1167,7 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
           if (shape_proto.unknown_rank())
             return mlir::UnrankedTensorType::get(element_type);
           TF_RETURN_IF_ERROR(ConvertToMlirShape(shape_proto, &shape));
-          return mlir::RankedTensorType::get(shape, element_type);
+          return GetTypeFromTFTensorShape(shape, element_type);
         }
       }
     }
@@ -1276,7 +1277,7 @@ StatusOr<TensorType> ImporterBase::ConvertElementTypeAndShape(
       dimensions.push_back(context->Value(dim_handle));
   }
 
-  return mlir::RankedTensorType::get(
+  return GetTypeFromTFTensorShape(
       llvm::makeArrayRef(dimensions.begin(), dimensions.end()), element_type);
 }
 
@@ -2315,7 +2316,7 @@ StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
       } else {
         llvm::SmallVector<int64_t, 4> shape;
         TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
-        arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
+        arg_types.push_back(GetTypeFromTFTensorShape(shape, element_type));
       }
     }
   }
@@ -2610,7 +2611,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
         TF_RETURN_IF_ERROR(ConvertToMlirShape(st.shape, &shape));
         TF_RETURN_IF_ERROR(
             ConvertDataType(st.imported_dtype, builder, &st_data_type));
-        subtypes.push_back(mlir::RankedTensorType::get(shape, st_data_type));
+        subtypes.push_back(GetTypeFromTFTensorShape(shape, st_data_type));
       }
       if (imported_dtype == DT_RESOURCE) {
         element_type =
@@ -2631,7 +2632,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
     } else {
       llvm::SmallVector<int64_t, 4> shape;
       TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
-      arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
+      arg_types.push_back(GetTypeFromTFTensorShape(shape, element_type));
     }
     i++;
   }
