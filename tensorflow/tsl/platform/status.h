@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
@@ -96,6 +97,9 @@ class Status {
 #endif  // SWIG
 
   // Prefer using OkStatus().
+  ABSL_DEPRECATED(
+      "Use `OkStatus()` (preferred) or `Status()` (which is backward "
+      "compatible with TF v2.9 and lower) instead.")
   static Status OK() { return Status(); }
 
   /// Returns true iff the status indicates success.
