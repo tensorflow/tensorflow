@@ -1768,6 +1768,22 @@ func.func @main(%arg0: tuple<tensor<1x1xf32>, tensor<2x3xf32>>, %arg1: tensor<5x
 
 // -----
 
+// CHECK: HloModule
+// CHECK{LITERAL}: output_to_operand_aliasing={{}: (0, {1})}
+func.func @main(%arg0: tuple<tensor<1x1xf32>, tensor<2x3xf32>>, %arg1: tensor<5x5xf32>) {
+  %0 = "mhlo.custom_call"(%arg0, %arg1) {
+    call_target_name = "foo",
+    output_operand_aliases = [
+      #mhlo.output_operand_alias<output_tuple_indices = [],
+                                 operand_index = 0,
+                                 operand_tuple_indices = [1]>
+    ]
+  } : (tuple<tensor<1x1xf32>, tensor<2x3xf32>>, tensor<5x5xf32>) -> tensor<2x3xf32>
+  func.return
+}
+
+// -----
+
 // CHECK:  HloModule
 func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
 // CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)

@@ -3472,6 +3472,51 @@ func.func @custom_call_output_operand_alias(%arg0: tuple<tensor<1x1xf32>, tensor
 
 // -----
 
+// CHECK-LABEL: func @custom_call_output_operand_alias_when_output_not_tuple
+func.func @custom_call_output_operand_alias_when_output_not_tuple(%arg0: tuple<tensor<1x1xf32>, tensor<2x3xf32>>, %arg1: tensor<5x5xf32>) {
+  %0 = "mhlo.custom_call"(%arg0, %arg1) {
+    call_target_name = "foo",
+    output_operand_aliases = [
+      #mhlo.output_operand_alias<output_tuple_indices = [],
+                                 operand_index = 0,
+                                 operand_tuple_indices = [1]>
+    ]
+  } : (tuple<tensor<1x1xf32>, tensor<2x3xf32>>, tensor<5x5xf32>) -> tensor<2x3xf32>
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @custom_call_output_operand_alias_when_operand_not_tuple
+func.func @custom_call_output_operand_alias_when_operand_not_tuple(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) {
+  %0 = "mhlo.custom_call"(%arg0, %arg1) {
+    call_target_name = "foo",
+    output_operand_aliases = [
+      #mhlo.output_operand_alias<output_tuple_indices = [0],
+                                 operand_index = 0,
+                                 operand_tuple_indices = []>
+    ]
+  } : (tensor<2x3xf32>, tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @custom_call_output_operand_alias_when_no_tuple
+func.func @custom_call_output_operand_alias_when_no_tuple(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) {
+  %0 = "mhlo.custom_call"(%arg0, %arg1) {
+    call_target_name = "foo",
+    output_operand_aliases = [
+      #mhlo.output_operand_alias<output_tuple_indices = [],
+                                 operand_index = 0,
+                                 operand_tuple_indices = []>
+    ]
+  } : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<2x3xf32>
+  func.return
+}
+
+// -----
+
 func.func @custom_call_output_operand_alias_mismatch_operand_index(%arg0: tuple<tensor<1x1xf32>, tensor<2x3xf32>>, %arg1: tensor<5x5xf32>) {
   // expected-error@+1 {{expects operandIndex in the output_operand_alias attribute to be in range [0, 2); got: 2}}
   %0 = "mhlo.custom_call"(%arg0, %arg1) {

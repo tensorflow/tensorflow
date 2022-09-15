@@ -8915,16 +8915,12 @@ void MhloDialect::printAttribute(Attribute attr, DialectAsmPrinter& os) const {
 }
 
 /// Helpers for attributes parsing.
-
 static ParseResult parseDims(AsmParser& parser, SmallVector<int64_t>& dims) {
   dims.clear();
-  if (parser.parseLSquare()) return failure();
-  while (failed(parser.parseOptionalRSquare())) {
+  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, [&] {
     dims.emplace_back();
-    if (parser.parseInteger(dims.back())) return failure();
-    (void)parser.parseOptionalComma();
-  }
-  return success();
+    return parser.parseInteger(dims.back());
+  });
 }
 
 static ParseResult parseDimsWithMinimumElements(AsmParser& parser,
@@ -8936,6 +8932,18 @@ static ParseResult parseDimsWithMinimumElements(AsmParser& parser,
            << "expected at least " << minElements << " element(s), found "
            << dims.size();
   return success();
+}
+
+FailureOr<SmallVector<int64_t>> parseIntArray(AsmParser& parser) {
+  SmallVector<int64_t> ints;
+  if (failed(parseDims(parser, ints))) return failure();
+  return ints;
+}
+
+void printIntArray(AsmPrinter& printer, ArrayRef<int64_t> ints) {
+  printer << '[';
+  llvm::interleaveComma(ints, printer);
+  printer << ']';
 }
 
 /// Parse a custom attribute that resembles a struct of the form
@@ -9005,6 +9013,7 @@ static void printField(AsmPrinter& printer, StringRef name, ArrayRef<T> field,
     separator = ", ";
   }
 }
+
 template <typename... Ts>
 static void printStruct(AsmPrinter& printer, StringRef name,
                         Ts... printFields) {

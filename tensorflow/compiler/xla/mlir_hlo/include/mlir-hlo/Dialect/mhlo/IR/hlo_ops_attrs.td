@@ -20,7 +20,10 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/IR/TensorEncoding.td"
 
-def HLODim : ArrayRefParameter<"int64_t", "Dimension">;
+def HLODim : ArrayRefParameter<"int64_t", "Dimension"> {
+  let parser = "mlir::mhlo::parseIntArray($_parser)";
+  let printer = "mlir::mhlo::printIntArray($_printer, $_self)";
+}
 
 def ScatterDimensionNumbers : AttrDef<HLO_Dialect, "ScatterDimensionNumbers"> {
   let mnemonic = "scatter";
@@ -113,11 +116,11 @@ def OutputOperandAlias : AttrDef<HLO_Dialect, "OutputOperandAlias"> {
     "int64_t":$operandIndex,
     HLODim:$operandTupleIndices
   );
-  let assemblyFormat = "`<` "
-                       "`output_tuple_indices` `=` `[` $outputTupleIndices `]` `,`"
-                       "`operand_index` `=` $operandIndex `,`"
-                       "`operand_tuple_indices` `=` `[` $operandTupleIndices `]`"
-                       "`>`";
+  let assemblyFormat = [{
+    `<` `output_tuple_indices` `=` $outputTupleIndices `,`
+        `operand_index` `=` $operandIndex `,`
+        `operand_tuple_indices` `=` $operandTupleIndices `>`
+  }];
 }
 
 def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
