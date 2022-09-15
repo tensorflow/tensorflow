@@ -47,6 +47,22 @@ def for_with_lambda_iter(l):
     results.append(f())
   return results
 
+def for_with_lambda_object():
+  class SomeRandomObject:
+    def bar(self, n):
+      return n+1
+  def foo_init():
+      return tf.constant(0)
+  fns = []
+  results = []
+  foo = foo_init()
+  for i in tf.range(3):
+    foo = SomeRandomObject()
+    fns.append( lambda i=i: foo.bar(i))
+  for f in fns:
+    results.append(f())
+  return results
+
 def for_with_lambda_iter_local_var(l):
   fns = []
   results = []
@@ -145,6 +161,9 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
   def test_for_with_lambda_iter(self, l, type_):
     l = type_(l)
     self.assertFunctionMatchesEager(for_with_lambda_iter, l)
+
+  def test_for_with_lambda_object(self):
+    self.assertFunctionMatchesEager(for_with_lambda_object)
 
   @parameterized.parameters(*itertools.product(
       ([], [1], [1, 2], [(1,2),(3,4)]),
