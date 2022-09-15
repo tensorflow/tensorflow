@@ -6566,8 +6566,10 @@ cc_library(
     hdrs = ["operand_upcaster.h"],
     deps = [
         ":hlo",
+        ":hlo_creation_utils",
         ":op_expander_pass",
         ":shape_inference",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
     ],
 )
 
