@@ -1841,11 +1841,21 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
       return true;
-    case HloOpcode::kAllReduce:
-      return channel_id().has_value() ||
-             Cast<HloAllReduceInstruction>(this)->constrain_layout();
+
+    // Collective instructions with channel_id are side effecting only if
+    // they are used in non-spmd context.
     case HloOpcode::kAllToAll:
-      return Cast<HloAllToAllInstruction>(this)->constrain_layout();
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
+      if (Cast<HloCollectiveInstruction>(this)->constrain_layout()) {
+        return true;
+      }
+      [[fallthrough]];
+    case HloOpcode::kCollectivePermute:
+      return Cast<HloChannelInstruction>(this)->channel_id().has_value() &&
+             !GetModule()->config().use_spmd_partitioning();
+
     case HloOpcode::kCustomCall:
       return Cast<HloCustomCallInstruction>(this)
           ->custom_call_has_side_effect();
