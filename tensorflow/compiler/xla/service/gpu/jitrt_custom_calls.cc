@@ -64,6 +64,7 @@
 namespace xla {
 namespace gpu {
 
+using Eigen::bfloat16;
 using Eigen::half;
 
 using llvm::ArrayRef;
@@ -1075,16 +1076,18 @@ absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
   bool set_zero = false;
 
   // Check all supported data types to see if we have a zero value.
-  if (auto i1 = constant.get<bool>(); succeeded(i1) && *i1 == false)
-    set_zero = true;
-  else if (auto i32 = constant.get<int32_t>(); succeeded(i32) && *i32 == 0)
-    set_zero = true;
-  else if (auto f16 = constant.get<half>(); succeeded(f16) && *f16 == half(0.0))
-    set_zero = true;
-  else if (auto f32 = constant.get<float>(); succeeded(f32) && *f32 == 0.0)
-    set_zero = true;
-  else if (auto f64 = constant.get<double>(); succeeded(f64) && *f64 == 0.0)
-    set_zero = true;
+  if (auto i1 = constant.get<bool>(); succeeded(i1))
+    set_zero = *i1 == false;
+  else if (auto i32 = constant.get<int32_t>(); succeeded(i32))
+    set_zero = *i32 == 0;
+  else if (auto bf16 = constant.get<bfloat16>(); succeeded(bf16))
+    set_zero = *bf16 == bfloat16(0.0);
+  else if (auto f16 = constant.get<half>(); succeeded(f16))
+    set_zero = *f16 == half(0.0);
+  else if (auto f32 = constant.get<float>(); succeeded(f32))
+    set_zero = *f32 == 0.0;
+  else if (auto f64 = constant.get<double>(); succeeded(f64))
+    set_zero = *f64 == 0.0;
 
   if (set_zero) {
     stream->ThenMemZero(&dst_data, dst_data.size());

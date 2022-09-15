@@ -1120,19 +1120,26 @@ XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(double);
 
 #undef XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING
 
-template <CustomCall::RuntimeChecks checks>
-struct CustomCallArgDecoding<Eigen::half, checks> {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Eigen::half> Decode(
-      TypeID type_id, void* value) {
-    if (!CustomCall::Isa<Eigen::half>(checks, type_id)) {
-      return failure();
-    }
-
-    auto* src = reinterpret_cast<uint16_t*>(value);
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(uint16_t));
-    return Eigen::numext::bit_cast<Eigen::half>(*src);
+// Register decoding for special floating point types defined in Eigen.
+#define XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING(T, STORAGE)              \
+  template <CustomCall::RuntimeChecks checks>                               \
+  struct CustomCallArgDecoding<T, checks> {                                 \
+    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(TypeID type_id, \
+                                                            void* value) {  \
+      if (!CustomCall::Isa<T>(checks, type_id)) {                           \
+        return failure();                                                   \
+      }                                                                     \
+                                                                            \
+      auto* src = reinterpret_cast<STORAGE*>(value);                        \
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(STORAGE));          \
+      return Eigen::numext::bit_cast<T>(*src);                              \
+    }                                                                       \
   }
-};
+
+XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING(Eigen::bfloat16, uint16_t);
+XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING(Eigen::half, uint16_t);
+
+#undef XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING
 
 //===----------------------------------------------------------------------===//
 // Opaque arguments at run time passed as pointers and decoded by wrapping them

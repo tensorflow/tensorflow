@@ -70,7 +70,8 @@ void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
   r.Register<Tagged<bool>>("__type_id_bool");
   r.Register<Tagged<int32_t>>("__type_id_int32");
   r.Register<Tagged<int64_t>>("__type_id_int64");
-  r.Register<Tagged<Eigen::half>>("__type_id_half");
+  r.Register<Tagged<Eigen::bfloat16>>("__type_id_bfloat16");
+  r.Register<Tagged<Eigen::half>>("__type_id_f16");
   r.Register<Tagged<float>>("__type_id_float");
   r.Register<Tagged<double>>("__type_id_double");
 

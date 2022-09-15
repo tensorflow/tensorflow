@@ -562,6 +562,7 @@ static TypeID ScalarRuntimeTypeId(Type type) {
   if (type.isInteger(32)) return TypeID::get<Tagged<int32_t>>();
   if (type.isInteger(64)) return TypeID::get<Tagged<int64_t>>();
 
+  if (type.isBF16()) return TypeID::get<Tagged<Eigen::bfloat16>>();
   if (type.isF16()) return TypeID::get<Tagged<Eigen::half>>();
   if (type.isF32()) return TypeID::get<Tagged<float>>();
   if (type.isF64()) return TypeID::get<Tagged<double>>();
