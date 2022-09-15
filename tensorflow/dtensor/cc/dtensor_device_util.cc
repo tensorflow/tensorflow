@@ -103,7 +103,10 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
   Tensor t;
   Status convert_status = TF_TensorToTensor(tf_tensor.get(), &t);
   if (!convert_status.ok() || t.dtype() != DataType::DT_RESOURCE) {
-    TF_SetStatus(status, TF_INTERNAL, convert_status.error_message().c_str());
+    TF_SetStatus(status, TF_INTERNAL,
+                 absl::StrCat("TF_TensorToTensor() Conversion failed:",
+                              convert_status.error_message())
+                     .c_str());
     return nullptr;
   }
   // Replicate this resource handle to all devices without changing the
