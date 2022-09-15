@@ -52,7 +52,7 @@ def for_with_lambda_object():
     def bar(self, n):
       return n+1
   def foo_init():
-      return tf.constant(0)
+    return tf.constant(0)
   fns = []
   results = []
   foo = foo_init()
