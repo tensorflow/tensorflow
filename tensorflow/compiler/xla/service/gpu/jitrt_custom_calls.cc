@@ -1078,6 +1078,8 @@ absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
   // Check all supported data types to see if we have a zero value.
   if (auto i1 = constant.get<bool>(); succeeded(i1))
     set_zero = *i1 == false;
+  else if (auto i16 = constant.get<int16_t>(); succeeded(i16))
+    set_zero = *i16 == 0;
   else if (auto i32 = constant.get<int32_t>(); succeeded(i32))
     set_zero = *i32 == 0;
   else if (auto bf16 = constant.get<bfloat16>(); succeeded(bf16))
