@@ -99,6 +99,7 @@ add_mlir_library(GmlStPasses
   gml_st_to_scf.cc
   gml_st_to_gpu.cc
   tiling.cc
+  tiling_cwise.cc
   collapse_materialize_ops.cc
   vectorization.cc
 

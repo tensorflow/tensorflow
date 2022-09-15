@@ -17,8 +17,6 @@ func.func @add_static(%lhs: tensor<1024x1024xf32>, %rhs: tensor<1024x1024xf32>)
     -> tensor<1024x1024xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
-  %d0 = tensor.dim %lhs, %c0 : tensor<1024x1024xf32>
-  %d1 = tensor.dim %lhs, %c1 : tensor<1024x1024xf32>
   %init = linalg.init_tensor [1024, 1024] : tensor<1024x1024xf32>
   %add = linalg.generic {
       indexing_maps = [#id_map, #id_map, #id_map],

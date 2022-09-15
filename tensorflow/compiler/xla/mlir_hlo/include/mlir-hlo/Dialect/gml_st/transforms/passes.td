@@ -56,6 +56,18 @@ def FusionPass : Pass<"gml-fusion", "mlir::func::FuncOp"> {
   ];
 }
 
+def TilingCwisePass : Pass<"gml-tiling-cwise", "mlir::func::FuncOp"> {
+  let summary = "Tile and fuse all cwise ops";
+  let constructor = "::mlir::gml_st::createTilingCwisePass()";
+  let options = [
+    Option<"distribute_", "distribute", "bool", /*default=*/"true",
+           "Generate gml_st.parallel or gml_st.for">,
+    ListOption<"tileSizes_", "tile-sizes", "int64_t", 
+               "Right-aligned tile sizes. Do not tile possible remaining "
+               "dimensions", "llvm::cl::ZeroOrMore">,
+  ];
+}
+
 def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
   let summary = "Compose set operations.";
   let constructor = "::mlir::gml_st::createComposeSetOpsPass()";

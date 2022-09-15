@@ -460,8 +460,11 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     // zero" skips tiling a particular dimension. This convention is
     // significantly simpler to handle instead of adjusting affine maps to
     // account for missing dimensions.
-    SmallVector<Value> tileSizeVector =
-        options.tileSizeComputationFn(rewriter, op);
+    SmallVector<Value> tileSizeVector;
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      tileSizeVector = options.tileSizeComputationFn(rewriter, op);
+    }
     if (tileSizeVector.size() < iterationDomain.size()) {
       auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
       tileSizeVector.append(numLoops - tileSizeVector.size(), zero);

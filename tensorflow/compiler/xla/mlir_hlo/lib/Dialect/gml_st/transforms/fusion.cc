@@ -314,8 +314,7 @@ void populateFusionPatterns(MLIRContext* ctx, OpFilterFn filterFn,
   // clang-format off
   patterns->insert<
       DimOpFissionPattern,
-      DimOpReificationPattern,
-      DeprecatedFusionPattern>(ctx);
+      DimOpReificationPattern>(ctx);
   // clang-format on
 }
 
