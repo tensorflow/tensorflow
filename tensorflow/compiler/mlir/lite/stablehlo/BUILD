@@ -352,11 +352,13 @@ tf_cc_binary(
     copts = ["-O3"],
     deps = [
         ":check_accepted_ops_pass",
+        ":mhlo_tfl",
         ":op_stat_pass",
         ":transforms",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir:passes",
+        "//tensorflow/compiler/mlir/lite:flatbuffer_export",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
         "//tensorflow/compiler/mlir/tensorflow",
