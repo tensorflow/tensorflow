@@ -66,6 +66,7 @@ tf_kernel_library(
         "fft_ops.cc",
         "fill_op.cc",
         "function_ops.cc",
+        "fused_conv_ops.cc",
         "gather_op.cc",
         "gather_op_helpers.h",
         "gather_scatter_ops.cc",
