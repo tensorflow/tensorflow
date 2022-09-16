@@ -353,7 +353,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
             //              .setAlignment(alignment)
             //              .setUseFullTileBuffersByDefault(true)
             //              .setUseAlloca(true))
-            .vectorize(mlir::linalg::GenericOp::getOperationName())
+            // .vectorize(mlir::linalg::GenericOp::getOperationName())
             .vectorLowering(
                 mlir::linalg::LinalgVectorLoweringOptions()
                     .setVectorTransformsOptions(
