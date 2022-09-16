@@ -1082,6 +1082,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla/service:custom_call_status_internal",
+        "//tensorflow/core/platform:mutex",  # TODO(aminim): migrate eigen3/unsupported/Eigen/CXX11/ThreadPool:70 to TSL
         "//tensorflow/tsl/platform:blocking_counter",
         "//tensorflow/tsl/platform:logging",
         "//third_party/eigen3",

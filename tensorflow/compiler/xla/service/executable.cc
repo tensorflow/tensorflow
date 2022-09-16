@@ -267,7 +267,7 @@ Status ExecuteWrapperAfterExecution(
         &stream->parent()->GetDeviceDescription();
     std::shared_ptr<HloExecutionProfile> profile = state.profile_ptr;
     stream->ThenDoHostCallback([profile, device_description]() {
-      XLA_LOG_LINES(tensorflow::INFO,
+      XLA_LOG_LINES(tsl::INFO,
                     profile->ToString(device_description->clock_rate_ghz()));
     });
   }
