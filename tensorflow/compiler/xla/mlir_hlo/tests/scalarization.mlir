@@ -146,9 +146,14 @@ func.func @scatter_i32_i64(%indices: tensor<1x2xi32>, %updates: tensor<1xi64>,
 // CHECK:       %[[I1_INT:.*]] = tensor.extract %[[INDICES]][%[[C0]], %[[C1]]]
 // CHECK:       %[[I1:.*]] = arith.index_cast %[[I1_INT]] : i32 to index
 
-// CHECK:       %[[CUR_ELEM:.*]] = tensor.extract %[[INIT]][%[[I0]], %[[I1]]]
-// CHECK:       %[[COMBINED:.*]] = arith.addi %[[UPD_ELEM]], %[[CUR_ELEM]]
-// CHECK:       tensor.insert %[[COMBINED]] into %[[INIT]][%[[I0]], %[[I1]]]
+// CHECK:         %[[RESULT:.*]] = scf.if
+// CHECK:           %[[CUR_ELEM:.*]] = tensor.extract %[[INIT]][%[[I0]], %[[I1]]]
+// CHECK:           %[[COMBINED:.*]] = arith.addi %[[UPD_ELEM]], %[[CUR_ELEM]]
+// CHECK:           %[[UPDATED_INIT:.*]] = tensor.insert %[[COMBINED]] into %[[INIT]]
+// CHECK:         } else {
+// CHECK:           scf.yield %[[INIT]]
+// CHECK:         }
+// CHECK:         return %[[RESULT]]
 
 // -----
 
@@ -178,9 +183,14 @@ func.func @scatter_i32_f32(%indices: tensor<1x2xi32>, %updates: tensor<1xf32>,
 // CHECK:         %[[I1_INT:.*]] = tensor.extract %[[INDICES]][%[[C0]], %[[C1]]]
 // CHECK:         %[[I1:.*]] = arith.index_cast %[[I1_INT]] : i32 to index
 
-// CHECK:         %[[CUR_ELEM:.*]] = tensor.extract %[[INIT]][%[[I0]], %[[I1]]]
-// CHECK:         %[[COMBINED:.*]] = arith.addf %[[UPD_ELEM]], %[[CUR_ELEM]]
-// CHECK:         tensor.insert %[[COMBINED]] into %[[INIT]][%[[I0]], %[[I1]]]
+// CHECK:         %[[RESULT:.*]] = scf.if
+// CHECK:           %[[CUR_ELEM:.*]] = tensor.extract %[[INIT]][%[[I0]], %[[I1]]]
+// CHECK:           %[[COMBINED:.*]] = arith.addf %[[UPD_ELEM]], %[[CUR_ELEM]]
+// CHECK:           %[[UPDATED_INIT:.*]] = tensor.insert %[[COMBINED]] into %[[INIT]]
+// CHECK:         } else {
+// CHECK:           scf.yield %[[INIT]]
+// CHECK:         }
+// CHECK:         return %[[RESULT]]
 
 // -----
 
@@ -214,9 +224,14 @@ func.func @scatter_2d_indices(%indices: tensor<1xi32>, %updates: tensor<f32>,
 // CHECK:         %[[I2_INT:.*]] = tensor.extract %[[INDICES]][%[[C2]]]
 // CHECK:         %[[I2:.*]] = arith.index_cast %[[I2_INT]] : i32 to index
 
-// CHECK:         %[[CUR_ELEM:.*]] = tensor.extract %[[INIT]][%[[I0]], %[[I1]], %[[I2]]]
-// CHECK:         %[[COMBINED:.*]] = arith.addf %[[UPD_ELEM]], %[[CUR_ELEM]]
-// CHECK:         tensor.insert %[[COMBINED]] into %[[INIT]][%[[I0]], %[[I1]], %[[I2]]]
+// CHECK:         %[[RESULT:.*]] = scf.if
+// CHECK:           %[[CUR_ELEM:.*]] = tensor.extract %[[INIT]][%[[I0]], %[[I1]], %[[I2]]]
+// CHECK:           %[[COMBINED:.*]] = arith.addf %[[UPD_ELEM]], %[[CUR_ELEM]]
+// CHECK:           %[[UPDATED_INIT:.*]] = tensor.insert %[[COMBINED]] into %[[INIT]]
+// CHECK:         } else {
+// CHECK:           scf.yield %[[INIT]]
+// CHECK:         }
+// CHECK:         return %[[RESULT]]
 
 // -----
 
@@ -246,6 +261,11 @@ func.func @scatter_small_vector_dim(%indices: tensor<1x1x2xi32>,
 // CHECK:         %[[I1_INT:.*]] = tensor.extract %[[INDICES]][%[[C0]], %[[C0]], %[[C1]]]
 // CHECK:         %[[I1:.*]] = arith.index_cast %[[I1_INT]] : i32 to index
 
-// CHECK:         %[[CUR_VALUE:.*]] = tensor.extract %[[INIT]][%[[I0]], %[[I1]]]
-// CHECK:         %[[COMBINED:.*]] = arith.maxf %[[UPD_ELEM]], %[[CUR_VALUE]]
-// CHECK:         tensor.insert %[[COMBINED]] into %[[INIT]][%[[I0]], %[[I1]]]
+// CHECK:         %[[RESULT:.*]] = scf.if
+// CHECK:           %[[CUR_ELEM:.*]] = tensor.extract %[[INIT]][%[[I0]], %[[I1]]]
+// CHECK:           %[[COMBINED:.*]] = arith.maxf %[[UPD_ELEM]], %[[CUR_ELEM]]
+// CHECK:           %[[UPDATED_INIT:.*]] = tensor.insert %[[COMBINED]] into %[[INIT]]
+// CHECK:         } else {
+// CHECK:           scf.yield %[[INIT]]
+// CHECK:         }
+// CHECK:         return %[[RESULT]]
