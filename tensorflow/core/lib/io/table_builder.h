@@ -25,11 +25,15 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_TABLE_BUILDER_H_
 
 #include <stdint.h>
+
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/table_options.h"
 
-namespace tensorflow {
+namespace tsl {
 class WritableFile;
+}  // namespace tsl
+namespace tensorflow {
 namespace table {
 
 class BlockBuilder;
@@ -40,7 +44,7 @@ class TableBuilder {
   // Create a builder that will store the contents of the table it is
   // building in *file.  Does not close the file.  It is up to the
   // caller to close the file after calling Finish().
-  TableBuilder(const Options& options, WritableFile* file);
+  TableBuilder(const Options& options, tsl::WritableFile* file);
 
   // REQUIRES: Either Finish() or Abandon() has been called.
   ~TableBuilder();

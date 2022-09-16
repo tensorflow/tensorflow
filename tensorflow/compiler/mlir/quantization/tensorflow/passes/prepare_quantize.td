@@ -23,6 +23,6 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 // Converts tf.Const to arith.constant for statically shaped, non-opaque constants.
 // Needed for QuantizationDriver to recognize constants.
 def ConvertTfConstToArithConst : Pat<
-  (TF_ConstOp:$res NonOpaqueElementsAttr:$value),
+  (TF_ConstOp:$res DenseElementsAttr:$value),
   (Arith_ConstantOp $value),
   [(AnyStaticShapeTensor $res)], (addBenefit 10)>;

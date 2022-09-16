@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
 #include "tensorflow/core/lib/io/snappy/snappy_inputstream.h"
 #include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 

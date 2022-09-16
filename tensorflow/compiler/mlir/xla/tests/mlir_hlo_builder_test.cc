@@ -25,8 +25,8 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -85,8 +85,7 @@ TEST_F(XlaBuilderTest, CreateToken) {
 
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
 
-  ExpectHasSubstr(GetMlirOpString(token),
-                  R"("mhlo.create_token"() : () -> !mhlo.token)");
+  ExpectHasSubstr(GetMlirOpString(token), R"(mhlo.create_token : !mhlo.token)");
 }
 
 TEST_F(XlaBuilderTest, Infeed) {
@@ -202,7 +201,7 @@ TEST_F(XlaBuilderTest, CustomCallWithComputation) {
   // Finally, add the CustomCallOp (with computation) to the module.
   auto custom_call = CustomCallWithComputation(
       &xla_builder_, "test_call_target", {}, test_comparator,
-      output_shape_or.ValueOrDie(),
+      output_shape_or.value(),
       "{\"option1\": foo, \"option2\": bar, \"option3\": \"baz\"}");
 
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
@@ -218,7 +217,7 @@ TEST_F(XlaBuilderTest, CustomCallWithComputation) {
   EXPECT_EQ(
       GetMlirOpString(actual_func_op),
       R"(func.func private @test_comparator.4(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<i1> {
-  %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  %1 = mhlo.compare  GT, %arg0, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
   return %1 : tensor<i1>
 })");
 }

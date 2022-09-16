@@ -523,7 +523,7 @@ class CollectiveReplicaLauncher(object):
     # IndexedSlices as follows:
     #   1. Gather the lengths of IndexedSlices from all participants.
     #   2. If they have consistent length, apply all_gather.
-    #   3. Otherwise pad IndexedSlices to be the same length accross all
+    #   3. Otherwise pad IndexedSlices to be the same length across all
     #      participants and apply_gather.
     options = self._options.merge(options)
     with ops.device(self._device):

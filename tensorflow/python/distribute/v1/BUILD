@@ -14,7 +14,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",  # b/216367668
-        "notsan",  # b/239832822
     ],
     deps = [
         "//tensorflow/python:array_ops",

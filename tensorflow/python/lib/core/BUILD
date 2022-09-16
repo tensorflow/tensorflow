@@ -59,6 +59,7 @@ cc_library(
     deps = [
         ":numpy_lib",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "@com_google_absl//absl/strings",

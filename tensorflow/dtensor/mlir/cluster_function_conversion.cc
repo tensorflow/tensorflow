@@ -68,7 +68,7 @@ mlir::LogicalResult AttachRetvalLayouts(
       return func.emitOpError("error while parsing result layout for function");
     }
 
-    auto result_layout = result_layout_or_status.ValueOrDie();
+    auto result_layout = result_layout_or_status.value();
 
     // When function returns its arguments directly, layout information for the
     // return value of `func` may be only obtainable by looking at it's callsite
@@ -81,7 +81,7 @@ mlir::LogicalResult AttachRetvalLayouts(
         if (!layout_or_status.ok())
           return func.emitOpError(
               "error while parsing result layout for function");
-        result_layout = std::move(layout_or_status.ValueOrDie());
+        result_layout = std::move(layout_or_status.value());
       }
 
       if (!result_layout)
@@ -131,7 +131,7 @@ mlir::LogicalResult ReplaceClusterWithPartitionCallOp(
       cluster_func.getResultTypes().begin(),
       cluster_func.getResultTypes().end()};
 
-  auto function_name = cluster_func.funcAttr();
+  llvm::StringRef function_name = cluster_func.func();
 
   builder->setInsertionPoint(cluster_func);
   auto call_op = builder->create<mlir::TF::StatefulPartitionedCallOp>(

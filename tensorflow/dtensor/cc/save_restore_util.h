@@ -63,6 +63,9 @@ struct SaveOpSpecs {
         shape_and_slice_spec(std::move(specs)) {}
 };
 
+// Returns a device suffix with printf formatting.
+std::string DeviceSuffix(int device_id, int total_devices);
+
 // Builds a complete saving specification for each device on the mesh.
 //
 // The returned map contains a map of <device_id, SavingSpec>.
@@ -136,7 +139,7 @@ BuildSavingSpec(absl::Span<const SavingTensorMetadata> tensor_metadatas);
 // op.
 SaveOpSpecs BuildPerDeviceSave(
     const absl::flat_hash_map<int64_t, std::vector<std::string>>& saving_spec,
-    int device_id, absl::string_view prefix);
+    int device_id, absl::string_view prefix, int total_devices);
 
 // Figures out the tensor slice_spec for a given layout and mesh device
 // location.

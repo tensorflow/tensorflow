@@ -177,6 +177,106 @@ TEST_F(HloModuleTest, CloneHasFusion) {
   }
 }
 
+TEST_F(HloModuleTest, CloneCustomCallComputationToApply) {
+  const char* const hlo_string = R"(
+HloModule a_module
+
+add_s32 {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY entry () -> s32[] {
+  %c1 = s32[] constant(1)
+  %c2 = s32[] constant(2)
+  ROOT %custom-call =
+    s32[] custom-call(s32[] %c1, %c2),
+    custom_call_target="foo",
+    backend_config="this string is opaque",
+    to_apply=add_s32
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloModule> cloned_module = module->Clone();
+  HloComputation* cloned_computation =
+      cloned_module->GetComputationWithName("add_s32.clone");
+  HloInstruction* cloned_custom_call =
+      cloned_module->entry_computation()->GetInstructionWithName("custom-call");
+
+  EXPECT_TRUE(cloned_computation->IsCustomCallComputation());
+  EXPECT_EQ(cloned_computation->CustomCallInstruction(), cloned_custom_call);
+}
+
+TEST_F(HloModuleTest, CloneCustomCallComputationCalledComputations) {
+  const char* const hlo_string = R"(
+HloModule a_module
+
+add_s32_0 {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+add_s32_1 {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY entry () -> s32[] {
+  %c1 = s32[] constant(1)
+  %c2 = s32[] constant(2)
+  ROOT %custom-call =
+    s32[] custom-call(s32[] %c1, %c2),
+    custom_call_target="foo",
+    backend_config="this string is opaque",
+    called_computations={%add_s32_0, %add_s32_1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloModule> cloned_module = module->Clone();
+  HloComputation* cloned_computation_0 =
+      cloned_module->GetComputationWithName("add_s32_0.clone");
+  HloComputation* cloned_computation_1 =
+      cloned_module->GetComputationWithName("add_s32_1.clone");
+  HloInstruction* cloned_custom_call =
+      cloned_module->entry_computation()->GetInstructionWithName("custom-call");
+
+  EXPECT_TRUE(cloned_computation_0->IsCustomCallComputation());
+  EXPECT_EQ(cloned_computation_0->CustomCallInstruction(), cloned_custom_call);
+  EXPECT_TRUE(cloned_computation_1->IsCustomCallComputation());
+  EXPECT_EQ(cloned_computation_1->CustomCallInstruction(), cloned_custom_call);
+}
+
+TEST_F(HloModuleTest, CloneFusionComputation) {
+  const char* const hlo_string = R"(
+HloModule a_module
+
+fused_computation () -> s32[] {
+  ROOT %result = s32[] parameter(0)
+}
+
+ENTRY main {
+  %c = s32[] constant(1)
+  ROOT %fusion = s32[] fusion(%c), kind=kLoop, calls=fused_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloModule> cloned_module = module->Clone();
+  HloComputation* cloned_computation =
+      cloned_module->GetComputationWithName("fused_computation.clone");
+  HloInstruction* cloned_fusion_instr =
+      cloned_module->entry_computation()->GetInstructionWithName("fusion");
+
+  EXPECT_TRUE(cloned_computation->IsFusionComputation());
+  EXPECT_EQ(cloned_computation->FusionInstruction(), cloned_fusion_instr);
+}
+
 TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
   // Create a module with a diamond call graph of computations.
   auto module = CreateNewVerifiedModule();

@@ -21,8 +21,8 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -98,8 +98,8 @@ StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
   llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
   auto permutation_or = GetPermutationIfAvailable(shape, builder);
   if (!permutation_or.ok()) return permutation_or.status();
-  return MemRefType::get(array, element_type_or.ValueOrDie(),
-                         permutation_or.ValueOrDie());
+  return MemRefType::get(array, element_type_or.value(),
+                         permutation_or.value());
 }
 
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(

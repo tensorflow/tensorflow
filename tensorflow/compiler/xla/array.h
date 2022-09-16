@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <random>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -32,8 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -325,6 +325,16 @@ class Array {
     }
   }
 
+  // Fills the array with random uniform variables that's either True or False.
+  // Defined for boolean type.
+  void FillRandomBool(int seed = 12345) {
+    std::mt19937 g(seed);
+    std::uniform_int_distribution<int32_t> distribution(0, 1);
+    for (int64_t i = 0; i < num_elements(); ++i) {
+      values_[i] = static_cast<bool>(distribution(g));
+    }
+  }
+
   // Sets all the values in the array to values specified in the container.
   template <typename Container = std::initializer_list<T>>
   void SetValues(const Container& container) {
@@ -533,7 +543,7 @@ class Array {
     }
     Array<T> permuted(permuted_dims);
     std::vector<int64_t> src_indices(sizes_.size(), -1);
-    permuted.Each([&](absl::Span<const int64_t> indices, int64_t* value) {
+    permuted.Each([&](absl::Span<const int64_t> indices, T* value) {
       CHECK_EQ(sizes_.size(), indices.size());
       for (int64_t i = 0; i < sizes_.size(); ++i) {
         src_indices[permutation[i]] = indices[i];

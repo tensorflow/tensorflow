@@ -36,11 +36,11 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/side_effect_util.h"
 
@@ -556,8 +556,7 @@ Value UpdateControlFlowBlockArgWithToken(OpBuilder& builder, Block& block,
   ReplaceWithTupleResult(builder, old_args, new_args, /*flatten_tuple=*/true);
   auto new_arg = new_args[new_args.size() - 1];
 
-  block.eraseArguments(
-      llvm::to_vector(llvm::seq((unsigned)0, (unsigned)old_args_size)));
+  block.eraseArguments(0, old_args_size);
 
   return new_arg;
 }
@@ -657,8 +656,7 @@ void ReplaceBlockArgumentsWithImplicitOperands(mlir::Operation* op,
 
   auto& region = op->getRegion(region_idx);
   region.getArgument(0).replaceAllUsesWith(implicit_operand);
-  region.front().eraseArguments(
-      llvm::to_vector(llvm::seq<unsigned>(0, region.getNumArguments())));
+  region.front().eraseArguments(0, region.getNumArguments());
 }
 
 // Rewrites an `mhlo.if` op or its region. If `region_idx` is not set, the op

@@ -117,12 +117,10 @@ absl::Status RunExternalImmutableSample(const std::string& model_name) {
   // syncronization.
   RETURN_IF_ERROR(env.queue()->WaitForCompletion());
 
-  const auto dst_shape = BHWC(outputs[0].Batch(), outputs[0].Height(),
-                              outputs[0].Width(), outputs[0].Channels());
+  TensorDescriptor desc;
+  RETURN_IF_ERROR(outputs[0].ToDescriptor(&desc, env.queue()));
   TensorFloat32 cpu_tensor;
-  cpu_tensor.shape = dst_shape;
-  cpu_tensor.data.resize(dst_shape.DimensionsProduct());
-  RETURN_IF_ERROR(outputs[0].ReadData(env.queue(), &cpu_tensor));
+  desc.DownloadData(&cpu_tensor);
   std::cout << "First tensor data at index 0 - " << cpu_tensor.data[0]
             << std::endl;
 

@@ -336,17 +336,6 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValueDir_Simple_Success) {
   EXPECT_THAT(*result, UnorderedPointwise(KvEq(), test_values));
 }
 
-TEST_F(CoordinationServiceAgentTest, NotAllowedToConnectAfterShuttingDown) {
-  InitializeAgent();
-  TF_ASSERT_OK(agent_->Connect());
-
-  TF_ASSERT_OK(agent_->Shutdown());
-  Status status = agent_->Connect();
-
-  // Not allowed to connect after shutting down.
-  EXPECT_TRUE(errors::IsFailedPrecondition(status));
-}
-
 TEST_F(CoordinationServiceAgentTest, ShutdownInErrorShouldReturnError) {
   // Connect coordination agent and set it to error.
   InitializeAgent();

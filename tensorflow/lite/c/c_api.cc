@@ -69,12 +69,25 @@ TfLiteModel* TfLiteModelCreateFromFile(const char* model_path) {
 void TfLiteModelDelete(TfLiteModel* model) { delete model; }
 
 TfLiteRegistrationExternal* TfLiteRegistrationExternalCreate(
-    const char* custom_name, const int version) {
+    const char* custom_name, int version) {
   return new TfLiteRegistrationExternal{custom_name, version};
 }
 
 void TfLiteRegistrationExternalDelete(TfLiteRegistrationExternal* reg) {
   delete reg;
+}
+
+void TfLiteRegistrationExternalSetInit(
+    TfLiteRegistrationExternal* registration,
+    void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
+                  size_t length)) {
+  registration->init = init;
+}
+
+void TfLiteRegistrationExternalSetFree(
+    TfLiteRegistrationExternal* registration,
+    void (*free)(TfLiteOpaqueContext* context, void* data)) {
+  registration->free = free;
 }
 
 void TfLiteRegistrationExternalSetPrepare(
@@ -107,6 +120,16 @@ void TfLiteInterpreterOptionsSetNumThreads(TfLiteInterpreterOptions* options,
 void TfLiteInterpreterOptionsAddDelegate(TfLiteInterpreterOptions* options,
                                          TfLiteDelegate* delegate) {
   options->delegates.push_back(delegate);
+}
+
+void TfLiteInterpreterOptionsAddOpaqueDelegate(
+    TfLiteInterpreterOptions* options,
+    TfLiteOpaqueDelegateStruct* opaque_delegate) {
+  // The following cast is safe only because this code is part of the TF Lite
+  // runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  TfLiteDelegate* delegate = reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
+  TfLiteInterpreterOptionsAddDelegate(options, delegate);
 }
 
 void TfLiteInterpreterOptionsSetErrorReporter(

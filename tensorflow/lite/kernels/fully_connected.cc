@@ -56,6 +56,7 @@ static const int kDimMetadataSizeBlockSparse = 3;
 TfLiteStatus CreateLedgerTensor(const TfLiteSparsity* sparsity,
                                 TfLiteContext* context, TfLiteTensor* ledger) {
   TF_LITE_ENSURE(context, sparsity != nullptr);
+  ledger->name = "FC_ledger";
   ledger->type = kTfLiteUInt8;
   ledger->allocation_type = kTfLiteArenaRwPersistent;
   TfLiteIntArray* ledger_size = TfLiteIntArrayCreate(1);

@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/auto_shard_rewriter.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -168,7 +167,7 @@ class DispatcherState {
     const std::string dataset_id;
     const ProcessingModeDef processing_mode;
     const std::string job_name;
-    const absl::optional<int64_t> num_consumers;
+    const std::optional<int64_t> num_consumers;
     const bool use_cross_trainer_cache;
     const TargetWorkers target_workers;
   };
@@ -192,7 +191,7 @@ class DispatcherState {
     const int64_t iteration_id;
     const IterationKey iteration_key;
     const std::shared_ptr<Job> job;
-    absl::optional<DistributedEpochState> distributed_epoch_state;
+    std::optional<DistributedEpochState> distributed_epoch_state;
     std::queue<PendingTask> pending_tasks;
     int64_t num_clients = 0;
     int64_t last_client_released_micros = -1;

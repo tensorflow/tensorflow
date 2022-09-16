@@ -22,5 +22,12 @@ filegroup(
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
+    size_override = {
+        "replace_cast_hacks_with_tf_xla_ops_large_constants.mlir": "medium",
+    },
+    tags_override = {
+        # This test has high memory usage. It causes OOM in msan mode.
+        "replace_cast_hacks_with_tf_xla_ops_large_constants.mlir": ["nomsan"],
+    },
     test_file_exts = ["mlir"],
 )

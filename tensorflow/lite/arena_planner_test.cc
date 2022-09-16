@@ -33,6 +33,19 @@ limitations under the License.
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
+
+// Profiler allocation hook for testing.
+int gNumAlloc = 0;
+void OnTfLiteArenaAlloc(int subgraph_index, int arena_id, size_t num_bytes) {
+  gNumAlloc++;
+}
+
+// Profiler deallocation hook for testing.
+int gNumDealloc = 0;
+void OnTfLiteArenaDealloc(int subgraph_index, int arena_id, size_t num_bytes) {
+  gNumDealloc++;
+}
+
 namespace {
 
 constexpr const int kTensorAlignment = 4;
@@ -141,6 +154,7 @@ class TestGraphInfo : public GraphInfo {
   explicit TestGraphInfo(TestGraph* graph) : graph_(graph) {}
 
   size_t num_tensors() const override { return graph_->tensors()->size(); }
+  TfLiteTensor* tensors() override { return graph_->tensors()->data(); }
   TfLiteTensor* tensor(size_t index) override {
     return &graph_->tensors()->at(index);
   }
@@ -208,6 +222,8 @@ class ArenaPlannerTest : public ::testing::Test {
   bool HasNonPersistentMemory() {
     return planner_ && planner_->HasNonPersistentMemory();
   }
+
+  void Destroy() { planner_.reset(); }
 
   // Returns the actual offset of a given tensor, relative to the start of its
   // arena.
@@ -757,6 +773,19 @@ TEST_F(ArenaPlannerTest, DebugTensors) {
   // Every tensor should have unique memory allocation with
   // preserve_all_tensors.
   EXPECT_EQ(tensorOffsets.size(), 8);
+}
+
+TEST_F(ArenaPlannerTest, SimpleProfilerTest) {
+  gNumAlloc = 0;
+  gNumDealloc = 0;
+  TestGraph graph({1}, {{{1}, {2}, {}}}, {2});
+  SetGraph(&graph);
+  Execute(0, 10);
+
+  EXPECT_EQ(gNumAlloc, 2);
+  EXPECT_EQ(gNumDealloc, 0);
+  Destroy();
+  EXPECT_EQ(gNumDealloc, 2);
 }
 
 }  // namespace

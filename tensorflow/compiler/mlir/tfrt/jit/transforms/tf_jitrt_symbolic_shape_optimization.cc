@@ -32,9 +32,9 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace tensorflow {
 namespace {
@@ -126,7 +126,7 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
     }
   }
   // If the output is the same as one of the inputs just return that.
-  if (llvm::is_splat(shape_and_rank_for_dim) &&
+  if (llvm::all_equal(shape_and_rank_for_dim) &&
       shape_and_rank_for_dim[0].first) {
     return shape_and_rank_for_dim[0].first;
   }

@@ -32,17 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
-// NOLINTNEXTLINE
-llvm::cl::opt<mlir::quant::QuantizationMethod> quantization_method_opt(
-    "quant-insert-library-quantization-method",
-    llvm::cl::init(mlir::quant::QuantizationMethod::kPostTrainingQuantization),
-    llvm::cl::desc("Insert library for the quantization method."),
-    llvm::cl::values(
-        clEnumValN(mlir::quant::QuantizationMethod::kPostTrainingQuantization,
-                   "ptq", "Post-training static-range quantization"),
-        clEnumValN(mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
-                   "drq", "Post-training dynamic-range quantizaiton")));
-
 namespace mlir {
 namespace quant {
 namespace {
@@ -53,16 +42,16 @@ class InsertQuantizedFunctionsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertQuantizedFunctionsPass)
 
-  explicit InsertQuantizedFunctionsPass() {
-    quantization_method_ = quantization_method_opt;
-    op_set_ =
-        (quantization_method_ == QuantizationMethod::kDynamicRangeQuantization)
-            ? OpSet::UNIFORM_QUANTIZED
-            : OpSet::TF;
-  }
+  explicit InsertQuantizedFunctionsPass() {}
   explicit InsertQuantizedFunctionsPass(QuantizationMethod quantization_method,
-                                        const OpSet& op_set)
-      : quantization_method_(quantization_method), op_set_(op_set) {}
+                                        const OpSet& op_set) {
+    quantization_method_ = quantization_method;
+    op_set_ = op_set;
+  }
+  InsertQuantizedFunctionsPass(const InsertQuantizedFunctionsPass& other) {
+    quantization_method_ = other.quantization_method_;
+    op_set_ = other.op_set_;
+  }
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in the textual format (on
@@ -84,32 +73,48 @@ class InsertQuantizedFunctionsPass
 
   // Returns the function library for the given quantization method and opset
   // pair.
-  const char* GetFunctionLibrary(QuantizationMethod quantization_method,
-                                 OpSet op_set);
+  llvm::StringRef GetFunctionLibrary(QuantizationMethod quantization_method,
+                                     OpSet op_set);
 
-  QuantizationMethod quantization_method_ =
-      QuantizationMethod::kPostTrainingQuantization;
+  Option<QuantizationMethod> quantization_method_{
+      *this, "quantization-method",
+      llvm::cl::init(QuantizationMethod::kPostTrainingQuantization),
+      llvm::cl::desc("Choose quantization method."),
+      llvm::cl::values(
+          clEnumValN(QuantizationMethod::kPostTrainingQuantization, "ptq",
+                     "Post-training static-range quantization"),
+          clEnumValN(QuantizationMethod::kDynamicRangeQuantization, "drq",
+                     "Post-training dynamic-range quantizaiton"))};
 
-  OpSet op_set_;
+  Option<OpSet> op_set_{
+      *this, "target-opset", llvm::cl::init(OpSet::TF),
+      llvm::cl::desc("Choose target opset."),
+      llvm::cl::values(
+          clEnumValN(OpSet::TF, "TF",
+                     "Uses TF ops that mimic quantization behavior"),
+          clEnumValN(OpSet::XLA, "XLA", "Uses TF XLA ops"),
+          clEnumValN(OpSet::UNIFORM_QUANTIZED, "UNIFORM_QUANTIZED",
+                     "Uses TF Uniform Quantized ops"))};
 };
 
-const char* InsertQuantizedFunctionsPass::GetFunctionLibrary(
+llvm::StringRef InsertQuantizedFunctionsPass::GetFunctionLibrary(
     QuantizationMethod quantization_method, OpSet op_set) {
-  std::map<OpSet, const char*> function_library_map;
+  absl::flat_hash_map<OpSet, llvm::StringRef> function_library_map;
   if (quantization_method == QuantizationMethod::kDynamicRangeQuantization) {
     function_library_map = {
         {OpSet::UNIFORM_QUANTIZED,
          kQuantizedFunctionLibraryInMLIR_UNIFORM_QUANTIZED_DRQ},
         {OpSet::TF, kQuantizedFunctionLibraryInMLIR_TF_DRQ}};
   } else {
-    function_library_map = {{OpSet::TF, kQuantizedFunctionLibraryInMLIR}};
+    function_library_map = {{OpSet::TF, kQuantizedFunctionLibraryInMLIR},
+                            {OpSet::XLA, kQuantizedFunctionLibraryInMLIR}};
   }
 
   auto it = function_library_map.find(op_set);
   if (it != function_library_map.end()) {
     return it->second;
   }
-  return nullptr;
+  return llvm::StringRef();
 }
 
 static PassRegistration<InsertQuantizedFunctionsPass> pass;
@@ -119,20 +124,20 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
   SymbolTable symbol_table(module);
 
   std::unique_ptr<llvm::MemoryBuffer> mem_buffer;
-  const char* quantized_function_library =
+  llvm::StringRef quantized_function_library =
       GetFunctionLibrary(quantization_method_, op_set_);
 
-  if (quantized_function_library == nullptr) {
+  if (quantized_function_library.empty()) {
     emitError(module.getLoc())
         << "Failed to get function library for the opset.";
     signalPassFailure();
     return;
   }
 
-  mem_buffer = llvm::MemoryBuffer::getMemBuffer(
-      llvm::StringRef(quantized_function_library),
-      /*BufferName=*/"",
-      /*RequiresNullTerminator=*/false);
+  mem_buffer =
+      llvm::MemoryBuffer::getMemBuffer(quantized_function_library,
+                                       /*BufferName=*/"",
+                                       /*RequiresNullTerminator=*/false);
 
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(mem_buffer), llvm::SMLoc());

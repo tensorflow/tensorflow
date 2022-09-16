@@ -22,7 +22,7 @@ tf_module {
   }
   member_method {
     name: "from_dataset_id"
-    argspec: "args=[\'processing_mode\', \'service\', \'dataset_id\', \'element_spec\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'data_transfer_protocol\', \'target_workers\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'AUTO\'], "
+    argspec: "args=[\'processing_mode\', \'service\', \'dataset_id\', \'element_spec\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'data_transfer_protocol\', \'cross_trainer_cache\', \'target_workers\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'AUTO\'], "
   }
   member_method {
     name: "register_dataset"

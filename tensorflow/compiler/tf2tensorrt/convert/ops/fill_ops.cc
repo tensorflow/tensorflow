@@ -28,26 +28,14 @@ namespace convert {
 template <typename Impl>
 class ConvertFillBase : public OpConverterBase<Impl> {
  public:
-  explicit ConvertFillBase(OpConverterParams* params)
-      : OpConverterBase<Impl>(params) {}
-
-  static constexpr std::array<DataType, 3> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32};
-  }
-
-  Status ValidateFillBase(const OpConverterParams& params) {
-    if (params.use_implicit_batch) {
-      return errors::Unimplemented("Conversion for ", params.node_def.op(),
-                                   " is not implemented in"
-                                   " implicit batch mode");
-    }
-    return Status::OK();
-  }
+  explicit ConvertFillBase(const OpConverterParams* params)
+      : OpConverterBase<Impl>(params, {DataType::DT_FLOAT, DataType::DT_HALF,
+                                       DataType::DT_INT32}) {}
 };
 
 class ConvertFill : public ConvertFillBase<ConvertFill> {
  public:
-  explicit ConvertFill(OpConverterParams* params)
+  explicit ConvertFill(const OpConverterParams* params)
       : ConvertFillBase<ConvertFill>(params) {}
 
   static constexpr std::array<InputArgSpec, 2> InputSpec() {
@@ -58,7 +46,7 @@ class ConvertFill : public ConvertFillBase<ConvertFill> {
 
   Status Validate() {
     const auto& params = *this->params_;
-    TF_RETURN_IF_ERROR(this->ValidateFillBase(params));
+    TF_RETURN_IF_ERROR(NotSupportedInImplicitBatch());
 
     const auto& inputs = params.inputs;
     const auto& node_def = params.node_def;
@@ -114,7 +102,7 @@ class ConvertFill : public ConvertFillBase<ConvertFill> {
 
 class ConvertRange : public ConvertFillBase<ConvertRange> {
  public:
-  explicit ConvertRange(OpConverterParams* params)
+  explicit ConvertRange(const OpConverterParams* params)
       : ConvertFillBase<ConvertRange>(params) {}
 
   static constexpr std::array<InputArgSpec, 3> InputSpec() {
@@ -124,11 +112,25 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
         InputArgSpec::Create("delta", TrtInputArg::kBoth)};
   }
 
-  static constexpr const char* NodeDefDataTypeAttributeName() { return ""; }
+  static constexpr const char* NodeDefDataTypeAttributeName() {
+    /*
+    node {
+      name: "..."
+      op: "Range"
+      ...
+      attr {
+        key: "Tidx"
+        value {
+          type: DT_INT32
+        }
+      }
+    }
+    */
+    return "Tidx";
+  }
   Status Validate() {
+    TF_RETURN_IF_ERROR(NotSupportedInImplicitBatch());
     const auto& params = *this->params_;
-    TF_RETURN_IF_ERROR(this->ValidateFillBase(params));
-
     const auto& inputs = params.inputs;
     const auto& node_def = params.node_def;
 

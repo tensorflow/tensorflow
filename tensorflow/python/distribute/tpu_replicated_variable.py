@@ -183,7 +183,7 @@ class TPUReplicatedVariable(variables_lib.Variable):
 
   @property
   def handle(self):
-    if save_context.in_save_context():
+    if save_context.in_save_context() or context.executing_eagerly():
       return self._vars[0].handle
 
     if tpu_util.enclosing_tpu_context() is None:

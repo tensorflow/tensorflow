@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/status_matchers.h"
-#include "tensorflow/core/util/determinism_test_util.h"
+#include "tensorflow/tsl/util/determinism_test_util.h"
 
 namespace tensorflow {
 namespace {
@@ -153,7 +153,7 @@ TEST_F(TimestampTest, WaitAtLeast) {
 }
 
 TEST_F(TimestampTest, DeterminismError) {
-  test::DeterministicOpsScope det_scope;
+  tsl::test::DeterministicOpsScope det_scope;
   TF_ASSERT_OK(Init());
   EXPECT_THAT(RunOpKernel(),
               testing::StatusIs(

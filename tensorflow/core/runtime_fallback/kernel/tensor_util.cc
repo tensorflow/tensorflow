@@ -97,7 +97,7 @@ tfrt::AsyncValueRef<KernelFallbackTensor> TransferTensorToDevice(
         // that might have nothing to do with this tensor to complete).
         Status s = srcd->Sync();
         if (!s.ok()) {
-          result.SetError(s.error_message());
+          result.SetError(absl::InternalError(s.error_message()));
           return;
         }
         tensorflow::Notification n;

@@ -1220,6 +1220,39 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridUint8) {
                                  0.16)));
 }
 
+TEST_P(ConvolutionOpTest, SimpleTestHybridUint8WithDilation) {
+  const int stride_width = 1;
+  const int stride_height = 1;
+  const Padding padding = Padding_VALID;
+  const int dilation_width_factor = 2;
+  const int dilation_height_factor = 1;
+
+  HybridConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {2, 1, 2, 1}},
+      {TensorType_UINT8, {3, 1, 1, 1}, 0, 0, 4.0 / 127.0, 0},
+      {TensorType_FLOAT32, {}}, stride_width, stride_height, padding,
+      ActivationFunctionType_NONE, dilation_width_factor,
+      dilation_height_factor);
+
+  m.SetInput({
+      1,
+      1,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+  });
+  m.SetFilter({1, 2, 3});
+  m.SetBias({1, 2, 3});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {2, 4, 6, 2, 4, 6, 2, 4, 6, 2, 4, 6}, 0.16)));
+}
+
 // This test's output is equivalent to the SimpleTestHybrid
 // because we break each input into two channels, each with half of the value,
 // while keeping the filters for each channel equivalent.

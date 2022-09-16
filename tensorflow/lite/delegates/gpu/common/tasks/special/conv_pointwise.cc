@@ -15,18 +15,20 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/conv_pointwise.h"
 
+#include <cstdint>
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
-
 namespace {
 std::string GenerateCode() {
   std::string c = R"(
@@ -171,6 +173,7 @@ absl::Status GetOffset(const GraphFloat32& graph, NodeId concat_input_node,
   consumed_nodes->insert(slice_node.node->id);
   return absl::OkStatus();
 }
+
 }  // namespace
 
 GPUOperation CreateConvPointwise(const OperationDef& definition,
@@ -187,20 +190,17 @@ GPUOperation CreateConvPointwise(const OperationDef& definition,
     offsets_data[i * 2 + 1] = attr.offsets.back().y;
   }
 
-  Texture2DDescriptor desc;
-  desc.element_type = DataType::INT32;
-  desc.size = int2(dst_depth * 2, 1);
-  desc.data.resize(offsets_data.size() * 4);
-  memcpy(desc.data.data(), offsets_data.data(), offsets_data.size() * 4);
-
   GPUOperation op(definition);
   op.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   op.AddSrcTensor("weights_tensor", definition.src_tensors[1]);
   op.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
   op.code_ = GenerateCode();
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
-  op.args_.AddObject("offsets",
-                     std::make_unique<Texture2DDescriptor>(std::move(desc)));
+
+  TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+      DataType::INT32, TensorStorageType::TEXTURE_2D, dst_depth * 2, 1,
+      reinterpret_cast<uint8_t*>(offsets_data.data()));
+  op.args_.AddObject("offsets", std::make_unique<TensorDescriptor>(desc));
   return op;
 }
 

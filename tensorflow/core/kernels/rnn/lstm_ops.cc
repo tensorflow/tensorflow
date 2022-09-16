@@ -1138,19 +1138,30 @@ class BlockLSTMGradOp : public OpKernel {
 
     const Tensor* x;
     OP_REQUIRES_OK(ctx, ctx->input("x", &x));
-    OP_REQUIRES(ctx, x->dims() == 3, errors::InvalidArgument("x must be 3D"));
+    OP_REQUIRES(
+        ctx, x->dims() == 3,
+        errors::InvalidArgument("x must be rank 3 but is rank ", x->dims()));
     const int64_t timelen = x->dim_size(0);
     const int64_t batch_size = x->dim_size(1);
     const int64_t input_size = x->dim_size(2);
 
     const Tensor* cs_prev_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("cs_prev", &cs_prev_tensor));
+    OP_REQUIRES(ctx, cs_prev_tensor->dims() == 2,
+                errors::InvalidArgument("cs_prev must be rank 2 but is rank ",
+                                        cs_prev_tensor->dims()));
 
     const Tensor* h_prev_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("h_prev", &h_prev_tensor));
+    OP_REQUIRES(ctx, h_prev_tensor->dims() == 2,
+                errors::InvalidArgument("h_prev must be rank 2 but is rank ",
+                                        h_prev_tensor->dims()));
 
     const Tensor* w_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("w", &w_tensor));
+    OP_REQUIRES(ctx, w_tensor->dims() == 2,
+                errors::InvalidArgument("w must be rank 2 but is rank ",
+                                        w_tensor->dims()));
     const int64_t cell_size = w_tensor->dim_size(1) / 4;
     OP_REQUIRES(ctx, input_size + cell_size == w_tensor->dim_size(0),
                 errors::InvalidArgument(
@@ -1159,15 +1170,27 @@ class BlockLSTMGradOp : public OpKernel {
 
     const Tensor* wci_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("wci", &wci_tensor));
+    OP_REQUIRES(ctx, wci_tensor->dims() == 1,
+                errors::InvalidArgument("wci must be rank 1 but is rank ",
+                                        wci_tensor->dims()));
 
     const Tensor* wcf_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("wcf", &wcf_tensor));
+    OP_REQUIRES(ctx, wcf_tensor->dims() == 1,
+                errors::InvalidArgument("wcf must be rank 1 but is rank ",
+                                        wcf_tensor->dims()));
 
     const Tensor* wco_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("wco", &wco_tensor));
+    OP_REQUIRES(ctx, wco_tensor->dims() == 1,
+                errors::InvalidArgument("wco must be rank 1 but is rank ",
+                                        wco_tensor->dims()));
 
     const Tensor* b_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("b", &b_tensor));
+    OP_REQUIRES(ctx, b_tensor->dims() == 1,
+                errors::InvalidArgument("b must be rank 1 but is rank ",
+                                        b_tensor->dims()));
     OP_REQUIRES(
         ctx, cell_size == b_tensor->dim_size(0) / 4,
         errors::InvalidArgument("w and b cell_size don't match: ", cell_size,

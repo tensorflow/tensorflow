@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 

@@ -57,7 +57,7 @@ mlir::LogicalResult ExtractMeshFromCluster(mlir::tf_device::ClusterOp cluster,
   auto mesh_or_status = ExtractDeviceMeshFromOp(cluster);
   if (!mesh_or_status.ok()) return cluster.emitOpError(kMissingMeshErrorMsg);
 
-  const auto& mesh_or_null = mesh_or_status.ValueOrDie();
+  const auto& mesh_or_null = mesh_or_status.value();
   if (!mesh_or_null.has_value())
     return cluster.emitOpError(kMissingMeshErrorMsg);
 
@@ -200,7 +200,7 @@ mlir::LogicalResult LowerToSendRecv(mlir::TF::CopyToMeshOp copy_to_mesh,
         llvm::formatv(kInvalidLayoutMsg, layout_attr));
 
   // Create send op that sends data from input cluster to target cluster.
-  const Layout& target_layout = layout_or_status.ValueOrDie();
+  const Layout& target_layout = layout_or_status.value();
   builder.create<mlir::TF::DTensorSend>(
       copy_to_mesh.getLoc(), value_to_send, builder.getStringAttr(op_key),
       mlir::dtensor::LayoutAttr::get(context, target_layout));

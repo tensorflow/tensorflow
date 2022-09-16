@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_impl.h"
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -32,7 +33,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/time/time.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/service/common.h"
@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
+#include "tensorflow/core/data/service/validate_utils.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -491,7 +492,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     VLOG(3) << "RegisterDataset returns an existing dataset with ID = "
             << *dataset_id << ", fingerprint = " << fingerprint << ".";
     response->set_dataset_id(*dataset_id);
-    return Status::OK();
+    return OkStatus();
   }
 
   std::string new_dataset_id;
@@ -526,25 +527,6 @@ StatusOr<std::optional<std::string>> DataServiceDispatcherImpl::FindDataset(
         request.dataset_id(), request.metadata(), existing_dataset->metadata));
   }
   return std::optional<std::string>(existing_dataset->dataset_id);
-}
-
-Status DataServiceDispatcherImpl::ValidateMatchingDataset(
-    const std::string& dataset_id, const DataServiceMetadata& new_metadata,
-    const DataServiceMetadata& old_metadata) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  MessageDifferencer differ;
-  differ.set_message_field_comparison(MessageDifferencer::EQUIVALENT);
-  differ.set_repeated_field_comparison(MessageDifferencer::AS_SET);
-
-  std::string diff;
-  differ.ReportDifferencesToString(&diff);
-  bool equivalent = differ.Compare(new_metadata, old_metadata);
-  if (!equivalent) {
-    return errors::InvalidArgument(
-        "Datasets with the same ID should have the same structure, got ",
-        "diff for dataset ID ", dataset_id, ": ", diff, ". To fix this error, ",
-        "make sure you're registering the same dataset with the same ID.");
-  }
-  return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::RegisterDataset(
@@ -616,7 +598,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
   }
   VLOG(3) << "Received job id " << job->id << " for CreateJob("
           << request->DebugString() << ")";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherImpl::GetOrCreateIteration(
@@ -766,7 +748,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
   tensorflow::metrics::RecordTFDataServiceJobsCreated(
       request.processing_mode_def(), is_coordinated_read);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherImpl::CreateIteration(
@@ -985,7 +967,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     ClientHeartbeatUpdate* client_heartbeat = update.mutable_client_heartbeat();
     bool apply_update = false;
     client_heartbeat->set_iteration_client_id(request->iteration_client_id());
-    absl::optional<int64_t> blocked_round;
+    std::optional<int64_t> blocked_round;
     if (request->optional_blocked_round_case() ==
         ClientHeartbeatRequest::kBlockedRound) {
       blocked_round = request->blocked_round();

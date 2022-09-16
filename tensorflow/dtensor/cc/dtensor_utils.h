@@ -51,8 +51,6 @@ bool DoNotFuseReduceScatter();
 // reduce op.
 int ReduceInBfloat16MaxGroupSize();
 
-// Returns DTensor Checkpointing version 2 is enabled.
-bool DTensorCheckpointV2Enabled();
 }  // namespace dtensor
 }  // namespace tensorflow
 

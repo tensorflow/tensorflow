@@ -34,7 +34,7 @@ TEST(ReplicateInput, Default) {
   const auto ret = ReplicateInput()({t}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
@@ -47,7 +47,7 @@ TEST(ReplicateInput, Duplicate) {
   const auto ret = ReplicateInput(0, 2)({t}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 2);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
@@ -63,7 +63,7 @@ TEST(ReplicateInput, FirstOfMultipleArgs) {
   const auto ret = ReplicateInput(0, 2)({t1, t2}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 2);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
@@ -79,7 +79,7 @@ TEST(ReplicateInput, SecondOfMultipleArgs) {
   const auto ret = ReplicateInput(1, 2)({t1, t2}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 2);
   EXPECT_EQ(rt.args(0).type_id(), TFT_TENSOR);
@@ -92,7 +92,7 @@ TEST(ReplicateInput, Unset) {
   const auto ret = ReplicateInput()({t}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_UNSET);
 }
 
@@ -103,7 +103,7 @@ TEST(Merge, Single) {
   const auto ret = Merge()({t}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
@@ -116,7 +116,7 @@ TEST(Merge, Double) {
   const auto ret = Merge()({t, t}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
@@ -129,7 +129,7 @@ TEST(Merge, Unset) {
   const auto ret = Merge()({t}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_UNSET);
 }
 
@@ -140,14 +140,14 @@ TEST(Merge, UnsetComponents) {
   const auto ret = Merge()({t1, t2}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_UNSET);
 }
 
 void ExpectInferredArrayOfTensor(StatusOr<FullTypeDef> ret) {
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
@@ -199,7 +199,7 @@ TEST(UnaryContainerCreate, Basic) {
   const auto ret = UnaryContainerCreate(TFT_ARRAY, 1)({t1, t2, t3}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
@@ -220,7 +220,7 @@ TEST(UnaryContainerAdd, Basic) {
                         /*homogeneous=*/false)({t1, t2, t3}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
@@ -251,7 +251,7 @@ TEST(UnaryContainerAdd, IgnoresUnsetContainerType) {
                         /*homogeneous=*/false)({t1, t2}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
@@ -271,7 +271,7 @@ TEST(UnaryContainerAdd, UnsetElementTypeRemainsUnset) {
                         /*homogeneous=*/false)({t1, t2, t3}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
@@ -289,7 +289,7 @@ TEST(UnaryContainerAdd, UnsetElementTypeKeepsOriginalElementType) {
                         /*homogeneous=*/false)({t1, t2}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
@@ -310,7 +310,7 @@ TEST(UnaryContainerAdd, KeepsContainerTypeIfElementIsSubtype) {
                         /*homogeneous=*/true)({t1, t2}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
@@ -384,7 +384,7 @@ TEST(MultiaryUnstack, Basic) {
   const auto ret = MultiaryUnstack(TFT_DATASET, UnstackTensor)({t1}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_DATASET);
@@ -408,7 +408,7 @@ TEST(MultiaryUnstack, Ternary) {
       MultiaryUnstack(TFT_DATASET, UnstackTensor)({t1, t2, t3}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_DATASET);
@@ -434,7 +434,7 @@ TEST(MapContainer, Basic) {
   const auto ret = ContainerMap(TFT_DATASET, 0, BatchTensor)({cont_t}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_DATASET);
@@ -466,7 +466,7 @@ TEST(MapContainer, Ternary) {
       ContainerMap(TFT_DATASET, 1, BatchTensor)({t1, cont_t, t3}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_DATASET);
@@ -490,7 +490,7 @@ TEST(MapCovariant, Basic) {
   const auto ret = MapCovariant(TFT_TENSOR, TFT_DATASET, 0)({t}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   ASSERT_EQ(rt.type_id(), TFT_PRODUCT);
   ASSERT_EQ(rt.args_size(), 1);
   EXPECT_EQ(rt.args(0).type_id(), TFT_DATASET);
@@ -506,7 +506,7 @@ TEST(MapCovariant, IgnoresUnset) {
   const auto ret = MapCovariant(TFT_TENSOR, TFT_DATASET, 0)({t}, {});
   TF_EXPECT_OK(ret.status());
 
-  const FullTypeDef& rt = ret.ValueOrDie();
+  const FullTypeDef& rt = ret.value();
   EXPECT_EQ(rt.type_id(), TFT_UNSET);
   ASSERT_EQ(rt.args_size(), 0);
 }

@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 bool AllToAllDecomposer::InstructionMatchesPattern(
@@ -58,7 +58,7 @@ StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
   int64_t split_dim = *all_to_all->split_dimension();
   int64_t all_to_all_group_size =
       all_to_all->replica_groups().empty()
-          ? instruction->parent()->parent()->config().replica_count()
+          ? instruction->GetModule()->config().replica_count()
           : all_to_all->replica_groups()[0].replica_ids_size();
   int64_t split_size =
       all_to_all->shape().dimensions(split_dim) / all_to_all_group_size;

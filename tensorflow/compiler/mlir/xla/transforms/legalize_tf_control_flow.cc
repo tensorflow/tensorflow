@@ -35,9 +35,9 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 using mlir::PassRegistration;
 
@@ -83,8 +83,7 @@ void ReplaceBlockArgumentsWithImplicitOperands(
       arg.replaceAllUsesWith(implicit_operands[implicit_operand_index++]);
     }
 
-    region.front().eraseArguments(
-        llvm::to_vector(llvm::seq<unsigned>(0, region.getNumArguments())));
+    region.front().eraseArguments(0, region.getNumArguments());
   }
 }
 

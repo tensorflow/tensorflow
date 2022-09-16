@@ -69,9 +69,15 @@ TFL_CAPI_EXPORT void* TfLiteXNNPackDelegateGetThreadPool(
 TFL_CAPI_EXPORT void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate);
 
 // Creates a new weights cache that can be shared with multiple delegate
-// instances.
+// instances. Prefer TfLiteXNNPackDelegateWeightsCacheCreateWithSize which can
+// reduce memory bandwidth.
 TFL_CAPI_EXPORT struct TfLiteXNNPackDelegateWeightsCache*
 TfLiteXNNPackDelegateWeightsCacheCreate();
+// Creates a new weights cache with a specified initial size that can be shared
+// with multiple delegate instances. The weights cache can hold up to size bytes
+// without growing.
+TFL_CAPI_EXPORT struct TfLiteXNNPackDelegateWeightsCache*
+TfLiteXNNPackDelegateWeightsCacheCreateWithSize(size_t size);
 // Soft-finalize a weights cache. Extra space will be left in the weights cache
 // to allow for cache "insertion" only if it is a cache hit. This has memory
 // overhead compared to TfLiteXNNPackDelegateWeightsCacheFinalizeHard. Use this

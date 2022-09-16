@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_TOOLS_SIGNATURE_DEF_UTIL_H_
-#define TENSORFLOW_LITE_TOOLS_SIGNATURE_DEF_UTIL_H_
+#ifndef TENSORFLOW_LITE_TOOLS_SIGNATURE_SIGNATURE_DEF_UTIL_H_
+#define TENSORFLOW_LITE_TOOLS_SIGNATURE_SIGNATURE_DEF_UTIL_H_
 
 #include <string>
 
@@ -70,4 +70,4 @@ tensorflow::Status ClearSignatureDefMap(const Model* model,
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_TOOLS_SIGNATURE_DEF_UTIL_H_
+#endif  // TENSORFLOW_LITE_TOOLS_SIGNATURE_SIGNATURE_DEF_UTIL_H_

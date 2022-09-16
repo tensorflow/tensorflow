@@ -34,7 +34,6 @@ cuda_py_test(
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
-        "@six_archive//:six",
     ],
 )
 
@@ -91,6 +90,5 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python/summary",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )

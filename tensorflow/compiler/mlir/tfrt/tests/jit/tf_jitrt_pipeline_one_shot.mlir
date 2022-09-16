@@ -56,8 +56,8 @@ func.func @add_scalar_with_vec(%arg0: tensor<f32>,
 
 // CHECK-LABEL: @add_vec_vec
 func.func @add_vec_vec(
-  %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
-  %arg1: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>}
+  %arg0: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg1: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>}
 ) -> tensor<?xf32> {
   // CHECK-NOT: memref.reinterpret_cast
   // CHECK: linalg.generic
@@ -72,9 +72,9 @@ func.func @add_vec_vec(
 
 // CHECK-LABEL: @add_vec_vec_vec
 func.func @add_vec_vec_vec(
-  %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
-  %arg1: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
-  %arg2: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>}
+  %arg0: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg1: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg2: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>}
 ) -> tensor<?xf32> {
   // CHECK-NOT: memref.reinterpret_cast
   // CHECK: linalg.generic
@@ -99,12 +99,12 @@ func.func @add_vec_vec_vec(
 // CHECK: compute_with_bcast
 func.func @compute_with_bcast(
   %arg0: tensor<1x?x1xf32>
-    {jitrt.symbolic_shape = dense<[1, -2, 1]> : tensor<3xi64>},
+    {rt.symbolic_shape = dense<[1, -2, 1]> : tensor<3xi64>},
   %arg1: tensor<512xf32>,
   %arg2: tensor<1x?x512xf32>
-    {jitrt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>},
+    {rt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>},
   %arg3: tensor<1x?x1xf32>
-    {jitrt.symbolic_shape = dense<[1, -2, 1]> : tensor<3xi64>},
+    {rt.symbolic_shape = dense<[1, -2, 1]> : tensor<3xi64>},
   %arg4: tensor<512xf32>
 ) -> tensor<?x?x512xf32> {
   // CHECK-NOT: memref.reinterpret_cast
@@ -141,10 +141,10 @@ func.func @compute_with_bcast(
 
 // CHECK: add_vec_vec_vec_vec
 func.func @add_vec_vec_vec_vec(
-  %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
-  %arg1: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
-  %arg2: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
-  %arg3: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>}
+  %arg0: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg1: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg2: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>},
+  %arg3: tensor<?xf32> {rt.symbolic_shape = dense<-2>: tensor<1xi64>}
 ) -> tensor<?xf32> {
   // CHECK-NOT: memref.reinterpret_cast
   // CHECK: linalg.generic
@@ -164,9 +164,9 @@ func.func @add_vec_vec_vec_vec(
 func.func @add_vec_tensor_tensor(
   %arg0: tensor<512xf32>,
   %arg1: tensor<1x?x512xf32>
-    {jitrt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>},
+    {rt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>},
   %arg2: tensor<1x?x512xf32>
-    {jitrt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>}
+    {rt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>}
 ) -> tensor<1x?x512xf32> {
   // CHECK-NOT: memref.reinterpret_cast
   // CHECK: linalg.generic
@@ -226,10 +226,10 @@ func.func @tf_binary_with_bcast_and_fusion(%arg0: tensor<?x4xf32>,
 
 // CHECK: tf_binary_with_bcast_symbolic_shapes
 func.func @tf_binary_with_bcast_symbolic_shapes(
-  %arg0: tensor<?xf32>   {jitrt.symbolic_shape = dense<[   -3]>: tensor<1xi64>},
-  %arg1: tensor<?x?xf32> {jitrt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>},
-  %arg2: tensor<?x?xf32> {jitrt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>},
-  %arg3: tensor<?x?xf32> {jitrt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>}
+  %arg0: tensor<?xf32>   {rt.symbolic_shape = dense<[   -3]>: tensor<1xi64>},
+  %arg1: tensor<?x?xf32> {rt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>},
+  %arg2: tensor<?x?xf32> {rt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>},
+  %arg3: tensor<?x?xf32> {rt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>}
 ) -> tensor<?x?xf32> {
   // CHECK-NOT: memref.reinterpret_cast
   // CHECK: linalg.generic

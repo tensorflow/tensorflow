@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -54,7 +54,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
                             bcast->operand(0)->shape().dimensions_size());
       int num_batch_dims = dim_nums->lhs_batch_dimensions_size();
 
-      const tensorflow::protobuf::RepeatedField<int64_t> &batch_dimensions =
+      const tsl::protobuf::RepeatedField<int64_t> &batch_dimensions =
           (bcast_operand_index == 1) ? dim_nums->rhs_batch_dimensions()
                                      : dim_nums->lhs_batch_dimensions();
       // This optimization is only valid if the set of broadcasted dimensions
@@ -93,6 +93,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWithDifferentShape(
           bcast_operand_index, bcast->mutable_operand(0)));
       TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
+      MarkAsChanged();
     }
     return OkStatus();
   }

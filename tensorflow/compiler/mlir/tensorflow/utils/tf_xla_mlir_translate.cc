@@ -26,12 +26,12 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -82,7 +82,7 @@ namespace {
 mlir::LogicalResult PrintHloModuleText(
     const XlaCompilationResult& compilation_result, llvm::raw_ostream& output) {
   const xla::HloModuleConfig module_config(
-      compilation_result.computation->GetProgramShape().ValueOrDie());
+      compilation_result.computation->GetProgramShape().value());
   auto status_or_hlo_module = xla::HloModule::CreateFromProto(
       compilation_result.computation->proto(), module_config);
   if (!status_or_hlo_module.ok()) {
@@ -91,7 +91,7 @@ mlir::LogicalResult PrintHloModuleText(
     return mlir::failure();
   }
 
-  xla::HloModule* hlo_module = status_or_hlo_module.ValueOrDie().get();
+  xla::HloModule* hlo_module = status_or_hlo_module.value().get();
 
   output << hlo_module->ToString();
 

@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/python/py_client_gpu.h"
@@ -167,7 +167,7 @@ Status PyClient::Defragment() {
             pjrt_client_
                 ->BufferFromHostLiteral(*tmp_buffer.host_copy,
                                         tmp_buffer.py_buffer->buffer_->device())
-                .ValueOrDie();
+                .value();
         TF_CHECK_OK(new_copy->BlockHostUntilReady());
         tmp_buffer.py_buffer->buffer_.reset(new_copy.release());
       }
@@ -318,7 +318,7 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
     const XlaComputation& computation, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<PjRtExecutable> executable;
+  std::unique_ptr<PjRtLoadedExecutable> executable;
   std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
@@ -336,7 +336,7 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
     std::string mlir_module, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<PjRtExecutable> executable;
+  std::unique_ptr<PjRtLoadedExecutable> executable;
   std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
@@ -362,7 +362,7 @@ StatusOr<py::bytes> PyClient::SerializeExecutable(
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
     const std::string& serialized, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<PjRtExecutable> executable;
+  std::unique_ptr<PjRtLoadedExecutable> executable;
   std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
@@ -467,7 +467,7 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
       auto* device_label = sample->add_label();
       device_label->set_key(device_string_id);
       device_label->set_str(
-          builder.StringId(entry.first.device->DebugString()));
+          builder.StringId(std::string(entry.first.device->DebugString())));
     } else {
       kind_label->set_str(executable_string_id);
     }

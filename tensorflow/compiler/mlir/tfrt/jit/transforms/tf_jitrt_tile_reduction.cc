@@ -33,7 +33,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TILEREDUCTION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using llvm::makeArrayRef;
@@ -306,13 +306,16 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     auto identity_1d_map = b.getMultiDimIdentityMap(1);
     auto iv = ivs.front();
 
+    mlir::OpFoldResult tile_size_fold = tile_size_value;
+    mlir::OpFoldResult input_size_fold = input_size;
     auto tile_sizes = mlir::linalg::computeTileSizes(
-        b, nested_loc, tile_size_value, input_size);
+        b, nested_loc, tile_size_fold, input_size_fold);
     for (auto input : inputs) {
       // Extract slice of input.
       Value slice = mlir::linalg::makeTiledShape(
-          b, nested_loc, input, tile_size_value, identity_1d_map, iv,
-          input_size, tile_sizes, /*omitPartialTileCheck=*/true);
+          b, nested_loc, input, tile_size_fold, identity_1d_map,
+          mlir::OpFoldResult(iv), input_size_fold, tile_sizes,
+          /*omitPartialTileCheck=*/true);
       auto element_type = slice.getType().cast<ShapedType>().getElementType();
 
       // Reshape input tile to
@@ -361,7 +364,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
   int64_t tile_size;
 };
 
-struct TileReductionPass : public TileReductionBase<TileReductionPass> {
+struct TileReductionPass : public impl::TileReductionBase<TileReductionPass> {
   TileReductionPass() = default;
   TileReductionPass(int64_t vector_size, int64_t reduction_1d_tile,
                     llvm::ArrayRef<int64_t> reduction_2d_tiles) {

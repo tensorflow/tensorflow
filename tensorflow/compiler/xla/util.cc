@@ -22,6 +22,9 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
@@ -33,12 +36,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/bfloat16.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/numbers.h"
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 namespace xla {
 
@@ -68,7 +68,7 @@ std::vector<int64_t> ToMixedRadix(const int64_t n,
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
   VLOG(1) << status.ToString();
-  VLOG(2) << tensorflow::CurrentStackTrace();
+  VLOG(2) << tsl::CurrentStackTrace();
   return status;
 }
 
@@ -81,13 +81,13 @@ ScopedLoggingTimer::ScopedLoggingTimer(absl::string_view label, bool enabled,
       timer_stats_(timer_stats),
       enabled_(enabled) {
   if (enabled_) {
-    start_micros_ = tensorflow::Env::Default()->NowMicros();
+    start_micros_ = tsl::Env::Default()->NowMicros();
   }
 }
 
 void ScopedLoggingTimer::StopAndLog() {
   if (enabled_) {
-    uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_micros = tsl::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros_) / 1000000.0;
 
     TimerStats& stats = *timer_stats_;

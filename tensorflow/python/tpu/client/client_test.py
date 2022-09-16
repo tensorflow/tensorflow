@@ -18,9 +18,9 @@ import datetime
 import json
 import os
 import time
+import urllib
 
 from absl import flags
-from six.moves.urllib import request
 
 from tensorflow.python.platform import test
 from tensorflow.python.tpu.client import client
@@ -46,7 +46,7 @@ def mock_request_compute_metadata(path):
   return ''
 
 
-class MockRequestClass(object):
+class MockRequestClass:
 
   def __init__(self, name, tpu_map):
     self._name = name
@@ -65,7 +65,7 @@ class MockRequestClass(object):
       raise KeyError('Resource %s was not found' % self._name)
 
 
-class MockNodeClass(object):
+class MockNodeClass:
 
   def __init__(self, tpu_map):
     self._tpu_map = tpu_map
@@ -77,7 +77,7 @@ class MockNodeClass(object):
 class CloudTpuClientTest(test.TestCase):
 
   def setUp(self):
-    super(CloudTpuClientTest, self).setUp()
+    super().setUp()
     if 'TPU_API_DISCOVERY_URL' in os.environ:
       del os.environ['TPU_API_DISCOVERY_URL']
     if 'TPU_NAME' in os.environ:
@@ -809,7 +809,7 @@ class CloudTpuClientTest(test.TestCase):
         zone='us-central1-c',
         service=self.mock_service_client(tpu_map=tpu_map))
 
-  @mock.patch.object(request, 'urlopen')
+  @mock.patch.object(urllib.request, 'urlopen')
   def testConfigureTpuVersion(self, urlopen):
     c = self.baseConfigureTpuVersion()
     c.configure_tpu_version('1.15')
@@ -819,7 +819,7 @@ class CloudTpuClientTest(test.TestCase):
         'http://5.6.7.8:8475/requestversion/1.15?restartType=always'
     ], sorted(paths))
 
-  @mock.patch.object(request, 'urlopen')
+  @mock.patch.object(urllib.request, 'urlopen')
   def testConfigureTpuVersionRestartIfneeded(self, urlopen):
     c = self.baseConfigureTpuVersion()
     c.configure_tpu_version('1.15', restart_type='ifNeeded')
@@ -829,7 +829,7 @@ class CloudTpuClientTest(test.TestCase):
         'http://5.6.7.8:8475/requestversion/1.15?restartType=ifNeeded'
     ], sorted(paths))
 
-  @mock.patch.object(request, 'urlopen')
+  @mock.patch.object(urllib.request, 'urlopen')
   def testGetTpuVersion(self, urlopen):
     c = client.Client(
         tpu='grpc://1.2.3.4:8470')

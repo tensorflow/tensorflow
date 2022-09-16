@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/gpu/gpu_types.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #endif
 
 namespace xla {

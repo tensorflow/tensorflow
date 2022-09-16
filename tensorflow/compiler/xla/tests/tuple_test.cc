@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -386,7 +386,7 @@ XLA_TEST_F(TupleHloTest, BitcastAfterGTE) {
       ROOT tuple.4 = (f32[1,3]{1,0}) tuple(copy)
     }
   )";
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param =
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({1, 2, 3}));
   auto result = ExecuteNoHloPasses(std::move(module), {&param});

@@ -21,17 +21,25 @@ import weakref
 import numpy as np
 import six
 
+from tensorflow.python.eager.polymorphic_function import composite_tensor_utils
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
+# Sentinel value used by with ConcreteFunction's structured signature to
+# indicate that a non-tensor parameter should use the value that was
+# specified when the concrete function was created.
+BOUND_VALUE = object()
 
+
+# TODO(b/214462107): Clean up and migrate to core/function when unblocked.
 class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
 
@@ -54,18 +62,10 @@ class FunctionSpec(object):
     Returns:
       instance of FunctionSpec
     """
-    fullargspec = tf_inspect.getfullargspec(python_function)
-    if (input_signature is not None and
-        set(fullargspec.kwonlyargs) - set(fullargspec.kwonlydefaults or ())):
-      nodefault_kwonlyargs = set(fullargspec.kwonlyargs)
-      if fullargspec.kwonlydefaults is not None:
-        nodefault_kwonlyargs -= set(fullargspec.kwonlydefaults)
-      raise ValueError("Cannot build TF function from "
-                       f"{python_function.__name__}: keyword-only arguments "
-                       "must have default values when input_signature is "
-                       "provided. Got keyword-only arguments without default "
-                       f"values: {sorted(nodefault_kwonlyargs)}.")
+    _validate_signature(input_signature)
+    _validate_python_function(python_function, input_signature)
 
+    fullargspec = tf_inspect.getfullargspec(python_function)
     # Checks if the `fullargspec` contains self or cls as its first argument.
     is_method = tf_inspect.isanytargetmethod(python_function)
 
@@ -197,12 +197,15 @@ class FunctionSpec(object):
     }
     self._arg_indices_no_default_values = set(range(len(args))) - set(
         self._arg_indices_to_default_values)
+
+    _validate_signature(input_signature)
     if input_signature is None:
       self._input_signature = None
     else:
       self._input_signature = tuple(input_signature)
       self._flat_input_signature = tuple(nest.flatten(input_signature,
                                                       expand_composites=True))
+    self.validate_input_signature_with_argspec()
 
   @property
   def fullargspec(self):
@@ -269,6 +272,30 @@ class FunctionSpec(object):
           args[-1] += "={}".format(self._fullargspec.kwonlydefaults[arg_name])
     return f"{self._name}({', '.join(args)})"
 
+  def validate_input_signature_with_argspec(self):
+    """Checks the python_function's args to be valid against input_signature."""
+    if self.input_signature is not None:
+      arglen = len(self.input_signature)
+      arg_names_len = len(self.arg_names)
+      defaults = self.fullargspec.defaults or ()
+      unbound_self_arg = 1 if (not self.is_method and arg_names_len > 0 and
+                               self.arg_names[0] == "self") else 0
+      if not all(d is BOUND_VALUE for d in defaults):
+        default_arg_len = len(defaults)
+        required_arg_len = arg_names_len - default_arg_len - unbound_self_arg
+        # The input signature must cover all required function arguments.
+        if arglen < required_arg_len:
+          missing_tensor_specs = self.arg_names[
+              arglen:required_arg_len]
+          raise TypeError(
+              f"The decorated tf.function has {required_arg_len} "
+              f"required argument(s), but tf.function was only passed an "
+              f"input_signature of length {arglen}. This covers {arglen} "
+              f"required argument(s): {self.arg_names[:arglen]}, "
+              f"but TensorSpecs are still required for the remaining "
+              f"{len(missing_tensor_specs)} argument(s):"
+              f" {missing_tensor_specs}.")
+
   def _convert_annotated_args_to_tensors(self, args, kwargs):
     """Attempts to autobox arguments annotated as tf.Tensor."""
     if self.input_signature is not None:
@@ -306,7 +333,34 @@ class FunctionSpec(object):
         raise ValueError(
             f"weakref input {inp} not supported for function {self._name}")
 
-  def canonicalize_function_inputs(self, *args, **kwargs):
+  def validate_inputs_with_signature(self, args, kwargs):
+    """Checks args and kwargs against the specified input_signature."""
+    if kwargs:
+      raise ValueError("Cannot define a TensorFlow function from a Python "
+                       "function with keyword arguments when "
+                       "input_signature is provided, got keyword arguments "
+                       f"({kwargs}) with input_signature "
+                       f"({self.input_signature}).")
+    if args:
+      # If args are provided, they must match the input signature.
+      if not is_same_structure(self.input_signature, args):
+        raise ValueError("Structure of Python function inputs does not match "
+                         f"input_signature: inputs ({args}), "
+                         f"input_signature ({self.input_signature}).")
+      flat_inputs = nest.flatten(args, expand_composites=True)
+      if any(not isinstance(arg, (ops.Tensor, tensor_spec.DenseSpec,
+                                  resource_variable_ops.BaseResourceVariable))
+             for arg in flat_inputs):
+        raise ValueError("When input_signature is provided, all inputs to "
+                         "the Python function must be Tensors, Variables, "
+                         "tf.TensorSpec or tf.VariableSpec objects.")
+      if any(not spec.is_compatible_with(other)
+             for spec, other in zip(self.flat_input_signature, flat_inputs)):
+        raise ValueError("Python inputs incompatible with input_signature: "
+                         f"inputs ({args}), input_signature "
+                         f"({self.input_signature}).")
+
+  def canonicalize_function_inputs(self, args, kwargs):
     """Canonicalizes `args` and `kwargs`.
 
     Canonicalize the inputs to the Python function using a `FunctionSpec`
@@ -322,8 +376,8 @@ class FunctionSpec(object):
     Additionally, any inputs containing numpy arrays are converted to Tensors.
 
     Args:
-      *args: The varargs this object was called with.
-      **kwargs: The keyword args this function was called with.
+      args: The varargs this object was called with.
+      kwargs: The keyword args this function was called with.
 
     Returns:
       A canonicalized ordering of the inputs, as well as full and filtered
@@ -338,6 +392,7 @@ class FunctionSpec(object):
         argument when an input signature is specified, or when the inputs
         do not conform to the input signature.
     """
+    kwargs = {key: kwargs[key] for key in kwargs}
     if self._is_pure:
       args, kwargs = _convert_variables_to_tensors(args, kwargs)
     if self._experimental_follow_type_hints:
@@ -346,7 +401,8 @@ class FunctionSpec(object):
     arglen = len(args)
     if self._input_signature is not None:
       if arglen > len(self._input_signature):
-        raise TypeError(f"{self.signature_summary()} specifies "
+        raise TypeError(f"{self.signature_summary()} has an input_signature "
+                        f"{self._input_signature} which specifies "
                         f"{len(self._input_signature)} positional arguments, "
                         f"but got {arglen}.")
       for arg in six.iterkeys(kwargs):
@@ -429,12 +485,70 @@ class FunctionSpec(object):
       flat_inputs += flat_kwargs
       filtered_flat_inputs += filtered_flat_kwargs
     else:
-      inputs, flat_inputs, filtered_flat_inputs = _convert_inputs_to_signature(
+      inputs, flat_inputs, filtered_flat_inputs = convert_inputs_to_signature(
           inputs, self._input_signature, self._flat_input_signature)
 
     self._validate_inputs(flat_inputs)
 
     return inputs, kwargs, filtered_flat_inputs
+
+
+def _validate_signature(signature):
+  """Checks the input_signature to be valid."""
+  if signature is None:
+    return
+
+  if not isinstance(signature, (tuple, list)):
+    raise TypeError("input_signature must be either a tuple or a list, got "
+                    f"{type(signature)}.")
+
+  # TODO(xjun): Allow VariableSpec once we figure out API for de-aliasing.
+  variable_specs = _get_variable_specs(signature)
+  if variable_specs:
+    raise TypeError(
+        f"input_signature doesn't support VariableSpec, got {variable_specs}")
+
+  if any(not isinstance(arg, tensor_spec.TensorSpec)
+         for arg in nest.flatten(signature, expand_composites=True)):
+    bad_args = [arg for arg in nest.flatten(signature, expand_composites=True)
+                if not isinstance(arg, tensor_spec.TensorSpec)]
+    raise TypeError("input_signature must be a possibly nested sequence of "
+                    f"TensorSpec objects, got invalid args {bad_args} with "
+                    f"types {list(six.moves.map(type, bad_args))}.")
+
+
+def _validate_python_function(python_function, input_signature):
+  """Checks the python_function to be valid against the input_signature."""
+  if not callable(python_function):
+    raise TypeError(f"{python_function} is not a callable object.")
+
+  if input_signature is not None:
+    fullargspec = tf_inspect.getfullargspec(python_function)
+    if set(fullargspec.kwonlyargs) - set(fullargspec.kwonlydefaults or ()):
+      nodefault_kwonlyargs = set(fullargspec.kwonlyargs)
+      if fullargspec.kwonlydefaults is not None:
+        nodefault_kwonlyargs -= set(fullargspec.kwonlydefaults)
+      raise ValueError("Cannot build TF function from "
+                       f"{python_function.__name__}: keyword-only arguments "
+                       "must have default values when input_signature is "
+                       "provided. Got keyword-only arguments without default "
+                       f"values: {sorted(nodefault_kwonlyargs)}.")
+
+
+def is_same_structure(structure1, structure2, check_values=False):
+  """Check two structures for equality, optionally of types and of values."""
+  try:
+    nest.assert_same_structure(structure1, structure2, expand_composites=True)
+  except (ValueError, TypeError):
+    return False
+  if check_values:
+    flattened1 = nest.flatten(structure1, expand_composites=True)
+    flattened2 = nest.flatten(structure2, expand_composites=True)
+    # First check the types to avoid AttributeErrors.
+    if any(type(f1) is not type(f2) for f1, f2 in zip(flattened1, flattened2)):
+      return False
+    return flattened1 == flattened2
+  return True
 
 
 def _to_tensor_or_tensor_spec(x):
@@ -455,12 +569,7 @@ def _convert_variables_to_tensors(args, kwargs):
 
 def _convert_numpy_inputs(inputs):
   """Converts numpy array inputs to tensors."""
-  # We assume that any CompositeTensors have already converted their components
-  # from numpy arrays to Tensors, so we don't need to expand composites here for
-  # the numpy array conversion. Instead, we do so because the flattened inputs
-  # are eventually passed to ConcreteFunction()._call_flat, which requires
-  # expanded composites.
-  flat_inputs = nest.flatten(inputs, expand_composites=True)
+  flat_inputs = composite_tensor_utils.flatten_with_variables(inputs)
 
   # Check for NumPy arrays in arguments and convert them to Tensors.
   # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
@@ -484,14 +593,18 @@ def _convert_numpy_inputs(inputs):
       filtered_flat_inputs.append(flat_inputs[index])
       need_packing = True
   if need_packing:
-    return (nest.pack_sequence_as(
-        structure=inputs, flat_sequence=flat_inputs,
-        expand_composites=True), flat_inputs, filtered_flat_inputs)
+    return (
+        nest.pack_sequence_as(
+            structure=inputs,
+            flat_sequence=nest.flatten(flat_inputs, expand_composites=True),
+            expand_composites=True),
+        flat_inputs,
+        filtered_flat_inputs)
   else:
     return inputs, flat_inputs, filtered_flat_inputs
 
 
-def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
+def convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   """Converts inputs to pass into a function with an explicit signature."""
 
   def format_error_message(inputs, input_signature):
@@ -514,6 +627,7 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   for index, (value, spec) in enumerate(zip(flatten_inputs,
                                             flat_input_signature)):
     if (isinstance(spec, tensor_spec.TensorSpec) and
+        not isinstance(value, tensor_spec.TensorSpec) and
         not _pywrap_utils.IsTensor(value)):
       try:
         flatten_inputs[index] = ops.convert_to_tensor(
@@ -537,10 +651,23 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
         flat_sequence=flatten_inputs,
         expand_composites=True)
 
-  flat_inputs = nest.flatten(inputs, expand_composites=True)
+  flat_inputs = composite_tensor_utils.flatten_with_variables(inputs)
 
   return (inputs, flat_inputs, [
       t for t in flat_inputs
       if isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
   ])
 
+
+def _get_variable_specs(args):
+  """Returns `VariableSpecs` from `args`."""
+  variable_specs = []
+  for arg in nest.flatten(args):
+    if not isinstance(arg, type_spec.TypeSpec):
+      continue
+    if isinstance(arg, resource_variable_ops.VariableSpec):
+      variable_specs.append(arg)
+    elif not isinstance(arg, tensor_spec.TensorSpec):
+      # arg is a CompositeTensor spec.
+      variable_specs.extend(_get_variable_specs(arg._component_specs))  # pylint: disable=protected-access
+  return variable_specs

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_REFERENCE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_REFERENCE_UTIL_H_
 
+#include <algorithm>
 #include <array>
 #include <functional>
 #include <memory>

@@ -33,7 +33,7 @@ const char* const kDefaultHostDeviceName =
 std::unique_ptr<HostContext> CreateSingleThreadedHostContext() {
   return std::make_unique<HostContext>(
       [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(FATAL) << "Runtime error: " << diag.message << "\n";
+        LOG(FATAL) << "Runtime error: " << diag.message() << "\n";
       },
       tfrt::CreateMallocAllocator(), tfrt::CreateSingleThreadedWorkQueue(),
       kDefaultHostDeviceName);
@@ -43,7 +43,7 @@ std::unique_ptr<HostContext> CreateMultiThreadedHostContext(
     int64_t num_threads) {
   return std::make_unique<HostContext>(
       [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(FATAL) << "Runtime error: " << diag.message << "\n";
+        LOG(FATAL) << "Runtime error: " << diag.message() << "\n";
       },
       tfrt::CreateMallocAllocator(),
       tfrt::CreateMultiThreadedWorkQueue(num_threads,

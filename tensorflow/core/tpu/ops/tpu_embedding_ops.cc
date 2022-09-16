@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <array>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -23,8 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/ops/tpu_embedding_shape_util.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
@@ -402,12 +401,7 @@ REGISTER_OP("XlaRecvTPUEmbeddingActivations")
             "node.");
       }
       std::vector<TensorShapeProto> output_shapes;
-      if (config.feature_descriptor_size() == 0) {
-        TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
-      } else {
-        TF_RETURN_IF_ERROR(
-            ComputeOutputTensorShapesFromFeature(config, &output_shapes));
-      }
+      TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
       if (c->num_outputs() != output_shapes.size()) {
         return errors::InvalidArgument(absl::StrFormat(
             "Number of outputs: %d of the XlaRecvTPUEmbeddingActivations node "

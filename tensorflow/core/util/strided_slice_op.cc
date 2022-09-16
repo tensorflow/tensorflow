@@ -496,7 +496,7 @@ StridedSliceAssignBCast::StridedSliceAssignBCast(
 bool StridedSliceAssignBCast::RemapDimensions(
     int64_t num_dims, const StridedSliceAssignBCast::Vec& dimension_map) {
   // Each element in the map corresponds to the original result shape, so
-  // the the sizes must be equal.
+  // the sizes must be equal.
   if (dimension_map.size() != result_shape_.size()) {
     return false;
   }

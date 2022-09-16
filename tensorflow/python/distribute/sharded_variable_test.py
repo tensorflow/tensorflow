@@ -494,7 +494,8 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     self.assertIs(s, got[0])
 
     got = nest.flatten(s, expand_composites=True)
-    self.assertAllEqual(variables, got)
+    expected = nest.flatten(variables, expand_composites=True)
+    self.assertEqual(got, expected)
 
   def test_tf_module(self):
 

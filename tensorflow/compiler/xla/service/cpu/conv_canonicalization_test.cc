@@ -96,7 +96,7 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
         return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
   ConvCanonicalization conv_canonicalization(&target_machine_features);
-  EXPECT_TRUE(conv_canonicalization.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(conv_canonicalization.Run(module.get()).value());
 
   const HloInstruction* output_reshape = entry_computation->root_instruction();
   EXPECT_EQ(HloOpcode::kTranspose, output_reshape->opcode());
@@ -158,7 +158,7 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
         return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
   ConvCanonicalization conv_canonicalization(&target_machine_features);
-  EXPECT_FALSE(conv_canonicalization.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(conv_canonicalization.Run(module.get()).value());
 }
 
 }  // namespace cpu

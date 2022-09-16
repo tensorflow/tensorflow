@@ -79,13 +79,14 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
 
   // Create the returnOp first so that if there are nodes in both feeds and
   // fetches, the fetch value will be replaced with feed argument.
-  OpBuilder body_builder = OpBuilder::atBlockEnd(func_op.getBody());
+  OpBuilder body_builder =
+      OpBuilder::atBlockEnd(func_op.SingleBlock::getBody());
   body_builder.create<ReturnOp>(loc, fetches, control_rets);
 
   StringAttr tfg_name = dialect->getTfgNameAttrIdentifier();
   StringAttr lifted_value_name = builder.getStringAttr("tfg.lifted_value_attr");
 
-  Block *body = func_op.getBody();
+  Block *body = func_op.SingleBlock::getBody();
   llvm::SmallVector<Attribute> args_rets_attrs;
   for (Value feed : feeds) {
     feed.replaceAllUsesWith(body->addArgument(feed.getType(), loc));

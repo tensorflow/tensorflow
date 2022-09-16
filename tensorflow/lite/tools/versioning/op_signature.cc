@@ -69,6 +69,17 @@ std::vector<OpSignatureTensorSpec> GetOpSignatureTensorSpecs(
             tensor_spec.dims.push_back(shape_vec->Get(j));
           }
         }
+        const flatbuffers::Vector<int32_t>* shape_signature_vec =
+            subgraph->tensors()->Get(tensor_no)->shape_signature();
+        tensor_spec.is_shape_dynamic = false;
+        if (shape_signature_vec) {
+          for (int32_t j = 0; j < shape_signature_vec->Length(); ++j) {
+            if (shape_signature_vec->Get(j) == -1) {
+              tensor_spec.is_shape_dynamic = true;
+              break;
+            }
+          }
+        }
       }
     }
     tensor_specs.push_back(tensor_spec);
@@ -100,6 +111,7 @@ std::vector<OpSignatureTensorSpec> GetOpSignatureTensorSpecs(
             tensor_spec.dims.push_back(tfl_tensor->dims->data[j]);
           }
         }
+        tensor_spec.is_shape_dynamic = HasUnspecifiedDimension(tfl_tensor);
       }
     }
     tensor_specs.push_back(tensor_spec);
@@ -236,6 +248,7 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
 
   op_sig.inputs = GetOpSignatureTensorSpecs(op->inputs(), subgraph, model);
   op_sig.outputs = GetOpSignatureTensorSpecs(op->outputs(), subgraph, model);
+  op_sig.version = op_code->version();
   return op_sig;
 }
 
@@ -252,6 +265,7 @@ OpSignature GetOpSignature(const TfLiteContext* context, const TfLiteNode* node,
 
   op_sig.inputs = GetOpSignatureTensorSpecs(node->inputs, context, node);
   op_sig.outputs = GetOpSignatureTensorSpecs(node->outputs, context, node);
+  op_sig.version = registration->version;
   return op_sig;
 }
 

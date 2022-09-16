@@ -86,6 +86,8 @@ std::string ToString(enum OperationType op) {
       return "batched_matmul";
     case OperationType::CAST:
       return "cast";
+    case OperationType::CEIL:
+      return "ceil";
     case OperationType::CONCAT:
       return "concat";
     case OperationType::CONSTANT:

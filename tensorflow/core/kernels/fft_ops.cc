@@ -482,6 +482,10 @@ class FFTGPUBase : public FFTBase {
             stream, fft_rank, fft_shape, input_embed, input_stride,
             input_distance, output_embed, output_stride, output_distance,
             kFftType, kInPlaceFft, batch_size, &scratch_allocator);
+    OP_REQUIRES(
+        ctx, plan != nullptr,
+        errors::Internal(
+            "Failed to create cuFFT batched plan with scratch allocator"));
 
     if (IsReal()) {
       if (IsForward()) {

@@ -27,12 +27,6 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
-constexpr char kAttrMapAttribute[] = "attr_map";
-// This attribute will be set for functions created by this pass.
-constexpr char kFusedFunctionAttr[] = "tf_quant.composite_function";
-// The keyword to detect if this is a `NullAttribute`.
-constexpr char kNullAttributeValue[] = "N/A";
-
 // Checks if the op is inside a lifted function.
 bool IsInLiftedFunc(Operation *op) {
   return op->getParentOfType<func::FuncOp>()->hasAttr(kFusedFunctionAttr);
@@ -193,9 +187,8 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   auto current_func = result_op->getParentOfType<func::FuncOp>();
   auto guard = OpBuilder::InsertionGuard(builder);
   builder.setInsertionPointAfter(current_func);
-  TypeRange arg_types(
-      llvm::ArrayRef<Value>(arguments.begin(), arguments.end()));
-  TypeRange result_types(llvm::ArrayRef<Value>(results.begin(), results.end()));
+  TypeRange arg_types{ValueRange{arguments}};
+  TypeRange result_types{ValueRange{results}};
   auto func_type = FunctionType::get(context, arg_types, result_types);
 
   llvm::SmallVector<Location> arg_locs;

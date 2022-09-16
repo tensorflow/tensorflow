@@ -31,22 +31,58 @@ limitations under the License.
 
 namespace xla {
 
+class PyToken {
+ public:
+  PyToken() = default;
+  explicit PyToken(PjRtFuture<Status> future) : future_(std::move(future)) {}
+
+  static PyToken ReadyPyToken() {
+    return PyToken(PjRtFuture<Status>(OkStatus()));
+  }
+
+  Status Await();
+
+ private:
+  PjRtFuture<Status> future_;
+};
+
+// PyShardedToken contains a PyToken for each device's execution.
+class PyShardedToken {
+ public:
+  // Default construction creates a always-ready token.
+  PyShardedToken() = default;
+  explicit PyShardedToken(std::vector<PjRtFuture<Status>> futures)
+      : futures_(std::move(futures)) {}
+
+  PyToken GetPyToken(int device_id) const {
+    if (futures_.empty()) return PyToken::ReadyPyToken();
+    return PyToken(futures_.at(device_id));
+  }
+
+  Status Await();
+
+ private:
+  std::vector<PjRtFuture<Status>> futures_;
+};
+
 // Python wrapper around PjRtExecutable. We use a wrapper class:
 // a) to keep the PyClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
 class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
  public:
   PyExecutable(std::shared_ptr<PyClient> client,
-               std::unique_ptr<PjRtExecutable> executable,
+               std::unique_ptr<PjRtLoadedExecutable> executable,
                std::shared_ptr<Traceback> traceback,
                std::optional<std::string> fingerprint,
                std::vector<pybind11::capsule> host_callbacks);
   ~PyExecutable();
 
   std::shared_ptr<PyClient> client() const { return client_; }
-  std::shared_ptr<PjRtExecutable> executable() const { return executable_; }
+  std::shared_ptr<PjRtLoadedExecutable> executable() const {
+    return executable_;
+  }
 
-  absl::Span<const PjRtExecutable::LogicalDeviceIds>
+  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
   addressable_device_logical_ids() const {
     return executable_->addressable_device_logical_ids();
   }
@@ -66,7 +102,10 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   bool is_deleted() { return executable_->IsDeleted(); }
 
   StatusOr<std::vector<PyBuffer::object>> Execute(
-      absl::Span<PyBuffer::object const> args);
+      absl::Span<PyBuffer::object const> args, PjRtDevice* device);
+
+  StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteWithToken(
+      absl::Span<PyBuffer::object const> args, PjRtDevice* device);
 
   // Takes args indexed by argid then deviceid, transposes them, and passes to
   // PjRtExecutable::Execute. The result is similarly transposed back into the
@@ -76,13 +115,27 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   ExecuteShardedOnLocalDevices(
       absl::Span<const std::vector<PyBuffer::object>> args);
 
+  StatusOr<
+      std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
+  ExecuteShardedOnLocalDevicesWithTokens(
+      absl::Span<const std::vector<PyBuffer::object>> args);
+
+  StatusOr<std::vector<PyShardedBuffer>> ExecuteShardedOnLocalDevices(
+      absl::Span<PyShardedBuffer* const> args);
+
+  StatusOr<std::pair<std::vector<PyShardedBuffer>, PyShardedToken>>
+  ExecuteShardedOnLocalDevicesWithTokens(
+      absl::Span<PyShardedBuffer* const> args);
+
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
   Traceback* traceback() { return traceback_.get(); }
 
-  const PjRtExecutable& pjrt_executable() const { return *executable_; }
+  const PjRtLoadedExecutable& pjrt_executable() const { return *executable_; }
 
-  PjRtExecutable* mutable_pjrt_executable() const { return executable_.get(); }
+  PjRtLoadedExecutable* mutable_pjrt_executable() const {
+    return executable_.get();
+  }
   const ExecuteOptions& options() const { return options_; }
   const std::optional<std::string>& fingerprint() const { return fingerprint_; }
 
@@ -90,10 +143,14 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   void KeepAlive(pybind11::object obj);
 
  private:
+  StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteInternal(
+      absl::Span<PyBuffer::object const> args, PjRtDevice* device,
+      std::optional<std::vector<PjRtFuture<Status>>>& returned_futures);
+
   friend class PyClient;
 
   std::shared_ptr<PyClient> client_;
-  std::shared_ptr<PjRtExecutable> executable_;
+  std::shared_ptr<PjRtLoadedExecutable> executable_;
   std::shared_ptr<Traceback> traceback_;
 
   // Identical executables (i.e. representing the same program) will have the

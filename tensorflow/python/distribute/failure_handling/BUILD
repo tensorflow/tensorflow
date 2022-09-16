@@ -1,5 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -84,5 +87,18 @@ tf_py_test(
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:test_util",
+    ],
+)
+
+tf_custom_op_py_library(
+    name = "check_preemption_py",
+    kernels = [
+        "//tensorflow/core/distributed_runtime/preemption:check_preemption_op_kernel",
+        "//tensorflow/core/distributed_runtime/preemption:check_preemption_op_op_lib",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core/distributed_runtime/preemption:gen_check_preemption_op",
+        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )

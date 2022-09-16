@@ -60,9 +60,9 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -422,6 +422,11 @@ class Conv2DBackpropInputOp : public OpKernel {
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);
 
+    OP_REQUIRES(
+        context, out_backprop.dims() == 4,
+        errors::InvalidArgument("input_sizes must be 4-dimensional, got: ",
+                                out_backprop.dims()));
+
     TensorShape input_shape;
     OP_REQUIRES_OK(context,
                    Conv2DBackpropComputeInputShape(input_sizes, filter.shape(),
@@ -527,6 +532,10 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     const Tensor& input_sizes = context->input(0);
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);
+    OP_REQUIRES(
+        context, out_backprop.dims() == 4,
+        errors::InvalidArgument("input_sizes must be 4-dimensional, got: ",
+                                out_backprop.dims()));
 
     TensorShape input_shape;
     OP_REQUIRES_OK(context,

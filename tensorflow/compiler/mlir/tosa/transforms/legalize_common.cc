@@ -135,7 +135,7 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
 
   // Check for ranked tensor type.
   if (!result_type) {
-    op->emitOpError("PackOp: result type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "result type not ranked tensor");
     return llvm::None;
   }
 
@@ -145,13 +145,13 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   RankedTensorType input_type =
       op->getOperand(0).getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
-    op->emitOpError("PackOp: input type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return llvm::None;
   }
 
   input_type = inputs[0].getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
-    op->emitOpError("Input 0 type not ranked tensor.");
+    (void)rewriter.notifyMatchFailure(op, "input 0 type not ranked tensor");
     return llvm::None;
   }
   ArrayRef<int64_t> input0_tensor_shape = input_type.getShape();
@@ -160,19 +160,20 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   for (int i = 1; i < inputs.size(); i++) {
     input_type = inputs[0].getType().dyn_cast<RankedTensorType>();
     if (!input_type) {
-      op->emitOpError(llvm::formatv(
-          "reduce axis {} is not in valid range [-rank(input), rank(input))",
-          i));
+      (void)rewriter.notifyMatchFailure(
+          op, llvm::formatv("reduce axis {} is not in valid range "
+                            "[-rank(input), rank(input))",
+                            i));
       return llvm::None;
     }
     ArrayRef<int64_t> next_tensor_shape = input_type.getShape();
     if (next_tensor_shape.size() != input_tensor_rank) {
-      op->emitOpError("PackOp: input tensor rank mismatch.");
+      (void)rewriter.notifyMatchFailure(op, "input tensor rank mismatch");
       return llvm::None;
     }
     for (int d = 0; d < input0_tensor_shape.size(); d++) {
       if (input0_tensor_shape[d] != next_tensor_shape[d]) {
-        op->emitOpError("PackOp: input tensor shape mismatch.");
+        (void)rewriter.notifyMatchFailure(op, "input tensor shape mismatch");
         return llvm::None;
       }
     }
@@ -200,7 +201,7 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   // where the axis "wraps around".
   if (axis < 0) axis += input_tensor_rank;
   if ((axis < 0) || (axis > (input_tensor_rank + 1))) {
-    op->emitOpError("PackOp: axis out of valid range.");
+    (void)rewriter.notifyMatchFailure(op, "axis out of valid range");
     return llvm::None;
   }
 
@@ -210,12 +211,12 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   SmallVector<int64_t> output_shape_vals(result_type.getShape().begin(),
                                          result_type.getShape().end());
   if (output_shape_vals.size() != (input_tensor_rank + 1)) {
-    op->emitOpError("PackOp: output tensor rank mismatch.");
+    (void)rewriter.notifyMatchFailure(op, "output tensor rank mismatch");
     return llvm::None;
   }
   // 2.b check output rank 0 is N
   if (output_shape_vals[axis] != inputs.size()) {
-    op->emitOpError("PackOp: output tensor shape mismatch.");
+    (void)rewriter.notifyMatchFailure(op, "output tensor shape mismatch");
     return llvm::None;
   }
   // Most of the cases when PackOp.axis() is within [0, rank(input) - 1].
@@ -322,7 +323,7 @@ llvm::Optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
   // Negative axis allowed as long as it's within [-input_rank, input_rank).
   if (axis < 0) axis += input_rank;
   if ((axis < 0) || (axis > input_rank)) {
-    op->emitOpError("UnpackOp: axis out of valid range.");
+    (void)rewriter.notifyMatchFailure(op, "axis out of valid range");
     return llvm::None;
   }
 
@@ -413,7 +414,7 @@ llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
   RankedTensorType y_type = y_value.getType().dyn_cast<RankedTensorType>();
 
   if (!result_type || !condition_type || !x_type || !y_type) {
-    op->emitOpError("Select: failed ranked tensor type check");
+    (void)rewriter.notifyMatchFailure(op, "failed ranked tensor type check");
     return llvm::None;
   }
 
@@ -451,13 +452,13 @@ llvm::Optional<Value> convertZerosLikeOp(PatternRewriter& rewriter,
                                          Value input) {
   RankedTensorType result_type = result.getType().dyn_cast<RankedTensorType>();
   if (!result_type) {
-    op->emitOpError("Zeroslike: result not ranked tensor type");
+    (void)rewriter.notifyMatchFailure(op, "result not ranked tensor type");
     return llvm::None;
   }
 
   RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
-    op->emitOpError("Zeroslike: input not ranked tensor type");
+    (void)rewriter.notifyMatchFailure(op, "input not ranked tensor type");
     return llvm::None;
   }
 
@@ -493,9 +494,9 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
 
   if (input_lhs_is_qtype != output_is_qtype ||
       input_rhs_is_qtype != output_is_qtype) {
-    op->emitOpError(
-        "ConvertMultiplyOp: input/output tensor should "
-        "be all quantized or all floating-point");
+    (void)rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
     return llvm::None;
   }
 
@@ -545,14 +546,14 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
   // This lowering calculates the difference and multiplies.
   ShapedType result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type) {
-    op->emitOpError("SquaredDifference: result not ranked tensor type");
+    (void)rewriter.notifyMatchFailure(op, "result not ranked tensor type");
     return llvm::None;
   }
 
   ShapedType x_type = x.getType().dyn_cast<ShapedType>();
   ShapedType y_type = y.getType().dyn_cast<ShapedType>();
   if (!x_type || !y_type) {
-    op->emitOpError("SquaredDifference: inputs not ranked tensor type");
+    (void)rewriter.notifyMatchFailure(op, "inputs not ranked tensor type");
     return llvm::None;
   }
 
@@ -570,13 +571,13 @@ llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
   // Implements banker's rounding by calculating floor(input + 0.5).
   ShapedType result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type) {
-    op->emitOpError("Round: result not shaped tensor type");
+    (void)rewriter.notifyMatchFailure(op, "result not shaped tensor type");
     return llvm::None;
   }
 
   ShapedType input_type = input.getType().dyn_cast<ShapedType>();
   if (!input_type) {
-    op->emitOpError("Round: input not shaped tensor type");
+    (void)rewriter.notifyMatchFailure(op, "input not shaped tensor type");
     return llvm::None;
   }
 
@@ -597,14 +598,15 @@ llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
   // Check all inputs are RankedTensorType
   for (auto v : values) {
     if (!v.getType().dyn_cast<RankedTensorType>()) {
-      op->emitOpError("ConcatV2Op: value type not ranked tensor.");
+      (void)rewriter.notifyMatchFailure(op, "value type not ranked tensor");
       return llvm::None;
     }
   }
 
   // Check output is Ranked tensor type
   if (!result_value.getType().dyn_cast<RankedTensorType>()) {
-    op->emitOpError("ConcatV2Op: output value type not ranked tensor.");
+    (void)rewriter.notifyMatchFailure(op,
+                                      "output value type not ranked tensor");
     return llvm::None;
   }
 
@@ -654,7 +656,7 @@ llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
 
   if (axis < 0) axis += tensor_rank;
   if ((axis < 0) || (axis > tensor_rank)) {
-    op->emitOpError("ConcatV2Op: axis out of valid range.");
+    (void)rewriter.notifyMatchFailure(op, "axis out of valid range");
     return llvm::None;
   }
 
@@ -735,19 +737,19 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
 
   // Not a ranked tensor output.
   if (!result_type) {
-    op->emitOpError("SpaceToBatchND: result type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "result type not ranked tensor");
     return llvm::None;
   }
   if (!input_type) {
-    op->emitOpError("SpaceToBatchND: input type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return llvm::None;
   }
   if (!block_shape_type) {
-    op->emitOpError("SpaceToBatchND: block shape type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "block shape type not ranked tensor");
     return llvm::None;
   }
   if (!paddings_type) {
-    op->emitOpError("SpaceToBatchND: paddings type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "paddings type not ranked tensor");
     return llvm::None;
   }
 
@@ -997,19 +999,19 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
       crops_value.getType().dyn_cast<RankedTensorType>();
 
   if (!result_type) {
-    op->emitOpError("BatchToSpaceND: result type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "result type not ranked tensor");
     return llvm::None;
   }
   if (!input_type) {
-    op->emitOpError("BatchToSpaceND: input type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return llvm::None;
   }
   if (!block_shape_type) {
-    op->emitOpError("BatchToSpaceND: block shape type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "block shape type not ranked tensor");
     return llvm::None;
   }
   if (!crops_type) {
-    op->emitOpError("BatchToSpaceND: crops type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "crops type not ranked tensor");
     return llvm::None;
   }
 
@@ -1024,12 +1026,12 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
   ElementsAttr crops_elems;
 
   if (!matchPattern(block_shape_value, m_Constant(&block_shape_elems))) {
-    op->emitOpError("BatchToSpaceND: block_shape not a constant");
+    (void)rewriter.notifyMatchFailure(op, "block_shape not a constant");
     return llvm::None;
   }
 
   if (!matchPattern(crops_value, m_Constant(&crops_elems))) {
-    op->emitOpError("BatchToSpaceND: crops not a constant");
+    (void)rewriter.notifyMatchFailure(op, "crops not a constant");
     return llvm::None;
   }
 
@@ -1186,14 +1188,14 @@ llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
       result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!output_type) {
-    op->emitOpError("ExpandDims: output type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "output type not ranked tensor");
     return llvm::None;
   }
 
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
-    op->emitOpError("ExpandDims: input type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return llvm::None;
   }
 
@@ -1203,7 +1205,8 @@ llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
   if (!matchPattern(dim_value, m_Constant(&dim_elem))) return llvm::None;
 
   if (dim_elem.getNumElements() > 1) {
-    op->emitOpError("ExpandDims: expected single dimension to expand");
+    (void)rewriter.notifyMatchFailure(op,
+                                      "expected single dimension to expand");
     return llvm::None;
   }
   int32_t dim = dim_elem.getValues<IntegerAttr>()[0].getInt();
@@ -1219,8 +1222,8 @@ llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
     if (dim < 0) {
       dim += input_size;
       if (dim < 0) {
-        op->emitOpError(
-            "ExpandDims: dimension to expand + size of input shape < 0");
+        (void)rewriter.notifyMatchFailure(
+            op, "dimension to expand + size of input shape < 0");
         return llvm::None;
       }
     }
@@ -1249,14 +1252,14 @@ llvm::Optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
       result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!output_type) {
-    op->emitOpError("Squeeze: output type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "output type not ranked tensor");
     return llvm::None;
   }
 
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
-    op->emitOpError("Squeeze: input type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return llvm::None;
   }
 
@@ -1319,7 +1322,7 @@ llvm::Optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
       result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!output_type) {
-    op->emitOpError("Elu: output type not ranked tensor");
+    (void)rewriter.notifyMatchFailure(op, "output type not ranked tensor");
     return llvm::None;
   }
 
@@ -1372,7 +1375,8 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
   // Not a ranked tensor input/output
   if (!output_type || !input_type) {
-    op->emitOpError("Softmax: input and result not ranked tensors");
+    (void)rewriter.notifyMatchFailure(op,
+                                      "input and result not ranked tensors");
     return llvm::None;
   }
 
@@ -1419,17 +1423,18 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
           op2_reducemax_op1.getResult());
 
       // Step 2. get exp() result
-      // Implemented with two 8-bit -> 16-bit table lookup
-      // Since table output is allowed to be [-32768, 32767]
-      // And lower 16 bits are unsigned and ranges [0, 65535]
-      // Lower table is generated with offset -32768, and this need to be
-      // recovered before adding with higher 16 bits.
+      // Implemented with 4 16-bit table lookup
+      // We use a 16-bit table lookup, as the result of x - max(x) for
+      // 8-bit values is a 9-bit value. We only use the bottom 8 bits of each
+      // table to avoid having the slope between two 16-bit table entries be
+      // greater than 16 bits, causing potential interpolation errors
       auto exp_func = [](double x) -> double { return std::exp(x); };
 
-      Value exp_table_const_upper, exp_table_const_lower;
+      Value exp_table_const_01, exp_table_const_02, exp_table_const_03,
+          exp_table_const_04;
       getTosaConst32bitTable(rewriter, op, beta * in_quant_type.getScale(), 0,
-                             exp_func, exp_table_const_upper,
-                             exp_table_const_lower);
+                             exp_func, exp_table_const_01, exp_table_const_02,
+                             exp_table_const_03, exp_table_const_04);
 
       Value op4_rescale_op3 =
           buildRescale(rewriter, op, int16_logits_type,
@@ -1438,70 +1443,97 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // Input is 9.7, where lower 7 bits are all zeros.
       // Output is 23 bits, where lower 7 bits should be all zeros as well,
       // since there's no interpolation here.
-      auto op5_table_op4_upper = CreateOpAndInfer<tosa::TableOp>(
+      auto op5_table_op4_bits_31_24 = CreateOpAndInfer<tosa::TableOp>(
           rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
-          exp_table_const_upper);
+          exp_table_const_01);
 
-      auto op6_table_op4_lower = CreateOpAndInfer<tosa::TableOp>(
+      auto op6_table_op4_bits_23_16 = CreateOpAndInfer<tosa::TableOp>(
           rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
-          exp_table_const_lower);
+          exp_table_const_02);
+
+      auto op7_table_op4_bits_15_8 = CreateOpAndInfer<tosa::TableOp>(
+          rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
+          exp_table_const_03);
+
+      auto op8_table_op4_bits_7_0 = CreateOpAndInfer<tosa::TableOp>(
+          rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
+          exp_table_const_04);
 
       // To get 16 bits upper/lower value, we need to right shift 7 bits
-      // And then we reconstruct 32-bit value we need (upper << 16) + lower
-      // So effectively we left shift upper with 9 bits
+      // And then we reconstruct 32-bit value we need (upper << 24) + lower
+      // So effectively we left shift the 1st group of 8-bit with 17 bits
       auto op7_lshift_op5 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
-          op5_table_op4_upper.getResult(),
+          op5_table_op4_bits_31_24.getResult(),
+          getTosaConstTensorSingleI32(rewriter, op, 17));
+
+      // For the 2nd group of 8-bit, we need to >> 7 AND << 16 ==> << 9
+      auto op8_lshift_op6 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op6_table_op4_bits_23_16.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 9));
 
-      // Right shift 7 bits to get lower 16 bits.
-      auto op8_rshift_op6 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+      // For the 3rd 8-bit, we need to >> 7 AND << 8 ==> << 1
+      auto op9_lshift_op7 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
-          op6_table_op4_lower.getResult(),
+          op7_table_op4_bits_15_8.getResult(),
+          getTosaConstTensorSingleI32(rewriter, op, 1));
+
+      // For the last 8-bit, we only need to >> 7
+      auto op10_rshift_op8 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op8_table_op4_bits_7_0.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 7), true);
 
-      // Recover lower bits from [-32768, 32767] back to [0, 65535]
-      auto op9_add_op8_32768 = CreateOpAndInfer<tosa::AddOp>(
-          rewriter, op->getLoc(), int32_logits_type, op8_rshift_op6.getResult(),
-          getTosaConstTensorSingleI32(rewriter, op, 32768));
-
-      auto op10_add_op7_op9 = CreateOpAndInfer<tosa::AddOp>(
+      // Add together all the 8-bit groups
+      // Add [1+2]
+      auto op11_add_op7_op8 = CreateOpAndInfer<tosa::AddOp>(
           rewriter, op->getLoc(), int32_logits_type, op7_lshift_op5.getResult(),
-          op9_add_op8_32768.getResult());
+          op8_lshift_op6.getResult());
+
+      // Add [1+2+3]
+      auto op12_add_op11_op9 = CreateOpAndInfer<tosa::AddOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op11_add_op7_op8.getResult(), op9_lshift_op7.getResult());
+
+      // Add [1+2+3+4]
+      auto op13_add_op12_op10 = CreateOpAndInfer<tosa::AddOp>(
+          rewriter, op->getLoc(), int32_logits_type,
+          op12_add_op11_op9.getResult(), op10_rshift_op8.getResult());
 
       // Step 3. get sum(exp()). output 12.19
-      auto op11_rshift_op10_12 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+      auto op14_rshift_op13_12 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
           rewriter, op->getLoc(), int32_logits_type,
-          op10_add_op7_op9.getResult(),
+          op13_add_op12_op10.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 12), true);
 
-      auto op12_reducesum_op11 = CreateOpAndInfer<tosa::ReduceSumOp>(
+      auto op15_reducesum_op14 = CreateOpAndInfer<tosa::ReduceSumOp>(
           rewriter, op->getLoc(), int32_rsum_type,
-          op11_rshift_op10_12.getResult(),
+          op14_rshift_op13_12.getResult(),
           rewriter.getI64IntegerAttr(input_rank - 1));
 
       // Step 4. calculate reciprocal(sum(exp()))
-      // CLZ returns headroom_plus_one
-      auto op13_clz_op12 =
+      // CLZ returns the number of leading zeros which equals to headroom + 1
+      auto op16_clz_op15 =
           CreateOpAndInfer<tosa::ClzOp>(rewriter, op->getLoc(), int32_rsum_type,
-                                        op12_reducesum_op11.getResult());
+                                        op15_reducesum_op14.getResult());
 
       // minus one to get headroom
-      auto op14_sub_op13 = CreateOpAndInfer<tosa::SubOp>(
-          rewriter, op->getLoc(), int32_rsum_type, op13_clz_op12.getResult(),
+      auto op17_sub_op16 = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op16_clz_op15.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 1));
 
       // Left shift to get s1.30 format
-      auto op15_lshift_op12_op14 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
+      auto op18_lshift_op15_op17 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
           rewriter, op->getLoc(), int32_rsum_type,
-          op12_reducesum_op11.getResult(), op14_sub_op13.getResult());
+          op15_reducesum_op14.getResult(), op17_sub_op16.getResult());
 
       // Step 5. Calculate one_over_one_plus_x() with Newton-Raphson division
       // with 3 iterations.
       // Need two magic constants 48/17 and -32/17 from Newton-Raphson algorithm
-      // We need to operator in s2.29 since 48/17 is > 2.0
+      // We need to operate in s2.29 since 48/17 is > 2.0
       // Reference: gemmlowp/fixedpoint/fixedpoint.h
-      Value half_denominator = op15_lshift_op12_op14.getResult();
+      Value half_denominator = op18_lshift_op15_op17.getResult();
       Value four = getTosaConstTensorSingleI32(rewriter, op, 4);
       Value F2_one = getTosaConstTensorSingleI32(rewriter, op, (1U << 29));
       Value constant_48_over_17 =
@@ -1511,70 +1543,70 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       // F2 x = constant_48_over_17 + half_denominator *
       // constant_neg_32_over_17;
-      auto op16_mul_half_denominator = CreateOpAndInfer<tosa::MulOp>(
+      auto op19_mul_half_denominator = CreateOpAndInfer<tosa::MulOp>(
           rewriter, op->getLoc(), int32_rsum_type, half_denominator,
           constant_neg_32_over_17, 31);
 
-      auto op17_add_op16 = CreateOpAndInfer<tosa::AddOp>(
+      auto op20_add_op19 = CreateOpAndInfer<tosa::AddOp>(
           rewriter, op->getLoc(), int32_rsum_type,
-          op16_mul_half_denominator.getResult(), constant_48_over_17);
+          op19_mul_half_denominator.getResult(), constant_48_over_17);
 
       // Newton-Raphson 3x iteration
-      Value nr_x = op17_add_op16.getResult();
+      Value nr_x = op20_add_op19.getResult();
       for (int i = 0; i < 3; i++) {
         // half_denominator_times_x =
         // SaturatingRoundingDoublingHighMul(half_denominator, x)
-        auto op18_mul_x_half_denominator = CreateOpAndInfer<tosa::MulOp>(
+        auto op21_mul_x_half_denominator = CreateOpAndInfer<tosa::MulOp>(
             rewriter, op->getLoc(), int32_rsum_type, nr_x, half_denominator,
             31);
 
         // F2 one_minus_half_denominator_times_x = F2::One() -
         // half_denominator_times_x
-        auto op19_sub_one_op18 = CreateOpAndInfer<tosa::SubOp>(
+        auto op22_sub_one_op21 = CreateOpAndInfer<tosa::SubOp>(
             rewriter, op->getLoc(), int32_rsum_type, F2_one,
-            op18_mul_x_half_denominator.getResult());
+            op21_mul_x_half_denominator.getResult());
 
         // SaturatingRoundingDoublingHighMul(x,
         // one_minus_half_denominator_times_x)
-        auto op20_mul_x_op19 = CreateOpAndInfer<tosa::MulOp>(
+        auto op23_mul_x_op22 = CreateOpAndInfer<tosa::MulOp>(
             rewriter, op->getLoc(), int32_rsum_type, nr_x,
-            op19_sub_one_op18.getResult(), 31);
+            op22_sub_one_op21.getResult(), 31);
 
         // x + Rescale<2>(x * one_minus_half_denominator_times_x)
-        auto op21_mul_op20_four = CreateOpAndInfer<tosa::MulOp>(
+        auto op24_mul_op23_four = CreateOpAndInfer<tosa::MulOp>(
             rewriter, op->getLoc(), int32_rsum_type,
-            op20_mul_x_op19.getResult(), four, 0);
+            op23_mul_x_op22.getResult(), four, 0);
 
-        auto op22_add_x_op21 = CreateOpAndInfer<tosa::AddOp>(
+        auto op25_add_x_op24 = CreateOpAndInfer<tosa::AddOp>(
             rewriter, op->getLoc(), int32_rsum_type, nr_x,
-            op21_mul_op20_four.getResult());
+            op24_mul_op23_four.getResult());
 
-        nr_x = op22_add_x_op21.getResult();
+        nr_x = op25_add_x_op24.getResult();
       }
 
       // Step 6. multiply exp(x) with 1 / sum(exp(x))
       // combined with Rescale<0>(ExactMulByPot<-1>(x))
       // so shift 30 instead of 31
-      auto op23_mul_op10_x = CreateOpAndInfer<tosa::MulOp>(
+      auto op26_mul_op13_x = CreateOpAndInfer<tosa::MulOp>(
           rewriter, op->getLoc(), int32_logits_type,
-          op10_add_op7_op9.getResult(), nr_x, 31 - 1);
+          op13_add_op12_op10.getResult(), nr_x, 31 - 1);
 
       // Right shift amount is
       // num_bits_over_unit + 31 - (sizeof(OutputT) * 8 =
       // (12 - headroom_plus_one) + 31 - 8 =
       // (12 + 31 - 8) - headroom_plus_one
-      auto op24_sub_op13 = CreateOpAndInfer<tosa::SubOp>(
+      auto op27_sub_op16 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_rsum_type,
           getTosaConstTensorSingleI32(rewriter, op, 12 + 31 - 8),
-          op13_clz_op12.getResult());
+          op16_clz_op15.getResult());
 
-      auto op25_rshift_op23_op24 =
+      auto op28_rshift_op26_op27 =
           CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
               rewriter, op->getLoc(), int32_logits_type,
-              op23_mul_op10_x.getResult(), op24_sub_op13.getResult(), true);
+              op26_mul_op13_x.getResult(), op27_sub_op16.getResult(), true);
 
       return buildRescale(rewriter, op, output_type,
-                          op25_rshift_op23_op24.getResult(), 1.0, 0,
+                          op28_rshift_op26_op27.getResult(), 1.0, 0,
                           out_quant_type.getZeroPoint(), false, true);
 
     } else if (in_quant_type.getStorageTypeIntegralWidth() == 16) {
@@ -1705,7 +1737,7 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
                           (1.0 / out_quant_type.getScale()) * (1.0 / 32768.0),
                           0, out_quant_type.getZeroPoint(), false, true);
     } else {
-      op->emitOpError("Softmax: unknown quantization bitwidth");
+      (void)rewriter.notifyMatchFailure(op, "unknown quantization bitwidth");
       return llvm::None;
     }
   } else {
@@ -1754,14 +1786,14 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   TensorType output_type = result_value.getType().dyn_cast<TensorType>();
   // Not a tensor output
   if (!output_type) {
-    op->emitOpError("LogSoftmax: output type not tensor.");
+    (void)rewriter.notifyMatchFailure(op, "output type not tensor");
     return llvm::None;
   }
 
   RankedTensorType input_type =
       op->getOperand(0).getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
-    op->emitOpError("LogSoftmax: input type not ranked tensor.");
+    (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return llvm::None;
   }
 
@@ -1772,7 +1804,8 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
       output_type.getElementType()
           .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
   if (in_quant_type || out_quant_type) {
-    op->emitOpError("Quantized log_softmax lowering not implemented yet");
+    (void)rewriter.notifyMatchFailure(
+        op, "quantized log_softmax lowering not implemented yet");
     return llvm::None;
   }
 
@@ -1817,26 +1850,26 @@ llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
 
   // Not a ranked tensor output.
   if (!output_type) {
-    op->emitOpError("SpaceToDepth: output type not ranked tensor.");
+    (void)rewriter.notifyMatchFailure(op, "output type not ranked tensor");
     return llvm::None;
   }
 
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
-    op->emitOpError("SpaceToDepth: input type not ranked tensor.");
+    (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return llvm::None;
   }
 
   if (input_type.getRank() != 4) {
-    op->emitOpError("SpaceToDepth: input rank not 4.");
+    (void)rewriter.notifyMatchFailure(op, "input rank not 4");
     return llvm::None;
   }
 
   auto input_shape = input_type.getShape();
 
   if (!block_size_attr) {  // This is a required parameter
-    op->emitOpError("SpaceToDepth: block size attribute not set.");
+    (void)rewriter.notifyMatchFailure(op, "block size attribute not set");
     return llvm::None;
   }
 
@@ -1846,7 +1879,7 @@ llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
   if (!data_format) data_format = rewriter.getStringAttr("NHWC");
 
   if (data_format.getValue().str() != "NHWC") {
-    op->emitOpError("SpaceToDepth: data format not NHWC.");
+    (void)rewriter.notifyMatchFailure(op, "data format not NHWC");
     return llvm::None;
   }
 
@@ -1909,14 +1942,14 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
 
   // Not a ranked tensor output
   if (!output_type) {
-    op->emitOpError("DepthToSpace: output type not ranked tensor.");
+    (void)rewriter.notifyMatchFailure(op, "output type not ranked tensor");
     return llvm::None;
   }
 
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
-    op->emitOpError("DepthToSpace: input type not ranked tensor.");
+    (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return llvm::None;
   }
 
@@ -1924,7 +1957,7 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
   auto input_shape = input_type.getShape();
 
   if (!block_size_attr) {  // This is a required parameter
-    op->emitOpError("DepthToSpace: block size attribute not set.");
+    (void)rewriter.notifyMatchFailure(op, "block size attribute not set");
     return llvm::None;
   }
 
@@ -1933,7 +1966,7 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
 
   if (!data_format) data_format = rewriter.getStringAttr("NHWC");
   if (data_format.getValue().str() != "NHWC") {
-    op->emitOpError("DepthToSpace: data format not NHWC.");
+    (void)rewriter.notifyMatchFailure(op, "data format not NHWC");
     return llvm::None;
   }
 
@@ -1988,14 +2021,14 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
       result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!result_type) {
-    op->emitOpError("Split: output type not ranked tensor.");
+    (void)rewriter.notifyMatchFailure(op, "output type not ranked tensor");
     return llvm::None;
   }
 
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
-    op->emitOpError("Split: input type not ranked tensor.");
+    (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return llvm::None;
   }
 
@@ -2075,14 +2108,14 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
       result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!result_type) {
-    op->emitOpError("SplitV: output type not ranked tensor.");
+    (void)rewriter.notifyMatchFailure(op, "output type not ranked tensor");
     return llvm::None;
   }
 
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
-    op->emitOpError("SplitV: input type not ranked tensor.");
+    (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return llvm::None;
   }
 
@@ -2092,7 +2125,7 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
 
   if ((axis >= 0 && axis >= input_shape.size()) ||
       (axis < 0 && axis < -input_shape.size())) {
-    op->emitOpError("SplitV: invalid axis value.");
+    (void)rewriter.notifyMatchFailure(op, "invalid axis value");
     return llvm::None;
   }
   axis = adjust_axis(axis, input_shape.size());
@@ -2254,7 +2287,7 @@ llvm::Optional<Value> convertStridedSliceOp(
 
   if (!input_type.hasRank()) {
     return (void)rewriter.notifyMatchFailure(op,
-                                             "input type not ranked tensor."),
+                                             "input type not ranked tensor"),
            llvm::None;
   }
 
@@ -2287,7 +2320,7 @@ llvm::Optional<Value> convertStridedSliceOp(
 
     if (a1_begin[i] < 0 && ShapedType::isDynamic(input_shape[i])) {
       (void)rewriter.notifyMatchFailure(
-          op, "begin offset is negative on dynamic size.");
+          op, "begin offset is negative on dynamic size");
       return llvm::None;
     }
 
@@ -2302,7 +2335,7 @@ llvm::Optional<Value> convertStridedSliceOp(
     } else if (end[i] < 0 && ShapedType::isDynamic(input_shape[i])) {
       // Other dynamic cases cannot be handled.
       (void)rewriter.notifyMatchFailure(
-          op, "input dim is dynamic and slice end depends on the length.");
+          op, "input dim is dynamic and slice end depends on the length");
       return llvm::None;
     } else {
       a1_size[i] = end[i] - a1_begin[i];
@@ -2531,7 +2564,7 @@ llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
     } else {
       // For non-quantized type, only support F32.
       if (!input_type.getElementType().isF32()) {
-        op->emitOpError("ConvertTFLeakyReluOp: only support F32");
+        (void)rewriter.notifyMatchFailure(op, "only support F32");
         return llvm::None;
       }
 
@@ -2772,9 +2805,8 @@ llvm::Optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
       output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
 
   if (input_is_qtype || output_is_qtype) {
-    op->emitOpError(
-        "ConvertReduceProdOp: input/output tensor should "
-        "be all floating-point.");
+    (void)rewriter.notifyMatchFailure(
+        op, "input/output tensor should be all floating-point");
     return llvm::None;
   }
 
@@ -2799,9 +2831,9 @@ llvm::Optional<Value> convertReduceSumOp(PatternRewriter& rewriter,
       output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
 
   if (input_is_qtype != output_is_qtype) {
-    op->emitOpError(
-        "ConvertReduceSumOp: input/output tensor should "
-        "be all quantized or all floating-point.");
+    (void)rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
     return llvm::None;
   }
 
@@ -2854,17 +2886,15 @@ llvm::Optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
       output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
 
   if (input_is_qtype != output_is_qtype) {
-    op->emitOpError(
-        "ConvertReduceSumOp: input/output tensor should "
-        "be all quantized or all floating-point.");
+    (void)rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
     return llvm::None;
   }
 
   // Only supports float type mean() if it's non-quantized
   if (!input_is_qtype && !output_type.getElementType().isa<mlir::FloatType>()) {
-    op->emitWarning(
-        "Failed convertReduceMean: input unquantized type but output element "
-        "not FloatType!");
+    op->emitWarning("input unquantized type but output element not FloatType");
     return llvm::None;
   }
 
@@ -2924,7 +2954,7 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   if (!input_type) return llvm::None;
 
   if (input_type.getRank() != 4 || output_type.getRank() != 4) {
-    op->emitOpError("convertResizeOp: input/output must be rank 4");
+    (void)rewriter.notifyMatchFailure(op, "input/output must be rank 4");
     return llvm::None;
   }
 
@@ -2934,16 +2964,16 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
 
   if (input_is_qtype != output_is_qtype) {
-    op->emitOpError(
-        "ConvertResizeOp: input/output tensor should "
-        "be all quantized or all floating-point.");
+    (void)rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
     return llvm::None;
   }
 
   if (!input_is_qtype) {
     if (!input_type.getElementType().isa<mlir::FloatType>()) {
-      op->emitOpError(
-          "ConvertResizeOp: only quantized or float types supported.");
+      (void)rewriter.notifyMatchFailure(
+          op, "only quantized or float types supported");
       return llvm::None;
     }
   }
@@ -2952,12 +2982,13 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   auto output_shape = output_type.getShape();
 
   if (input_type.isDynamicDim(1) || input_type.isDynamicDim(2)) {
-    op->emitOpError("ConvertResizeOp: resize dynamic input not supported.");
+    (void)rewriter.notifyMatchFailure(op, "resize dynamic input not supported");
     return llvm::None;
   }
 
   if (output_type.isDynamicDim(1) || output_type.isDynamicDim(2)) {
-    op->emitOpError("ConvertResizeOp: resize dynamic output not supported.");
+    (void)rewriter.notifyMatchFailure(op,
+                                      "resize dynamic output not supported");
     return llvm::None;
   }
 
@@ -3020,7 +3051,8 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
         offset_x > std::numeric_limits<int16_t>::max() ||
         offset_y < std::numeric_limits<int16_t>::min() ||
         offset_x < std::numeric_limits<int16_t>::min()) {
-      op->emitOpError("OpResize: stride or offset out of 16 bits");
+      (void)rewriter.notifyMatchFailure(op,
+                                        "stride or offset out of 16 bit range");
       return llvm::None;
     }
 
@@ -3047,7 +3079,8 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
         output_acc_type = RankedTensorType::get(output_type.getShape(),
                                                 rewriter.getI32Type());
       } else {
-        op->emitOpError("OpResize: support 16-bit and 8-bit quantized input");
+        (void)rewriter.notifyMatchFailure(
+            op, "support 16-bit and 8-bit quantized input");
         return llvm::None;
       }
 
@@ -3105,8 +3138,8 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
           rewriter.getF32ArrayAttr({0.0, 0.0}), resize_mode);
       return resize_op.getResult();
     } else {
-      op->emitOpError(
-          "OpResize: only support BILINEAR or NEAREST_NEIGHBOR mode");
+      (void)rewriter.notifyMatchFailure(
+          op, "only support BILINEAR or NEAREST_NEIGHBOR mode");
       return llvm::None;
     }
   } else {
@@ -3136,8 +3169,8 @@ llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
 
   // output element type could only be quantized integer
   if (!output_element_type.isa<mlir::quant::QuantizedType>()) {
-    op->emitWarning(
-        "Lowering quantizeOp but output element type not quantized!");
+    (void)rewriter.notifyMatchFailure(
+        op, "lowering quantizeOp but output element type not quantized");
     return llvm::None;
   }
 
@@ -3436,12 +3469,14 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   int indices_rank = indices_type.getShape().size();
 
   if (!(batch_dims <= indices_rank)) {
-    op->emitOpError("Batch_dims must be <= indices_rank for a valid gather op");
+    (void)rewriter.notifyMatchFailure(
+        op, "batch_dims must be <= indices_rank for a valid gather op");
     return llvm::None;
   }
 
   if (!(axis >= batch_dims)) {
-    op->emitOpError("axis must be >= batch_dims for a valid gather op");
+    (void)rewriter.notifyMatchFailure(
+        op, "axis must be >= batch_dims for a valid gather op");
     return llvm::None;
   }
 
@@ -3714,7 +3749,8 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
   ND = indices_type.getShape()[indices_rank - 1];
 
   if (ND > params_rank) {
-    op->emitOpError("Size of last dimension on indices must be <= params rank");
+    (void)rewriter.notifyMatchFailure(
+        op, "size of last dimension of indices must be <= params rank");
     return llvm::None;
   }
 
@@ -3846,12 +3882,14 @@ llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
   // 7. reshaped to result.shape
 
   if (on_value_type.getRank() != 0 || off_value_type.getRank() != 0) {
-    op->emitOpError("OneHotOp: on_value/off_value needs to be scalar");
+    (void)rewriter.notifyMatchFailure(op,
+                                      "on_value/off_value needs to be scalar");
     return llvm::None;
   }
 
   if (axis < -1 || axis > indices_type.getRank()) {
-    op->emitOpError("OneHotOp: axis out of valie range [-1, indices.rank]");
+    (void)rewriter.notifyMatchFailure(
+        op, "axis out of valid range [-1, indices.rank]");
     return llvm::None;
   }
 

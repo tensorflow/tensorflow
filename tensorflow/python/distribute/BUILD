@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow/tsl/platform/default:distribute.bzl", "distribute_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
@@ -677,6 +677,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # b/213388775
+        "no_oss",  # b/241013307
     ],
     tpu_tags = [
         "no_oss",
@@ -1312,6 +1313,10 @@ tf_py_test(
     name = "sharded_variable_test",
     size = "small",
     srcs = ["sharded_variable_test.py"],
+    tags = [
+        "no_mac",
+        "no_windows",  # TODO(b/241967911): Re-enable mac and windows.
+    ],
     deps = [
         ":combinations",
         ":multi_worker_test_base",
@@ -2028,6 +2033,9 @@ py_library(
     name = "multi_process_runner",
     srcs = ["multi_process_runner.py"],
     srcs_version = "PY3",
+    tags = [
+        "no_oss",  # b/241013307 disable flaky under docker
+    ],
     deps = [
         ":multi_process_lib",
         "//tensorflow/python:client_testlib",
@@ -2336,12 +2344,10 @@ tpu_py_test(
     name = "tpu_strategy_model_parallelism_test",
     srcs = ["tpu_strategy_model_parallelism_test.py"],
     disable_experimental = True,  # b/202779350
+    disable_mlir_bridge = False,
     disable_v3_4chips = False,
     python_version = "PY3",
-    tags = [
-        "no_oss",
-        "notsan",  # b/239832964
-    ],
+    tags = ["no_oss"],
     deps = [
         ":distribute_lib",
         ":strategy_test_lib",

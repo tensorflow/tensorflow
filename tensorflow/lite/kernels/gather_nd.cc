@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -104,20 +105,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <typename ParamsT, typename IndicesT>
 TfLiteStatus GatherNd(const TfLiteTensor* params, const TfLiteTensor* indices,
                       TfLiteTensor* output) {
-  reference_ops::GatherNd(
+  return reference_ops::GatherNd(
       GetTensorShape(params), GetTensorData<ParamsT>(params),
       GetTensorShape(indices), GetTensorData<IndicesT>(indices),
       GetTensorShape(output), GetTensorData<ParamsT>(output));
-  return kTfLiteOk;
 }
 
 template <typename IndicesT>
 TfLiteStatus GatherNdString(const TfLiteTensor* params,
                             const TfLiteTensor* indices, TfLiteTensor* output) {
-  reference_ops::GatherNdString(
+  return reference_ops::GatherNdString(
       GetTensorShape(params), params, GetTensorShape(indices),
       GetTensorData<IndicesT>(indices), GetTensorShape(output), output);
-  return kTfLiteOk;
 }
 
 template <typename IndicesT>
@@ -134,27 +133,39 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
   }
   TF_LITE_ENSURE(context, indices_has_only_positive_elements);
 
+  TfLiteStatus status = kTfLiteError;
   switch (params->type) {
     case kTfLiteFloat32:
-      return GatherNd<float, IndicesT>(params, indices, output);
+      status = GatherNd<float, IndicesT>(params, indices, output);
+      break;
     case kTfLiteUInt8:
-      return GatherNd<uint8_t, IndicesT>(params, indices, output);
+      status = GatherNd<uint8_t, IndicesT>(params, indices, output);
+      break;
     case kTfLiteInt8:
-      return GatherNd<int8_t, IndicesT>(params, indices, output);
+      status = GatherNd<int8_t, IndicesT>(params, indices, output);
+      break;
     case kTfLiteInt16:
-      return GatherNd<int16_t, IndicesT>(params, indices, output);
+      status = GatherNd<int16_t, IndicesT>(params, indices, output);
+      break;
     case kTfLiteInt32:
-      return GatherNd<int32_t, IndicesT>(params, indices, output);
+      status = GatherNd<int32_t, IndicesT>(params, indices, output);
+      break;
     case kTfLiteInt64:
-      return GatherNd<int64_t, IndicesT>(params, indices, output);
+      status = GatherNd<int64_t, IndicesT>(params, indices, output);
+      break;
     case kTfLiteString:
-      return GatherNdString<IndicesT>(params, indices, output);
+      status = GatherNdString<IndicesT>(params, indices, output);
+      break;
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Params type '%s' are not supported by gather_nd.",
                          TfLiteTypeGetName(params->type));
       return kTfLiteError;
   }
+  if (status != kTfLiteOk) {
+    TF_LITE_KERNEL_LOG(context, "gather_nd index out of bounds");
+  }
+  return status;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {

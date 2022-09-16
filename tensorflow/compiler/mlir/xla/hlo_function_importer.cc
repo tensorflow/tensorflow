@@ -30,11 +30,11 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -151,8 +151,7 @@ void HloFunctionImporter::ReplaceBlockArgumentsWithImplicitOperands(
       assert(implicit_operand_index < implicit_operands.size());
       arg.replaceAllUsesWith(implicit_operands[implicit_operand_index++]);
     }
-    region.front().eraseArguments(
-        llvm::to_vector(llvm::seq<unsigned>(0, region.getNumArguments())));
+    region.front().eraseArguments(0, region.getNumArguments());
   }
 }
 
@@ -508,7 +507,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto attr = CreateDenseElementsAttrFromLiteral(literal, *builder_);
       if (!attr.ok()) return attr.status();
       mlir::Operation* new_operation =
-          func_builder->create<mlir::mhlo::ConstantOp>(loc, attr.ValueOrDie());
+          func_builder->create<mlir::mhlo::ConstantOp>(loc, attr.value());
       for (auto attr : attributes) {
         new_operation->setAttr(attr.getName(), attr.getValue());
       }
@@ -521,6 +520,50 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
               func_builder->getI64IntegerAttr(
                   Cast<HloIotaInstruction>(instruction)->iota_dimension()))
           .getOperation();
+    }
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone: {
+      auto async_op = Cast<HloAsyncInstruction>(instruction);
+      auto called_computation = async_op->async_wrapped_computation();
+      TF_ASSIGN_OR_RETURN(FuncOp function,
+                          ImportAsFunc(*called_computation, /*is_main=*/false));
+      attributes.push_back(builder_->getNamedAttr(
+          "called_computation",
+          mlir::FlatSymbolRefAttr::get(builder_->getContext(),
+                                       function.getName())));
+      auto execution_thread = async_op->async_execution_thread();
+      attributes.push_back(builder_->getNamedAttr(
+          "execution_thread", builder_->getStringAttr(execution_thread)));
+      function->setAttr("execution_thread",
+                        builder_->getStringAttr(execution_thread));
+      auto group_id = async_op->async_group_id();
+      if (group_id) {
+        attributes.push_back(builder_->getNamedAttr(
+            "group_id", builder_->getI64IntegerAttr(*group_id)));
+      }
+
+      if (instruction->opcode() == HloOpcode::kAsyncStart) {
+        auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
+            context_, result_type.cast<mlir::TupleType>().getTypes());
+        return func_builder
+            ->create<mlir::mhlo::AsyncStartOp>(loc, bundle_result_type,
+                                               operands, attributes)
+            .getOperation();
+      } else if (instruction->opcode() == HloOpcode::kAsyncUpdate) {
+        auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
+            context_, result_type.cast<mlir::TupleType>().getTypes());
+        return func_builder
+            ->create<mlir::mhlo::AsyncUpdateOp>(loc, bundle_result_type,
+                                                operands, attributes)
+            .getOperation();
+      } else {
+        assert(instruction->opcode() == HloOpcode::kAsyncDone);
+        return func_builder
+            ->create<mlir::mhlo::AsyncDoneOp>(loc, result_type, operands,
+                                              attributes)
+            .getOperation();
+      }
     }
     case HloOpcode::kBroadcast: {
       // Note that the HLO broadcast is more powerful than the XLA broadcast
@@ -662,6 +705,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
+      attributes.push_back(builder_->getNamedAttr(
+          "custom_call_output_operand_aliasing",
+          ConvertCustomCallOutputOperandAliasing(
+              instruction->custom_call_output_operand_aliasing(), builder_)));
       return func_builder
           ->create<mlir::mhlo::CustomCallOp>(loc, result_type, operands,
                                              attributes)
@@ -979,8 +1026,74 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (all_gather->channel_id().has_value())
         attributes.push_back(
             ConvertChannelHandle(all_gather->channel_id().value()));
+      if (all_gather->use_global_device_ids())
+        attributes.push_back(ConvertUseGlobalDeviceIds());
       return func_builder
           ->create<mlir::mhlo::AllGatherOp>(loc, result_type, operands,
+                                            attributes)
+          .getOperation();
+    }
+    case HloOpcode::kAllGatherStart: {
+      auto all_gather_start = Cast<HloAllGatherInstruction>(instruction);
+      auto result_types = result_type.cast<mlir::TupleType>().getTypes();
+      auto func_type =
+          mlir::FunctionType::get(context_, result_types[0], result_types[1]);
+
+      auto function =
+          mlir::OpBuilder(module_.getBodyRegion())
+              .create<FuncOp>(
+                  loc, "HLO_INTERNAL_all_gather_" + std::to_string(fresh_++),
+                  func_type);
+      function.setPrivate();
+
+      attributes.push_back(builder_->getNamedAttr(
+          "all_gather_dim", builder_->getI64IntegerAttr(
+                                all_gather_start->all_gather_dimension())));
+      attributes.push_back(
+          ConvertReplicaGroups(all_gather_start->replica_groups(), builder_));
+      if (all_gather_start->channel_id().has_value())
+        attributes.push_back(
+            ConvertChannelHandle(all_gather_start->channel_id().value()));
+      auto async_builder = mlir::OpBuilder(function.getBody());
+      auto ag_operand =
+          async_builder
+              .createBlock(&function.getBody(), {}, result_types[0], {loc})
+              ->getArguments();
+      auto all_gather_sync = async_builder.create<mlir::mhlo::AllGatherOp>(
+          loc, result_types[1], ag_operand, attributes);
+      async_builder.create<mlir::func::ReturnOp>(loc,
+                                                 all_gather_sync->getResults());
+
+      attributes = {};
+      attributes.push_back(builder_->getNamedAttr(
+          "called_computation",
+          mlir::FlatSymbolRefAttr::get(builder_->getContext(),
+                                       function.getName())));
+      attributes.push_back(builder_->getNamedAttr(
+          "execution_thread", builder_->getStringAttr("main")));
+      function->setAttr("execution_thread", builder_->getStringAttr("main"));
+
+      auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
+          context_, result_type.cast<mlir::TupleType>().getTypes());
+      return func_builder
+          ->create<mlir::mhlo::AsyncStartOp>(loc, bundle_result_type, operands,
+                                             attributes)
+          .getOperation();
+    }
+    case HloOpcode::kAllGatherDone: {
+      auto async_start = operands[0].getDefiningOp<mlir::mhlo::AsyncStartOp>();
+      if (!async_start)
+        return tensorflow::errors::InvalidArgument(
+            "kAllGatherDone requires kAllGatherStart as input");
+      attributes.push_back(builder_->getNamedAttr(
+          "called_computation",
+          mlir::FlatSymbolRefAttr::get(builder_->getContext(),
+                                       async_start.called_computation())));
+      attributes.push_back(builder_->getNamedAttr(
+          "execution_thread", builder_->getStringAttr("main")));
+
+      return func_builder
+          ->create<mlir::mhlo::AsyncDoneOp>(loc, result_type, operands,
                                             attributes)
           .getOperation();
     }
@@ -991,6 +1104,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (all_reduce->channel_id().has_value())
         attributes.push_back(
             ConvertChannelHandle(all_reduce->channel_id().value()));
+      if (all_reduce->use_global_device_ids())
+        attributes.push_back(ConvertUseGlobalDeviceIds());
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
           loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*all_reduce->to_apply(),
@@ -1190,6 +1305,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (reduce_scatter->channel_id().has_value())
         attributes.push_back(
             ConvertChannelHandle(reduce_scatter->channel_id().value()));
+      if (reduce_scatter->use_global_device_ids())
+        attributes.push_back(ConvertUseGlobalDeviceIds());
       auto reduce_scatter_op =
           func_builder->create<mlir::mhlo::ReduceScatterOp>(
               loc, result_type, operands, attributes);
@@ -1556,7 +1673,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionWithLayout(
   // Minor-to-major is a permutation of [0, rank), presenting tensor dimensions
   // in physical minor-to-major order.
   if (instruction->shape().IsArray()) {
-    if (!instruction->shape().layout().minor_to_major().empty() &&
+    if (instruction->shape().has_layout() &&
+        !instruction->shape().layout().minor_to_major().empty() &&
         instruction->shape().layout() !=
             LayoutUtil::MakeDescendingLayout(
                 instruction->shape().dimensions().size())) {
@@ -1707,6 +1825,11 @@ mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
   return builder_->getNamedAttr(
       "channel_handle", mlir::mhlo::ChannelHandleAttr::get(
                             context_, channel.handle(), channel.type()));
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertUseGlobalDeviceIds() {
+  return builder_->getNamedAttr("use_global_device_ids",
+                                builder_->getUnitAttr());
 }
 
 void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,

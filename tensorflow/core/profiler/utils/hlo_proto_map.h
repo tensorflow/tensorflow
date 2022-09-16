@@ -40,7 +40,8 @@ class HloProtoMap {
 
   void AddHloProto(uint64_t program_id,
                    std::unique_ptr<const xla::HloProto> hlo_proto);
-  void AddHloProto(uint64_t program_id, const xla::HloProto* hlo_proto);
+  // Returns whether <hlo_proto> is new to HloProtoMap.
+  bool AddHloProto(uint64_t program_id, const xla::HloProto* hlo_proto);
 
   auto begin() const { return hlo_protos_by_program_id_.begin(); }
   auto end() const { return hlo_protos_by_program_id_.end(); }

@@ -16,11 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include <algorithm>
+#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 namespace xla {
 namespace status_macros {
@@ -44,7 +45,7 @@ static void LogError(const Status& status, const char* filename, int line,
   if (ABSL_PREDICT_TRUE(log_severity != tensorflow::NUM_SEVERITIES)) {
     std::string stack_trace;
     if (should_log_stack_trace) {
-      stack_trace = absl::StrCat("\n", tensorflow::CurrentStackTrace());
+      stack_trace = absl::StrCat("\n", tsl::CurrentStackTrace());
     }
     switch (log_severity) {
       case tensorflow::INFO:

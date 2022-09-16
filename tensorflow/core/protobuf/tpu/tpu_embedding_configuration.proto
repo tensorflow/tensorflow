@@ -23,25 +23,6 @@ message TPUEmbeddingConfiguration {
     // parameters.
     OptimizationParameters optimization_parameters = 5;
   }
-
-  // Description of different input features.
-  message FeatureDescriptor {
-    // Name of the input feature.
-    string name = 1;
-
-    // Index of the corresponding table in the TableDescriptor list.
-    int32 table_id = 2;
-
-    // Static shape of the inputs (excluding the reduction axis). Note that
-    // the shape of the actual inputs provided using the infeed op must be
-    // strictly smaller than input_shape. The outputs received at the TensorCore
-    // will have rank = input_shape.size() + 1. The innermost axis corresponds
-    // to the embedding dimension. If the input has shape [m, n, k] (excluding
-    // the reduction axis) and the embedding dimension is d, the output received
-    // at the TensorCore will have shape [m, n, k, d].
-    repeated int32 input_shape = 3;
-  }
-
   repeated TableDescriptor table_descriptor = 1;
 
   // Mode. Should the embedding layer program be run for inference (just forward
@@ -126,7 +107,37 @@ message TPUEmbeddingConfiguration {
   // models to reuse embedding lookup statistics.
   string profile_data_directory = 9;
 
+  // Description of different input features.
+  message FeatureDescriptor {
+    // Name of the input feature.
+    string name = 1;
+
+    // Index of the corresponding table in the TableDescriptor list.
+    int32 table_id = 2;
+
+    // Static shape of the inputs (excluding the reduction axis). Note that
+    // the shape of the actual inputs provided using the infeed op must be
+    // strictly smaller than input_shape. The outputs received at the TensorCore
+    // will have rank = input_shape.size() + 1. The innermost axis corresponds
+    // to the embedding dimension. If the input has shape [m, n, k] (excluding
+    // the reduction axis) and the embedding dimension is d, the output received
+    // at the TensorCore will have shape [m, n, k, d].
+    repeated int32 input_shape = 3;
+  }
   repeated FeatureDescriptor feature_descriptor = 10;
+
+  // SPMD (Single Program Multiple Data) sharding configuration for
+  // TPUEmbedding. When model parallelism is used on the TensorCore, the number
+  // of cores per replica must be passed to TPUEmbedding so that the right
+  // shapes can be computed in the TF/XLA bridge.
+  message SpmdSharding {
+    // Whether SPMD sharding is enabled.
+    bool enabled = 1;
+
+    // Number of cores per replica.
+    int32 num_cores_per_replica = 2;
+  }
+  SpmdSharding spmd_sharding = 11;
 
   // Old TPU embedding output layout.
   reserved "output_layout";

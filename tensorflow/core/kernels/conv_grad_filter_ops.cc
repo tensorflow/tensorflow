@@ -59,9 +59,9 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace {
@@ -641,6 +641,7 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                               .AttrConstraint("data_format", "NHWC"),         \
                           Conv2DBackpropFilterOp<CPUDevice, T>);
 
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
@@ -830,13 +831,12 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       << "Negative row or col paddings: (" << common_padding_rows << ", "
       << common_padding_cols << ")";
 
-#if GOOGLE_CUDA
-  const bool compute_in_nhwc = ComputeInNhwcEnabled(DataTypeToEnum<T>::value,
-                                                    stream, /*is_conv2d=*/true);
-#else
-  // fast NHWC implementation is a CUDA only feature
-  const bool compute_in_nhwc = false;
-#endif
+  // The Tensor Core in NVIDIA Volta+ GPUs supports efficient convolution with
+  // fp16 in NHWC data layout. In all other configurations it's more efficient
+  // to run computation in NCHW data format.
+  const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
+                               stream->GetCudaComputeCapability().IsAtLeast(
+                                   se::CudaComputeCapability::VOLTA);
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects the preferred layout and

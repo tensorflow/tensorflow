@@ -94,6 +94,16 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
       self.evaluate(l)
 
+  def testTensorListReserveWithNonScalarNumElements(self):
+    # list_kernels.cc in tf/core/kernels raises InvalidArgumentError, and
+    # tf_ops_n_z.cc in tf/compiler/mlir/tf/ir raises UnknownError.
+    with self.assertRaises((errors.InvalidArgumentError, errors.UnknownError)):
+      l = list_ops.tensor_list_reserve(
+          element_dtype=dtypes.float32,
+          element_shape=[2, 3],
+          num_elements=constant_op.constant([1, 1]))
+      self.evaluate(l)
+
   def testPopUninitializedTensorUseListElementShape(self):
     l = list_ops.tensor_list_reserve(
         element_dtype=dtypes.float32, element_shape=[2, 3], num_elements=3)

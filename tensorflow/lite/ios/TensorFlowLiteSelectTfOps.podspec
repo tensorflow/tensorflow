@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
                        DESC
 
   s.cocoapods_version = '>= 1.9.0'
-  s.ios.deployment_target = '9.0'
+  s.ios.deployment_target = '10.0'
 
   s.module_name = 'TensorFlowLiteSelectTfOps'
   s.library = 'c++'

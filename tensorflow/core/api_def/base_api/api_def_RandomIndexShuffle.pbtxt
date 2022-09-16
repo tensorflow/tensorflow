@@ -25,6 +25,12 @@ A scalar tensor of dtype `dtype`, within [0, max_index]. The randomly shuffled i
 END
   }
   attr {
+    name: "rounds"
+    description: <<END
+The number of rounds to use the in block cipher.
+END
+  }
+  attr {
     name: "dtype"
     description: <<END
 The dtype of the input and output.

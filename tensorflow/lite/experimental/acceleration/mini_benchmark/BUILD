@@ -407,10 +407,13 @@ cc_library(
         ":status_codes",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -426,6 +429,7 @@ cc_library(
         ":runner",
         ":status_codes",
         ":validator",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/api",
@@ -447,6 +451,7 @@ cc_library(
     name = "validator_runner_entrypoint_without_affinity_deps",
     srcs = ["validator_runner_entrypoint.cc"],
     deps = [
+        ":constants",
         ":fb_storage",
         ":model_loader",
         ":set_big_core_affinity_h",
@@ -540,9 +545,13 @@ cc_library(
     srcs = ["runner.cc"],
     hdrs = ["runner.h"],
     deps = [
+        ":big_little_affinity",
+        ":constants",
         ":status_codes",
+        "@com_google_absl//absl/strings",
+        "@flatbuffers//:runtime_cc",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:big_little_affinity",
+        "//tensorflow/lite:minimal_logging",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -694,6 +703,11 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "constants",
+    hdrs = ["constants.h"],
+)
+
 #
 # Test targets for separate process.
 # Unit tests using cc_test and turned into Android tests with tflite_portable_test_suite().
@@ -702,13 +716,27 @@ cc_binary(
     name = "runner_unit_test_entry_points",
     srcs = ["runner_test_entry_points.cc"],
     linkshared = True,
-    deps = [":status_codes"],
+    deps = [
+        ":constants",
+        ":model_loader",
+        ":status_codes",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "@com_google_absl//absl/strings",
+        "@flatbuffers//:runtime_cc",
+    ],
 )
 
 cc_library(
     name = "runner_unit_test_entry_points_library",
     srcs = ["runner_test_entry_points.cc"],
-    deps = [":status_codes"],
+    deps = [
+        ":constants",
+        ":model_loader",
+        ":status_codes",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "@com_google_absl//absl/strings",
+        "@flatbuffers//:runtime_cc",
+    ],
 )
 
 embedded_binary(
@@ -736,6 +764,8 @@ cc_test(
         ":runner",
         ":status_codes",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -754,6 +784,7 @@ cc_binary(
     srcs = ["validator_runner_entrypoint.cc"],
     linkshared = True,
     deps = [
+        ":constants",
         ":fb_storage",
         ":model_loader",
         ":runner",
@@ -835,7 +866,10 @@ cc_test(
         ":status_codes",
         ":validator",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
         "@flatbuffers",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:custom_validation_embedder",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_cc_proto",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:flatbuffer_to_proto",

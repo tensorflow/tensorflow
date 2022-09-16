@@ -198,7 +198,7 @@ class SliceOp : public XlaOpKernel {
             auto status = xla::SetDimensionSizeWithRebound(
                 &ctx->value_inference(), sliced, dynamic_size, i);
             OP_REQUIRES_OK(ctx, status.status());
-            sliced = status.ValueOrDie();
+            sliced = status.value();
           }
         }
         ctx->SetOutput(0, sliced);

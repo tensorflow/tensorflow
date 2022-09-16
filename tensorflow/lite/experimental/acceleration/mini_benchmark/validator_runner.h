@@ -25,7 +25,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
@@ -37,7 +36,7 @@ limitations under the License.
 namespace tflite {
 namespace acceleration {
 
-constexpr const char* TfLiteValidationFunctionName() {
+constexpr const char* TfLiteValidationEntrypointName() {
   return "Java_org_tensorflow_lite_acceleration_validation_entrypoint";
 }
 
@@ -53,34 +52,37 @@ constexpr const char* TfLiteValidationFunctionName() {
 // multiple threads must be guarded with a mutex).
 class ValidatorRunner {
  public:
+  // Option class for constructing ValidatorRunner.
+  struct Options {
+    // Required: Where to read the model.
+    // Option 1: Read model from model_path.
+    std::string model_path;
+    // Option 2: Read model from file descriptor.
+    int model_fd = -1;
+    size_t model_offset = 0;
+    size_t model_size = 0;
+    // Required: The 'storage_path' must be model-specific.
+    std::string storage_path;
+    // Required: 'data_directory_path' must be suitable for extracting an
+    // executable file to.
+    std::string data_directory_path;
+    // The nnapi_sl pointer can be used to configure the runner to use
+    // the NNAPI implementation coming from the Support Library instead of
+    // the NNAPI platform drivers.
+    // If nnapi_sl is not null we expect the functions referenced by the
+    // structure lifetime to be enclosing the one of the mini-benchmark. In
+    // particular we expect that if the NnApiSupportLibrary was loaded by a
+    // shared library, dlclose is called only after all this mini-benchmark
+    // object has been deleted.
+    const NnApiSLDriverImplFL5* nnapi_sl = nullptr;
+    std::string validation_entrypoint_name = TfLiteValidationEntrypointName();
+    ErrorReporter* error_reporter = DefaultErrorReporter();
+  };
+
   static constexpr int64_t kDefaultEventTimeoutUs = 30 * 1000 * 1000;
 
-  // Construct ValidatorRunner for a model and a file for storing results in.
-  // The 'storage_path' must be specific for the model.
-  // 'data_directory_path' must be suitable for extracting an executable file
-  // to.
-  // The nnapi_sl pointer can be used to configure the runner to use
-  // the NNAPI implementation coming from the Support Library instead of
-  // the NNAPI platform drivers.
-  // If nnapi_sl is not null we expect the functions referenced by the structure
-  // lifetime to be enclosing the one of the mini-benchmark. In particular
-  // we expect that if the NnApiSupportLibrary was loaded by a shared library,
-  // dlclose is called only after all this mini-benchmark object has been
-  // deleted.
-  ValidatorRunner(const std::string& model_path,
-                  const std::string& storage_path,
-                  const std::string& data_directory_path,
-                  const NnApiSLDriverImplFL5* nnapi_sl = nullptr,
-                  const std::string validation_function_name =
-                      TfLiteValidationFunctionName(),
-                  ErrorReporter* error_reporter = DefaultErrorReporter());
-  ValidatorRunner(int model_fd, size_t model_offset, size_t model_size,
-                  const std::string& storage_path,
-                  const std::string& data_directory_path,
-                  const NnApiSLDriverImplFL5* nnapi_sl = nullptr,
-                  const std::string validation_function_name =
-                      TfLiteValidationFunctionName(),
-                  ErrorReporter* error_reporter = DefaultErrorReporter());
+  explicit ValidatorRunner(const Options& options);
+
   MinibenchmarkStatus Init();
 
   // The following methods invalidate previously returned pointers.
@@ -113,7 +115,7 @@ class ValidatorRunner {
   std::string storage_path_;
   std::string data_directory_path_;
   FlatbufferStorage<BenchmarkEvent> storage_;
-  std::string validation_function_name_;
+  std::string validation_entrypoint_name_;
   ErrorReporter* error_reporter_;
   bool triggered_ = false;
   std::string nnapi_sl_path_;

@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_STRING_UTIL_H_
 
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 

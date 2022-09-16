@@ -90,7 +90,7 @@ void IdentifyTPUFunctions(
     }
     if (mesh_or_status->is_tpu_mesh() && !skip_xla_compilation) {
       tpu_functions->emplace_back(call);
-      tpu_meshs->emplace_back(std::move(mesh_or_status.ValueOrDie()));
+      tpu_meshs->emplace_back(std::move(mesh_or_status.value()));
     }
   }
 }

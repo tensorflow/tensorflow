@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
@@ -37,8 +38,11 @@ namespace mlir {
 namespace tosa {
 namespace {
 
+#define GEN_PASS_DEF_TOSALEGALIZETFPASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 // Performs lowering to TOSA dialect
-class LegalizeTF : public TosaLegalizeTFPassBase<LegalizeTF> {
+class LegalizeTF : public impl::TosaLegalizeTFPassBase<LegalizeTF> {
  public:
   explicit LegalizeTF() {}
   void runOnOperation() override;
@@ -352,7 +356,7 @@ LogicalResult ConvertTFRoundOp::matchAndRewrite(
 
   TensorType input_type = tf_round_op.x().getType().dyn_cast<TensorType>();
   if (!input_type) {
-    return op->emitOpError("Round: input not tensor type");
+    return rewriter.notifyMatchFailure(op, "input not tensor type");
   }
 
   if (input_type.getElementType().isa<FloatType>()) {
@@ -484,7 +488,7 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
   }
 
   if (axis < 0 || axis >= input_type.getRank()) {
-    return op->emitOpError("TFArgMax: invalid axis value");
+    return rewriter.notifyMatchFailure(op, "invalid axis value");
   }
 
   IntegerAttr axis_attr = rewriter.getI64IntegerAttr(axis);
@@ -859,7 +863,7 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
 
   // Set up a zero attr for subsequent pattern replacement if required
   if (!filter_type) {
-    return op->emitOpError("DepthwiseConv2d: filter type unranked tensor");
+    return rewriter.notifyMatchFailure(op, "filter type unranked tensor");
   }
 
   auto tmpAttr = tf_dwconv2d_op.data_formatAttr();
@@ -1422,7 +1426,7 @@ LogicalResult ConvertTFSliceOp::matchAndRewrite(
 
   // Assuming begin is always compile-time constant
   if (!matchPattern(tf_slice_op.begin(), m_Constant(&begin_elems))) {
-    return op->emitOpError("TF::Slice error: begin is not constant");
+    return rewriter.notifyMatchFailure(op, "begin is not constant");
   }
 
   for (int i = 0; i < begin_elems.getNumElements(); i++)
@@ -1582,7 +1586,7 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
   // Get the axis
   ElementsAttr axisAttrElems;
   if (!matchPattern(tf_splitv_op.split_dim(), m_Constant(&axisAttrElems))) {
-    return op->emitOpError("Cannot read split_dim elems");
+    return rewriter.notifyMatchFailure(op, "cannot read split_dim elems");
   }
 
   int32_t axis = axisAttrElems.getValues<IntegerAttr>()[0].getInt();
@@ -1710,19 +1714,19 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
       tf_matmul_op.getResult().getType().dyn_cast<RankedTensorType>();
 
   if (!(a_type && b_type && output_type)) {
-    return op->emitOpError("MatMul: a/b/output not ranked tensors");
+    return rewriter.notifyMatchFailure(op, "a/b/output not ranked tensors");
   }
 
   if (a_type.getRank() != b_type.getRank() ||
       a_type.getRank() != output_type.getRank()) {
-    return op->emitOpError("MatMul: a/b/output rank must match");
+    return rewriter.notifyMatchFailure(op, "a/b/output rank must match");
   }
 
   // Can only handle rank 2 tensors for tf.MatMul.
   // Cases with rank > 2 tensors should be handled by tf.BatchMatMul or
   // tf.BatchMatMulV2
   if (a_type.getRank() != 2) {
-    return op->emitOpError("MatMul: a/b/output rank must be 2");
+    return rewriter.notifyMatchFailure(op, "a/b/output rank must be 2");
   }
 
   SmallVector<int64_t, 3> batch_a_shape(
@@ -1975,8 +1979,7 @@ LogicalResult ConvertTFLeakyReluOp::matchAndRewrite(
   // But this alternative is not robust unless alpha meets those constraints.
 
   if (!output_type.getElementType().isF32()) {
-    op->emitOpError("ConvertTFLeakyReluOp: only support F32");
-    return failure();
+    return rewriter.notifyMatchFailure(op, "only support F32");
   }
 
   FloatAttr tmpAttr = tf_leakyrelu_op.alphaAttr();
@@ -2204,16 +2207,16 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
       tf_batch_matmul_op.getResult().getType().dyn_cast<RankedTensorType>();
 
   if (!(x_type && y_type && output_type)) {
-    return op->emitOpError("BatchMatMulV2: x/y/output not ranked tensors");
+    return rewriter.notifyMatchFailure(op, "x/y/output not ranked tensors");
   }
 
   if (x_type.getRank() != y_type.getRank() ||
       x_type.getRank() != output_type.getRank()) {
-    return op->emitOpError("BatchMatMulV2: x/y/output rank must match");
+    return rewriter.notifyMatchFailure(op, "x/y/output rank must match");
   }
 
   if (x_type.getRank() <= 2) {
-    return op->emitOpError("BatchMatMulV2: x/y/output rank must > 2");
+    return rewriter.notifyMatchFailure(op, "x/y/output rank must > 2");
   }
 
   // Rank 3 batch matmul can be directly mapped to tosa.matmul trivially.

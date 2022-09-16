@@ -16,26 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DIAGNOSTICS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DIAGNOSTICS_H_
 
-#include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
-
-namespace stream_executor {
-namespace rocm {
-
-// e.g. DriverVersion{346, 3, 4}
-using DriverVersion = gpu::DriverVersion;
-
-// Converts a parsed driver version to string form.
-string DriverVersionToString(DriverVersion version);
-
-// Converts a parsed driver version or status value to natural string form.
-string DriverVersionStatusToString(port::StatusOr<DriverVersion> version);
-
-// Converts a string of a form like "331.79" to a DriverVersion{331, 79}.
-port::StatusOr<DriverVersion> StringToDriverVersion(const string& value);
-
-using Diagnostician = gpu::Diagnostician;
-
-}  // namespace rocm
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_diagnostics.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DIAGNOSTICS_H_

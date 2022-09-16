@@ -66,7 +66,7 @@ TEST_F(HloCseTest, CombineTwoConstants) {
   EXPECT_EQ(3, computation->instruction_count());
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(cse.Run(module.get()).value());
 
   EXPECT_EQ(2, computation->instruction_count());
   HloInstruction* constant = *computation->instructions().begin();
@@ -97,7 +97,7 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayouts) {
   EXPECT_THAT(add, op::Add(constant1, constant2));
 
   HloCSE cse(/*is_layout_sensitive=*/true);
-  EXPECT_FALSE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(cse.Run(module.get()).value());
 
   EXPECT_EQ(3, computation->instruction_count());
   EXPECT_THAT(add, op::Add(constant1, constant2));
@@ -146,7 +146,7 @@ TEST_F(HloCseTest, ConstantsSameValueDifferentType) {
   EXPECT_EQ(20, computation->instruction_count());
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(cse.Run(module.get()).value());
 
   // CSE will remove both the second float(42.0f) and the corresponding
   // convert/cast.
@@ -178,7 +178,7 @@ TEST_F(HloCseTest, NonscalarConstants) {
               op::Tuple(common_constant1, common_constant2, uncommon_constant));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(cse.Run(module.get()).value());
 
   EXPECT_EQ(3, computation->instruction_count());
   auto first_operand = tuple->operand(0);
@@ -209,7 +209,7 @@ TEST_F(HloCseTest, IdenticalInstructions) {
   EXPECT_THAT(tuple, op::Tuple(exp1, exp2, exp3));
 
   HloCSE cse(/*is_layout_sensitive=*/true);
-  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(cse.Run(module.get()).value());
 
   EXPECT_EQ(3, computation->instruction_count());
   auto first_operand = tuple->operand(0);
@@ -254,7 +254,7 @@ TEST_F(HloCseTest, WhileLoopsIdenticalConditionsAndBodiesSameInput) {
 
   EXPECT_EQ(6, computation->instruction_count());
   HloCSE cse(true);
-  EXPECT_TRUE(cse.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(cse.Run(m.get()).value());
   EXPECT_EQ(5, computation->instruction_count());
 }
 
@@ -303,7 +303,7 @@ TEST_F(HloCseTest, WhileLoopsIdenticalConditionsSameInputAndDifferentBodies) {
 
   EXPECT_EQ(5, computation->instruction_count());
   HloCSE cse(true);
-  EXPECT_FALSE(cse.Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(cse.Run(m.get()).value());
   EXPECT_EQ(5, computation->instruction_count());
 }
 
@@ -354,7 +354,7 @@ TEST_F(HloCseTest, WhileLoopsIdenticalConditionsAndBodiesDifferentInput) {
 
   EXPECT_EQ(8, computation->instruction_count());
   HloCSE cse(true);
-  EXPECT_FALSE(cse.Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(cse.Run(m.get()).value());
   EXPECT_EQ(8, computation->instruction_count());
 }
 
@@ -395,7 +395,7 @@ TEST_F(HloCseTest, WhileLoopsIdenticalBodiesAndInputDifferentConditions) {
 
   EXPECT_EQ(5, computation->instruction_count());
   HloCSE cse(true);
-  EXPECT_FALSE(cse.Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(cse.Run(m.get()).value());
   EXPECT_EQ(5, computation->instruction_count());
 }
 
@@ -424,7 +424,7 @@ TEST_F(HloCseTest, IdenticalInstructionsDifferentLayoutsSensitive) {
   EXPECT_THAT(tuple, op::Tuple(exp1, exp2));
 
   HloCSE cse(/*is_layout_sensitive=*/true);
-  EXPECT_FALSE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(cse.Run(module.get()).value());
 
   EXPECT_EQ(4, computation->instruction_count());
   EXPECT_THAT(tuple, op::Tuple(exp1, exp2));
@@ -455,7 +455,7 @@ TEST_F(HloCseTest, IdenticalInstructionsDifferentLayoutsInsensitive) {
   EXPECT_THAT(tuple, op::Tuple(exp1, exp2));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(cse.Run(module.get()).value());
 
   EXPECT_EQ(3, computation->instruction_count());
   auto first_operand = tuple->operand(0);
@@ -490,7 +490,7 @@ TEST_F(HloCseTest, FusionInternalCSE) {
 
   EXPECT_EQ(5, fused_computation->instruction_count());
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(cse.Run(module.get()).value());
   EXPECT_EQ(4, fused_computation->instruction_count());
 
   auto root = fused_computation->root_instruction();
@@ -539,7 +539,7 @@ TEST_F(HloCseTest, IdenticalExpressions) {
   EXPECT_THAT(tuple, op::Tuple(op::Add(negate1, exp1), op::Add(negate2, exp2)));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(cse.Run(module.get()).value());
 
   EXPECT_EQ(5, computation->instruction_count());
   auto operand = tuple->operand(0);
@@ -573,7 +573,7 @@ TEST_F(HloCseTest, DoNotCombineRng) {
   uint32_t count_before = computation->instruction_count();
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_FALSE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(cse.Run(module.get()).value());
 
   uint32_t count_after = computation->instruction_count();
   EXPECT_EQ(count_before, count_after);
@@ -627,7 +627,7 @@ TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {
   VLOG(3) << "before: " << module->ToString();
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_FALSE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(cse.Run(module.get()).value());
 
   VLOG(3) << "after: " << module->ToString();
 
@@ -662,7 +662,7 @@ TEST_F(HloCseTest, CompareComputations) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(cse.Run(m.get()).value());
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_EQ(root->operand(0), root->operand(1));
 }
@@ -686,7 +686,7 @@ TEST_F(HloCseTest, ConstantsSameValueInDifferentDomains) {
   EXPECT_EQ(4, computation->instruction_count());
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_FALSE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(cse.Run(module.get()).value());
 
   EXPECT_EQ(4, computation->instruction_count());
 }
@@ -717,7 +717,7 @@ ENTRY %entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(cse.Run(m.get()).value());
   const HloInstruction* sub = m->entry_computation()->root_instruction();
   const HloInstruction* add = sub->operand(0);
   EXPECT_EQ(add->operand(0), add->operand(1));
@@ -928,8 +928,7 @@ TEST_P(HloCseCommutativeOpTest, DoIt) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            absl::Substitute(kModuleStr, op)));
-  ASSERT_TRUE(
-      HloCSE(/*is_layout_sensitive=*/false).Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(HloCSE(/*is_layout_sensitive=*/false).Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
 
   const HloInstruction* op0;

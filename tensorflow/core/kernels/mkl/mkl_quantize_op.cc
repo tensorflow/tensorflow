@@ -457,7 +457,7 @@ class MklQuantizeV2Op : public OpKernel {
         // If it is signed, we try to keep 0.0 being 0 and drop one bucket. For
         // example, if it is 8 bits, we have the range [-127, 127]. So for input
         // range of [-x, x], the scale should be 254/(2*x).
-        target_range = static_cast<float>((uint64_t{1} << (num_bits - 1)) - 1);
+        target_range = static_cast<float>((uint64_t{1} << num_bits) - 1) / 2.;
       } else {
         max_range = max_abs;
         min_range = 0.0;

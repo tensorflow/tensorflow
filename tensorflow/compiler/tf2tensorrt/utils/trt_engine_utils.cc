@@ -124,6 +124,14 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
   int n_inputs = ctx ? ctx->num_inputs() : (input_vec ? input_vec->size() : 0);
   // Setup engine inputs.
   for (int i = 0; i < n_inputs; i++) {
+    const Tensor& input_tensor = ctx ? ctx->input(i) : input_vec->at(i).tensor;
+    const TensorShape& input_shape = input_tensor.shape();
+
+    // Skip resource inputs.
+    if (input_tensor.dtype() == DataType::DT_RESOURCE) {
+      continue;
+    }
+
     const string input_name =
         ctx ? StrCat(IONamePrefixes::kInputPHName, i) : input_vec->at(i).name;
     int binding_index;
@@ -138,8 +146,6 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
       VLOG(2) << "Skipping pruned input " << input_name;
       continue;
     }
-    const Tensor& input_tensor = ctx ? ctx->input(i) : input_vec->at(i).tensor;
-    const TensorShape& input_shape = input_tensor.shape();
 
     if (use_implicit_batch && ctx) {
       // Ensure all inputs have the same batch size
@@ -160,17 +166,20 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
         tensorflow::profiler::TraceMe activity(
             "SetTrtEngineInputs::setBindingDimensions",
             tensorflow::profiler::TraceMeLevel::kInfo);
-        nvinfer1::Dims trt_dims;
         auto adap = DimsAdapter::Create(input_shape);
         TRT_ENSURE_OK(adap);
-        VLOG(2) << "Setting binding dimensions for idx " << binding_index;
-        bool ret = execution_context->setBindingDimensions(binding_index,
-                                                           adap->AsTrtDims());
-        if (!ret) {
-          VLOG(2) << "Error setting engine input " << binding_index << " "
-                  << DebugString(trt_dims);
-          return errors::Internal(
-              "Binding dimension does not fit selected profile.");
+        nvinfer1::Dims trt_dims = adap->AsTrtDims();
+        if (execution_context->getBindingDimensions(binding_index) !=
+            trt_dims) {
+          VLOG(2) << "Setting binding dimensions for idx " << binding_index;
+          bool ret =
+              execution_context->setBindingDimensions(binding_index, trt_dims);
+          if (!ret) {
+            VLOG(2) << "Error setting engine input " << binding_index << " "
+                    << DebugString(trt_dims);
+            return errors::Internal(
+                "Binding dimension does not fit selected profile.");
+          }
         }
       }
     }

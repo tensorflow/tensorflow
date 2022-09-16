@@ -59,9 +59,9 @@ tstring LocalTempFilename() {
   return tstring(path);
 }
 
-std::vector<int64_t> Range(const int64 range) {
+std::vector<int64_t> Range(const int64_t range) {
   std::vector<int64_t> result;
-  for (int64 i = 0; i < range; ++i) {
+  for (int64_t i = 0; i < range; ++i) {
     result.push_back(i);
   }
   return result;

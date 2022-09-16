@@ -31,9 +31,11 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -322,6 +324,11 @@ class TensorListReserve : public OpKernel {
   void Compute(OpKernelContext* c) override {
     PartialTensorShape element_shape;
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(0), &element_shape));
+    OP_REQUIRES(
+        c, TensorShapeUtils::IsScalar(c->input(1).shape()),
+        errors::InvalidArgument(
+            "The num_elements to reserve must be a tensor size 1, but got ",
+            c->input(1).shape()));
     int32_t num_elements = c->input(1).scalar<int32>()();
     OP_REQUIRES(c, num_elements >= 0,
                 errors::InvalidArgument("The num_elements to reserve must be a "
@@ -672,6 +679,32 @@ REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_CPU, TensorList,
                                          TensorListZerosLike<CPUDevice>);
+
+static Status TensorListDeviceCopy(
+    const TensorList& from, TensorList* to,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
+  to->element_shape = from.element_shape;
+  to->element_dtype = from.element_dtype;
+  to->max_num_elements = from.max_num_elements;
+  to->tensors().reserve(from.tensors().size());
+  for (const Tensor& t : from.tensors()) {
+    to->tensors().emplace_back(t.dtype());
+    if (t.dtype() != DT_INVALID) {
+      TF_RETURN_IF_ERROR(copy(t, &to->tensors().back()));
+    }
+  }
+  return OkStatus();
+}
+
+#define REGISTER_LIST_COPY(DIRECTION)                                         \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(TensorList, DIRECTION, \
+                                                       TensorListDeviceCopy)
+
+REGISTER_LIST_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
+REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
+REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(TensorList, TensorList::kTypeName);
 
 #define REGISTER_TENSOR_LIST_OPS_DEFAULT(T)                                \
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                          \

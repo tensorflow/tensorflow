@@ -81,7 +81,7 @@ mlir::LogicalResult ExtractMeshFromBlockArgument(mlir::BlockArgument block_arg,
         "mesh");
   }
 
-  out->emplace(mesh_from_block_arg_or_status.ValueOrDie());
+  out->emplace(mesh_from_block_arg_or_status.value());
   return mlir::success();
 }
 
@@ -104,7 +104,7 @@ mlir::LogicalResult ExtractMeshFromOpOutput(mlir::Value value,
         llvm::formatv("Failed during mesh propagation. {0}",
                       mesh_or_status.status().error_message()));
 
-  auto extracted_mesh = mesh_or_status.ValueOrDie();
+  auto extracted_mesh = mesh_or_status.value();
   if (extracted_mesh) *out = extracted_mesh.value();
   return mlir::success();
 }
@@ -288,7 +288,7 @@ mlir::LogicalResult InferMeshFromConsumers(
       if (!status_or_mesh.ok())
         return cluster.emitOpError(status_or_mesh.status().ToString());
 
-      auto mesh = status_or_mesh.ValueOrDie();
+      auto mesh = status_or_mesh.value();
       if (mesh) extracted_mesh = *mesh;
     } else {
       // If `cluster` output is input to another cluster/op then infer mesh from
@@ -305,7 +305,7 @@ mlir::LogicalResult InferMeshFromConsumers(
       if (!mesh_or_status.ok())
         return cluster.emitOpError(mesh_or_status.status().error_message());
 
-      auto consumer_mesh = mesh_or_status.ValueOrDie();
+      auto consumer_mesh = mesh_or_status.value();
       if (!consumer_mesh) continue;
 
       extracted_mesh = consumer_mesh.value();
@@ -526,7 +526,7 @@ DTensorMeshPropagation::PropagateDefaultMeshToUnAssignedClusters(
       return mlir::WalkResult::interrupt();
     }
 
-    const auto& mesh = mesh_or_status.ValueOrDie();
+    const auto& mesh = mesh_or_status.value();
     if (mesh.has_value()) return mlir::WalkResult::advance();
 
     clusters_without_mesh.emplace_back(cluster);

@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dataset_store.h"
@@ -205,11 +204,6 @@ class DataServiceDispatcherImpl {
   // exists.
   StatusOr<std::optional<std::string>> FindDataset(
       const GetOrRegisterDatasetRequest& request, uint64 fingerprint);
-  // Verifies the datasets with the same ID have the same metadata. If the
-  // metadata differs, returns an invalid argument error.
-  Status ValidateMatchingDataset(const std::string& dataset_id,
-                                 const DataServiceMetadata& new_metadata,
-                                 const DataServiceMetadata& old_metadata);
   // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
   // stub and stores it in `worker_stubs_`. A borrowed pointer to the stub is
   // stored in `out_stub`.
@@ -348,7 +342,7 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
       TF_GUARDED_BY(mu_);
 
-  absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
+  std::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
   // Condition variable for waking up the iteration gc thread.

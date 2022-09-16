@@ -137,6 +137,7 @@ cuda_py_test(
     name = "concat_op_test",
     size = "medium",
     srcs = ["concat_op_test.py"],
+    shard_count = 4,
     tags = ["no_windows"],  # b/126916429
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -606,6 +607,7 @@ cuda_py_test(
     name = "split_op_test",
     size = "medium",
     srcs = ["split_op_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

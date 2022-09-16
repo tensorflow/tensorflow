@@ -569,6 +569,7 @@ cc_library(
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/select.h",
         "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
@@ -671,6 +672,7 @@ cc_library(
         "reference/requantize.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/select.h",
         "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
@@ -877,6 +879,7 @@ cc_library(
 cc_library(
     name = "tensor_utils",
     srcs = [
+        "portable_tensor_utils.cc",
         "tensor_utils.cc",
     ],
     hdrs = [

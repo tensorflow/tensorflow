@@ -393,7 +393,9 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
     if (matchPattern(cst_tensor_op.arg(), m_Constant(&array))) {
       llvm::DenseSet<Type> all_types;
       for (auto it : array) {
-        all_types.insert(it.getType());
+        TypedAttr typed_attr = it.dyn_cast<TypedAttr>();
+        if (!typed_attr) return failure();
+        all_types.insert(typed_attr.getType());
       }
       if (all_types.size() != 1) return failure();
       ShapedType new_out_type = RankedTensorType::get(
@@ -408,7 +410,7 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
       return success();
     }
 
-    Attribute scalar;
+    TypedAttr scalar;
     if (matchPattern(cst_tensor_op.arg(), m_Constant(&scalar))) {
       Type new_out_type = RankedTensorType::get({}, scalar.getType());
       new_cst = rewriter.create<TF::ConstOp>(loc, new_out_type, scalar);

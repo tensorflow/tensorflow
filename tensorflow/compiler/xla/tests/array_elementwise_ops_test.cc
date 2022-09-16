@@ -2374,6 +2374,22 @@ XLA_TEST_F(ArrayElementwiseOpTest, SinF32s) {
                              error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, RealF64s) {
+  XlaBuilder builder(TestName());
+  std::vector<double> xs = {3.14159f, 0.0f, 1.570796f, -0.78539f};
+  auto a = ConstantR1<double>(&builder, xs);
+  Real(a);
+  ComputeAndCompareR1<double>(&builder, xs, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ImagF64s) {
+  XlaBuilder builder(TestName());
+  std::vector<double> xs = {3.14159, 0.0, 1.570796, -0.78539};
+  auto a = ConstantR1<double>(&builder, xs);
+  Imag(a);
+  ComputeAndCompareR1<double>(&builder, {0., 0., 0., 0.}, {});
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, Atan2F32s) {
   XlaBuilder builder(TestName());
   auto inf = std::numeric_limits<float>::infinity();

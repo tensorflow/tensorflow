@@ -226,7 +226,7 @@ class HloReachabilityMap {
   uint64_t GetKey(const HloInstruction* instruction) const {
     uint64_t unique_id = absl::bit_cast<uint32_t>(instruction->unique_id());
     uint64_t module_id =
-        absl::bit_cast<uint32_t>(instruction->parent()->parent()->unique_id());
+        absl::bit_cast<uint32_t>(instruction->GetModule()->unique_id());
     return (module_id << 32) | unique_id;
   }
   // Return the index of the given instruction.

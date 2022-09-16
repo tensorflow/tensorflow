@@ -51,12 +51,6 @@ struct HalfValueBuilder;
 struct BufferDescriptor;
 struct BufferDescriptorBuilder;
 
-struct Texture2DDescriptor;
-struct Texture2DDescriptorBuilder;
-
-struct TensorLinearDescriptor;
-struct TensorLinearDescriptorBuilder;
-
 struct BHWDC;
 struct BHWDCBuilder;
 
@@ -65,12 +59,6 @@ struct TensorDescriptorBuilder;
 
 struct BufferDescriptorMapValue;
 struct BufferDescriptorMapValueBuilder;
-
-struct Texture2DDescriptorMapValue;
-struct Texture2DDescriptorMapValueBuilder;
-
-struct TensorLinearDescriptorMapValue;
-struct TensorLinearDescriptorMapValueBuilder;
 
 struct TensorDescriptorMapValue;
 struct TensorDescriptorMapValueBuilder;
@@ -216,36 +204,6 @@ inline const char *EnumNameMemoryType(MemoryType e) {
   return EnumNamesMemoryType()[index];
 }
 
-enum class LinearStorageType : int8_t {
-  BUFFER = 0,
-  TEXTURE_2D = 1,
-  MIN = BUFFER,
-  MAX = TEXTURE_2D
-};
-
-inline const LinearStorageType (&EnumValuesLinearStorageType())[2] {
-  static const LinearStorageType values[] = {
-    LinearStorageType::BUFFER,
-    LinearStorageType::TEXTURE_2D
-  };
-  return values;
-}
-
-inline const char * const *EnumNamesLinearStorageType() {
-  static const char * const names[3] = {
-    "BUFFER",
-    "TEXTURE_2D",
-    nullptr
-  };
-  return names;
-}
-
-inline const char *EnumNameLinearStorageType(LinearStorageType e) {
-  if (flatbuffers::IsOutRange(e, LinearStorageType::BUFFER, LinearStorageType::TEXTURE_2D)) return "";
-  const size_t index = static_cast<size_t>(e);
-  return EnumNamesLinearStorageType()[index];
-}
-
 enum class TensorStorageType : int8_t {
   UNKNOWN = 0,
   BUFFER = 1,
@@ -297,35 +255,27 @@ enum class Layout : int8_t {
   BHWC = 2,
   HWDC = 3,
   BHWDC = 4,
+  LINEAR = 5,
+  HW = 6,
   MIN = UNKNOWN,
-  MAX = BHWDC
+  MAX = HW
 };
 
-inline const Layout (&EnumValuesLayout())[5] {
+inline const Layout (&EnumValuesLayout())[7] {
   static const Layout values[] = {
-    Layout::UNKNOWN,
-    Layout::HWC,
-    Layout::BHWC,
-    Layout::HWDC,
-    Layout::BHWDC
-  };
+      Layout::UNKNOWN, Layout::HWC,    Layout::BHWC, Layout::HWDC,
+      Layout::BHWDC,   Layout::LINEAR, Layout::HW};
   return values;
 }
 
 inline const char * const *EnumNamesLayout() {
-  static const char * const names[6] = {
-    "UNKNOWN",
-    "HWC",
-    "BHWC",
-    "HWDC",
-    "BHWDC",
-    nullptr
-  };
+  static const char *const names[8] = {"UNKNOWN", "HWC",    "BHWC", "HWDC",
+                                       "BHWDC",   "LINEAR", "HW",   nullptr};
   return names;
 }
 
 inline const char *EnumNameLayout(Layout e) {
-  if (flatbuffers::IsOutRange(e, Layout::UNKNOWN, Layout::BHWDC)) return "";
+  if (flatbuffers::IsOutRange(e, Layout::UNKNOWN, Layout::HW)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesLayout()[index];
 }
@@ -1108,231 +1058,6 @@ inline flatbuffers::Offset<BufferDescriptor> CreateBufferDescriptorDirect(
       data__);
 }
 
-struct Texture2DDescriptor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
-  typedef Texture2DDescriptorBuilder Builder;
-  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_BASE_OBJ = 4,
-    VT_ELEMENT_TYPE = 6,
-    VT_NORMALIZED = 8,
-    VT_NORMALIZED_TYPE = 10,
-    VT_SIZE = 12,
-    VT_DATA = 14
-  };
-  const tflite::gpu::data::GPUObjectDescriptor *base_obj() const {
-    return GetPointer<const tflite::gpu::data::GPUObjectDescriptor *>(VT_BASE_OBJ);
-  }
-  tflite::gpu::data::DataType element_type() const {
-    return static_cast<tflite::gpu::data::DataType>(GetField<int8_t>(VT_ELEMENT_TYPE, 0));
-  }
-  bool normalized() const {
-    return GetField<uint8_t>(VT_NORMALIZED, 0) != 0;
-  }
-  tflite::gpu::data::DataType normalized_type() const {
-    return static_cast<tflite::gpu::data::DataType>(GetField<int8_t>(VT_NORMALIZED_TYPE, 0));
-  }
-  const tflite::gpu::data::Int2 *size() const {
-    return GetPointer<const tflite::gpu::data::Int2 *>(VT_SIZE);
-  }
-  const flatbuffers::Vector<uint8_t> *data() const {
-    return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_DATA);
-  }
-  bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyOffset(verifier, VT_BASE_OBJ) &&
-           verifier.VerifyTable(base_obj()) &&
-           VerifyField<int8_t>(verifier, VT_ELEMENT_TYPE, 1) &&
-           VerifyField<uint8_t>(verifier, VT_NORMALIZED, 1) &&
-           VerifyField<int8_t>(verifier, VT_NORMALIZED_TYPE, 1) &&
-           VerifyOffset(verifier, VT_SIZE) &&
-           verifier.VerifyTable(size()) &&
-           VerifyOffset(verifier, VT_DATA) &&
-           verifier.VerifyVector(data()) &&
-           verifier.EndTable();
-  }
-};
-
-struct Texture2DDescriptorBuilder {
-  typedef Texture2DDescriptor Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_base_obj(flatbuffers::Offset<tflite::gpu::data::GPUObjectDescriptor> base_obj) {
-    fbb_.AddOffset(Texture2DDescriptor::VT_BASE_OBJ, base_obj);
-  }
-  void add_element_type(tflite::gpu::data::DataType element_type) {
-    fbb_.AddElement<int8_t>(Texture2DDescriptor::VT_ELEMENT_TYPE, static_cast<int8_t>(element_type), 0);
-  }
-  void add_normalized(bool normalized) {
-    fbb_.AddElement<uint8_t>(Texture2DDescriptor::VT_NORMALIZED, static_cast<uint8_t>(normalized), 0);
-  }
-  void add_normalized_type(tflite::gpu::data::DataType normalized_type) {
-    fbb_.AddElement<int8_t>(Texture2DDescriptor::VT_NORMALIZED_TYPE, static_cast<int8_t>(normalized_type), 0);
-  }
-  void add_size(flatbuffers::Offset<tflite::gpu::data::Int2> size) {
-    fbb_.AddOffset(Texture2DDescriptor::VT_SIZE, size);
-  }
-  void add_data(flatbuffers::Offset<flatbuffers::Vector<uint8_t>> data) {
-    fbb_.AddOffset(Texture2DDescriptor::VT_DATA, data);
-  }
-  explicit Texture2DDescriptorBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-        : fbb_(_fbb) {
-    start_ = fbb_.StartTable();
-  }
-  flatbuffers::Offset<Texture2DDescriptor> Finish() {
-    const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<Texture2DDescriptor>(end);
-    return o;
-  }
-};
-
-inline flatbuffers::Offset<Texture2DDescriptor> CreateTexture2DDescriptor(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<tflite::gpu::data::GPUObjectDescriptor> base_obj = 0,
-    tflite::gpu::data::DataType element_type = tflite::gpu::data::DataType::UNKNOWN,
-    bool normalized = false,
-    tflite::gpu::data::DataType normalized_type = tflite::gpu::data::DataType::UNKNOWN,
-    flatbuffers::Offset<tflite::gpu::data::Int2> size = 0,
-    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> data = 0) {
-  Texture2DDescriptorBuilder builder_(_fbb);
-  builder_.add_data(data);
-  builder_.add_size(size);
-  builder_.add_base_obj(base_obj);
-  builder_.add_normalized_type(normalized_type);
-  builder_.add_normalized(normalized);
-  builder_.add_element_type(element_type);
-  return builder_.Finish();
-}
-
-inline flatbuffers::Offset<Texture2DDescriptor> CreateTexture2DDescriptorDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<tflite::gpu::data::GPUObjectDescriptor> base_obj = 0,
-    tflite::gpu::data::DataType element_type = tflite::gpu::data::DataType::UNKNOWN,
-    bool normalized = false,
-    tflite::gpu::data::DataType normalized_type = tflite::gpu::data::DataType::UNKNOWN,
-    flatbuffers::Offset<tflite::gpu::data::Int2> size = 0,
-    const std::vector<uint8_t> *data = nullptr) {
-  auto data__ = data ? _fbb.CreateVector<uint8_t>(*data) : 0;
-  return tflite::gpu::data::CreateTexture2DDescriptor(
-      _fbb,
-      base_obj,
-      element_type,
-      normalized,
-      normalized_type,
-      size,
-      data__);
-}
-
-struct TensorLinearDescriptor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
-  typedef TensorLinearDescriptorBuilder Builder;
-  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_BASE_OBJ = 4,
-    VT_STORAGE_TYPE = 6,
-    VT_ELEMENT_TYPE = 8,
-    VT_MEMORY_TYPE = 10,
-    VT_SIZE = 12,
-    VT_DATA = 14
-  };
-  const tflite::gpu::data::GPUObjectDescriptor *base_obj() const {
-    return GetPointer<const tflite::gpu::data::GPUObjectDescriptor *>(VT_BASE_OBJ);
-  }
-  tflite::gpu::data::LinearStorageType storage_type() const {
-    return static_cast<tflite::gpu::data::LinearStorageType>(GetField<int8_t>(VT_STORAGE_TYPE, 0));
-  }
-  tflite::gpu::data::DataType element_type() const {
-    return static_cast<tflite::gpu::data::DataType>(GetField<int8_t>(VT_ELEMENT_TYPE, 0));
-  }
-  tflite::gpu::data::MemoryType memory_type() const {
-    return static_cast<tflite::gpu::data::MemoryType>(GetField<int8_t>(VT_MEMORY_TYPE, 0));
-  }
-  int32_t size() const {
-    return GetField<int32_t>(VT_SIZE, 0);
-  }
-  const flatbuffers::Vector<uint8_t> *data() const {
-    return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_DATA);
-  }
-  bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyOffset(verifier, VT_BASE_OBJ) &&
-           verifier.VerifyTable(base_obj()) &&
-           VerifyField<int8_t>(verifier, VT_STORAGE_TYPE, 1) &&
-           VerifyField<int8_t>(verifier, VT_ELEMENT_TYPE, 1) &&
-           VerifyField<int8_t>(verifier, VT_MEMORY_TYPE, 1) &&
-           VerifyField<int32_t>(verifier, VT_SIZE, 4) &&
-           VerifyOffset(verifier, VT_DATA) &&
-           verifier.VerifyVector(data()) &&
-           verifier.EndTable();
-  }
-};
-
-struct TensorLinearDescriptorBuilder {
-  typedef TensorLinearDescriptor Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_base_obj(flatbuffers::Offset<tflite::gpu::data::GPUObjectDescriptor> base_obj) {
-    fbb_.AddOffset(TensorLinearDescriptor::VT_BASE_OBJ, base_obj);
-  }
-  void add_storage_type(tflite::gpu::data::LinearStorageType storage_type) {
-    fbb_.AddElement<int8_t>(TensorLinearDescriptor::VT_STORAGE_TYPE, static_cast<int8_t>(storage_type), 0);
-  }
-  void add_element_type(tflite::gpu::data::DataType element_type) {
-    fbb_.AddElement<int8_t>(TensorLinearDescriptor::VT_ELEMENT_TYPE, static_cast<int8_t>(element_type), 0);
-  }
-  void add_memory_type(tflite::gpu::data::MemoryType memory_type) {
-    fbb_.AddElement<int8_t>(TensorLinearDescriptor::VT_MEMORY_TYPE, static_cast<int8_t>(memory_type), 0);
-  }
-  void add_size(int32_t size) {
-    fbb_.AddElement<int32_t>(TensorLinearDescriptor::VT_SIZE, size, 0);
-  }
-  void add_data(flatbuffers::Offset<flatbuffers::Vector<uint8_t>> data) {
-    fbb_.AddOffset(TensorLinearDescriptor::VT_DATA, data);
-  }
-  explicit TensorLinearDescriptorBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-        : fbb_(_fbb) {
-    start_ = fbb_.StartTable();
-  }
-  flatbuffers::Offset<TensorLinearDescriptor> Finish() {
-    const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<TensorLinearDescriptor>(end);
-    return o;
-  }
-};
-
-inline flatbuffers::Offset<TensorLinearDescriptor> CreateTensorLinearDescriptor(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<tflite::gpu::data::GPUObjectDescriptor> base_obj = 0,
-    tflite::gpu::data::LinearStorageType storage_type = tflite::gpu::data::LinearStorageType::BUFFER,
-    tflite::gpu::data::DataType element_type = tflite::gpu::data::DataType::UNKNOWN,
-    tflite::gpu::data::MemoryType memory_type = tflite::gpu::data::MemoryType::GLOBAL,
-    int32_t size = 0,
-    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> data = 0) {
-  TensorLinearDescriptorBuilder builder_(_fbb);
-  builder_.add_data(data);
-  builder_.add_size(size);
-  builder_.add_base_obj(base_obj);
-  builder_.add_memory_type(memory_type);
-  builder_.add_element_type(element_type);
-  builder_.add_storage_type(storage_type);
-  return builder_.Finish();
-}
-
-inline flatbuffers::Offset<TensorLinearDescriptor> CreateTensorLinearDescriptorDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<tflite::gpu::data::GPUObjectDescriptor> base_obj = 0,
-    tflite::gpu::data::LinearStorageType storage_type = tflite::gpu::data::LinearStorageType::BUFFER,
-    tflite::gpu::data::DataType element_type = tflite::gpu::data::DataType::UNKNOWN,
-    tflite::gpu::data::MemoryType memory_type = tflite::gpu::data::MemoryType::GLOBAL,
-    int32_t size = 0,
-    const std::vector<uint8_t> *data = nullptr) {
-  auto data__ = data ? _fbb.CreateVector<uint8_t>(*data) : 0;
-  return tflite::gpu::data::CreateTensorLinearDescriptor(
-      _fbb,
-      base_obj,
-      storage_type,
-      element_type,
-      memory_type,
-      size,
-      data__);
-}
-
 struct BHWDC FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef BHWDCBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
@@ -1615,134 +1340,6 @@ inline flatbuffers::Offset<BufferDescriptorMapValue> CreateBufferDescriptorMapVa
       value);
 }
 
-struct Texture2DDescriptorMapValue FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
-  typedef Texture2DDescriptorMapValueBuilder Builder;
-  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_KEY = 4,
-    VT_VALUE = 6
-  };
-  const flatbuffers::String *key() const {
-    return GetPointer<const flatbuffers::String *>(VT_KEY);
-  }
-  const tflite::gpu::data::Texture2DDescriptor *value() const {
-    return GetPointer<const tflite::gpu::data::Texture2DDescriptor *>(VT_VALUE);
-  }
-  bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyOffset(verifier, VT_KEY) &&
-           verifier.VerifyString(key()) &&
-           VerifyOffset(verifier, VT_VALUE) &&
-           verifier.VerifyTable(value()) &&
-           verifier.EndTable();
-  }
-};
-
-struct Texture2DDescriptorMapValueBuilder {
-  typedef Texture2DDescriptorMapValue Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_key(flatbuffers::Offset<flatbuffers::String> key) {
-    fbb_.AddOffset(Texture2DDescriptorMapValue::VT_KEY, key);
-  }
-  void add_value(flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptor> value) {
-    fbb_.AddOffset(Texture2DDescriptorMapValue::VT_VALUE, value);
-  }
-  explicit Texture2DDescriptorMapValueBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-        : fbb_(_fbb) {
-    start_ = fbb_.StartTable();
-  }
-  flatbuffers::Offset<Texture2DDescriptorMapValue> Finish() {
-    const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<Texture2DDescriptorMapValue>(end);
-    return o;
-  }
-};
-
-inline flatbuffers::Offset<Texture2DDescriptorMapValue> CreateTexture2DDescriptorMapValue(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::String> key = 0,
-    flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptor> value = 0) {
-  Texture2DDescriptorMapValueBuilder builder_(_fbb);
-  builder_.add_value(value);
-  builder_.add_key(key);
-  return builder_.Finish();
-}
-
-inline flatbuffers::Offset<Texture2DDescriptorMapValue> CreateTexture2DDescriptorMapValueDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const char *key = nullptr,
-    flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptor> value = 0) {
-  auto key__ = key ? _fbb.CreateString(key) : 0;
-  return tflite::gpu::data::CreateTexture2DDescriptorMapValue(
-      _fbb,
-      key__,
-      value);
-}
-
-struct TensorLinearDescriptorMapValue FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
-  typedef TensorLinearDescriptorMapValueBuilder Builder;
-  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_KEY = 4,
-    VT_VALUE = 6
-  };
-  const flatbuffers::String *key() const {
-    return GetPointer<const flatbuffers::String *>(VT_KEY);
-  }
-  const tflite::gpu::data::TensorLinearDescriptor *value() const {
-    return GetPointer<const tflite::gpu::data::TensorLinearDescriptor *>(VT_VALUE);
-  }
-  bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyOffset(verifier, VT_KEY) &&
-           verifier.VerifyString(key()) &&
-           VerifyOffset(verifier, VT_VALUE) &&
-           verifier.VerifyTable(value()) &&
-           verifier.EndTable();
-  }
-};
-
-struct TensorLinearDescriptorMapValueBuilder {
-  typedef TensorLinearDescriptorMapValue Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_key(flatbuffers::Offset<flatbuffers::String> key) {
-    fbb_.AddOffset(TensorLinearDescriptorMapValue::VT_KEY, key);
-  }
-  void add_value(flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptor> value) {
-    fbb_.AddOffset(TensorLinearDescriptorMapValue::VT_VALUE, value);
-  }
-  explicit TensorLinearDescriptorMapValueBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-        : fbb_(_fbb) {
-    start_ = fbb_.StartTable();
-  }
-  flatbuffers::Offset<TensorLinearDescriptorMapValue> Finish() {
-    const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<TensorLinearDescriptorMapValue>(end);
-    return o;
-  }
-};
-
-inline flatbuffers::Offset<TensorLinearDescriptorMapValue> CreateTensorLinearDescriptorMapValue(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::String> key = 0,
-    flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptor> value = 0) {
-  TensorLinearDescriptorMapValueBuilder builder_(_fbb);
-  builder_.add_value(value);
-  builder_.add_key(key);
-  return builder_.Finish();
-}
-
-inline flatbuffers::Offset<TensorLinearDescriptorMapValue> CreateTensorLinearDescriptorMapValueDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const char *key = nullptr,
-    flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptor> value = 0) {
-  auto key__ = key ? _fbb.CreateString(key) : 0;
-  return tflite::gpu::data::CreateTensorLinearDescriptorMapValue(
-      _fbb,
-      key__,
-      value);
-}
-
 struct TensorDescriptorMapValue FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef TensorDescriptorMapValueBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
@@ -1814,13 +1411,9 @@ struct Arguments FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_FLOAT_VALUES = 6,
     VT_HALF_VALUES = 8,
     VT_BUFFER_REFS = 10,
-    VT_TEXTURE2D_REFS = 12,
-    VT_TENSOR_LINEAR_REFS = 14,
-    VT_TENSOR_REFS = 16,
-    VT_BUFFER_OBJECTS = 18,
-    VT_TEXTURE2D_OBJECTS = 20,
-    VT_TENSOR_LINEAR_OBJECTS = 22,
-    VT_TENSOR_OBJECTS = 24
+    VT_TENSOR_REFS = 12,
+    VT_BUFFER_OBJECTS = 14,
+    VT_TENSOR_OBJECTS = 16
   };
   const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::IntValue>> *int_values() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::IntValue>> *>(VT_INT_VALUES);
@@ -1834,23 +1427,11 @@ struct Arguments FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::BufferDescriptorMapValue>> *buffer_refs() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::BufferDescriptorMapValue>> *>(VT_BUFFER_REFS);
   }
-  const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptorMapValue>> *texture2d_refs() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptorMapValue>> *>(VT_TEXTURE2D_REFS);
-  }
-  const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptorMapValue>> *tensor_linear_refs() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptorMapValue>> *>(VT_TENSOR_LINEAR_REFS);
-  }
   const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptorMapValue>> *tensor_refs() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptorMapValue>> *>(VT_TENSOR_REFS);
   }
   const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::BufferDescriptorMapValue>> *buffer_objects() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::BufferDescriptorMapValue>> *>(VT_BUFFER_OBJECTS);
-  }
-  const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptorMapValue>> *texture2d_objects() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptorMapValue>> *>(VT_TEXTURE2D_OBJECTS);
-  }
-  const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptorMapValue>> *tensor_linear_objects() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptorMapValue>> *>(VT_TENSOR_LINEAR_OBJECTS);
   }
   const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptorMapValue>> *tensor_objects() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptorMapValue>> *>(VT_TENSOR_OBJECTS);
@@ -1869,24 +1450,12 @@ struct Arguments FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_BUFFER_REFS) &&
            verifier.VerifyVector(buffer_refs()) &&
            verifier.VerifyVectorOfTables(buffer_refs()) &&
-           VerifyOffset(verifier, VT_TEXTURE2D_REFS) &&
-           verifier.VerifyVector(texture2d_refs()) &&
-           verifier.VerifyVectorOfTables(texture2d_refs()) &&
-           VerifyOffset(verifier, VT_TENSOR_LINEAR_REFS) &&
-           verifier.VerifyVector(tensor_linear_refs()) &&
-           verifier.VerifyVectorOfTables(tensor_linear_refs()) &&
            VerifyOffset(verifier, VT_TENSOR_REFS) &&
            verifier.VerifyVector(tensor_refs()) &&
            verifier.VerifyVectorOfTables(tensor_refs()) &&
            VerifyOffset(verifier, VT_BUFFER_OBJECTS) &&
            verifier.VerifyVector(buffer_objects()) &&
            verifier.VerifyVectorOfTables(buffer_objects()) &&
-           VerifyOffset(verifier, VT_TEXTURE2D_OBJECTS) &&
-           verifier.VerifyVector(texture2d_objects()) &&
-           verifier.VerifyVectorOfTables(texture2d_objects()) &&
-           VerifyOffset(verifier, VT_TENSOR_LINEAR_OBJECTS) &&
-           verifier.VerifyVector(tensor_linear_objects()) &&
-           verifier.VerifyVectorOfTables(tensor_linear_objects()) &&
            VerifyOffset(verifier, VT_TENSOR_OBJECTS) &&
            verifier.VerifyVector(tensor_objects()) &&
            verifier.VerifyVectorOfTables(tensor_objects()) &&
@@ -1910,23 +1479,11 @@ struct ArgumentsBuilder {
   void add_buffer_refs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::BufferDescriptorMapValue>>> buffer_refs) {
     fbb_.AddOffset(Arguments::VT_BUFFER_REFS, buffer_refs);
   }
-  void add_texture2d_refs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptorMapValue>>> texture2d_refs) {
-    fbb_.AddOffset(Arguments::VT_TEXTURE2D_REFS, texture2d_refs);
-  }
-  void add_tensor_linear_refs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptorMapValue>>> tensor_linear_refs) {
-    fbb_.AddOffset(Arguments::VT_TENSOR_LINEAR_REFS, tensor_linear_refs);
-  }
   void add_tensor_refs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptorMapValue>>> tensor_refs) {
     fbb_.AddOffset(Arguments::VT_TENSOR_REFS, tensor_refs);
   }
   void add_buffer_objects(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::BufferDescriptorMapValue>>> buffer_objects) {
     fbb_.AddOffset(Arguments::VT_BUFFER_OBJECTS, buffer_objects);
-  }
-  void add_texture2d_objects(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptorMapValue>>> texture2d_objects) {
-    fbb_.AddOffset(Arguments::VT_TEXTURE2D_OBJECTS, texture2d_objects);
-  }
-  void add_tensor_linear_objects(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptorMapValue>>> tensor_linear_objects) {
-    fbb_.AddOffset(Arguments::VT_TENSOR_LINEAR_OBJECTS, tensor_linear_objects);
   }
   void add_tensor_objects(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptorMapValue>>> tensor_objects) {
     fbb_.AddOffset(Arguments::VT_TENSOR_OBJECTS, tensor_objects);
@@ -1948,21 +1505,13 @@ inline flatbuffers::Offset<Arguments> CreateArguments(
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::FloatValue>>> float_values = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::HalfValue>>> half_values = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::BufferDescriptorMapValue>>> buffer_refs = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptorMapValue>>> texture2d_refs = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptorMapValue>>> tensor_linear_refs = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptorMapValue>>> tensor_refs = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::BufferDescriptorMapValue>>> buffer_objects = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptorMapValue>>> texture2d_objects = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptorMapValue>>> tensor_linear_objects = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptorMapValue>>> tensor_objects = 0) {
   ArgumentsBuilder builder_(_fbb);
   builder_.add_tensor_objects(tensor_objects);
-  builder_.add_tensor_linear_objects(tensor_linear_objects);
-  builder_.add_texture2d_objects(texture2d_objects);
   builder_.add_buffer_objects(buffer_objects);
   builder_.add_tensor_refs(tensor_refs);
-  builder_.add_tensor_linear_refs(tensor_linear_refs);
-  builder_.add_texture2d_refs(texture2d_refs);
   builder_.add_buffer_refs(buffer_refs);
   builder_.add_half_values(half_values);
   builder_.add_float_values(float_values);
@@ -1976,23 +1525,15 @@ inline flatbuffers::Offset<Arguments> CreateArgumentsDirect(
     const std::vector<flatbuffers::Offset<tflite::gpu::data::FloatValue>> *float_values = nullptr,
     const std::vector<flatbuffers::Offset<tflite::gpu::data::HalfValue>> *half_values = nullptr,
     const std::vector<flatbuffers::Offset<tflite::gpu::data::BufferDescriptorMapValue>> *buffer_refs = nullptr,
-    const std::vector<flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptorMapValue>> *texture2d_refs = nullptr,
-    const std::vector<flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptorMapValue>> *tensor_linear_refs = nullptr,
     const std::vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptorMapValue>> *tensor_refs = nullptr,
     const std::vector<flatbuffers::Offset<tflite::gpu::data::BufferDescriptorMapValue>> *buffer_objects = nullptr,
-    const std::vector<flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptorMapValue>> *texture2d_objects = nullptr,
-    const std::vector<flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptorMapValue>> *tensor_linear_objects = nullptr,
     const std::vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptorMapValue>> *tensor_objects = nullptr) {
   auto int_values__ = int_values ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::IntValue>>(*int_values) : 0;
   auto float_values__ = float_values ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::FloatValue>>(*float_values) : 0;
   auto half_values__ = half_values ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::HalfValue>>(*half_values) : 0;
   auto buffer_refs__ = buffer_refs ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::BufferDescriptorMapValue>>(*buffer_refs) : 0;
-  auto texture2d_refs__ = texture2d_refs ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptorMapValue>>(*texture2d_refs) : 0;
-  auto tensor_linear_refs__ = tensor_linear_refs ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptorMapValue>>(*tensor_linear_refs) : 0;
   auto tensor_refs__ = tensor_refs ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptorMapValue>>(*tensor_refs) : 0;
   auto buffer_objects__ = buffer_objects ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::BufferDescriptorMapValue>>(*buffer_objects) : 0;
-  auto texture2d_objects__ = texture2d_objects ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::Texture2DDescriptorMapValue>>(*texture2d_objects) : 0;
-  auto tensor_linear_objects__ = tensor_linear_objects ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::TensorLinearDescriptorMapValue>>(*tensor_linear_objects) : 0;
   auto tensor_objects__ = tensor_objects ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptorMapValue>>(*tensor_objects) : 0;
   return tflite::gpu::data::CreateArguments(
       _fbb,
@@ -2000,12 +1541,8 @@ inline flatbuffers::Offset<Arguments> CreateArgumentsDirect(
       float_values__,
       half_values__,
       buffer_refs__,
-      texture2d_refs__,
-      tensor_linear_refs__,
       tensor_refs__,
       buffer_objects__,
-      texture2d_objects__,
-      tensor_linear_objects__,
       tensor_objects__);
 }
 
@@ -2137,19 +1674,14 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_WORK_GROUP_SIZE = 8,
     VT_COMPILER_OPTIONS = 10,
     VT_TENSOR_TO_GRID = 12,
-    VT_ELEMENTWISE = 14,
-    VT_LINKABLE = 16,
-    VT_CHECK_SRC_CHANNELS_SIZE = 18,
-    VT_FLOPS = 20,
-    VT_DEFINITION = 22,
-    VT_GRID_DIMENSION = 24,
-    VT_WORK_GROUP_LAUNCH_ORDER = 26,
-    VT_GRID_SIZE = 28,
-    VT_SRC_TENSORS_NAMES = 30,
-    VT_DST_TENSORS_NAMES = 32,
-    VT_WORK_GROUPS_COUNT = 34,
-    VT_LINKABLE_COUNT = 36,
-    VT_ELEMENTWISE_CODE = 38
+    VT_FLOPS = 14,
+    VT_DEFINITION = 16,
+    VT_GRID_DIMENSION = 18,
+    VT_WORK_GROUP_LAUNCH_ORDER = 20,
+    VT_GRID_SIZE = 22,
+    VT_SRC_TENSORS_NAMES = 24,
+    VT_DST_TENSORS_NAMES = 26,
+    VT_WORK_GROUPS_COUNT = 28
   };
   const tflite::gpu::data::Arguments *arguments() const {
     return GetPointer<const tflite::gpu::data::Arguments *>(VT_ARGUMENTS);
@@ -2165,15 +1697,6 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   tflite::gpu::data::TensorToGrid tensor_to_grid() const {
     return static_cast<tflite::gpu::data::TensorToGrid>(GetField<int8_t>(VT_TENSOR_TO_GRID, 0));
-  }
-  bool elementwise() const {
-    return GetField<uint8_t>(VT_ELEMENTWISE, 0) != 0;
-  }
-  bool linkable() const {
-    return GetField<uint8_t>(VT_LINKABLE, 0) != 0;
-  }
-  bool check_src_channels_size() const {
-    return GetField<uint8_t>(VT_CHECK_SRC_CHANNELS_SIZE, 0) != 0;
   }
   uint64_t flops() const {
     return GetField<uint64_t>(VT_FLOPS, 0);
@@ -2199,12 +1722,6 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::gpu::data::Int3 *work_groups_count() const {
     return GetPointer<const tflite::gpu::data::Int3 *>(VT_WORK_GROUPS_COUNT);
   }
-  int32_t linkable_count() const {
-    return GetField<int32_t>(VT_LINKABLE_COUNT, 0);
-  }
-  const flatbuffers::String *elementwise_code() const {
-    return GetPointer<const flatbuffers::String *>(VT_ELEMENTWISE_CODE);
-  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_ARGUMENTS) &&
@@ -2217,9 +1734,6 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyVector(compiler_options()) &&
            verifier.VerifyVectorOfTables(compiler_options()) &&
            VerifyField<int8_t>(verifier, VT_TENSOR_TO_GRID, 1) &&
-           VerifyField<uint8_t>(verifier, VT_ELEMENTWISE, 1) &&
-           VerifyField<uint8_t>(verifier, VT_LINKABLE, 1) &&
-           VerifyField<uint8_t>(verifier, VT_CHECK_SRC_CHANNELS_SIZE, 1) &&
            VerifyField<uint64_t>(verifier, VT_FLOPS, 8) &&
            VerifyOffset(verifier, VT_DEFINITION) &&
            verifier.VerifyTable(definition()) &&
@@ -2236,9 +1750,6 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyVectorOfStrings(dst_tensors_names()) &&
            VerifyOffset(verifier, VT_WORK_GROUPS_COUNT) &&
            verifier.VerifyTable(work_groups_count()) &&
-           VerifyField<int32_t>(verifier, VT_LINKABLE_COUNT, 4) &&
-           VerifyOffset(verifier, VT_ELEMENTWISE_CODE) &&
-           verifier.VerifyString(elementwise_code()) &&
            verifier.EndTable();
   }
 };
@@ -2261,15 +1772,6 @@ struct GPUOperationBuilder {
   }
   void add_tensor_to_grid(tflite::gpu::data::TensorToGrid tensor_to_grid) {
     fbb_.AddElement<int8_t>(GPUOperation::VT_TENSOR_TO_GRID, static_cast<int8_t>(tensor_to_grid), 0);
-  }
-  void add_elementwise(bool elementwise) {
-    fbb_.AddElement<uint8_t>(GPUOperation::VT_ELEMENTWISE, static_cast<uint8_t>(elementwise), 0);
-  }
-  void add_linkable(bool linkable) {
-    fbb_.AddElement<uint8_t>(GPUOperation::VT_LINKABLE, static_cast<uint8_t>(linkable), 0);
-  }
-  void add_check_src_channels_size(bool check_src_channels_size) {
-    fbb_.AddElement<uint8_t>(GPUOperation::VT_CHECK_SRC_CHANNELS_SIZE, static_cast<uint8_t>(check_src_channels_size), 0);
   }
   void add_flops(uint64_t flops) {
     fbb_.AddElement<uint64_t>(GPUOperation::VT_FLOPS, flops, 0);
@@ -2295,12 +1797,6 @@ struct GPUOperationBuilder {
   void add_work_groups_count(flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count) {
     fbb_.AddOffset(GPUOperation::VT_WORK_GROUPS_COUNT, work_groups_count);
   }
-  void add_linkable_count(int32_t linkable_count) {
-    fbb_.AddElement<int32_t>(GPUOperation::VT_LINKABLE_COUNT, linkable_count, 0);
-  }
-  void add_elementwise_code(flatbuffers::Offset<flatbuffers::String> elementwise_code) {
-    fbb_.AddOffset(GPUOperation::VT_ELEMENTWISE_CODE, elementwise_code);
-  }
   explicit GPUOperationBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2317,25 +1813,25 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperation(
     flatbuffers::Offset<tflite::gpu::data::Arguments> arguments = 0,
     flatbuffers::Offset<flatbuffers::String> code = 0,
     flatbuffers::Offset<tflite::gpu::data::Int3> work_group_size = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::data::CompilerOption>>> compiler_options = 0,
-    tflite::gpu::data::TensorToGrid tensor_to_grid = tflite::gpu::data::TensorToGrid::CUSTOM,
-    bool elementwise = false,
-    bool linkable = false,
-    bool check_src_channels_size = false,
+    flatbuffers::Offset<flatbuffers::Vector<
+        flatbuffers::Offset<tflite::gpu::data::CompilerOption>>>
+        compiler_options = 0,
+    tflite::gpu::data::TensorToGrid tensor_to_grid =
+        tflite::gpu::data::TensorToGrid::CUSTOM,
     uint64_t flops = 0,
     flatbuffers::Offset<tflite::gpu::data::OperationDef> definition = 0,
     int32_t grid_dimension = 0,
     flatbuffers::Offset<tflite::gpu::data::Int3> work_group_launch_order = 0,
     flatbuffers::Offset<tflite::gpu::data::Int3> grid_size = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> src_tensors_names = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> dst_tensors_names = 0,
-    flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count = 0,
-    int32_t linkable_count = 0,
-    flatbuffers::Offset<flatbuffers::String> elementwise_code = 0) {
+    flatbuffers::Offset<
+        flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+        src_tensors_names = 0,
+    flatbuffers::Offset<
+        flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+        dst_tensors_names = 0,
+    flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count = 0) {
   GPUOperationBuilder builder_(_fbb);
   builder_.add_flops(flops);
-  builder_.add_elementwise_code(elementwise_code);
-  builder_.add_linkable_count(linkable_count);
   builder_.add_work_groups_count(work_groups_count);
   builder_.add_dst_tensors_names(dst_tensors_names);
   builder_.add_src_tensors_names(src_tensors_names);
@@ -2347,9 +1843,6 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperation(
   builder_.add_work_group_size(work_group_size);
   builder_.add_code(code);
   builder_.add_arguments(arguments);
-  builder_.add_check_src_channels_size(check_src_channels_size);
-  builder_.add_linkable(linkable);
-  builder_.add_elementwise(elementwise);
   builder_.add_tensor_to_grid(tensor_to_grid);
   return builder_.Finish();
 }
@@ -2359,46 +1852,29 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperationDirect(
     flatbuffers::Offset<tflite::gpu::data::Arguments> arguments = 0,
     const char *code = nullptr,
     flatbuffers::Offset<tflite::gpu::data::Int3> work_group_size = 0,
-    const std::vector<flatbuffers::Offset<tflite::gpu::data::CompilerOption>> *compiler_options = nullptr,
-    tflite::gpu::data::TensorToGrid tensor_to_grid = tflite::gpu::data::TensorToGrid::CUSTOM,
-    bool elementwise = false,
-    bool linkable = false,
-    bool check_src_channels_size = false,
+    const std::vector<flatbuffers::Offset<tflite::gpu::data::CompilerOption>>
+        *compiler_options = nullptr,
+    tflite::gpu::data::TensorToGrid tensor_to_grid =
+        tflite::gpu::data::TensorToGrid::CUSTOM,
     uint64_t flops = 0,
     flatbuffers::Offset<tflite::gpu::data::OperationDef> definition = 0,
     int32_t grid_dimension = 0,
     flatbuffers::Offset<tflite::gpu::data::Int3> work_group_launch_order = 0,
     flatbuffers::Offset<tflite::gpu::data::Int3> grid_size = 0,
-    const std::vector<flatbuffers::Offset<flatbuffers::String>> *src_tensors_names = nullptr,
-    const std::vector<flatbuffers::Offset<flatbuffers::String>> *dst_tensors_names = nullptr,
-    flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count = 0,
-    int32_t linkable_count = 0,
-    const char *elementwise_code = nullptr) {
+    const std::vector<flatbuffers::Offset<flatbuffers::String>>
+        *src_tensors_names = nullptr,
+    const std::vector<flatbuffers::Offset<flatbuffers::String>>
+        *dst_tensors_names = nullptr,
+    flatbuffers::Offset<tflite::gpu::data::Int3> work_groups_count = 0) {
   auto code__ = code ? _fbb.CreateString(code) : 0;
   auto compiler_options__ = compiler_options ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::data::CompilerOption>>(*compiler_options) : 0;
   auto src_tensors_names__ = src_tensors_names ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*src_tensors_names) : 0;
   auto dst_tensors_names__ = dst_tensors_names ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*dst_tensors_names) : 0;
-  auto elementwise_code__ = elementwise_code ? _fbb.CreateString(elementwise_code) : 0;
   return tflite::gpu::data::CreateGPUOperation(
-      _fbb,
-      arguments,
-      code__,
-      work_group_size,
-      compiler_options__,
-      tensor_to_grid,
-      elementwise,
-      linkable,
-      check_src_channels_size,
-      flops,
-      definition,
-      grid_dimension,
-      work_group_launch_order,
-      grid_size,
-      src_tensors_names__,
-      dst_tensors_names__,
-      work_groups_count,
-      linkable_count,
-      elementwise_code__);
+      _fbb, arguments, code__, work_group_size, compiler_options__,
+      tensor_to_grid, flops, definition, grid_dimension,
+      work_group_launch_order, grid_size, src_tensors_names__,
+      dst_tensors_names__, work_groups_count);
 }
 
 }  // namespace data

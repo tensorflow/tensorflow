@@ -65,8 +65,6 @@ class ClOperation {
     return operation_->GetDefinition();
   }
 
-  absl::Status AddOperation(ClOperation* operation);
-
   // should be called after changes of inputs/outputs.
   absl::Status UpdateParams();
 

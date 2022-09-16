@@ -44,6 +44,7 @@ class OpKernelContext;
 class Tensor;
 class TensorBuffer;
 class TensorCApi;
+class TensorInterface;
 class TensorCord;
 class TensorDescription;
 class TensorProto;
@@ -421,7 +422,7 @@ class Tensor {
   }
 
   template <typename T, size_t NDIMS>
-  typename TTypes<T, NDIMS>::Tensor tensor();
+  typename TTypes<T, NDIMS>::Tensor tensor() TF_ATTRIBUTE_NOINLINE;
 
   /// \brief Return the tensor data to an `Eigen::Tensor` with the
   /// same size but a bitwise cast to the specified dtype `T`.
@@ -471,9 +472,7 @@ class Tensor {
   ///
   /// ```
   template <typename T>
-  typename TTypes<T>::Flat flat() {
-    return shaped<T, 1>({NumElements()});
-  }
+  typename TTypes<T>::Flat flat();
 
   template <typename T>
   typename TTypes<T>::UnalignedFlat unaligned_flat() {
@@ -539,7 +538,7 @@ class Tensor {
   }
 
   template <typename T, size_t NDIMS>
-  typename TTypes<T, NDIMS>::ConstTensor tensor() const;
+  typename TTypes<T, NDIMS>::ConstTensor tensor() const TF_ATTRIBUTE_NOINLINE;
 
   /// \brief Return the tensor data to an `Eigen::Tensor` with the
   /// same size but a bitwise cast to the specified dtype `T`.
@@ -560,9 +559,7 @@ class Tensor {
   typename TTypes<T, NDIMS>::ConstTensor reinterpret_last_dimension() const;
 
   template <typename T>
-  typename TTypes<T>::ConstFlat flat() const {
-    return shaped<T, 1>({NumElements()});
-  }
+  typename TTypes<T>::ConstFlat flat() const;
 
   template <typename T>
   typename TTypes<T>::UnalignedConstFlat unaligned_flat() const {
@@ -693,6 +690,7 @@ class Tensor {
   friend class VariableOp;            // For access to set_shape.
   friend class AutoReloadVariableOp;  // For access to set_shape.
   friend class TensorTestHelper;      // For access to set_shape.
+  friend class TensorInterface;       // For access to set_shape.
   friend class CastOpBase;            // For access to set_dtype.
   friend class ScopedAllocator;       // For access to buf_.
   friend Status batch_util::CopyElementToSlice(
@@ -758,6 +756,7 @@ T* Tensor::base() const {
   return buf_ == nullptr ? nullptr : buf_->base<T>();
 }
 
+// This routine is defined out of line for code-space savings
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::tensor() {
   CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
@@ -765,6 +764,7 @@ typename TTypes<T, NDIMS>::Tensor Tensor::tensor() {
                                            shape().AsEigenDSizes<NDIMS>());
 }
 
+// This routine is defined out of line for code-space savings
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::tensor() const {
   CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
@@ -855,6 +855,24 @@ void Tensor::FillDimsAndValidateCompatibleShape(
     // of unknown data type size.
     CHECK_EQ(new_num_elements, NumElements());
   }
+}
+
+template <typename T>
+typename TTypes<T>::Flat Tensor::flat() {
+  // Equivalent to 'return shaped<T, 1>({NumElements()});'
+  CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
+  Eigen::array<Eigen::DenseIndex, 1> dims;
+  dims[0] = NumElements();
+  return typename TTypes<T, 1>::Tensor(base<T>(), dims);
+}
+
+template <typename T>
+typename TTypes<T>::ConstFlat Tensor::flat() const {
+  // Equuivalent to 'return shaped<T, 1>({NumElements()});'
+  CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
+  Eigen::array<Eigen::DenseIndex, 1> dims;
+  dims[0] = NumElements();
+  return typename TTypes<T, 1>::ConstTensor(base<T>(), dims);
 }
 
 template <typename T, size_t NDIMS>

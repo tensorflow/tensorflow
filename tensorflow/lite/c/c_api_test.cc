@@ -19,7 +19,10 @@ limitations under the License.
 #include <stdint.h>
 
 #include <array>
+#include <cmath>
 #include <fstream>
+#include <ios>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -44,8 +47,9 @@ TEST(CApiSimple, Smoke) {
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
   ASSERT_NE(interpreter, nullptr);
 
-  // The options can be deleted immediately after interpreter creation.
+  // The options/model can be deleted immediately after interpreter creation.
   TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
 
   ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
   ASSERT_EQ(TfLiteInterpreterGetInputTensorCount(interpreter), 1);
@@ -101,7 +105,6 @@ TEST(CApiSimple, Smoke) {
   EXPECT_EQ(output[1], 9.f);
 
   TfLiteInterpreterDelete(interpreter);
-  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, QuantizationParams) {
@@ -111,6 +114,8 @@ TEST(CApiSimple, QuantizationParams) {
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, nullptr);
   ASSERT_NE(interpreter, nullptr);
+
+  TfLiteModelDelete(model);
 
   const std::array<int, 1> input_dims = {2};
   ASSERT_EQ(TfLiteInterpreterResizeInputTensor(
@@ -160,7 +165,6 @@ TEST(CApiSimple, QuantizationParams) {
   EXPECT_EQ(dequantizedOutput1, 0.035298f);
 
   TfLiteInterpreterDelete(interpreter);
-  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, Delegate) {
@@ -184,9 +188,9 @@ TEST(CApiSimple, Delegate) {
 
   // Subsequent execution should behave properly (the delegate is a no-op).
   TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
   TfLiteInterpreterDelete(interpreter);
-  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, DelegateFails) {
@@ -209,6 +213,37 @@ TEST(CApiSimple, DelegateFails) {
   TfLiteModelDelete(model);
 }
 
+TEST(CApiSimple, OpaqueDelegate_Prepare) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  // Create and install a delegate instance.
+  bool delegate_prepared = false;
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_prepared;
+  opaque_delegate_builder.Prepare =
+      [](TfLiteOpaqueContext* context,
+         struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+        *static_cast<bool*>(data) = true;
+        return kTfLiteOk;
+      };
+
+  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOpaqueDelegate(options, opaque_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  TfLiteModelDelete(model);
+
+  // The delegate should have been applied.
+  EXPECT_TRUE(delegate_prepared);
+
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+}
+
 TEST(CApiSimple, ErrorReporter) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
@@ -225,8 +260,9 @@ TEST(CApiSimple, ErrorReporter) {
       &reporter);
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
 
-  // The options can be deleted immediately after interpreter creation.
+  // The options/model can be deleted immediately after interpreter creation.
   TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
 
   // Invoke the interpreter before tensor allocation.
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteError);
@@ -237,7 +273,6 @@ TEST(CApiSimple, ErrorReporter) {
   EXPECT_EQ(reporter.num_calls(), 1);
 
   TfLiteInterpreterDelete(interpreter);
-  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, ValidModel) {
@@ -274,6 +309,28 @@ TEST(CApiSimple, InvalidModelFromFile) {
   ASSERT_EQ(model, nullptr);
 }
 
+struct SinhParams {
+  bool use_cosh_instead = false;
+};
+
+void* FlexSinhInit(TfLiteOpaqueContext* context, const char* buffer,
+                   size_t length) {
+  auto sinh_params = new SinhParams;
+  // The buffer that is passed into here is the custom_options
+  // field from the flatbuffer (tensorflow/lite/schema/schema.fbs)
+  // `Operator` for this node.
+  // Typically it should be stored as a FlexBuffer, but for this test
+  // we assume that it is just a string.
+  if (std::string(buffer, length) == "use_cosh") {
+    sinh_params->use_cosh_instead = true;
+  }
+  return sinh_params;
+}
+
+void FlexSinhFree(TfLiteOpaqueContext* context, void* data) {
+  delete static_cast<SinhParams*>(data);
+}
+
 TfLiteStatus FlexSinhPrepare(TfLiteOpaqueContext* context,
                              TfLiteOpaqueNode* node) {
   return kTfLiteOk;
@@ -281,6 +338,8 @@ TfLiteStatus FlexSinhPrepare(TfLiteOpaqueContext* context,
 
 TfLiteStatus FlexSinhEval(TfLiteOpaqueContext* context,
                           TfLiteOpaqueNode* node) {
+  auto sinh_params =
+      static_cast<SinhParams*>(TfLiteOpaqueNodeGetUserData(node));
   const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
   size_t input_bytes = TfLiteOpaqueTensorByteSize(input);
   void* data_ptr = TfLiteOpaqueTensorData(input);
@@ -288,7 +347,8 @@ TfLiteStatus FlexSinhEval(TfLiteOpaqueContext* context,
   memcpy(&input_value, data_ptr, input_bytes);
 
   TfLiteOpaqueTensor* output = TfLiteOpaqueNodeGetOutput(context, node, 0);
-  float output_value = std::sinh(input_value);
+  float output_value = sinh_params->use_cosh_instead ? std::cosh(input_value)
+                                                     : std::sinh(input_value);
   TfLiteOpaqueTensorCopyFromBuffer(output, &output_value, sizeof(output_value));
   return kTfLiteOk;
 }
@@ -299,6 +359,8 @@ TEST(CApiSimple, CustomOpSupport) {
   ASSERT_NE(model, nullptr);
 
   TfLiteRegistrationExternal* reg = TfLiteRegistrationExternalCreate("Sinh", 1);
+  TfLiteRegistrationExternalSetInit(reg, &FlexSinhInit);
+  TfLiteRegistrationExternalSetFree(reg, &FlexSinhFree);
   TfLiteRegistrationExternalSetPrepare(reg, &FlexSinhPrepare);
   TfLiteRegistrationExternalSetInvoke(reg, &FlexSinhEval);
 

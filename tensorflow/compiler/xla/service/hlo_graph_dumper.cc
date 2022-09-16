@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -54,11 +55,10 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/platform/base64.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/tsl/platform/base64.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
 namespace {
@@ -1820,7 +1820,7 @@ StatusOr<std::string> WrapDotInFormat(const HloComputation& computation,
 
 // Compress with zlib + b64 encode.
 static StatusOr<std::string> CompressAndEncode(absl::string_view input) {
-  class WritableStringFile : public tensorflow::WritableFile {
+  class WritableStringFile : public tsl::WritableFile {
    public:
     explicit WritableStringFile(std::string* data) : data_(data){};
     ~WritableStringFile() override = default;
@@ -1849,7 +1849,7 @@ static StatusOr<std::string> CompressAndEncode(absl::string_view input) {
   TF_RETURN_IF_ERROR(gz_file.Close());
 
   std::string encoded;
-  TF_RETURN_IF_ERROR(tensorflow::Base64Encode(compressed, &encoded));
+  TF_RETURN_IF_ERROR(tsl::Base64Encode(compressed, &encoded));
   return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
 }
 

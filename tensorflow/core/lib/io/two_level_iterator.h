@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_IO_TWO_LEVEL_ITERATOR_H_
-#define TENSORFLOW_LIB_IO_TWO_LEVEL_ITERATOR_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_TWO_LEVEL_ITERATOR_H_
+#define TENSORFLOW_CORE_LIB_IO_TWO_LEVEL_ITERATOR_H_
 
 #include "tensorflow/core/lib/io/iterator.h"
 
@@ -38,4 +38,4 @@ extern Iterator* NewTwoLevelIterator(
 }  // namespace table
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_TWO_LEVEL_ITERATOR_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_TWO_LEVEL_ITERATOR_H_

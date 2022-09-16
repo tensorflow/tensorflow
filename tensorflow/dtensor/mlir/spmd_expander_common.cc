@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <iterator>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -34,12 +35,12 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -52,6 +53,14 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
+// Checks that all layouts are fully replicated
+bool AllReplicated(const std::vector<Layout>& layouts) {
+  for (const Layout& layout : layouts) {
+    if (!layout.IsFullyReplicated()) return false;
+  }
+  return true;
+}
 
 StatusOr<mlir::TensorType> LocalTypeFromGlobalType(
     const Layout& layout, const mlir::TensorType& original_type) {
@@ -656,7 +665,7 @@ Status SetBuilderInsertionAfterValue(mlir::Value value,
   }
   if (!cluster) return errors::Internal("value not used in any cluster");
 
-  builder.setInsertionPointToStart(cluster.getBody());
+  builder.setInsertionPointToStart(cluster.SingleBlock::getBody());
   return OkStatus();
 }
 

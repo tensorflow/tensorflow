@@ -104,7 +104,7 @@ thread::ThreadPool* GetOrCreateBatchThreadsPool() {
       return nullptr;
     }
     static serving::BoundedExecutor* executor =
-        status_or_executor.ValueOrDie().release();
+        status_or_executor.value().release();
     return new thread::ThreadPool(executor);
   }();
   return shared_thread_pool;
@@ -554,7 +554,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     done(statusor.status());
     return;
   }
-  auto req_ctx = std::move(statusor).ValueOrDie();
+  auto req_ctx = std::move(statusor).value();
 
   int64_t id = req_ctx->id();
   tensorflow::profiler::TraceMeProducer activity(
@@ -584,7 +584,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
 
   // The first result is a Chain.
   combined_outputs->reserve(results.size() - 1);
-  llvm::SmallVector<const tfrt::DecodedDiagnostic*, 3> errors;
+  llvm::SmallVector<const absl::Status*, 3> errors;
   for (int i = 1, e = results.size(); i != e; ++i) {
     combined_outputs->emplace_back();
     auto& result = results[i];
@@ -606,12 +606,12 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     // If there is only 1 error after deduplication, we emit the error with
     // proper error code mapping from TFRT to TF.
     if (errors.size() == 1) {
-      final_status = tfrt::CreateTfErrorStatus(*errors[0]);
+      final_status = FromAbslStatus(*errors[0]);
     } else {
       std::string msg;
       llvm::raw_string_ostream os(msg);
       for (auto* error : errors) {
-        os << *error << ";\n";
+        os << error->message() << ";\n";
       }
       final_status = errors::Internal(std::move(os.str()));
     }

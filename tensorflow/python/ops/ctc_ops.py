@@ -638,8 +638,8 @@ def _state_to_olabel_unique(labels, num_labels, states, unique):
   unique_y, unique_idx = unique
   mul_reduce = _sum_states(unique_idx, label_states)
 
-  num_frames = states.shape[0]
-  batch_size = states.shape[1]
+  num_frames = _get_dim(states, 0)
+  batch_size = _get_dim(states, 1)
   num_states = num_label_states - 1
   batch_state_major = array_ops.transpose(mul_reduce, perm=[1, 2, 0])
   batch_state_major = array_ops.reshape(batch_state_major,
@@ -897,9 +897,9 @@ def ctc_loss_v3(labels,
     setting of preprocess_collapse_repeated=False, ctc_merge_repeated=True
   - Labels may be supplied as either a dense, zero-padded tensor with a
     vector of label sequence lengths OR as a SparseTensor.
-  - On TPU and GPU: Only dense padded labels are supported.
-  - On CPU: Caller may use SparseTensor or dense padded labels but calling with
-    a SparseTensor will be significantly faster.
+  - On TPU: Only dense padded labels are supported.
+  - On CPU and GPU: Caller may use SparseTensor or dense padded labels 
+    but calling with a SparseTensor will be significantly faster.
   - Default blank label is 0 rather num_classes - 1, unless overridden by
     blank_index.
 
@@ -1263,7 +1263,7 @@ def _sum_states(idx, states):
       each label state.
 
   Returns:
-    tensor of shape [frames, batch_size, label_length], log probabilites summed
+    tensor of shape [frames, batch_size, label_length], log probabilities summed
       for each unique label of the sequence.
   """
 
@@ -1294,7 +1294,7 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
     sequence_length: tensor of shape [batch_size]
 
   Returns:
-    forward backward log probabilites: tensor of shape [frames, batch, states]
+    forward backward log probabilities: tensor of shape [frames, batch, states]
     log_likelihood: tensor of shape [batch_size]
 
   Raises:
