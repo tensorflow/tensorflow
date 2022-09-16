@@ -18,10 +18,18 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("build_defs.bzl", "embedded_binary")
-load("special_rules.bzl", "jpeg_copts", "libjpeg_deps")
+load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_default_visibility_allowlist")
+
+default_visibility_group = [
+    "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+] + minibenchmark_default_visibility_allowlist()
+
+minibenchmark_visibility_group = default_visibility_group + [
+    "//tensorflow_lite_support/cc:__subpackages__",
+]
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = default_visibility_group,
     licenses = ["notice"],
 )
 
@@ -587,6 +595,7 @@ cc_library(
         "mini_benchmark.cc",
     ],
     hdrs = ["mini_benchmark.h"],
+    visibility = minibenchmark_visibility_group,
     deps = [
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_absl//absl/status:statusor",
@@ -600,6 +609,7 @@ cc_library(
     srcs = [
         "mini_benchmark_implementation.cc",
     ],
+    visibility = minibenchmark_visibility_group,
     deps = [
         ":fb_storage",
         ":mini_benchmark",
@@ -631,6 +641,7 @@ cc_library(
         clean_dep("//tensorflow:android"): ["-ldl"],
         "//conditions:default": [],
     }),
+    visibility = minibenchmark_visibility_group,
     deps = [
         "@com_google_googletest//:gtest",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
