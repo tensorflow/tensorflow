@@ -348,10 +348,12 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
     assert(op.getNumOperands() == 1 && "expected single cond operand");
     Value pred = op.getOperand(0);
 
-    // Clone condition and body blocks into the new loop operation.
+    // Inline condition and body regions into the new loop operation.
     BlockAndValueMapping mapping;
-    op.getCond().cloneInto(&loop.getBefore(), mapping);
-    op.getBody().cloneInto(&loop.getAfter(), mapping);
+    rewriter.inlineRegionBefore(op.getCond(), loop.getBefore(),
+                                loop.getBefore().begin());
+    rewriter.inlineRegionBefore(op.getBody(), loop.getAfter(),
+                                loop.getAfter().begin());
 
     {  // Replace loop condition terminator.
       auto* terminator = loop.getBefore().back().getTerminator();
