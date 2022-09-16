@@ -158,7 +158,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     // Feature group convolution, will end up with the kernel_size change more
     // rapidly than the depth. Reshape, transpose and reshape to reorder them.
     std::vector<int64_t> conv_dims =
-        xla::SpanToVector(builder->GetShape(conv).ValueOrDie().dimensions());
+        xla::SpanToVector(builder->GetShape(conv).value().dimensions());
     conv_dims.back() = depth;
     conv_dims.push_back(kernel_size);
     conv = xla::TransposeInMinorDims(xla::Reshape(conv, conv_dims));

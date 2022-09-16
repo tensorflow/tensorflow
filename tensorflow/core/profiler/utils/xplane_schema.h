@@ -127,8 +127,6 @@ enum HostEventType {
   kASBSQueueSchedule,
   // TFRT related.
   kTfrtModelRun,
-  // JAX related.
-  kExecuteOnLocalDevices,
   // GPU related.
   kKernelLaunch,
   kKernelExecute,
@@ -272,6 +270,7 @@ enum StatType {
   // Aggregrated Stats
   kSelfDurationPs,
   kMinDurationPs,
+  kTotalProfileDurationPs,
   kMaxIterationNum,
   kDeviceType,
   kUsesMegaCore,

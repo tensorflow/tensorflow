@@ -1112,13 +1112,10 @@ TEST_F(QuantizeFCTest, VerifyFC) {
   EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
 
   // check op and versioning.
-  EXPECT_EQ(model_.operator_codes.size(), 2);
+  EXPECT_EQ(model_.operator_codes.size(), 1);
   EXPECT_EQ(GetBuiltinCode(model_.operator_codes[0].get()),
             BuiltinOperator_FULLY_CONNECTED);
-  EXPECT_EQ(model_.operator_codes[0]->version, 4);
-  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[1].get()),
-            BuiltinOperator_RESHAPE);
-  EXPECT_EQ(model_.operator_codes[1]->version, 1);
+  EXPECT_EQ(model_.operator_codes[0]->version, 5);
 }
 
 class QuantizeCustomOpTest

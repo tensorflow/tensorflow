@@ -85,14 +85,26 @@ RecordReader::RecordReader(RandomAccessFile* file,
 #endif
 }
 
+namespace {
+inline const char* GetChecksumErrorSuffix(uint64 offset) {
+  if (offset == 0) {
+    return " (Is this even a TFRecord file?)";
+  }
+  return "";
+}
+}  // namespace
+
 // Read n+4 bytes from file, verify that checksum of first n bytes is
 // stored in the last 4 bytes and store the first n bytes in *result.
 //
 // offset corresponds to the user-provided value to ReadRecord()
-// and is used only in error messages.
+// and is used only in error messages. For failures at offset 0,
+// a reminder about the file format is added, because TFRecord files
+// contain no explicit format marker.
 Status RecordReader::ReadChecksummed(uint64 offset, size_t n, tstring* result) {
   if (n >= SIZE_MAX - sizeof(uint32)) {
-    return errors::DataLoss("record size too large");
+    return errors::DataLoss("record size too large",
+                            GetChecksumErrorSuffix(offset));
   }
 
   const size_t expected = n + sizeof(uint32);
@@ -100,15 +112,17 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n, tstring* result) {
 
   if (result->size() != expected) {
     if (result->empty()) {
-      return errors::OutOfRange("eof");
+      return errors::OutOfRange("eof", GetChecksumErrorSuffix(offset));
     } else {
-      return errors::DataLoss("truncated record at ", offset);
+      return errors::DataLoss("truncated record at ", offset,
+                              GetChecksumErrorSuffix(offset));
     }
   }
 
   const uint32 masked_crc = core::DecodeFixed32(result->data() + n);
   if (crc32c::Unmask(masked_crc) != crc32c::Value(result->data(), n)) {
-    return errors::DataLoss("corrupted record at ", offset);
+    return errors::DataLoss("corrupted record at ", offset,
+                            GetChecksumErrorSuffix(offset));
   }
   result->resize(n);
   return OkStatus();

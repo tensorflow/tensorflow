@@ -64,14 +64,21 @@ bool HasMainFunction(ModuleOp& module) {
 }
 
 // Checks if a FuncOp is exported.
-bool IsExported(func::FuncOp& op) {
+bool IsExported(func::FuncOp op) {
   auto exported_names = op->getAttrOfType<ArrayAttr>(kExportedNameAttr);
   return exported_names && !exported_names.empty();
 }
 
 // Check if a function is an entry function.
-bool IsEntryFunction(func::FuncOp& op) {
+bool IsEntryFunction(func::FuncOp op) {
   return op->hasAttr(kEntryFunctionAttr);
+}
+
+// Returns true iff the provided FuncOp is qualified to be included in the main
+// function.
+bool ShouldIncludeInMainFunction(func::FuncOp func_op) {
+  return !func_op.isPrivate() && IsExported(func_op) &&
+         IsEntryFunction(func_op);
 }
 
 // Sets a function to be private so it can be referred internally.
@@ -114,7 +121,8 @@ bool CreateMainFunction(ModuleOp& module) {
   llvm::SmallVector<Type> arg_types, result_types;
   std::vector<std::string> input_names, output_names;
   for (auto function : module.getOps<func::FuncOp>()) {
-    if (function.isPrivate() || !IsExported(function)) continue;
+    if (!ShouldIncludeInMainFunction(function)) continue;
+
     arg_types.append(function.getArgumentTypes().begin(),
                      function.getArgumentTypes().end());
     auto& return_op = function.getBody().getBlocks().front().back();
@@ -176,20 +184,18 @@ bool CreateMainFunction(ModuleOp& module) {
     return false;
   }
 
-  int numArgs = main_func.getNumArguments();
-  for (int i = 0; i < numArgs; ++i) {
+  const int num_args = main_func.getNumArguments();
+  for (int i = 0; i < num_args; ++i) {
     main_func.setArgAttr(
         i, kIndexPathAttr,
-        mlir::ArrayAttr::get(context,
-                             {mlir::StringAttr::get(context, input_names[i])}));
+        ArrayAttr::get(context, {StringAttr::get(context, input_names[i])}));
   }
 
-  int numResults = main_func.getNumResults();
-  for (int i = 0; i < numResults; ++i) {
+  const int num_results = main_func.getNumResults();
+  for (int i = 0; i < num_results; ++i) {
     main_func.setResultAttr(
         i, kIndexPathAttr,
-        mlir::ArrayAttr::get(
-            context, {mlir::StringAttr::get(context, output_names[i])}));
+        ArrayAttr::get(context, {StringAttr::get(context, output_names[i])}));
   }
 
   // Creates PartitionedCall ops to call exported functions.
@@ -198,10 +204,7 @@ bool CreateMainFunction(ModuleOp& module) {
   int result_idx = 0;
   llvm::SmallVector<Value> returning_values;
   for (auto function : module.getOps<func::FuncOp>()) {
-    if (function.isPrivate() || !IsExported(function) ||
-        !IsEntryFunction(function)) {
-      continue;
-    }
+    if (!ShouldIncludeInMainFunction(function)) continue;
 
     llvm::ArrayRef<BlockArgument> new_args = llvm::makeArrayRef(
         main_func.getArguments().begin() + arg_idx, function.getNumArguments());
@@ -220,8 +223,8 @@ bool CreateMainFunction(ModuleOp& module) {
                             call_op.getResults().end());
     SetFunctionPrivate(function);
   }
-  builder.create<mlir::func::ReturnOp>(main_func.getBody().getLoc(),
-                                       returning_values);
+  builder.create<func::ReturnOp>(main_func.getBody().getLoc(),
+                                 returning_values);
 
   // Adds the new function to symbol table.
   SymbolTable symbol_table(module);

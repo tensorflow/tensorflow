@@ -40,6 +40,5 @@ set(ABSL_RUN_TESTS OFF CACHE BOOL "Disable build of ABSL tests")
 add_subdirectory(
   "${abseil-cpp_SOURCE_DIR}"
   "${abseil-cpp_BINARY_DIR}"
-  EXCLUDE_FROM_ALL
 )
 

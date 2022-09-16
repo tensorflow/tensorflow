@@ -280,7 +280,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
   }
 
   /**
-   * Gets the Tensor associated with the provdied input name and signature method name.
+   * Gets the Tensor associated with the provided input name and signature method name.
    *
    * <p>WARNING: This is an experimental API and subject to change.
    *
@@ -335,7 +335,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
   }
 
   /**
-   * Gets the Tensor associated with the provdied output name in specifc signature method.
+   * Gets the Tensor associated with the provided output name in specific signature method.
    *
    * <p>Note: Output tensor details (e.g., shape) may not be fully populated until after inference
    * is executed. If you need updated details *before* running inference (e.g., after resizing an
@@ -398,6 +398,6 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
     wrapper.setCancelled(cancelled);
   }
 
-  NativeInterpreterWrapperExperimental wrapperExperimental;
-  String[] signatureKeyList;
+  private final NativeInterpreterWrapperExperimental wrapperExperimental;
+  private final String[] signatureKeyList;
 }

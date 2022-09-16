@@ -54,6 +54,8 @@ namespace TF {
 
 namespace {
 
+constexpr char kDeviceAttr[] = "device";
+
 struct DecomposeReduceDatasetPass
     : public DecomposeReduceDatasetPassBase<DecomposeReduceDatasetPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -193,6 +195,10 @@ IfRegionOp CreateOptionalDatasetIf(
   auto reduce_call =
       builder.create<mlir::func::CallOp>(loc, reduce_func, reduce_fn_args);
 
+  // Both the device attribute and compile_device_type attribute should be
+  // propagated to the reduce function call.
+  reduce_call->setAttr(kDeviceAttr,
+                       reduce_dataset->getAttrOfType<StringAttr>(kDeviceAttr));
   reduce_call->setAttr(
       TF::kCompileDeviceTypeAttr,
       reduce_dataset->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr));
@@ -301,8 +307,12 @@ LogicalResult DecomposeReduceDatasetInFunction(FuncOp function) {
     PopulateDatasetWhileBody(builder, reduce_dataset, reduce_func,
                              dataset_while, anonymous_iterator, dataset_types);
 
-    // Updates usage and erases rewritten reduce_dataset op.
-    reduce_dataset.getResult(0).replaceAllUsesWith(dataset_while.getResult(1));
+    // Updates usage and erases rewritten reduce_dataset op based on the number
+    // of state variables.
+    for (int i = 0; i < state_size; ++i) {
+      reduce_dataset.getResult(i).replaceAllUsesWith(
+          dataset_while.getResult(i + 1));
+    }
     reduce_dataset.erase();
 
     return WalkResult::advance();

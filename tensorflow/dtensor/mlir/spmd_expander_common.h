@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_MLIR_SPMD_EXPANDER_COMMON_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -50,6 +51,9 @@ constexpr absl::string_view kReduceOpMul = "Mul";
 // Mean is not a valid combinator function on its own. It is handled specially
 // by the reduce expansion.
 constexpr absl::string_view kReduceOpMean = "Mean";
+
+// Returns true if all layouts are replicated.
+bool AllReplicated(const std::vector<Layout>& layouts);
 
 // Takes a global type and converts it to a local type. Fails if the number of
 // shards does not divide the size of the dimension (if not dynamic).
@@ -86,17 +90,18 @@ StatusOr<absl::optional<Layout>> GetMergedOperandLayout(
 // To make the implementation safe for Layout Propagation V1 algorithm, if the
 // defining op of `value` is not DTensorLayout op (only the case for V1),
 // returns `value` directly.
-// TODO(b/172936130): Remove special casing for v1 Layout Propagation algorithm.
+// TODO(b/172936130): Remove special casing for v1 Layout Propagation
+// algorithm.
 mlir::Value GetForwardedDTensorLayoutInput(mlir::Value value);
 
 // Goal of this function is to connect 'mlir::Value's (read 'mlir::OpResult's)
-// to the 'mlir::OpOperand's which use them, crossing function call boundaries.
-// The only keys in consumers which will not actually be 'mlir::OpResult's will
-// be the 'mlir::Value's representing the inputs of the main function.
-// The rest will be direct output of operations -- i.e. mlir::OpResult.
-// Note that 'mlir::Value's that are not used by any op or are simply returned
-// from the main functiuon will not be in this list. In these cases, there are
-// no conditions on the layouts for these 'mlir::Value's.
+// to the 'mlir::OpOperand's which use them, crossing function call
+// boundaries. The only keys in consumers which will not actually be
+// 'mlir::OpResult's will be the 'mlir::Value's representing the inputs of the
+// main function. The rest will be direct output of operations -- i.e.
+// mlir::OpResult. Note that 'mlir::Value's that are not used by any op or are
+// simply returned from the main functiuon will not be in this list. In these
+// cases, there are no conditions on the layouts for these 'mlir::Value's.
 //
 // A list of current assumptions in this code:
 // * Functions are only called once.
@@ -106,9 +111,9 @@ mlir::LogicalResult PopulateConsumersFromModule(
     mlir::ModuleOp* module, mlir::Dialect* tf_dialect,
     llvm::DenseMap<mlir::Value, std::vector<mlir::OpOperand*>>& consumers);
 
-// From device id, return an mlir::Value for a tensor of shape [1, mesh.rank()]
-// whose entries are the mesh coordinates of the device. The mesh used, is the
-// mesh for the given cluster.
+// From device id, return an mlir::Value for a tensor of shape [1,
+// mesh.rank()] whose entries are the mesh coordinates of the device. The mesh
+// used, is the mesh for the given cluster.
 StatusOr<mlir::Value> GetMeshCoordinatesFromCluster(
     mlir::tf_device::ClusterOp cluster);
 
@@ -123,7 +128,8 @@ mlir::LogicalResult GetFuncToCaller(
     llvm::DenseMap<llvm::StringRef, mlir::Operation*>& func_to_caller);
 
 // Takes an operand and traces its use across function call and
-// tf_device.cluster boundaries. Note that this may turn one operand into many.
+// tf_device.cluster boundaries. Note that this may turn one operand into
+// many.
 llvm::SmallVector<mlir::OpOperand*, 4> TraceUseToNextTFOp(
     mlir::OpOperand* operand,
     const llvm::DenseMap<llvm::StringRef, mlir::Operation*>& func_to_caller,
@@ -135,16 +141,16 @@ llvm::SmallVector<mlir::OpOperand*, 4> TraceUseToNextTFOp(
 // For example:
 //
 //  %unused_value  = "tf_device.cluster"() ({
-//      %1 = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
-//      %2 = "tf.Neg"(%1) : (tensor<i32>) -> tensor<i32>
+//      %1 = "tf.Const"() {value = dense<10> : tensor<i32>} : () ->
+//      tensor<i32> %2 = "tf.Neg"(%1) : (tensor<i32>) -> tensor<i32>
 //      tf_device.return %2 : tensor<i32>
 //  }) {_mesh="mesh:CPU,x=2,y=2"} : () -> (tensor<i32>)
 //
 // Will be transformed to:
 //
 //  "tf_device.cluster"() ({
-//      %1 = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
-//      %2 = "tf.Neg"(%1) : (tensor<i32>) -> tensor<i32>
+//      %1 = "tf.Const"() {value = dense<10> : tensor<i32>} : () ->
+//      tensor<i32> %2 = "tf.Neg"(%1) : (tensor<i32>) -> tensor<i32>
 //      tf_device.return
 //  }) {_mesh="mesh:CPU,x=2,y=2"} : () -> ()
 void RemoveUnusedClusterResults(mlir::tf_device::ClusterOp cluster);
@@ -173,9 +179,10 @@ StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value);
 // that this does not visit the given FuncOp itself. Function ops are visited
 // exactly once if functions are used in multiple call sites.
 //
-// An example usage of this Iterator is for SPMD Expansion or Sparse Expansion,
-// where we expand ops in topological order starting from the `main` FuncOp,
-// only visiting function ops once so that we don't expand multiple times.
+// An example usage of this Iterator is for SPMD Expansion or Sparse
+// Expansion, where we expand ops in topological order starting from the
+// `main` FuncOp, only visiting function ops once so that we don't expand
+// multiple times.
 class TopologicalIterator {
  public:
   explicit TopologicalIterator(mlir::func::FuncOp main_func);

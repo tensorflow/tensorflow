@@ -31,9 +31,11 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -322,6 +324,11 @@ class TensorListReserve : public OpKernel {
   void Compute(OpKernelContext* c) override {
     PartialTensorShape element_shape;
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(0), &element_shape));
+    OP_REQUIRES(
+        c, TensorShapeUtils::IsScalar(c->input(1).shape()),
+        errors::InvalidArgument(
+            "The num_elements to reserve must be a tensor size 1, but got ",
+            c->input(1).shape()));
     int32_t num_elements = c->input(1).scalar<int32>()();
     OP_REQUIRES(c, num_elements >= 0,
                 errors::InvalidArgument("The num_elements to reserve must be a "

@@ -250,9 +250,8 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
 // calls to 'parallel_function' (and joins threads before returning).
 Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    const std::vector<int64_t>& dimension_partition_counts,
-    llvm::IRBuilder<>* b, llvm::Function* parallel_function,
-    const std::string& name) {
+    absl::Span<const int64_t> dimension_partition_counts, llvm::IRBuilder<>* b,
+    llvm::Function* parallel_function, const std::string& name) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
 
   // Build ParallelForkJoin function type.

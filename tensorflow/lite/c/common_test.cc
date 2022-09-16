@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 
+#include <memory>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -198,6 +199,24 @@ TEST(TensorCopy, TensorCopy_INVALID) {
   src.bytes = 10;
   dst.bytes = 12;
   EXPECT_EQ(kTfLiteError, TfLiteTensorCopy(&src, &dst));
+}
+
+TEST(TestTfLiteOpaqueDelegate, CreateAndDelete) {
+  std::unique_ptr<TfLiteOpaqueDelegateBuilder> opaque_delegate_builder(
+      new TfLiteOpaqueDelegateBuilder{});
+
+  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(opaque_delegate_builder.get());
+
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+}
+
+TEST(TestTfLiteOpaqueDelegate, CallTfLiteOpaqueDelegateCreateWithNull) {
+  EXPECT_EQ(nullptr, TfLiteOpaqueDelegateCreate(nullptr));
+}
+
+TEST(TestTfLiteOpaqueDelegate, CallTfLiteOpaqueDelegateDeleteWithNull) {
+  TfLiteOpaqueDelegateDelete(nullptr);
 }
 
 }  // namespace tflite

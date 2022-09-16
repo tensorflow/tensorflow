@@ -32,17 +32,6 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "PassDetail",
-    hdrs = ["pass_detail.h"],
-    deps = [
-        ":PassIncGen",
-        "//tensorflow/core/ir:Dialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
     name = "utils",
     srcs = ["utils/utils.cc"],
     hdrs = ["utils/utils.h"],
@@ -99,6 +88,7 @@ cc_library(
     deps = [
         ":PDLLUtilsIncGen",
         ":utils",
+        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/ir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

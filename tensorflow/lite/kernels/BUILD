@@ -192,6 +192,7 @@ cc_library(
         "//tensorflow/lite:simple_planner",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:subgraph",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
@@ -644,6 +645,7 @@ BUILTIN_KERNEL_SRCS = [
     "segment_sum.cc",
     "select.cc",
     "shape.cc",
+    "sign.cc",
     "skip_gram.cc",
     "slice.cc",
     "space_to_batch_nd.cc",
@@ -691,6 +693,7 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite:framework_stable",
     "//tensorflow/lite:minimal_logging",
     "//tensorflow/lite:string_util",
+    "//tensorflow/lite:subgraph",
     "//tensorflow/lite:util",
     "//tensorflow/lite/c:common",
     "//tensorflow/lite/kernels/internal:audio_utils",
@@ -747,6 +750,7 @@ cc_library(
     deps = [
         ":kernel_util",
         "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite:subgraph",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -812,7 +816,7 @@ cc_library(
         "random_standard_normal_custom.cc",
         "random_uniform_custom.cc",
         "roll.cc",
-        "sign.cc",
+        "sign_custom.cc",
         "table.cc",
         "unidirectional_sequence_gru.cc",
     ],
@@ -1683,9 +1687,9 @@ cc_test(
 )
 
 cc_test(
-    name = "sign_test",
+    name = "sign_custom_test",
     size = "small",
-    srcs = ["sign_test.cc"],
+    srcs = ["sign_custom_test.cc"],
     deps = [
         ":custom_ops",
         ":test_main",
@@ -1693,6 +1697,20 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "sign_test",
+    size = "small",
+    srcs = ["sign_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 
@@ -2595,6 +2613,7 @@ cc_library(
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:subgraph",
         "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
@@ -2796,9 +2815,9 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        ":unsorted_segment_test_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
@@ -2809,9 +2828,9 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        ":unsorted_segment_test_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
@@ -2822,9 +2841,40 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        ":unsorted_segment_test_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "unsorted_segment_min_test",
+    size = "small",
+    srcs = ["unsorted_segment_min_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        ":unsorted_segment_test_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "unsorted_segment_test_utils",
+    testonly = 1,
+    srcs = [
+        "unsorted_segment_test.cc",
+    ],
+    hdrs = [
+        "unsorted_segment_test.h",
+    ],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
     ],
 )
 

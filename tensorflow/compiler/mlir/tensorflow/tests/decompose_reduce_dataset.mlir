@@ -41,12 +41,13 @@ func.func @single_state_single_dataset_type_no_arguments(
     // CHECK-NEXT:       %[[GET_VALUE:[0-9]*]] = "tf.OptionalGetValue"(%[[GET_NEXT]])
     // CHECK-NEXT:       %[[FUNC_CALL:[0-9]*]] = func.call @__reduce_func_1(%[[ARG_5]], %[[GET_VALUE]])
     // CHECK-SAME:       _xla_compile_device_type = "TPU"
+    // CHECK-SAME:       device = "/job:localhost/replica:0/task:0/device:TPU:1"
     // CHECK:            "tf.Yield"(%[[FUNC_CALL]])
     // CHECK:            "tf.Yield"(%[[ARG_5]])
     // CHECK:          "tf.Yield"(%[[HAS_VALUE]], %[[IF]])
     %1 = "tf.ReduceDataset"(%arg0, %arg1) {
       Targuments = [],
-      Tstate = [i64], device = "",
+      Tstate = [i64], device = "/job:localhost/replica:0/task:0/device:TPU:1",
       f = @__reduce_func_1, f._tf_data_function = true,
       output_shapes = [#tf_type.shape<>],
       output_types = [i64], use_inter_op_parallelism = true, _xla_compile_device_type="TPU"} : (tensor<!tf_type.variant>, tensor<i64>) -> (tensor<i64>)
@@ -107,13 +108,13 @@ func.func @multiple_state_multiple_dataset_type_multiple_arguments(
       %arg2: tensor<i32>,
       %arg3: tensor<!tf_type.resource<tensor<64xf32>>>,
       %arg4: tensor<!tf_type.resource<tensor<128xf32>>>
-    ) {
+    ) -> (tensor<i64>, tensor<i32>) {
     // CHECK:      %[[ANON_ITER:[0-9]*]] = "tf.AnonymousIteratorV3"
     // CHECK-SAME: output_shapes = [#tf_type.shape<32>, #tf_type.shape<64>]
     // CHECK-SAME: output_types = [f32, f64]
     // CHECK-NEXT: "tf.MakeIterator"(%[[ARG_0]], %[[ANON_ITER]])
     // CHECK-NEXT: %[[COND:.*]] = "tf.Const"
-    // CHECK-NEXT: "tf.WhileRegion"(%[[COND]], %[[ARG_1]], %[[ARG_2]], %[[ARG_3]], %[[ARG_4]])
+    // CHECK-NEXT: %[[WHILE:[0-9]*]]:5 = "tf.WhileRegion"(%[[COND]], %[[ARG_1]], %[[ARG_2]], %[[ARG_3]], %[[ARG_4]])
     // CHECK-NEXT:   ^bb0(%[[ARG_5:.*]]: tensor<i1>, %[[ARG_6:.*]]: tensor<i64>, %[[ARG_7:.*]]: tensor<i32>, %[[ARG_8:.*]]: tensor<!tf_type.resource<tensor<64xf32>>>, %[[ARG_9:.*]]: tensor<!tf_type.resource<tensor<128xf32>>>)
     // CHECK-NEXT:     "tf.Yield"(%[[ARG_5]])
     // CHECK:        ^bb0(%[[ARG_10:.*]]: tensor<i1>, %[[ARG_11:.*]]: tensor<i64>, %[[ARG_12:.*]]: tensor<i32>, %[[ARG_13:.*]]: tensor<!tf_type.resource<tensor<64xf32>>>, %[[ARG_14:.*]]: tensor<!tf_type.resource<tensor<128xf32>>>)
@@ -126,13 +127,14 @@ func.func @multiple_state_multiple_dataset_type_multiple_arguments(
     // CHECK:            "tf.Yield"(%[[FUNC_CALL]]#0, %[[FUNC_CALL]]#1)
     // CHECK:            "tf.Yield"(%[[ARG_11]], %[[ARG_12]])
     // CHECK:          "tf.Yield"(%[[HAS_VALUE]], %[[IF]]#0, %[[IF]]#1, %[[ARG_13]], %[[ARG_14]])
+    // CHECK:     return %[[WHILE]]#1, %[[WHILE]]#2
     %1:2 = "tf.ReduceDataset"(%arg0, %arg1, %arg2, %arg3, %arg4) {
       Targuments = [!tf_type.resource, !tf_type.resource],
       Tstate = [i64, i32], device = "",
       f = @__reduce_func_3, f._tf_data_function = true,
       output_shapes = [#tf_type.shape<>, #tf_type.shape<>],
       output_types = [i64, i32], use_inter_op_parallelism = true, _xla_compile_device_type="TPU"} : (tensor<!tf_type.variant>, tensor<i64>, tensor<i32>, tensor<!tf_type.resource<tensor<64xf32>>>, tensor<!tf_type.resource<tensor<128xf32>>>) -> (tensor<i64>, tensor<i32>)
-    func.return
+    func.return %1#0, %1#1: tensor<i64>, tensor<i32>
 }
 
 func.func private @__reduce_func_3(%arg0: tensor<i64> {tf._user_specified_name = "args_0"}, %arg1: tensor<i32> {tf._user_specified_name = "args_1"},

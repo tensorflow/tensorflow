@@ -428,7 +428,7 @@ class Callable final : public Handle {
     if (!maybe_value.ok()) {
       return maybe_value.status();
     }
-    return Cast<TReturn>(Handle(maybe_value.ValueOrDie()));
+    return Cast<TReturn>(Handle(maybe_value.value()));
   }
 
  public:

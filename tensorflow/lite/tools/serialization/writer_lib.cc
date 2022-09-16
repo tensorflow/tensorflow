@@ -250,9 +250,19 @@ SubgraphWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
           tensor_name_offset = fbb->CreateString(tensor->name);
         }
 
-        tensors.push_back(CreateTensor(
-            *fbb, ExportVector<int32_t>(fbb, shape), type, buffer_index,
-            tensor_name_offset, quantization_params, tensor->is_variable));
+        flatbuffers::Offset<flatbuffers::Vector<int32_t>>
+            shape_signature_offset = 0;
+        if (tensor->dims_signature != nullptr) {
+          TfLiteIntArrayView shape_signature_view(tensor->dims_signature);
+          std::vector<int32_t> shape_signature(shape_signature_view.begin(),
+                                               shape_signature_view.end());
+          shape_signature_offset = ExportVector<int32_t>(fbb, shape_signature);
+        }
+
+        tensors.push_back(CreateTensor(*fbb, ExportVector<int32_t>(fbb, shape),
+                                       type, buffer_index, tensor_name_offset,
+                                       quantization_params, tensor->is_variable,
+                                       /*sparsity=*/0, shape_signature_offset));
       }
     }
   }

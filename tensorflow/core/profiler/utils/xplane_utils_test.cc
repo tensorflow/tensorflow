@@ -394,9 +394,13 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
   XPlane xplane;
   XPlaneBuilder builder(&xplane);
   XEventMetadata* event_metadata1 = builder.GetOrCreateEventMetadata(1);
+  event_metadata1->set_name("EventMetadata1");
   XEventMetadata* event_metadata2 = builder.GetOrCreateEventMetadata(2);
+  event_metadata2->set_name("EventMetadata2");
   XEventMetadata* event_metadata3 = builder.GetOrCreateEventMetadata(3);
+  event_metadata3->set_name("EventMetadata3");
   XEventMetadata* event_metadata4 = builder.GetOrCreateEventMetadata(4);
+  event_metadata4->set_name("EventMetadata4");
 
   XLineBuilder line = builder.GetOrCreateLine(1);
   line.SetName(kTensorFlowOpLineName);
@@ -435,53 +439,58 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
                          events {
                            metadata_id: 1
                            duration_ps: 9000
-                           stats { metadata_id: 1 int64_value: 4000 }
                            stats { metadata_id: 2 int64_value: 4000 }
+                           stats { metadata_id: 3 int64_value: 4000 }
                            num_occurrences: 2
                          }
                          events {
                            metadata_id: 3
                            duration_ps: 5000
-                           stats { metadata_id: 1 int64_value: 2000 }
+                           stats { metadata_id: 2 int64_value: 2000 }
                            num_occurrences: 2
                          }
                          events {
                            metadata_id: 2
                            duration_ps: 10000
-                           stats { metadata_id: 1 int64_value: 5000 }
+                           stats { metadata_id: 2 int64_value: 5000 }
                            num_occurrences: 2
                          }
                          events {
                            metadata_id: 4
                            duration_ps: 6000
-                           stats { metadata_id: 2 int64_value: 2000 }
+                           stats { metadata_id: 3 int64_value: 2000 }
                            num_occurrences: 1
                          }
                        }
                        event_metadata {
                          key: 1
-                         value { id: 1 }
+                         value { id: 1 name: "EventMetadata1" }
                        }
                        event_metadata {
                          key: 2
-                         value { id: 2 }
+                         value { id: 2 name: "EventMetadata2" }
                        }
                        event_metadata {
                          key: 3
-                         value { id: 3 }
+                         value { id: 3 name: "EventMetadata3" }
                        }
                        event_metadata {
                          key: 4
-                         value { id: 4 }
+                         value { id: 4 name: "EventMetadata4" }
                        }
                        stat_metadata {
                          key: 1
-                         value { id: 1 name: "min_duration_ps" }
+                         value { id: 1 name: "total_profile_duration_ps" }
                        }
                        stat_metadata {
                          key: 2
-                         value { id: 2 name: "self_duration_ps" }
+                         value { id: 2 name: "min_duration_ps" }
                        }
+                       stat_metadata {
+                         key: 3
+                         value { id: 3 name: "self_duration_ps" }
+                       }
+                       stats { metadata_id: 1 uint64_value: 21000 }
                   )pb")));
 #endif
 }

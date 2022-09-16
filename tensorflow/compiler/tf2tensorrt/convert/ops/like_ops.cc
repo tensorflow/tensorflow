@@ -28,34 +28,17 @@ namespace convert {
 template <int V>
 class ConvertLikeOps : public OpConverterBase<ConvertLikeOps<V>> {
  public:
-  explicit ConvertLikeOps(OpConverterParams *params)
-      : OpConverterBase<ConvertLikeOps<V>>(params) {}
-
-  static constexpr std::array<DataType, 3> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32};
-  }
+  explicit ConvertLikeOps(const OpConverterParams *params)
+      : OpConverterBase<ConvertLikeOps<V>>(
+            params,
+            {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}) {}
 
   static constexpr std::array<InputArgSpec, 1> InputSpec() {
     return std::array<InputArgSpec, 1>{
         InputArgSpec::Create("input", TrtInputArg::kBoth),
     };
   }
-  Status Validate() {
-    const auto &params = *this->params_;
-
-    const std::string op_name = V == 0 ? "ZerosLike" : "OnesLike";
-    if (params.use_implicit_batch) {
-      return errors::Unimplemented("Conversion for " + op_name +
-                                   " is not implemented in"
-                                   " implicit batch mode");
-    }
-    const auto &inputs = params.inputs;
-    if (inputs.size() != 1) {
-      return errors::InvalidArgument(op_name, " expects 1 input, but received ",
-                                     inputs.size());
-    }
-    return Status::OK();
-  }
+  Status Validate() { return ConvertLikeOps<V>::NotSupportedInImplicitBatch(); }
 
   Status Convert() {
     const auto &params = *this->params_;

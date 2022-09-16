@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/onednn_env_vars.h"
 #ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -66,7 +67,7 @@ struct MklDnnMatMulFwdParams {
   string dtypes = string("");
   bool const_weight;
 #ifdef DNNL_AARCH64_USE_ACL
-  void* weight_address = nullptr;
+  uint64 weight_hash;
 #endif
   struct PostOpParam {
     string name;
@@ -405,7 +406,7 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.dtypes);
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.weight_format);
 #ifdef DNNL_AARCH64_USE_ACL
-    key_creator.AddAsKey(mkldnn_matmul_fwd_dims.weight_address);
+    key_creator.AddAsKey(mkldnn_matmul_fwd_dims.weight_hash);
 #endif
 
     // Generate keys for post-ops

@@ -33,6 +33,7 @@ namespace TFDevice {
 
 namespace {
 
+constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncAttr[] = "func";
 
 struct ClusterOutliningPass
@@ -116,7 +117,10 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
   auto cluster_func_op = builder->create<tf_device::ClusterFuncOp>(
       cluster_op.getLoc(), outlined_func.getFunctionType().getResults(),
       live_ins.getArrayRef(), cluster_op->getAttrs());
-
+  auto device_attr = cluster_op->getAttrOfType<StringAttr>(kDeviceAttr);
+  if (device_attr && !device_attr.getValue().empty()) {
+    cluster_func_op->setAttr(kDeviceAttr, device_attr);
+  }
   cluster_op.replaceAllUsesWith(cluster_func_op);
   cluster_op.erase();
 }

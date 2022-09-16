@@ -117,6 +117,17 @@ ENTRY TestComputation {
 })");
 }
 
+TEST_F(GpuConvolutionRegressionTest, ConvFwdEng42IllegalMemFail) {
+  CheckForHloText(R"(
+    HloModule TestModule
+
+ENTRY TestComputation {
+  param_0 = f32[64,30,30,16]{2,1,0,3} parameter(0)
+  param_1 = f32[64,25,25,32]{2,1,0,3} parameter(1)
+  %cudnn-conv.14 = (f32[6,6,32,16]{1,0,2,3}, u8[0]{0}) custom-call(f32[64,30,30,16]{2,1,0,3} param_0, f32[64,25,25,32]{2,1,0,3} param_1), window={size=25x25 rhs_reversal=1x1}, dim_labels=f01b_i01o->01fb, custom_call_target="__cudnn$convForward", backend_config="{\"conv_result_scale\":1,\"activation_mode\":\"0\",\"side_input_scale\":0}"
+})");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

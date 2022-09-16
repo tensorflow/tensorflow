@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
     LOG(QFATAL) << "Model import failed: "
                 << module_ref_status.status().ToString();
   }
-  auto module_ref = std::move(module_ref_status.ValueOrDie());
+  auto module_ref = std::move(module_ref_status.value());
 
   // Parse the optimization pipeline configuration and run requested graph
   // optimizations.

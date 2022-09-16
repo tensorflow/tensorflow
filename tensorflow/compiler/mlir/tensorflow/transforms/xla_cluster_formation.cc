@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace mlir {
 
@@ -51,8 +52,7 @@ void XlaClusterFormationPass::runOnOperation() {
 
   llvm::SmallVector<TF::StatefulPartitionedCallOp, 4> ops;
   module.walk([&](TF::StatefulPartitionedCallOp call_op) {
-    auto attr = call_op->getAttrOfType<BoolAttr>("_XlaMustCompile");
-    if (attr && attr.getValue()) {
+    if (call_op->hasAttr(tensorflow::kCompileDeviceTypeAttr)) {
       ops.push_back(call_op);
     }
   });

@@ -1169,10 +1169,7 @@ cc_library(
         "//tensorflow/core/grappler/clusters:cluster",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-    ] + if_static(
-        ["//tensorflow/core/platform:tensor_float_32_utils"],
-        ["//tensorflow/core/platform:tensor_float_32_hdr_lib"],
-    ),
+    ],
 )
 
 tf_cuda_cc_test(

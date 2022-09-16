@@ -57,8 +57,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -1093,7 +1093,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateFusion(
       const Shape& shape, FusionKind fusion_kind,
       absl::Span<HloInstruction* const> operands,
-      HloComputation* fusion_computation);
+      HloComputation* fusion_computation, absl::string_view prefix = "");
 
   // Creates a call instruction that applies the given computation on the given
   // operands. "shape" is the resultant shape.
@@ -1171,6 +1171,12 @@ class HloInstruction {
 
   static std::unique_ptr<HloInstruction> CreateAddDependency(
       HloInstruction* data_operand, HloInstruction* token_operand);
+
+  // Returns true if `execution_thread` is included in the
+  // `execution_threads_set`.
+  static bool IsThreadIncluded(
+      absl::string_view execution_thread,
+      const absl::flat_hash_set<absl::string_view>& execution_threads_set);
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
@@ -1543,6 +1549,7 @@ class HloInstruction {
   bool IsFusible() const;
 
   bool IsCustomCall(absl::string_view target) const;
+  bool IsCustomCall(absl::Span<const absl::string_view> targets) const;
 
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.
@@ -1718,7 +1725,7 @@ class HloInstruction {
 
   template <typename T>
   using EnableIfProto = typename std::enable_if_t<
-      std::is_base_of<tensorflow::protobuf::Message, T>::value>;
+      std::is_base_of<tsl::protobuf::Message, T>::value>;
 
   // Returns the backend-specific configuration for how a backend should compile
   // this HLO. The meaning of the field is backend specific. Not for use before
@@ -1735,7 +1742,7 @@ class HloInstruction {
     return std::move(proto);
   }
 
-  Status set_backend_config(const tensorflow::protobuf::Message& proto) {
+  Status set_backend_config(const tsl::protobuf::Message& proto) {
     backend_config_ = proto;
     return OkStatus();
   }
@@ -1783,7 +1790,7 @@ class HloInstruction {
   //   return instr.raw_backend_config_string();
   //
   static StatusOr<std::string> BackendConfigToRawString(
-      const tensorflow::protobuf::Message& proto);
+      const tsl::protobuf::Message& proto);
 
   // Returns the information used to tell the implementation information about
   // what sort of precision is requested. The meaning of the field is backend
@@ -1836,18 +1843,6 @@ class HloInstruction {
   // Returns the module for this instruction.
   HloModule* GetModule() const;
 
-  // Get/Set the number of partitions per outer dimension (in order, starting
-  // with outer-most dimension first). Currently used by the parallel cpu
-  // backend to partition HLOs into parallel tasks.
-  //
-  // TODO(b/62783254) Replace these methods with a more general way to
-  // annotate HLOs with backend-specific information.
-  const std::vector<int64_t>& outer_dimension_partitions() const {
-    return outer_dimension_partitions_;
-  }
-  void set_outer_dimension_partitions(
-      const std::vector<int64_t>& outer_dimension_partitions);
-
   // A method that sorts users_, control_predecessors_, and control_successors_
   // according to the orders used in sorted_instruction. The sorting is used
   // during cloning, to make clone behavior match uncloned behavior.
@@ -1856,6 +1851,8 @@ class HloInstruction {
       const HloInstruction& sorted_instruction);
 
   // Old methods kept for smooth subclassing transition BEGIN.
+  // NOTE: Refrain from adding more delegates, prefer down casting to subclasses
+  // rather than using these methods.
   // TODO(b/80131774): Remove this code.
 
   // Delegates to HloBatchNormInstruction::feature_index.
@@ -2161,11 +2158,18 @@ class HloInstruction {
   // Delegates to HloCholeskyInstruction::cholesky_options().
   const CholeskyOptions& cholesky_options() const;
 
+  // Delegates to HloCustomCallInstruction::output_to_operand_aliasing().
+  const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
+  custom_call_output_operand_aliasing() const;
+
   // Appends operand to the list of operands and adds this instruction as a user
   // of the operand.
   void AppendOperand(HloInstruction* operand);
 
   // Old methods kept for smooth subclassing transition END.
+
+  HloInstruction(const HloInstruction&) = delete;
+  HloInstruction& operator=(const HloInstruction&) = delete;
 
  protected:
   // Internal constructor for a given opcode/shape, other fields must be filled
@@ -2212,9 +2216,7 @@ class HloInstruction {
   // Wrapper class of string format and protobuf format of BackendConfig.
   class BackendConfigRep {
    public:
-    const tensorflow::protobuf::Message* GetProtoPtr() const {
-      return proto_.get();
-    }
+    const tsl::protobuf::Message* GetProtoPtr() const { return proto_.get(); }
 
     const std::string& GetRawString() const;
 
@@ -2233,11 +2235,11 @@ class HloInstruction {
     }
 
     BackendConfigRep& operator=(std::string raw_string);
-    BackendConfigRep& operator=(const tensorflow::protobuf::Message& proto);
-    void SetProto(const tensorflow::protobuf::Message& proto);
+    BackendConfigRep& operator=(const tsl::protobuf::Message& proto);
+    void SetProto(const tsl::protobuf::Message& proto);
 
    private:
-    std::unique_ptr<tensorflow::protobuf::Message> proto_;
+    std::unique_ptr<tsl::protobuf::Message> proto_;
     // If proto_ is not null, raw_string_ is a lazy cache of its string format.
     mutable std::string raw_string_;
   };
@@ -2297,7 +2299,7 @@ class HloInstruction {
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
-  Status GetBackendConfigInternal(tensorflow::protobuf::Message* proto) const;
+  Status GetBackendConfigInternal(tsl::protobuf::Message* proto) const;
 
   // Mark this instruction as dead. Accessed by friend class HloInstruction.
   void MarkAsDead() { marked_as_dead_ = true; }
@@ -2347,12 +2349,6 @@ class HloInstruction {
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;
 
-  // A trace instruction that consumes this instruction.
-  //
-  // Invariant: if trace_instruction_ != nullptr, trace_instruction has this as
-  // an operand.
-  HloInstruction* trace_instruction_ = nullptr;
-
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
   mutable BackendConfigRep backend_config_;
@@ -2369,6 +2365,12 @@ class HloInstruction {
   //    z' = const(20), frontend_attributes={?}
   FrontendAttributes frontend_attributes_;
 
+  // String identifier for instruction.
+  std::string name_;
+
+  // Metadata for debugging.
+  OpMetadata metadata_;
+
   // This field is assigned to true when backend_config_ is assigned to
   // a default configuration.
   bool is_default_config_ = false;
@@ -2377,22 +2379,9 @@ class HloInstruction {
   // operands.
   bool cleaned_up_ = false;
 
-  // String identifier for instruction.
-  std::string name_;
-
-  // Metadata for debugging.
-  OpMetadata metadata_;
-
-  // The number of partitions per outer dimension (listed in order from
-  // outer-most dimension first).
-  std::vector<int64_t> outer_dimension_partitions_;
-
   // Intrusive flag used by HloComputation, whether this instruction has
   // been marked as dead.
   bool marked_as_dead_;
-
-  HloInstruction(const HloInstruction&) = delete;
-  HloInstruction& operator=(const HloInstruction&) = delete;
 };
 
 // Explicit instantiations in hlo_instruction.cc.

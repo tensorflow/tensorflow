@@ -33,7 +33,9 @@ XPlane* GetOrCreateHostXPlane(XSpace* space);
 XPlane* GetOrCreateGpuXPlane(XSpace* space, int32_t device_ordinal);
 
 XPlane* GetOrCreateTpuXPlane(XSpace* space, int32_t device_ordinal,
-                             absl::string_view device_type);
+                             absl::string_view device_type,
+                             double peak_tera_flops_per_second,
+                             double peak_hbm_bw_gigabytes_per_second);
 
 void CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,

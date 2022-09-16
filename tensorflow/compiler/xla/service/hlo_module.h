@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -151,6 +151,14 @@ class HloModule {
 
   const ComputationLayout& entry_computation_layout() const {
     return config_.entry_computation_layout();
+  }
+
+  void set_use_auto_spmd_partitioning(bool use) {
+    use_auto_spmd_partitioning_ = use;
+  }
+
+  bool use_auto_spmd_partitioning() const {
+    return use_auto_spmd_partitioning_;
   }
 
   // Based on module's entry_computation sharded shapes,
@@ -581,6 +589,8 @@ class HloModule {
 
   // The unoptimized module fingerprint.
   std::string autofdo_fingerprint_;
+
+  bool use_auto_spmd_partitioning_ = false;
 
   // Layout canonicalization callback, used only when
   // use_auto_spmd_partitioning_ = true.

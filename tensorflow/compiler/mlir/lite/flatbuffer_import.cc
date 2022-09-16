@@ -66,8 +66,10 @@ limitations under the License.
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -211,6 +213,25 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
                                          bool is_constant = false,
                                          bool is_intermediate = false) {
   mlir::Type elem_type = ConvertElementType(tensor.type, builder);
+  if (tensor.type == tflite::TensorType_VARIANT) {
+    llvm::SmallVector<mlir::TensorType> tensor_types;
+    if (tensor.variant_tensors.size() > 1) {
+      return errors::InvalidArgument(
+          "Have more than one nested type in `variant_tensors`.");
+    }
+    for (const auto& nested_tensor : tensor.variant_tensors) {
+      mlir::Type nested_elem_type =
+          ConvertElementType(nested_tensor->type, builder);
+      if (nested_tensor->has_rank) {
+        llvm::SmallVector<int64_t> shape(nested_tensor->shape.begin(),
+                                         nested_tensor->shape.end());
+        tensor_types.push_back(RankedTensorType::get(shape, nested_elem_type));
+      } else {
+        tensor_types.push_back(UnrankedTensorType::get(nested_elem_type));
+      }
+    }
+    elem_type = mlir::TF::VariantType::get(tensor_types, builder.getContext());
+  }
   if (IsQuantized(tensor)) {
     TF_ASSIGN_OR_RETURN(elem_type,
                         GetQuantizedType(tensor, builder, is_constant));
@@ -285,8 +306,8 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
     // TODO(fengliuai): this quantization dimension isn't correct.
     axis = b.getI64IntegerAttr(tensor.quantization->quantized_dimension);
   }
-  return b.create<mlir::quant::StatisticsOp>(b.getUnknownLoc(), res,
-                                             layer_stats, axis_stats, axis);
+  return b.create<mlir::quantfork::StatisticsOp>(b.getUnknownLoc(), res,
+                                                 layer_stats, axis_stats, axis);
 }
 
 // Returns true if this is a basic LSTM op.
@@ -661,11 +682,10 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
 
     value = mlir::DenseStringElementsAttr::get(shaped_type, refs);
   } else if (elem_type.isa<mlir::ComplexType, mlir::TF::TensorFlowType>()) {
-    auto dialect = elem_type.getContext()->getLoadedDialect("tf");
     tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
     std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
 
-    value = mlir::OpaqueElementsAttr::get(dialect, shaped_type, mangled);
+    value = mlir::TF::TensorProtoAttr::get(shaped_type, mangled);
   } else {
     return errors::Unimplemented("Constant of unsupported type");
   }
@@ -1302,7 +1322,7 @@ StatusOr<FuncOp> ConvertSubgraph(
           return emitError(const_loc, op_or_err.status().ToString()),
                  op_or_err.status();
         }
-        vals_map[input_num] = op_or_err.ValueOrDie()->getResult(0);
+        vals_map[input_num] = op_or_err.value()->getResult(0);
       }
     }
 
@@ -1359,7 +1379,7 @@ StatusOr<FuncOp> ConvertSubgraph(
         return emitError(const_loc, op_or_err.status().ToString()),
                op_or_err.status();
       }
-      vals_map[index] = op_or_err.ValueOrDie()->getResult(0);
+      vals_map[index] = op_or_err.value()->getResult(0);
     }
     return_operands.push_back(vals_map[index]);
   }
@@ -1424,6 +1444,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     bool experimental_prune_unreachable_nodes_unconditionally) {
   context->loadDialect<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
                        mlir::quant::QuantizationDialect,
+                       mlir::quantfork::QuantizationForkDialect,
                        mlir::TFL::TensorFlowLiteDialect,
                        mlir::TF::TensorFlowDialect>();
 

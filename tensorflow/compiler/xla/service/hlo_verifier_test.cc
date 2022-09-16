@@ -2421,6 +2421,33 @@ ENTRY main {
                    .status());
 }
 
+TEST_F(HloVerifierTest, VerifyCustomCallThread) {
+  const char* const hlo = R"(
+    HloModule module
+    %call_body (prev.2: s32[]) -> pred[] {
+      %constant.1 = s32[] constant(5)
+      %prev.2 = s32[] parameter(0)
+      ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %prev.2), direction=GT
+    }, execution_thread="parallel_thread"
+
+    ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
+      %constant.2 = s32[] constant(0)
+      ROOT %custom = s32[] custom-call(s32[] %constant.2), custom_call_target="MyCustomCall", to_apply=%call_body
+    }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{
+          HloVerifierOpts{}.VerifyCustomCallNestedComputationThreadName()}
+          .Run(module.get())
+          .status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("expects parent computation thread name same as called "
+                        "computation's thread name"));
+}
+
 TEST_F(HloVerifierTest, CheckWhileThread) {
   const char* const hlo_string = R"(
     HloModule While, entry_computation_layout={()->s32[]}

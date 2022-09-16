@@ -15,36 +15,30 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_WRAPPER_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_WRAPPER_H_
 
-#include <pybind11/stl.h>
-
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
-#include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace tensorflow {
 namespace quantization {
 
-PyObject* QuantizeQATModel(const absl::string_view saved_model_path,
-                           const absl::string_view exported_names_str,
-                           const absl::string_view tags,
-                           const std::string& quant_opts_serialized);
+std::string QuantizeQatModel(absl::string_view saved_model_path,
+                             absl::string_view exported_names_str,
+                             absl::string_view tags,
+                             absl::string_view quant_opts_serialized);
 
-PyObject* QuantizePTQDynamicRange(const absl::string_view saved_model_path,
-                                  const absl::string_view exported_names_str,
-                                  const absl::string_view tags,
-                                  const std::string& quant_opts_serialized);
+std::string QuantizePtqDynamicRange(absl::string_view saved_model_path,
+                                    absl::string_view exported_names_str,
+                                    absl::string_view tags,
+                                    absl::string_view quant_opts_serialized);
 
-PyObject* QuantizePTQModelPreCalibration(
-    const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags);
+std::string QuantizePtqModelPreCalibration(absl::string_view saved_model_path,
+                                           absl::string_view exported_names_str,
+                                           absl::string_view tags);
 
-PyObject* QuantizePTQModelPostCalibration(
-    const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
-    const std::string& quant_opts_serialized);
+std::string QuantizePtqModelPostCalibration(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags, absl::string_view quant_opts_serialized);
 
 void ClearCollectedInformationFromCalibrator();
 

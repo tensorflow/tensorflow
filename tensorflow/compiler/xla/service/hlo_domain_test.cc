@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_domain_isolator.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
+#include "tensorflow/compiler/xla/service/hlo_domain_verifier.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -212,6 +213,38 @@ ENTRY entry {
   EXPECT_EQ(nullptr, FindInstruction(module.get(), "arg"));
   // Verify there's no domain between "b" and "p" which share the same sharding.
   EXPECT_FALSE(HasDomainEdge(module.get(), "b", "p"));
+}
+
+TEST_F(HloDomainTest, CheckDomainWithCallInliningDomainWithDomainsInFunc) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule inline_module
+
+  add_func {
+    arg.0 = f32[2] parameter(0), sharding={devices=[2]0,1}
+    domain.arg.0 = f32[2] domain(arg.0), domain={kind="sharding", entry={}, exit={devices=[2]0,1}}
+    arg.1 = f32[2] parameter(1), sharding={replicated}
+    domain.arg.1 = f32[2] domain(arg.1), domain={kind="sharding", entry={}, exit={replicated}}
+    add = f32[2] add(domain.arg.0, domain.arg.1), sharding={devices=[2]0,1}
+    ROOT domain.add = f32[2] domain(add), domain={kind="sharding", entry={devices=[2]0,1}, exit={}}
+  }
+
+  ENTRY inline {
+    arg.0 = f32[2] parameter(0), sharding={devices=[2]0,1}
+    domain.arg.0 = f32[2] domain(arg.0), domain={kind="sharding", entry={}, exit={devices=[2]0,1}}
+    arg.1 = f32[2] parameter(1), sharding={devices=[2]0,1}
+    domain.arg.1 = f32[2] domain(arg.1), domain={kind="sharding", entry={}, exit={replicated}}
+    result = f32[2] call(domain.arg.0, domain.arg.1), to_apply=add_func
+    domain.result = f32[2] domain(result), domain={kind="sharding", entry={devices=[2]0,1}, exit={}}
+    ROOT tuple = (f32[2]) tuple(result)
+  })"));
+
+  CallInliner call_inliner(/*single_call_site=*/false, /*update_domain=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  // Verify that inlining produces valid domains.
+  HloDomainVerifier verifier({"sharding"});
+  TF_EXPECT_OK(verifier.Run(module.get()).status());
 }
 
 TEST_F(HloDomainTest, CheckDomainLinks) {

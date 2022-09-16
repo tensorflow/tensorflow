@@ -29,12 +29,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -241,11 +238,6 @@ const EventNode* FindParentWithComparator(const Comparator& comparator,
     }
   }
   return nullptr;
-}
-
-// Returns true if it has JAX-related events.
-bool HasJaxEvent(const EventNodeMap& event_node_map) {
-  return event_node_map.contains(HostEventType::kExecuteOnLocalDevices);
 }
 
 bool IsIteratorEventType(absl::optional<int64_t> event_type) {
@@ -505,9 +497,8 @@ void SortRootEventList(EventList* event_list) {
 }
 
 void EventForest::CreateEventGroups() {
-  // Create a group for each TF loop iteration in non-JAX profiles.
   int64_t group_id = 0;
-  if (!HasJaxEvent(event_node_map_) && !tf_loop_root_events_.empty()) {
+  if (!tf_loop_root_events_.empty()) {
     for (EventNode* root_event : tf_loop_root_events_) {
       ProcessRootEvent(group_id++, root_event, &group_metadata_map_);
     }
@@ -531,10 +522,7 @@ void EventForest::CreateEventGroups() {
   SortRootEventList(&root_events);
 
   for (EventNode* root_event : root_events) {
-    if (RootNeedsGrouping(root_event) &&
-        // Ignores legacy TF root events for JAX profiles.
-        (!HasJaxEvent(event_node_map_) ||
-         !IsLegacyRootEvent(root_event->GetEventVisitor()))) {
+    if (RootNeedsGrouping(root_event)) {
       ProcessRootEvent(group_id++, root_event, &group_metadata_map_);
     }
   }
@@ -648,23 +636,6 @@ void EventForest::ProcessWorker() {
     } else if (root_event) {
       // Add non-function eager ops as child.
       root_event->AddChild(&eager_kernel_execute_event);
-    }
-  }
-}
-
-void EventForest::ProcessModelIds() {
-  const int64_t model_id_event_type_list[] = {HostEventType::kSessionRun,
-                                              HostEventType::kTfrtModelRun};
-  for (const int64_t event_type : model_id_event_type_list) {
-    auto event_list = gtl::FindOrNull(event_node_map_, event_type);
-    if (!event_list) continue;
-    for (EventNode& event : *event_list) {
-      auto group_id = event.GetGroupId();
-      if (!group_id.has_value()) continue;
-      absl::optional<XStatVisitor> model_id =
-          event.GetEventVisitor().GetStat(StatType::kModelId);
-      if (!model_id.has_value()) continue;
-      group_metadata_map_[*group_id].model_id = model_id->ToString();
     }
   }
 }
@@ -784,7 +755,6 @@ void EventForest::GroupEvents() {
   CreateEventGroups();
   MarkEagerlyExecutedGpuKernels();
   MarkEagerlyExecutedCpuTfOps();
-  ProcessModelIds();
 }
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {

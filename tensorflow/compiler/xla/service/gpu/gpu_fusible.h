@@ -25,6 +25,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Check if the operation accesses the same inputs multiple times
+// while generating its outputs.
+bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr);
+
+// Check if the operation is memory or computationally expensive
+// to repeat.
+bool IsExpensiveToRepeat(const HloInstruction& instr);
+
 // Fusion passes frequently do checks across all pairs of "interesting" nodes.
 // Computing e.g. FusionFitsInBudget(a, b) requires computing expensive
 // properties of `a` and `b` individually.  This cache lets us avoid recomputing
@@ -54,7 +62,7 @@ bool IsLoopFusible(const HloInstruction& instr);
 
 // Whether the op tranposes the physical data layout. Fusing such ops may lead
 // to uncoalesced data access and may thus not be beneficial.
-bool ReadsUncoalesced(const HloInstruction& instr);
+bool IsPhysicallyTransposing(const HloInstruction& instr);
 
 // Note that reduction ops are lowered in different ways. Reduce input fusions
 // are lowered by IrEmitterUnnested::EmitReductionToVector and must be rooted at
@@ -83,10 +91,11 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
                                   bool is_consumer_producer_fusion = false,
                                   FusionInfoCache* cache = nullptr);
 
-// Check if fusing producer and consumer will generate a nested loop, e.g. both
-// producer and consumer are `reduce-window` HLO instructions.
-bool CreatesNestedLoop(const HloInstruction& producer,
-                       const HloInstruction& consumer);
+// Check if fusing producer and consumer will generate a heavy computation, e.g.
+// producer has a complex computation per output and consumer calls this
+// computations multiple times.
+bool CreatesHeavyComputation(const HloInstruction& producer,
+                             const HloInstruction& consumer);
 
 // Returns the instruction that determines the emitter used for lowering,
 // sometimes referred to as "the real hero".

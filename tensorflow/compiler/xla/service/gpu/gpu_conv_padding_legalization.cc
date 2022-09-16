@@ -83,7 +83,8 @@ HloInstruction* MaybePaddedAndSlicedInput(
     PrimitiveType element_type = input->shape().element_type();
     HloInstruction* padding = computation->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
-    input = MakePadHlo(input, padding, padding_config).ValueOrDie();
+    input =
+        MakePadHlo(input, padding, padding_config, &input->metadata()).value();
   }
 
   if (window_util::HasNegativePadding(*conv_window)) {
@@ -110,8 +111,7 @@ HloInstruction* MaybePaddedAndSlicedInput(
       }
     }
 
-    input =
-        MakeSliceHlo(input, start_indices, limit_indices, strides).ValueOrDie();
+    input = MakeSliceHlo(input, start_indices, limit_indices, strides).value();
   }
 
   return input;
@@ -143,7 +143,8 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
   PrimitiveType element_type = kernel->shape().element_type();
   HloInstruction* padding = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
-  return MakePadHlo(kernel, padding, padding_config).ValueOrDie();
+  return MakePadHlo(kernel, padding, padding_config, &kernel->metadata())
+      .value();
 }
 }  // namespace
 
@@ -255,7 +256,7 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
       computation->AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::Zero(input->shape().element_type())));
   HloInstruction* padded_input =
-      MakePadHlo(input, padding, input_padding_config).ValueOrDie();
+      MakePadHlo(input, padding, input_padding_config).value();
 
   // The shape of the backward_conv CustomCall is a tuple (conv_result,
   // scratch_buffer).  Extract out the shape of conv_result.

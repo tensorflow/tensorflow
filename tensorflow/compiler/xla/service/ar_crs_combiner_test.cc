@@ -456,7 +456,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllReduce(op::Convert(op::Parameter())),
@@ -506,7 +506,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2, true);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllReduce(op::Convert(op::Parameter()))));
@@ -575,7 +575,7 @@ ENTRY %entrycomp (p: f32[2,1]) -> (f32[2], f32[2]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllReduce(op::Bitcast(op::Parameter())),
@@ -644,7 +644,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -687,7 +687,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -769,7 +769,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -823,7 +823,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllReduce(op::Add(
@@ -903,7 +903,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_FALSE(changed);
 }
 
@@ -942,7 +942,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_FALSE(changed);
 }
 
@@ -1004,7 +1004,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllReduce(op::Parameter()),
@@ -1080,7 +1080,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllReduce(op::Add(
@@ -1129,7 +1129,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllReduce(
@@ -1200,7 +1200,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -1245,7 +1245,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -1334,7 +1334,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllReduce(op::Add(
@@ -1386,7 +1386,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -1476,7 +1476,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -1527,7 +1527,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   auto replica_groups_before = crs_before->replica_groups();
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllReduce(op::Add(
@@ -1602,7 +1602,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_FALSE(changed);
 }
 
@@ -1640,7 +1640,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_FALSE(changed);
 }
 
@@ -1716,7 +1716,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_FALSE(changed);
 }
 
@@ -1745,7 +1745,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_FALSE(changed);
 }
 
@@ -1773,7 +1773,7 @@ ENTRY %entrycomp (p: f32[2,4]) -> f32[2,4] {
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/32));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
 
   auto root = module->entry_computation()->root_instruction();
@@ -1813,7 +1813,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
                                    /*num_partitions=*/4));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/4,
                          /*spmd_partition=*/true);
-  auto changed = combiner.Run(module.get()).ValueOrDie();
+  auto changed = combiner.Run(module.get()).value();
   EXPECT_TRUE(changed);
 }
 

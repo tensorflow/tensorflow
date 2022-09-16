@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/stream_executor/lib/status.h"
 
 #if CUDA_VERSION >= 10020
 

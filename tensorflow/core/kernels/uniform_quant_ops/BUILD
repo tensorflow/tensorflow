@@ -38,8 +38,11 @@ filegroup(
     ] + [
         "math_utils.cc",
         "tensor_utils.cc",
+        "uniform_quantize_op.cc",
         "uniform_dequantize_op.cc",
+        "uniform_requantize_op.cc",
         "uniform_quantized_dot_ops.cc",
+        "uniform_quantized_clip_by_value_op.cc",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -48,7 +51,10 @@ tf_kernel_library(
     name = "kernels",
     srcs = [
         "uniform_dequantize_op.cc",
+        "uniform_quantize_op.cc",
+        "uniform_quantized_clip_by_value_op.cc",
         "uniform_quantized_dot_ops.cc",
+        "uniform_requantize_op.cc",
     ],
     deps = [
         ":math_utils",
@@ -80,6 +86,34 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "uniform_quantize_op_test",
+    size = "small",
+    srcs = ["uniform_quantize_op_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "uniform_requantize_op_test",
+    size = "small",
+    srcs = ["uniform_requantize_op_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "uniform_dequantize_op_test",
     size = "small",
     srcs = ["uniform_dequantize_op_test.cc"],
@@ -97,6 +131,20 @@ tf_cc_test(
     name = "uniform_quantized_dot_ops_test",
     size = "small",
     srcs = ["uniform_quantized_dot_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "uniform_quantized_clip_by_value_op_test",
+    size = "small",
+    srcs = ["uniform_quantized_clip_by_value_op_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":kernels",

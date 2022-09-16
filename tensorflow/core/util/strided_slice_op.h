@@ -105,7 +105,7 @@ class StridedSliceAssignBCast {
   //
   // This is to support remapping slice -> processing dimensions.  To relate
   // the sliced output dimensions back to processing dimensions (i.e. those
-  // relative to the the original unsliced input), we need to remove any axes
+  // relative to the original unsliced input), we need to remove any axes
   // that were added via the `new_axis_mask`, and add back any axes that were
   // removed via the `shrink_axis_mask`.  For example, an expression like
   //

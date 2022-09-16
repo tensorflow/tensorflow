@@ -67,7 +67,7 @@ mlir::LogicalResult PropagateDTensorLayoutForRelayout(
                       "Found layout: {0} ",
                       layout_str));
   }
-  const Layout& layout = layout_or_status.ValueOrDie();
+  const Layout& layout = layout_or_status.value();
 
   // Skip adding a DTensorLayout if Relayout is 'dynamic'. Any dimension with
   // MATCH for the layout will have its layout preserved in layout propagation.
@@ -104,7 +104,7 @@ mlir::LogicalResult PropagateFunctionArgAttrToLayoutOp(
     auto arg = function.getArgument(arg_index);
     mlir::Type tensor_type = GetSubtypeOrSelf(arg);
     if (auto type = tensor_type.dyn_cast<mlir::TensorType>()) {
-      CreateDTensorLayoutOp(layout_or_status.ValueOrDie(), arg, type,
+      CreateDTensorLayoutOp(layout_or_status.value(), arg, type,
                             function.getLoc(), &builder, &c);
     } else {
       return function.emitOpError()
@@ -141,8 +141,8 @@ mlir::LogicalResult PropagateFunctionDefaultLayoutAttrToLayoutOp(
     auto return_value = function_terminator->getOperand(ret_index);
 
     if (auto type = return_value.getType().dyn_cast<mlir::TensorType>())
-      CreateDTensorLayoutOp(result_layout_or_status.ValueOrDie(), return_value,
-                            type, function.getLoc(), &builder, &c);
+      CreateDTensorLayoutOp(result_layout_or_status.value(), return_value, type,
+                            function.getLoc(), &builder, &c);
     else
       return function.emitOpError()
              << "is missing tensor type for result " << ret_index;
@@ -182,7 +182,7 @@ struct DTensorPropagateDefaultLayout
 
           mlir::OpBuilder builder(&context);
           builder.setInsertionPointAfter(op);
-          const auto layouts = layout_or_status.ValueOrDie();
+          const auto layouts = layout_or_status.value();
           for (const auto& layout_and_index : llvm::enumerate(layouts)) {
             const int index = layout_and_index.index();
             const auto& layout = layout_and_index.value();

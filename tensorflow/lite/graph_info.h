@@ -31,12 +31,15 @@ class GraphInfo {
  public:
   virtual ~GraphInfo() {}
 
-  // Total number of tensors in the graph.
+  // Total number of tensors in the graph. This should be cached when possible.
   virtual size_t num_tensors() const = 0;
 
   // Returns a tensor given its index which is expected to be between 0 and
-  // num_tensors().
+  // num_tensors(). Use tensors() below for iteration as it is much faster.
   virtual TfLiteTensor* tensor(size_t index) = 0;
+
+  // Returns all tensors in the graph
+  virtual TfLiteTensor* tensors() = 0;
 
   // Number of nodes in the current execution plan.
   virtual size_t num_execution_nodes() const = 0;

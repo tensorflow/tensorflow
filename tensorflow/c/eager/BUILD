@@ -64,6 +64,8 @@ tf_cuda_library(
             "@com_google_absl//absl/types:variant",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
+            "//tensorflow/c:tf_buffer",
+            "//tensorflow/c:tf_buffer_internal",
             "//tensorflow/c:tf_status_internal",
             "//tensorflow/c:tf_tensor_internal",
             "//tensorflow/core:core_cpu",
@@ -1001,6 +1003,8 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
     ],
 )
 

@@ -16,7 +16,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal_simd",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter",
     ],
@@ -73,7 +72,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected",
     ],
 )

@@ -14,10 +14,10 @@
 # ==============================================================================
 """Library of dtypes (Tensor element types)."""
 import abc
+import builtins
 from typing import Type, Sequence, Optional
 
 import numpy as np
-from six.moves import builtins
 
 from tensorflow.core.framework import types_pb2
 # We need to import pywrap_tensorflow prior to the bfloat wrapper to avoid

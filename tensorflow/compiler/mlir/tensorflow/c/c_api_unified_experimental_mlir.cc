@@ -369,7 +369,7 @@ Status MlirAbstractOp::Create(ArrayRef<Value> operands,
           return InvalidArgument("Missing attribute '", output_arg.type_attr(),
                                  "' required for output '", output_arg.name(),
                                  "'");
-        TypeAttr type_attr = attr.dyn_cast<TypeAttr>();
+        TypedAttr type_attr = attr.dyn_cast<TypedAttr>();
         if (!type_attr)
           return InvalidArgument("Attribute '", output_arg.type_attr(),
                                  "' required for output '", output_arg.name(),

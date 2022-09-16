@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -50,8 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -591,7 +591,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
           halo_region, MakePadHlo(halo_region, padding, padding_config_halo));
     }
 
-    if (halo_size == 0 && low_padding != 0) {
+    if ((halo_size == 0 && low_padding != 0) || low_padding < 0) {
       std::vector<int64_t> start_indices_activations_cut(rank, 0),
           end_indices_activations_cut(activations->shape().dimensions().begin(),
                                       activations->shape().dimensions().end());
@@ -1454,7 +1454,7 @@ void ConvolutionVisitor::PropagateOnBroadcast(HloInstruction* consumer,
   if (batch_is_broadcasted) {
     new_broadcast =
         MakeReshapeHlo(new_producer->shape().dimensions(), new_broadcast)
-            .ValueOrDie();
+            .value();
     VLOG(2) << "Created reshape of broadcast " << new_broadcast->ToString();
   }
 
@@ -1473,7 +1473,7 @@ void ConvolutionVisitor::RewriteBroadcastTree(
     if (instr->opcode() == HloOpcode::kBroadcast) {
       PropagateOnBroadcast(instr, producer);
     } else if (IsTrivialElementwise(instr)) {
-      Propagate(instr, /*producer=*/instr->mutable_operand(0)).ValueOrDie();
+      Propagate(instr, /*producer=*/instr->mutable_operand(0)).value();
     } else {
       LOG(FATAL) << "Unsupported opcode in RewriteBroadcastTree";
     }
@@ -2610,10 +2610,10 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   // original spatial dimension. Unlike for the first space-to-batch'ed
   // convolution, while propagating, we can use the last halo_size as available
   // spatial size.
-  // If the spatial size is less than the halo size required, we need to
-  // increase the spatial size.
+  // If the spatial size is less than the (halo size - low padding) required,
+  // we need to increase the spatial size.
   while (spatial_split_size * num_splits + c.halo_size - c.spatial_size < 0 ||
-         spatial_split_size < c.halo_size) {
+         spatial_split_size < c.halo_size - c.inherent_low_padding) {
     spatial_split_size += c.stride;
   }
 
@@ -2637,10 +2637,10 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
     // dimension size, we don't need reshaping. Instead, we determine the
     // additional space available, and adjust the required slice size (and
     // thereby the halo size).
-    VLOG(3)
-        << "Decreasing the spatial size while propagating spatial_split_size "
-        << spatial_split_size << " new_space_size " << new_space_size;
     if (spatial_split_size < new_space_size) {
+      VLOG(3)
+          << "Decreasing the spatial size while propagating spatial_split_size "
+          << spatial_split_size << " new_space_size " << new_space_size;
       // If there's a stride mismatch, we change the new_space_size be
       // smaller (equal to spatial_split_size).
       if (new_space_size % c.stride != 0 || c.base_dilation_factor != 1) {
@@ -3853,7 +3853,7 @@ StatusOr<bool> SpaceToBatchConverter::Run(
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     ConvolutionVisitor visitor(ctrl_, comp);
-    if (visitor.Run().ValueOrDie()) {
+    if (visitor.Run().value()) {
       changed = true;
     }
     VLOG(1) << "Done operating on computation";

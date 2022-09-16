@@ -337,27 +337,27 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   int64_t num_replicas = replicate.n();
   if (num_replicas == 1) return;
 
-  // Set execute_launch when there is exactly one LaunchOp with a
+  // Set execute_launch when there is exactly one
   // TPUExecuteAndUpdateVariablesOp. More than one means there is model
   // parallelism, which is not supported with TPUReshardVariables. None
   // means there is no TPU computation.
   tf_device::LaunchOp execute_launch;
-  replicate.walk([&](tf_device::LaunchOp execute_launch_op) {
-    if (!execute_launch_op.WrapsSingleOp() ||
-        !llvm::isa<TF::TPUExecuteAndUpdateVariablesOp>(
-            execute_launch_op.GetBody().front()))
-      return WalkResult::advance();
+  TF::TPUExecuteAndUpdateVariablesOp execute;
+  replicate.walk([&](TF::TPUExecuteAndUpdateVariablesOp execute_op) {
+    execute_launch =
+        llvm::dyn_cast<tf_device::LaunchOp>(execute_op->getParentOp());
     if (execute_launch == nullptr) {
-      execute_launch = execute_launch_op;
+      // This pass requires execute_op to be wrapped in a launch.
+      return WalkResult::interrupt();
+    }
+    if (execute == nullptr) {
+      execute = execute_op;
       return WalkResult::advance();
     }
-    execute_launch = nullptr;
+    execute = nullptr;
     return WalkResult::interrupt();
   });
-  if (!execute_launch) return;
-
-  auto execute = llvm::cast<TF::TPUExecuteAndUpdateVariablesOp>(
-      execute_launch.GetBody().front());
+  if (!execute) return;
   auto compile =
       SkipIdentity(execute.key(), /*allow_other_use=*/true).getDefiningOp();
   if (!compile) return;
@@ -444,7 +444,7 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   default_key_tensor.vec<tensorflow::tstring>()(2) = kDefaultShardingValue;
   auto default_state_key = builder.create<TF::ConstOp>(
       while_op.getLoc(),
-      tensorflow::ConvertTensor(default_key_tensor, &builder).ValueOrDie());
+      tensorflow::ConvertTensor(default_key_tensor, &builder).value());
   // With all replicated inputs, now build the replicate op.
   auto unformat_replicate = builder.create<tf_device::ReplicateOp>(
       while_op.getLoc(), num_replicas, devices, unformat_replicate_operands,

@@ -27,10 +27,13 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 
+namespace tsl {
+class Env;
+}  // namespace tsl
 namespace tensorflow {
+using tsl::Env;
 class CoordinationServiceDeviceInfo;
 class ServerDef;
-class Env;
 
 // Static registration for coordination service implementations.
 #define REGISTER_COORDINATION_SERVICE(service_type_name, factory_fn)        \

@@ -16,14 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_PLATFORM_ID_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_PLATFORM_ID_H_
 
-#include "tensorflow/stream_executor/platform.h"
-
-namespace tensorflow {
-namespace tpu {
-
-::stream_executor::Platform::Id GetTpuPlatformId();
-
-}  // namespace tpu
-}  // namespace tensorflow
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_PLATFORM_ID_H_

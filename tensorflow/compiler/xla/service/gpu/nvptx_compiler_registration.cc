@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(

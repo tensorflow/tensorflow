@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
@@ -145,7 +144,7 @@ Status DispatcherState::JobFromId(int64_t job_id,
     return errors::NotFound("Job with id ", job_id, " not found");
   }
   job = it->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DispatcherState::JobByName(const std::string& job_name,
@@ -155,7 +154,7 @@ Status DispatcherState::JobByName(const std::string& job_name,
     return errors::NotFound("Job with name ", job_name, " not found");
   }
   job = it->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 void DispatcherState::CreateIteration(

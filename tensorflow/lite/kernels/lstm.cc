@@ -95,6 +95,7 @@ constexpr int kProjectionWeightsLedgerOffset = 8;
 TfLiteStatus make_ledger(const TfLiteSparsity* sparsity, TfLiteContext* context,
                          TfLiteTensor* ledger) {
   ledger->type = kTfLiteUInt8;
+  ledger->name = "Lstm_ledger";
   ledger->allocation_type = kTfLiteArenaRwPersistent;
   if (sparsity == nullptr) {
     return kTfLiteOk;
@@ -1611,6 +1612,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context,
                       GetTemporarySafe(context, node, kRowSums, &row_sums));
     row_sums->type = kTfLiteInt32;
+    row_sums->name = "Lstm_row_sums";
     row_sums->allocation_type = kTfLiteArenaRwPersistent;
     const int row_sums_dims[2] = {row_sums_rows, n_cell};
     if (!TfLiteIntArrayEqualsArray(row_sums->dims, 2, row_sums_dims)) {

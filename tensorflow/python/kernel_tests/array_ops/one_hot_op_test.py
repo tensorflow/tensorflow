@@ -108,6 +108,10 @@ class OneHotTest(test.TestCase):
     self._testBasic(np.float64)
     self._testDefaultBasic(np.float64)
 
+  def testInt8Basic(self):
+    self._testBasic(np.int8)
+    self._testDefaultBasic(np.int8)
+
   def testInt32Basic(self):
     self._testBasic(np.int32)
     self._testDefaultBasic(np.int32)
@@ -240,6 +244,12 @@ class OneHotTest(test.TestCase):
     self._testBatch(np.float64)
     self._testDefaultValuesBatch(np.float64)
     self._testValueTypeBatch(np.float64)
+
+  def testInt8Batch(self):
+    self._testEmpty(np.int8)
+    self._testBatch(np.int8)
+    self._testDefaultValuesBatch(np.int8)
+    self._testValueTypeBatch(np.int8)
 
   def testInt32Batch(self):
     self._testEmpty(np.int32)

@@ -23,14 +23,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/stream_executor/kernel_spec.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/stream_executor/kernel_spec.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
 namespace gpu {
@@ -553,7 +553,7 @@ StatusOr<AutotuneResult> PickBestResult(
   }
 
   auto selected_result = filtered_results.begin();
-  if (!RequireDeterminism(instr.parent()->parent()->config())) {
+  if (!RequireDeterminism(instr.GetModule()->config())) {
     selected_result = absl::c_min_element(
         filtered_results,
         [](const AutotuneResult& lhs, const AutotuneResult& rhs) {

@@ -313,6 +313,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:util",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([

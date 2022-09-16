@@ -492,6 +492,8 @@ class MemorySpaceAssignment {
       std::function<bool(const HloValue&)>;
   using IsUseAllowedInAlternateMemoryFunction =
       std::function<bool(const HloUse&)>;
+  using IsPositionAllowedInAlternateMemoryFunction =
+      std::function<bool(const HloPosition&)>;
   using ReservedScopedMemoryFunction =
       std::function<int64_t(const HloInstruction*)>;
 
@@ -588,7 +590,15 @@ class MemorySpaceAssignment {
 
     const std::vector<HloUse>& uses() const { return uses_; }
     MemorySpace memory_space() const { return memory_space_; }
-    Chunk chunk() const { return *chunk_; }
+    // Returns the associated chunk that may be a nullopt if the allocation is
+    // in the default memory space.
+    std::optional<Chunk> maybe_chunk() const { return chunk_; }
+    // Returns the associated chunk. The caller should ensure that the chunk is
+    // defined (the allocation should be in the alternate memory space).
+    Chunk chunk() const {
+      CHECK(chunk_.has_value());
+      return *chunk_;
+    }
     Chunk* mutable_chunk() { return &*chunk_; }
     void set_start_time(int64_t start_time) { start_time_ = start_time; }
     int64_t start_time() const { return start_time_; }
@@ -599,12 +609,6 @@ class MemorySpaceAssignment {
     virtual std::string ToString() const;
 
    protected:
-    // Descend to the shape_index element of the tuple and replace that with
-    // new_instruction.
-    StatusOr<HloInstruction*> ReplaceTupleWith(HloInstruction* new_instruction,
-                                               HloInstruction* tuple,
-                                               ShapeIndex shape_index);
-
     // Recursively create kGetTupleElement instructions if the defining position
     // shape is not an array. Returns the new instruction that has array shape.
     HloInstruction* AddGetTupleElements() const;
@@ -707,7 +711,7 @@ class MemorySpaceAssignment {
    public:
     MirroredAllocation(const Allocation& original_allocation, int64_t time)
         : Allocation(original_allocation.defining_position(),
-                     MemorySpace::kDefault, original_allocation.chunk(),
+                     MemorySpace::kDefault, original_allocation.maybe_chunk(),
                      /*start_time=*/time,
                      /*end_time=*/time, /*is_scoped_allocation=*/false),
           original_allocation_(original_allocation) {}
@@ -732,7 +736,7 @@ class MemorySpaceAssignment {
                      HloInstruction* calling_instruction, HloPosition position,
                      int64_t time)
         : Allocation(position, MemorySpace::kDefault,
-                     original_allocation.chunk(), /*start_time=*/time,
+                     original_allocation.maybe_chunk(), /*start_time=*/time,
                      /*end_time=*/time, /*is_scoped_allocation=*/false),
           original_allocation_(original_allocation),
           calling_instruction_(calling_instruction) {}
@@ -1037,6 +1041,11 @@ struct Options {
   // the opcode) to be placed on the alternate memory.
   MemorySpaceAssignment::IsUseAllowedInAlternateMemoryFunction
       is_use_allowed_in_alternate_mem_fn = [](const HloUse&) { return true; };
+
+  // Specifies if the given position is allowed in the alternate memory.
+  MemorySpaceAssignment::IsPositionAllowedInAlternateMemoryFunction
+      is_position_allowed_in_alternate_mem_fn =
+          [](const HloPosition&) { return true; };
 
   // This function returns the amount of scoped memory in bytes that should be
   // reserved during the execution of this instruction.
@@ -1552,8 +1561,10 @@ class AlternateMemoryBestFitHeap
   // if enabled.
   void AppendBufferInfoDebugString(const BufferInterval& interval,
                                    std::string* debug_str) const;
+  void AppendScopedAllocationBufferInfoDebugString(
+      const HloInstruction* instruction, int64_t time, int64_t size,
+      std::string& debug_str) const;
   void AppendAllocationInfoDebugString(
-      const AllocationValue& value,
       const MemorySpaceAssignment::Allocation& allocation,
       std::string& debug_str) const;
   void DumpDebugStringsIfEnabled() const;

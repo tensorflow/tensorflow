@@ -1976,7 +1976,7 @@ ENTRY entry (param: s32[]) -> s32[] {
   for (HloComputation* computation : clone->computations()) {
     EXPECT_EQ(computation->parent(), clone.get());
     for (HloInstruction* instruction : computation->instructions()) {
-      EXPECT_EQ(instruction->parent()->parent(), clone.get());
+      EXPECT_EQ(instruction->GetModule(), clone.get());
     }
   }
 }
@@ -2098,21 +2098,6 @@ TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
   EXPECT_THAT(
       clone->precision_config().operand_precision(),
       ::testing::ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::DEFAULT));
-}
-
-TEST_F(HloInstructionTest, PreserveOuterDimensionPartitionsOnClone) {
-  constexpr char kHloString[] = R"(
-  HloModule test_module
-  ENTRY test {
-    ROOT iota = f32[100] iota(), iota_dimension=0, outer_dimension_partitions={0, 50}
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  auto* iota = module->entry_computation()->root_instruction();
-
-  auto clone = iota->Clone();
-  EXPECT_THAT(clone->outer_dimension_partitions(),
-              ::testing::ElementsAre(0, 50));
 }
 
 TEST_F(HloInstructionTest, ReuseReshapeOfFusionParameter) {

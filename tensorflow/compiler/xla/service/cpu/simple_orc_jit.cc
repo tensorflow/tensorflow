@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/windows_compatibility.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 // Provided by compiler-rt and MLIR.
 // Converts an F32 value to a BF16.
@@ -425,7 +425,7 @@ bool RegisterKnownJITSymbols() {
   registry->Register("calloc", reinterpret_cast<void*>(calloc), "Host");
   registry->Register("free", reinterpret_cast<void*>(free), "Host");
 #ifndef _WIN32
-  // TODO(kramerb): This fails to link on windows because it's marked dllimport.
+  // TODO(b/246980307): fails to link on windows because it's marked dllimport.
   registry->Register("memrefCopy", reinterpret_cast<void*>(memrefCopy), "Host");
 #endif
 

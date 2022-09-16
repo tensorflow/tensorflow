@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
-#define CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
 
 #include <functional>
 #include <string>
@@ -127,4 +127,4 @@ inline bool IsHostMemoryType(const FullTypeDef& t) {
 
 }  // namespace tensorflow
 
-#endif  // CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_UTIL_H_

@@ -16,10 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/stream_executor/lib/human_readable.h"
-#include "tensorflow/stream_executor/lib/mathutil.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/human_readable.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/mathutil.h"
 
 namespace stream_executor {
 
@@ -135,7 +136,7 @@ bool ThreadDimOk(const DeviceDescription &device_description,
   return ok;
 }
 
-uint64_t DivideCeil(uint64 x, uint64 y) {
+uint64_t DivideCeil(uint64_t x, uint64_t y) {
   return port::MathUtil::CeilOfRatio(x, y);
 }
 

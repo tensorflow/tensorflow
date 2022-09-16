@@ -17,6 +17,27 @@ limitations under the License.
 
 namespace tensorflow {
 
+TEST(UniformQuantizedOpsTest, UniformQuantizedDotShapeInference) {
+  ShapeInferenceTestOp op("UniformQuantizedDot");
+  INFER_OK(op, "[4,2];[2,3];[];[];[];[];[];[]", "[d0_0,d1_1]");
+  INFER_OK(op, "[4,2];[2,3];[];[];[3];[3];[];[]", "[d0_0,d1_1]");
+  INFER_OK(op, "[4,2];[2,3];[];[];[3];[3];[3];[3]", "[d0_0,d1_1]");
+
+  // Inner dim does not match.
+  INFER_ERROR("", op, "[4,2];[6,3];[];[];[];[];[];[]");
+  // lhs scales and zero_points must be scalar tensors.
+  INFER_ERROR("", op, "[4,2];[2,3];[4];[4];[];[];[];[]");
+  // scales and zero_points must have same rank.
+  INFER_ERROR("scales and zero_points must have same rank.", op,
+              "[4,2];[2,3];[];[];[3];[];[];[]");
+  // If rhs scales and zero_points are not scalar tensors, both of their
+  // dim_size[0] must be equal to rhs.dim_size[1].
+  INFER_ERROR("", op, "[4,2];[2,3];[];[];[6];[6];[];[]");
+  // If output scales and zero_points are not scalar tensors, both of their
+  // dim_size[0] must be equal to rhs.dim_size[1].
+  INFER_ERROR("", op, "[4,2];[2,3];[];[];[];[];[6];[6]");
+}
+
 TEST(UniformQuantizedOpsTest, UniformQuantizedDotHybridShapeInference) {
   ShapeInferenceTestOp op("UniformQuantizedDotHybrid");
   INFER_OK(op, "[4,2];[2,3];[];[]", "[d0_0,d1_1]");

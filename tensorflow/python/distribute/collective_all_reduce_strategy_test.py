@@ -120,7 +120,7 @@ class CollectiveAllReduceStrategyTestBase(
         num_gpus=num_gpus,
         num_tpus=num_tpus)
 
-    if use_devices_arg:
+    if use_devices_arg and num_gpus > 0:
       devices = ['GPU:%d' % i for i in range(num_gpus)]
       # Temporary workaround to manually set the `_extended` field before device
       # initialization is exposed as a public interface.

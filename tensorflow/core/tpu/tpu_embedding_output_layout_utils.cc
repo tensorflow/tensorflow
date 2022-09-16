@@ -23,6 +23,10 @@ namespace tpu {
 Status ComputeOutputTensorShapes(
     const tensorflow::tpu::TPUEmbeddingConfiguration& config,
     std::vector<TensorShapeProto>* shapes) {
+  const int64_t core_count_per_replica =
+      config.spmd_sharding().enabled()
+          ? config.spmd_sharding().num_cores_per_replica()
+          : 1;
   if (config.feature_descriptor_size() > 0) {
     for (const TPUEmbeddingConfiguration::FeatureDescriptor& feature :
          config.feature_descriptor()) {
@@ -33,7 +37,8 @@ Status ComputeOutputTensorShapes(
       }
       shape.add_dim()->set_size(
           config.table_descriptor(feature.table_id()).dimension());
-      shape.mutable_dim(0)->set_size(shape.dim(0).size());
+      shape.mutable_dim(0)->set_size(core_count_per_replica *
+                                     shape.dim(0).size());
       shapes->push_back(shape);
     }
   } else {
@@ -42,7 +47,8 @@ Status ComputeOutputTensorShapes(
          config.table_descriptor()) {
       TensorShapeProto shape;
       auto* dim0 = shape.add_dim();
-      dim0->set_size(table.num_features() * batch_size);
+      dim0->set_size(core_count_per_replica * batch_size *
+                     table.num_features());
       auto* dim1 = shape.add_dim();
       dim1->set_size(table.dimension());
       shapes->push_back(shape);

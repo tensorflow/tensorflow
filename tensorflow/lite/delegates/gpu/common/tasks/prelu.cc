@@ -18,10 +18,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
-#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
@@ -32,19 +32,17 @@ ElementwiseDescriptor CreatePReLU(const PReLUAttributes& attr,
   ElementwiseDescriptor op_desc;
   std::string alpha_read;
   auto alpha_linear =
-      absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
+      std::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
   if (alpha_linear) {
-    TensorLinearDescriptor desc;
-    desc.storage_type = DeduceLinearStorageType(tensor_desc.GetStorageType());
-    desc.element_type = tensor_desc.GetDataType();
-    desc.UploadLinearData(*alpha_linear);
-    op_desc.args.AddObject(
-        "alpha", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+    TensorDescriptor alpha_tensor_desc = CreateConstantLinearTensorDescriptor(
+        tensor_desc.GetDataType(), tensor_desc.GetStorageType(), *alpha_linear);
+    op_desc.args.AddObject("alpha", std::make_unique<TensorDescriptor>(
+                                        std::move(alpha_tensor_desc)));
     alpha_read = "FLT4 alpha_val = args.alpha.Read(S_COORD);\n";
   }
 
   auto alpha_hwc =
-      absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
+      std::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
   if (alpha_hwc) {
     const BHWC shape =
         BHWC(1, alpha_hwc->shape.h, alpha_hwc->shape.w, alpha_hwc->shape.c);

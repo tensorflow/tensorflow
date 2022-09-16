@@ -22,17 +22,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/stream_executor/blas.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
-#include "tensorflow/stream_executor/scratch_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #endif  // GOOGLE_CUDA
 
 namespace xla {
@@ -120,6 +120,9 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
 #if GOOGLE_CUDA
 
 namespace cublas_lt {
+
+StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+    mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue);
 
 class MatmulPlan {
  public:

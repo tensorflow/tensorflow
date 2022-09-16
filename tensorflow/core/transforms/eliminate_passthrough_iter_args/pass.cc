@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/utility.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 #include "tensorflow/core/transforms/utils/utils.h"
 
 // Define the debug label used by `LLVM_DEBUG`.
@@ -36,6 +35,9 @@ limitations under the License.
 
 namespace mlir {
 namespace tfg {
+
+#define GEN_PASS_DEF_ELIMINATEPASSTHROUGHITERARGS
+#include "tensorflow/core/transforms/passes.h.inc"
 
 // Given a range of elements, this function returns a vector of elements
 // excluding the ones whose index is contained in a bit vector.
@@ -183,7 +185,7 @@ struct EliminateWhileLikePassthroughIterArgs
 };
 
 struct EliminatePassthroughIterArgsPass
-    : public EliminatePassthroughIterArgsBase<
+    : public impl::EliminatePassthroughIterArgsBase<
           EliminatePassthroughIterArgsPass> {
   void runOnOperation() override {
     IRRewriter rewriter(&getContext());

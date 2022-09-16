@@ -54,13 +54,10 @@ constexpr char kTFImplements[] = "tf._implements";
 using mlir::TF::FuncAttr;
 using mlir::TF::StringType;
 
-inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
-                                       const std::string& content) {
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
-  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
-                                 type,
-                                 StringRef(content.data(), content.size()));
+inline ConstBytesAttr CustomOption(OpBuilder* builder,
+                                   const std::string& content) {
+  return ConstBytesAttr::get(builder->getContext(),
+                             StringRef(content.data(), content.size()));
 }
 
 inline TensorType GetInputType(func::FuncOp func, int idx) {

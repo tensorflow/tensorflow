@@ -19,11 +19,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/xla_executor_state.h"
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {

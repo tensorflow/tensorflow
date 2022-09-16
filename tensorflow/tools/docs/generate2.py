@@ -25,7 +25,6 @@ pip install git+https://github.com/tensorflow/docs
 ```
 """
 import contextlib
-import distutils
 import pathlib
 import textwrap
 
@@ -33,6 +32,7 @@ from typing import NamedTuple
 
 from absl import app
 from absl import flags
+from packaging import version
 
 import tensorflow as tf
 
@@ -198,7 +198,7 @@ def build_docs(output_dir, code_url_prefix, search_hints):
   output_dir = pathlib.Path(output_dir)
   site_path = pathlib.Path("/", FLAGS.site_path)
 
-  if distutils.version.LooseVersion(tf.__version__) >= "2.9":
+  if version.parse(tf.__version__) >= version.parse("2.9"):
     doc_controls.set_deprecated(tf.compat.v1)
     doc_controls.set_deprecated(tf.estimator)
     doc_controls.set_deprecated(tf.feature_column)

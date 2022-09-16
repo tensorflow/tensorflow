@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
@@ -69,6 +69,10 @@ void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateOptimizeOpOrderPass());
+  // Add optimization pass after quantization for additional fusing
+  // opportunities.
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
 }
 
 void AddDynamicRangeQuantizationPasses(
@@ -85,6 +89,10 @@ void AddDynamicRangeQuantizationPasses(
                                         quant_specs.custom_map));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateOptimizeOpOrderPass());
+  // Add optimization pass after quantization for additional fusing
+  // opportunities.
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
 }
 
 void AddConvertHloToTfPass(std::string entry_function_name,

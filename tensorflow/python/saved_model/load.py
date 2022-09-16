@@ -293,6 +293,7 @@ class Loader(object):
 
   def _load_checkpoint_save_and_restore_functions(self):
     """Restores the checkpoint-related save/restore functions to all nodes."""
+    temp_session = [None]
     for node_id, proto in self._iter_all_nodes():
       node = self.get(node_id)
       if proto.saveable_objects.keys() == {
@@ -314,7 +315,8 @@ class Loader(object):
                                        self.get(restore_fn_id))
 
         node._self_saveable_object_factories = (  # pylint: disable=protected-access
-            saveable_object_util.recreate_saveable_objects(saveable_fn_by_name))
+            saveable_object_util.recreate_saveable_objects(saveable_fn_by_name,
+                                                           temp_session))
 
   def _load_edges(self):
     """Adds edges from objects to other objects and functions."""
@@ -551,7 +553,8 @@ class Loader(object):
               obj._initializer_op = restore_ops[0]
             else:
               obj._initializer_op = control_flow_ops.group(*restore_ops)
-          elif isinstance(obj, lookup_ops.LookupInterface):
+          elif (isinstance(obj, lookup_ops.LookupInterface) or
+                isinstance(obj, resource.CapturableResource)):
             # We don't need to check for eager execution here, since this code
             # path should only be taken if we are restoring in graph mode.
             ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, restore_ops)

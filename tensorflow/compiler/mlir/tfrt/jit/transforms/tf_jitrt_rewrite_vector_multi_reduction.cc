@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_REWRITEVECTORMULTIREDUCTIONPASS
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using mlir::MLIRContext;
@@ -36,7 +36,7 @@ using mlir::vector::MultiDimReductionOp;
 using mlir::vector::VectorMultiReductionLowering;
 
 struct RewriteVectorMultiReductionPass
-    : public RewriteVectorMultiReductionPassBase<
+    : public impl::RewriteVectorMultiReductionPassBase<
           RewriteVectorMultiReductionPass> {
   void runOnOperation() override {
     MLIRContext* ctx = &getContext();

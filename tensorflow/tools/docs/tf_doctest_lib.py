@@ -172,6 +172,7 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
     # Separate out the floats, and replace `want` with the wild-card version
     # "result=7.0" => "result=..."
     want_text_parts, self.want_floats = self.extract_floats(want)
+    want_text_parts = [part.strip() for part in want_text_parts]
     want_text_wild = '...'.join(want_text_parts)
 
     # Find the floats in the string returned by the test

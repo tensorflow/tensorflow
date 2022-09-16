@@ -53,7 +53,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {device = "", value = dense<"value"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
       %outputs_2, %control_3 = tf_executor.island wraps "tf.Const"() {device = "", value = dense<-1> : tensor<i64>} : () -> tensor<i64>
       %outputs_4, %control_5 = tf_executor.island wraps "tf.Const"() {device = "", value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
-      %outputs_6, %control_7 = tf_executor.island wraps "tf.ParseExample"(%outputs_4, %outputs, %outputs_0, %outputs_2) {dense_shapes = [#tf_type.shape<1>], device = "", operand_segment_sizes = dense<[1, 1, 0, 1, 1]> : vector<5xi32>, result_segment_sizes = dense<[0, 0, 0, 1]> : vector<4xi32>} : (tensor<1x!tf_type.string>, tensor<1x!tf_type.string>, tensor<!tf_type.string>, tensor<i64>) -> tensor<*xi64>
+      %outputs_6, %control_7 = tf_executor.island wraps "tf.ParseExample"(%outputs_4, %outputs, %outputs_0, %outputs_2) {dense_shapes = [#tf_type.shape<1>], device = "", operand_segment_sizes = array<i32: 1, 1, 0, 1, 1>, result_segment_sizes = array<i32: 0, 0, 0, 1>} : (tensor<1x!tf_type.string>, tensor<1x!tf_type.string>, tensor<!tf_type.string>, tensor<i64>) -> tensor<*xi64>
       tf_executor.fetch %outputs_6 : tensor<*xi64>
     }
     func.return %0 : tensor<*xi64>

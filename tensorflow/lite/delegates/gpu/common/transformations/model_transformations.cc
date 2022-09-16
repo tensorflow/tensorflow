@@ -48,8 +48,6 @@ bool ApplyGeneralTransformations(ModelTransformer* transformer) {
                             NewRemoveIdentityReshape().get()) &&
          transformer->Apply("remove_identity_strided_slice",
                             NewRemoveIdentityStridedSlice().get()) &&
-         transformer->Apply("remove_cast_after_logical_op",
-                            NewRemoveCastAfterLogicalOp().get()) &&
          transformer->Apply("make_padding_from_concat",
                             NewMakePaddingFromConcat().get()) &&
          transformer->Apply("make_fully_connected_from_convolution",

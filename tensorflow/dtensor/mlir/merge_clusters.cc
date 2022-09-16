@@ -551,8 +551,8 @@ mlir::LogicalResult MergeClusters(mlir::ModuleOp module) {
                    nullptr;
           });
         }
-        op_to_move.moveBefore(new_cluster.getBody(),
-                              new_cluster.getBody()->end());
+        op_to_move.moveBefore(new_cluster.SingleBlock::getBody(),
+                              new_cluster.SingleBlock::getBody()->end());
       }
     }
 

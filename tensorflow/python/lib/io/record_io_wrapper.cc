@@ -176,7 +176,7 @@ class PyRecordWriter {
   }
 
   PyRecordWriter() = delete;
-  ~PyRecordWriter() { Close(); }
+  ~PyRecordWriter() { (void)Close(); }
 
   tensorflow::Status WriteRecord(tensorflow::StringPiece record) {
     if (IsClosed()) {

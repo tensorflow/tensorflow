@@ -242,7 +242,7 @@ cuda_py_test(
     name = "linear_operator_circulant_test",
     size = "medium",
     srcs = ["linear_operator_circulant_test.py"],
-    shard_count = 10,
+    shard_count = 15,
     tags = [
         "no_cuda11",  # TODO(b/197522782): reenable test after fixing.
         "noasan",  # times out, b/63678675
@@ -416,6 +416,7 @@ cuda_py_test(
     name = "linear_operator_lower_triangular_test",
     size = "medium",
     srcs = ["linear_operator_lower_triangular_test.py"],
+    shard_count = 4,
     tags = [
         "noasan",
         "optonly",
