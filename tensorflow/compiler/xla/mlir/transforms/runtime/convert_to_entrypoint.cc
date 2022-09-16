@@ -102,7 +102,7 @@ static void ConvertCustomCallOperations(func::FuncOp func, Value exec_ctx) {
     }
 
     b.create<cf::AssertOp>(
-        b.create<IsOkOp>(TypeRange(b.getI1Type()), call.status()),
+        b.create<IsOkOp>(TypeRange(b.getI1Type()), call.getStatus()),
         b.getStringAttr("custom call '" + std::string(custom_call.target) +
                         "' failed"));
 

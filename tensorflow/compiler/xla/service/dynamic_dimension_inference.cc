@@ -1627,8 +1627,15 @@ Status DynamicDimensionInferenceVisitor::HandleMap(HloInstruction* hlo) {
 Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo,
-      [&](HloInstruction* /*operand*/, ShapeIndex /*index*/, int64_t dimension,
+      [&](HloInstruction* operand, ShapeIndex dynamic_index, int64_t dimension,
           int64_t operand_index, HloInstruction* operand_dynamic_size) {
+        // Sometimes the incoming operand dimension is no longer dynamic,
+        // although it is still marked as dynamic in the parent computation.
+        // Simply return OK in this case.
+        if (!ShapeUtil::GetSubshape(operand->shape(), dynamic_index)
+                 .is_dynamic_dimension(dimension)) {
+          return OkStatus();
+        }
         if (operand_index == 0) {
           parent_->SetDynamicSize(hlo, {}, dimension, operand_dynamic_size);
           return OkStatus();
