@@ -99,7 +99,7 @@ struct AsyncBundleTypeStorage final
       public llvm::TrailingObjects<AsyncBundleTypeStorage, Type> {
   using KeyTy = TypeRange;
 
-  explicit AsyncBundleTypeStorage(unsigned numTypes) : num_elements(numTypes) {}
+  explicit AsyncBundleTypeStorage(unsigned numTypes) : numElements(numTypes) {}
 
   // Construction.
   static AsyncBundleTypeStorage* construct(TypeStorageAllocator& allocator,
@@ -119,7 +119,7 @@ struct AsyncBundleTypeStorage final
   bool operator==(const KeyTy& key) const { return key == getTypes(); }
 
   // Return the number of held types.
-  unsigned size() const { return num_elements; }
+  unsigned size() const { return numElements; }
 
   // Return the held types.
   ArrayRef<Type> getTypes() const {
@@ -136,7 +136,7 @@ struct AsyncBundleTypeStorage final
   }
 
   // The number of tuple elements.
-  unsigned num_elements;
+  unsigned numElements;
 };
 
 }  // namespace detail
@@ -813,7 +813,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 // Async ops
 //===----------------------------------------------------------------------===//
 
-Type MaybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types) {
+Type maybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types) {
   if (types.size() == 1) return types[0];
   return TupleType::get(ctx, TypeRange(types));
 }
@@ -860,11 +860,11 @@ LogicalResult AsyncStartOp::verify() {
     return emitOpError() << "result is expected to be a bundle of at least 2 "
                             "components, but got "
                          << resultTypes.size();
-  if (resultTypes[0] != MaybeTupleFromTypes(getContext(), calleeInputTypes)) {
+  if (resultTypes[0] != maybeTupleFromTypes(getContext(), calleeInputTypes)) {
     return emitOpError()
            << "component #0 of return type doesn't match callee input types";
   }
-  if (resultTypes[1] != MaybeTupleFromTypes(getContext(), calleeResultTypes)) {
+  if (resultTypes[1] != maybeTupleFromTypes(getContext(), calleeResultTypes)) {
     return emitOpError()
            << "component #1 of return type doesn't match callee result types";
   }
@@ -897,11 +897,11 @@ LogicalResult AsyncUpdateOp::verify() {
     return emitOpError() << "operand is expected to be a bundle of at least 2 "
                             "components, but got "
                          << bundleTypes.size();
-  if (bundleTypes[0] != MaybeTupleFromTypes(getContext(), calleeInputTypes)) {
+  if (bundleTypes[0] != maybeTupleFromTypes(getContext(), calleeInputTypes)) {
     return emitOpError() << "component #0 of operand bundle type doesn't match "
                             "callee input types";
   }
-  if (bundleTypes[1] != MaybeTupleFromTypes(getContext(), calleeResultTypes)) {
+  if (bundleTypes[1] != maybeTupleFromTypes(getContext(), calleeResultTypes)) {
     return emitOpError() << "component #1 of operand bundle type doesn't match "
                             "callee result types";
   }
@@ -944,11 +944,11 @@ LogicalResult AsyncDoneOp::verify() {
     return emitOpError() << "operand is expected to be a bundle of at least 2 "
                             "components, but got "
                          << bundleTypes.size();
-  if (bundleTypes[0] != MaybeTupleFromTypes(getContext(), calleeInputTypes)) {
+  if (bundleTypes[0] != maybeTupleFromTypes(getContext(), calleeInputTypes)) {
     return emitOpError()
            << "operand type component #0 doesn't match callee input types";
   }
-  if (bundleTypes[1] != MaybeTupleFromTypes(getContext(), calleeResultTypes)) {
+  if (bundleTypes[1] != maybeTupleFromTypes(getContext(), calleeResultTypes)) {
     return emitOpError()
            << "operand type component #1 doesn't match callee result types";
   }
