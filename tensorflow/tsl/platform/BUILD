@@ -973,7 +973,7 @@ cc_library(
     deps = [
         ":logging",
         ":protobuf",
-        "//tensorflow/core/platform:env",
+        "//tensorflow/tsl/platform:env",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/synchronization",
     ],

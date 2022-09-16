@@ -33,7 +33,7 @@ namespace tsl {
 using tensorflow::Context;
 using tensorflow::ContextKind;
 using tensorflow::WithContext;
-// TODO(aminim): remove after tensorflow/core/platform/setround.h migration.
+// TODO(aminim): remove after tensorflow/tsl/platform/setround.h migration.
 namespace port {
 using namespace tensorflow::port;  // NOLINT
 }  // namespace port

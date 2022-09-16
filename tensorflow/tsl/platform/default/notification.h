@@ -17,14 +17,19 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_NOTIFICATION_H_
 
 #include <assert.h>
+
 #include <atomic>              // NOLINT
 #include <chrono>              // NOLINT
 #include <condition_variable>  // NOLINT
 
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace tensorflow {
+// TODO(aminim): remove when migrating this header to TSL
+using tsl::condition_variable;
+using tsl::mutex;
+using tsl::mutex_lock;
 
 class Notification {
  public:

@@ -104,7 +104,7 @@ class TF_LOCKABLE mutex {
   // Unlock *this and wait until either cond.Eval is true, or abs_deadline_ns
   // has been reached, then atomically reacquire *this in the same mode in
   // which it was previously held, and return whether cond.Eval() is true.
-  // See tsl/core/platform/env_time.h for the time interface.
+  // See tsl/tsl/platform/env_time.h for the time interface.
   bool AwaitWithDeadline(const Condition& cond, uint64 abs_deadline_ns);
   // -------
 

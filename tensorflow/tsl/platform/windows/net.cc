@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/net.h"
+#include "tensorflow/tsl/platform/net.h"
 
 #include <sys/types.h>
 #include <winsock2.h>
