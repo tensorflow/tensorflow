@@ -38,8 +38,6 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
   {
     mlir::PassManager pm(module->getContext());
     pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createLegalizeSparseChloToLinalgPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createChloLegalizeToHloPass(
             /*legalize_broadcasts=*/true, /*expand_compositions=*/true));
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
