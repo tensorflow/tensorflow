@@ -54,9 +54,9 @@ cc_library(
     srcs = ["base64.cc"],
     hdrs = ["base64.h"],
     deps = [
-        ":errors",
         ":status",
         ":stringpiece",
+        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -94,6 +94,7 @@ cc_library(
         ":macros",
         ":platform",
         ":platform_port",
+        "//tensorflow/core/platform:platform_port",
     ],
 )
 
@@ -103,8 +104,8 @@ tf_cc_test(
     srcs = ["denormal_test.cc"],
     deps = [
         ":denormal",
-        ":test",
-        ":test_main",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -194,10 +195,10 @@ cc_library(
     deps = [
         ":logging",
         ":mutex",
-        ":scanner",
         ":strcat",
         ":stringpiece",
         ":types",
+        "//tensorflow/core/platform:scanner",
         "@com_google_absl//absl/algorithm:container",
     ],
     alwayslink = True,
@@ -269,10 +270,10 @@ cc_library(
     srcs = ["status_matchers.cc"],
     hdrs = ["status_matchers.h"],
     deps = [
-        ":status",
-        ":statusor",
-        ":test",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -413,7 +414,6 @@ filegroup(
         "stacktrace_handler.h",
         "statusor.h",
         "str_util.h",
-        "strcat.h",
         "stringpiece.h",
         "stringprintf.h",
         "subprocess.h",
@@ -915,11 +915,10 @@ cc_library(
     hdrs = ["threadpool_interface.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":mutex",
-        ":types",
         "//third_party/eigen3",
-        # TODO(ddunleavy) below needed for Eigen. Update once TSL is moved
+        # TODO(jakeharmon): Remove deps on core once mutex and types are migrated
         "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -1098,9 +1097,9 @@ tf_cc_test(
     srcs = ["fingerprint_test.cc"],
     deps = [
         ":fingerprint",
-        ":test",
-        ":test_main",
         ":types",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1191,25 +1190,4 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-cc_library(
-    name = "test_main",
-    testonly = 1,
-    srcs = ["test_main.cc"],
-    copts = tf_copts(),
-    linkopts = select({
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-lm"],
-    }),
-    deps = [
-        ":platform",
-        ":stacktrace_handler",
-        ":test",
-        ":test_benchmark",
-        "@com_google_absl//absl/strings",
-        # TODO(ddunleavy) remove below once TSL has it's own test ruies
-        "//tensorflow/core/platform:test",
-    ],
-    alwayslink = 1,
 )

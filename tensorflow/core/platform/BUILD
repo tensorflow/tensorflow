@@ -1107,14 +1107,18 @@ cc_library(
 cc_library(
     name = "test_main",
     testonly = 1,
-    srcs = [],
+    srcs = ["test_main.cc"],
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:windows": [],
         "//conditions:default": ["-lm"],
     }),
     deps = [
-        "//tensorflow/tsl/platform:test_main",
+        ":platform",
+        ":stacktrace_handler",
+        ":test",
+        ":test_benchmark",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

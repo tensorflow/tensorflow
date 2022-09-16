@@ -43,11 +43,7 @@ cc_library(
     deps = [
         ":error_windows",
         ":wide_char",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
-        "//third_party/eigen3",
         "//tensorflow/core/lib/core:error_codes_proto_cc",
-        # TODO(ddunleavy) replace below with tsl/platform equivalents
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:blocking_counter",
@@ -75,6 +71,9 @@ cc_library(
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/platform:tracing",
         "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -103,7 +102,7 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/tsl/platform:types",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -212,22 +211,22 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    deps = ["//tensorflow/tsl/platform:mutex"],
+    deps = ["//tensorflow/core/platform:mutex"],
 )
 
 cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
-    hdrs = ["//tensorflow/tsl/platform:stacktrace_handler.h"],
+    hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/tsl/platform:mutex",
-        "//tensorflow/tsl/platform:stacktrace",
-        "//tensorflow/tsl/platform:types",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -242,12 +241,12 @@ cc_library(
     ],
     textual_hdrs = ["subprocess.h"],
     deps = [
-        "//tensorflow/tsl/platform",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:macros",
-        "//tensorflow/tsl/platform:mutex",
-        "//tensorflow/tsl/platform:strcat",
-        "//tensorflow/tsl/platform:types",
+        "//tensorflow/core/platform",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/platform:types",
     ],
 )
 

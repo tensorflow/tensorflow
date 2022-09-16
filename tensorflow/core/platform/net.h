@@ -18,10 +18,4 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/net.h"
 
-namespace tensorflow {
-namespace internal {
-using ::tsl::internal::PickUnusedPortOrDie;  // NOLINT(misc-unused-using-decls)
-}  // namespace internal
-}  // namespace tensorflow
-
 #endif  // TENSORFLOW_CORE_PLATFORM_NET_H_
