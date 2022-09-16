@@ -1200,7 +1200,8 @@ struct Cholesky {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
                           const DebugOptions* debug_options,
-                          runtime::MemrefView operand, runtime::MemrefView a,
+                          runtime::StridedMemrefView operand,
+                          runtime::StridedMemrefView a,
                           runtime::MemrefView workspace,
                           runtime::MemrefView info, int64_t batch_size,
                           bool is_lower, int64_t n) const;
@@ -1210,8 +1211,8 @@ struct Cholesky {
 
 absl::Status Cholesky::operator()(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, runtime::MemrefView operand,
-    runtime::MemrefView a, runtime::MemrefView workspace,
+    const DebugOptions* debug_options, runtime::StridedMemrefView operand,
+    runtime::StridedMemrefView a, runtime::MemrefView workspace,
     runtime::MemrefView info, int64_t batch_size, bool is_lower,
     int64_t n) const {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1247,10 +1248,10 @@ static bool Cholesky(runtime::ExecutionContext* ctx, void** args, void** attrs,
   static auto* handler = CustomCall::Bind("xla.gpu.cholesky")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
-                             .Arg<runtime::MemrefView>()  // operand
-                             .Arg<runtime::MemrefView>()  // a
-                             .Arg<runtime::MemrefView>()  // workspace
-                             .Arg<runtime::MemrefView>()  // info
+                             .Arg<runtime::StridedMemrefView>()  // operand
+                             .Arg<runtime::StridedMemrefView>()  // a
+                             .Arg<runtime::MemrefView>()         // workspace
+                             .Arg<runtime::MemrefView>()         // info
                              .Attr<int64_t>("batch_size")
                              .Attr<bool>("is_lower")
                              .Attr<int64_t>("n")
