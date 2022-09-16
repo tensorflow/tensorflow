@@ -50,6 +50,8 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
+namespace runtime = ::xla::runtime;
+
 CpuExecutable::CpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<const BufferAssignment> assignment,
@@ -63,7 +65,8 @@ CpuExecutable::CpuExecutable(
       assignment_(std::move(assignment)),
       module_name_(entry_function_name) {
   if (assignment_) {
-    buffer_assignment_.reset(new BufferAssignmentProto(assignment_->ToProto()));
+    buffer_assignment_ =
+        std::make_shared<BufferAssignmentProto>(assignment_->ToProto());
   }
   if (has_module()) {
     XlaDebugInfoManager::Get()->RegisterModule(
@@ -83,6 +86,26 @@ CpuExecutable::CpuExecutable(
   VLOG(1) << "compute_function_ at address "
           << reinterpret_cast<void*>(compute_function_);
   jit_->DoneCompiling();
+}
+
+CpuExecutable::CpuExecutable(
+    std::unique_ptr<HloModule> hlo_module,
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+    std::unique_ptr<const BufferAssignment> assignment,
+    std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable)
+    : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
+                 std::move(hlo_profile_index_map)),
+      assignment_(std::move(assignment)),
+      xla_runtime_executable_(std::move(xla_runtime_executable)) {
+  if (assignment_) {
+    buffer_assignment_ =
+        std::make_shared<BufferAssignmentProto>(assignment_->ToProto());
+  }
+  if (has_module()) {
+    XlaDebugInfoManager::Get()->RegisterModule(
+        module().unique_id(), shared_module(), buffer_assignment_);
+  }
 }
 
 CpuExecutable::~CpuExecutable() {
@@ -313,6 +336,35 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     }
   }
   return std::move(result);
+}
+
+Status XlaRuntimeCpuExecutable::Execute(
+    const std::vector<runtime::BufferDesc>& buffers) {
+  runtime::Executable::CallFrame call_frame;
+  if (auto status =
+          default_executable_->InitializeCallFrame(buffers, &call_frame);
+      !status.ok()) {
+    return InternalError("Failed to initialize call frame: %s.",
+                         status.message());
+  }
+
+  // No results to return; they are returned via out params.
+  runtime::NoResultConverter converter;
+
+  runtime::Executable::ExecuteOpts opts;
+
+  // We don't expect to see any async tasks in the XLA Runtime executable.
+  opts.async_task_runner =
+      reinterpret_cast<runtime::AsyncTaskRunner*>(0xdeadbeef);
+
+  // Execute with the prepared call frame.
+  default_executable_->Execute(call_frame, opts);
+  if (auto status = default_executable_->ReturnResults(converter, &call_frame);
+      !status.ok()) {
+    return InternalError("Failed to execute XLA Runtime executable: %s.",
+                         status.message());
+  }
+  return Status::OK();
 }
 
 StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
