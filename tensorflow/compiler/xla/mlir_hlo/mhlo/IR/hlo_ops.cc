@@ -6754,16 +6754,77 @@ void SortOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
-  if (auto elements = operands.front().dyn_cast_or_null<SplatElementsAttr>()) {
-    return reshape(elements, getResult().getType().cast<ShapedType>());
+namespace {
+template <typename T>
+static DenseElementsAttr foldTransposeImpl(mhlo::TransposeOp op,
+                                           DenseElementsAttr valueAttr) {
+  llvm::SmallVector<int64_t> permutation =
+      llvm::to_vector(op.getPermutation().getValues<int64_t>());
+  int64_t rank = permutation.size();
+  auto inputShape = op.getOperand().getType().cast<ShapedType>().getShape();
+  auto outputType = op.getType().cast<ShapedType>();
+  auto outputShape = outputType.getShape();
+
+  assert(outputType.hasStaticShape() && "output shape must be static");
+  assert(rank >= 2 && "permutation size must >= 2");
+  llvm::SmallVector<int64_t> strides(rank, 1);
+  llvm::SmallVector<int64_t> outputStrides(rank, 1);
+  for (int64_t i = rank - 2; i >= 0; i--) {
+    strides[i] = strides[i + 1] * inputShape[i + 1];
+    outputStrides[i] = outputStrides[i + 1] * outputShape[i + 1];
   }
-  for (const auto& it : llvm::enumerate(getPermutation().getValues<APInt>())) {
-    if (it.index() != it.value()) {
+
+  auto calculateOutputIndices = [&](int64_t index) -> SmallVector<int64_t> {
+    SmallVector<int64_t> indices(rank, -1);
+    for (int64_t i = 0; i < rank; i++) {
+      indices[i] = index / outputStrides[i];
+      index = index % outputStrides[i];
+    }
+    return indices;
+  };
+
+  SmallVector<T> values;
+  for (int64_t i = 0; i < outputType.getNumElements(); i++) {
+    auto indices = calculateOutputIndices(i);
+    int64_t inputIndex = 0;
+    for (int64_t k = 0; k < rank; k++) {
+      inputIndex += indices[k] * strides[permutation[k]];
+    }
+    values.push_back(*(valueAttr.getValues<T>().begin() + inputIndex));
+  }
+
+  return DenseElementsAttr::get(op.getType(), values);
+}
+} // namespace
+
+OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
+  auto isIota = [](DenseIntElementsAttr permutation) -> bool {
+    for (const auto &it : llvm::enumerate(permutation.getValues<APInt>())) {
+      if (it.index() != it.value()) {
+        return false;
+      }
+    }
+    return true;
+  };
+  // when permutaion is iota, it's an identity operation.
+  if (isIota(this->getPermutation())) {
+    return getOperand();
+  }
+  auto outputType = getResult().getType().cast<ShapedType>();
+  if (auto elements = operands.front().dyn_cast_or_null<DenseElementsAttr>()) {
+    if (elements.isSplat()) {
+      return reshape(elements, outputType);
+    }
+    if (elements.size() > kFoldOpEltLimit) {
       return {};
     }
+    if (elements.getElementType().isa<IntegerType>()) {
+      return foldTransposeImpl<APInt>(*this, elements);
+    } else if (elements.getElementType().isa<FloatType>()) {
+      return foldTransposeImpl<APFloat>(*this, elements);
+    }
   }
-  return getOperand();
+  return {};
 }
 
 // transpose(transpose(X)) => transpose(X)

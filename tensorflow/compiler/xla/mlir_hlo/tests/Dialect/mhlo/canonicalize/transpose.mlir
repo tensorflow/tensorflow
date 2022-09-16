@@ -120,3 +120,27 @@ func.func @broadcast_transpose_multi_dim(%arg0 : tensor<95x64xf32>) -> tensor<5x
     // CHECK-NEXT: return [[RET]]
     func.return %1 : tensor<5x64x31x95xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @transpose_non_splat_constant_2d
+func.func @transpose_non_splat_constant_2d() -> tensor<2x1xf32> {
+  %0 = mhlo.constant dense<[[1.000000e+00, 0.000000e+00]]> : tensor<1x2xf32>
+  %1 = "mhlo.transpose"(%0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<1x2xf32>) -> tensor<2x1xf32>
+  // CHECK:  %[[RET:.+]] = mhlo.constant 
+  // CHECK-SAME{LITERAL}:  dense<[[1.000000e+00], [0.000000e+00]]> : tensor<2x1xf32>
+  // CHECK-NEXT:  return %[[RET]]
+  return %1 : tensor<2x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: transpose_non_splat_constant_3d
+func.func @transpose_non_splat_constant_3d() -> tensor<2x2x2xf32> {
+  %0 = mhlo.constant dense<[[[0.0, 1.0], [2.0, 3.0]], [[4.0, 5.0], [6.0, 7.0]]]> : tensor<2x2x2xf32>
+  %1 = "mhlo.transpose"(%0) {permutation = dense<[2, 1, 0]> : tensor<3xi64>} : (tensor<2x2x2xf32>) -> tensor<2x2x2xf32>
+  // CHECK:  %[[RET:.+]] = mhlo.constant 
+  // CHECK-SAME{LITERAL}:  dense<[[[0.000000e+00, 4.000000e+00], [2.000000e+00, 6.000000e+00]], [[1.000000e+00, 5.000000e+00], [3.000000e+00, 7.000000e+00]]]> : tensor<2x2x2xf32>
+  // CHECK-NEXT:  return %[[RET]]
+  return %1 : tensor<2x2x2xf32>
+}
