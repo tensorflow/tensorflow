@@ -276,6 +276,25 @@ func.func @parallel_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
 
 // -----
 
+func.func @loop_on_points(%output: tensor<8xf32>) -> tensor<8xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  %c0_f32 = arith.constant 0.0 : f32
+
+  %space = gml_st.space [8] : !gml_st.tile<8>
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1) {
+    %tile = gml_st.tile %space [%i] [1] [1]
+      : !gml_st.tile<8> to !gml_st.tile<1>
+    gml_st.set_yield %c0_f32 into %output[%tile]
+      : f32 into tensor<8xf32>[!gml_st.tile<1>]
+  } : tensor<8xf32>
+  func.return %sum : tensor<8xf32>
+}
+// CHECK-LABEL: func @loop_on_points
+
+// -----
+
 #id_1d = affine_map<(d0) -> (d0)>
 
 func.func @for_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,

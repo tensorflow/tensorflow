@@ -155,45 +155,53 @@ void MaterializeOp::build(OpBuilder &builder, OperationState &result,
   build(builder, result, *resultTypeOr, source, set);
 }
 
-LogicalResult MaterializeOp::verify() {
-  RankedTensorType sourceType = getSource().getType();
-  auto sourceRank = sourceType.getRank();
-  auto elementType = sourceType.getElementType();
-  Type setType = getSet().getType();
-  Type resultType = getType();
+LogicalResult verifyCompatibleExtractedSubset(Operation *op,
+                                              RankedTensorType tensorType,
+                                              Type extractedType,
+                                              Type setType) {
+  auto sourceRank = tensorType.getRank();
+  auto elementType = tensorType.getElementType();
 
   // If the result is a scalar, check that the tile had a single element.
-  if (!resultType.isa<ShapedType>()) {
+  if (!extractedType.isa<ShapedType>()) {
     if (setType.isa<PointType>()) return success();
 
     auto tileType = setType.cast<TileType>();
-    if (resultType != elementType) {
-      return emitOpError("expected the result type ")
-             << resultType << " to match source element type " << elementType;
+    if (extractedType != elementType) {
+      return op->emitOpError("expected the result type ")
+             << extractedType << " to match source element type "
+             << elementType;
     }
     if (tileType.hasStaticShape() && tileType.getNumElements() == 1)
       return success();
 
-    return emitOpError("expected tile type ")
+    return op->emitOpError("expected tile type ")
            << tileType << " to have a single element shape";
   }
 
   // If the result is a tensor, compare with the inferred type.
-  auto tensorType = resultType.cast<RankedTensorType>();
+  auto extractedTensorType = extractedType.cast<RankedTensorType>();
   auto tileType = setType.cast<TileType>();
   int64_t tileRank = tileType.getRank();
   if (tileRank != sourceRank) {
-    return emitOpError("expected source rank = ")
+    return op->emitOpError("expected source rank = ")
            << sourceRank << " to match tile rank = " << tileRank;
   }
 
   auto inferredType =
-      RankedTensorType::get(tileType.getShape(), sourceType.getElementType());
-  if (tensorType != inferredType) {
-    return emitOpError("expected result type = ")
-           << tensorType << " to match the inferred type = " << inferredType;
+      RankedTensorType::get(tileType.getShape(), tensorType.getElementType());
+  if (extractedTensorType != inferredType) {
+    return op->emitOpError("expected result type = ")
+           << extractedTensorType
+           << " to match the inferred type = " << inferredType;
   }
+
   return success();
+}
+
+LogicalResult MaterializeOp::verify() {
+  return verifyCompatibleExtractedSubset(getOperation(), getSource().getType(),
+                                         getType(), getSet().getType());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1870,6 +1878,13 @@ void SetYieldOp::build(
 }
 
 LogicalResult SetYieldOp::verify() {
+  for (const auto [dst, src, set] :
+       llvm::zip(getDsts(), getSrcs(), getSets())) {
+    if (failed(verifyCompatibleExtractedSubset(
+            getOperation(), dst.getType().cast<RankedTensorType>(),
+            src.getType(), set.getType())))
+      return failure();
+  }
   auto accumulatorCount = llvm::count_if(
       getAccumulatorFlags(),
       [](Attribute attr) { return attr.cast<BoolAttr>().getValue(); });

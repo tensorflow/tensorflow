@@ -282,9 +282,9 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
       : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
     ```
   }];
-  let arguments = (ins Variadic<AnyType>:$srcs,
-                       Variadic<AnyType>:$dsts,
-                       Variadic<AnyType>:$sets,
+  let arguments = (ins Variadic<RankedTensorOrScalar>:$srcs,
+                       Variadic<RankedTensor>:$dsts,
+                       Variadic<AnySet>:$sets,
                        BoolArrayAttr:$accumulatorFlags);
   let regions = (region VariadicRegion<SizedRegion<1>>:$accumulators);
   let hasCustomAssemblyFormat = 1;
