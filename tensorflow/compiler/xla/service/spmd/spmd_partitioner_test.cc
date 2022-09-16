@@ -2587,6 +2587,39 @@ ENTRY %cluster_2013453984438090939__.47
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 4000);
 }
 
+TEST_F(SpmdPartitioningTest, PartitionCustomCall_BatchPartitionedDims) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,32128] parameter(0)
+  %copy.0 = f32[8,32128] copy(%param0),
+    sharding={devices=[8,1]0,1,2,3,4,5,6,7}
+  %custom-call = (f32[8,2]{1,0}, s32[8,2]{1,0})
+    custom-call(%copy.0), custom_call_target="TopK"
+  %get-tuple-element = f32[8,2]{1,0}
+    get-tuple-element((f32[8,2]{1,0}, s32[8,2]{1,0}) %custom-call), index=0,
+    sharding={devices=[8,1]0,1,2,3,4,5,6,7}
+  %get-tuple-element.1 = s32[8,2]{1,0}
+    get-tuple-element((f32[8,2]{1,0}, s32[8,2]{1,0}) %custom-call), index=1,
+    sharding={devices=[8,1]0,1,2,3,4,5,6,7}
+  ROOT %tuple = (f32[8,2]{1,0}, s32[8,2]{1,0})
+    tuple(%get-tuple-element, %get-tuple-element.1),
+    sharding={{replicated}, {replicated}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  LOG(ERROR) << module->ToString();
+  auto custom_call = FindInstruction(module.get(), "custom-call.1");
+  EXPECT_EQ(custom_call->operand(0)->shape().dimensions(1), 32128);
+  auto sort = FindInstruction(module.get(), "sort");
+  EXPECT_EQ(sort->operand(0)->shape().dimensions(0), 1);
+  EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 2);
+  EXPECT_EQ(sort->operand(1)->shape().dimensions(0), 1);
+  EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 2);
+}
+
 TEST_F(SpmdPartitioningTest, PartitionCustomCall_TwoPartitionedDims) {
   absl::string_view hlo_string = R"(
 HloModule module
