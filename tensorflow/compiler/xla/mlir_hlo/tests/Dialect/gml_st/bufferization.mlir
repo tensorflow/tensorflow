@@ -154,8 +154,7 @@ func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
   } : tensor<?x?xf32>
   return %result : tensor<?x?xf32>
 }
-// CHECK-DAG: #[[$MAP0:.+]] = affine_map<(d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)>
-// CHECK-DAG: #[[$MAP1:.+]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK: #[[$MAP1:.+]] = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-LABEL: func.func @parallel_with_tiles(
 // CHECK-SAME: %[[LHS:.*]]: memref<?x?xf32>, %[[RHS:.*]]: memref<?x?xf32>,
@@ -170,16 +169,16 @@ func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 // CHECK:     gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-SAME:    to (%[[DIM_0]], %[[DIM_1]]) step (%[[C4]], %[[C1]]) {
 // CHECK-DAG:   %[[OUT_SUB:.*]] = memref.subview %[[OUT]][%[[I]], %[[J]]]
-// CHECK-SAME:    : memref<?x?xf32> to memref<?x1xf32, #[[$MAP0]]>
+// CHECK-SAME:    : memref<?x?xf32> to memref<?x1xf32, strided<[?, 1], offset: ?>>
 // CHECK-DAG:   %[[RHS_SUB:.*]] = memref.subview %[[RHS]][%[[I]], %[[J]]]
-// CHECK-SAME:    : memref<?x?xf32> to memref<?x1xf32, #[[$MAP0]]>
+// CHECK-SAME:    : memref<?x?xf32> to memref<?x1xf32, strided<[?, 1], offset: ?>>
 // CHECK-DAG:   %[[LHS_SUB:.*]] = memref.subview %[[LHS]][%[[I]], %[[J]]]
-// CHECK-SAME:    : memref<?x?xf32> to memref<?x1xf32, #[[$MAP0]]>
+// CHECK-SAME:    : memref<?x?xf32> to memref<?x1xf32, strided<[?, 1], offset: ?>>
 
 // CHECK:       linalg.generic {
 // CHECK-SAME:    indexing_maps = [#[[$MAP1]], #[[$MAP1]], #[[$MAP1]]]
-// CHECK-SAME:    ins(%[[LHS_SUB]], %[[RHS_SUB]] : memref<?x1xf32, #[[$MAP0]]>
-// CHECK-SAME:    outs(%[[OUT_SUB]] : memref<?x1xf32, #[[$MAP0]]>)
+// CHECK-SAME:    ins(%[[LHS_SUB]], %[[RHS_SUB]] : memref<?x1xf32, strided<[?, 1], offset: ?>>
+// CHECK-SAME:    outs(%[[OUT_SUB]] : memref<?x1xf32, strided<[?, 1], offset: ?>>)
 // CHECK:       gml_st.set_yield
 // CHECK:     }
 // CHECK: return %[[OUT]] : memref<?x?xf32>

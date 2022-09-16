@@ -42,7 +42,7 @@ func.func @tiled_dot(%A: tensor<?xf32> {bufferization.writeable = false},
     //     CHECK:   %[[SV_B:.*]] = memref.subview {{.*}}
     %7 = tensor.extract_slice %arg5[%arg3] [%6] [1] : tensor<?xf32> to tensor<?xf32>
 
-    //     CHECK:   linalg.dot ins(%[[SV_A]], %[[SV_B]] : memref<?xf32, #map{{[0-9]}}>, memref<?xf32, #map{{[0-9]}}>) outs(%{{.*}} : memref<f32>)
+    //     CHECK:   linalg.dot ins(%[[SV_A]], %[[SV_B]] : memref<?xf32, strided{{.*}}>, memref<?xf32, strided<{{.*}}>>) outs(%{{.*}} : memref<f32>)
     %8 = linalg.dot ins(%4, %7 : tensor<?xf32>, tensor<?xf32>)
                     outs(%arg6 : tensor<f32>) -> tensor<f32>
 
@@ -84,7 +84,7 @@ func.func @tiled_fill(%A: tensor<?xf32> {bufferization.writeable = true}) -> ten
     //     CHECK:   %[[SV_A:.*]] = memref.subview {{.*}}
     %4 = tensor.extract_slice %arg1[%arg3] [%3] [1] : tensor<?xf32> to tensor<?xf32>
 
-    //     CHECK:   linalg.fill ins(%{{.*}}: f32) outs(%[[SV_A]] : memref<?xf32, #map{{[0-9]}}>)
+    //     CHECK:   linalg.fill ins(%{{.*}}: f32) outs(%[[SV_A]] : memref<?xf32, strided{{.*}}>)
     %5 = linalg.fill ins(%f0: f32) outs(%4: tensor<?xf32>)
       -> tensor<?xf32>
     %6 = tensor.insert_slice %5 into %arg1[%arg3] [%3] [1] : tensor<?xf32> into tensor<?xf32>
