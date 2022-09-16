@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <tuple>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -136,29 +137,61 @@ Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
 // MaterializeOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult MaterializeOp::inferReturnTypes(
-    MLIRContext *, Optional<Location>, ValueRange operands,
-    DictionaryAttr attributes, RegionRange,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  MaterializeOp::Adaptor adaptor(operands, attributes);
-
-  ShapedType sourceType = adaptor.getSource().getType().cast<ShapedType>();
-  Type setType = adaptor.getSet().getType();
-
+static FailureOr<Type> inferReturnType(RankedTensorType sourceType,
+                                       Type setType) {
+  if (setType.isa<PointType>()) return sourceType.getElementType();
   if (auto tileType = setType.dyn_cast<TileType>()) {
-    if (auto memrefType = sourceType.dyn_cast<MemRefType>()) {
-      inferredReturnTypes.push_back(
-          MemRefType::get(tileType.getShape(), sourceType.getElementType()));
-    } else if (auto tensorType = sourceType.dyn_cast<RankedTensorType>()) {
-      inferredReturnTypes.push_back(RankedTensorType::get(
-          tileType.getShape(), sourceType.getElementType()));
-    } else {
-      return failure();
+    return RankedTensorType::get(tileType.getShape(),
+                                 sourceType.getElementType());
+  }
+  return failure();
+}
+
+void MaterializeOp::build(OpBuilder &builder, OperationState &result,
+                          Value source, Value set) {
+  auto sourceType = source.getType().cast<RankedTensorType>();
+  auto resultTypeOr = inferReturnType(sourceType, set.getType());
+  assert(resultTypeOr.hasValue() && "could not infer result type");
+  build(builder, result, *resultTypeOr, source, set);
+}
+
+LogicalResult MaterializeOp::verify() {
+  RankedTensorType sourceType = getSource().getType();
+  auto sourceRank = sourceType.getRank();
+  auto elementType = sourceType.getElementType();
+  Type setType = getSet().getType();
+  Type resultType = getType();
+
+  // If the result is a scalar, check that the tile had a single element.
+  if (!resultType.isa<ShapedType>()) {
+    if (setType.isa<PointType>()) return success();
+
+    auto tileType = setType.cast<TileType>();
+    if (resultType != elementType) {
+      return emitOpError("expected the result type ")
+             << resultType << " to match source element type " << elementType;
     }
-  } else if (setType.isa<PointType>()) {
-    inferredReturnTypes.push_back(sourceType.getElementType());
-  } else {
-    return failure();
+    if (tileType.hasStaticShape() && tileType.getNumElements() == 1)
+      return success();
+
+    return emitOpError("expected tile type ")
+           << tileType << " to have a single element shape";
+  }
+
+  // If the result is a tensor, compare with the inferred type.
+  auto tensorType = resultType.cast<RankedTensorType>();
+  auto tileType = setType.cast<TileType>();
+  int64_t tileRank = tileType.getRank();
+  if (tileRank != sourceRank) {
+    return emitOpError("expected source rank = ")
+           << sourceRank << " to match tile rank = " << tileRank;
+  }
+
+  auto inferredType =
+      RankedTensorType::get(tileType.getShape(), sourceType.getElementType());
+  if (tensorType != inferredType) {
+    return emitOpError("expected result type = ")
+           << tensorType << " to match the inferred type = " << inferredType;
   }
   return success();
 }

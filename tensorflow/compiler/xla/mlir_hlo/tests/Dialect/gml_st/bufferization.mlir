@@ -10,7 +10,7 @@ func.func @set_space(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
   %space = gml_st.space [%dim_0, %dim_1] : !gml_st.tile<?x?>
   %identity = gml_st.materialize %input[%space]
-    : tensor<?x?xf32>[!gml_st.tile<?x?>]
+    : tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
 
   return %identity : tensor<?x?xf32>
 }
@@ -32,7 +32,7 @@ func.func @set_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
     : !gml_st.tile<?x?> to !gml_st.tile<2x4>
 
   %slice = gml_st.materialize %input[%tile]
-    : tensor<?x?xf32>[!gml_st.tile<2x4>]
+    : tensor<?x?xf32>[!gml_st.tile<2x4>] to tensor<2x4xf32>
 
   return %slice : tensor<2x4xf32>
 }
@@ -58,7 +58,7 @@ func.func @set_point(%input: tensor<?x?xf32>) -> f32 {
   %pt = gml_st.point %tile[0, 1] : !gml_st.tile<2x4> to !gml_st.point
 
   %element = gml_st.materialize %input[%pt]
-    : tensor<?x?xf32>[!gml_st.point]
+    : tensor<?x?xf32>[!gml_st.point] to f32
 
   return %element : f32
 }
@@ -84,8 +84,8 @@ func.func @parallel_with_points(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
   %result = gml_st.parallel (%i, %j) = (%c0, %c0)
       to (%dim_0, %dim_1) step (%c1, %c1) {
     %pt = gml_st.point %space [%i, %j] : !gml_st.tile<?x?> to !gml_st.point
-    %lhs_elem = gml_st.materialize %lhs[%pt] : tensor<?x?xf32>[!gml_st.point]
-    %rhs_elem = gml_st.materialize %rhs[%pt] : tensor<?x?xf32>[!gml_st.point]
+    %lhs_elem = gml_st.materialize %lhs[%pt] : tensor<?x?xf32>[!gml_st.point] to f32
+    %rhs_elem = gml_st.materialize %rhs[%pt] : tensor<?x?xf32>[!gml_st.point] to f32
 
     %add_elem = arith.addf %lhs_elem, %rhs_elem : f32
 
@@ -135,11 +135,11 @@ func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
     %tile = gml_st.tile %space [%i, %j] [%size_0, 1] [1, 1]
       : !gml_st.tile<?x?> to !gml_st.tile<?x1>
     %lhs_tile = gml_st.materialize %lhs[%tile]
-      : tensor<?x?xf32>[!gml_st.tile<?x1>]
+      : tensor<?x?xf32>[!gml_st.tile<?x1>] to tensor<?x1xf32>
     %rhs_tile = gml_st.materialize %rhs[%tile]
-      : tensor<?x?xf32>[!gml_st.tile<?x1>]
+      : tensor<?x?xf32>[!gml_st.tile<?x1>] to tensor<?x1xf32>
     %init_tile = gml_st.materialize %init[%tile]
-      : tensor<?x?xf32>[!gml_st.tile<?x1>]
+      : tensor<?x?xf32>[!gml_st.tile<?x1>] to tensor<?x1xf32>
     %sum = linalg.generic {
         indexing_maps = [#map, #map, #map],
         iterator_types = ["parallel", "parallel"]}
@@ -199,8 +199,8 @@ func.func @for_with_points(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
       to (%dim_0, %dim_1) step (%c1, %c1)
       outs(%out_ = %init : tensor<?x?xf32>) {
     %pt = gml_st.point %space [%i, %j] : !gml_st.tile<?x?> to !gml_st.point
-    %lhs_elem = gml_st.materialize %lhs[%pt] : tensor<?x?xf32>[!gml_st.point]
-    %rhs_elem = gml_st.materialize %rhs[%pt] : tensor<?x?xf32>[!gml_st.point]
+    %lhs_elem = gml_st.materialize %lhs[%pt] : tensor<?x?xf32>[!gml_st.point] to f32
+    %rhs_elem = gml_st.materialize %rhs[%pt] : tensor<?x?xf32>[!gml_st.point] to f32
 
     %add_elem = arith.addf %lhs_elem, %rhs_elem : f32
 

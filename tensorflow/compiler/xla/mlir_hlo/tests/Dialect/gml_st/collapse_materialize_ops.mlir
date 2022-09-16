@@ -12,6 +12,7 @@ func.func @collapsed(%arg : tensor<?x?xf32>, %i : index, %j : index, %k : index,
   %2 = gml_st.tile %1 [0, %k] [4, %n] [1, %b]
       : !gml_st.tile<4x128> to !gml_st.tile<4x?>
   %3 = gml_st.materialize %arg[%2] : tensor<?x?xf32>[!gml_st.tile<4x?>]
+    to tensor<4x?xf32>
   func.return %3 : tensor<4x?xf32>
 }
 
@@ -43,8 +44,8 @@ func.func @uncollapsed(%arg: tensor<?x?xf32>, %i: index, %j: index, %k: index,
   %2 = gml_st.space [4, 128] : !gml_st.tile<4x128>
   %3 = gml_st.tile %2 [0, %k] [4, %n] [1, %b]
       : !gml_st.tile<4x128> to !gml_st.tile<4x?>
-  %4 = gml_st.materialize %arg[%1] : tensor<?x?xf32>[!gml_st.tile<4x128>]
-  %5 = gml_st.materialize %4[%3] : tensor<4x128xf32>[!gml_st.tile<4x?>]
+  %4 = gml_st.materialize %arg[%1] : tensor<?x?xf32>[!gml_st.tile<4x128>] to tensor<4x128xf32>
+  %5 = gml_st.materialize %4[%3] : tensor<4x128xf32>[!gml_st.tile<4x?>] to tensor<4x?xf32>
   return %5 : tensor<4x?xf32>
 }
 
@@ -77,7 +78,7 @@ func.func @deep_collapsed(%arg: tensor<?x?xf32>, %i: index, %j: index, %k: index
   %5 = gml_st.tile %4 [0, 0] [4, %n] [1, %b] : !gml_st.tile<4x?> to !gml_st.tile<4x?>
   %6 = gml_st.tile %5 [0, 0] [4, %n] [1, %b] : !gml_st.tile<4x?> to !gml_st.tile<4x?>
   %7 = gml_st.tile %6 [0, 0] [4, %n] [1, %b] : !gml_st.tile<4x?> to !gml_st.tile<4x?>
-  %8 = gml_st.materialize %arg[%7] : tensor<?x?xf32>[!gml_st.tile<4x?>]
+  %8 = gml_st.materialize %arg[%7] : tensor<?x?xf32>[!gml_st.tile<4x?>] to tensor<4x?xf32>
   return %8 : tensor<4x?xf32>
 }
 
@@ -114,13 +115,13 @@ func.func @deep_uncollapsed(%arg: tensor<?x?xf32>, %i: index, %j: index, %k: ind
   %11 = gml_st.tile %10 [0, 0] [4, %n] [1, %b] : !gml_st.tile<4x?> to !gml_st.tile<4x?>
   %12 = gml_st.space [4, 128] : !gml_st.tile<4x128>
   %13 = gml_st.tile %12 [0, %k] [4, %n] [1, %b] : !gml_st.tile<4x128> to !gml_st.tile<4x?>
-  %14 = gml_st.materialize %arg[%1] : tensor<?x?xf32>[!gml_st.tile<4x128>]
-  %15 = gml_st.materialize %14[%13] : tensor<4x128xf32>[!gml_st.tile<4x?>]
-  %16 = gml_st.materialize %15[%11] : tensor<4x?xf32>[!gml_st.tile<4x?>]
-  %17 = gml_st.materialize %16[%9] : tensor<4x?xf32>[!gml_st.tile<4x?>]
-  %18 = gml_st.materialize %17[%7] : tensor<4x?xf32>[!gml_st.tile<4x?>]
-  %19 = gml_st.materialize %18[%5] : tensor<4x?xf32>[!gml_st.tile<4x?>]
-  %20 = gml_st.materialize %19[%3] : tensor<4x?xf32>[!gml_st.tile<4x?>]
+  %14 = gml_st.materialize %arg[%1] : tensor<?x?xf32>[!gml_st.tile<4x128>] to tensor<4x128xf32>
+  %15 = gml_st.materialize %14[%13] : tensor<4x128xf32>[!gml_st.tile<4x?>] to tensor<4x?xf32>
+  %16 = gml_st.materialize %15[%11] : tensor<4x?xf32>[!gml_st.tile<4x?>] to tensor<4x?xf32>
+  %17 = gml_st.materialize %16[%9] : tensor<4x?xf32>[!gml_st.tile<4x?>] to tensor<4x?xf32>
+  %18 = gml_st.materialize %17[%7] : tensor<4x?xf32>[!gml_st.tile<4x?>] to tensor<4x?xf32>
+  %19 = gml_st.materialize %18[%5] : tensor<4x?xf32>[!gml_st.tile<4x?>] to tensor<4x?xf32>
+  %20 = gml_st.materialize %19[%3] : tensor<4x?xf32>[!gml_st.tile<4x?>] to tensor<4x?xf32>
   return %20 : tensor<4x?xf32>
 }
 

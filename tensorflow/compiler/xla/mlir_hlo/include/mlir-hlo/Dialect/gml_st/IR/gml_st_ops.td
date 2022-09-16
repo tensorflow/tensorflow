@@ -23,15 +23,19 @@ include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
-def GMLST_MaterializeOp : GMLST_Op<"materialize", [
-    NoSideEffect,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let arguments = (ins AnyShaped:$source, AnySet:$set);
-  let results = (outs AnyType:$result);
+def RankedTensor : AnyTypeOf<[AnyRankedTensor], "", "::mlir::RankedTensorType">;
+def RankedTensorOrScalar : AnyTypeOf<[AnyRankedTensor, AnyFloat, AnyInteger]>;
+
+def GMLST_MaterializeOp : GMLST_Op<"materialize", [NoSideEffect]> {
+  let arguments = (ins RankedTensor:$source, AnySet:$set);
+  let results = (outs RankedTensorOrScalar:$result);
+
+  let builders = [OpBuilder<(ins "Value":$source, "Value":$set)>];
+
   let assemblyFormat = [{
     $source`[` $set `]` attr-dict `:` type($source) `[` type($set) `]`
+      `to` type($result)
   }];
-  let hasVerifier = 0;
 }
 
 def GMLST_OffsetOp : GMLST_Op<"offset", [NoSideEffect]> {

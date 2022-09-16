@@ -60,49 +60,25 @@ func.func @dynamic_types(%size : index) {
 
 // -----
 
-// CHECK-LABEL: @materialize_static_memref
-// CHECK-SAME: %[[MEMREF:.*]]: memref<64x32xf32>, %[[TILE:.*]]: !gml_st.tile<42x16>, %[[POINT:.*]]: !gml_st.point
-func.func @materialize_static_memref(%memref: memref<64x32xf32>, %tile: !gml_st.tile<42x16>, %point: !gml_st.point) {
-  // CHECK: %{{.*}} = gml_st.materialize %[[MEMREF]][%[[TILE]]] : memref<64x32xf32>[!gml_st.tile<42x16>]
-  %0 = gml_st.materialize %memref[%tile] : memref<64x32xf32>[!gml_st.tile<42x16>]
-  // CHECK: %{{.*}} = gml_st.materialize %[[MEMREF]][%[[POINT]]] : memref<64x32xf32>[!gml_st.point]
-  %1 = gml_st.materialize %memref[%point] : memref<64x32xf32>[!gml_st.point]
-  func.return
-}
-
-// -----
-
 // CHECK-LABEL: @materialize_static_tensor
-// CHECK-SAME: %[[TENSOR:.*]]: tensor<64x32xf32>, %[[TILE:.*]]: !gml_st.tile<42x16>, %[[POINT:.*]]: !gml_st.point
-func.func @materialize_static_tensor(%tensor: tensor<64x32xf32>, %tile: !gml_st.tile<42x16>, %point: !gml_st.point) {
+// CHECK-SAME: %[[TENSOR:.*]]: tensor<64x32xf32>, %[[TILE:.*]]: !gml_st.tile<42x16>, %[[POINT:.*]]: !gml_st.tile<1x1>
+func.func @materialize_static_tensor(%tensor: tensor<64x32xf32>, %tile: !gml_st.tile<42x16>, %point: !gml_st.tile<1x1>) {
   // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]][%[[TILE]]] : tensor<64x32xf32>[!gml_st.tile<42x16>]
-  %0 = gml_st.materialize %tensor[%tile] : tensor<64x32xf32>[!gml_st.tile<42x16>]
-  // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]][%[[POINT]]] : tensor<64x32xf32>[!gml_st.point]
-  %1 = gml_st.materialize %tensor[%point] : tensor<64x32xf32>[!gml_st.point]
-  func.return
-}
-
-// -----
-
-// CHECK-LABEL: @materialize_dynamic_memref
-// CHECK-SAME: %[[MEMREF:.*]]: memref<?x?xf32>, %[[TILE:.*]]: !gml_st.tile<42x16>, %[[POINT:.*]]: !gml_st.point
-func.func @materialize_dynamic_memref(%memref: memref<?x?xf32>, %tile: !gml_st.tile<42x16>, %point: !gml_st.point) {
-  // CHECK: %{{.*}} = gml_st.materialize %[[MEMREF]][%[[TILE]]] : memref<?x?xf32>[!gml_st.tile<42x16>]
-  %0 = gml_st.materialize %memref[%tile] : memref<?x?xf32>[!gml_st.tile<42x16>]
-  // CHECK: %{{.*}} = gml_st.materialize %[[MEMREF]][%[[POINT]]] : memref<?x?xf32>[!gml_st.point]
-  %1 = gml_st.materialize %memref[%point] : memref<?x?xf32>[!gml_st.point]
+  %0 = gml_st.materialize %tensor[%tile] : tensor<64x32xf32>[!gml_st.tile<42x16>] to tensor<42x16xf32>
+  // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]][%[[POINT]]] : tensor<64x32xf32>[!gml_st.tile<1x1>]
+  %1 = gml_st.materialize %tensor[%point] : tensor<64x32xf32>[!gml_st.tile<1x1>] to f32
   func.return
 }
 
 // -----
 
 // CHECK-LABEL: @materialize_dynamic_tensor
-// CHECK-SAME: %[[TENSOR:.*]]: tensor<?x?xf32>, %[[TILE:.*]]: !gml_st.tile<42x16>, %[[POINT:.*]]: !gml_st.point
-func.func @materialize_dynamic_tensor(%tensor: tensor<?x?xf32>, %tile: !gml_st.tile<42x16>, %point: !gml_st.point) {
+// CHECK-SAME: %[[TENSOR:.*]]: tensor<?x?xf32>, %[[TILE:.*]]: !gml_st.tile<42x16>, %[[POINT:.*]]: !gml_st.tile<1x1>
+func.func @materialize_dynamic_tensor(%tensor: tensor<?x?xf32>, %tile: !gml_st.tile<42x16>, %point: !gml_st.tile<1x1>) {
   // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]][%[[TILE]]] : tensor<?x?xf32>[!gml_st.tile<42x16>]
-  %0 = gml_st.materialize %tensor[%tile] : tensor<?x?xf32>[!gml_st.tile<42x16>]
-  // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]][%[[POINT]]] : tensor<?x?xf32>[!gml_st.point]
-  %1 = gml_st.materialize %tensor[%point] : tensor<?x?xf32>[!gml_st.point]
+  %0 = gml_st.materialize %tensor[%tile] : tensor<?x?xf32>[!gml_st.tile<42x16>] to tensor<42x16xf32>
+  // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]][%[[POINT]]] : tensor<?x?xf32>[!gml_st.tile<1x1>]
+  %1 = gml_st.materialize %tensor[%point] : tensor<?x?xf32>[!gml_st.tile<1x1>] to f32
   func.return
 }
 
@@ -275,11 +251,11 @@ func.func @parallel_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
     %tile = gml_st.tile %space [%i] [4] [1]
       : !gml_st.tile<8> to !gml_st.tile<4>
     %lhs_sub = gml_st.materialize %lhs[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %rhs_sub = gml_st.materialize %rhs[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %out_sub = gml_st.materialize %output[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
 
     %result_sub = linalg.generic {
         indexing_maps = [#id_1d, #id_1d, #id_1d],
@@ -314,11 +290,11 @@ func.func @for_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
     %tile = gml_st.tile %space [%i] [4] [1]
       : !gml_st.tile<8> to !gml_st.tile<4>
     %lhs_sub = gml_st.materialize %lhs[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %rhs_sub = gml_st.materialize %rhs[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %out_sub = gml_st.materialize %out_[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
 
     %result_sub = linalg.generic {
         indexing_maps = [#id_1d, #id_1d, #id_1d],
@@ -352,11 +328,11 @@ func.func @trivial_acc_region(%lhs: tensor<8xf32>,
     %tile = gml_st.tile %space [%i] [4] [1]
       : !gml_st.tile<8> to !gml_st.tile<4>
     %lhs_sub = gml_st.materialize %lhs[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %rhs_sub = gml_st.materialize %rhs[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %out_sub = gml_st.materialize %output[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
 
     %result_sub = linalg.generic {
         indexing_maps = [#id_1d, #id_1d, #id_1d],
@@ -397,13 +373,13 @@ func.func @two_acc_region(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
     %tile = gml_st.tile %space [%i] [4] [1]
       : !gml_st.tile<8> to !gml_st.tile<4>
     %lhs_sub = gml_st.materialize %lhs[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %rhs_sub = gml_st.materialize %rhs[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %out_sub = gml_st.materialize %output[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %out_2_sub = gml_st.materialize %output_2[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
 
     %result_sub = linalg.generic {
         indexing_maps = [#id_1d, #id_1d, #id_1d],
@@ -461,11 +437,11 @@ func.func @accumulator_region(%lhs: tensor<8xf32>,
     %tile = gml_st.tile %space [%i] [4] [1]
       : !gml_st.tile<8> to !gml_st.tile<4>
     %lhs_sub = gml_st.materialize %lhs[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %rhs_sub = gml_st.materialize %rhs[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %out_sub = gml_st.materialize %output[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
 
     %result_sub = linalg.generic {
         indexing_maps = [#id_1d, #id_1d, #id_1d],
@@ -518,9 +494,9 @@ func.func @reduce_tiles(%arg: tensor<8xf32>,
     %tile = gml_st.tile %space_1d [%i] [4] [1]
       : !gml_st.tile<8> to !gml_st.tile<4>
     %arg_sub = gml_st.materialize %arg[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %out_sub = gml_st.materialize %output[%space_0d]
-      : tensor<f32>[!gml_st.tile<>]
+      : tensor<f32>[!gml_st.tile<>] to tensor<f32>
 
     %result_sub = linalg.generic {
         indexing_maps = [#id_1d, #map_0d],
@@ -563,7 +539,7 @@ func.func @reduce_points(%arg: tensor<8xf32>,
     %point = gml_st.point %space_1d [%i]
       : !gml_st.tile<8> to !gml_st.point
     %arg_sub = gml_st.materialize %arg[%point]
-      : tensor<8xf32>[!gml_st.point]
+      : tensor<8xf32>[!gml_st.point] to f32
 
     %point_out = gml_st.point %space_0d []
       : !gml_st.tile<> to !gml_st.point
@@ -601,7 +577,7 @@ func.func @column_reduction(%arg: tensor<128x16xf32>,
     %arg_tile = gml_st.tile %arg_space [%i, %j] [8, 8] [1, 1]
       : !gml_st.tile<128x16> to !gml_st.tile<8x8>
     %arg_sub = gml_st.materialize %arg[%arg_tile]
-      : tensor<128x16xf32>[!gml_st.tile<8x8>]
+      : tensor<128x16xf32>[!gml_st.tile<8x8>] to tensor<8x8xf32>
 
     %init = linalg.init_tensor [8] : tensor<8xf32>
     %fill = linalg.fill ins(%cst : f32)
@@ -662,12 +638,12 @@ func.func @sequential_column_reduction(%arg: tensor<128x16xf32>,
     %arg_tile = gml_st.tile %arg_space [%i, %j] [8, 8] [1, 1]
       : !gml_st.tile<128x16> to !gml_st.tile<8x8>
     %arg_sub = gml_st.materialize %arg[%arg_tile]
-      : tensor<128x16xf32>[!gml_st.tile<8x8>]
+      : tensor<128x16xf32>[!gml_st.tile<8x8>] to tensor<8x8xf32>
 
     %out_tile = gml_st.tile %out_space [%j] [8] [1]
       : !gml_st.tile<16> to !gml_st.tile<8>
     %out_sub = gml_st.materialize %out_[%out_tile]
-      : tensor<16xf32>[!gml_st.tile<8>]
+      : tensor<16xf32>[!gml_st.tile<8>] to tensor<8xf32>
 
     %result_sub = linalg.generic {
         indexing_maps = [#id_2d, #map_1d],
