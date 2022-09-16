@@ -68,7 +68,6 @@ struct ChloLegalizeToLinalgPass
     target.addLegalDialect<bufferization::BufferizationDialect,
                            linalg::LinalgDialect, tensor::TensorDialect,
                            sparse_tensor::SparseTensorDialect>();
-    target.addIllegalDialect<chlo::ChloDialect>();
     /// The unary operation is sparse computation if either the input or the
     /// result is a sparse tensor.
     /// TODO(bixia): Remove the convert of such sparse CHLO ops from
