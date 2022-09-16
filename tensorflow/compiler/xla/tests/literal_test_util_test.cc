@@ -324,5 +324,38 @@ TEST(LiteralTestUtilTest, DynamicEqualityR2Dim1) {
   EXPECT_TRUE(LiteralTestUtil::Equal(literal1, literal2));
 }
 
+TEST(LiteralTestUtilTest, DynamicNearEqualityR1) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {10}));
+  literal1.PopulateR1<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  literal1.SetDynamicSize(0, 5);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {10}));
+  literal2.PopulateR1<float>({1, 2, 3, 4, 5, 99, 99, 99, 99, 99});
+  literal2.SetDynamicSize(0, 5);
+  ErrorSpec error(0.001);
+  EXPECT_TRUE(LiteralTestUtil::Near(literal1, literal2, error));
+}
+
+TEST(LiteralTestUtilTest, DynamicNearEqualityR2Dim) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal1.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(0, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal2.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {99, 99, 99}});
+  literal2.SetDynamicSize(0, 2);
+  ErrorSpec error(0.001);
+  EXPECT_TRUE(LiteralTestUtil::Near(literal1, literal2, error));
+}
+
+TEST(LiteralTestUtilTest, DynamicNearEqualityR2Dim1) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal1.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(1, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal2.PopulateR2<float>({{1, 2, 99}, {4, 5, 99}, {7, 8, 99}});
+  literal2.SetDynamicSize(1, 2);
+  ErrorSpec error(0.001);
+  EXPECT_TRUE(LiteralTestUtil::Near(literal1, literal2, error));
+}
+
 }  // namespace
 }  // namespace xla
