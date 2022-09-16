@@ -161,10 +161,6 @@ StatusOr<HloInstruction*> MakeReshapeHlo(
 StatusOr<HloInstruction*> MakeDynamicSliceHlo(
     HloInstruction* operand, absl::Span<HloInstruction* const> start_indices,
     absl::Span<const int64_t> slice_sizes, const OpMetadata* metadata) {
-  // slice of a scalar is no-op
-  if (start_indices.empty() || slice_sizes.empty()) {
-    return operand;
-  }
   HloComputation* computation = operand->parent();
   std::vector<Shape> scalar_start_indices_shapes(
       start_indices.size(),
@@ -749,77 +745,6 @@ StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
   // a (recursive) broadcast here to avoid creating large constants.
   CreateDummyOp(&b, range);
   return b.Build();
-}
-
-HloInstruction* CreateDegenerateRemovingReshape(HloInstruction* hlo,
-                                                const int64_t index_to_remove) {
-  Shape input_shape = hlo->shape();
-  std::vector<int64_t> dims;
-  dims.reserve(input_shape.rank() - 1);
-  for (int64_t index = 0; index < input_shape.rank(); index++) {
-    if (index == index_to_remove) {
-      continue;
-    }
-    int64_t dim_size = input_shape.dimensions(index);
-    dims.push_back(dim_size);
-  }
-  Shape new_shape = ShapeUtil::MakeShape(input_shape.element_type(), dims);
-  return hlo->AddInstruction(HloInstruction::CreateReshape(new_shape, hlo));
-}
-
-HloInstruction* CreateDegenerateAddingReshape(HloInstruction* hlo,
-                                              const int index_to_add) {
-  Shape input_shape = hlo->shape();
-  std::vector<int64_t> dims;
-  dims.reserve(input_shape.rank() - 1);
-  for (int64_t index = 0; index < input_shape.rank(); index++) {
-    if (index == index_to_add) {
-      dims.push_back(1);
-    }
-    int64_t dim_size [[maybe_unused]] = input_shape.dimensions(index);
-    dims.push_back(dim_size);
-  }
-  if (index_to_add == input_shape.rank()) {
-    dims.push_back(1);
-  }
-  Shape new_shape = ShapeUtil::MakeShape(input_shape.element_type(), dims);
-  return hlo->AddInstruction(HloInstruction::CreateReshape(new_shape, hlo));
-}
-
-HloInstruction* ExpandDegenerateReshape(HloInstruction* inst) {
-  std::optional<ShapeUtil::ShapeEqualityDescriptor> reshape_degenerate =
-      inst->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
-  if (reshape_degenerate.has_value()) {
-    if (reshape_degenerate->deleted_dimensions.empty() &&
-        reshape_degenerate->inserted_dimensions.size() == 1) {
-      return nullptr;
-    }
-    if (reshape_degenerate->inserted_dimensions.empty() &&
-        reshape_degenerate->deleted_dimensions.size() == 1) {
-      return nullptr;
-    }
-    absl::c_reverse(reshape_degenerate->deleted_dimensions);
-    HloInstruction* remove = nullptr;
-    if (!reshape_degenerate->deleted_dimensions.empty()) {
-      remove = CreateDegenerateRemovingReshape(
-          inst->mutable_operand(0), reshape_degenerate->deleted_dimensions[0]);
-      for (int64_t r = 1; r < reshape_degenerate->deleted_dimensions.size();
-           r++) {
-        remove = CreateDegenerateRemovingReshape(
-            remove, reshape_degenerate->deleted_dimensions[r]);
-      }
-    }
-    HloInstruction* add = remove != nullptr ? remove : inst->mutable_operand(0);
-    if (!reshape_degenerate->inserted_dimensions.empty()) {
-      for (int64_t a = 0; a < reshape_degenerate->inserted_dimensions.size();
-           a++) {
-        add = CreateDegenerateAddingReshape(
-            add, reshape_degenerate->inserted_dimensions[a]);
-      }
-    }
-    return add;
-  }
-  return nullptr;
 }
 
 }  // namespace xla
