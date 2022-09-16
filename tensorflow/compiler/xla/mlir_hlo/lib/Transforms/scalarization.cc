@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -37,7 +38,8 @@ using tensor::ExtractOp;
 using tensor::FromElementsOp;
 using tensor::InsertOp;
 
-bool hasSingleElement(RankedTensorType type) {
+template <typename ShapedTy>
+bool hasSingleElement(ShapedTy type) {
   return type.hasStaticShape() && type.getNumElements() == 1;
 }
 
@@ -183,6 +185,64 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
   }
 };
 
+// Fold `tensor.extract(gml_st.materialize -> tensor<1x1xf32>)` into
+//      `gml_st.materialize -> f32` for single-element tensors.
+struct FoldTensorExtractIntoMaterialize : public OpRewritePattern<ExtractOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ExtractOp extractOp,
+                                PatternRewriter &rewriter) const override {
+    auto materializeOp =
+        extractOp.getTensor().getDefiningOp<gml_st::MaterializeOp>();
+    if (!materializeOp) return failure();
+
+    auto tileType =
+        materializeOp.getSet().getType().dyn_cast<gml_st::TileType>();
+    if (!tileType || !hasSingleElement(tileType)) return failure();
+
+    rewriter.replaceOpWithNewOp<gml_st::MaterializeOp>(
+        extractOp, extractOp.getType(), materializeOp.getSource(),
+        materializeOp.getSet());
+    return success();
+  }
+};
+
+// Fold `gml_st.set_yield(tensor.from_elements(x) -> tensor<1x1xf32>)` into
+//      `gml_st.set_yield(x)` for single-element tensors.
+struct FoldTensorFromElementsIntoSetYield
+    : public OpRewritePattern<gml_st::SetYieldOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(gml_st::SetYieldOp yieldOp,
+                                PatternRewriter &rewriter) const override {
+    bool isFoldingPossible = false;
+    SmallVector<Value> newSrcs;
+    for (auto [src, set] : llvm::zip(yieldOp.getSrcs(), yieldOp.getSets())) {
+      auto fromElementsOp = src.getDefiningOp<FromElementsOp>();
+      if (!fromElementsOp) continue;
+
+      if (hasSingleElement(fromElementsOp.getType())) {
+        newSrcs.push_back(fromElementsOp.getElements().front());
+        isFoldingPossible = true;
+        continue;
+      }
+      newSrcs.push_back(src);
+    }
+
+    if (!isFoldingPossible) return failure();
+
+    // Update in-place to make sure that the accumulator regions don't get lost.
+    rewriter.updateRootInPlace(
+        yieldOp, [&]() { yieldOp.getSrcsMutable().assign(newSrcs); });
+    return success();
+  }
+};
+
+void populateTensorInsertExtractFoldingPatterns(RewritePatternSet *patterns) {
+  patterns->add<FoldTensorExtractIntoMaterialize,
+                FoldTensorFromElementsIntoSetYield>(patterns->getContext());
+}
+
 struct ScalarizationPass
     : public impl::ScalarizationPassBase<ScalarizationPass> {
   void runOnOperation() override {
@@ -191,6 +251,7 @@ struct ScalarizationPass
 
     RewritePatternSet patterns(context);
     patterns.add<ScalarizeGenericOp, ScalarizeScatterOp>(context);
+    populateTensorInsertExtractFoldingPatterns(&patterns);
     FromElementsOp::getCanonicalizationPatterns(patterns, context);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       signalPassFailure();

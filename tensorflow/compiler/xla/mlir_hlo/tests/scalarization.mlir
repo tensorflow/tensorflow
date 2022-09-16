@@ -269,3 +269,38 @@ func.func @scatter_small_vector_dim(%indices: tensor<1x1x2xi32>,
 // CHECK:           scf.yield %[[INIT]]
 // CHECK:         }
 // CHECK:         return %[[RESULT]]
+
+// -----
+
+func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
+    %out: tensor<8x2xf32>) -> tensor<8x2xf32>  {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %c8 = arith.constant 8 : index
+
+  %space = gml_st.space [8, 2] : !gml_st.tile<8x2>
+  %copy = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c8, %c2) step (%c1, %c1) {
+    %tile = gml_st.tile %space [%i, %j] [1, 1] [1, 1]
+      : !gml_st.tile<8x2> to !gml_st.tile<1x1>
+
+    %in_sub = gml_st.materialize %in[%tile]
+      : tensor<8x2xf32>[!gml_st.tile<1x1>] to tensor<1x1xf32>
+
+    %elem = tensor.extract %in_sub[%c0, %c0] : tensor<1x1xf32>
+
+    %out_sub = tensor.from_elements %elem : tensor<1x1xf32>
+
+    gml_st.set_yield %out_sub into %out[%tile]
+      : tensor<1x1xf32> into tensor<8x2xf32>[!gml_st.tile<1x1>]
+  } : tensor<8x2xf32>
+  func.return %copy: tensor<8x2xf32>
+}
+// CHECK-LABEL: func @fold_extract_from_elements_into_gml_st
+
+// CHECK:       = gml_st.tile
+// CHECK-NEXT:  %[[ELEM:.*]] = gml_st.materialize
+// CHECK-SAME:    : tensor<8x2xf32>[!gml_st.tile<1x1>] to f32
+
+// CHECK-NEXT:  gml_st.set_yield %[[ELEM]]
+// CHECK-SAME:    : f32 into tensor<8x2xf32>[!gml_st.tile<1x1>]

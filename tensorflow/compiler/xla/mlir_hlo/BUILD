@@ -2161,6 +2161,7 @@ cc_library(
     srcs = ["lib/Transforms/scalarization.cc"],
     hdrs = ["include/mlir-hlo/Transforms/passes.h"],
     deps = [
+        ":gml_st",
         ":mlir_hlo",
         ":thlo",
         ":transforms_pass_inc_gen",
