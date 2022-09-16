@@ -28,8 +28,13 @@ namespace tsl {
 
 string RocmRoot() {
 #if TENSORFLOW_USE_ROCM
-  VLOG(3) << "ROCM root = " << TF_ROCM_TOOLKIT_PATH;
-  return TF_ROCM_TOOLKIT_PATH;
+  if (const char* rocm_path_env = std::getenv("ROCM_PATH")) {
+    VLOG(3) << "ROCM root = " << rocm_path_env;
+    return rocm_path_env;
+  } else {
+    VLOG(3) << "ROCM root = " << TF_ROCM_TOOLKIT_PATH;
+    return TF_ROCM_TOOLKIT_PATH;
+  }
 #else
   return "";
 #endif
