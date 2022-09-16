@@ -2625,6 +2625,12 @@ struct DynamicConvIsConv : public OpRewritePattern<mhlo::DynamicConvOp> {
     for (APInt pad : padAttr.getValues<APInt>()) {
       padArray.push_back(pad.getZExtValue());
     }
+    if (op.getPadding().has_value()) {
+      for (const auto &it :
+           llvm::enumerate(op.getPaddingAttr().getValues<APInt>())) {
+        padArray[it.index()] += it.value().getZExtValue();
+      }
+    }
 
     int64_t paddedDimCount = padArray.size() / 2;
     auto newPadAttr = DenseIntElementsAttr::get(
@@ -7872,6 +7878,10 @@ void WhileOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
   results.add(&whileCanonicalization);
 }
+
+//===----------------------------------------------------------------------===//
+// UniformDequantizeOp
+//===----------------------------------------------------------------------===//
 
 LogicalResult UniformDequantizeOp::inferReturnTypeComponents(
     MLIRContext*, Optional<Location> /*location*/, ValueShapeRange operands,
