@@ -113,8 +113,8 @@ std::string ToString(enum OperationType op);
 
 OperationType OperationTypeFromString(const std::string& name);
 
-typedef absl::variant<absl::monostate, Tensor<HWC, DataType::FLOAT32>,
-                      Tensor<Linear, DataType::FLOAT32>, float>
+typedef std::variant<std::monostate, Tensor<HWC, DataType::FLOAT32>,
+                     Tensor<Linear, DataType::FLOAT32>, float>
     TensorOrScalar;
 
 struct Padding2D {
@@ -406,8 +406,8 @@ struct ReLUAttributes {
 struct PReLUAttributes {
   // If alpha is linear, then it is sharded across CHANNELS axis, otherwise
   // full shape alpha is required.
-  absl::variant<Tensor<Linear, DataType::FLOAT32>,
-                Tensor<HWC, DataType::FLOAT32>>
+  std::variant<Tensor<Linear, DataType::FLOAT32>,
+               Tensor<HWC, DataType::FLOAT32>>
       alpha;
 };
 
