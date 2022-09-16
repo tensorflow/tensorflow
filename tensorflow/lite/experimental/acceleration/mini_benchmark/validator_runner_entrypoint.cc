@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/file_lock.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/set_big_core_affinity.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"

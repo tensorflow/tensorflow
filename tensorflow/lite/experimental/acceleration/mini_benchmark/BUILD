@@ -428,6 +428,30 @@ cc_library(
 )
 
 cc_library(
+    name = "validator_runner_impl",
+    srcs = ["validator_runner_impl.cc"],
+    hdrs = ["validator_runner_impl.h"],
+    deps = [
+        ":fb_storage",
+        ":file_lock",
+        ":model_loader",
+        ":runner",
+        ":status_codes",
+        ":validator",
+        "@flatbuffers",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:custom_validation_embedder",
+        # For NNAPI support library, the headers and source files are defined
+        # as two separate targets. We need to include both targets for NNAPI to
+        # be invoked.
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+    ],
+)
+
+cc_library(
     name = "validator_runner",
     srcs = ["validator_runner.cc"],
     hdrs = ["validator_runner.h"],
@@ -437,12 +461,13 @@ cc_library(
         ":runner",
         ":status_codes",
         ":validator",
+        ":validator_runner_impl",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
-        # For NNAPI support library, the headears and source files are defined
+        # For NNAPI support library, the headers and source files are defined
         # as two separate targets. We need to include both targets for NNAPI to
         # be invoked.
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
@@ -461,6 +486,7 @@ cc_library(
     deps = [
         ":constants",
         ":fb_storage",
+        ":file_lock",
         ":model_loader",
         ":set_big_core_affinity_h",
         ":status_codes",
@@ -719,6 +745,21 @@ cc_library(
     hdrs = ["constants.h"],
 )
 
+cc_library(
+    name = "file_lock",
+    srcs = ["file_lock.cc"],
+    hdrs = ["file_lock.h"],
+)
+
+cc_test(
+    name = "file_lock_test",
+    srcs = ["file_lock_test.cc"],
+    deps = [
+        ":file_lock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 #
 # Test targets for separate process.
 # Unit tests using cc_test and turned into Android tests with tflite_portable_test_suite().
@@ -801,6 +842,7 @@ cc_binary(
         ":runner",
         ":status_codes",
         ":set_big_core_affinity",
+        ":file_lock",
         ":validator",
         ":validator_runner",
         "@com_google_absl//absl/strings",
@@ -895,6 +937,29 @@ cc_test(
 )
 
 cc_test(
+    name = "validator_runner_impl_test",
+    srcs = ["validator_runner_impl_test.cc"],
+    deps = [
+        ":embedded_mobilenet_validation_model",
+        ":embedded_nnapi_sl_fake_impl",
+        ":fb_storage",
+        ":mini_benchmark_test_helper",
+        ":nnapi_sl_fake_impl_client",
+        ":status_codes",
+        ":validator_runner_entrypoint",
+        ":validator_runner_impl",
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library",
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "validator_runner_test",
     srcs = ["validator_runner_test.cc"],
     tags = [
@@ -904,11 +969,11 @@ cc_test(
     ],
     deps = [
         ":embedded_mobilenet_validation_model",
+        ":embedded_nnapi_sl_fake_impl",
         ":mini_benchmark_test_helper",
+        ":nnapi_sl_fake_impl_client",
         ":status_codes",
         ":validator_runner",
-        ":embedded_nnapi_sl_fake_impl",
-        ":nnapi_sl_fake_impl_client",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",

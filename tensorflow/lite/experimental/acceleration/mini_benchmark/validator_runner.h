@@ -15,13 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_VALIDATOR_RUNNER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_VALIDATOR_RUNNER_H_
 
-#include <fcntl.h>
-#ifndef _WIN32
-#include <sys/file.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#endif  // !_WIN32
-
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -31,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/runner.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_impl.h"
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
 
 namespace tflite {
@@ -93,12 +88,15 @@ class ValidatorRunner {
   // Returns number of runs triggered (this may include runs triggered through a
   // different instance, and is meant for debugging).
   int TriggerMissingValidation(std::vector<const TFLiteSettings*> for_settings);
+
   // Get results for successfully completed validation runs. The caller can then
   // pick the best configuration based on timings.
   std::vector<const BenchmarkEvent*> GetSuccessfulResults();
+
   // Get results for completed validation runs regardless whether it is
   // successful or not.
   int GetNumCompletedResults();
+
   // Get all relevant results for telemetry. Will contain:
   // - Start events if an incomplete test is found. Tests are considered
   // incomplete, if they started more than timeout_us ago and do not have
@@ -111,49 +109,14 @@ class ValidatorRunner {
       int64_t timeout_us = kDefaultEventTimeoutUs);
 
  private:
-  std::string fd_or_model_path_;
-  std::string storage_path_;
-  std::string data_directory_path_;
   FlatbufferStorage<BenchmarkEvent> storage_;
-  std::string validation_entrypoint_name_;
   ErrorReporter* error_reporter_;
   bool triggered_ = false;
-  std::string nnapi_sl_path_;
-  const NnApiSLDriverImplFL5* nnapi_sl_;
+  std::unique_ptr<ValidatorRunnerImpl> validator_runner_impl_;
 };
 
 }  // namespace acceleration
 }  // namespace tflite
-
-class FileLock {
- public:
-  explicit FileLock(const std::string& path) : path_(path) {}
-  bool TryLock() {
-#ifndef _WIN32  // Validator runner not supported on Windows.
-    // O_CLOEXEC is needed for correctness, as another thread may call
-    // popen() and the callee inherit the lock if it's not O_CLOEXEC.
-    fd_ = open(path_.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC, 0600);
-    if (fd_ < 0) {
-      return false;
-    }
-    if (flock(fd_, LOCK_EX | LOCK_NB) == 0) {
-      return true;
-    }
-#endif  // !_WIN32
-    return false;
-  }
-  ~FileLock() {
-#ifndef _WIN32  // Validator runner not supported on Windows.
-    if (fd_ >= 0) {
-      close(fd_);
-    }
-#endif  // !_WIN32
-  }
-
- private:
-  std::string path_;
-  int fd_ = -1;
-};
 
 extern "C" {
 int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
