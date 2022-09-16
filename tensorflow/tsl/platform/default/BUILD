@@ -56,10 +56,10 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:logging",
         "@local_config_cuda//cuda:cuda_headers",
     ],
 )
