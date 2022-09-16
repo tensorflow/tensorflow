@@ -935,11 +935,14 @@ class CustomCallHandler : public CustomCall {
       return success();
     }
 
+    // Custom call returns result(s) as `absl::StatusOr`.
     if constexpr (kIsStatusOrResult) {
       auto status_or = fn_(std::move(*std::get<ArgsIs>(fn_args))...);
       if (!status_or.ok()) {
         return diagnostic->EmitError(status_or.status());
       }
+
+      static_assert(sizeof...(RetsIs) >= 1, "unsupported number or results");
 
       if constexpr (sizeof...(RetsIs) == 1) {
         (*std::get<RetsIs...>(fn_args)).Set(status_or.value());

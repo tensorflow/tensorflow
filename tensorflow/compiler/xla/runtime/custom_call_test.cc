@@ -1091,6 +1091,97 @@ BENCHMARK(BM_I32X12All);
 BENCHMARK(BM_I32X12None);
 
 //===----------------------------------------------------------------------===//
+// Custom call with a single i32 result.
+//===----------------------------------------------------------------------===//
+
+template <RuntimeChecks checks>
+static bool RetI32X1(ExecutionContext* ctx, void** args, void** attrs,
+                     void** rets) {
+  static auto* handler =
+      CustomCall::Bind("test.custom_call")
+          .Ret<int32_t>()
+          .To<checks>([]() -> absl::StatusOr<int32_t> { return 42; })
+          .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+template <RuntimeChecks checks>
+static void RetI32X1(State& state) {
+  absl::string_view module = R"(
+    func.func private @custom_call() -> i32
+      attributes { rt.direct_custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0 = call @custom_call() : () -> (i32)
+      return
+    }
+  )";
+
+  BenchmarkCustomCall(state, module, {}, "test.custom_call", &RetI32X1<checks>);
+}
+
+static void BM_RetI32X1All(State& s) { RetI32X1<all>(s); }
+static void BM_RetI32X1None(State& s) { RetI32X1<none>(s); }
+
+BENCHMARK(BM_RetI32X1All);
+BENCHMARK(BM_RetI32X1None);
+
+//===----------------------------------------------------------------------===//
+// Custom call with twelve i32 results.
+//===----------------------------------------------------------------------===//
+
+template <RuntimeChecks checks>
+static bool RetI32X12(ExecutionContext* ctx, void** args, void** attrs,
+                      void** rets) {
+  static auto* handler =
+      CustomCall::Bind("test.custom_call")
+          .Ret<int32_t>()
+          .Ret<int32_t>()
+          .Ret<int32_t>()
+          .Ret<int32_t>()
+          .Ret<int32_t>()
+          .Ret<int32_t>()
+          .Ret<int32_t>()
+          .Ret<int32_t>()
+          .Ret<int32_t>()
+          .Ret<int32_t>()
+          .Ret<int32_t>()
+          .Ret<int32_t>()
+          .To<checks>(
+              []() -> absl::StatusOr<std::tuple<
+                       int32_t, int32_t, int32_t, int32_t, int32_t, int32_t,
+                       int32_t, int32_t, int32_t, int32_t, int32_t, int32_t>> {
+                return std::make_tuple(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
+              })
+          .release();
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+template <RuntimeChecks checks>
+static void RetI32X12(State& state) {
+  absl::string_view module = R"(
+    func.func private @custom_call()
+      -> (i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32)
+      attributes { rt.direct_custom_call = "test.custom_call" }
+
+    func.func @test() {
+      %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %11 = call @custom_call()
+        : () -> (i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32)
+      return
+    }
+  )";
+
+  BenchmarkCustomCall(state, module, {}, "test.custom_call",
+                      &RetI32X12<checks>);
+}
+
+static void BM_RetI32X12All(State& s) { RetI32X12<all>(s); }
+static void BM_RetI32X12None(State& s) { RetI32X12<none>(s); }
+
+BENCHMARK(BM_RetI32X12All);
+BENCHMARK(BM_RetI32X12None);
+
+//===----------------------------------------------------------------------===//
 // Custom call with a single memref argument.
 //===----------------------------------------------------------------------===//
 
