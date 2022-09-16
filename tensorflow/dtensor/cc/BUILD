@@ -157,7 +157,11 @@ cc_library(
     deps = [
         ":dstatus",
         ":tensor_layout",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/dtensor/mlir:value_utils",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
