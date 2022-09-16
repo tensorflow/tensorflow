@@ -658,26 +658,27 @@ std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation) {
   return out;
 }
 
-bool IsTiledTranspose(const HloInstruction& instr) {
+std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kCopy) {
-    return false;
+    return std::nullopt;
   }
 
   if (std::optional<Vector3> tr = ShapeUtil::FindTranspose021(
           instr.operand(0)->shape(), instr.shape())) {
-    return (tr->at(1) >= kMinDimensionToTransposeTiled &&
-            tr->at(2) >= kMinDimensionToTransposeTiled);
+    if (tr->at(1) >= kMinDimensionToTransposeTiled &&
+        tr->at(2) >= kMinDimensionToTransposeTiled) {
+      return tr;
+    }
   }
-  return false;
+  return std::nullopt;
 }
 
 bool HasAnyTiledTransposeRoot(HloComputation* computation) {
   return absl::c_any_of(
       GetFusionRoots(computation),
-      [&](const HloInstruction* instr) { return IsTiledTranspose(*instr); });
+      [&](const HloInstruction* instr) { return FindTiledTranspose(*instr); });
 }
 
-// Returns whether any of the rooots of the fusion are unnested reductions.
 bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
   return absl::c_any_of(
       GetFusionRoots(computation), [&](const HloInstruction* instr) {
