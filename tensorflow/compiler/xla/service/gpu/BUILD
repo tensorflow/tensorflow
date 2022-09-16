@@ -355,7 +355,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/core/platform:human_readable_json",
+        "//tensorflow/tsl/platform:human_readable_json",
     ] + if_gpu_is_configured([
         ":triangular_solve_thunk",
         ":cholesky_thunk",
@@ -588,7 +588,7 @@ config_setting(
 #         "//tensorflow/compiler/xla/service:executable",
 #         "//tensorflow/compiler/xla/service/gpu/runtime:kernel_launch",
 #         "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
-#         "//tensorflow/core/platform:human_readable_json",
+#         "//tensorflow/tsl/platform:human_readable_json",
 #         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
 #         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
 #         "@tf_runtime//:dtype",

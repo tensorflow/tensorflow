@@ -129,7 +129,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:random",
+        "//tensorflow/tsl/platform:random",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -674,8 +674,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:env",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:test_benchmark",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",

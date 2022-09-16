@@ -116,11 +116,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
 #include "tensorflow/tsl/platform/mem.h"
@@ -219,7 +219,7 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
           should_stage_host_to_device_transfers),
       gpu_run_options_(std::move(gpu_run_options)),
       thread_pool_(
-          tensorflow::Env::Default(), "pjrt_thread_pool",
+          tsl::Env::Default(), "pjrt_thread_pool",
           std::max<int>(DefaultThreadPoolSize(), client->device_count())),
       transpose_cache_(1024) {
   if (owned_allocator_ != nullptr) {
@@ -2091,7 +2091,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options, bool fill_future,
     PjRtDevice* device) const {
-  const uint64_t start_time_usecs = tensorflow::Env::Default()->NowMicros();
+  const uint64_t start_time_usecs = tsl::Env::Default()->NowMicros();
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
     CHECK(device_assignment_ != nullptr);
@@ -2185,7 +2185,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
           fn();
         }
       });
-  ReportExecutableEnqueueTime(tensorflow::Env::Default()->NowMicros() -
+  ReportExecutableEnqueueTime(tsl::Env::Default()->NowMicros() -
                               start_time_usecs);
   return Result({/*future=*/std::move(future), /*buffers=*/std::move(outputs)});
 }

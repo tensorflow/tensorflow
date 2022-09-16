@@ -101,7 +101,7 @@ cc_library(
     deps = [
         ":tpu_driver",
         "@com_google_absl//absl/base",
-        "//tensorflow/core/platform:env",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",

@@ -649,23 +649,23 @@ XLA_TEST_F(CpuGpuFusionTest, DISABLED_ON_CPU(ReduceWindow)) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
   Window window;
   ASSERT_TRUE(
-      tensorflow::protobuf::TextFormat::ParseFromString("dimensions:{\n"
-                                                        "size:2\n"
-                                                        "stride:1\n"
-                                                        "padding_low:0\n"
-                                                        "padding_high:0\n"
-                                                        "window_dilation:1\n"
-                                                        "base_dilation:1\n"
-                                                        "}\n"
-                                                        "dimensions:{\n"
-                                                        "size:2\n"
-                                                        "stride:1\n"
-                                                        "padding_low:0\n"
-                                                        "padding_high:0\n"
-                                                        "window_dilation:1\n"
-                                                        "base_dilation:1\n"
-                                                        "}\n",
-                                                        &window));
+      tsl::protobuf::TextFormat::ParseFromString("dimensions:{\n"
+                                                 "size:2\n"
+                                                 "stride:1\n"
+                                                 "padding_low:0\n"
+                                                 "padding_high:0\n"
+                                                 "window_dilation:1\n"
+                                                 "base_dilation:1\n"
+                                                 "}\n"
+                                                 "dimensions:{\n"
+                                                 "size:2\n"
+                                                 "stride:1\n"
+                                                 "padding_low:0\n"
+                                                 "padding_high:0\n"
+                                                 "window_dilation:1\n"
+                                                 "base_dilation:1\n"
+                                                 "}\n",
+                                                 &window));
   auto nested_builder = HloComputation::Builder("mul");
   {
     auto x = nested_builder.AddInstruction(
@@ -888,8 +888,8 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
   stream.Init();
 
   // Initialize thread pool.
-  tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
-                                      intra_op_parallelism_threads);
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "XLAEigen",
+                               intra_op_parallelism_threads);
   Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
 
   // Initialize ExecutableRunOptions.

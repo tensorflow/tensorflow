@@ -54,7 +54,7 @@
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
-#include "tensorflow/core/platform/human_readable_json.h"
+#include "tensorflow/tsl/platform/human_readable_json.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
@@ -1309,7 +1309,7 @@ absl::Status TriangularSolve::run(
 
   // Parse backend config string.
   TriangularSolveOptions opts;
-  auto st = tensorflow::HumanReadableJsonToProto(backend_config.str(), &opts);
+  auto st = tsl::HumanReadableJsonToProto(backend_config.str(), &opts);
   if (!st.ok()) return ToAbslStatus(st);
 
   return handler(run_options, debug_options, *a, *b, *result, *temp,

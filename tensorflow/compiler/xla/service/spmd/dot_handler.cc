@@ -122,7 +122,7 @@ struct DotDimensionIndexMapping {
 void UpdateDDNums(DotDimensionNumbers* new_ddnums, int64_t reshaped_dim,
                   bool lhs) {
   auto update_dims =
-      [&reshaped_dim](tensorflow::protobuf::RepeatedField<int64_t>* dims) {
+      [&reshaped_dim](tsl::protobuf::RepeatedField<int64_t>* dims) {
         bool add_reshaped_dim = false;
         if (absl::c_linear_search(*dims, reshaped_dim)) {
           add_reshaped_dim = true;

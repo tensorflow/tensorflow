@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace xla {
 
-PackedLiteralReader::PackedLiteralReader(tensorflow::RandomAccessFile* file)
+PackedLiteralReader::PackedLiteralReader(tsl::RandomAccessFile* file)
     : file_(file), offset_(0) {}
 
 PackedLiteralReader::~PackedLiteralReader() { delete file_; }

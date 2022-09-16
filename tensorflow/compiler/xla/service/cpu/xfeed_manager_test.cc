@@ -20,10 +20,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -106,7 +106,7 @@ TEST_F(InfeedManagerTest, SingleThreadedInterleaved) {
 }
 
 TEST_F(InfeedManagerTest, MultiThreaded) {
-  tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "test", 2);
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", 2);
 
   cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
 
@@ -114,9 +114,9 @@ TEST_F(InfeedManagerTest, MultiThreaded) {
 
   pool.Schedule([length, &xfeed]() {
     // Spin for 100 milliseconds
-    int64_t start_micros = tensorflow::Env::Default()->NowMicros();
+    int64_t start_micros = tsl::Env::Default()->NowMicros();
     while (true) {
-      int64_t end_micros = tensorflow::Env::Default()->NowMicros();
+      int64_t end_micros = tsl::Env::Default()->NowMicros();
       if ((end_micros - start_micros) >= 100000) {  // 100 ms
         break;
       }

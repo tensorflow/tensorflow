@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
@@ -885,12 +885,11 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedTest)) {
   Add(in, constant);
 
   Literal result;
-  std::unique_ptr<tensorflow::Thread> thread(
-      tensorflow::Env::Default()->StartThread(
-          tensorflow::ThreadOptions(), "execute_thread", [&] {
-            result = ShapedBufferToLiteral(
-                ExecuteLocallyOrDie(builder.Build().value(), /*arguments=*/{}));
-          }));
+  std::unique_ptr<tsl::Thread> thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "execute_thread", [&] {
+        result = ShapedBufferToLiteral(
+            ExecuteLocallyOrDie(builder.Build().value(), /*arguments=*/{}));
+      }));
 
   ASSERT_IS_OK(local_client_->TransferToInfeedLocal(
       LiteralUtil::CreateR1<float>({-5.0, 123.0, 42.0}),
@@ -911,10 +910,9 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedOutfeedTest)) {
   auto sum = Add(in, constant);
   Outfeed(sum, shape, /*outfeed_config=*/"");
 
-  std::unique_ptr<tensorflow::Thread> thread(
-      tensorflow::Env::Default()->StartThread(
-          tensorflow::ThreadOptions(), "execute_thread",
-          [&] { ExecuteLocallyOrDie(builder.Build().value(), {}); }));
+  std::unique_ptr<tsl::Thread> thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "execute_thread",
+      [&] { ExecuteLocallyOrDie(builder.Build().value(), {}); }));
 
   ASSERT_IS_OK(local_client_->TransferToInfeedLocal(
       LiteralUtil::CreateR1<float>({-5.0, 123.0, 42.0}),

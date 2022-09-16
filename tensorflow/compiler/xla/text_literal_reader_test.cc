@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 namespace {
@@ -39,8 +39,7 @@ TEST(TextLiteralReaderTest, ReadsR3File) {
 
   std::string fname = tsl::testing::TmpDir() + "/ReadsR3File.data.txt";
   EXPECT_TRUE(
-      tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, contents)
-          .ok());
+      tsl::WriteStringToFile(tsl::Env::Default(), fname, contents).ok());
 
   Literal literal = TextLiteralReader::ReadPath(fname).value();
   EXPECT_TRUE(

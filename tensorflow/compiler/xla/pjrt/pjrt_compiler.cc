@@ -49,7 +49,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
   const auto* compiler_registry = CompilerRegistry();
   auto it = compiler_registry->find(topology.platform_name());
   if (it == compiler_registry->end()) {
-    return tensorflow::errors::NotFound(absl::StrCat(
+    return tsl::errors::NotFound(absl::StrCat(
         "No compiler registered for platform ", topology.platform_name()));
   }
   return it->second->Compile(std::move(options), computation, topology, client);
@@ -62,7 +62,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
   const auto* compiler_registry = CompilerRegistry();
   auto it = compiler_registry->find(topology.platform_name());
   if (it == compiler_registry->end()) {
-    return tensorflow::errors::NotFound(absl::StrCat(
+    return tsl::errors::NotFound(absl::StrCat(
         "No compiler registered for platform ", topology.platform_name()));
   }
   return it->second->Compile(std::move(options), module, topology, client);

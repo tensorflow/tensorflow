@@ -30,9 +30,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -80,8 +80,8 @@ XLA_TEST_F(MultithreadedCompilation, EightModuleCompilation) {
   };
 
   {
-    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                               "threads-", num_threads);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "threads-",
+                                        num_threads);
     for (int i = 0; i < num_threads; i++) {
       thread_pool.Schedule([&, i]() { TF_EXPECT_OK(do_compilation(i)); });
     }

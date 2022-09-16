@@ -184,15 +184,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 #if XLA_ENABLE_XLIR
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
@@ -837,7 +837,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     const CompileOptions& options) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
-  uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_usecs = tsl::Env::Default()->NowMicros();
   tensorflow::profiler::TraceMe activity(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
       tensorflow::profiler::TraceMeLevel::kInfo);
@@ -846,7 +846,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
-  uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_usecs = tsl::Env::Default()->NowMicros();
 
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).
@@ -1046,7 +1046,7 @@ static Status CompileModuleToLlvmIrImpl(
                          absl::StrCat("sm_", cuda_compute_capability.ToString(),
                                       "_gpu_after_optimizations"));
 
-  uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_usecs = tsl::Env::Default()->NowMicros();
   mlir::DialectRegistry registry;
   IrEmitterUnnested::GetDependentDialects(registry);
   mlir::MLIRContext mlir_context(registry);
@@ -1105,7 +1105,7 @@ static Status CompileModuleToLlvmIrImpl(
     }
 
     results->constants = std::move(ir_emitter_context.constants());
-    uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_usecs = tsl::Env::Default()->NowMicros();
 
     // This won't record values for calls that error out (because if they error
     // out we have no way of telling how far through the process we got).
@@ -1232,8 +1232,8 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
     return result;
   };
 
-  tensorflow::thread::ThreadPool* thread_pool;
-  std::optional<tensorflow::thread::ThreadPool> overriding_thread_pool;
+  tsl::thread::ThreadPool* thread_pool;
+  std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
   switch (
       module_config.debug_options().xla_gpu_force_compilation_parallelism()) {
     case 0:
@@ -1244,7 +1244,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
       break;
     default:
       overriding_thread_pool.emplace(
-          tensorflow::Env::Default(), "",
+          tsl::Env::Default(), "",
           module_config.debug_options()
               .xla_gpu_force_compilation_parallelism());
       thread_pool = &*overriding_thread_pool;

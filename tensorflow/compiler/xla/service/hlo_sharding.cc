@@ -544,7 +544,7 @@ int64_t HloSharding::GetUniqueDevice() const {
 Status HloSharding::ValidateTuple(const Shape& shape,
                                   int64_t num_devices) const {
   if (!shape.IsTuple()) {
-    return tensorflow::errors::InvalidArgument(
+    return tsl::errors::InvalidArgument(
         StrCat("Sharding is tuple-shaped but validation shape is not."));
   }
   TF_RETURN_IF_ERROR(CheckLeafCount(shape));
@@ -560,7 +560,7 @@ Status HloSharding::ValidateTuple(const Shape& shape,
     Status status = index_to_sharding.second.ValidateNonTuple(
         ShapeUtil::GetSubshape(shape, index_to_sharding.first), num_devices);
     if (!status.ok()) {
-      tensorflow::errors::AppendToMessage(
+      tsl::errors::AppendToMessage(
           &status, StrCat("Note: While validating sharding tuple element ",
                           index_to_sharding.first.ToString(), " which is ",
                           index_to_sharding.second.ToString()));
@@ -577,7 +577,7 @@ Status HloSharding::Validate(const Shape& shape, int64_t num_devices) const {
   Status status = IsTuple() ? ValidateTuple(shape, num_devices)
                             : ValidateNonTuple(shape, num_devices);
   if (!status.ok()) {
-    tensorflow::errors::AppendToMessage(
+    tsl::errors::AppendToMessage(
         &status, StrCat("Note: While validating sharding ", ToString(),
                         " against shape ", ShapeUtil::HumanString(shape)));
   }
@@ -587,7 +587,7 @@ Status HloSharding::Validate(const Shape& shape, int64_t num_devices) const {
 Status HloSharding::ValidateNonTuple(const Shape& shape,
                                      int64_t num_devices) const {
   if (shape.IsTuple()) {
-    return tensorflow::errors::InvalidArgument(
+    return tsl::errors::InvalidArgument(
         StrCat("Validation shape is a tuple but sharding is not."));
   }
   if (replicated_) {
@@ -602,10 +602,10 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
     // Don't overwrite a bad status, so we report the first error.
     if (status.ok()) {
       if (core >= num_devices) {
-        status = tensorflow::errors::InvalidArgument(
+        status = tsl::errors::InvalidArgument(
             StrCat("core ", core, " > ", num_devices, " in tile assignment"));
       } else if (seen_cores.contains(core)) {
-        status = tensorflow::errors::InvalidArgument(
+        status = tsl::errors::InvalidArgument(
             StrCat("core ", core, " is not unique in tile assignment"));
       }
       seen_cores.insert(core);
@@ -624,7 +624,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   if (shape.rank() + (replicate_on_last_tile_dim_ ? 1 : 0) +
           subgroup_types_.size() !=
       tile_assignment_.num_dimensions()) {
-    return tensorflow::errors::InvalidArgument(
+    return tsl::errors::InvalidArgument(
         "Number of tile assignment dimensions is different to the input rank. "
         "sharding=",
         ToString(), ", input_shape=", ShapeUtil::HumanString(shape));
@@ -632,7 +632,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
 
   // The correct constructor has to be used to create tile maximal shardings.
   if (tile_assignment_.num_elements() == 1) {
-    return tensorflow::errors::InvalidArgument(
+    return tsl::errors::InvalidArgument(
         "Tile assignment only contains a single device. If a replicated "
         "sharding was intended, use HloSharding::Replicated(). If a device "
         "placement was intended, use HloSharding::AssignDevice()");

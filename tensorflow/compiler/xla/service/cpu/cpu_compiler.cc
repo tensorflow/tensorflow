@@ -953,7 +953,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   // replaces these linalg.generics with scalar ops.
   auto detensorize = mlir::createLinalgDetensorizePass();
   if (detensorize->initializeOptions("aggressive-mode=true").failed()) {
-    return tensorflow::errors::Internal("Failed to set up detensorize pass.");
+    return tsl::errors::Internal("Failed to set up detensorize pass.");
   }
   pm.addNestedPass<mlir::func::FuncOp>(std::move(detensorize));
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -1005,8 +1005,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   if (pm.run(mlir_module).failed()) {
     mlir_module->dump();
-    return tensorflow::errors::Internal(
-        "Failed to compile through MLIR pipeline");
+    return tsl::errors::Internal("Failed to compile through MLIR pipeline");
   }
 
   return OkStatus();

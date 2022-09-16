@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -412,18 +413,18 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
   xla::GatherDimensionNumbers output;
 
   auto offset_dims = input.getOffsetDims();
-  std::copy(offset_dims.begin(), offset_dims.end(),
-            tensorflow::protobuf::RepeatedFieldBackInserter(
-                output.mutable_offset_dims()));
+  std::copy(
+      offset_dims.begin(), offset_dims.end(),
+      tsl::protobuf::RepeatedFieldBackInserter(output.mutable_offset_dims()));
 
   auto collapsed_slice_dims = input.getCollapsedSliceDims();
   std::copy(collapsed_slice_dims.begin(), collapsed_slice_dims.end(),
-            tensorflow::protobuf::RepeatedFieldBackInserter(
+            tsl::protobuf::RepeatedFieldBackInserter(
                 output.mutable_collapsed_slice_dims()));
 
   auto start_index_map = input.getStartIndexMap();
   std::copy(start_index_map.begin(), start_index_map.end(),
-            tensorflow::protobuf::RepeatedFieldBackInserter(
+            tsl::protobuf::RepeatedFieldBackInserter(
                 output.mutable_start_index_map()));
 
   output.set_index_vector_dim(input.getIndexVectorDim());
@@ -436,18 +437,18 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
 
   auto update_window_dims = input.getUpdateWindowDims();
   std::copy(update_window_dims.begin(), update_window_dims.end(),
-            tensorflow::protobuf::RepeatedFieldBackInserter(
+            tsl::protobuf::RepeatedFieldBackInserter(
                 output.mutable_update_window_dims()));
 
   auto inserted_window_dims = input.getInsertedWindowDims();
   std::copy(inserted_window_dims.begin(), inserted_window_dims.end(),
-            tensorflow::protobuf::RepeatedFieldBackInserter(
+            tsl::protobuf::RepeatedFieldBackInserter(
                 output.mutable_inserted_window_dims()));
 
   auto scatter_dims_to_operand_dims = input.getScatterDimsToOperandDims();
   std::copy(scatter_dims_to_operand_dims.begin(),
             scatter_dims_to_operand_dims.end(),
-            tensorflow::protobuf::RepeatedFieldBackInserter(
+            tsl::protobuf::RepeatedFieldBackInserter(
                 output.mutable_scatter_dims_to_operand_dims()));
 
   output.set_index_vector_dim(input.getIndexVectorDim());

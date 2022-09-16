@@ -36,7 +36,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/numbers.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
 
@@ -81,13 +81,13 @@ ScopedLoggingTimer::ScopedLoggingTimer(absl::string_view label, bool enabled,
       timer_stats_(timer_stats),
       enabled_(enabled) {
   if (enabled_) {
-    start_micros_ = tensorflow::Env::Default()->NowMicros();
+    start_micros_ = tsl::Env::Default()->NowMicros();
   }
 }
 
 void ScopedLoggingTimer::StopAndLog() {
   if (enabled_) {
-    uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_micros = tsl::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros_) / 1000000.0;
 
     TimerStats& stats = *timer_stats_;

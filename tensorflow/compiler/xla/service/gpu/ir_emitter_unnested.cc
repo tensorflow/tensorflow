@@ -122,8 +122,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/human_readable_json.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 #if GOOGLE_CUDA
@@ -1414,7 +1414,7 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
   const Shape b_shape = GetShape(operands[1]);
   const PrimitiveType elem_ty = b_shape.element_type();
   TriangularSolveOptions backend_config;
-  TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(
+  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(
       custom_call.getBackendConfig().str(), &backend_config));
 
   ThunkSequence thunks;

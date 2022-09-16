@@ -210,57 +210,57 @@ template <typename... Args>
 Status InvalidArgument(const absl::FormatSpec<Args...>& format,
                        const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::InvalidArgument(absl::StrFormat(format, args...)));
+      tsl::errors::InvalidArgument(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Unimplemented(const absl::FormatSpec<Args...>& format,
                      const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Unimplemented(absl::StrFormat(format, args...)));
+      tsl::errors::Unimplemented(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status InternalError(const absl::FormatSpec<Args...>& format,
                      const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+      tsl::errors::Internal(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status FailedPrecondition(const absl::FormatSpec<Args...>& format,
                           const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::FailedPrecondition(absl::StrFormat(format, args...)));
+      tsl::errors::FailedPrecondition(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Cancelled(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Cancelled(absl::StrFormat(format, args...)));
+      tsl::errors::Cancelled(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status ResourceExhausted(const absl::FormatSpec<Args...>& format,
                          const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::ResourceExhausted(absl::StrFormat(format, args...)));
+      tsl::errors::ResourceExhausted(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status NotFound(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::NotFound(absl::StrFormat(format, args...)));
+      tsl::errors::NotFound(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Unavailable(const absl::FormatSpec<Args...>& format,
                    const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Unavailable(absl::StrFormat(format, args...)));
+      tsl::errors::Unavailable(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Unknown(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Unknown(absl::StrFormat(format, args...)));
+      tsl::errors::Unknown(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+      tsl::errors::Internal(absl::StrFormat(format, args...)));
 }
 
 template <typename... Args>

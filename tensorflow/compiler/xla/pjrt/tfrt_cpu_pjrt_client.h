@@ -255,7 +255,7 @@ class TfrtCpuClient final : public PjRtClient {
   std::unique_ptr<ComputationPlacer> computation_placer_;
 
   // TODO(zhangqiaorjc): Use tfrt::compat::EigenHostContextThreadPool.
-  std::unique_ptr<tensorflow::thread::ThreadPool> eigen_intraop_pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
 
   // Launching collectives are prone to deadlock when we use fixed-sized

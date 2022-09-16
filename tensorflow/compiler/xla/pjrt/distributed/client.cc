@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
-#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/random.h"
 
 namespace xla {
 class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
@@ -103,7 +103,7 @@ class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
   absl::Notification stop_heartbeats_;
 
   // Thread responsible for performing heartbeats.
-  std::unique_ptr<tensorflow::Thread> heartbeat_thread_;
+  std::unique_ptr<tsl::Thread> heartbeat_thread_;
 };
 
 class DistributedRuntimeCoordinationServiceClient
@@ -198,7 +198,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
     ::grpc::ClientContext ctx;
     ctx.set_fail_fast(false);
     ctx.set_deadline(absl::ToChronoTime(absl::Now() + options_.rpc_timeout));
-    request.set_client_id(tensorflow::random::New64());
+    request.set_client_id(tsl::random::New64());
     response.Clear();
     status = stub_->Connect(&ctx, request, &response);
     if (!status.ok()) {
@@ -218,7 +218,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
     LOG(ERROR) << "Connect() failed after " << attempt << " retries in "
                << options_.init_timeout
                << "; most recent failure status: " << FromGrpcStatus(status);
-    return tensorflow::errors::DeadlineExceeded(
+    return tsl::errors::DeadlineExceeded(
         absl::StrFormat("Connect() timed out after %s with %d attempts. Most "
                         "recent failure was: %s",
                         absl::FormatDuration(options_.init_timeout), attempt,
@@ -232,7 +232,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
   session_id_ = response.session_id();
 
   heartbeat_thread_.reset(options_.env->StartThread(
-      tensorflow::ThreadOptions(), "pjrt_distributed_heartbeat",
+      tsl::ThreadOptions(), "pjrt_distributed_heartbeat",
       [this]() { HeartbeatLoop(); }));
   LOG(INFO) << "Connected to distributed JAX controller";
   return OkStatus();
@@ -470,7 +470,7 @@ DistributedRuntimeCoordinationServiceClient::
     ~DistributedRuntimeCoordinationServiceClient() {}
 
 xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
-  Status s = tensorflow::errors::Unknown("Connection not attempted yet.");
+  Status s = tsl::errors::Unknown("Connection not attempted yet.");
   absl::Duration timeout =
       absl::Milliseconds(config_.cluster_register_timeout_in_ms());
   absl::Time deadline = absl::Now() + timeout;
