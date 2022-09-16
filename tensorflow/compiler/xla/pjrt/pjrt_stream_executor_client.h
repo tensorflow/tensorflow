@@ -733,6 +733,21 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
     return size;
   }
 
+  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    if (executables_.size() != 1) {
+      return Unimplemented(
+          "Retrieving CompiledMemoryStats is not supported for multiple "
+          "executables.");
+    }
+    CompiledMemoryStats memory_stats = CompiledMemoryStats();
+    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
+    const HloProto* proto = executables_[0]->executable()->hlo_proto();
+    if (proto != nullptr) {
+      memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+    }
+    return memory_stats;
+  }
+
   const DeviceAssignment& device_assignment() const override {
     return *device_assignment_;
   }
