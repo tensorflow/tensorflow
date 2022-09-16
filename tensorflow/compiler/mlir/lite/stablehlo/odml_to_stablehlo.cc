@@ -241,7 +241,7 @@ tensorflow::Status ConvertTFToStableHLO(
     return tensorflow::errors::Aborted("Failed to add passes to pipeline.");
   }
 
-  AddTFToStableHLOPasses(pm, skip_resize, smuggle_disallowed_ops);
+  AddTFToStablehloPasses(pm, skip_resize, smuggle_disallowed_ops);
 
   if (verbose) {
     // Print out a detailed report of non-converted stats.
@@ -258,6 +258,8 @@ tensorflow::Status ConvertTFToStableHLO(
     pm.addPass(
         mlir::odml::createCheckAcceptedOpsPass(optional_accepted_dialects));
   }
+
+  mlir::odml::AddStablehloOptimizationPasses(pm);
 
   if (failed(pm.run(tf_module))) {
     return tensorflow::errors::Aborted("Lowering to Compute IR failed.");

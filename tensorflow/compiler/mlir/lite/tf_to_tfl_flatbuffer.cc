@@ -192,10 +192,10 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
     mlir::PassManager& pass_manager, mlir::ModuleOp module, bool export_to_mlir,
     mlir::StatusScopedDiagnosticHandler& statusHandler, std::string* result) {
   // TODO(b/243835818): add TF quantization pass here.
-  mlir::odml::AddTFToStableHLOPasses(pass_manager, false, false);
+  mlir::odml::AddTFToStablehloPasses(pass_manager, false, false);
   // Print out a detailed report of non-converted stats.
   pass_manager.addPass(mlir::odml::createPrintOpStatsPass());
-
+  mlir::odml::AddStablehloOptimizationPasses(pass_manager);
   if (failed(pass_manager.run(module))) {
     return statusHandler.ConsumeStatus();
   }
