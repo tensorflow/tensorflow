@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/tsl/platform/tracing.h"
 
 #include <array>
 #include <atomic>
 
-#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/tsl/platform/hash.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace tracing {
 namespace {
 std::atomic<uint64> unique_arg{1};
@@ -56,4 +56,4 @@ uint64 GetArgForName(StringPiece name) {
 }
 
 }  // namespace tracing
-}  // namespace tensorflow
+}  // namespace tsl

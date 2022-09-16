@@ -354,6 +354,12 @@ filegroup(
 )
 
 cc_library(
+    name = "tracing",
+    textual_hdrs = ["tracing.h"],
+    deps = tf_platform_deps("tracing"),
+)
+
+cc_library(
     name = "tstring",
     hdrs = [
         "ctstring.h",
@@ -519,11 +525,14 @@ filegroup(
         "thread_annotations.h",
         "threadpool.h",
         "threadpool_interface.h",
+        "tracing.h",
     ] + selects.with_or({
         "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
+            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
             "threadpool.cc",
+            "tracing.cc",
         ],
     }),
     compatible_with = get_compatible_with_portable(),
@@ -617,6 +626,8 @@ exports_files(
         "subprocess.h",
         "threadpool.cc",
         "threadpool.h",
+        "tracing.h",
+        "tracing.cc",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -653,6 +664,7 @@ filegroup(
         "platform.h",
         "setround.h",
         "snappy.h",
+        "tracing.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [

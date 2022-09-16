@@ -7,7 +7,6 @@
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
-load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -18,7 +17,6 @@ load(
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
-    "tf_google_mobile_srcs_no_runtime",
     "tf_google_mobile_srcs_only_runtime",
     "tf_kernel_tests_linkstatic",
     "tf_platform_alias",
@@ -100,7 +98,6 @@ exports_files(
         "subprocess.h",
         "test.h",
         "threadpool.h",
-        "tracing.cc",
         "tracing.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
@@ -891,7 +888,9 @@ cc_library(
 cc_library(
     name = "tracing",
     textual_hdrs = ["tracing.h"],
-    deps = tf_platform_deps("tracing"),
+    deps = [
+        "//tensorflow/tsl/platform:tracing",
+    ],
 )
 
 cc_library(
@@ -1839,13 +1838,7 @@ filegroup(
         "tstring.h",
         "types.h",
         "//tensorflow/tsl/platform:mobile_srcs_no_runtime",
-    ] + selects.with_or({
-        "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
-        "//conditions:default": [
-            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
-            "tracing.cc",
-        ],
-    }) + tf_platform_alias("additional_mobile_srcs_no_runtime"),
+    ] + tf_platform_alias("additional_mobile_srcs_no_runtime"),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
