@@ -268,6 +268,7 @@ cc_library(
         "py_executable.cc",
         "py_values.cc",
         "sharded_device_array.cc",
+        "sharding.cc",
     ] + if_cuda_or_rocm([
         "py_client_gpu.cc",
     ]),
@@ -279,6 +280,7 @@ cc_library(
         "py_executable.h",
         "py_values.h",
         "sharded_device_array.h",
+        "sharding.h",
     ] + if_cuda_or_rocm([
         "py_client_gpu.h",
     ]),
@@ -563,13 +565,13 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@pybind11",
+        "@stablehlo//:chlo_ops",
     ],
 )
 

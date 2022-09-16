@@ -857,7 +857,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto scatter_op = func_builder->create<mlir::mhlo::ScatterOp>(
           loc, flattened_types, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*scatter->to_apply(),
-                                        &scatter_op.update_computation(),
+                                        &scatter_op.getUpdateComputation(),
                                         /*flatten_region_arg_tuple=*/true));
       TF_ASSIGN_OR_RETURN(auto result_type,
                           ConvertShapeToType<RankedTensorType>(
@@ -884,10 +884,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           func_builder->create<mlir::mhlo::SelectAndScatterOp>(
               loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*select_scatter->select(),
-                                        &select_scatter_op.select(),
+                                        &select_scatter_op.getSelect(),
                                         /*flatten_region_arg_tuple=*/true));
       TF_RETURN_IF_ERROR(ImportAsRegion(*select_scatter->scatter(),
-                                        &select_scatter_op.scatter(),
+                                        &select_scatter_op.getScatter(),
                                         /*flatten_region_arg_tuple=*/true));
       return select_scatter_op.getOperation();
     }
@@ -921,7 +921,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           builder_->getI64IntegerAttr(sort_instruction->sort_dimension()),
           builder_->getBoolAttr(sort_instruction->is_stable()));
       TF_RETURN_IF_ERROR(ImportAsRegion(*sort_instruction->to_apply(),
-                                        &sort_op.comparator(),
+                                        &sort_op.getComparator(),
                                         /*flatten_region_arg_tuple=*/true));
 
       // Check if the output needs to be tupled.
@@ -962,10 +962,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         auto op = func_builder->create<mlir::mhlo::IfOp>(
             loc, flattened_ret_types, flattened_operands[0], attributes);
         TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->true_computation(),
-                                          &op.true_branch(),
+                                          &op.getTrueBranch(),
                                           /*flatten_region_arg_tuple=*/true));
         TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->false_computation(),
-                                          &op.false_branch(),
+                                          &op.getFalseBranch(),
                                           /*flatten_region_arg_tuple=*/true));
 
         // Replace the uses of block-arguments of the IfOp with the
@@ -995,7 +995,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
            llvm::enumerate(instruction->branch_computations())) {
         auto index = index_and_computation.index();
         HloComputation* computation = index_and_computation.value();
-        TF_RETURN_IF_ERROR(ImportAsRegion(*computation, &op.branches()[index],
+        TF_RETURN_IF_ERROR(ImportAsRegion(*computation,
+                                          &op.getBranches()[index],
                                           /*flatten_region_arg_tuple=*/true));
       }
 
@@ -1026,6 +1027,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (all_gather->channel_id().has_value())
         attributes.push_back(
             ConvertChannelHandle(all_gather->channel_id().value()));
+      if (all_gather->use_global_device_ids())
+        attributes.push_back(ConvertUseGlobalDeviceIds());
       return func_builder
           ->create<mlir::mhlo::AllGatherOp>(loc, result_type, operands,
                                             attributes)
@@ -1086,7 +1089,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "called_computation",
           mlir::FlatSymbolRefAttr::get(builder_->getContext(),
-                                       async_start.called_computation())));
+                                       async_start.getCalledComputation())));
       attributes.push_back(builder_->getNamedAttr(
           "execution_thread", builder_->getStringAttr("main")));
 
@@ -1107,7 +1110,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
           loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*all_reduce->to_apply(),
-                                        &all_reduce_op.computation()));
+                                        &all_reduce_op.getComputation()));
       return all_reduce_op.getOperation();
     }
     case HloOpcode::kAllToAll: {
@@ -1158,7 +1161,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           llvm::makeArrayRef(operands).drop_front(num_inputs),
           ConvertDimensions(instruction->dimensions()));
       TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->to_apply(),
-                                        &reduce.body(),
+                                        &reduce.getBody(),
                                         /*flatten_region_arg_tuple=*/true));
 
       // Check if the output needs to be tupled.
@@ -1236,9 +1239,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           loc, flattened_operand_types, flattened_operands);
 
       TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->while_condition(),
-                                        &op.cond(),
+                                        &op.getCond(),
                                         /*flatten_region_arg_tuple=*/true));
-      TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->while_body(), &op.body(),
+      TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->while_body(),
+                                        &op.getBody(),
                                         /*flatten_region_arg_tuple=*/true));
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       operands[0].getType());
@@ -1303,11 +1307,13 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (reduce_scatter->channel_id().has_value())
         attributes.push_back(
             ConvertChannelHandle(reduce_scatter->channel_id().value()));
+      if (reduce_scatter->use_global_device_ids())
+        attributes.push_back(ConvertUseGlobalDeviceIds());
       auto reduce_scatter_op =
           func_builder->create<mlir::mhlo::ReduceScatterOp>(
               loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*reduce_scatter->to_apply(),
-                                        &reduce_scatter_op.computation(),
+                                        &reduce_scatter_op.getComputation(),
                                         /*flatten_region_arg_tuple=*/true));
 
       return reduce_scatter_op.getOperation();
@@ -1340,7 +1346,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto reduce = func_builder->create<mlir::mhlo::ReduceWindowOp>(
           loc, return_types, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->to_apply(),
-                                        &reduce.body(),
+                                        &reduce.getBody(),
                                         /*flatten_region_arg_tuple=*/true));
 
       // Check if the output needs to be tupled.
@@ -1357,7 +1363,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           loc, result_type, operands,
           ConvertDimensions(instruction->dimensions()));
       TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->to_apply(),
-                                        &op.computation(),
+                                        &op.getComputation(),
                                         /*flatten_region_arg_tuple=*/true));
       return op.getOperation();
     }
@@ -1611,7 +1617,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                           fusion_kind.getValue()));
       TF_RETURN_IF_ERROR(ImportAsRegion(
           *instruction->fused_instructions_computation(),
-          &fusion.fused_computation(), /*flatten_region_arg_tuple=*/true));
+          &fusion.getFusedComputation(), /*flatten_region_arg_tuple=*/true));
 
       return CreateTupleFromOpResults(func_builder, loc, fusion.getOperation(),
                                       result_type);
@@ -1630,9 +1636,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kReducePrecision: {
       auto op = func_builder->create<mlir::mhlo::ReducePrecisionOp>(
           loc, result_type, operands[0], attributes);
-      op.exponent_bitsAttr(func_builder->getIntegerAttr(
+      op.setExponentBitsAttr(func_builder->getIntegerAttr(
           func_builder->getI32Type(), instruction->exponent_bits()));
-      op.mantissa_bitsAttr(func_builder->getIntegerAttr(
+      op.setMantissaBitsAttr(func_builder->getIntegerAttr(
           func_builder->getI32Type(), instruction->mantissa_bits()));
       return op.getOperation();
     }

@@ -73,6 +73,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/padding.h"
@@ -753,7 +754,7 @@ LogicalResult BroadcastGradientArgsOp::fold(
   auto build_out_dense_element = [](SmallVectorImpl<int64_t> &shape,
                                     Type input_type) {
     Type element_type = input_type.cast<mlir::TensorType>().getElementType();
-    RankedTensorType type = RankedTensorType::get(
+    RankedTensorType type = tensorflow::GetTypeFromTFTensorShape(
         {static_cast<int64_t>(shape.size())}, element_type);
     // Input could only be i32 or i64. For i32, downcast to int32_t array.
     if (element_type.isInteger(32)) {
@@ -1244,7 +1245,8 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
     }
 
     // New concatenation axis.
-    auto axis_type = RankedTensorType::get({}, getElementTypeOrSelf(axis_attr));
+    auto axis_type = tensorflow::GetTypeFromTFTensorShape(
+        {}, getElementTypeOrSelf(axis_attr));
     DenseIntElementsAttr attr;
     if (axis_type.getElementType().isInteger(32)) {
       attr = DenseIntElementsAttr::get(axis_type, static_cast<int32_t>(axis));
@@ -1335,7 +1337,8 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(
   // and concatenate scalars into the vector.
   if (is_all_tensors(0, axis) && is_all_scalars(1)) {
     std::array<int64_t, 1> rhs_dims{static_cast<int64_t>(op.values().size())};
-    auto rhs_type = RankedTensorType::get(rhs_dims, ranked.getElementType());
+    auto rhs_type =
+        tensorflow::GetTypeFromTFTensorShape(rhs_dims, ranked.getElementType());
     return HoistParams{args(0),
                        args(1),
                        axis,
@@ -1345,7 +1348,8 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(
                        /*scalar_operand_idx=*/1};
   } else if (is_all_tensors(1, axis) && is_all_scalars(0)) {
     std::array<int64_t, 1> lhs_dims{static_cast<int64_t>(op.values().size())};
-    auto lhs_type = RankedTensorType::get(lhs_dims, ranked.getElementType());
+    auto lhs_type =
+        tensorflow::GetTypeFromTFTensorShape(lhs_dims, ranked.getElementType());
     return HoistParams{args(0),
                        args(1),
                        0,
@@ -1498,8 +1502,8 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
   // Compute an exclusive cumulative sum of elements at concat_dim.
   results.reserve(shapes.size());
   SmallVector<int32_t, 4> cumulative_sum(num_dims, 0);
-  RankedTensorType offset_type =
-      RankedTensorType::get({num_dims}, IntegerType::get(getContext(), 32));
+  RankedTensorType offset_type = tensorflow::GetTypeFromTFTensorShape(
+      {num_dims}, IntegerType::get(getContext(), 32));
   for (DenseIntElementsAttr shape : shapes) {
     results.push_back(DenseIntElementsAttr::get(offset_type, cumulative_sum));
     cumulative_sum[concat_dim] += shape.getValues<int32_t>()[concat_dim];
@@ -1540,7 +1544,8 @@ void ConstOp::build(OpBuilder &builder, OperationState &result,
     // types. But we need to wrap it up with ElementsAttr to construct
     // valid TensorFlow constants.
     auto typed_attr = value.cast<TypedAttr>();
-    type = RankedTensorType::get(/*shape=*/{}, typed_attr.getType());
+    type = tensorflow::GetTypeFromTFTensorShape(/*shape=*/{},
+                                                typed_attr.getType());
     return ConstOp::build(builder, result, DenseElementsAttr::get(type, value));
   }
   // TODO(jpienaar): support other TensorFlow specific types.
@@ -2270,8 +2275,8 @@ LogicalResult DynamicStitchOp::verify() {
                             inferred_item_shape->end());
 
       auto out_ty = op.getType().cast<TensorType>();
-      auto expected_out_ty =
-          RankedTensorType::get(expected_shape, out_ty.getElementType());
+      auto expected_out_ty = tensorflow::GetTypeFromTFTensorShape(
+          expected_shape, out_ty.getElementType());
 
       if (!AreCastCompatible({out_ty, expected_out_ty})) {
         return op.emitOpError() << "has invalid output type; should be "
@@ -2323,13 +2328,13 @@ OpFoldResult EmptyOp::fold(ArrayRef<Attribute> operands) {
   if (!type.hasStaticShape()) return {};
 
   if (auto float_type = etype.dyn_cast<FloatType>()) {
-    auto out_type = RankedTensorType::get(out_shape, float_type);
+    auto out_type = tensorflow::GetTypeFromTFTensorShape(out_shape, float_type);
     return DenseElementsAttr::get(out_type,
                                   {APFloat(float_type.getFloatSemantics())});
   }
 
   if (auto int_type = etype.dyn_cast<IntegerType>()) {
-    auto out_type = RankedTensorType::get(out_shape, etype);
+    auto out_type = tensorflow::GetTypeFromTFTensorShape(out_shape, etype);
     APInt val(int_type.getWidth(), 0, int_type.getSignedness());
     return DenseElementsAttr::get(out_type, val);
   }
@@ -2526,7 +2531,7 @@ Type InferExpandDimsOpType(Value input, Value dim) {
 
   SmallVector<int64_t, 4> shape = llvm::to_vector<4>(input_ty.getShape());
   shape.insert(shape.begin() + dim_val, 1);
-  return RankedTensorType::get(shape, element_ty);
+  return tensorflow::GetTypeFromTFTensorShape(shape, element_ty);
 }
 
 void ExpandDimsOp::build(OpBuilder &builder, OperationState &result,
@@ -2657,7 +2662,7 @@ static ShapedType InferFillOpType(Value dims, Value value) {
     for (const APInt dim : dims_attr.getValues<APInt>()) {
       shape.push_back(dim.getSExtValue());
     }
-    return RankedTensorType::get(shape, etype);
+    return tensorflow::GetTypeFromTFTensorShape(shape, etype);
   }
 
   if (auto shape_op = dims.getDefiningOp<ShapeOp>()) {
@@ -2698,7 +2703,7 @@ OpFoldResult FillOp::fold(ArrayRef<Attribute> operands) {
   for (const APInt dim : dims.getValues<APInt>()) {
     shape.push_back(dim.getSExtValue());
   }
-  type = RankedTensorType::get(shape, type.getElementType());
+  type = tensorflow::GetTypeFromTFTensorShape(shape, type.getElementType());
 
   return DenseElementsAttr::get(type, value.getValues<Attribute>()[0]);
 }
@@ -3216,8 +3221,9 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 
   // Add constant operation with a new reduction indices.
   OpBuilder builder(getOperation());
-  auto type = mlir::RankedTensorType::get(shuffled_reduction.size(),
-                                          builder.getIntegerType(32));
+  auto type = tensorflow::GetTypeFromTFTensorShape(
+      {static_cast<int64_t>(shuffled_reduction.size())},
+      builder.getIntegerType(32));
   auto values = mlir::DenseIntElementsAttr::get(type, shuffled_reduction);
   auto shuffled_reduction_op = builder.create<TF::ConstOp>(getLoc(), values);
 

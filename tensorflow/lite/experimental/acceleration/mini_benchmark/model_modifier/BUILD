@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 

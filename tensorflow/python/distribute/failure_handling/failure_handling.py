@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 
+from tensorflow.core.distributed_runtime.preemption import gen_check_preemption_op
 from tensorflow.python.checkpoint import checkpoint as checkpoint_lib
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import multi_worker_util
@@ -40,6 +41,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
 _INITIAL_RUN_COUNT_KEY = 'RUN_TO_CHECKPOINT'
@@ -51,6 +53,7 @@ _PREEMPTION_WORKER_KEY = 'TERMINATED_WORKER'
 _ACKNOWLEDGE_KEY = 'RECEIVED_SIGNAL'
 _ITERATION_VARIABLE = 'checkpointed_runs'
 _STOP_WATCHING_CLUSTER_VALUE = 'STOP_WATCHER'
+preemption_key = 'TF_DEFAULT_PREEMPTION_NOTICE_KEY'
 
 
 def _non_chief_checkpoint_dir(checkpoint_dir, task_id):
@@ -976,6 +979,76 @@ class PreemptionCheckpointHandler(object):
 # TODO(wxinyi): remove this line after we move the Keras callback prototype and
 # change gce test usage.
 WorkerPreemptionHandler = PreemptionCheckpointHandler
+
+
+# TODO(wxinyi): integrate this class with the PreemptionCheckpointHandler after
+# testing it thoroughly on Borg.
+class TPUPreemptionHandler(PreemptionCheckpointHandler):
+  """PreemptionCheckpointHandler for TPUStrategy."""
+
+  def __init__(  # pylint: disable=super-init-not-called
+      self,
+      cluster_resolver,
+      checkpoint_or_checkpoint_manager,
+      checkpoint_dir=None,
+      termination_config=None):
+    self._cluster_resolver = cluster_resolver
+    # The number of calls to `PreemptionCheckpointHandler.run` when the latest
+    # checkpoint was saved.
+    self._checkpointed_runs = variables.Variable(
+        initial_value=constant_op.constant(0, dtype=dtypes.int64),
+        trainable=False,
+        name=_ITERATION_VARIABLE)
+
+    # For compatibility with the current PreemptionCheckpointHandler
+    del termination_config
+    self._is_chief = True
+    self._poll_termination_signal_thread = None
+    self._cluster_wise_termination_watcher_thread = None
+
+    self._maybe_create_checkpoint_manager(checkpoint_or_checkpoint_manager,
+                                          checkpoint_dir, cluster_resolver)
+    self._read_checkpoint_manager.restore_or_initialize()
+
+    logging.info('PreemptionCheckpointHandler initialized or restored.')
+
+  def run(self, distributed_train_function, *args, **kwargs):
+    gen_check_preemption_op.check_preemption(preemption_key=preemption_key)
+    result = distributed_train_function(*args, **kwargs)
+    self._checkpointed_runs.assign_add(1)
+    return result
+
+  @property
+  def total_run_calls(self):
+    return self._checkpointed_runs.numpy()
+
+  def _save_checkpoint(self):
+    logging.info('PreemptionCheckpointHandler: Starting saving a checkpoint.')
+    self._write_checkpoint_manager.save()
+    logging.info('Checkpoint finished at path %s',
+                 self._write_checkpoint_manager.directory)
+
+  @tf_contextlib.contextmanager
+  def watch_error_scope(self):
+    """Sync error and maybe save checkpoint."""
+    try:
+      with context.async_scope():
+        yield
+    except errors.AbortedError as abort_error:
+      if abort_error.experimental_payloads.get(
+          b'type.googleapis.com/tensorflow.distributed_runtime.WorkerPreemption'
+      ):
+        logging.info('Clearing preemption error to save checkpoint...')
+
+        context.async_clear_error()
+        self._save_checkpoint()
+
+        # TODO(wxinyi): Find an alternative -- not exit.
+        sys.exit(42)
+
+      else:
+        raise
+
 
 # ------------------------------------------------------------------------------
 # Metrics to track which distribution strategy APIs (reusable by future APIs)

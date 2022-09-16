@@ -155,9 +155,16 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
       int64_t num_args = mapping.getNumArgs();
       int64_t num_results = mapping.getNumResults();
 
+      // Always create an `alloca` in the parent function entry block.
+      // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
+      Value hole = [&]() -> Value {
+        OpBuilder::InsertionGuard guard(b);
+        b.setInsertionPointToStart(
+            &op->getParentOfType<func::FuncOp>().front());
+        return b.create<memref::AllocaOp>(MemRefType::get({0}, b.getI8Type()));
+      }();
+
       // We represent holes as empty i8 memrefs.
-      Value hole =
-          b.create<memref::AllocaOp>(MemRefType::get({0}, b.getI8Type()));
       operands = llvm::SmallVector<Value>(num_args + num_results, hole);
 
       // Update operands to mapped custom call arguments.
@@ -236,10 +243,14 @@ class CaseOpLowering : public OpRewritePattern<CaseOp> {
     // Copy index buffer to the host ...
     auto index_type = op.getIndex().getType().dyn_cast<MemRefType>();
 
-    // TODO(ezhulenev): We need to make sure that `alloca` is placed in the
-    // parent function entry block.
-    // https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-    Value index_on_host = b.create<memref::AllocaOp>(index_type);
+    // Always create an `alloca` in the parent function entry block.
+    // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
+    Value index_on_host = [&]() -> Value {
+      OpBuilder::InsertionGuard guard(b);
+      b.setInsertionPointToStart(&op->getParentOfType<func::FuncOp>().front());
+      return b.create<memref::AllocaOp>(index_type);
+    }();
+
     b.create<MemcpyOp>(TypeRange(), ValueRange({index_on_host, op.getIndex()}));
 
     // Get the index value from the buffer.
@@ -346,9 +357,18 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
       auto* terminator = loop.getBefore().back().getTerminator();
       b.setInsertionPointAfter(terminator);
 
-      // Copy predicate buffer to the host ...
       auto i1 = b.getI1Type();
-      Value pred_on_host = b.create<memref::AllocaOp>(MemRefType::get({}, i1));
+
+      // Always create an `alloca` in the parent function entry block.
+      // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
+      Value pred_on_host = [&]() -> Value {
+        OpBuilder::InsertionGuard guard(b);
+        b.setInsertionPointToStart(
+            &op->getParentOfType<func::FuncOp>().front());
+        return b.create<memref::AllocaOp>(MemRefType::get({}, i1));
+      }();
+
+      // Copy predicate buffer to the host ...
       b.create<gpu::MemcpyOp>(TypeRange(), ValueRange({pred_on_host, pred}));
 
       // .. and check if we need to continue loop iteration.

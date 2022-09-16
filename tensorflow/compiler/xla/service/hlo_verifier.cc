@@ -204,6 +204,27 @@ Status ShapeVerifier::HandleDot(HloInstruction* dot) {
           dot->operand(0)->shape(), dot->operand(1)->shape(),
           dot->dot_dimension_numbers(),
           /*preferred_element_type=*/dot->shape().element_type()));
+  if (auto nibble_count =
+          absl::c_count(dot->precision_config().operand_precision(),
+                        PrecisionConfig::PACKED_NIBBLE)) {
+    if (nibble_count == 1) {
+      return InvalidArgument("Dot cannot have a single packed nibble argument");
+    }
+    if (nibble_count == 2) {
+      if (!ShapeUtil::ElementIsIntegralWithBits(dot->operand(0)->shape(), 8)) {
+        return InvalidArgument(
+            "Packed nibble precision can only apply to 8 bit integers. LHS is "
+            "%s.",
+            dot->operand(0)->ToString());
+      }
+      if (!ShapeUtil::ElementIsIntegralWithBits(dot->operand(1)->shape(), 8)) {
+        return InvalidArgument(
+            "Packed nibble precision can only apply to 8 bit integers. RHS is "
+            "%s.",
+            dot->operand(1)->ToString());
+      }
+    }
+  }
   return CheckShape(dot, expected);
 }
 
@@ -215,6 +236,42 @@ Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
           convolution->feature_group_count(), convolution->batch_group_count(),
           convolution->window(), convolution->convolution_dimension_numbers(),
           /*preferred_element_type=*/convolution->shape().element_type()));
+  if (auto nibble_count =
+          absl::c_count(convolution->precision_config().operand_precision(),
+                        PrecisionConfig::PACKED_NIBBLE)) {
+    if (nibble_count == 1) {
+      return InvalidArgument(
+          "Convolution cannot have a single packed nibble argument");
+    }
+    if (nibble_count == 2) {
+      if (convolution->feature_group_count() != 1) {
+        return InvalidArgument(
+            "Packed nibble precision does not support feature group count "
+            "%s.",
+            convolution->ToString());
+      }
+      if (convolution->batch_group_count() != 1) {
+        return InvalidArgument(
+            "Packed nibble precision does not support batch group count "
+            "%s.",
+            convolution->ToString());
+      }
+      if (!ShapeUtil::ElementIsIntegralWithBits(
+              convolution->operand(0)->shape(), 8)) {
+        return InvalidArgument(
+            "Packed nibble precision can only apply to 8 bit integers. LHS is "
+            "%s.",
+            convolution->operand(0)->ToString());
+      }
+      if (!ShapeUtil::ElementIsIntegralWithBits(
+              convolution->operand(1)->shape(), 8)) {
+        return InvalidArgument(
+            "Packed nibble precision can only apply to 8 bit integers. RHS is "
+            "%s.",
+            convolution->operand(1)->ToString());
+      }
+    }
+  }
   return CheckShape(convolution, expected);
 }
 
@@ -1773,8 +1830,8 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
                                  const StatusOr<Shape>& inferred_shape_status) {
   if (!inferred_shape_status.ok()) {
     Status s = inferred_shape_status.status();
-    tensorflow::errors::AppendToMessage(&s, ", for instruction ",
-                                        instruction->ToString());
+    tsl::errors::AppendToMessage(&s, ", for instruction ",
+                                 instruction->ToString());
     return s;
   }
   return CheckShape(instruction, inferred_shape_status.value());

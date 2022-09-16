@@ -286,7 +286,7 @@ struct BufferizeLoopOp : public OpConversionPattern<LoopOp> {
 
     // Allocate new buffers for results if it is used by multiple uses.
     SmallVector<Value, 4> operands = adaptor.getOperands();
-    for (auto &en : llvm::enumerate(op.outputs())) {
+    for (auto &en : llvm::enumerate(op.getOutputs())) {
       Value output = en.value();
 
       auto toTensor = output.getDefiningOp<bufferization::ToTensorOp>();
@@ -318,7 +318,7 @@ struct BufferizeLoopOp : public OpConversionPattern<LoopOp> {
       return rewriter.notifyMatchFailure(op, "could not convert body types");
     }
 
-    rewriter.replaceOp(op, newOp.outputs());
+    rewriter.replaceOp(op, newOp.getOutputs());
     return success();
   }
 };

@@ -21,6 +21,7 @@ import weakref
 import numpy as np
 import six
 
+from tensorflow.python.eager.polymorphic_function import composite_tensor_utils
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -568,12 +569,7 @@ def _convert_variables_to_tensors(args, kwargs):
 
 def _convert_numpy_inputs(inputs):
   """Converts numpy array inputs to tensors."""
-  # We assume that any CompositeTensors have already converted their components
-  # from numpy arrays to Tensors, so we don't need to expand composites here for
-  # the numpy array conversion. Instead, we do so because the flattened inputs
-  # are eventually passed to ConcreteFunction()._call_flat, which requires
-  # expanded composites.
-  flat_inputs = nest.flatten(inputs, expand_composites=True)
+  flat_inputs = composite_tensor_utils.flatten_with_variables(inputs)
 
   # Check for NumPy arrays in arguments and convert them to Tensors.
   # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
@@ -597,9 +593,13 @@ def _convert_numpy_inputs(inputs):
       filtered_flat_inputs.append(flat_inputs[index])
       need_packing = True
   if need_packing:
-    return (nest.pack_sequence_as(
-        structure=inputs, flat_sequence=flat_inputs,
-        expand_composites=True), flat_inputs, filtered_flat_inputs)
+    return (
+        nest.pack_sequence_as(
+            structure=inputs,
+            flat_sequence=nest.flatten(flat_inputs, expand_composites=True),
+            expand_composites=True),
+        flat_inputs,
+        filtered_flat_inputs)
   else:
     return inputs, flat_inputs, filtered_flat_inputs
 
@@ -651,7 +651,7 @@ def convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
         flat_sequence=flatten_inputs,
         expand_composites=True)
 
-  flat_inputs = nest.flatten(inputs, expand_composites=True)
+  flat_inputs = composite_tensor_utils.flatten_with_variables(inputs)
 
   return (inputs, flat_inputs, [
       t for t in flat_inputs

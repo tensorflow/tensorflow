@@ -122,8 +122,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/human_readable_json.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 #if GOOGLE_CUDA
@@ -1414,7 +1414,7 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
   const Shape b_shape = GetShape(operands[1]);
   const PrimitiveType elem_ty = b_shape.element_type();
   TriangularSolveOptions backend_config;
-  TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(
+  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(
       custom_call.getBackendConfig().str(), &backend_config));
 
   ThunkSequence thunks;
@@ -1716,11 +1716,9 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
   std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fused_computation);
   HloInstruction* first_transpose = *absl::c_find_if(
       hlo_roots,
-      [](HloInstruction* instr) { return IsTiledTranspose(*instr); });
-  HloInstruction* operand = first_transpose->mutable_operand(0);
+      [](HloInstruction* instr) { return FindTiledTranspose(*instr); });
 
-  std::optional<Vector3> dims =
-      ShapeUtil::FindTranspose021(operand->shape(), first_transpose->shape());
+  std::optional<Vector3> dims = FindTiledTranspose(*first_transpose);
 
   // TODO(cheshire): have a more robust way of checking this.
   CHECK(dims.has_value());
@@ -4281,7 +4279,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
   std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion_hlo);
   HloInstruction* first_transpose = *absl::c_find_if(
       hlo_roots,
-      [](HloInstruction* instr) { return IsTiledTranspose(*instr); });
+      [](HloInstruction* instr) { return FindTiledTranspose(*instr); });
   const Shape& out_shape = first_transpose->shape();
   const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
 
@@ -4290,7 +4288,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
   //  -> EITHER it's a kCopy: S{L} -> S{L'}
   //  -> OR it's an elementwise op of shape S{L}
   for (HloInstruction* root : hlo_roots) {
-    if (IsTiledTranspose(*root)) {
+    if (FindTiledTranspose(*root)) {
       CHECK(ShapeUtil::EqualIgnoringElementType(transpose_in_shape,
                                                 root->operand(0)->shape()));
       CHECK(ShapeUtil::EqualIgnoringElementType(out_shape, root->shape()));
@@ -4316,7 +4314,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
 
   absl::flat_hash_map<HloInstruction*, llvm::GlobalVariable*> tiles;
   for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
-    if (IsTiledTranspose(*root)) {
+    if (FindTiledTranspose(*root)) {
       tiles[root] =
           AllocateShared(tiling_scheme,
                          llvm_ir::PrimitiveTypeToIrType(
@@ -4347,7 +4345,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
           for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
             IrArray::Index input_index = GetUnnormalizedIndex(
                 index, transpose_in_shape, &b_, tiling_scheme.GetDimsInElems());
-            if (IsTiledTranspose(*root)) {
+            if (FindTiledTranspose(*root)) {
               llvm_ir::ElementGenerator input_gen =
                   *fused_emitter.GetGenerator(*root->operand(0));
               llvm::Value* value = *input_gen(input_index);
@@ -4383,7 +4381,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
             const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
             llvm::Value* x_loc, llvm::Value* /*x_iter_num*/) {
           for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
-            if (IsTiledTranspose(*root)) {
+            if (FindTiledTranspose(*root)) {
               IrArray::Index untiled_index = GetUnnormalizedIndex(
                   index, root->shape(), &b_,
                   Permute(tiling_scheme.GetDimsInElems(), permutation));

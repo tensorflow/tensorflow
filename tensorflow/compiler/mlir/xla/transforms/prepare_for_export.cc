@@ -89,8 +89,8 @@ void prepareWhileOp(WhileOp while_op) {
                                    while_op->getResultTypes().end());
   SmallVector<Value> operands(while_op->getOperands().begin(),
                               while_op->getOperands().end());
-  Region &cond_region = while_op.cond();
-  Region &body_region = while_op.body();
+  Region &cond_region = while_op.getCond();
+  Region &body_region = while_op.getBody();
 
   for (Value input : implicit_inputs) {
     returned_types.push_back(input.getType());
@@ -112,10 +112,10 @@ void prepareWhileOp(WhileOp while_op) {
   OpBuilder builder(while_op);
   auto new_while_op = builder.create<mhlo::WhileOp>(while_op.getLoc(),
                                                     returned_types, operands);
-  new_while_op.cond().getBlocks().clear();
-  new_while_op.cond().takeBody(while_op.cond());
-  new_while_op.body().getBlocks().clear();
-  new_while_op.body().takeBody(while_op.body());
+  new_while_op.getCond().getBlocks().clear();
+  new_while_op.getCond().takeBody(while_op.getCond());
+  new_while_op.getBody().getBlocks().clear();
+  new_while_op.getBody().takeBody(while_op.getBody());
   for (auto zipped_results :
        llvm::zip_first(while_op.getResults(), new_while_op.getResults()))
     std::get<0>(zipped_results).replaceAllUsesWith(std::get<1>(zipped_results));
@@ -123,7 +123,7 @@ void prepareWhileOp(WhileOp while_op) {
 }
 
 void prepareBroadcastInDim(BroadcastInDimOp bcast) {
-  DenseIntElementsAttr dims = bcast.broadcast_dimensions();
+  DenseIntElementsAttr dims = bcast.getBroadcastDimensions();
   // If dimensions aren't sorted, there is a transpose fused into the op, which
   // XLA Builder does not support, we unfuse here.
   if (llvm::is_sorted(dims.getValues<int64_t>())) return;
@@ -141,12 +141,12 @@ void prepareBroadcastInDim(BroadcastInDimOp bcast) {
   });
   OpBuilder builder(bcast);
   bcast.setOperand(builder.create<TransposeOp>(
-      bcast.getLoc(), bcast.operand(),
+      bcast.getLoc(), bcast.getOperand(),
       DenseIntElementsAttr::get(dims.getType(), transposedDim)));
   // Now reuse the original broadcast_dimensions and sort it.
   transposedDim.assign(rawDims.begin(), rawDims.end());
   llvm::sort(transposedDim);
-  bcast.broadcast_dimensionsAttr(
+  bcast.setBroadcastDimensionsAttr(
       DenseIntElementsAttr::get(dims.getType(), transposedDim));
 }
 

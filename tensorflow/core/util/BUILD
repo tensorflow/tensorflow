@@ -80,6 +80,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "activation_mode.h",
         "batch_util.cc",
         "batch_util.h",
         "bcast.cc",
@@ -132,7 +133,6 @@ filegroup(
         "tensor_slice_util.h",
         "tensor_slice_writer.cc",
         "tensor_slice_writer.h",
-        "use_cudnn.cc",
         "use_cudnn.h",
         "util.cc",
         "util.h",
@@ -235,10 +235,10 @@ filegroup(
         "tensor_slice_reader_cache.cc",
         "tensor_slice_set.cc",
         "tensor_slice_writer.cc",
-        "use_cudnn.cc",
         "util.cc",
         "work_sharder.cc",
         "xla_config_registry.cc",
+        "//tensorflow/tsl/util:framework_internal_impl_srcs",
     ],
 )
 
@@ -371,6 +371,7 @@ filegroup(
         "use_cudnn.h",
         "util.h",
         "work_sharder.h",
+        "//tensorflow/tsl/util:framework_srcs",
     ],
 )
 

@@ -365,7 +365,7 @@ Status AddCopiesForAliasedInputOutputs(
   HloComputation* entry = module->entry_computation();
   if (!HloInstruction::IsThreadIncluded(entry->execution_thread(),
                                         execution_threads)) {
-    return Status::OK();
+    return OkStatus();
   }
   HloInstruction* root = entry->root_instruction();
 

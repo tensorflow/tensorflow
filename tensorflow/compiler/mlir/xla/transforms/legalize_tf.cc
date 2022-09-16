@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/hlo_utils.h"
-#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/ChloOps.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/rng_alg.h"
@@ -245,7 +245,7 @@ static llvm::SmallVector<Value, 4> CreateFullIndexVectorFromMinorIndices(
   auto zero =
       GetScalarConstOfType(getElementTypeOrSelf(minor_indices[0].getType()),
                            loc, 0, builder)
-          .output();
+          .getOutput();
   llvm::SmallVector<Value, 4> indices(rank, zero);
   std::copy(minor_indices.begin(), minor_indices.end(),
             indices.begin() + (rank - minor_indices.size()));
@@ -546,7 +546,7 @@ static void CreateWhile32(Location loc, int num_iterations,
     OpBuilder::InsertionGuard guard(*builder);
 
     // Build up the only block in the condition region.
-    Region &condition = while_op.cond();
+    Region &condition = while_op.getCond();
     Block *block = builder->createBlock(&condition);
     block->addArguments(init_types_with_loop_iv,
                         SmallVector<Location>(ivs_count, loc));
@@ -565,7 +565,7 @@ static void CreateWhile32(Location loc, int num_iterations,
     OpBuilder::InsertionGuard guard(*builder);
 
     // Build up the only block in the body region.
-    Region &body = while_op.body();
+    Region &body = while_op.getBody();
     Block *block = builder->createBlock(&body);
     block->addArguments(init_types_with_loop_iv,
                         SmallVector<Location>(ivs_count, loc));
@@ -1814,7 +1814,7 @@ class ConvertDiagPartOp : public OpRewritePattern<TF::DiagPartOp> {
                                             GetI64ElementsAttr({0}, &rewriter));
     assert(!input_type.getElementType().isInteger(1) &&
            "data type should not be i1");
-    BuildReduceBody<AddOp>(input_type.getElementType(), &reduce.body(),
+    BuildReduceBody<AddOp>(input_type.getElementType(), &reduce.getBody(),
                            &rewriter);
     rewriter.replaceOpWithNewOp<ReshapeOp>(
         op, RankedTensorType::get(new_dims, input_type.getElementType()),
@@ -2635,7 +2635,7 @@ Operation *AvgPoolDivideByCount(
         /*base_dilations=*/DenseIntElementsAttr(),
         /*window_dilations=*/DenseIntElementsAttr(),
         /*padding=*/input_padding_attr);
-    BuildReduceBody<AddOp>(element_type, &divisor.body(), &rewriter);
+    BuildReduceBody<AddOp>(element_type, &divisor.getBody(), &rewriter);
 
     // Divide `pooled` by window counts.
     result = rewriter.create<mhlo::DivOp>(loc, pooled_type, pooled,
@@ -2690,7 +2690,7 @@ class ConvertAvgPoolOp : public OpRewritePattern<OpTy> {
         GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
         /*base_dilations=*/DenseIntElementsAttr(),
         /*window_dilations=*/DenseIntElementsAttr(), paddings_attr);
-    BuildReduceBody<AddOp>(sum_element_type, &reduce.body(), &rewriter);
+    BuildReduceBody<AddOp>(sum_element_type, &reduce.getBody(), &rewriter);
 
     // Count the number of elements in the window. The following calculation
     // is only valid for no paddings.
@@ -2876,7 +2876,7 @@ class ConvertAvgPoolGradOp : public OpRewritePattern<OpTy> {
         /*base_dilations=*/DenseIntElementsAttr(),
         /*window_dilations=*/DenseIntElementsAttr(),
         /*padding=*/DenseIntElementsAttr());
-    BuildReduceBody<AddOp>(sum_element_type, &reduce_window_op.body(),
+    BuildReduceBody<AddOp>(sum_element_type, &reduce_window_op.getBody(),
                            &rewriter);
     Value result = reduce_window_op.getResult(0);
 
@@ -2932,7 +2932,7 @@ class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
         GetI64ElementsAttr(op.strides()),
         /*base_dilations=*/DenseIntElementsAttr(),
         /*window_dilations=*/DenseIntElementsAttr(), paddings_attr);
-    BuildReduceBody<MaxOp>(element_type, &reduce.body(), &rewriter);
+    BuildReduceBody<MaxOp>(element_type, &reduce.getBody(), &rewriter);
 
     rewriter.replaceOp(op, reduce.getResult(0));
     return success();
@@ -4154,7 +4154,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     auto reduction = rewriter.create<ReduceOp>(
         loc, casted_input.getResult(), init,
         GetI64ElementsAttr(xla_dimensions, &rewriter));
-    BuildReduceBody<ReductionOp>(reduce_element_type, &reduction.body(),
+    BuildReduceBody<ReductionOp>(reduce_element_type, &reduction.getBody(),
                                  &rewriter);
     Value result = reduction.getResult(0);
 
@@ -4385,7 +4385,7 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
         llvm::ArrayRef<Value>(init_values), reduction_dimensions);
     auto direction = Derived::GetDirection();
     BuildArgMinMaxReductionBody(input_element_type, index_element_type,
-                                direction, &reduction.body(), &rewriter);
+                                direction, &reduction.getBody(), &rewriter);
 
     rewriter.replaceOp(op, {reduction.getResult(1)});
     return success();
@@ -4526,7 +4526,7 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
                                               ValueRange(Value(op.tensor())),
                                               op.indices(), updates, dims_attr);
     Derived::BuildScatterBody(tensor_ty.getElementType(),
-                              &scatter.update_computation(), loc, rewriter);
+                              &scatter.getUpdateComputation(), loc, rewriter);
 
     rewriter.replaceOp(op, scatter.getResult(0));
     return success();
@@ -4823,10 +4823,10 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<OpTy> {
         GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
         paddings_attr);
 
-    BuildReduceBody<AddOp>(element_type, &result.scatter(), &rewriter);
+    BuildReduceBody<AddOp>(element_type, &result.getScatter(), &rewriter);
     {
       OpBuilder::InsertionGuard guard(rewriter);
-      Block *block = rewriter.createBlock(&result.select());
+      Block *block = rewriter.createBlock(&result.getSelect());
 
       // Block arguments are scalars of the given element type.
       Type type = RankedTensorType::get(/*shape=*/{}, element_type);
@@ -5749,7 +5749,7 @@ class GenericConvertUnsortedSegmentReductionOp : public OpRewritePattern<OpTy> {
         op.getLoc(), op.getType(), ValueRange(Value(broadcasted_init)),
         op.segment_ids(), op.data(), dims_attr);
     BuildReduceBody<ReductionOp>(data_type.getElementType(),
-                                 &scatter.update_computation(), &rewriter);
+                                 &scatter.getUpdateComputation(), &rewriter);
 
     rewriter.replaceOp(op, scatter.getResult(0));
     return success();
@@ -6115,22 +6115,22 @@ class ConvertXlaReduceScatterOp
         replica_groups, ChannelHandleAttr());
     StringRef reduce_op = op.reduce_op();
     if (reduce_op == "Add") {
-      BuildReduceBody<AddOp>(element_type, &reduce_scatter.computation(),
+      BuildReduceBody<AddOp>(element_type, &reduce_scatter.getComputation(),
                              &rewriter);
     } else if (reduce_op == "Mul") {
-      BuildReduceBody<MulOp>(element_type, &reduce_scatter.computation(),
+      BuildReduceBody<MulOp>(element_type, &reduce_scatter.getComputation(),
                              &rewriter);
     } else if (reduce_op == "Min") {
-      BuildReduceBody<MinOp>(element_type, &reduce_scatter.computation(),
+      BuildReduceBody<MinOp>(element_type, &reduce_scatter.getComputation(),
                              &rewriter);
     } else if (reduce_op == "Max") {
-      BuildReduceBody<MaxOp>(element_type, &reduce_scatter.computation(),
+      BuildReduceBody<MaxOp>(element_type, &reduce_scatter.getComputation(),
                              &rewriter);
     } else {
       // For mean, add replicas in the same group. Then divide the sum by the
       // number of replicas in each group below.
       assert(reduce_op == "Mean");
-      BuildReduceBody<AddOp>(element_type, &reduce_scatter.computation(),
+      BuildReduceBody<AddOp>(element_type, &reduce_scatter.getComputation(),
                              &rewriter);
     }
     Value result = reduce_scatter.getResult();
@@ -6189,7 +6189,8 @@ class ConvertXlaReduceWindowOp
     auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
         op->getParentOfType<mlir::ModuleOp>(), func));
     auto func_ty = func_op.getFunctionType();
-    BuildBodyWithCall(rewriter, loc, func, func_ty, &reduce_window_op.body());
+    BuildBodyWithCall(rewriter, loc, func, func_ty,
+                      &reduce_window_op.getBody());
 
     rewriter.replaceOp(op, reduce_window_op.getResults());
 
@@ -6331,7 +6332,8 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
         GetI64ElementsAttr(rewriter.getI64ArrayAttr(window_strides)),
         /*base_dilations=*/DenseIntElementsAttr(),
         /*window_dilations=*/DenseIntElementsAttr(), paddings_attr);
-    BuildReduceBody<AggregationOp>(sum_element_type, &reduce.body(), &rewriter);
+    BuildReduceBody<AggregationOp>(sum_element_type, &reduce.getBody(),
+                                   &rewriter);
     Value result = reduce.getResult(0);
 
     if (op.exclusive()) {
@@ -6653,7 +6655,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
     // sigma = np.dot(x[k+1:], x[k+1:])
     auto sigma = builder->create<ReduceOp>(
         loc, x_after_k_sq, zero, GetI64ElementsAttr({minor_dim}, builder));
-    BuildReduceBody<AddOp>(x_type.getElementType(), &sigma.body(), builder);
+    BuildReduceBody<AddOp>(x_type.getElementType(), &sigma.getBody(), builder);
     // mu = np.sqrt(x[k]*x[k] + sigma)
     Value alpha_sq = builder->create<MulOp>(loc, alpha, alpha);
     Value mu = builder->create<SqrtOp>(
@@ -7098,10 +7100,10 @@ class ConvertXlaSelectAndScatterOp
     };
 
     // Insert a call to the select function in the select region of the mhlo op.
-    insert_call_to(op.select(), &select_and_scatter_op.select());
+    insert_call_to(op.select(), &select_and_scatter_op.getSelect());
     // Insert a call to the scatter function in the scatter region of the mhlo
     // op.
-    insert_call_to(op.scatter(), &select_and_scatter_op.scatter());
+    insert_call_to(op.scatter(), &select_and_scatter_op.getScatter());
 
     rewriter.replaceOp(op, select_and_scatter_op.getResult());
 
@@ -7191,7 +7193,7 @@ class ConvertXlaVariadicReduceV2Op
         op->getParentOfType<mlir::ModuleOp>(), func));
     auto func_ty = func_op.getFunctionType();
     // Insert a call to the reducer in the region of the mhlo op.
-    BuildBodyWithCall(rewriter, loc, func, func_ty, &reduce_op.body());
+    BuildBodyWithCall(rewriter, loc, func, func_ty, &reduce_op.getBody());
 
     rewriter.replaceOp(op, reduce_op.getResults());
 
@@ -7219,7 +7221,7 @@ class ConvertXlaVariadicSortOp
         op->getParentOfType<mlir::ModuleOp>(), func));
     auto func_ty = func_op.getFunctionType();
     // Insert a call to the reducer in the region of the mhlo op.
-    BuildBodyWithCall(rewriter, loc, func, func_ty, &sort_op.comparator());
+    BuildBodyWithCall(rewriter, loc, func, func_ty, &sort_op.getComparator());
 
     rewriter.replaceOp(op, sort_op.getResults());
     return success();

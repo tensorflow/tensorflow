@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -354,8 +354,8 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
   template <typename T>
   void TestTranspose(int parallelism) {
     const TransposeTestCase test = GetParam();
-    tensorflow::thread::ThreadPool threadpool(tensorflow::Env::Default(),
-                                              "Transpose", parallelism);
+    tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
+                                       parallelism);
     std::vector<int64_t> output_dims = Permute(test.dims, test.permutation);
     TF_ASSERT_OK_AND_ASSIGN(
         auto plan, TransposePlan::Create(
@@ -503,8 +503,8 @@ void BM_Transpose(const TransposeTestCase& bm, int parallelism,
   input.FillIota(0);
   std::vector<int64_t> output_dims = Permute(bm.dims, bm.permutation);
   Array<T> output(output_dims);
-  tensorflow::thread::ThreadPool threadpool(tensorflow::Env::Default(),
-                                            "Transpose", parallelism);
+  tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
+                                     parallelism);
   for (auto s : state) {
     plan->Execute(input.data(), output.data(), [&](std::function<void()> fn) {
       threadpool.Schedule(std::move(fn));

@@ -42,9 +42,8 @@ namespace xla {
 StatusOr<Literal> TextLiteralReader::ReadPath(absl::string_view path) {
   CHECK(!absl::EndsWith(path, ".gz"))
       << "TextLiteralReader no longer supports reading .gz files";
-  std::unique_ptr<tensorflow::RandomAccessFile> file;
-  Status s =
-      tensorflow::Env::Default()->NewRandomAccessFile(std::string(path), &file);
+  std::unique_ptr<tsl::RandomAccessFile> file;
+  Status s = tsl::Env::Default()->NewRandomAccessFile(std::string(path), &file);
   if (!s.ok()) {
     return s;
   }
@@ -53,7 +52,7 @@ StatusOr<Literal> TextLiteralReader::ReadPath(absl::string_view path) {
   return reader.ReadAllLines();
 }
 
-TextLiteralReader::TextLiteralReader(tensorflow::RandomAccessFile* file)
+TextLiteralReader::TextLiteralReader(tsl::RandomAccessFile* file)
     : file_(file) {}
 
 StatusOr<Literal> TextLiteralReader::ReadAllLines() {

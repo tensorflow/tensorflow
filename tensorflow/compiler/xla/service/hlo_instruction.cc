@@ -56,8 +56,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/human_readable_json.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -1841,11 +1841,21 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
       return true;
-    case HloOpcode::kAllReduce:
-      return channel_id().has_value() ||
-             Cast<HloAllReduceInstruction>(this)->constrain_layout();
+
+    // Collective instructions with channel_id are side effecting only if
+    // they are used in non-spmd context.
     case HloOpcode::kAllToAll:
-      return Cast<HloAllToAllInstruction>(this)->constrain_layout();
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
+      if (Cast<HloCollectiveInstruction>(this)->constrain_layout()) {
+        return true;
+      }
+      [[fallthrough]];
+    case HloOpcode::kCollectivePermute:
+      return Cast<HloChannelInstruction>(this)->channel_id().has_value() &&
+             !GetModule()->config().use_spmd_partitioning();
+
     case HloOpcode::kCustomCall:
       return Cast<HloCustomCallInstruction>(this)
           ->custom_call_has_side_effect();
@@ -4325,7 +4335,7 @@ Status HloInstruction::GetBackendConfigInternal(
   if (raw_string.empty()) {
     return OkStatus();
   }
-  TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(raw_string, proto));
+  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string, proto));
   backend_config_.SetProto(*proto);
   return OkStatus();
 }
@@ -4388,7 +4398,7 @@ bool HloInstruction::BackendConfigRep::operator==(
   // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
   // INT64_MAX, JsonFormat will return an error status, although there is no
   // accuracy loss for int64_t.
-  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(
+  TF_RETURN_IF_ERROR(tsl::ProtoToHumanReadableJson(
       proto, &ret, /*ignore_accuracy_loss=*/true));
   return ret;
 }

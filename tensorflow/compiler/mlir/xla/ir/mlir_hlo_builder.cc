@@ -232,7 +232,7 @@ StatusOr<XlaOp> MlirHloBuilder::ReduceInternal(
       loc_, GetValues(all_operands.first(num_args)),
       GetValues(all_operands.subspan(num_args)),
       GetI64ElementsAttr(dimensions_to_reduce, &builder_));
-  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body(),
+  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.getBody(),
                                        /*flatten_region_arg_tuple*/ true));
   if (op.getNumResults() == 1) return MakeXlaOp(op.getResult(0));
   auto tuple = builder_.create<mlir::mhlo::TupleOp>(loc_, op.getResults());
@@ -264,7 +264,7 @@ StatusOr<XlaOp> MlirHloBuilder::ReduceWindowInternal(
       GetI64ElementsAttr(base_dilations, &builder_),
       GetI64ElementsAttr(win_dilations, &builder_),
       mlir::DenseIntElementsAttr::get(padding_ty, padding));
-  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body(),
+  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.getBody(),
                                        /*flatten_region_arg_tuple*/ true));
   return MakeXlaOp(op.getResult(0));
 }
@@ -323,7 +323,8 @@ StatusOr<XlaOp> MlirHloBuilder::SortInternal(const Shape& shape,
   auto op = builder_.create<mlir::mhlo::SortOp>(
       loc_, sort_types, GetValues(operands),
       builder_.getI64IntegerAttr(dimension), builder_.getBoolAttr(is_stable));
-  TF_RETURN_IF_ERROR(ImportComputation(comparator.proto(), &op.comparator()));
+  TF_RETURN_IF_ERROR(
+      ImportComputation(comparator.proto(), &op.getComparator()));
 
   if (ty.isa<mlir::TupleType>()) {
     auto tuple = builder_.create<mlir::mhlo::TupleOp>(loc_, op.getResults());
@@ -350,9 +351,9 @@ StatusOr<XlaOp> MlirHloBuilder::WhileInternal(const Shape& shape,
   auto op = builder_.create<mlir::mhlo::WhileOp>(loc_, flattened_operand_types,
                                                  flattened_operands);
 
-  TF_RETURN_IF_ERROR(ImportComputation(condition.proto(), &op.cond(),
+  TF_RETURN_IF_ERROR(ImportComputation(condition.proto(), &op.getCond(),
                                        /*flatten_region_arg_tuple*/ true));
-  TF_RETURN_IF_ERROR(ImportComputation(body.proto(), &op.body(),
+  TF_RETURN_IF_ERROR(ImportComputation(body.proto(), &op.getBody(),
                                        /*flatten_region_arg_tuple*/ true));
 
   if (ty.isa<mlir::TupleType>()) {
@@ -409,8 +410,8 @@ StatusOr<XlaOp> MlirHloBuilder::ScatterInternal(
       builder_.getBoolAttr(indices_are_sorted),
       builder_.getBoolAttr(unique_indices));
 
-  TF_RETURN_IF_ERROR(
-      ImportComputation(update_computation.proto(), &op.update_computation()));
+  TF_RETURN_IF_ERROR(ImportComputation(update_computation.proto(),
+                                       &op.getUpdateComputation()));
   return MakeXlaOp(op.getResult(0));
 }
 

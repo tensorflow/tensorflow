@@ -35,6 +35,12 @@ def GMLST_TileType : GMLST_Set<"Tile"> {
   let assemblyFormat = "`<` custom<ShapeTypeDimensionsList>($shape) `>`";
   let extraClassDeclaration = [{
     unsigned getRank() const { return getShape().size(); }
+    bool hasStaticShape() const {
+      return llvm::none_of(getShape(), ShapedType::isDynamic);
+    }
+    int64_t getNumElements() const {
+      return ShapedType::getNumElements(getShape());
+    }
   }];
 }
 

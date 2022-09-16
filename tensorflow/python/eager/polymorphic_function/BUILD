@@ -1,3 +1,9 @@
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+
 package(
     licenses = ["notice"],
 )
@@ -67,6 +73,123 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "polymorphic_function_test",
+    size = "medium",
+    srcs = ["polymorphic_function_test.py"],
+    python_version = "PY3",
+    shard_count = 15,
+    tags = [
+        "nomac",  # b/157056289
+    ],
+    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:indexed_slices",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:list_ops",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:sendrecv_ops_gen",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:test_ops",
+        "//tensorflow/python/autograph/core",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:cancellation",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "polymorphic_function_test_cpu_only",
+    srcs = ["polymorphic_function_test_cpu_only.py"],
+    python_version = "PY3",
+    # --config=cuda implicitly links in XLA.
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_gpu",
+        "no_oss",  # No way to force no XLA linkage in OSS build from here.
+        "no_pip",
+    ],
+    deps = [
+        ":polymorphic_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/autograph/core",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "polymorphic_function_xla_jit_test",
+    srcs = ["polymorphic_function_xla_jit_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+    ],
+    enable_mlir_bridge = True,
+    python_version = "PY3",
+    tags = [
+        "no_mac",
+        "no_pip",
+        "no_tfrt",  # TODO(b/185944215)
+        "no_windows",
+    ],
+    use_xla_device = False,
+    deps = [
+        ":polymorphic_function",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:backprop",
+    ],
+)
+
+tf_xla_py_test(
+    name = "polymorphic_function_xla_test",
+    srcs = ["polymorphic_function_xla_test.py"],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":polymorphic_function",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
+        # TODO(b/145618471): Remove this transitive dependency.
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
 py_library(
     name = "quarantine",
     srcs = ["quarantine.py"],
@@ -75,5 +198,57 @@ py_library(
     deps = [
         ":monomorphic_function",
         ":tracing_compiler",
+    ],
+)
+
+py_library(
+    name = "composite_tensor_utils",
+    srcs = ["composite_tensor_utils.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:type_spec",
+        "//tensorflow/python/util",
+    ],
+)
+
+cuda_py_test(
+    name = "quarantine_test",
+    size = "medium",
+    srcs = ["quarantine_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:indexed_slices",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:list_ops",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:sendrecv_ops_gen",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:test_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:cancellation",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:quarantine",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

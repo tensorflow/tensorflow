@@ -13,29 +13,18 @@
 # limitations under the License.
 # =============================================================================
 """Tests for api_init_files.bzl and api_init_files_v1.bzl."""
+import argparse
+import importlib
 import sys
 
-# The unused imports are needed so that the python and lite modules are
-# available in sys.modules
-# pylint: disable=unused-import
-from tensorflow import python as _tf_for_api_traversal
-from tensorflow.dtensor.python import api as _dtensor_for_api_traversal
-from tensorflow.lite.python import lite as _tflite_for_api_traversal
-from tensorflow.lite.python.authoring import authoring
-from tensorflow.python import modules_with_exports
-from tensorflow.python.distribute import merge_call_interim
-from tensorflow.python.distribute import multi_process_runner
-from tensorflow.python.distribute import multi_worker_test_base
-from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute import sharded_variable
-from tensorflow.python.distribute.coordinator import cluster_coordinator
-from tensorflow.python.distribute.failure_handling import failure_handling
-from tensorflow.python.framework import combinations
-from tensorflow.python.framework import test_combinations
-# pylint: enable=unused-import
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_decorator
+
+
+def _traverse_packages(packages):
+  for package in packages:
+    importlib.import_module(package)
 
 
 def _get_module_from_symbol(symbol):
@@ -190,4 +179,17 @@ class OutputInitFilesTest(test.TestCase):
 
 
 if __name__ == '__main__':
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--packages',
+      type=str,
+      default='',
+      help='Comma separated list of packages to traverse.')
+  FLAGS, unparsed = parser.parse_known_args()
+
+  # Traverse packages that define APIs.
+  _traverse_packages(FLAGS.packages.split(','))
+
+  # Now update argv, so that unittest library does not get confused.
+  sys.argv = [sys.argv[0]] + unparsed
   test.main()

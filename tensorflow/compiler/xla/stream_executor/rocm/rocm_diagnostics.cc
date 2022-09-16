@@ -53,7 +53,7 @@ string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
     return version.status().ToString();
   }
 
-  return DriverVersionToString(version.ValueOrDie());
+  return DriverVersionToString(version.value());
 }
 
 port::StatusOr<DriverVersion> StringToDriverVersion(const string& value) {
@@ -218,9 +218,9 @@ void Diagnostician::WarnOnDsoKernelMismatch(
     port::StatusOr<DriverVersion> dso_version,
     port::StatusOr<DriverVersion> kernel_version) {
   if (kernel_version.ok() && dso_version.ok() &&
-      dso_version.ValueOrDie() == kernel_version.ValueOrDie()) {
+      dso_version.value() == kernel_version.value()) {
     LOG(INFO) << "kernel version seems to match DSO: "
-              << rocm::DriverVersionToString(kernel_version.ValueOrDie());
+              << rocm::DriverVersionToString(kernel_version.value());
   } else {
     LOG(ERROR) << "kernel version "
                << rocm::DriverVersionStatusToString(kernel_version)

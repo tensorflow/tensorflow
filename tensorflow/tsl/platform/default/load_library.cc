@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <dlfcn.h>
 
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -28,7 +28,8 @@ Status LoadDynamicLibrary(const char* library_filename, void** handle) {
   if (!*handle) {
     // Note that in C++17 std::string_view(nullptr) gives segfault!
     const char* error_msg = dlerror();
-    return errors::NotFound(error_msg ? error_msg : "(null error message)");
+    return tsl::errors::NotFound(error_msg ? error_msg
+                                           : "(null error message)");
   }
   return OkStatus();
 }
@@ -44,7 +45,8 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
   if (!*symbol) {
     // Note that in C++17 std::string_view(nullptr) gives segfault!
     const char* error_msg = dlerror();
-    return errors::NotFound(error_msg ? error_msg : "(null error message)");
+    return tsl::errors::NotFound(error_msg ? error_msg
+                                           : "(null error message)");
   }
   return OkStatus();
 }

@@ -22,7 +22,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "passes_detail.h"
+
+#define GEN_PASS_DEF_TOSALEGALIZEMHLOPASS
+#include "mhlo_tosa/Transforms/passes.h.inc"
 
 #define PASS_NAME "tosa-legalize-tf"
 #define DEBUG_TYPE PASS_NAME
@@ -33,7 +35,7 @@ namespace mlir {
 namespace tosa {
 namespace {
 
-struct LegalizeMhlo : TosaLegalizeMhloPassBase<LegalizeMhlo> {
+struct LegalizeMhlo : ::impl::TosaLegalizeMhloPassBase<LegalizeMhlo> {
   void runOnOperation() final;
 
   LogicalResult initialize(MLIRContext* ctx) override;
@@ -47,18 +49,18 @@ struct ConvertMhloCompareOp : public OpRewritePattern<mhlo::CompareOp> {
 
   LogicalResult matchAndRewrite(mhlo::CompareOp op,
                                 PatternRewriter& rewriter) const override {
-    auto direction = op.comparison_direction();
+    auto direction = op.getComparisonDirection();
     auto resultType = op->getResultTypes().front();
 
     switch (direction) {
       case mlir::mhlo::ComparisonDirection::EQ: {
-        rewriter.replaceOpWithNewOp<tosa::EqualOp>(op, resultType, op.lhs(),
-                                                   op.rhs());
+        rewriter.replaceOpWithNewOp<tosa::EqualOp>(op, resultType, op.getLhs(),
+                                                   op.getRhs());
         break;
       }
       case mlir::mhlo::ComparisonDirection::NE: {
         auto equalOp = rewriter.create<tosa::EqualOp>(op->getLoc(), resultType,
-                                                      op.lhs(), op.rhs());
+                                                      op.getLhs(), op.getRhs());
         rewriter.replaceOpWithNewOp<tosa::LogicalNotOp>(op, resultType,
                                                         equalOp);
         break;
@@ -77,8 +79,8 @@ struct ConvertMhloDotOp : public OpRewritePattern<mhlo::DotOp> {
 
   LogicalResult matchAndRewrite(mhlo::DotOp op,
                                 PatternRewriter& rewriter) const override {
-    auto lhsType = op.lhs().getType().dyn_cast<RankedTensorType>();
-    auto rhsType = op.rhs().getType().dyn_cast<RankedTensorType>();
+    auto lhsType = op.getLhs().getType().dyn_cast<RankedTensorType>();
+    auto rhsType = op.getRhs().getType().dyn_cast<RankedTensorType>();
     if (!lhsType | !rhsType) {
       return rewriter.notifyMatchFailure(op, "input tensors are not ranked");
     }
@@ -141,15 +143,15 @@ struct ConvertMhloDotOp : public OpRewritePattern<mhlo::DotOp> {
 
     auto lhsReshapeType =
         RankedTensorType::get(lhsReshape, lhsType.getElementType());
-    auto lhsReshapeOp =
-        rewriter.create<tosa::ReshapeOp>(op->getLoc(), lhsReshapeType, op.lhs(),
-                                         rewriter.getI64ArrayAttr(lhsReshape));
+    auto lhsReshapeOp = rewriter.create<tosa::ReshapeOp>(
+        op->getLoc(), lhsReshapeType, op.getLhs(),
+        rewriter.getI64ArrayAttr(lhsReshape));
 
     auto rhsReshapeType =
         RankedTensorType::get(rhsReshape, rhsType.getElementType());
-    auto rhsReshapeOp =
-        rewriter.create<tosa::ReshapeOp>(op->getLoc(), rhsReshapeType, op.rhs(),
-                                         rewriter.getI64ArrayAttr(rhsReshape));
+    auto rhsReshapeOp = rewriter.create<tosa::ReshapeOp>(
+        op->getLoc(), rhsReshapeType, op.getRhs(),
+        rewriter.getI64ArrayAttr(rhsReshape));
 
     auto matMulType =
         RankedTensorType::get(matMulShape, lhsType.getElementType());
@@ -168,7 +170,7 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
 
   LogicalResult matchAndRewrite(mhlo::ReduceOp op,
                                 PatternRewriter& rewriter) const override {
-    Block& bodyBlock = op.body().front();
+    Block& bodyBlock = op.getBody().front();
 
     // To lower to a tosa.reduce_* op, the body should contain the reduce op and
     // a return op.
@@ -178,7 +180,7 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
 
     auto operands = op.operands().front();
     ShapedType inputType = operands.getType().cast<ShapedType>();
-    uint64_t dimension = op.dimensions().getValues<uint64_t>().begin()[0];
+    uint64_t dimension = op.getDimensions().getValues<uint64_t>().begin()[0];
     Operation& innerOp = bodyBlock.front();
     Value reduceOpResult;
 

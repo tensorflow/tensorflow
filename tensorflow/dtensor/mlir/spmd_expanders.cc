@@ -509,5 +509,6 @@ REGISTER_SPMD(TensorListSetItem, TF::TensorListSetItemOp,
 REGISTER_SPMD(WriteSummary, TF::WriteSummaryOp, IOOpSPMDExpander);
 REGISTER_SPMD(DisableCopyOnRead, TF::DisableCopyOnReadOp,
               DisableCopyOnReadSPMDExpander);
+REGISTER_SPMD(ShardedFilename, TF::ShardedFilenameOp, ReplicatedOpSPMDExpander);
 }  // namespace dtensor
 }  // namespace tensorflow

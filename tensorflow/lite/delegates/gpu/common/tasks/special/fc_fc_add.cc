@@ -387,19 +387,19 @@ absl::Status TryFCFCAdd(
       InitSingleOpSubgraph(fc0_inputs, add_outputs, gpu_subgraph);
   FCFCAdd fc;
   if (both_not_quantized) {
-    auto fc0_attr = absl::any_cast<FullyConnectedAttributes>(
-        fc0_node->operation.attributes);
-    auto fc1_attr = absl::any_cast<FullyConnectedAttributes>(
-        fc1_node->operation.attributes);
+    auto fc0_attr =
+        std::any_cast<FullyConnectedAttributes>(fc0_node->operation.attributes);
+    auto fc1_attr =
+        std::any_cast<FullyConnectedAttributes>(fc1_node->operation.attributes);
     if (fc0_attr.weights.shape.o != fc1_attr.weights.shape.o) {
       return absl::NotFoundError("FCFCAdd not suitable.");
     }
     fc = CreateFCFCAdd(gpu_info, op_def, fc0_attr, fc1_attr);
   } else {
     // both_quantized
-    auto fc0_attr = absl::any_cast<FullyConnectedInt8Attributes>(
+    auto fc0_attr = std::any_cast<FullyConnectedInt8Attributes>(
         fc0_node->operation.attributes);
-    auto fc1_attr = absl::any_cast<FullyConnectedInt8Attributes>(
+    auto fc1_attr = std::any_cast<FullyConnectedInt8Attributes>(
         fc1_node->operation.attributes);
     if (fc0_attr.weights.shape.o != fc1_attr.weights.shape.o) {
       return absl::NotFoundError("FCFCAdd not suitable.");

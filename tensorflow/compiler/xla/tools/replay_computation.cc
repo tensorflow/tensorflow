@@ -70,13 +70,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/record_reader.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace tools {
@@ -304,8 +304,8 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     int thread_pool_size = opts.intra_op_thread_pool_size < 0
                                ? tsl::port::MaxParallelism()
                                : opts.intra_op_thread_pool_size;
-    tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
-                                        thread_pool_size);
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "XLAEigen",
+                                 thread_pool_size);
     Eigen::ThreadPoolDevice thread_pool(pool.AsEigenThreadPool(),
                                         pool.NumThreads());
 
@@ -318,12 +318,12 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     if (infeed_data) {
       TF_CHECK_OK(client->TransferToInfeed(*infeed_data));
     }
-    std::unique_ptr<tensorflow::Thread> outfeed_drain_thread;
+    std::unique_ptr<tsl::Thread> outfeed_drain_thread;
     if (outfeed_shape) {
       // TransferFromOutfeedLocal blocks till the outfeed is available, so do
       // it asynchronously separate thread.
-      outfeed_drain_thread.reset(tensorflow::Env::Default()->StartThread(
-          tensorflow::ThreadOptions(), "outfeed_drain_thread", [&] {
+      outfeed_drain_thread.reset(tsl::Env::Default()->StartThread(
+          tsl::ThreadOptions(), "outfeed_drain_thread", [&] {
             Literal outfeed(*outfeed_shape);
             TF_CHECK_OK(client->TransferFromOutfeedLocal(/*device_ordinal=*/0,
                                                          &outfeed));
@@ -355,9 +355,9 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
 
 StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
                                                      const Options& opts) {
-  tensorflow::Env* env = tensorflow::Env::Default();
+  tsl::Env* env = tsl::Env::Default();
 
-  std::unique_ptr<tensorflow::RandomAccessFile> file;
+  std::unique_ptr<tsl::RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
       std::string(filename.begin(), filename.end()), &file));
   tensorflow::io::RecordReader reader(
@@ -386,10 +386,10 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
 
 StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(
     const std::string& filename, const Options& opts) {
-  tensorflow::Env* env = tensorflow::Env::Default();
+  tsl::Env* env = tsl::Env::Default();
 
   HloSnapshot snapshot;
-  auto s = tensorflow::ReadBinaryProto(env, filename, &snapshot);
+  auto s = tsl::ReadBinaryProto(env, filename, &snapshot);
   if (s.ok()) {
     return std::vector<HloSnapshot>{std::move(snapshot)};
   }
@@ -402,12 +402,12 @@ StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(
   fprintf(stderr, "%s: is not HloSnapshot. Trying HloProto.\n",
           filename.c_str());
 
-  if (tensorflow::ReadBinaryProto(env, filename, snapshot.mutable_hlo()).ok()) {
+  if (tsl::ReadBinaryProto(env, filename, snapshot.mutable_hlo()).ok()) {
     return std::vector<HloSnapshot>{std::move(snapshot)};
   }
   fprintf(stderr, "%s: is not HloProto. Trying HLO text.\n", filename.c_str());
   std::string contents;
-  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(env, filename, &contents));
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(env, filename, &contents));
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
   std::vector<std::string> hlo_module_texts =
@@ -473,9 +473,8 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
   {
     constexpr size_t kThreadLimits = 100;
     // ThreadPool CHECK-fails if we give it 0 threads.
-    tensorflow::thread::ThreadPool thread_pool(
-        tensorflow::Env::Default(), tensorflow::ThreadOptions(),
-        "compile_modules",
+    tsl::thread::ThreadPool thread_pool(
+        tsl::Env::Default(), tsl::ThreadOptions(), "compile_modules",
         std::min<size_t>(std::max(kThreadLimits, snapshots.size()), 1),
         /*low_latency_hint=*/false);
     executables.resize(snapshots.size());

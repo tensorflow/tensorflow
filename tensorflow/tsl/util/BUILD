@@ -38,6 +38,8 @@ filegroup(
         "determinism.h",
         "env_var.cc",
         "env_var.h",
+        "use_cudnn.cc",
+        "use_cudnn.h",
     ],
 )
 
@@ -57,6 +59,14 @@ filegroup(
     name = "framework_internal_private_hdrs",
     srcs = [
         "env_var.h",
+        "use_cudnn.h",
+    ],
+)
+
+filegroup(
+    name = "framework_internal_impl_srcs",
+    srcs = [
+        "use_cudnn.cc",
     ],
 )
 
@@ -64,6 +74,7 @@ filegroup(
     name = "lib_internal_public_hdrs",
     srcs = [
         "env_var.h",
+        "use_cudnn.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -80,6 +91,13 @@ filegroup(
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow/core/util:__pkg__",
+    ],
+)
+
+filegroup(
+    name = "framework_srcs",
+    srcs = [
+        "use_cudnn.h",
     ],
 )
 

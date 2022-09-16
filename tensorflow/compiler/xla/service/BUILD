@@ -638,7 +638,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:human_readable_json",
+        "//tensorflow/tsl/platform:human_readable_json",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
@@ -3723,6 +3723,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -5231,6 +5232,7 @@ tf_cc_test(
         ":hlo",
         ":hlo_domain_isolator",
         ":hlo_domain_remover",
+        ":hlo_domain_verifier",
         ":hlo_parser",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:test",
@@ -6566,8 +6568,10 @@ cc_library(
     hdrs = ["operand_upcaster.h"],
     deps = [
         ":hlo",
+        ":hlo_creation_utils",
         ":op_expander_pass",
         ":shape_inference",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
     ],
 )
 

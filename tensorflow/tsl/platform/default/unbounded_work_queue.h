@@ -20,10 +20,15 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/core/notification.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/mutex.h"
 
 namespace tensorflow {
+// TODO(aminim): remove when migrating this header to TSL
+using tsl::Env;
+using tsl::string;
+using tsl::Thread;
+using tsl::ThreadOptions;
 
 // An `UnboundedWorkQueue` provides a mechanism for temporally multiplexing a
 // potentially large number of "logical" threads onto a smaller number of

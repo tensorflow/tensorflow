@@ -111,9 +111,8 @@ Status ParseOneProfileOutputLine(
       &parsed_line.bytes_per_sec, &parsed_line.bytes_per_cycle,
       &parsed_line.opcode);
   if (!matched) {
-    return tensorflow::errors::InvalidArgument(
-        "Input did not match regexp.  Input: ", line,
-        ", Regexp: ", regexp_pattern);
+    return tsl::errors::InvalidArgument("Input did not match regexp.  Input: ",
+                                        line, ", Regexp: ", regexp_pattern);
   }
 
   if (!absl::c_linear_search(opcodes_to_ignore, parsed_line.opcode)) {

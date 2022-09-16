@@ -46,7 +46,7 @@ port::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
     data = wrapped_->AllocateRaw(tensorflow::Allocator::kAllocatorAlignment,
                                  size, attrs);
     if (data == nullptr) {
-      return tensorflow::errors::ResourceExhausted(
+      return tsl::errors::ResourceExhausted(
           "Out of memory while trying to allocate ", size, " bytes.");
     }
   }

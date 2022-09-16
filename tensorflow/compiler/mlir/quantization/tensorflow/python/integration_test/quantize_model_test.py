@@ -16,7 +16,6 @@
 import itertools
 import os
 from typing import List, Mapping, Optional
-import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -41,6 +40,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import save as saved_model_save
@@ -205,15 +205,14 @@ class QuantizationMethodTest(quantize_model_test_base.QuantizedModelTest):
 
 class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
-  def _any_warning_contains(
-      self, substring: str,
-      warnings_list: List[warnings.WarningMessage]) -> bool:
+  def _any_warning_contains(self, substring: str,
+                            warnings_list: List['LogRecord']) -> bool:
     """Returns True if any of the warnings contains a given substring.
 
     Args:
       substring: A piece of string to check whether it exists in the warning
         message.
-      warnings_list: A list of `WarningMessage`s.
+      warnings_list: A list of `absl.logging.LogRecord`s.
 
     Returns:
       True if and only if the substring exists in any of the warnings in
@@ -940,24 +939,33 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
-    with warnings.catch_warnings(record=True) as warnings_list:
-      converted_model = quantize_model.quantize(
-          input_savedmodel_dir,
-          ['serving_default'],
-          tags,
-          output_savedmodel_dir,
-          quantization_options,
-          # Put no sample into the representative dataset to make calibration
-          # impossible.
-          representative_dataset=[])
+    with self.assertLogs(level='WARN') as warning_logs:
+      # Save the logger verbosity.
+      prev_log_level = logging.get_verbosity()
+      logging.set_verbosity(logging.WARN)
 
-      self.assertNotEmpty(warnings_list)
+      try:
+        converted_model = quantize_model.quantize(
+            input_savedmodel_dir,
+            ['serving_default'],
+            tags,
+            output_savedmodel_dir,
+            quantization_options,
+            # Put no sample into the representative dataset to make calibration
+            # impossible.
+            representative_dataset=[])
+      finally:
+        # Restore the logger verbosity.
+        logging.set_verbosity(prev_log_level)
+
+      self.assertNotEmpty(warning_logs.records)
 
       # Warning message should contain the function name.
-      self.assertTrue(self._any_warning_contains('matmul', warnings_list))
+      self.assertTrue(
+          self._any_warning_contains('matmul', warning_logs.records))
       self.assertTrue(
           self._any_warning_contains('does not have min or max values',
-                                     warnings_list))
+                                     warning_logs.records))
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
@@ -1024,24 +1032,34 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
-    with warnings.catch_warnings(record=True) as warnings_list:
-      converted_model = quantize_model.quantize(
-          input_saved_model_path, ['serving_default'],
-          tags,
-          output_directory,
-          quantization_options,
-          representative_dataset=data_gen())
+    with self.assertLogs(level='WARN') as warning_logs:
+      # Save the logger verbosity.
+      log_level = logging.get_verbosity()
+      logging.set_verbosity(logging.WARN)
 
-      self.assertNotEmpty(warnings_list)
+      try:
+        converted_model = quantize_model.quantize(
+            input_saved_model_path, ['serving_default'],
+            tags,
+            output_directory,
+            quantization_options,
+            representative_dataset=data_gen())
+      finally:
+        # Restore the logger verbosity.
+        logging.set_verbosity(log_level)
+
+      self.assertNotEmpty(warning_logs.records)
 
       # Warning message should contain the function name. The uncalibrated path
       # is when the condition is true, so 'cond_true' function must be part of
       # the warning message.
-      self.assertTrue(self._any_warning_contains('cond_true', warnings_list))
-      self.assertFalse(self._any_warning_contains('cond_false', warnings_list))
+      self.assertTrue(
+          self._any_warning_contains('cond_true', warning_logs.records))
+      self.assertFalse(
+          self._any_warning_contains('cond_false', warning_logs.records))
       self.assertTrue(
           self._any_warning_contains('does not have min or max values',
-                                     warnings_list))
+                                     warning_logs.records))
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),

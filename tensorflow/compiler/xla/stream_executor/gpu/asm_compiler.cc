@@ -31,8 +31,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/tsl/platform/cuda_libdevice_path.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/regexp.h"
@@ -196,7 +196,7 @@ static std::string FindCudaExecutable(const std::string binary_name,
   }
 
   // Search in cuda root candidates.
-  auto env = tensorflow::Env::Default();
+  auto env = tsl::Env::Default();
   std::string binary_path;
   for (const std::string& cuda_root :
        tsl::CandidateCudaRoots(preferred_cuda_dir)) {
@@ -257,16 +257,15 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
 
   // Write ptx into a temporary file.
   std::string ptx_path;
-  auto env = tensorflow::Env::Default();
+  auto env = tsl::Env::Default();
   if (!env->LocalTempFilename(&ptx_path)) {
     return port::InternalError("couldn't get temp PTX file name");
   }
-  TF_RETURN_IF_ERROR(
-      tensorflow::WriteStringToFile(env, ptx_path, ptx_contents));
+  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(env, ptx_path, ptx_contents));
   VLOG(2) << "ptx written to: " << ptx_path;
 
   absl::Cleanup ptx_cleaner = [&ptx_path] {
-    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(ptx_path));
+    TF_CHECK_OK(tsl::Env::Default()->DeleteFile(ptx_path));
   };
 
   // Invoke ptxas and collect its output.
@@ -277,7 +276,7 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
   absl::Cleanup cubin_cleaner = [&cubin_path] {
     // CUBIN file may never be created, so the failure to delete it should not
     // produce TF error.
-    tensorflow::Env::Default()->DeleteFile(cubin_path).IgnoreError();
+    tsl::Env::Default()->DeleteFile(cubin_path).IgnoreError();
   };
   tsl::SubProcess ptxas_info_dumper;
   std::vector<std::string> ptxas_args = {
@@ -331,8 +330,8 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
 
   // Read in the result of compilation and return it as a byte vector.
   std::string cubin;
-  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
-                                                  cubin_path, &cubin));
+  TF_RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), cubin_path, &cubin));
   std::vector<uint8_t> cubin_vector(cubin.begin(), cubin.end());
   return cubin_vector;
 }
@@ -344,21 +343,21 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 
   // Write images to temporary files.
   std::vector<std::string> image_paths;
-  auto env = tensorflow::Env::Default();
+  auto env = tsl::Env::Default();
   for (const CubinOrPTXImage& img : images) {
     std::string img_path;
     if (!env->LocalTempFilename(&img_path)) {
       return port::InternalError(
           "Could not get temporary filenames for images.");
     }
-    TF_RETURN_IF_ERROR(tensorflow::WriteStringToFile(
+    TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
         env, img_path, std::string(img.bytes.begin(), img.bytes.end())));
     VLOG(2) << "image written to " << img_path;
     image_paths.push_back(std::move(img_path));
   }
   absl::Cleanup image_files_cleaner = [&image_paths] {
     for (const auto& path : image_paths) {
-      TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(path));
+      TF_CHECK_OK(tsl::Env::Default()->DeleteFile(path));
     }
   };
 
@@ -371,7 +370,7 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   absl::Cleanup result_file_cleaner = [&result_path] {
     // This file may never be created, so the failure to delete it should not
     // propagate to TF.
-    tensorflow::Env::Default()->DeleteFile(result_path).IgnoreError();
+    tsl::Env::Default()->DeleteFile(result_path).IgnoreError();
   };
 
   // Compute the ptxas options that were used to produce the cubins.
@@ -414,14 +413,14 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 
   // Read in the result and return it as a byte vector.
   std::string result_blob;
-  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
-                                                  result_path, &result_blob));
+  TF_RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), result_path, &result_blob));
   return std::vector<uint8_t>(result_blob.begin(), result_blob.end());
 }
 
 static std::string findRocmExecutable(const std::string& binary_relative_path,
                                       const std::string& rocm_root_dir) {
-  auto env = tensorflow::Env::Default();
+  auto env = tsl::Env::Default();
   std::string binary_path =
       tsl::io::JoinPath(rocm_root_dir, binary_relative_path);
   VLOG(2) << "Looking for " << binary_relative_path << " at " << rocm_root_dir;
@@ -447,14 +446,14 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 
   // Write images to temporary files.
   std::vector<std::string> image_paths;
-  auto env = tensorflow::Env::Default();
+  auto env = tsl::Env::Default();
   for (const HsacoImage& img : images) {
     std::string img_path;
     if (!env->LocalTempFilename(&img_path)) {
       return port::InternalError(
           "Could not get temporary filenames for images.");
     }
-    TF_RETURN_IF_ERROR(tensorflow::WriteStringToFile(
+    TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
         env, img_path, std::string(img.bytes.begin(), img.bytes.end())));
     VLOG(2) << "image written to " << img_path;
     inputs_list << "," << img_path;
@@ -463,7 +462,7 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   }
   absl::Cleanup image_files_cleaner = [&image_paths] {
     for (const auto& path : image_paths) {
-      TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(path));
+      TF_CHECK_OK(tsl::Env::Default()->DeleteFile(path));
     }
   };
 
@@ -476,7 +475,7 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   absl::Cleanup result_file_cleaner = [&result_path] {
     // This file may never be created, so the failure to delete it should not
     // propagate to TF.
-    tensorflow::Env::Default()->DeleteFile(result_path).IgnoreError();
+    tsl::Env::Default()->DeleteFile(result_path).IgnoreError();
   };
 
   // Invoke clang_offload_bundler and collect its output.
@@ -508,8 +507,8 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 
   // Read in the result and return it as a byte vector.
   std::string result_blob;
-  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
-                                                  result_path, &result_blob));
+  TF_RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), result_path, &result_blob));
   return std::vector<uint8_t>(result_blob.begin(), result_blob.end());
 }
 

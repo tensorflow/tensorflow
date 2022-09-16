@@ -351,8 +351,6 @@ cc_library(
         ":tf_device_pass_inc_gen",
         ":tf_pass_inc_gen",
         "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:broadcast_utils",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
@@ -364,6 +362,8 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:broadcast_utils",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -468,6 +468,7 @@ cc_library(
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
         ":attribute_utils",
+        ":dynamic_shape_utils",
         ":tensorflow_attributes",
         ":rewrite_util",
         ":tensorflow_canonicalize_inc_gen",
@@ -1274,6 +1275,7 @@ cc_library(
         ":decompose_resource_ops_inc_gen",
         ":device_util",
         ":dump_mlir_util",
+        ":dynamic_shape_utils",
         ":error_util",
         ":export_tf_dialect_op",
         ":lower_tf_lib",
@@ -1358,6 +1360,7 @@ cc_library(
         "transforms/shape_inference.h",
     ],
     deps = [
+        ":dynamic_shape_utils",
         ":serialize_mlir_module_utils",
         ":shape_inference_utils",
         ":tensorflow",
@@ -1549,6 +1552,7 @@ cc_library(
         ":convert_tensor",
         ":convert_type",
         ":dump_mlir_util",
+        ":dynamic_shape_utils",
         ":error_util",
         ":initialize_variables_in_session_init",
         ":lift_variables_lib",
@@ -1812,6 +1816,7 @@ cc_library(
         "//visibility:public",
     ],
     deps = [
+        ":dynamic_shape_utils",
         ":tensorflow_types",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
@@ -1867,6 +1872,7 @@ tf_cc_test(
     srcs = ["utils/convert_tensor_test.cc"],
     deps = [
         ":convert_tensor",
+        ":dynamic_shape_utils",
         ":tensorflow",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/stream_executor/lib",
@@ -2110,6 +2116,7 @@ gentbl_cc_library(
 
 COMPILE_MLIR_UTIL_DEPS = [
     ":bridge_logger",
+    ":dynamic_shape_utils",
     ":import_model",
     ":export_graphdef",
     ":convert_tensor",
@@ -2133,10 +2140,10 @@ COMPILE_MLIR_UTIL_DEPS = [
     "@llvm-project//mlir:Support",
     "@llvm-project//mlir:TransformUtils",
     "@llvm-project//mlir:Transforms",
+    "@stablehlo//:register",
     "//tensorflow/compiler/xla/mlir_hlo",
     "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
     "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
-    "//tensorflow/compiler/xla/mlir_hlo/stablehlo:register",
     "//tensorflow/compiler/mlir/xla:layout_util",
     "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
     "//tensorflow/compiler/mlir/xla:tf_xla_passes",
@@ -2288,6 +2295,7 @@ cc_library(
         "transforms/lower_tf.h",
     ],
     deps = [
+        ":dynamic_shape_utils",
         ":lower_tf_inc_gen",
         ":rewrite_util",
         ":tensorflow",
@@ -2522,6 +2530,16 @@ cc_library(
         ":tensorflow_types",
         "//tensorflow/core/ir:shape_inference_utils",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "dynamic_shape_utils",
+    srcs = ["utils/dynamic_shape_utils.cc"],
+    hdrs = ["utils/dynamic_shape_utils.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 

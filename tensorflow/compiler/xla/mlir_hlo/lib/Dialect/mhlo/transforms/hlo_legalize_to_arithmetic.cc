@@ -82,7 +82,7 @@ struct RngGetAndUpdateStatePattern
     Value oldVal = rewriter.create<memref::LoadOp>(loc, rngState);
     Value delta = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getIntegerAttr(seedType,
-                                     static_cast<int64_t>(adaptor.delta())));
+                                     static_cast<int64_t>(adaptor.getDelta())));
     Value newVal = rewriter.create<arith::AddIOp>(loc, oldVal, delta);
     (void)rewriter.create<memref::StoreOp>(loc, newVal, rngState);
 

@@ -344,12 +344,12 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CbrtOp>(Location loc,
     // Convert cbrt(x) to copysign(cbrt(abs(x), 1.0 / 3.0), x).
     // This is to allow cbrt using pow while still handling negative numbers. It
     // should match most cbrt intrinsics.
-    Value abs = b->create<mlir::math::AbsFOp>(loc, adaptor.operand());
+    Value abs = b->create<mlir::math::AbsFOp>(loc, adaptor.getOperand());
     Value third = b->create<arith::ConstantOp>(
         loc, b->getFloatAttr(floatType, 1.0 / 3.0));
     Value pow = b->create<mlir::math::PowFOp>(loc, resultTypes[0], abs, third);
     return b->create<mlir::math::CopySignOp>(loc, floatType, pow,
-                                             adaptor.operand());
+                                             adaptor.getOperand());
   }
   return nullptr;
 }
@@ -844,9 +844,9 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ClampOp>(Location loc,
   mhlo::ClampOp::Adaptor op(args);
   // clamp(lb, x, ub) = min(max(lb, x), ub)
   Value maxLbX = mapMhloOpToStdScalarOp<mhlo::MaxOp>(
-      loc, resultTypes, argTypes, {op.min(), op.operand()}, b);
+      loc, resultTypes, argTypes, {op.getMin(), op.getOperand()}, b);
   return mapMhloOpToStdScalarOp<mhlo::MinOp>(loc, resultTypes, argTypes,
-                                             {maxLbX, op.max()}, b);
+                                             {maxLbX, op.getMax()}, b);
 }
 
 template <typename U, typename S>
@@ -1011,8 +1011,8 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(Location loc,
   // is the larget possible exponent for a 64-bit integer, and
   // that's 1 << 6.
   Value upperBound = lb.create<arith::ConstantIndexOp>(6);
-  auto originalBase = adaptor.lhs();
-  auto originalExponent = adaptor.rhs();
+  auto originalBase = adaptor.getLhs();
+  auto originalExponent = adaptor.getRhs();
 
   Value accum =
       lb.create<scf::ForOp>(
@@ -1038,14 +1038,14 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(Location loc,
           .getResult(0);
 
   Value rhsIsEven = lb.create<arith::CmpIOp>(
-      arith::CmpIPredicate::eq, lb.create<arith::RemSIOp>(adaptor.rhs(), two),
-      zero);
-  Value rhsIsNegative =
-      lb.create<arith::CmpIOp>(arith::CmpIPredicate::slt, adaptor.rhs(), zero);
+      arith::CmpIPredicate::eq,
+      lb.create<arith::RemSIOp>(adaptor.getRhs(), two), zero);
+  Value rhsIsNegative = lb.create<arith::CmpIOp>(arith::CmpIPredicate::slt,
+                                                 adaptor.getRhs(), zero);
   Value lhsIsOne =
-      lb.create<arith::CmpIOp>(arith::CmpIPredicate::eq, adaptor.lhs(), one);
-  Value lhsIsNegOne =
-      lb.create<arith::CmpIOp>(arith::CmpIPredicate::eq, adaptor.lhs(), negOne);
+      lb.create<arith::CmpIOp>(arith::CmpIPredicate::eq, adaptor.getLhs(), one);
+  Value lhsIsNegOne = lb.create<arith::CmpIOp>(arith::CmpIPredicate::eq,
+                                               adaptor.getLhs(), negOne);
 
   // The accum is correct when the rhs is non-negative. When rhs is
   // negative, we return 0 for integer, with the exception of lhs values of 1
@@ -1141,14 +1141,15 @@ struct MhloOpToStdScalarOp {
                                  ArrayRef<Type> /*ResultTypes*/,
                                  ArrayRef<Type> argTypes, ValueRange args,
                                  OpBuilder* b) {
-    return impl::mapReducePrecisionOpToStdScalarOp(
-        op.getLoc(), argTypes, args, b, op.exponent_bits(), op.mantissa_bits());
+    return impl::mapReducePrecisionOpToStdScalarOp(op.getLoc(), argTypes, args,
+                                                   b, op.getExponentBits(),
+                                                   op.getMantissaBits());
   }
   // Overload for mhlo::CompareOp.
   static Value mapOpWithArgTypes(mhlo::CompareOp op, ArrayRef<Type> resultTypes,
                                  ArrayRef<Type> argTypes, ValueRange args,
                                  OpBuilder* b) {
-    auto comparisonDirection = op.comparison_direction();
+    auto comparisonDirection = op.getComparisonDirection();
     return impl::mapCompareOpToStdScalarOp(op.getLoc(), comparisonDirection,
                                            resultTypes, argTypes, args, b);
   }

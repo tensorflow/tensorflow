@@ -187,6 +187,9 @@ func.func @simple_scatter(%dst: tensor<3xi32>, %indices: tensor<1x1xi32>,
 //       CHECK: thlo.scatter ins(%[[INDICES]] : tensor<1x1xi32>,
 //  CHECK-SAME:                    %[[UPDATE]] : tensor<1xi32>)
 //  CHECK-SAME:                outs(%[[DST]] : tensor<3xi32>)
+//  CHECK-COUNT-2: tensor.from_elements
+//  CHECK-NEXT:    mhlo.add
+//  CHECK-NEXT:    tensor.extract
 
 func.func @scatter_wrong_update(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
                           %arg2: tensor<1xi32>) -> tensor<3xi32> {
@@ -208,7 +211,10 @@ func.func @scatter_wrong_update(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
 }
 
 // CHECK-LABEL: @scatter_wrong_update
-//       CHECK: mhlo.scatter
+//       CHECK: thlo.scatter
+// CHECK-COUNT-2: tensor.from_elements
+//    CHECK-NEXT: mhlo.subtract
+//    CHECK-NEXT: tensor.extract
 
 func.func @scatter_wrong_index_vector_dim(
               %arg0: tensor<3xi32>,

@@ -26,7 +26,8 @@ limitations under the License.
 #define GEN_PASS_DECL_DEPRECATEDTILINGPASS
 #define GEN_PASS_DECL_FUSIONPASS
 #define GEN_PASS_DECL_TILINGPASS
-
+#define GEN_PASS_DECL_GMLSTTOGPUPASS
+#define GEN_PASS_DECL_TILINGCWISEPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 namespace mlir {
@@ -50,6 +51,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
 /// Pass to fuse producers into a tiled consumer.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
     StringRef producer = "", StringRef consumer = "");
+
+/// Pass to tile and fuse all cwise ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
+    bool distribute, ArrayRef<int64_t> tileSizes);
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass();
 
 /// Pass to compose set operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createComposeSetOpsPass();

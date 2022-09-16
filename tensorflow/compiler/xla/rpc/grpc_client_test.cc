@@ -28,9 +28,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/rpc/grpc_stub.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/net.h"
+#include "tensorflow/tsl/platform/subprocess.h"
 #include "tensorflow/tsl/platform/test.h"
 
 #if defined(PLATFORM_WINDOWS)
@@ -52,10 +52,8 @@ class GRPCClientTestBase : public ::testing::Test {
     subprocess_.SetProgram(
         service_main_path,
         {service_main_path, absl::StrFormat("--port=%d", port)});
-    subprocess_.SetChannelAction(tensorflow::CHAN_STDOUT,
-                                 tensorflow::ACTION_DUPPARENT);
-    subprocess_.SetChannelAction(tensorflow::CHAN_STDERR,
-                                 tensorflow::ACTION_DUPPARENT);
+    subprocess_.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_DUPPARENT);
+    subprocess_.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_DUPPARENT);
     CHECK(subprocess_.Start());
     LOG(INFO) << "Launched subprocess";
 
@@ -75,7 +73,7 @@ class GRPCClientTestBase : public ::testing::Test {
     subprocess_.Kill(SIGKILL);
   }
 
-  tensorflow::SubProcess subprocess_;
+  tsl::SubProcess subprocess_;
   std::unique_ptr<grpc::XlaService::Stub> xla_service_;
   std::unique_ptr<GRPCStub> stub_;
   std::unique_ptr<Client> client_;

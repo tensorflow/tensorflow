@@ -55,8 +55,8 @@ cc_library(
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
         "//tensorflow/core/distributed_runtime/rpc:async_service_interface",
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:random",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/platform:errors",
     ] + tf_grpc_cc_dependencies(),
 )

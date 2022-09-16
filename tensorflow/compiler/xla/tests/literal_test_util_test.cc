@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/test.h"
@@ -126,7 +126,7 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
     CHECK(LiteralTestUtil::Near(two, four, error)) << "two is not near four";
   };
 
-  tensorflow::Env* env = tensorflow::Env::Default();
+  tsl::Env* env = tsl::Env::Default();
 
   std::string outdir;
   if (!tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
@@ -150,8 +150,8 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
   EXPECT_EQ(3, results.size());
   for (const std::string& result : results) {
     LiteralProto literal_proto;
-    TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), result,
-                                            &literal_proto));
+    TF_CHECK_OK(
+        tsl::ReadBinaryProto(tsl::Env::Default(), result, &literal_proto));
     Literal literal = Literal::CreateFromProto(literal_proto).value();
     if (result.find("expected") != std::string::npos) {
       EXPECT_EQ("f32[] 2", literal.ToString());

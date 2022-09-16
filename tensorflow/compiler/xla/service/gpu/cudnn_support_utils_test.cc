@@ -54,7 +54,7 @@ class CudnnSupportUtilsTest : public HloTestBase {
         if (inst->IsCustomCall(target)) {
           VLOG(1) << inst->ToString();
           if (call != nullptr) {
-            return tensorflow::errors::FailedPrecondition(
+            return tsl::errors::FailedPrecondition(
                 "Found more than one custom call.");
           }
           call = Cast<HloCustomCallInstruction>(inst);
@@ -62,7 +62,7 @@ class CudnnSupportUtilsTest : public HloTestBase {
       }
     }
     if (call == nullptr) {
-      return tensorflow::errors::FailedPrecondition(
+      return tsl::errors::FailedPrecondition(
           "Did not find any matching custom call.");
     }
     return call;

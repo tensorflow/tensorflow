@@ -54,7 +54,7 @@
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
-#include "tensorflow/core/platform/human_readable_json.h"
+#include "tensorflow/tsl/platform/human_readable_json.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
@@ -64,6 +64,7 @@
 namespace xla {
 namespace gpu {
 
+using Eigen::bfloat16;
 using Eigen::half;
 
 using llvm::ArrayRef;
@@ -914,8 +915,29 @@ absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
   if (args.size() != dest_buffers->leaf_count())
     return absl::InvalidArgumentError("Incorrect number of arguments");
 
-  size_t index = 0;
-  for (auto& dest : dest_buffers->leaves()) {
+  int64_t leaf_count = dest_buffers->leaf_count();
+  auto dest_leaf_it = dest_buffers->leaf_begin();
+
+  for (int64_t index = 0; index < leaf_count; ++index) {
+    const ShapeIndex& shape_index = dest_leaf_it->first;
+    std::unique_ptr<OutfeedBuffer>& buffer = dest_leaf_it->second;
+
+    // NOTE: This code needs deal with the `dest_buffers` object getting
+    // deleted when it is executing. Specifically, objects in the outfeed queue
+    // are pointers to instances of stack-allocated objects in
+    // `GpuTransferManager::TransferLiteralFromOutfeed`. When all leaf node
+    // buffers are notified via "buffer->Done()" below in the stream host
+    // callback, `TransferLiteralFromOutfeed` deletes this stack-allocated
+    // object when it returns. This means that it is possible that during the
+    // last iteration, after the call to "buffer->Done()" is scheduled onto the
+    // stream, the `dest_buffers` object might get deleted, so we should avoid
+    // accessing the object after that.
+    //
+    // To achieve that, increment the leaf iterator here before the last "Done"
+    // is enqueued, instead of in the loop increment, which would be after the
+    // "Done" is scheduled.
+    ++dest_leaf_it;
+
     // Get the source buffer.
     auto source = args.get<runtime::StridedMemrefView>(index);
     if (failed(source))
@@ -923,7 +945,7 @@ absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
 
     // Get the source buffer shape.
     const Shape& dest_shape =
-        ShapeUtil::GetSubshape(dest_buffers->shape(), dest.first);
+        ShapeUtil::GetSubshape(dest_buffers->shape(), shape_index);
 
     // Check that destination shape matches the source shape.
     Shape source_shape = ToShape(*source);
@@ -933,14 +955,11 @@ absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
     }
 
     se::DeviceMemoryBase source_address = GetDeviceAddress(*source);
-    std::unique_ptr<OutfeedBuffer>& buffer = dest.second;
 
     // Schedule the memory transfer.
     auto* dest_address = buffer->destination()->untyped_data();
     stream->ThenMemcpy(dest_address, source_address, buffer->length())
         .ThenDoHostCallback([&buffer]() { buffer->Done(); });
-
-    ++index;
   }
 
   Status block_status = stream->BlockHostUntilDone();
@@ -1040,7 +1059,7 @@ namespace {
 
 struct Memset {
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          runtime::FlatMemrefView dst,
+                          runtime::StridedMemrefView dst,
                           CustomCall::VariantArg constant) const;
   static Memset Handler() { return Memset(); }
 };
@@ -1048,7 +1067,7 @@ struct Memset {
 }  // namespace
 
 absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
-                                runtime::FlatMemrefView dst,
+                                runtime::StridedMemrefView dst,
                                 CustomCall::VariantArg constant) const {
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
@@ -1057,17 +1076,27 @@ absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
   bool set_zero = false;
 
   // Check all supported data types to see if we have a zero value.
-  if (auto i1 = constant.get<bool>(); succeeded(i1) && *i1 == false)
-    set_zero = true;
-  else if (auto i32 = constant.get<int32_t>(); succeeded(i32) && *i32 == 0)
-    set_zero = true;
-  else if (auto f16 = constant.get<half>(); succeeded(f16) && *f16 == half(0.0))
-    set_zero = true;
-  else if (auto f32 = constant.get<float>(); succeeded(f32) && *f32 == 0.0)
-    set_zero = true;
+  if (auto i1 = constant.get<bool>(); succeeded(i1))
+    set_zero = *i1 == false;
+  else if (auto i8 = constant.get<int8_t>(); succeeded(i8))
+    set_zero = *i8 == 0;
+  else if (auto i16 = constant.get<int16_t>(); succeeded(i16))
+    set_zero = *i16 == 0;
+  else if (auto i32 = constant.get<int32_t>(); succeeded(i32))
+    set_zero = *i32 == 0;
+  else if (auto i64 = constant.get<int64_t>(); succeeded(i64))
+    set_zero = *i64 == 0;
+  else if (auto bf16 = constant.get<bfloat16>(); succeeded(bf16))
+    set_zero = *bf16 == bfloat16(0.0);
+  else if (auto f16 = constant.get<half>(); succeeded(f16))
+    set_zero = *f16 == half(0.0);
+  else if (auto f32 = constant.get<float>(); succeeded(f32))
+    set_zero = *f32 == 0.0;
+  else if (auto f64 = constant.get<double>(); succeeded(f64))
+    set_zero = *f64 == 0.0;
 
   if (set_zero) {
-    stream->ThenMemZero(&dst_data, dst.size_in_bytes);
+    stream->ThenMemZero(&dst_data, dst_data.size());
     return absl::OkStatus();
   }
 
@@ -1081,10 +1110,10 @@ absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
   else
     return absl::InvalidArgumentError("Unsupported memset bit pattern type");
 
-  if (dst.size_in_bytes % 4 != 0)
+  if (dst_data.size() % 4 != 0)
     return absl::InvalidArgumentError("Memref size is not divisible by 4");
 
-  stream->ThenMemset32(&dst_data, pattern, dst.size_in_bytes);
+  stream->ThenMemset32(&dst_data, pattern, dst_data.size());
 
   return absl::OkStatus();
 }
@@ -1093,8 +1122,8 @@ static bool MemsetFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
                      void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.memset")
                              .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::FlatMemrefView>()  // dst
-                             .Arg<CustomCall::VariantArg>()   // constant
+                             .Arg<runtime::StridedMemrefView>()  // dst
+                             .Arg<CustomCall::VariantArg>()      // constant
                              .To<RuntimeChecks()>(Memset::Handler())
                              .release();
 
@@ -1175,7 +1204,8 @@ struct Cholesky {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
                           const DebugOptions* debug_options,
-                          runtime::MemrefView operand, runtime::MemrefView a,
+                          runtime::StridedMemrefView operand,
+                          runtime::StridedMemrefView a,
                           runtime::MemrefView workspace,
                           runtime::MemrefView info, int64_t batch_size,
                           bool is_lower, int64_t n) const;
@@ -1185,8 +1215,8 @@ struct Cholesky {
 
 absl::Status Cholesky::operator()(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, runtime::MemrefView operand,
-    runtime::MemrefView a, runtime::MemrefView workspace,
+    const DebugOptions* debug_options, runtime::StridedMemrefView operand,
+    runtime::StridedMemrefView a, runtime::MemrefView workspace,
     runtime::MemrefView info, int64_t batch_size, bool is_lower,
     int64_t n) const {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1222,10 +1252,10 @@ static bool Cholesky(runtime::ExecutionContext* ctx, void** args, void** attrs,
   static auto* handler = CustomCall::Bind("xla.gpu.cholesky")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
-                             .Arg<runtime::MemrefView>()  // operand
-                             .Arg<runtime::MemrefView>()  // a
-                             .Arg<runtime::MemrefView>()  // workspace
-                             .Arg<runtime::MemrefView>()  // info
+                             .Arg<runtime::StridedMemrefView>()  // operand
+                             .Arg<runtime::StridedMemrefView>()  // a
+                             .Arg<runtime::MemrefView>()         // workspace
+                             .Arg<runtime::MemrefView>()         // info
                              .Attr<int64_t>("batch_size")
                              .Attr<bool>("is_lower")
                              .Attr<int64_t>("n")
@@ -1284,7 +1314,7 @@ absl::Status TriangularSolve::run(
 
   // Parse backend config string.
   TriangularSolveOptions opts;
-  auto st = tensorflow::HumanReadableJsonToProto(backend_config.str(), &opts);
+  auto st = tsl::HumanReadableJsonToProto(backend_config.str(), &opts);
   if (!st.ok()) return ToAbslStatus(st);
 
   return handler(run_options, debug_options, *a, *b, *result, *temp,

@@ -281,7 +281,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return gpu_run_options_.get();
   }
 
-  tensorflow::thread::ThreadPool* thread_pool() { return &thread_pool_; }
+  tsl::thread::ThreadPool* thread_pool() { return &thread_pool_; }
 
  protected:
   friend class PjRtStreamExecutorBuffer;
@@ -360,7 +360,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
-  tensorflow::thread::ThreadPool thread_pool_;
+  tsl::thread::ThreadPool thread_pool_;
 
   absl::Mutex transpose_mu_;
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
@@ -731,6 +731,21 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
       size += executable->executable()->SizeOfGeneratedCodeInBytes();
     }
     return size;
+  }
+
+  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    if (executables_.size() != 1) {
+      return Unimplemented(
+          "Retrieving CompiledMemoryStats is not supported for multiple "
+          "executables.");
+    }
+    CompiledMemoryStats memory_stats = CompiledMemoryStats();
+    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
+    const HloProto* proto = executables_[0]->executable()->hlo_proto();
+    if (proto != nullptr) {
+      memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+    }
+    return memory_stats;
   }
 
   const DeviceAssignment& device_assignment() const override {

@@ -80,7 +80,7 @@ namespace wrap {
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
     static void* GetDsoHandle() {                                         \
       auto s = internal::CachedDsoLoader::GetRocrandDsoHandle();          \
-      return s.ValueOrDie();                                              \
+      return s.value();                                              \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
       void* f;                                                            \

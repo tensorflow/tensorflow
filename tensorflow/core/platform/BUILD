@@ -7,7 +7,6 @@
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
-load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -18,7 +17,6 @@ load(
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
-    "tf_google_mobile_srcs_no_runtime",
     "tf_google_mobile_srcs_only_runtime",
     "tf_kernel_tests_linkstatic",
     "tf_platform_alias",
@@ -100,7 +98,6 @@ exports_files(
         "subprocess.h",
         "test.h",
         "threadpool.h",
-        "tracing.cc",
         "tracing.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
@@ -155,13 +152,12 @@ cc_library(
 
 cc_library(
     name = "coding",
-    srcs = ["coding.cc"],
     hdrs = ["coding.h"],
     deps = [
-        ":byte_order",
         ":raw_coding",
         ":stringpiece",
         ":types",
+        "//tensorflow/tsl/platform:coding",
     ],
 )
 
@@ -892,7 +888,9 @@ cc_library(
 cc_library(
     name = "tracing",
     textual_hdrs = ["tracing.h"],
-    deps = tf_platform_deps("tracing"),
+    deps = [
+        "//tensorflow/tsl/platform:tracing",
+    ],
 )
 
 cc_library(
@@ -1215,9 +1213,9 @@ tf_cc_tests(
         "scanner_test.cc",
         "str_util_test.cc",
         "strcat_test.cc",
-        "stringpiece_test.cc",
         "stringprintf_test.cc",
         "vmodule_benchmark_test.cc",
+        "//tensorflow/tsl/platform:stringpiece_test.cc",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils_test.cc",
     ],
     create_named_test_suite = True,
@@ -1326,17 +1324,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "ctstring_test",
-    size = "small",
-    srcs = ["ctstring_test.cc"],
-    deps = [
-        ":tstring",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "status_matchers_test",
     size = "small",
     srcs = ["status_matchers_test.cc"],
@@ -1348,19 +1335,6 @@ tf_cc_test(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-    ],
-)
-
-tf_cc_test(
-    name = "tstring_test",
-    size = "small",
-    srcs = ["tstring_test.cc"],
-    deps = [
-        ":cord",
-        ":stringpiece",
-        ":tstring",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1814,7 +1788,6 @@ filegroup(
         "blocking_counter.h",
         "byte_order.h",
         "casts.h",
-        "coding.cc",
         "coding.h",
         "context.h",
         "cord.h",
@@ -1869,13 +1842,7 @@ filegroup(
         "tstring.h",
         "types.h",
         "//tensorflow/tsl/platform:mobile_srcs_no_runtime",
-    ] + selects.with_or({
-        "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
-        "//conditions:default": [
-            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
-            "tracing.cc",
-        ],
-    }) + tf_platform_alias("additional_mobile_srcs_no_runtime"),
+    ] + tf_platform_alias("additional_mobile_srcs_no_runtime"),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 

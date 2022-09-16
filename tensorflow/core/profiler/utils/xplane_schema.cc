@@ -278,6 +278,7 @@ const StatTypeMap& GetStatTypeMap() {
       // Aggregrated Stat
       {"self_duration_ps", kSelfDurationPs},
       {"min_duration_ps", kMinDurationPs},
+      {"total_profile_duration_ps", kTotalProfileDurationPs},
       {"max_iteration_num", kMaxIterationNum},
       {"device_type", kDeviceType},
       {"uses_megacore", kUsesMegaCore},

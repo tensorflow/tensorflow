@@ -41,8 +41,12 @@ package(
 exports_files(
     [
         "mutex.h",
+        "stringpiece_test.cc",
     ],
-    visibility = ["//tensorflow/tsl:__subpackages__"],
+    visibility = [
+        "//tensorflow/core/platform:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
+    ],
 )
 
 cc_library(
@@ -69,6 +73,17 @@ cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
     compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "coding",
+    srcs = ["coding.cc"],
+    hdrs = ["coding.h"],
+    deps = [
+        ":byte_order",
+        ":stringpiece",
+        ":types",
+    ],
 )
 
 cc_library(
@@ -103,6 +118,11 @@ cc_library(
         "threadpool.h",
     ],
     deps = tf_windows_aware_platform_deps("env"),
+)
+
+cc_library(
+    name = "env_impl",
+    deps = tf_windows_aware_platform_deps("env_impl"),
 )
 
 cc_library(
@@ -335,6 +355,12 @@ filegroup(
 )
 
 cc_library(
+    name = "tracing",
+    textual_hdrs = ["tracing.h"],
+    deps = tf_platform_deps("tracing"),
+)
+
+cc_library(
     name = "tstring",
     hdrs = [
         "ctstring.h",
@@ -362,6 +388,7 @@ filegroup(
     srcs = [
         "bfloat16.h",
         "casts.h",
+        "coding.h",
         "cpu_info.h",
         "crash_analysis.h",
         "dynamic_annotations.h",
@@ -438,6 +465,8 @@ filegroup(
         "blocking_counter.h",
         "byte_order.h",
         "casts.h",
+        "coding.cc",
+        "coding.h",
         "cpu_info.cc",
         "cpu_info.h",
         "demangle.h",
@@ -496,11 +525,14 @@ filegroup(
         "thread_annotations.h",
         "threadpool.h",
         "threadpool_interface.h",
+        "tracing.h",
     ] + selects.with_or({
         "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
+            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
             "threadpool.cc",
+            "tracing.cc",
         ],
     }),
     compatible_with = get_compatible_with_portable(),
@@ -594,6 +626,8 @@ exports_files(
         "subprocess.h",
         "threadpool.cc",
         "threadpool.h",
+        "tracing.h",
+        "tracing.cc",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -630,6 +664,7 @@ filegroup(
         "platform.h",
         "setround.h",
         "snappy.h",
+        "tracing.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
@@ -937,7 +972,7 @@ cc_library(
     deps = [
         ":logging",
         ":protobuf",
-        "//tensorflow/core/platform:env",
+        "//tensorflow/tsl/platform:env",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/synchronization",
     ],
@@ -1118,4 +1153,41 @@ cc_library(
     name = "tensor_float_32_hdr_lib",
     hdrs = [":tensor_float_32_hdr"],
     compatible_with = get_compatible_with_portable(),
+)
+
+tf_cc_test(
+    name = "ctstring_test",
+    size = "small",
+    srcs = ["ctstring_test.cc"],
+    deps = [
+        ":tstring",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "hash_test",
+    size = "small",
+    srcs = ["hash_test.cc"],
+    deps = [
+        ":hash",
+        ":logging",
+        ":test",
+        ":test_benchmark",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "tstring_test",
+    size = "small",
+    srcs = ["tstring_test.cc"],
+    deps = [
+        ":cord",
+        ":stringpiece",
+        ":tstring",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )

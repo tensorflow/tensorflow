@@ -56,9 +56,9 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
   LogicalResult matchAndRewrite(
       mhlo::ConcatenateOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    const int64_t concatDim = op.dimension();
+    const int64_t concatDim = op.getDimension();
     const Location loc = op.getLoc();
-    const Value anyOperand = adaptor.val().front();
+    const Value anyOperand = adaptor.getVal().front();
 
     auto resultTy = typeConverter->convertType(op.getResult().getType())
                         .cast<RankedTensorType>();
@@ -87,7 +87,7 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
       // that dimension.
       int64_t staticSum = 0;
       Value dynamicSum;
-      for (const Value operand : adaptor.val()) {
+      for (const Value operand : adaptor.getVal()) {
         auto operandTy = operand.getType().cast<RankedTensorType>();
         if (operandTy.getDimSize(concatDim) == ShapedType::kDynamicSize) {
           const Value dynamicSummand =
@@ -115,7 +115,7 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
     auto init = rewriter.create<linalg::InitTensorOp>(
         loc, dynamicInitSizes, staticInitSizes, resultTy.getElementType());
     rewriter.replaceOpWithNewOp<thlo::ConcatenateOp>(
-        op, resultTy, adaptor.val(), init, concatDim);
+        op, resultTy, adaptor.getVal(), init, concatDim);
     return success();
   }
 };
@@ -128,18 +128,18 @@ struct DynamicBroadcastInDimOpPattern
       mhlo::DynamicBroadcastInDimOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
-    Value outputDimensions = adaptor.output_dimensions();
-    auto operandTy = adaptor.operand().getType().cast<RankedTensorType>();
+    Value outputDimensions = adaptor.getOutputDimensions();
+    auto operandTy = adaptor.getOperand().getType().cast<RankedTensorType>();
     auto resultTy =
         typeConverter->convertType(op.getType()).cast<RankedTensorType>();
 
     // Only  apply to broadcasts that cannot be lowered to linalg, i.e. those
     // for which we do not know their expansion behavior at compile time.
     int64_t countKnownExpansionBehavior = 0;
-    if (auto expandingDims = op.known_expanding_dimensions()) {
+    if (auto expandingDims = op.getKnownExpandingDimensions()) {
       countKnownExpansionBehavior += expandingDims->size();
     }
-    if (auto nonexpandingDims = op.known_nonexpanding_dimensions()) {
+    if (auto nonexpandingDims = op.getKnownNonexpandingDimensions()) {
       countKnownExpansionBehavior += nonexpandingDims->size();
     }
     if (operandTy.getRank() == countKnownExpansionBehavior) return failure();
@@ -157,21 +157,21 @@ struct DynamicBroadcastInDimOpPattern
         loc, dynamicDims, staticShapeInfo, resultTy.getElementType());
 
     auto broadcastDims = rewriter.getDenseI64ArrayAttr(
-        llvm::to_vector(op.broadcast_dimensions().getValues<int64_t>()));
+        llvm::to_vector(op.getBroadcastDimensions().getValues<int64_t>()));
 
     DenseI64ArrayAttr knownExpandingDims;
-    if (op.known_expanding_dimensions().has_value()) {
+    if (op.getKnownExpandingDimensions().has_value()) {
       knownExpandingDims = rewriter.getDenseI64ArrayAttr(llvm::to_vector(
-          op.known_expanding_dimensionsAttr().getValues<int64_t>()));
+          op.getKnownExpandingDimensionsAttr().getValues<int64_t>()));
     }
     DenseI64ArrayAttr knownNonexpandingDims;
-    if (op.known_nonexpanding_dimensions().has_value()) {
+    if (op.getKnownNonexpandingDimensions().has_value()) {
       knownNonexpandingDims = rewriter.getDenseI64ArrayAttr(llvm::to_vector(
-          op.known_nonexpanding_dimensionsAttr().getValues<int64_t>()));
+          op.getKnownNonexpandingDimensionsAttr().getValues<int64_t>()));
     }
 
     rewriter.replaceOpWithNewOp<thlo::DynamicBroadcastInDimOp>(
-        op, resultTy, adaptor.operand(), initTensor, broadcastDims,
+        op, resultTy, adaptor.getOperand(), initTensor, broadcastDims,
         knownExpandingDims, knownNonexpandingDims);
     return success();
   }
@@ -185,29 +185,30 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
       mhlo::GatherOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     auto startIndicesType =
-        adaptor.start_indices().getType().dyn_cast<RankedTensorType>();
-    auto operandType = adaptor.operand().getType().dyn_cast<RankedTensorType>();
+        adaptor.getStartIndices().getType().dyn_cast<RankedTensorType>();
+    auto operandType =
+        adaptor.getOperand().getType().dyn_cast<RankedTensorType>();
 
     if (!startIndicesType || !operandType) return failure();
 
     // index_vector_dim must be the last dimension of start_indices.
-    int indexVectorDim = op.dimension_numbers().getIndexVectorDim();
+    int indexVectorDim = op.getDimensionNumbers().getIndexVectorDim();
     if (startIndicesType.getRank() - 1 != indexVectorDim) return failure();
 
     // All slice_sizes must be 1.
-    if (!llvm::all_of(op.slice_sizes(), [](auto size) { return size == 1; }))
+    if (!llvm::all_of(op.getSliceSizes(), [](auto size) { return size == 1; }))
       return failure();
 
     // offset_dims must be []
-    if (!op.dimension_numbers().getOffsetDims().empty()) return failure();
+    if (!op.getDimensionNumbers().getOffsetDims().empty()) return failure();
 
     // collapsed_slice_dims[] must be range(operand.rank)
-    auto collapsedSliceDims = op.dimension_numbers().getCollapsedSliceDims();
+    auto collapsedSliceDims = op.getDimensionNumbers().getCollapsedSliceDims();
     if (!isIotaArray(collapsedSliceDims, operandType.getRank()))
       return failure();
 
     // start_index_map[] must be range(start_indices.shape[index_vector_dim])
-    auto startIndexMap = op.dimension_numbers().getStartIndexMap();
+    auto startIndexMap = op.getDimensionNumbers().getStartIndexMap();
     if (!isIotaArray(startIndexMap,
                      startIndicesType.getShape()[indexVectorDim]))
       return failure();
@@ -222,7 +223,8 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
         loc, mlir::ValueRange{}, resultType.getShape(),
         resultType.getElementType());
     rewriter.replaceOpWithNewOp<thlo::GatherOp>(
-        op, resultType, adaptor.operand(), adaptor.start_indices(), initTensor);
+        op, resultType, adaptor.getOperand(), adaptor.getStartIndices(),
+        initTensor);
     return success();
   }
 };
@@ -251,7 +253,8 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
       ConversionPatternRewriter& rewriter) const final {
     auto srcRank =
         adaptor.operands()[0].getType().cast<RankedTensorType>().getRank();
-    auto reductionDims = llvm::to_vector(op.dimensions().getValues<int64_t>());
+    auto reductionDims =
+        llvm::to_vector(op.getDimensions().getValues<int64_t>());
     // mhlo.reduce doesn't specify the order of the reduction dimensions.
     std::sort(reductionDims.begin(), reductionDims.end());
 
@@ -267,7 +270,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
 
     Location loc = op.getLoc();
     for (auto [operand, initValue, resultType] :
-         llvm::zip(adaptor.operands(), adaptor.init_values(), resultTypes)) {
+         llvm::zip(adaptor.operands(), adaptor.getInitValues(), resultTypes)) {
       auto initType = toRankedTensor(initValue);
       if (!initType)
         return rewriter.notifyMatchFailure(op,
@@ -294,7 +297,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
         loc, resultTypes, adaptor.operands(), outputs,
         rewriter.getDenseI64ArrayAttr(reductionDims));
     Region& region = thloReduction.combiner();
-    rewriter.inlineRegionBefore(op.body(), region, region.end());
+    rewriter.inlineRegionBefore(op.getBody(), region, region.end());
 
     // Convert the signature of the body. The reduce op 'computation' region
     // apply function has a signature with tensor types, this is converted to a
@@ -327,19 +330,21 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
   }
 };
 
-static bool isInBodyOfThloReduction(Operation* op) {
+bool isInBodyOfThloOp(Operation* op) {
   auto* parentOp = op->getParentRegion()->getParentOp();
-  return isa<thlo::ReductionOp>(*parentOp);
+  return isa<thlo::MapOp>(*parentOp) || isa<thlo::ReductionOp>(*parentOp) ||
+         isa<thlo::ScatterOp>(*parentOp);
 }
 
 // Rewrites a mhlo::ReturnOp inside a thlo::ReductionOp to thlo::YieldOp.
-struct ReduceRegionReturnOpConversion
+struct ThloRegionReturnOpConversion
     : public OpConversionPattern<mhlo::ReturnOp> {
   using OpConversionPattern<mhlo::ReturnOp>::OpConversionPattern;
+
   LogicalResult matchAndRewrite(
       mhlo::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    if (!isInBodyOfThloReduction(op)) return failure();
+    if (!isInBodyOfThloOp(op)) return failure();
     SmallVector<Value, 4> operands(adaptor.getOperands());
     auto loc = op.getLoc();
     for (size_t i = 0; i < operands.size(); ++i) {
@@ -360,15 +365,11 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
       mhlo::ScatterOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     // The variadic case is not supported.
-    if (op.updates().size() != 1) return failure();
+    if (op.getUpdates().size() != 1) return failure();
 
-    // update_computation is sum.
-    if (matchUpdateComputation(op.update_computation()).failed())
-      return failure();
-
-    const auto& dims = op.scatter_dimension_numbers();
+    const auto& dims = op.getScatterDimensionNumbers();
     auto scatterIndicesType =
-        adaptor.scatter_indices().getType().dyn_cast<RankedTensorType>();
+        adaptor.getScatterIndices().getType().dyn_cast<RankedTensorType>();
     if (!scatterIndicesType) return failure();
 
     // Only point updates are supported.
@@ -387,30 +388,28 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
     if (!opType)
       return failure();  // Type is a tensor in the non-variadic case.
 
-    rewriter.replaceOpWithNewOp<thlo::ScatterOp>(
-        op, opType, adaptor.scatter_indices(), adaptor.updates().front(),
+    Location loc = op.getLoc();
+    auto thloScatter = rewriter.create<thlo::ScatterOp>(
+        loc, opType, adaptor.getScatterIndices(), adaptor.updates().front(),
         adaptor.operands().front());
+
+    Region& region = thloScatter.update_computation();
+    rewriter.inlineRegionBefore(op.getRegion(), region, region.end());
+
+    // Convert the signature of the body by inserting
+    // tensor.from_elements/tensor.extract.
+    TypeConverter::SignatureConversion signatureConverter(2);
+    for (const auto& [idx, val] :
+         llvm::enumerate(thloScatter.update_computation().getArgumentTypes())) {
+      signatureConverter.addInputs(
+          idx, typeConverter->convertType(
+                   val.cast<RankedTensorType>().getElementType()));
+    }
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
+
+    rewriter.replaceOp(op, thloScatter.getResults());
     return success();
-  }
-
-  LogicalResult matchUpdateComputation(mlir::Region& computation) const {
-    Block& block = computation.front();
-    if (block.getNumArguments() != 2) return failure();
-
-    mhlo::ReturnOp returnOp = dyn_cast<mhlo::ReturnOp>(block.getTerminator());
-    if (!returnOp || returnOp.getNumOperands() != 1) return failure();
-
-    auto* returnOperand = returnOp.getOperand(0).getDefiningOp();
-    auto addOp = dyn_cast<mhlo::AddOp>(returnOperand);
-    if (!addOp || addOp->getNumOperands() != 2) return failure();
-
-    auto lhs = addOp->getOperand(0);
-    auto rhs = addOp->getOperand(1);
-    auto arg0 = block.getArgument(0);
-    auto arg1 = block.getArgument(1);
-
-    return success((lhs == arg0 && rhs == arg1) ||
-                   (lhs == arg1 && rhs == arg0));
   }
 };
 
@@ -437,9 +436,9 @@ class LegalizeMHLOToTHLOPass
         ConcatenateOpPattern,
         DynamicBroadcastInDimOpPattern,
         GatherPattern,
-        ReduceRegionReturnOpConversion,
         ReductionPattern,
-        ScatterPattern>(*typeConverter, ctx);
+        ScatterPattern,
+        ThloRegionReturnOpConversion>(*typeConverter, ctx);
     // clang-format on
 
     if (failed(applyPartialConversion(getOperation(), target,

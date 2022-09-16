@@ -353,7 +353,7 @@ func.func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
   %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   %cst_1 = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
   // CHECK:      %[[SUBVIEW:.*]] = memref.subview %arg0[0] [1] [1]
-  // CHECK-SAME:                 : memref<3xi32> to memref<1xi32>
+  // CHECK-SAME:                 : memref<3xi32> to memref<1xi32, strided<[1]>>
   // CHECK:      %[[RET:.*]] = memref.collapse_shape %[[SUBVIEW]]
   // CHECK:      return %[[RET]]
   %0 = "tf.StridedSlice"(%arg0, %cst_1, %cst_0, %cst_0)

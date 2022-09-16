@@ -32,13 +32,13 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/hlo_utils.h"
-#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/ChloOps.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
@@ -142,13 +142,17 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
   auto all_reduce = builder.create<AllReduceOp>(
       loc, result_type, input, replica_groups, channel_handle, nullptr);
   if (merge_op == "Add") {
-    BuildReduceBody<AddOp>(element_type, &all_reduce.computation(), &builder);
+    BuildReduceBody<AddOp>(element_type, &all_reduce.getComputation(),
+                           &builder);
   } else if (merge_op == "Mul") {
-    BuildReduceBody<MulOp>(element_type, &all_reduce.computation(), &builder);
+    BuildReduceBody<MulOp>(element_type, &all_reduce.getComputation(),
+                           &builder);
   } else if (merge_op == "Min") {
-    BuildReduceBody<MinOp>(element_type, &all_reduce.computation(), &builder);
+    BuildReduceBody<MinOp>(element_type, &all_reduce.getComputation(),
+                           &builder);
   } else if (merge_op == "Max") {
-    BuildReduceBody<MaxOp>(element_type, &all_reduce.computation(), &builder);
+    BuildReduceBody<MaxOp>(element_type, &all_reduce.getComputation(),
+                           &builder);
   } else {
     return op->emitOpError() << "invalid merge_op " << merge_op
                              << ", want one of [Add, Mul, Min, Max]";
