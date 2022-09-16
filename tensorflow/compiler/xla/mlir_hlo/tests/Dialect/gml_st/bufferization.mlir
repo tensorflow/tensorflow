@@ -14,7 +14,7 @@ func.func @set_space(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
   return %identity : tensor<?x?xf32>
 }
-// CHECK-LABEL: func.func @set_space(
+// CHECK-LABEL: func @set_space(
 // CHECK-SAME:    %[[ARG:.*]]: memref<?x?xf32>)
 // CHECK-NEXT:  return %[[ARG]] : memref<?x?xf32>
 
@@ -36,7 +36,7 @@ func.func @set_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
 
   return %slice : tensor<2x4xf32>
 }
-// CHECK-LABEL: func.func @set_tile(
+// CHECK-LABEL: func @set_tile(
 // CHECK-SAME:    %[[ARG:.*]]: memref<?x?xf32>)
 // CHECK-NEXT:  %[[VIEW:.*]] = memref.subview %[[ARG]][0, 1] [2, 4] [1, 1]
 // CHECK-NEXT:  %[[ALLOC:.*]] = memref.alloc() : memref<2x4xf32>
@@ -53,21 +53,18 @@ func.func @set_point(%input: tensor<?x?xf32>) -> f32 {
   %dim_1 = tensor.dim %input, %c1 : tensor<?x?xf32>
 
   %space = gml_st.space [%dim_0, %dim_1] : !gml_st.tile<?x?>
-  %tile = gml_st.tile %space[0, 1][2, 4][1, 1]
-    : !gml_st.tile<?x?> to !gml_st.tile<2x4>
-  %pt = gml_st.point %tile[0, 1] : !gml_st.tile<2x4> to !gml_st.point
+  %pt = gml_st.point %space[0, 1] : !gml_st.tile<?x?> to !gml_st.point
 
   %element = gml_st.materialize %input[%pt]
     : tensor<?x?xf32>[!gml_st.point] to f32
 
   return %element : f32
 }
-// CHECK-LABEL: func.func @set_point(
+// CHECK-LABEL: func @set_point(
 // CHECK-SAME:    %[[ARG:.*]]: memref<?x?xf32>)
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
-// CHECK-NEXT:  %[[VIEW:.*]] = memref.subview %[[ARG]][0, 1] [2, 4] [1, 1]
-// CHECK-NEXT:  %[[ELEM:.*]] = memref.load %[[VIEW]][%[[C0]], %[[C1]]]
+// CHECK-NEXT:  %[[ELEM:.*]] = memref.load %[[ARG]][%[[C0]], %[[C1]]]
 // CHECK-NEXT:  return %[[ELEM]] : f32
 
 // -----
@@ -94,7 +91,7 @@ func.func @parallel_with_points(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
   } : tensor<?x?xf32>
   return %result : tensor<?x?xf32>
 }
-// CHECK-LABEL: func.func @parallel_with_points(
+// CHECK-LABEL: func @parallel_with_points(
 // CHECK-SAME:    %[[LHS:.*]]: memref<?x?xf32>, %[[RHS:.*]]: memref<?x?xf32>,
 // CHECK-SAME:    %[[OUT:.*]]: memref<?x?xf32>) -> memref<?x?xf32> {
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
@@ -156,7 +153,7 @@ func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 }
 // CHECK: #[[$MAP1:.+]] = affine_map<(d0, d1) -> (d0, d1)>
 
-// CHECK-LABEL: func.func @parallel_with_tiles(
+// CHECK-LABEL: func @parallel_with_tiles(
 // CHECK-SAME: %[[LHS:.*]]: memref<?x?xf32>, %[[RHS:.*]]: memref<?x?xf32>,
 // CHECK-SAME: %[[OUT:.*]]: memref<?x?xf32>) -> memref<?x?xf32> {
 
@@ -168,11 +165,12 @@ func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 
 // CHECK:     gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-SAME:    to (%[[DIM_0]], %[[DIM_1]]) step (%[[C4]], %[[C1]]) {
-// CHECK-DAG:   %[[OUT_SUB:.*]] = memref.subview %[[OUT]][%[[I]], %[[J]]]
+
+// CHECK-DAG:   %[[LHS_SUB:.*]] = memref.subview %[[LHS]][%[[I]], %[[J]]]
 // CHECK-SAME:    : memref<?x?xf32> to memref<?x1xf32, strided<[?, 1], offset: ?>>
 // CHECK-DAG:   %[[RHS_SUB:.*]] = memref.subview %[[RHS]][%[[I]], %[[J]]]
 // CHECK-SAME:    : memref<?x?xf32> to memref<?x1xf32, strided<[?, 1], offset: ?>>
-// CHECK-DAG:   %[[LHS_SUB:.*]] = memref.subview %[[LHS]][%[[I]], %[[J]]]
+// CHECK-DAG:   %[[OUT_SUB:.*]] = memref.subview %[[OUT]][%[[I]], %[[J]]]
 // CHECK-SAME:    : memref<?x?xf32> to memref<?x1xf32, strided<[?, 1], offset: ?>>
 
 // CHECK:       linalg.generic {
@@ -209,7 +207,7 @@ func.func @for_with_points(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
   func.return %result: tensor<?x?xf32>
 }
 
-// CHECK-LABEL: func.func @for_with_points(
+// CHECK-LABEL: func @for_with_points(
 // CHECK-SAME:      %[[LHS:.*]]: memref<?x?xf32>, %[[RHS:.*]]: memref<?x?xf32>,
 // CHECK-SAME:      %[[OUT:.*]]: memref<?x?xf32>) -> memref<?x?xf32> {
 // CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
@@ -226,3 +224,33 @@ func.func @for_with_points(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 // CHECK:           memref.store %[[ADD_EL]], %[[OUT]][%[[I]], %[[J]]]
 // CHECK:           gml_st.set_yield
 // CHECK:         return %[[OUT]] : memref<?x?xf32>
+
+// -----
+
+func.func @materialize_and_yield_with_constants(
+    %in: tensor<8x2xf32>, %out: tensor<8x2xf32>) -> tensor<8x2xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %c8 = arith.constant 8 : index
+
+  %0 = gml_st.space [8, 2] : !gml_st.tile<8x2>
+  %1 = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c8, %c2) step (%c1, %c1) {
+    %2 = gml_st.tile %0 [%i, %j] [1, 1] [1, 1]
+      : !gml_st.tile<8x2> to !gml_st.tile<1x1>
+    %3 = gml_st.materialize %in[%2]
+      : tensor<8x2xf32>[!gml_st.tile<1x1>] to f32
+    %4 = math.absf %3: f32
+    gml_st.set_yield %4 into %out[%2]
+      : f32 into tensor<8x2xf32>[!gml_st.tile<1x1>]
+  } : tensor<8x2xf32>
+  return %1 : tensor<8x2xf32>
+}
+// CHECK-LABEL: func @materialize_and_yield_with_constants
+// CHECK-SAME:      %[[IN:.*]]: memref<8x2xf32>, %[[OUT:.*]]: memref<8x2xf32>)
+
+// CHECK:       gml_st.parallel (%[[I:.*]], %[[J:.*]]) =
+// CHECK-NEXT:    %[[ELEM:.*]] = memref.load %[[IN]][%[[I]], %[[J]]]
+// CHECK-NEXT:    %[[ABS:.*]] = math.absf %[[ELEM]] : f32
+// CHECK-NEXT:    memref.store %[[ABS]], %[[OUT]][%[[I]], %[[J]]]
+// CHECK-NEXT:    gml_st.set_yield

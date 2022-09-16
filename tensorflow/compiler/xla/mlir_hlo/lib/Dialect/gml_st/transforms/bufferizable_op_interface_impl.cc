@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arithmetic/Utils/Utils.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -196,27 +197,19 @@ struct LoopOpInterface
   }
 };
 
-// Returns the set chain in reverse order, i.e. from set to space.
-// The space operation itself is not included.
-FailureOr<SmallVector<Operation *>> findSetChain(Value set) {
-  SmallVector<Operation *> sets;
-  Operation *current = set.getDefiningOp();
-  while (current) {
-    if (auto space = dyn_cast<SpaceOp>(*current)) break;
+// Verifies if the subset chain is collapsed, i.e. set is produced by
+// `gml_st.space` or `gml_st.tile(gml_st.space)` or
+// `gml_st.point(gml_st.space)`.
+LogicalResult verifySubsetChain(Value set) {
+  Operation *definingOp = set.getDefiningOp();
+  if (isa<SpaceOp>(definingOp)) return success();
 
-    sets.push_back(current);
-    // TODO(pifon): It might be useful to have a set interface.
-    if (auto tile = dyn_cast<TileOp>(*current)) {
-      current = tile.getSuperset().getDefiningOp();
-      continue;
-    }
-    if (auto point = dyn_cast<PointOp>(*current)) {
-      current = point.getSuperset().getDefiningOp();
-      continue;
-    }
-    return failure();
-  }
-  return sets;
+  if (auto pt = dyn_cast<PointOp>(definingOp))
+    return success(pt.superset().getDefiningOp<SpaceOp>() != nullptr);
+
+  if (auto tile = dyn_cast<TileOp>(definingOp))
+    return success(tile.superset().getDefiningOp<SpaceOp>() != nullptr);
+  return failure();
 }
 
 // TODO(pifon): Clean this up, for example, by using ViewLikeInterface.
@@ -240,71 +233,66 @@ SmallVector<Value> getPointIndicesValues(OpBuilder &b, PointOp pointOp) {
 
 // Returns a scalar or a memref type result of `gml_st.materialize` op after
 // bufferization.
-FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref, Value set) {
-  auto setsOr = findSetChain(set);
-  if (failed(setsOr)) return failure();
+FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref,
+                                       MaterializeOp materializeOp) {
+  Value set = materializeOp.getSet();
+  if (failed(verifySubsetChain(set))) return failure();
 
-  // Find set use-def chain from space to the set.
-  // Create subview or load ops for the set computation.
-  OpBuilder::InsertionGuard g(b);
-  Value result = memref;
-  for (auto *set : llvm::reverse(*setsOr)) {
-    Location loc = set->getLoc();
-    b.setInsertionPointAfter(set);
-    if (auto tile = dyn_cast<TileOp>(*set)) {
-      result = b.create<memref::SubViewOp>(loc, result, tile.getMixedOffsets(),
-                                           tile.getMixedSizes(),
-                                           tile.getMixedStrides());
-      continue;
+  Operation *setDefiningOp = set.getDefiningOp();
+
+  Location loc = set.getLoc();
+  if (auto space = dyn_cast<SpaceOp>(setDefiningOp)) return memref;
+  if (auto tile = dyn_cast<TileOp>(setDefiningOp)) {
+    if (!materializeOp.getType().isa<ShapedType>()) {
+      auto indices =
+          getValueOrCreateConstantIndexOp(b, loc, tile.getMixedOffsets());
+      return b.create<memref::LoadOp>(loc, memref, indices).getResult();
     }
-    if (auto point = dyn_cast<PointOp>(*set)) {
-      result = b.create<memref::LoadOp>(loc, result,
-                                        getPointIndicesValues(b, point));
-      continue;
-    }
-    return failure();
+    Value subview = b.create<memref::SubViewOp>(
+        loc, memref, tile.getMixedOffsets(), tile.getMixedSizes(),
+        tile.getMixedStrides());
+    return subview;
   }
-  return result;
+  if (auto point = dyn_cast<PointOp>(setDefiningOp)) {
+    Value scalar =
+        b.create<memref::LoadOp>(loc, memref, getPointIndicesValues(b, point));
+    return scalar;
+  }
+  return failure();
 }
 
 LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
                                    Value memref,
                                    const BufferizationOptions &options) {
-  auto sets = findSetChain(set);
-  if (failed(sets)) return failure();
+  if (failed(verifySubsetChain(set))) return failure();
 
-  if (sets->empty())
-    return options.createMemCpy(b, update.getLoc(), update, memref);
+  Location loc = update.getLoc();
+
+  Operation *setDefiningOp = set.getDefiningOp();
+  if (isa<SpaceOp>(setDefiningOp))
+    return options.createMemCpy(b, loc, update, memref);
 
   // Create subviews or store ops for the set computation.
-  OpBuilder::InsertionGuard g(b);
-  auto *it = std::prev(sets->end());
-  // The first element for the use-def chain is the `gml_st.space` op and it
-  // should be ignored for now.
-  for (; it != sets->begin(); --it) {
-    Location loc = (*it)->getLoc();
-    b.setInsertionPointAfter(*it);
-
-    auto tile = dyn_cast<TileOp>(*it);
-    if (!tile) return failure();
-
-    memref = b.create<memref::SubViewOp>(loc, memref, tile.getMixedOffsets(),
-                                         tile.getMixedSizes(),
-                                         tile.getMixedStrides());
-  }
-  Location loc = (*it)->getLoc();
-  if (auto point = dyn_cast<PointOp>(*it)) {
+  if (auto point = dyn_cast<PointOp>(setDefiningOp)) {
     b.create<memref::StoreOp>(loc, update, memref,
                               getPointIndicesValues(b, point));
     return success();
   }
-  if (auto tile = dyn_cast<TileOp>(*it)) {
-    memref = b.create<memref::SubViewOp>(loc, memref, tile.getMixedOffsets(),
-                                         tile.getMixedSizes(),
-                                         tile.getMixedOffsets());
+
+  auto tile = dyn_cast<TileOp>(setDefiningOp);
+  if (!tile) return failure();
+
+  if (!update.getType().isa<ShapedType>()) {
+    auto indices =
+        getValueOrCreateConstantIndexOp(b, loc, tile.getMixedOffsets());
+    b.create<memref::StoreOp>(loc, update, memref, indices);
     return success();
   }
-  llvm_unreachable("Unknown set type");
+
+  memref =
+      b.create<memref::SubViewOp>(loc, memref, tile.getMixedOffsets(),
+                                  tile.getMixedSizes(), tile.getMixedStrides());
+  return success();
 }
 
 struct MaterializeOpInterface
@@ -343,8 +331,9 @@ struct MaterializeOpInterface
         getBuffer(rewriter, materializeOp->getOpOperand(0).get(), options);
     if (failed(bufferOr)) return failure();
 
+    rewriter.setInsertionPoint(materializeOp);
     FailureOr<Value> resultOr =
-        materializeExtraction(rewriter, *bufferOr, materializeOp.getSet());
+        materializeExtraction(rewriter, *bufferOr, materializeOp);
 
     if (failed(resultOr)) return failure();
 
@@ -502,6 +491,7 @@ struct SetYieldOpInterface
     if (!isa<ForOp, ParallelOp>(loop))
       return yieldOp->emitError("unsupported gml_st::SetYieldOp parent");
 
+    rewriter.setInsertionPoint(op);
     for (const auto &it :
          llvm::enumerate(llvm::zip(yieldOp.getSrcs(), yieldOp.getDsts(),
                                    yieldOp.getSets(), loop->getResults()))) {
