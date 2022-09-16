@@ -450,7 +450,6 @@ cc_library(
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/tsl/platform:tensor_float_32_utils",
         "//tensorflow/tsl/util:determinism",
         "//tensorflow/compiler/xla/stream_executor:dnn",

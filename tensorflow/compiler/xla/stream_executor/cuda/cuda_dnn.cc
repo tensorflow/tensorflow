@@ -52,7 +52,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #include "tensorflow/tsl/util/determinism.h"
 #include "tensorflow/tsl/util/env_var.h"
-#include "tensorflow/tsl/util/use_cudnn.h"
+
 // clang-format off
 #include "third_party/gpus/cudnn/cudnn.h"
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
