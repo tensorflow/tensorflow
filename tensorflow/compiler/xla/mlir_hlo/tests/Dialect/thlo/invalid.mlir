@@ -265,6 +265,37 @@ func.func @map_buffer_semantics_with_tensor_result(
 
 // -----
 
+func.func @map_input_mapper_arity_mismatch(
+    %lhs: tensor<64xf32>, %rhs: tensor<64xf32>, %init: tensor<64xf32>)
+    -> tensor<64xf32> {
+  // expected-error@+1{{'thlo.map' op expects number of operands to match the arity of mapper, but got: 2 and 3}}
+  %add = thlo.map
+      ins(%lhs:tensor<64xf32>, %rhs:tensor<64xf32>)
+      outs(%init:tensor<64xf32>)
+      (%lhs_elem: f32, %rhs_elem: f32, %extra_elem: f32) {
+        %0 = arith.addf %lhs_elem, %rhs_elem: f32
+        thlo.yield %0: f32
+      }
+  func.return %add : tensor<64xf32>
+}
+
+// -----
+func.func @map_input_mapper_type_mismatch(
+    %lhs: tensor<64xf32>, %rhs: tensor<64xf32>, %init: tensor<64xf32>)
+    -> tensor<64xf32> {
+    // expected-error@+1{{'thlo.map' op expected element type of input 'f32' to match bbArg type 'f64'}}
+  %add = thlo.map
+      ins(%lhs:tensor<64xf32>, %rhs:tensor<64xf32>)
+      outs(%init:tensor<64xf32>)
+      (%lhs_elem: f64, %rhs_elem: f64) {
+        %0 = arith.addf %lhs_elem, %rhs_elem: f64
+        thlo.yield %0: f64
+      }
+  func.return %add : tensor<64xf32>
+}
+
+// -----
+
 func.func @variadic_reduction_wrong_yield_operand_types(
     %input1: tensor<16x32x64xf32>, %init1: tensor<16x64xf32>,
     %input2: tensor<16x32x64xi64>, %init2: tensor<16x64xi64>)

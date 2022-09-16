@@ -1133,6 +1133,25 @@ void MapOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult MapOp::verify() {
+  auto *bodyBlock = getBody();
+  auto blockArgs = bodyBlock->getArguments();
+
+  // Checks if the number of `inputs` match the arity of the `mapper` region.
+  if (inputs().size() != blockArgs.size())
+    return emitOpError() << "expects number of operands to match the arity of "
+                            "mapper, but got: "
+                         << inputs().size() << " and " << blockArgs.size();
+
+  // The parameters of mapper should all match the element type // of inputs.
+  for (const auto &[bbArgType, inputArg] :
+       llvm::zip(bodyBlock->getArgumentTypes(), inputs())) {
+    auto inputElemType = inputArg.getType().cast<ShapedType>().getElementType();
+    if (bbArgType != inputElemType) {
+      return emitOpError() << "expected element type of input " << inputElemType
+                           << " to match bbArg type " << bbArgType;
+    }
+  }
+
   return verifyDestinationStyleOp(getOperation());
 }
 
