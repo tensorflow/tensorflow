@@ -96,7 +96,7 @@ struct SparseConcatenateConverter
       // directly.
       rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
           op, resultType, op.getOperands(),
-          rewriter.getIndexAttr(op.dimension()));
+          rewriter.getIndexAttr(op.getDimension()));
       return success();
     }
     // Pass to mhlo lowering pipeline if all input and output tensors

@@ -44,8 +44,8 @@ class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
 
   LogicalResult matchAndRewrite(mhlo::CompareOp op,
                                 PatternRewriter &rewriter) const override {
-    auto lhs = op.lhs();
-    auto rhs = op.rhs();
+    auto lhs = op.getLhs();
+    auto rhs = op.getRhs();
     auto lhsType = lhs.getType().cast<TensorType>();
     auto rhsType = rhs.getType().cast<TensorType>();
 
@@ -57,7 +57,7 @@ class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
       return failure();
 
     Optional<arith::CmpIPredicate> comparePredicate = llvm::None;
-    switch (op.comparison_direction()) {
+    switch (op.getComparisonDirection()) {
       case ComparisonDirection::EQ:
         comparePredicate = arith::CmpIPredicate::eq;
         break;
@@ -92,8 +92,8 @@ class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
 
   LogicalResult matchAndRewrite(mhlo::CompareOp op,
                                 PatternRewriter &rewriter) const override {
-    auto lhs = op.lhs();
-    auto rhs = op.rhs();
+    auto lhs = op.getLhs();
+    auto rhs = op.getRhs();
     auto lhsType = lhs.getType().cast<TensorType>();
     auto rhsType = rhs.getType().cast<TensorType>();
 
@@ -105,7 +105,7 @@ class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
       return failure();
 
     Optional<arith::CmpFPredicate> comparePredicate = llvm::None;
-    switch (op.comparison_direction()) {
+    switch (op.getComparisonDirection()) {
       case ComparisonDirection::EQ:
         comparePredicate = arith::CmpFPredicate::OEQ;
         break;
@@ -146,7 +146,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
                                 PatternRewriter &rewriter) const override {
     auto outputType = op.getType().cast<ShapedType>();
     auto outputSize = outputType.getNumElements();
-    auto dimension = op.iota_dimension();
+    auto dimension = op.getIotaDimension();
     auto maxDimSize = outputType.getDimSize(dimension);
 
     auto elementType = outputType.getElementType();

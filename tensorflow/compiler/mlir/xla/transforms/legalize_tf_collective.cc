@@ -142,13 +142,17 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
   auto all_reduce = builder.create<AllReduceOp>(
       loc, result_type, input, replica_groups, channel_handle, nullptr);
   if (merge_op == "Add") {
-    BuildReduceBody<AddOp>(element_type, &all_reduce.computation(), &builder);
+    BuildReduceBody<AddOp>(element_type, &all_reduce.getComputation(),
+                           &builder);
   } else if (merge_op == "Mul") {
-    BuildReduceBody<MulOp>(element_type, &all_reduce.computation(), &builder);
+    BuildReduceBody<MulOp>(element_type, &all_reduce.getComputation(),
+                           &builder);
   } else if (merge_op == "Min") {
-    BuildReduceBody<MinOp>(element_type, &all_reduce.computation(), &builder);
+    BuildReduceBody<MinOp>(element_type, &all_reduce.getComputation(),
+                           &builder);
   } else if (merge_op == "Max") {
-    BuildReduceBody<MaxOp>(element_type, &all_reduce.computation(), &builder);
+    BuildReduceBody<MaxOp>(element_type, &all_reduce.getComputation(),
+                           &builder);
   } else {
     return op->emitOpError() << "invalid merge_op " << merge_op
                              << ", want one of [Add, Mul, Min, Max]";

@@ -64,7 +64,7 @@ struct TiledLoopPeelingPattern : public OpRewritePattern<LoopOp> {
       // No peeling of loop nests with a partial iteration.
       return failure();
 
-    if (static_cast<int64_t>(loopOp.iterator_types().size()) <= idx)
+    if (static_cast<int64_t>(loopOp.getIteratorTypes().size()) <= idx)
       return failure();
 
     // Peel loop and canonicalize.

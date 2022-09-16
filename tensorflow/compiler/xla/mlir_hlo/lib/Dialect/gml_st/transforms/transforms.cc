@@ -46,8 +46,8 @@ namespace {
 /// The return value indicates whether the LoopOp was rewritten or not.
 static LogicalResult peelLoop(RewriterBase &b, LoopOp loopOp, int64_t idx,
                               LoopOp &result, Value &splitBound) {
-  Value lb = loopOp.lowerBound()[idx], ub = loopOp.upperBound()[idx],
-        step = loopOp.step()[idx];
+  Value lb = loopOp.getLowerBound()[idx], ub = loopOp.getUpperBound()[idx],
+        step = loopOp.getStep()[idx];
   auto ubInt = getConstantIntValue(ub);
 
   auto loc = loopOp.getLoc();
@@ -73,21 +73,22 @@ static LogicalResult peelLoop(RewriterBase &b, LoopOp loopOp, int64_t idx,
   // loop's outputs.
   SmallVector<Value> remainderOutputs;
   for (unsigned o = 0, t = 0; o < loopOp.getNumOutputs(); ++o) {
-    remainderOutputs.push_back(loopOp.outputs()[o].getType().isa<MemRefType>()
-                                   ? loopOp.outputs()[o]
-                                   : loopOp->getResult(t++));
+    remainderOutputs.push_back(
+        loopOp.getOutputs()[o].getType().isa<MemRefType>()
+            ? loopOp.getOutputs()[o]
+            : loopOp->getResult(t++));
   }
-  remainderLoop.outputsMutable().assign(remainderOutputs);
+  remainderLoop.getOutputsMutable().assign(remainderOutputs);
 
   // Set new loop bounds.
   b.updateRootInPlace(loopOp, [&]() {
-    SmallVector<Value> ubs = loopOp.upperBound();
+    SmallVector<Value> ubs = loopOp.getUpperBound();
     ubs[idx] = splitBound;
-    loopOp.upperBoundMutable().assign(ubs);
+    loopOp.getUpperBoundMutable().assign(ubs);
   });
-  SmallVector<Value> lbs = remainderLoop.lowerBound();
+  SmallVector<Value> lbs = remainderLoop.getLowerBound();
   lbs[idx] = splitBound;
-  remainderLoop.lowerBoundMutable().assign(lbs);
+  remainderLoop.getLowerBoundMutable().assign(lbs);
 
   result = remainderLoop;
   return success();
@@ -283,17 +284,17 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
 LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
                                            LoopOp loopOp, int64_t idx,
                                            LoopOp &result) {
-  int64_t numLoops = loopOp.iterator_types().size();
+  int64_t numLoops = loopOp.getIteratorTypes().size();
   if (idx < 0 || numLoops <= idx) return failure();
 
-  Value ub = loopOp.upperBound()[idx];
+  Value ub = loopOp.getUpperBound()[idx];
   LoopOp remainderLoop;
   Value splitBound;
   if (failed(peelLoop(rewriter, loopOp, idx, remainderLoop, splitBound)))
     return failure();
 
   // Rewrite affine.min and affine.max ops.
-  Value mainIv = loopOp.getInductionVars()[idx], step = loopOp.step()[idx],
+  Value mainIv = loopOp.getInductionVars()[idx], step = loopOp.getStep()[idx],
         remainderIv = remainderLoop.getInductionVars()[idx];
 
   rewriteAffineOpAfterPeeling<AffineMinOp, /*IsMin=*/true>(

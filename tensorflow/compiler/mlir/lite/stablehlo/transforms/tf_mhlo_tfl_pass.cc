@@ -78,14 +78,14 @@ struct ConvertMhloCompareOp
   ::mlir::LogicalResult matchAndRewrite(
       ::mlir::mhlo::CompareOp op, mlir::mhlo::CompareOp::Adaptor adaptor,
       ::mlir::ConversionPatternRewriter &rewriter) const override {
-    auto direction = op.comparison_direction();
+    auto direction = op.getComparisonDirection();
 
     if (direction != Direction) {
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<TFL_CompareOp>(op, adaptor.lhs(),
-                                               adaptor.rhs());
+    rewriter.replaceOpWithNewOp<TFL_CompareOp>(op, adaptor.getLhs(),
+                                               adaptor.getRhs());
     return success();
   }
 };

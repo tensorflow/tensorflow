@@ -125,9 +125,9 @@ struct LoopOpInterface
 
     // Create new TiledLoopOp.
     auto newLoopOp = rewriter.create<LoopOp>(
-        loopOp.getLoc(), loopOp.lowerBound(), loopOp.upperBound(),
-        loopOp.step(), newInputs, newOutputs, loopOp.iterator_types(),
-        loopOp.distribution_types());
+        loopOp.getLoc(), loopOp.getLowerBound(), loopOp.getUpperBound(),
+        loopOp.getStep(), newInputs, newOutputs, loopOp.getIteratorTypes(),
+        loopOp.getDistributionTypes());
 
     // Remove terminator.
     if (!newLoopOp.getBody()->empty())
@@ -177,7 +177,7 @@ struct LoopOpInterface
     // Copy buffer of yielded tensor to output buffer. If everything bufferized
     // inplace, this copy will fold away.
     rewriter.setInsertionPoint(newTerminator);
-    for (auto it : llvm::zip(oldTerminator.values(), newOutputs)) {
+    for (auto it : llvm::zip(oldTerminator.getValues(), newOutputs)) {
       Value output = std::get<1>(it);
       Value toMemrefOp = rewriter.create<bufferization::ToMemrefOp>(
           newTerminator.getLoc(), output.getType(), std::get<0>(it));
@@ -207,11 +207,11 @@ FailureOr<SmallVector<Operation *>> findSetChain(Value set) {
     sets.push_back(current);
     // TODO(pifon): It might be useful to have a set interface.
     if (auto tile = dyn_cast<TileOp>(*current)) {
-      current = tile.superset().getDefiningOp();
+      current = tile.getSuperset().getDefiningOp();
       continue;
     }
     if (auto point = dyn_cast<PointOp>(*current)) {
-      current = point.superset().getDefiningOp();
+      current = point.getSuperset().getDefiningOp();
       continue;
     }
     return failure();
@@ -225,9 +225,10 @@ SmallVector<Value> getPointIndicesValues(OpBuilder &b, PointOp pointOp) {
   unsigned rank = pointOp.getRank();
   indices.reserve(rank);
   unsigned numDynamic = 0;
-  for (auto staticIndex : pointOp.static_indices().getAsRange<IntegerAttr>()) {
+  for (auto staticIndex :
+       pointOp.getStaticIndices().getAsRange<IntegerAttr>()) {
     if (ShapedType::isDynamicStrideOrOffset(staticIndex.getInt())) {
-      indices.push_back(pointOp.dynamic_indices()[numDynamic++]);
+      indices.push_back(pointOp.getDynamicIndices()[numDynamic++]);
     } else {
       Value indexValue = b.create<arith::ConstantIndexOp>(pointOp.getLoc(),
                                                           staticIndex.getInt());
@@ -343,7 +344,7 @@ struct MaterializeOpInterface
     if (failed(bufferOr)) return failure();
 
     FailureOr<Value> resultOr =
-        materializeExtraction(rewriter, *bufferOr, materializeOp.set());
+        materializeExtraction(rewriter, *bufferOr, materializeOp.getSet());
 
     if (failed(resultOr)) return failure();
 
@@ -385,8 +386,8 @@ struct ParallelOpInterface
 
     // Create new TiledLoopOp.
     auto newLoopOp = rewriter.create<ParallelOp>(
-        loopOp.getLoc(), TypeRange{llvm::None}, loopOp.lowerBound(),
-        loopOp.upperBound(), loopOp.step(), nullptr);
+        loopOp.getLoc(), TypeRange{llvm::None}, loopOp.getLowerBound(),
+        loopOp.getUpperBound(), loopOp.getStep(), nullptr);
 
     // Move the old body into the new loop.
     rewriter.mergeBlocks(loopOp.getBody(), newLoopOp.getBody(),
@@ -448,16 +449,16 @@ struct ForOpInterface
     // Get the bufferized output arguments.
     SmallVector<Value> bufferizedOutputs;
     bufferizedOutputs.reserve(forOp.getNumOutputs());
-    for (Value output : forOp.outputs()) {
+    for (Value output : forOp.getOutputs()) {
       FailureOr<Value> maybeBuffer = getBuffer(rewriter, output, options);
       if (failed(maybeBuffer)) return failure();
       bufferizedOutputs.push_back(*maybeBuffer);
     }
 
     // Create new ForOp.
-    auto newForOp = rewriter.create<ForOp>(loc, TypeRange{}, forOp.lowerBound(),
-                                           forOp.upperBound(), forOp.step(),
-                                           ValueRange{}, nullptr);
+    auto newForOp = rewriter.create<ForOp>(
+        loc, TypeRange{}, forOp.getLowerBound(), forOp.getUpperBound(),
+        forOp.getStep(), ValueRange{}, nullptr);
     Block *loopBody = newForOp.getBody();
 
     // Add conversions to tensor so that we can reuse the old loop body.
@@ -502,8 +503,8 @@ struct SetYieldOpInterface
       return yieldOp->emitError("unsupported gml_st::SetYieldOp parent");
 
     for (const auto &it :
-         llvm::enumerate(llvm::zip(yieldOp.srcs(), yieldOp.dsts(),
-                                   yieldOp.sets(), loop->getResults()))) {
+         llvm::enumerate(llvm::zip(yieldOp.getSrcs(), yieldOp.getDsts(),
+                                   yieldOp.getSets(), loop->getResults()))) {
       Value src, dst, set, loopResult;
       std::tie(src, dst, set, loopResult) = it.value();
 

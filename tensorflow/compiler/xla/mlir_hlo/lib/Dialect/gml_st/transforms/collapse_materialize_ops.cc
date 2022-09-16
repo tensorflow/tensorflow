@@ -35,32 +35,33 @@ namespace gml_st {
 //   `materialize(t1(t2(...(tn(u1(u2(...(un(sn'))))))), arg)`.
 FailureOr<MaterializeOp> collapseMaterializeOp(OpBuilder &b, MaterializeOp op) {
   // Find inner materialize op.
-  auto innerMaterialize = op.source().getDefiningOp<MaterializeOp>();
+  auto innerMaterialize = op.getSource().getDefiningOp<MaterializeOp>();
   if (!innerMaterialize) return failure();
 
   // Find outer tile chain to replace its root space op.
   llvm::SmallVector<TileOp> tileChain;
-  Operation *tileDef = op.set().getDefiningOp();
+  Operation *tileDef = op.getSet().getDefiningOp();
   while (tileDef && !llvm::isa<SpaceOp>(tileDef)) {
     auto tileOp = llvm::dyn_cast<TileOp>(tileDef);
     if (!tileOp) return failure();
     tileChain.push_back(tileOp);
-    tileDef = tileOp.superset().getDefiningOp();
+    tileDef = tileOp.getSuperset().getDefiningOp();
   }
 
   // Create new tile chain, starting with its tail.
   auto loc = op.getLoc();
-  Value newTileChain = innerMaterialize.set();
+  Value newTileChain = innerMaterialize.getSet();
   while (!tileChain.empty()) {
     TileOp tileOp = tileChain.pop_back_val();
-    newTileChain =
-        b.create<TileOp>(loc, newTileChain, tileOp.offsets(), tileOp.sizes(),
-                         tileOp.strides(), tileOp.static_offsets(),
-                         tileOp.static_sizes(), tileOp.static_strides());
+    newTileChain = b.create<TileOp>(
+        loc, newTileChain, tileOp.getOffsets(), tileOp.getSizes(),
+        tileOp.getStrides(), tileOp.getStaticOffsets(), tileOp.getStaticSizes(),
+        tileOp.getStaticStrides());
   }
 
   // Create collapsed materialize op.
-  return b.create<MaterializeOp>(loc, innerMaterialize.source(), newTileChain);
+  return b.create<MaterializeOp>(loc, innerMaterialize.getSource(),
+                                 newTileChain);
 }
 
 // Uncollapse materialize operations with nested tile chains t1, t2, ..., tn. A
@@ -71,25 +72,25 @@ FailureOr<MaterializeOp> collapseMaterializeOp(OpBuilder &b, MaterializeOp op) {
 FailureOr<MaterializeOp> uncollapseMaterializeOp(OpBuilder &b,
                                                  MaterializeOp op) {
   // Find head of the tile chain.
-  auto tileDef = op.set().getDefiningOp<TileOp>();
+  auto tileDef = op.getSet().getDefiningOp<TileOp>();
   if (!tileDef) return failure();
 
   // Find tail of the tile chain.
-  auto superTile = tileDef.superset();
+  auto superTile = tileDef.getSuperset();
   auto superTileDef = superTile.getDefiningOp<TileOp>();
   if (!superTileDef) return failure();
 
   // Create independent head tile and tail tile chain.
   Location loc = op.getLoc();
   auto newTileSpace =
-      b.create<SpaceOp>(loc, superTileDef.getType(), superTileDef.sizes(),
-                        superTileDef.static_sizes());
-  auto newTile =
-      b.create<TileOp>(loc, newTileSpace, tileDef.offsets(), tileDef.sizes(),
-                       tileDef.strides(), tileDef.static_offsets(),
-                       tileDef.static_sizes(), tileDef.static_strides());
+      b.create<SpaceOp>(loc, superTileDef.getType(), superTileDef.getSizes(),
+                        superTileDef.getStaticSizes());
+  auto newTile = b.create<TileOp>(
+      loc, newTileSpace, tileDef.getOffsets(), tileDef.getSizes(),
+      tileDef.getStrides(), tileDef.getStaticOffsets(),
+      tileDef.getStaticSizes(), tileDef.getStaticStrides());
   auto newInnerMaterialize =
-      b.create<MaterializeOp>(loc, op.source(), superTile);
+      b.create<MaterializeOp>(loc, op.getSource(), superTile);
 
   // Create expanded materialize op.
   return b.create<MaterializeOp>(loc, newInnerMaterialize, newTile);

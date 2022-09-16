@@ -124,7 +124,7 @@ struct HloCanonicalizeReductionPass
     getOperation().walk([&](ReduceOp op) {
       SmallVector<int64_t, 4> dimsToReduce;
       DenseSet<int64_t> dimsToReduceSet;
-      for (auto dim : op.dimensions().getValues<APInt>()) {
+      for (auto dim : op.getDimensions().getValues<APInt>()) {
         dimsToReduce.push_back(dim.getSExtValue());
         dimsToReduceSet.insert(dimsToReduce.back());
       }
@@ -218,8 +218,9 @@ struct HloCanonicalizeReductionPass
                 elemTy),
             operand, newOperandShape));
       }
-      auto newOp = b.create<ReduceOp>(loc, newOperands, op.init_values(), attr);
-      newOp.body().takeBody(op.body());
+      auto newOp =
+          b.create<ReduceOp>(loc, newOperands, op.getInitValues(), attr);
+      newOp.getBody().takeBody(op.getBody());
 
       SmallVector<Value, 4> newResults;
       if (dimsToKeep.empty()) {

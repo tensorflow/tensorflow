@@ -415,7 +415,7 @@ struct DimOfMaterializedTilePattern : public OpRewritePattern<tensor::DimOp> {
     if (!def) return failure();
 
     if (auto materializeOp = llvm::dyn_cast<MaterializeOp>(def)) {
-      Value set = materializeOp.set();
+      Value set = materializeOp.getSet();
       if (!set.getType().isa<TileType>()) return failure();
       rewriter.replaceOpWithNewOp<gml_st::SizeOp>(op, set, op.getIndex());
       return success();
@@ -487,7 +487,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     // 5. Add `gml_st.set_yield` terminator.
     SmallVector<Value> dstSubsets;
     for (Value dst : tilingResult.tiledOp.getDestinationOperands(rewriter))
-      dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().set());
+      dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().getSet());
     rewriter.replaceOpWithNewOp<SetYieldOp>(terminator,
                                             tilingResult.tiledOp->getResults(),
                                             dstOperands, dstSubsets);

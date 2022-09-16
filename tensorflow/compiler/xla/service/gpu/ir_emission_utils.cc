@@ -220,7 +220,7 @@ bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
     if (!slice) {
       return false;
     }
-    if (verify_no_strides && !is_non_strided(slice.strides())) {
+    if (verify_no_strides && !is_non_strided(slice.getStrides())) {
       return false;
     }
   }
@@ -597,7 +597,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   auto output_buffers = fusion.getOutputBuffers();
   CHECK_EQ(1, output_buffers.size());
   auto parameter = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(
-      dus.operand().getDefiningOp());
+      dus.getOperand().getDefiningOp());
 
   if (!parameter) {
     return false;

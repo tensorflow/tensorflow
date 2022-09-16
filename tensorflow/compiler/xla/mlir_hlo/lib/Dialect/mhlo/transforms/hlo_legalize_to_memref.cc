@@ -139,12 +139,12 @@ struct ReshapeOpInterface
                           const BufferizationOptions &options) const {
     auto reshapeOp = cast<mhlo::ReshapeOp>(op);
     auto unrankedOperandType =
-        reshapeOp.operand().getType().dyn_cast<UnrankedTensorType>();
+        reshapeOp.getOperand().getType().dyn_cast<UnrankedTensorType>();
     if (unrankedOperandType == nullptr) return success();
 
     // The buffer still has the old (pre-reshape) type.
     FailureOr<Value> operandBuffer =
-        getBuffer(rewriter, reshapeOp.operand(), options);
+        getBuffer(rewriter, reshapeOp.getOperand(), options);
     if (failed(operandBuffer)) return failure();
 
     auto resultType = reshapeOp.getType().cast<RankedTensorType>();
@@ -186,9 +186,9 @@ struct DynamicReshapeOpInterface
 
     // The buffer still has the old (pre-reshape) type.
     FailureOr<Value> operandBuffer =
-        getBuffer(rewriter, reshapeOp.operand(), options);
+        getBuffer(rewriter, reshapeOp.getOperand(), options);
     FailureOr<Value> outputShapeBuffer =
-        getBuffer(rewriter, reshapeOp.output_shape(), options);
+        getBuffer(rewriter, reshapeOp.getOutputShape(), options);
     if (failed(operandBuffer) || failed(outputShapeBuffer)) return failure();
 
     ShapedType resultType;
@@ -265,13 +265,13 @@ FailureOr<Value> insertDynamicMemrefCastOp(
   strides.reserve(resultRank);
 
   DenseMap<int, int> outputToInputDim;
-  for (const auto &dim : llvm::enumerate(op.broadcast_dimensions())) {
+  for (const auto &dim : llvm::enumerate(op.getBroadcastDimensions())) {
     outputToInputDim[dim.value().getSExtValue()] = dim.index();
   }
   for (int i = 0; i < resultRank; ++i) {
     Value iVal = rewriter.create<arith::ConstantIndexOp>(loc, i);
     FailureOr<Value> outputDimsBuffer =
-        getBuffer(rewriter, op.output_dimensions(), options);
+        getBuffer(rewriter, op.getOutputDimensions(), options);
     if (failed(outputDimsBuffer)) return failure();
     Value resultDimSize =
         rewriter.create<memref::LoadOp>(loc, *outputDimsBuffer, iVal);
@@ -354,7 +354,7 @@ struct DynamicBroadcastInDimOpInterface
 
     // The buffer still has the old (pre-reshape) type.
     FailureOr<Value> operandBuffer =
-        getBuffer(rewriter, broadcastInDimOp.operand(), options);
+        getBuffer(rewriter, broadcastInDimOp.getOperand(), options);
     if (failed(operandBuffer)) return failure();
     FailureOr<Value> result = insertDynamicMemrefCastOp(
         broadcastInDimOp, *operandBuffer, rewriter, options);

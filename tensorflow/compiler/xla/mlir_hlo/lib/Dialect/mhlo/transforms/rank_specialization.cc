@@ -839,9 +839,9 @@ SmallVector<SmallVector<Value, 4>, 4> findNonScalarShapeEquivalences(
   for (Operation &nestedOp : op.SingleBlock::getBody()->without_terminator()) {
     if (auto selectOp = llvm::dyn_cast<mhlo::SelectOp>(nestedOp)) {
       unionSets(
-          {selectOp.on_true(), selectOp.on_false(), selectOp.getResult()});
+          {selectOp.getOnTrue(), selectOp.getOnFalse(), selectOp.getResult()});
     } else if (auto clampOp = llvm::dyn_cast<mhlo::ClampOp>(nestedOp)) {
-      unionSets({clampOp.operand(), clampOp.getResult()});
+      unionSets({clampOp.getOperand(), clampOp.getResult()});
     }
   }
 

@@ -152,8 +152,8 @@ void findBroadcastIntents(
   // Derive the broadcast intent associated with the root broadcast operation.
   // Add it to the worklist to seed the analysis.
   rootBcastIntent = {root.getResult().getType().cast<RankedTensorType>(),
-                     root.operand(), root.output_dimensions(),
-                     root.broadcast_dimensions()};
+                     root.getOperand(), root.getOutputDimensions(),
+                     root.getBroadcastDimensions()};
   addToWorklistIfNew(rootBcastIntent);
 
   // We use result vector of broadcast intents as a worklist, the first `i`
@@ -175,10 +175,10 @@ void findBroadcastIntents(
     if (auto producerBcastOp =
             llvm::dyn_cast<DynamicBroadcastInDimOp>(producerOp)) {
       DenseIntElementsAttr composedBcastDims = composeBroadcastDimensionsAttr(
-          builder, producerBcastOp.broadcast_dimensions(),
+          builder, producerBcastOp.getBroadcastDimensions(),
           it.broadcastDimensions.cast<DenseIntElementsAttr>());
       BroadcastIntent bcastedOperandIntent = {
-          it.resultType, producerBcastOp.operand(), it.outputDimensions,
+          it.resultType, producerBcastOp.getOperand(), it.outputDimensions,
           composedBcastDims};
 
       // Record dependency and "recur".
