@@ -366,6 +366,10 @@ StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
     absl::Span<const Shape* const> domain, const Shape& range,
     absl::string_view name);
 
+// Expands a general degenerate reshape operation to a sequence of degenerate
+// adding and removing reshapes that changes only a single dimension.
+HloInstruction* ExpandDegenerateReshape(HloInstruction* inst);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CREATION_UTILS_H_
