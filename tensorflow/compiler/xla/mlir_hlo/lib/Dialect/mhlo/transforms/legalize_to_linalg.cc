@@ -1682,7 +1682,7 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
     // the original RHS.
     for (const auto& [idx, val] : llvm::enumerate(op.operands())) {
       signatureConverter.addInputs(
-          /*origigInputNo=*/idx + numOperands,
+          /*origInputNo=*/idx + numOperands,
           // type for the new operand number 'idx'.
           typeConverter->convertType(
               val.getType().cast<ShapedType>().getElementType()));
