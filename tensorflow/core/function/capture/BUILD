@@ -20,6 +20,9 @@ py_strict_test(
     name = "free_vars_detect_test",
     srcs = ["free_vars_detect_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_oss",  # TODO(b/247102978)
+    ],
     deps = [
         ":free_vars_detect",
         "//third_party/py/numpy",
