@@ -488,6 +488,16 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
   // Using div.approx produces incorrect result for float32(max)/float32(max).
   FeedLLVMWithFlags({"-nvptx-prec-divf32=1"});
 
+  // SLPVectorizer is useful (vectorizes f16x2 ops) but slow.  Most of the
+  // slowness appears to be in trying to form horizontal reductions, which don't
+  // exist in PTX *anyway*.  Disable these.  While we're here, tweak
+  // SLPVectorizer so it doesn't try to create large vectors -- f16x2 are the
+  // only vectors supported in PTX.
+  FeedLLVMWithFlags({
+      "-slp-vectorize-hor=false",
+      "-slp-max-reg-size=32",
+  });
+
   llvm_ir::InitializeLLVMCommandLineOptions(
       hlo_module_config.debug_options().xla_backend_extra_options());
 
