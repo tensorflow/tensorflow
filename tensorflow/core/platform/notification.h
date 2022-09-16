@@ -29,4 +29,11 @@ limitations under the License.
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
 
+namespace tensorflow {
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::Notification;
+using tsl::WaitForNotificationWithTimeout;
+// NOLINTEND(misc-unused-using-decls)
+}  // namespace tensorflow
+
 #endif  // TENSORFLOW_CORE_PLATFORM_NOTIFICATION_H_
