@@ -21,6 +21,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -43,8 +44,8 @@ absl::Status CheckIfValidNodeOfType(const Node* node,
 }
 
 absl::Status GetElementwiseScalarValue(const Node* node, float* result) {
-  auto attr = absl::any_cast<ElementwiseAttributes>(node->operation.attributes);
-  const float* value = absl::get_if<float>(&attr.param);
+  auto attr = std::any_cast<ElementwiseAttributes>(node->operation.attributes);
+  const float* value = std::get_if<float>(&attr.param);
   if (!value) {
     return absl::NotFoundError("Not a scalar value inside attributes.");
   }
@@ -391,7 +392,7 @@ absl::Status TryMeanStdDevNormalization(
   Node* first_mean_node = graph.GetNode(first_node_id);
   RETURN_IF_ERROR(CheckIfValidNodeOfType(first_mean_node, OperationType::MEAN));
   auto first_mean_attr =
-      absl::any_cast<MeanAttributes>(first_mean_node->operation.attributes);
+      std::any_cast<MeanAttributes>(first_mean_node->operation.attributes);
   if (first_mean_attr.dims != std::set<Axis>{Axis::CHANNELS}) {
     return absl::NotFoundError("MeanStdDevNormalization not suitable.");
   }
@@ -437,7 +438,7 @@ absl::Status TryMeanStdDevNormalization(
   RETURN_IF_ERROR(GetNextSingleNode(graph, *square_node, OperationType::MEAN,
                                     &second_mean_node));
   auto second_mean_attr =
-      absl::any_cast<MeanAttributes>(second_mean_node->operation.attributes);
+      std::any_cast<MeanAttributes>(second_mean_node->operation.attributes);
   if (second_mean_attr.dims != std::set<Axis>{Axis::CHANNELS}) {
     return absl::NotFoundError("MeanStdDevNormalization not suitable.");
   }

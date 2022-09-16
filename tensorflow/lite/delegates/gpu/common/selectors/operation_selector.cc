@@ -549,7 +549,7 @@ absl::Status GPUOperationFromNodePart0(
       return absl::OkStatus();
     }
     case OperationType::CUMSUM: {
-      auto attr = absl::any_cast<CumsumAttributes>(node.operation.attributes);
+      auto attr = std::any_cast<CumsumAttributes>(node.operation.attributes);
       SelectCumsum(op_def, attr, gpu_op);
       return absl::OkStatus();
     }
@@ -602,7 +602,7 @@ absl::Status GPUOperationFromNodePart0(
       return absl::OkStatus();
     }
     case OperationType::ONE_HOT: {
-      auto attr = absl::any_cast<OneHotAttributes>(node.operation.attributes);
+      auto attr = std::any_cast<OneHotAttributes>(node.operation.attributes);
       SelectOneHot(op_def, attr, gpu_op);
       return absl::OkStatus();
     }
@@ -804,7 +804,7 @@ absl::Status GPUOperationFromNodePart0(
       return absl::OkStatus();
     }
     case OperationType::SELECT_V2: {
-      auto attr = absl::any_cast<SelectV2Attributes>(node.operation.attributes);
+      auto attr = std::any_cast<SelectV2Attributes>(node.operation.attributes);
       SelectSelectV2(op_def, attr, gpu_op);
       return absl::OkStatus();
     }

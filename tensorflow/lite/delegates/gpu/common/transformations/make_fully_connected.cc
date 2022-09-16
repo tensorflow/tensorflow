@@ -56,7 +56,7 @@ class MakeFullyConnectedFromConvolution : public NodeTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    const auto& conv_attr = absl::any_cast<const Convolution2DAttributes&>(
+    const auto& conv_attr = std::any_cast<const Convolution2DAttributes&>(
         node->operation.attributes);
     if (!IsConvEquivalentToFullyConnected(conv_attr)) {
       return {TransformStatus::SKIPPED, ""};
