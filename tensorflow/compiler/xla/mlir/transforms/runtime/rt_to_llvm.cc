@@ -316,13 +316,13 @@ static FailureOr<Value> EncodeArguments(
 static FailureOr<Value> EncodeAttributes(CustomCallAttrEncodingSet &encodings,
                                          Globals &g, ImplicitLocOpBuilder &b,
                                          ArrayRef<NamedAttribute> attrs) {
-  // Skip attributes passed explicitly as a custom call argument.
-  auto skip = [](NamedAttribute attr) {
-    return attr.getName() == "callee" || attr.getName() == "direct";
+  // Forward attributes that are not part of the custom call operation itself.
+  auto forward_attr = [](NamedAttribute attr) -> bool {
+    return attr.getName() != "callee" && attr.getName() != "direct";
   };
 
   llvm::SmallVector<NamedAttribute> custom_call_attrs =
-      llvm::to_vector(llvm::make_filter_range(attrs, std::not_fn(skip)));
+      llvm::to_vector(llvm::make_filter_range(attrs, forward_attr));
 
   // Sort encoded attributes in lexicographical order so that when decoding we
   // can efficiently find attributes by name.
