@@ -91,6 +91,9 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   // Maybe other verb instead of 'Assigned'
   alloc_node_.assign(num_tensors, kNodeNotAssigned);
   dealloc_node_.assign(num_tensors, kNodeNotAssigned);
+  nodes_to_tensors_.clear();
+  nodes_to_tensors_.resize(
+      std::max(graph_info_->num_execution_nodes(), (size_t)1), {});
 
   // Keeps track of references to each tensor.
   std::vector<int> refcounts(num_tensors, 0);
@@ -134,6 +137,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     TF_LITE_ENSURE(context_, tensor_index != kTfLiteOptionalTensor);
     // Variable tensor should be allocated at the very beginning.
     TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
+    nodes_to_tensors_[0].insert(tensor_index);
   }
 
   // Queue all graph inputs for allocation and make sure they are never
@@ -142,6 +146,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     if (tensor_index != kTfLiteOptionalTensor) {
       refcounts[tensor_index]++;
       TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
+      nodes_to_tensors_[0].insert(tensor_index);
     }
   }
 
@@ -166,6 +171,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     for (int j = 0; j < node_outputs->size; ++j) {
       int tensor_index = node_outputs->data[j];
       TF_LITE_ENSURE_STATUS(allocate(i, tensor_index));
+      nodes_to_tensors_[i].insert(tensor_index);
     }
 
     // Then update the ref-counts of the node's inputs, and if necessary queue
@@ -206,6 +212,7 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
     for (int j = 0; j < node_temporaries->size; ++j) {
       int tensor_index = node_temporaries->data[j];
       alloc_node_[tensor_index] = i;
+      nodes_to_tensors_[i].insert(tensor_index);
       if (!preserve_all_tensors_) {
         dealloc_node_[tensor_index] = i;
       }
@@ -303,11 +310,12 @@ std::vector<int32_t> ArenaPlanner::CreateTensorAllocationVector(int first_node,
   std::vector<int32_t> tensor_order;
   int num_tensors = static_cast<int>(graph_info_->num_tensors());
   tensor_order.reserve(num_tensors);
-  for (int i = 0; i < num_tensors; ++i) {
-    if (alloc_node_[i] >= first_node && alloc_node_[i] <= last_node) {
-      tensor_order.push_back(i);
-    }
+
+  for (int i = first_node; i <= last_node; ++i) {
+    tensor_order.insert(tensor_order.end(), nodes_to_tensors_[i].begin(),
+                        nodes_to_tensors_[i].end());
   }
+
   // Indices of tensors in order their allocation offsets will be calculated.
   std::sort(tensor_order.begin(), tensor_order.end(), tensor_compare);
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
@@ -106,6 +107,10 @@ class ArenaPlanner : public MemoryPlanner {
 
   // Stores allocation data for all tensors.
   std::vector<ArenaAllocWithUsageInterval> allocs_;
+
+  // Map of Tensors allocated by each node.
+  // NOLINTNEXTLINE - absl::flat_hash_set increases binary size by 106kB.
+  std::vector<std::unordered_set<int32_t>> nodes_to_tensors_;
 
   // First node, that uses the tensor. It needs to be allocated before
   // execution of the node's operation.
