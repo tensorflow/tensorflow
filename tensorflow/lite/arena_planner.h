@@ -74,25 +74,29 @@ class ArenaPlanner : public MemoryPlanner {
  private:
   // Make sure all the arenas have reserved enough memory to store all their
   // tensors.
-  TfLiteStatus Commit();
+  TfLiteStatus Commit(bool* arena_reallocated);
 
-  // Returns vector of tensor number ordered by the following algorithm.
-  // Comparator to sort tensors for the allocation algorithm:
+  // Sorts tensors_to_allocate` using by the following ordering:
   // - Tensors that have lifespan through the whole model inference time go
   // first;
-  // - Other tensors (e.g. intermediate and temporary ones) are sorted in
-  // non-increasing order of their size. If sizes of two tensors are equal, the
-  // one that needs to be allocated earlier goes first.
-  std::vector<int32_t> CreateTensorAllocationVector(int first_node,
-                                                    int last_node);
+  // - Other tensors (e.g. intermediate and temporary ones) are sorted from
+  // largest to smallest. For equal sized tensors, the tensor which is used
+  // first goes first.
+  void CreateTensorAllocationVector(std::vector<int32_t>* tensors_to_allocate);
+
+  // Returns vector containing the indices of all tensors allocated between
+  // `first_node` and `last_node`.
+  std::vector<int32_t> GetTensorsToAllocate(int first_node, int last_node);
 
   // Traverse the allocation queue and reserve space in the appropriate arena
   // for all tensors affected by ops in the interval [first_node, last_node].
-  TfLiteStatus CalculateAllocations(int first_node, int last_node);
+  TfLiteStatus CalculateAllocations(int first_node, int last_node,
+                                    std::vector<int32_t>* tensors_allocated);
 
   // Assign absolute memory location to a tensor, based on its relative
   // position inside the corresponding arena buffer.
-  TfLiteStatus ResolveTensorAllocation(int tensor_index, TfLiteTensor& tensor);
+  TfLiteStatus ResolveTensorAllocation(int32_t tensor_index,
+                                       TfLiteTensor& tensor);
 
   // Register an allocation for all internal (temporary) tensors of
   // 'node_index'.
