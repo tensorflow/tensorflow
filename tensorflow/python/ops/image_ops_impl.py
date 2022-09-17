@@ -42,6 +42,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
+
 ops.NotDifferentiable('RandomCrop')
 # TODO(b/31222613): This op may be differentiable, and there may be
 # latent bugs here.
@@ -4491,13 +4492,28 @@ def ssim_multiscale(img1,
     A tensor containing an MS-SSIM value for each image in batch.  The values
     are in range [0, 1].  Returns a tensor with shape:
     broadcast(img1.shape[:-3], img2.shape[:-3]).
+
+  Raises:
+    ValueError: When static shape check fails.
+    RuntimeError: When `filter_size` is not small enough to calculate ssim
+      values for all the `power_factors` spatial scales.
+
   """
+
   with ops.name_scope(None, 'MS-SSIM', [img1, img2]):
     # Convert to tensor if needed.
     img1 = ops.convert_to_tensor(img1, name='img1')
     img2 = ops.convert_to_tensor(img2, name='img2')
     # Shape checking.
     shape1, shape2, checks = _verify_compatible_image_shapes(img1, img2)
+    # Filter and Power checks
+    min_dimension = math_ops.reduce_min((shape1,shape2))
+    if not(min_dimension/(2**(len(power_factors)-1)) >= filter_size):
+      raise RuntimeError(
+        f'The maximum "filter_size" value for {len(power_factors)} "power_factors" '
+        f'values and images with {min_dimension} as smallest dimension is '
+        f'{int(min_dimension/(2**(len(power_factors)-1)))}. Reduce the number of '
+        '"power_factors" or use images with bigger dimensions.')
     with ops.control_dependencies(checks):
       img1 = array_ops.identity(img1)
 

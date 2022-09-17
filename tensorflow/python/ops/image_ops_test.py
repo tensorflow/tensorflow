@@ -5934,6 +5934,24 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       self.assertAllClose(expected, self.evaluate(score_tensor), 1e-4)
 
+  def testRaiseWhenDimensionPowerFactorsAndFilterSizeNotCompatible(self):
+    """Test case for GitHub issue 33840.
+
+    MS-SSIM does downsampling by the same number of power_factors and 
+    filter_size should be adjusted by the smallest image size.
+    https://github.com/tensorflow/tensorflow/issues/33840#issuecomment-633715778
+    """
+    #  For filter_size 11 do you need an image at least 176X176
+    img1 = self._RandomImage((1, 150, 240, 3), 255)
+    img2 = self._RandomImage((1, 150, 240, 3), 255)
+    img1 = constant_op.constant(img1, dtypes.uint8)
+    img2 = constant_op.constant(img2, dtypes.uint8)
+    ssim_uint8 = image_ops.ssim_multiscale(
+        img1, img2, 255, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
+    with self.cached_session():
+      with self.assertRaisesRegexp(RuntimeError, 'The maximum "filter_size" value for'):
+          self.evaluate(ssim_uint8)
+
   def testRange(self):
     """Tests against low MS-SSIM score.
 
