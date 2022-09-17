@@ -25,11 +25,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
-// TODO(aminim): remove when migrating this header to TSL
-using tsl::condition_variable;
-using tsl::mutex;
-using tsl::mutex_lock;
+namespace tsl {
 
 class Notification {
  public:
@@ -87,6 +83,6 @@ inline bool WaitForNotificationWithTimeout(Notification* n,
   return n->WaitForNotificationWithTimeout(timeout_in_us);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_NOTIFICATION_H_

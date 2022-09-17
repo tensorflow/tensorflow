@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

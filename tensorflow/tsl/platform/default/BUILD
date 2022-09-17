@@ -191,8 +191,8 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:errors",
     ],
 )
 
@@ -276,8 +276,8 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:types",
     ],
 )
 
@@ -492,9 +492,9 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/lib/core:notification",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/memory",
     ],
 )
