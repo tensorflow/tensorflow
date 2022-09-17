@@ -15,6 +15,7 @@
 """An independent module to detect free vars inside a function."""
 
 import types
+from typing import List
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import naming
@@ -41,8 +42,7 @@ def _parse_and_analyze(func):
   return node
 
 
-def detect_function_free_vars(
-    func: types.FunctionType) -> tuple[list[str], list[str], list[int]]:
+def detect_function_free_vars(func: types.FunctionType) -> List[str]:
   """Detect free vars in any Python function."""
   assert isinstance(
       func, types.FunctionType
