@@ -492,6 +492,14 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
+  xla::StatusOr<PJRT_Executable_Execute_Args> GetCommonExecuteArgs(
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+      const ExecuteOptions& options, PJRT_ExecuteOptions& c_options,
+      std::vector<std::vector<PJRT_Buffer*>>& c_argument_lists_storage,
+      std::vector<PJRT_Buffer**>& c_arguments,
+      std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
+      std::vector<PJRT_Buffer**>& c_output_lists);
+
   void Delete() override;
   bool IsDeleted() override;
 
