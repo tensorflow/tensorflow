@@ -39,11 +39,11 @@ class PyArray {
   // Only used in python
   PyArray(pybind11::object aval, pybind11::object sharding,
           absl::Span<const PyBuffer::object> py_buffers, bool committed,
-          bool skip_checks, pybind11::object fast_path_args);
+          bool skip_checks);
 
   PyArray(pybind11::object aval, pybind11::object sharding,
           const std::vector<const PyArray*>& py_arrays, bool committed,
-          bool skip_checks, pybind11::object fast_path_args);
+          bool skip_checks);
 
   // Only used in C++
   PyArray(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
@@ -51,8 +51,7 @@ class PyArray {
           std::shared_ptr<PyClient> py_client,
           std::shared_ptr<Traceback> traceback,
           std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers, bool committed,
-          bool skip_checks = true,
-          pybind11::object fast_path_args = pybind11::none());
+          bool skip_checks = true);
 
   const pybind11::object& aval() const { return aval_; }
   void set_aval(pybind11::object aval) { aval_ = std::move(aval); }
@@ -63,8 +62,6 @@ class PyArray {
   Status set_arrays(pybind11::object obj);
 
   bool committed() const { return committed_; }
-
-  const pybind11::object& fast_path_args() const { return fast_path_args_; }
 
   const pybind11::object& npy_value() const { return npy_value_; }
   void set_npy_value(pybind11::object v) { npy_value_ = std::move(v); }
@@ -110,7 +107,6 @@ class PyArray {
   std::vector<int64_t> shape_;
 
   pybind11::object sharding_;
-  pybind11::object fast_path_args_ = pybind11::none();
   pybind11::object npy_value_ = pybind11::none();
   bool committed_ = false;
 

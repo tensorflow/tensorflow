@@ -58,37 +58,36 @@ CreatePjRtBuffersFromSingleShardedPyArrays(
 
 PyArray::PyArray(py::object aval, py::object sharding,
                  const std::vector<const PyArray*>& py_arrays, bool committed,
-                 bool skip_checks, py::object fast_path_args)
+                 bool skip_checks)
     : PyArray(aval, pybind11::cast<bool>(aval.attr("weak_type")),
               aval.attr("dtype"),
               pybind11::cast<std::vector<int64_t>>(aval.attr("shape")),
               std::move(sharding), py_arrays.at(0)->py_client(),
               Traceback::Get(),
               CreatePjRtBuffersFromSingleShardedPyArrays(py_arrays), committed,
-              skip_checks, std::move(fast_path_args)) {}
+              skip_checks) {}
 
 PyArray::PyArray(py::object aval, py::object sharding,
                  absl::Span<const PyBuffer::object> py_buffers, bool committed,
-                 bool skip_checks, py::object fast_path_args)
+                 bool skip_checks)
     : PyArray(aval, pybind11::cast<bool>(aval.attr("weak_type")),
               aval.attr("dtype"),
               pybind11::cast<std::vector<int64_t>>(aval.attr("shape")),
               std::move(sharding), py_buffers.at(0).buf()->client(),
               Traceback::Get(), CreatePjRtBuffersFromPyBuffers(py_buffers),
-              committed, skip_checks, std::move(fast_path_args)) {}
+              committed, skip_checks) {}
 
 PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
                  std::vector<int64_t> shape, py::object sharding,
                  std::shared_ptr<PyClient> py_client,
                  std::shared_ptr<Traceback> traceback,
                  std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers,
-                 bool committed, bool skip_checks, py::object fast_path_args)
+                 bool committed, bool skip_checks)
     : aval_(std::move(aval)),
       weak_type_(weak_type),
       dtype_(std::move(dtype)),
       shape_(std::move(shape)),
       sharding_(std::move(sharding)),
-      fast_path_args_(std::move(fast_path_args)),
       committed_(std::move(committed)),
       py_client_(std::move(py_client)),
       traceback_(std::move(traceback)),
@@ -156,19 +155,16 @@ Status PyArray::set_arrays(py::object obj) {
 void PyArray::RegisterTypes(py::module& m) {
   py::class_<PyArray>(m, "Array", py::dynamic_attr())
       .def(py::init<py::object, py::object, absl::Span<const PyBuffer::object>,
-                    bool, bool, py::object>(),
+                    bool, bool>(),
            py::arg("aval"), py::arg("sharding"), py::arg("arrays"),
-           py::arg("committed"), py::arg("_skip_checks") = false,
-           py::arg("_fast_path_args") = py::none())
+           py::arg("committed"), py::arg("_skip_checks") = false)
       .def(py::init<py::object, py::object, const std::vector<const PyArray*>&,
-                    bool, bool, py::object>(),
+                    bool, bool>(),
            py::arg("aval"), py::arg("sharding"), py::arg("arrays"),
-           py::arg("committed"), py::arg("_skip_checks") = false,
-           py::arg("_fast_path_args") = py::none())
+           py::arg("committed"), py::arg("_skip_checks") = false)
       .def_property_readonly("_sharding", &PyArray::sharding)
       .def_property("aval", &PyArray::aval, &PyArray::set_aval)
       .def_property("_arrays", &PyArray::arrays, &PyArray::set_arrays)
-      .def_property_readonly("_fast_path_args", &PyArray::fast_path_args)
       .def_property("_npy_value", &PyArray::npy_value, &PyArray::set_npy_value)
       .def_property_readonly("_committed", &PyArray::committed)
       .def("block_until_ready", [](py::object self) -> StatusOr<py::object> {

@@ -472,13 +472,11 @@ class Array:
                sharding: Any,
                arrays: Sequence[DeviceArray],
                committed: bool,
-               _skip_checks: bool = ...,
-               _fast_path_args: Optional[Any] = ...): ...
+               _skip_checks: bool = ...): ...
   def block_until_ready(self) -> Array: ...
   dtype: np.dtype
   shape: Tuple[int, ...]
   _arrays: Any
-  _fast_path_args: Any
   _npy_value: Any
 
 class Token:
