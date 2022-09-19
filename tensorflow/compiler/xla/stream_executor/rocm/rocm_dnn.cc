@@ -43,12 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-<<<<<<< HEAD
-#include "rocm/rocm_config.h"
-=======
 #include "tensorflow/tsl/platform/hash.h"
 #include "tensorflow/tsl/util/env_var.h"
->>>>>>> upstream/master
 
 namespace {
 
