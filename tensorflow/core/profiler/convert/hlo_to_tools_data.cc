@@ -84,9 +84,9 @@ StatusOr<std::string> ConvertHloProtoToGraphViewer(
 StatusOr<std::string> ConvertHloProtoToToolData(
     const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
     const ToolOptions& options) {
-  // <options> must provide a hlo_module_name field to identify the HLO module.
+  // <options> must provide a hlo module_name field to identify the HLO module.
   std::optional<std::string> hlo_module_name =
-      GetParam<std::string>(options, "hlo_module_name");
+      GetParam<std::string>(options, "module_name");
   if (!hlo_module_name.has_value() || hlo_module_name->empty()) {
     return errors::InvalidArgument(
         "Can not find HLO module name from options.");
