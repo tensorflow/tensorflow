@@ -71,7 +71,7 @@ class MergeDensify : public NodeTransformation {
 
     // Create a copy of the const tensor with a cast from BHWC to OHWI.
     const Tensor<BHWC, DataType::FLOAT32>& src =
-        std::any_cast<DensifyAttributes>(&densify_node->operation.attributes)
+        absl::any_cast<DensifyAttributes>(&densify_node->operation.attributes)
             ->tensor;
     Tensor<OHWI, DataType::FLOAT32> dst;
     dst.id = src.id;
@@ -90,10 +90,10 @@ class MergeDensify : public NodeTransformation {
 
     // Update CONV_2D / DEPTHWISE_CONV_2D weights.
     if (node->operation.type == ToString(OperationType::CONVOLUTION_2D)) {
-      std::any_cast<Convolution2DAttributes>(&node->operation.attributes)
+      absl::any_cast<Convolution2DAttributes>(&node->operation.attributes)
           ->weights = std::move(dst);
     } else {
-      std::any_cast<DepthwiseConvolution2DAttributes>(
+      absl::any_cast<DepthwiseConvolution2DAttributes>(
           &node->operation.attributes)
           ->weights = std::move(dst);
     }
@@ -104,7 +104,7 @@ class MergeDensify : public NodeTransformation {
 }  // namespace
 
 std::unique_ptr<NodeTransformation> NewMergeDensify() {
-  return std::make_unique<MergeDensify>();
+  return absl::make_unique<MergeDensify>();
 }
 
 }  // namespace gpu
