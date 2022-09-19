@@ -29,18 +29,18 @@ limitations under the License.
 #include <time.h>
 #include <unistd.h>
 
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/file_system_helper.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/default/posix_file_system.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/file_system_helper.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/strcat.h"
 
-namespace tensorflow {
+namespace tsl {
 
-using ::tensorflow::errors::IOError;
+using ::tsl::errors::IOError;
 
 // 128KB of copy buffer
 constexpr size_t kPosixCopyFileBufferSize = 128 * 1024;
@@ -455,4 +455,4 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target,
   return result;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

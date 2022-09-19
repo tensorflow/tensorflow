@@ -27,21 +27,21 @@ limitations under the License.
 #include <sys/types.h>
 #include <time.h>
 
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/file_system_helper.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/file_system_helper.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/strcat.h"
 #include "tensorflow/tsl/platform/windows/error_windows.h"
 #include "tensorflow/tsl/platform/windows/wide_char.h"
 
 // TODO(mrry): Prevent this Windows.h #define from leaking out of our headers.
 #undef DeleteFile
 
-namespace tensorflow {
+namespace tsl {
 
-using ::tensorflow::errors::IOError;
+using ::tsl::errors::IOError;
 
 namespace {
 
@@ -572,7 +572,7 @@ Status WindowsFileSystem::IsDirectory(const string& fname,
   if (PathIsDirectoryW(ws_translated_fname.c_str())) {
     return Status::OK();
   }
-  return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
+  return Status(tsl::error::FAILED_PRECONDITION, "Not a directory");
 }
 
 Status WindowsFileSystem::RenameFile(const string& src, const string& target,
@@ -648,4 +648,4 @@ Status WindowsFileSystem::Stat(const string& fname, TransactionToken* token,
   return result;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

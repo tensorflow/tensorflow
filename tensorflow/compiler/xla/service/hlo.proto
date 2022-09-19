@@ -274,14 +274,7 @@ message HloInstructionProto {
   // Describes how parameters behave with regards to replicas.
   xla.ParameterReplication parameter_replication = 61;
 
-  // If set, the given instruction is run in parallel on e.g. multiple CPU
-  // cores.  The outermost dimension gets split up into
-  // outer_dimension_partitions[0] pieces, the next-outermost dim gets split
-  // into outer_dimension_partitions[1] pieces, etc.
-  //
-  // It's illegal to partition a dimension into more shards than there are
-  // elements in that dimension.
-  repeated int64 outer_dimension_partitions = 64;
+  reserved 64;
 
   // Whether the kCustomCall instruction has side-effects, only present for
   // kCustomCall.

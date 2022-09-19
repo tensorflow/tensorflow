@@ -17,9 +17,9 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
+include "stablehlo/dialect/ChloOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
-include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/ChloOps.td"
 
 // Check if broadcasting is compatible with TF ops.
 def IsLegalNumpyRankedBroadcast :

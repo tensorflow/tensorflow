@@ -88,8 +88,8 @@ cc_library(
     hdrs = ["status_helper.h"],
     deps = [
         ":tpu_executor_c_api_hdrs",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -322,7 +322,7 @@ cc_library(
         ":c_api_decl",
         ":tpu_topology_external",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/core/platform:env",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/synchronization",
     ],

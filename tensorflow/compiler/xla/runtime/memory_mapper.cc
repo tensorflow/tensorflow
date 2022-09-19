@@ -15,10 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/memory_mapper.h"
 
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <unistd.h>
-
 #include <memory>
 #include <string_view>
 #include <system_error>  // NOLINT
@@ -28,6 +24,9 @@ limitations under the License.
 // Support for memfd_create(2) was added in glibc v2.27.
 #if defined(__linux__) && defined(__GLIBC__) && defined(__GLIBC_PREREQ)
 #if __GLIBC_PREREQ(2, 27)
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <unistd.h>
 #define XLA_RUNTIME_ENABLE_MEMORY_MAPPER
 #endif  // __GLIBC_PREREQ(2, 27)
 #endif  // __linux__ and __GLIBC__ and __GLIBC_PREREQ

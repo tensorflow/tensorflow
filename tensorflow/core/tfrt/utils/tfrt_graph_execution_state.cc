@@ -311,7 +311,7 @@ Status AdjustDeviceAssignment(const std::vector<std::string>& inputs,
 
   TF_RETURN_IF_ERROR(
       PlaceInputOutputNodesOnHost(inputs, outputs, cpu_device, graph));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsTpuGraph(const Graph* graph) {

@@ -466,6 +466,19 @@ def num_global_devices(device_type: str) -> int:
 # Private methods.
 
 
+def is_tpu_present() -> bool:
+  """Returns true if TPU devices are present."""
+  # Check if TPU is present from initialized context.
+  # TPU_SYSTEM is a logical device that indicates TPUs are present.
+  tpu_system_devices = tf_config.list_physical_devices("TPU_SYSTEM")
+  return len(tpu_system_devices) > 0  # pylint: disable=g-explicit-length-test
+
+
+def is_gpu_present() -> bool:
+  """Returns true if TPU devices are present."""
+  return len(tf_config.list_physical_devices("GPU")) > 0  # pylint: disable=g-explicit-length-test
+
+
 def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
   global _dtensor_singleton
   _dtensor_singleton = device

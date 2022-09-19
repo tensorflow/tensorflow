@@ -42,6 +42,10 @@ static std::unique_ptr<Type> ConvertCanonicalType(
   if (auto ctx = type.dyn_cast<ExecutionContextType>())
     return std::make_unique<ExecutionContextOperandType>();
 
+  // OpaqueType -> OpaqueOperandType (both in xla::runtime).
+  if (auto ctx = type.dyn_cast<OpaqueType>())
+    return std::make_unique<OpaqueOperandType>();
+
   // mlir::async::TokenType -> xla::runtime::AsyncTokenType
   if (type.isa<mlir::async::TokenType>())
     return std::make_unique<AsyncTokenType>();

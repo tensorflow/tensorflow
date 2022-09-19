@@ -66,7 +66,7 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
                                 PatternRewriter &rewriter) const override {
     Value result = op.getResult();
     TensorType resultTy = result.getType().cast<TensorType>();
-    Value operand = op.operand();
+    Value operand = op.getOperand();
     TensorType operandTy = operand.getType().cast<TensorType>();
     if (!operandTy.hasStaticShape() || !resultTy.hasStaticShape())
       return rewriter.notifyMatchFailure(op,
@@ -90,7 +90,7 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
       return rewriter.notifyMatchFailure(op,
                                          "user of the result is not reshape");
 
-    Value input = defOp.operand();
+    Value input = defOp.getOperand();
     auto inputTy = input.getType().cast<TensorType>();
     auto outputTy = userOp.getType();
     if (!inputTy.hasStaticShape() || !outputTy.hasStaticShape())
@@ -128,7 +128,7 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
     }
     expectedPerm[1 + 2 * spatialDims] = 1 + 2 * spatialDims;
 
-    SmallVector<int64_t, 6> perm(op.permutation().getValues<int64_t>());
+    SmallVector<int64_t, 6> perm(op.getPermutation().getValues<int64_t>());
     if (perm != expectedPerm)
       return rewriter.notifyMatchFailure(
           op, "reshape op isn't only moving spatial dims");

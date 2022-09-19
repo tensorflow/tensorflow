@@ -32,24 +32,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 using std::string;
-using tensorflow::Env;
+using tsl::Env;
 
 namespace xla {
 namespace tools {
 
-StatusOr<std::string> ToJson(const tensorflow::protobuf::Message& message) {
+StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
   std::string json_output;
-  tensorflow::protobuf::util::JsonPrintOptions json_options;
+  tsl::protobuf::util::JsonPrintOptions json_options;
   json_options.add_whitespace = true;
   json_options.always_print_primitive_fields = true;
-  auto status = tensorflow::protobuf::util::MessageToJsonString(
-      message, &json_output, json_options);
+  auto status = tsl::protobuf::util::MessageToJsonString(message, &json_output,
+                                                         json_options);
   if (!status.ok()) {
     return InternalError("MessageToJsonString failed: %s",
                          status.error_message().data());
@@ -59,16 +59,15 @@ StatusOr<std::string> ToJson(const tensorflow::protobuf::Message& message) {
 
 void RealMain(const std::string& input, const std::string& output) {
   HloProto hlo_proto;
-  TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), input,
-                                          &hlo_proto))
+  TF_CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), input, &hlo_proto))
       << "Can't open, read, or parse input file " << input;
 
   auto statusor = ToJson(hlo_proto);
   QCHECK(statusor.ok()) << "Error converting " << input << " to JSON."
                         << statusor.status();
 
-  TF_CHECK_OK(tensorflow::WriteStringToFile(tensorflow::Env::Default(), output,
-                                            statusor.value()));
+  TF_CHECK_OK(
+      tsl::WriteStringToFile(tsl::Env::Default(), output, statusor.value()));
 }
 
 }  // namespace tools

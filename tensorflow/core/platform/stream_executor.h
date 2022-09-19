@@ -30,5 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/types.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_STREAM_EXECUTOR_H_

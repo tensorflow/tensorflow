@@ -15,16 +15,19 @@
 """Opensource base_dir configuration for tensorflow doc-generator."""
 from os import path
 
-import keras_preprocessing
 from packaging import version
 import tensorboard
 import tensorflow as tf
 from tensorflow_docs.api_generator import public_api
 import tensorflow_estimator
 
-
 try:
   import keras  # pylint: disable=g-import-not-at-top
+except ImportError:
+  pass
+
+try:
+  import keras_preprocessing  # pylint: disable=g-import-not-at-top
 except ImportError:
   pass
 

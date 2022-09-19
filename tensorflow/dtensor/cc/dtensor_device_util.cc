@@ -103,27 +103,22 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
   Tensor t;
   Status convert_status = TF_TensorToTensor(tf_tensor.get(), &t);
   if (!convert_status.ok() || t.dtype() != DataType::DT_RESOURCE) {
-    TF_SetStatus(status, TF_INTERNAL, convert_status.error_message().c_str());
+    TF_SetStatus(status, TF_INTERNAL,
+                 absl::StrCat("TF_TensorToTensor() Conversion failed:",
+                              convert_status.error_message())
+                     .c_str());
     return nullptr;
   }
   // Replicate this resource handle to all devices without changing the
   // associated device of the resource itself.
   ResourceHandle r = t.flat<ResourceHandle>()(0);
-  if (r.dtypes_and_shapes().empty()) {
-    TF_SetStatus(status, TF_INTERNAL,
-                 "Expected resource handle to have at least one underlying "
-                 "dtype and shape during broadcasting.");
-    return nullptr;
-  }
-  PartialTensorShape partial_shape = r.dtypes_and_shapes().begin()->shape;
-  int64_t num_elements = partial_shape.num_elements();
 
-  // Only broadcast scalar resource tensors onto a CPU mesh. Copying
+  // Only broadcast resource tensors onto a CPU mesh. Copying
   // resource tensors to non CPU device is not supported.
-  if (num_elements != 1 || !mesh.mesh_config().is_cpu_mesh()) {
+  if (!mesh.mesh_config().is_cpu_mesh()) {
     std::string error_message =
         "Using a non-DTensor variable with DTensor is only supported for "
-        "scalar variables copying to a CPU mesh. If you are using a scope "
+        "copying to a CPU mesh. If you are using a scope "
         "based API, create "
         "variables inside the DTensor scope.\n";
 
@@ -150,9 +145,13 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
       BroadcastTensorHandleToParallelTensor(context, tensor, mesh, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
+  int rank = r.dtypes_and_shapes().empty()
+                 ? 0
+                 : r.dtypes_and_shapes().begin()->shape.dims();
+
   StatusOr<std::unique_ptr<TensorWithLayout>> result = TensorWithLayout::Wrap(
       std::move(parallel_tensor), mesh,
-      Layout::ReplicatedOnMesh(mesh.mesh_config(), partial_shape.dims()));
+      Layout::ReplicatedOnMesh(mesh.mesh_config(), rank));
   if (!result.ok()) {
     TF_SetStatus(
         status, TF_INTERNAL,
@@ -162,10 +161,15 @@ std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
             .c_str());
     return nullptr;
   }
-  // Set the shape/type of the tensor that the resource points to
-  // so that the graph has correct shape/type information that we can use.
-  (*result)->UpdateShapeAndDType(partial_shape.AsProto(),
-                                 r.dtypes_and_shapes().begin()->dtype, status);
+
+  if (!r.dtypes_and_shapes().empty()) {
+    PartialTensorShape partial_shape = r.dtypes_and_shapes().begin()->shape;
+    // Set the shape/type of the tensor that the resource points to
+    // so that the graph has correct shape/type information that we can use.
+    (*result)->UpdateShapeAndDType(
+        partial_shape.AsProto(), r.dtypes_and_shapes().begin()->dtype, status);
+  }
+
   if (TF_GetCode(status) != TF_OK) {
     TF_SetStatus(status, TF_INTERNAL,
                  "Error updating shape and dtype for resource tensor during "

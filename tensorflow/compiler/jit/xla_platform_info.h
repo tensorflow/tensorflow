@@ -114,6 +114,11 @@ XlaCompiler::Options GenerateCompilerOptions(
     se::Stream* stream, const XlaPlatformInfo& platform_info,
     bool has_ref_vars);
 
+// Returns created options for XLA compiler when TFRT-TPU is used.
+XlaCompiler::Options GenerateTfrtTpuCompilerOptions(
+    const XlaCompilationCache& cache,
+    const FunctionLibraryRuntime& function_library);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_PLATFORM_INFO_H_

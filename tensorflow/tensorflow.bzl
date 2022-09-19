@@ -2649,6 +2649,11 @@ def gpu_py_test(
 def cuda_py_test(*args, **kwargs):
     gpu_py_test(*args, **kwargs)
 
+register_extension_info(
+    extension = gpu_py_test,
+    label_regex_for_dep = "{extension_name}_cpu",
+)
+
 def py_tests(
         name,
         srcs,
@@ -3141,6 +3146,8 @@ def tf_python_pybind_static_deps(testonly = False):
         "@ruy//:__subpackages__",
         "@snappy//:__subpackages__",
         "@sobol_data//:__subpackages__",
+        "@stablehlo//:__subpackages__",
+        "@tf_runtime//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
     ]

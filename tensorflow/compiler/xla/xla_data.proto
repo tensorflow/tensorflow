@@ -339,11 +339,7 @@ message OpMetadata {
   // Profile information for the Op.
   ProfileInfo profile_info = 10;
 
-  // Information about the replaced operation. We store the HLO canonical text,
-  // which contains canonicalized instruction name, operand shape, and full
-  // bodies of the subcomputations besides the HLO itself. This is set
-  // independently of other fields.
-  string replaced_op = 11;
+  reserved 11;
 }
 
 // Profile data from the execution of a computation.
@@ -755,8 +751,10 @@ message PrecisionConfig {
     DEFAULT = 0;
     HIGH = 1;
     HIGHEST = 2;
+    // Each U8/S8 value in a tensor actually represents 2 nibble values.
+    PACKED_NIBBLE = 3;
 
-    // Next: 3
+    // Next: 4
   }
   repeated Precision operand_precision = 1;
 

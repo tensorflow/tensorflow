@@ -49,12 +49,14 @@ using xla::primitive_util::LowercasePrimitiveTypeName;
 //===----------------------------------------------------------------------===//
 
 Status OpaqueArg::Verify(const Type& type) const {
-  if (isa<AsyncTokenType>(type)) return absl::OkStatus();
+  if (isa<OpaqueOperandType>(type)) return absl::OkStatus();
   return InvalidArgumentError(
       StrCat("unsupported opaque argument type: ", type.ToString()));
 }
 
-void OpaqueArg::Pack(absl::Span<void*> args) const { args[0] = ptr_; }
+void OpaqueArg::Pack(absl::Span<void*> args) const {
+  args[0] = const_cast<void*>(reinterpret_cast<const void*>(&ptr_));
+}
 
 std::string OpaqueArg::ToString() const {
   return StrFormat("OpaqueArg: ptr=%p", ptr_);

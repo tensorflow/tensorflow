@@ -455,7 +455,7 @@ void HloComputation::ComputeInstructionPostOrder(
     if (!result.second) {  // We've already seen this instruction.
       dfs_stack.pop_back();
       if (result.first->second != kVisited) {
-        CHECK_EQ(current.parent(), this)
+        DCHECK_EQ(current.parent(), this)
             << "Instruction " << current.name()
             << " is not in the current computation (" << name() << ").";
         post_order.push_back(&current);
@@ -551,13 +551,65 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
 }
 
 std::string HloComputation::ToString(const HloPrintOptions& options) const {
-  return std::string(ToCord(options));
+  return ToString(options, MakeInstructionPostOrder());
 }
 
 std::string HloComputation::ToString(
     const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
-  return std::string(ToCord(options, instruction_order));
+  CHECK_EQ(instruction_order.size(), instruction_count());
+  const std::string tab(2 * options.indent_amount(), ' ');
+
+  std::string result;
+  absl::StrAppend(&result, tab);
+
+  if (!options.is_in_nested_computation()) {
+    if (options.print_percent()) {
+      absl::StrAppend(&result, "%");
+    }
+    if (options.print_ids()) {
+      // When print_ids() is false, exclude entry computation's name because it
+      // includes and leads to non-deterministic fingerprint.
+      absl::StrAppend(&result, name(), " ");
+    }
+  }
+
+  if (options.print_program_shape()) {
+    absl::StrAppend(
+        &result,
+        ShapeUtil::HumanString(ComputeProgramShape(options.print_ids())), " ");
+  }
+  absl::StrAppend(&result, "{\n");
+
+  {
+    // Print the instructions in this computation.
+    HloPrintOptions new_options =
+        HloPrintOptions(options)
+            .set_indent_amount(options.indent_amount() + 1)
+            .set_is_in_nested_computation(true);
+
+    CanonicalNameMap name_map;
+    for (const HloInstruction* const instruction : instruction_order) {
+      DCHECK_EQ(this, instruction->parent());
+      // 2 more spaces than just 'tab' due to indent_amount()+1 above
+      absl::StrAppend(&result, tab, "  ");
+      if (instruction == root_instruction_) {
+        absl::StrAppend(&result, "ROOT ");
+      }
+      absl::StrAppend(
+          &result,
+          instruction->ToStringWithCanonicalNameMap(new_options, &name_map),
+          "\n");
+    }
+  }
+
+  absl::StrAppend(&result, tab, "}");
+  if (options.print_ids() && !IsMainThread()) {
+    // When print_ids() is false, exclude entry computation's thread name
+    // because it includes and leads to non-deterministic fingerprint.
+    absl::StrAppend(&result, ", execution_thread=\"", execution_thread(), "\"");
+  }
+  return result;
 }
 
 absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
@@ -567,61 +619,7 @@ absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
 absl::Cord HloComputation::ToCord(
     const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
-  CHECK_EQ(instruction_order.size(), instruction_count());
-  const std::string tab(2 * options.indent_amount(), ' ');
-
-  absl::Cord result;
-  result.Append(tab);
-
-  if (!options.is_in_nested_computation()) {
-    if (options.print_percent()) {
-      result.Append("%");
-    }
-    if (options.print_ids()) {
-      // When print_ids() is false, exclude entry computation's name because it
-      // includes and leads to non-deterministic fingerprint.
-      result.Append(name());
-      result.Append(" ");
-    }
-  }
-
-  if (options.print_program_shape()) {
-    result.Append(
-        ShapeUtil::HumanString(ComputeProgramShape(options.print_ids())));
-    result.Append(" ");
-  }
-  result.Append("{\n");
-
-  {
-    // Print the instructions in this computation.
-    HloPrintOptions new_options =
-        HloPrintOptions(options)
-            .set_indent_amount(options.indent_amount() + 1)
-            .set_is_in_nested_computation(true);
-
-    const std::string new_tab(2 * new_options.indent_amount(), ' ');
-
-    CanonicalNameMap name_map;
-    for (const HloInstruction* const instruction : instruction_order) {
-      DCHECK_EQ(this, instruction->parent());
-      result.Append(new_tab);
-      if (instruction == root_instruction_) {
-        result.Append("ROOT ");
-      }
-      result.Append(
-          instruction->ToStringWithCanonicalNameMap(new_options, &name_map));
-      result.Append("\n");
-    }
-  }
-
-  result.Append(tab);
-  result.Append("}");
-  if (options.print_ids() && !IsMainThread()) {
-    // When print_ids() is false, exclude entry computation's thread name
-    // because it includes and leads to non-deterministic fingerprint.
-    result.Append(StrCat(", execution_thread=\"", execution_thread(), "\""));
-  }
-  return result;
+  return absl::Cord(ToString(options, instruction_order));
 }
 
 HloComputationProto HloComputation::ToProto() const {

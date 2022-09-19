@@ -46,7 +46,6 @@ cc_library(
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:ControlFlowDialect",
-        "@llvm-project//mlir:ConversionPasses",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:FuncTransforms",
@@ -89,14 +88,60 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "compilation_pipeline",
-    srcs = ["compilation_pipeline.cc"],
-    hdrs = ["compilation_pipeline.h"],
+    name = "compilation_pipeline_cpu",
+    srcs = ["compilation_pipeline_cpu.cc"],
+    hdrs = ["compilation_pipeline_cpu.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":compilation_pipeline_options",
         ":custom_call_encoding",
         ":passes",
-        "//tensorflow/compiler/xla/runtime:type_id",
+        "//tensorflow/compiler/xla/mlir/transforms/math:passes",
+        "//tensorflow/compiler/xla/mlir/transforms/memref:passes",
+        "@llvm-project//mlir:AMXToLLVMIRTranslation",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:AffineToStandard",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:ArmNeonToLLVMIRTranslation",
+        "@llvm-project//mlir:ArmSVEToLLVMIRTranslation",
+        "@llvm-project//mlir:AsyncDialect",
+        "@llvm-project//mlir:AsyncToLLVM",
+        "@llvm-project//mlir:AsyncTransforms",
+        "@llvm-project//mlir:ComplexToLLVM",
+        "@llvm-project//mlir:ControlFlowDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncToLLVM",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:LinalgToLLVM",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:MathToLLVM",
+        "@llvm-project//mlir:MathToLibm",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:MemRefToLLVM",
+        "@llvm-project//mlir:MemRefTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:TensorInferTypeOpInterfaceImpl",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorToLLVM",
+        "@llvm-project//mlir:X86VectorToLLVMIRTranslation",
+    ],
+    alwayslink = 1,  # has pipeline registration
+)
+
+cc_library(
+    name = "compilation_pipeline_gpu",
+    srcs = ["compilation_pipeline_gpu.cc"],
+    hdrs = ["compilation_pipeline_gpu.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":compilation_pipeline_options",
+        ":passes",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:IR",
@@ -107,9 +152,19 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToControlFlow",
-        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,  # has pipeline registration
+)
+
+cc_library(
+    name = "compilation_pipeline_options",
+    hdrs = ["compilation_pipeline_options.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":custom_call_encoding",
+        "//tensorflow/compiler/xla/runtime:type_id",
+        "@llvm-project//mlir:Transforms",
+    ],
 )
 
 cc_library(
@@ -118,6 +173,7 @@ cc_library(
     hdrs = ["custom_call_encoding.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:type_id",
         "@llvm-project//llvm:Support",

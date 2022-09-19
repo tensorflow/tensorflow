@@ -56,6 +56,7 @@ from tensorflow.python.training import momentum
 from tensorflow.python.training import saver
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 
 
 def _eager_safe_var_handle_op(*args, **kwargs):
@@ -905,6 +906,26 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           new_handle, indices, dtype=var.dtype)
       gradients_impl.gradients([gathered], [updates])
 
+  def testCustomGradientVariableOutput(self):
+    with context.eager_mode():
+      @custom_gradient.custom_gradient
+      def test_func(x):
+        x.assign_add(3.)
+
+        def gradient_func(*grad):
+          return 2. * grad[0]
+
+        return x, gradient_func
+
+      v = resource_variable_ops.ResourceVariable(2.)
+      with backprop.GradientTape() as tape:
+        out = test_func(v)
+        result = tape.gradient(out, v)
+
+      self.assertAllEqual(out, 5.)
+      self.assertIsInstance(result, ops.Tensor)
+      self.assertAllEqual(result, 2.)
+
   def testToFromProtoCachedValue(self):
     with ops.Graph().as_default():
       v_def = resource_variable_ops.ResourceVariable(
@@ -1696,6 +1717,23 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     v = variables.Variable([1., 2.])
     self.assertAllClose([1., 2.], list(iter(v)))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testInitFromHandle(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(v.initializer)
+    v2 = resource_variable_ops.ResourceVariable(
+        trainable=True, shape=(), dtype=dtypes.float32, handle=v.handle)
+    self.assertIs(v2.handle, v.handle)
+    self.assertAllEqual(ops.convert_to_tensor(v2), 1.)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFlattenResourceVariable(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(v.initializer)
+    result = nest.flatten(v, expand_composites=True)
+    # TODO(b/246438937): Update this to dt_resource tensor once we expand
+    # ResourceVariables with expand_composites=True.
+    self.assertIsInstance(result[0], resource_variable_ops.ResourceVariable)
 
 if __name__ == "__main__":
   test.main()

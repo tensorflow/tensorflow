@@ -153,11 +153,11 @@ class GetDimSizeConverter : public OpRewritePattern<mhlo::GetDimensionSizeOp> {
     Location loc = op.getLoc();
     auto resultTy = op.getType();
     auto elementTy = getElementTypeOrSelf(resultTy);
-    auto dimAttr = rewriter.getIndexAttr(op.dimension());
+    auto dimAttr = rewriter.getIndexAttr(op.getDimension());
     auto dimConst = rewriter.create<arith::ConstantOp>(loc, dimAttr);
 
     Value dimOp = rewriter.create<tensor::DimOp>(loc, rewriter.getIndexType(),
-                                                 op.operand(), dimConst);
+                                                 op.getOperand(), dimConst);
 
     // Cast to the correct element type and convert to a tensor.
     Value cast = rewriter.create<arith::IndexCastOp>(loc, elementTy, dimOp);
@@ -172,13 +172,13 @@ class ReshapeConverter : public OpRewritePattern<mhlo::ReshapeOp> {
 
   LogicalResult matchAndRewrite(mhlo::ReshapeOp op,
                                 PatternRewriter &rewriter) const final {
-    auto operand = op.operand();
+    auto operand = op.getOperand();
     auto shapedTy = operand.getType().template cast<ShapedType>();
     if (!shapedTy.hasRank() || shapedTy.getRank() > 1) return failure();
 
     auto resultTy = op.getType().cast<ShapedType>();
 
-    auto fromElements = op.operand().getDefiningOp<tensor::FromElementsOp>();
+    auto fromElements = op.getOperand().getDefiningOp<tensor::FromElementsOp>();
     if (!fromElements) return failure();
 
     rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(

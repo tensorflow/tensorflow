@@ -36,7 +36,7 @@ def RuntimeDialect : Dialect {
 
   let cppNamespace = "::xla::runtime";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 
   let useDefaultTypePrinterParser = 1;
 
@@ -63,6 +63,14 @@ def StatusType : RT_Type<"Status", "status"> {
   let summary = "Status type";
   let description = [{
     A status type returned from the XLA runtime API intrinsics.
+  }];
+}
+
+def OpaqueValueType : RT_Type<"Opaque", "opaque"> {
+  let summary = "Opaque type";
+  let description = [{
+    Opaque type for passing opaque values (at run time just `void*`) to and from
+    compiled executables and custom calls.
   }];
 }
 

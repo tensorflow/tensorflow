@@ -1142,7 +1142,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           // task before returning to this one.
           result->ready = true;
           result->skip = true;
-          return Status::OK();
+          return OkStatus();
         }
         {
           mutex_lock l(mu_);

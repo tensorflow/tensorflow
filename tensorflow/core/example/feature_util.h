@@ -263,13 +263,16 @@ template <typename T>
 struct TypeHasFeatures : std::false_type {};
 
 template <>
+struct TypeHasFeatures<SequenceExample> : std::true_type {};
+
+template <>
 struct TypeHasFeatures<Example> : std::true_type {};
 
 template <>
 struct TypeHasFeatures<Features> : std::true_type {};
 
 // A family of template functions to return mutable Features proto from a
-// container proto. Supported ProtoTypes: Example, Features.
+// container proto. Supported ProtoTypes: SequenceExample, Example, Features.
 template <typename ProtoType>
 typename std::enable_if<TypeHasFeatures<ProtoType>::value, Features*>::type
 GetFeatures(ProtoType* proto);
@@ -286,7 +289,8 @@ const typename internal::RepeatedFieldTrait<FeatureType>::Type&
 GetFeatureValues(const Feature& feature);
 
 // Returns a read only repeated field corresponding to a feature with the
-// specified name and FeatureType. Supported ProtoTypes: Example, Features.
+// specified name and FeatureType. Supported ProtoTypes: SequenceExample,
+// Example, Features.
 template <typename FeatureType, typename ProtoType>
 const typename internal::RepeatedFieldTrait<FeatureType>::Type&
 GetFeatureValues(absl::string_view key, const ProtoType& proto) {
@@ -300,7 +304,8 @@ typename internal::RepeatedFieldTrait<FeatureType>::Type* GetFeatureValues(
     Feature* feature);
 
 // Returns a mutable repeated field corresponding to a feature with the
-// specified name and FeatureType. Supported ProtoTypes: Example, Features.
+// specified name and FeatureType. Supported ProtoTypes: SequenceExample,
+// Example, Features.
 template <typename FeatureType, typename ProtoType>
 typename internal::RepeatedFieldTrait<FeatureType>::Type* GetFeatureValues(
     absl::string_view key, ProtoType* proto) {
@@ -311,14 +316,14 @@ typename internal::RepeatedFieldTrait<FeatureType>::Type* GetFeatureValues(
 
 // Returns a read-only Feature proto for the specified key, throws
 // std::out_of_range if the key is not found. Supported types for the proto:
-// Example, Features.
+// SequenceExample, Example, Features.
 template <typename ProtoType>
 const Feature& GetFeature(absl::string_view key, const ProtoType& proto) {
   return GetFeatures(proto).feature().at(internal::ProtoMapKey(key));
 }
 
 // Returns a mutable Feature proto for the specified key, creates a new if
-// necessary. Supported types for the proto: Example, Features.
+// necessary. Supported types for the proto: SequenceExample, Example, Features.
 template <typename ProtoType>
 Feature* GetFeature(absl::string_view key, ProtoType* proto) {
   return &(*GetFeatures(proto)->mutable_feature())[internal::ProtoMapKey(key)];

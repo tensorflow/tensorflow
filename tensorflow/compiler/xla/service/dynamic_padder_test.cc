@@ -42,8 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -521,6 +521,48 @@ ENTRY test {
                                m::GetTupleElement(m::CustomCall(
                                    "PadToStatic", m::CustomCall("UnknownOp"))),
                                m::Op())));
+}
+
+TEST_F(DynamicPadderTest, WhileLoopDynamicShapeChangeToStatic) {
+  const std::string hlo_text = R"(
+HloModule WhileLoopDynamicShapeChangeToStatic
+
+ %cond_wrapper.19447 {
+  param = (s32[], s32[], f32[], f32[<=32,216]{1,0}) parameter(0)
+  %get-tuple-element.184 = s32[] get-tuple-element(param), index=0
+  %get-tuple-element.185 = s32[] get-tuple-element(param), index=1
+  ROOT %compare.28 = pred[] compare(s32[] %get-tuple-element.184, s32[] %get-tuple-element.185), direction=LT
+ }
+
+%while_body_78894_grad_83711__.18882 {
+  param = (s32[], s32[], f32[], f32[<=32,216]{1,0}) parameter(0)
+  %get-tuple-element.184 = s32[] get-tuple-element(param), index=0
+  %get-tuple-element.185 = s32[] get-tuple-element(param), index=1
+  %add.1 = s32[] add(get-tuple-element.184, get-tuple-element.184)
+  %gte.2 = f32[] get-tuple-element(param), index=2
+  %broadcast.19389 = f32[32,216]{1,0} broadcast(f32[] %gte.2), dimensions={}
+  ROOT tuple = (s32[], s32[], f32[], f32[<=32,216]{1,0}) tuple(add.1, %get-tuple-element.185, %gte.2, %broadcast.19389)
+}
+
+ENTRY main {
+  param = f32[] parameter(0)
+  param.1 = f32[<=32,216]{1,0} parameter(1)
+  const = s32[] constant(3)
+  const2 = s32[] constant(4)
+  %tuple.18877 = (s32[], s32[], f32[], f32[<=32,216]{1,0}) tuple(const, const2, param, param.1)
+  %while.19451 = (s32[], s32[], f32[], f32[<=32,216]{1,0})
+    while((s32[], s32[], f32[], f32[<=32,216]{1,0})
+     %tuple.18877), condition=%cond_wrapper.19447, body=%while_body_78894_grad_83711__.18882
+  ROOT result = f32[<=32,216]{1,0} get-tuple-element(while.19451), index=3
+ }
+)";
+
+  module_ = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  XLA_LOG_LINES(0, module_->ToString());
+  auto* root = module_->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0)->shape(), ShapeUtil::MakeShape(F32, {32, 216}));
 }
 
 // Test that dynamic padder has the same result as if not padded.

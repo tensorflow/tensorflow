@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/test_compilation_environment.pb.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 

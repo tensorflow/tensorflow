@@ -26,16 +26,15 @@ namespace xla {
 
 /* static */ absl::Mutex Compiler::platform_compiler_mutex_(absl::kConstInit);
 
-std::vector<std::unique_ptr<tensorflow::protobuf::Message>>
+std::vector<std::unique_ptr<tsl::protobuf::Message>>
 Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
                                 se::StreamExecutor* executor) const {
   CHECK(executor != nullptr);
   return {};
 }
 
-std::unique_ptr<tensorflow::protobuf::Message>
-Compiler::ComputeDefaultBackendConfig(const HloInstruction& hlo,
-                                      se::StreamExecutor* executor) const {
+std::unique_ptr<tsl::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
+    const HloInstruction& hlo, se::StreamExecutor* executor) const {
   CHECK(executor != nullptr);
   return nullptr;
 }

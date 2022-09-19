@@ -30,6 +30,13 @@ namespace mlir {
 // islands, each with a single op.
 std::unique_ptr<OperationPass<ModuleOp>> CreateBreakUpIslandsPass();
 
+// Creates a pass that breaks up an island with multiple ops into multiple
+// islands, each with a single op. This pass intentionally does not propagate
+// control dependencies across newly created islands, a following pass will
+// handle this.
+// TODO(b/244596254) Implement followup pass for creating control deps.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitIntoIslandPerOpPass();
+
 // Creates a pass that converts mlir functions consisting of mlir ops into a
 // tf_executor dialect as a single island.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -41,6 +48,11 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 CreateExecutorDialectToFunctionalConversionPass();
 
 namespace TF {
+// Creates a pass that canonicalizes legacy compilation and replication
+// attributes.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateCanonicalizeCompileAndReplicateAttributesPass();
+
 // Creates a pass that drops `shape_invariant` attribute from While/WhileRegion
 // ops.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -276,6 +288,9 @@ std::unique_ptr<Pass> CreateOrderByDialectPass();
 // Groups ops into functions that only contain one dialect.
 std::unique_ptr<Pass> CreateGroupByDialectPass();
 
+// Removes unused parameters from functions & their callers.
+std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveUnusedArgumentsPass();
+
 // Populates the supplied passmanager with the passes required to run the
 // CPU/GPU bridge.
 void CreateTFXLABridgePipeline(OpPassManager& pm);
@@ -427,11 +442,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateXlaInlineDeviceOpsPass();
 }  // namespace TFDevice
 
 namespace TFTPU {
-// Creates a pass that canonicalizes legacy compilation and replication
-// attributes.
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateCanonicalizeCompileAndReplicateAttributesPass();
-
 // Creates a pass that converts unified compilation and replication
 // attributes back to legacy attributes.
 std::unique_ptr<OperationPass<func::FuncOp>>

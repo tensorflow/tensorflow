@@ -25,8 +25,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "rocm/include/miopen/miopen.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
@@ -45,6 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/tsl/platform/hash.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace {
 
@@ -228,7 +228,7 @@ namespace wrap {
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
     static void* GetDsoHandle() {                                         \
       auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();           \
-      return s.ValueOrDie();                                              \
+      return s.value();                                              \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
       void* f;                                                            \
@@ -387,13 +387,11 @@ uint64_t GetHashValue(miopenTensorDescriptor_t tensor_desc) {
   int strides[kMaxMIOpenTensorSize] = {0};
   wrap::miopenGetTensorDescriptor(tensor_desc, &datatype, dims, strides);
 
-  uint64_t hash_value = tensorflow::hash<int>()(datatype);
+  uint64_t hash_value = tsl::hash<int>()(datatype);
   for (int dim : dims)
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, tensorflow::hash<int>()(dim));
+    hash_value = tsl::Hash64Combine(hash_value, tsl::hash<int>()(dim));
   for (int stride : strides)
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, tensorflow::hash<int>()(stride));
+    hash_value = tsl::Hash64Combine(hash_value, tsl::hash<int>()(stride));
 
   return hash_value;
 }
@@ -411,9 +409,9 @@ uint64_t GetHashValue(miopenConvolutionDescriptor_t conv_desc) {
   wrap::miopenGetConvolutionNdDescriptor(
       conv_desc, nd, &nd, pad.data(), stride.data(), dilation.data(), &c_mode);
 
-  uint64_t hash_value = tensorflow::hash<int>()(c_mode);
+  uint64_t hash_value = tsl::hash<int>()(c_mode);
   auto hash64Combine = [&hash_value](int element) {
-    tensorflow::Hash64Combine(hash_value, tensorflow::hash<int>()(element));
+    tsl::Hash64Combine(hash_value, tsl::hash<int>()(element));
   };
   std::for_each(pad.begin(), pad.end(), hash64Combine);
   std::for_each(stride.begin(), stride.end(), hash64Combine);
@@ -595,18 +593,18 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
   return_best_algo_only_ = false;
   // but if the env var TF_ROCM_RETURN_BEST_ALGO_ONLY is set, only the best
   // (i.e. most efficient) algorithm will be returned
-  tensorflow::ReadBoolFromEnvVar("TF_ROCM_RETURN_BEST_ALGO_ONLY", false,
-                                 &return_best_algo_only_);
+  tsl::ReadBoolFromEnvVar("TF_ROCM_RETURN_BEST_ALGO_ONLY", false,
+                          &return_best_algo_only_);
 
   // by default, use Find Mode APIs for convolution
   use_immediate_mode_ = false;
   // swich to Find Mode if env var TF_ROCM_USE_IMMEDIATE_MODE is set
-  tensorflow::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
-                                 &use_immediate_mode_);
+  tsl::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
+                          &use_immediate_mode_);
 
   bool enable_pooling_cache = false;
-  tensorflow::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
-                                 &enable_pooling_cache);
+  tsl::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
+                          &enable_pooling_cache);
   if (enable_pooling_cache) m_pooling_cache_allowed = true;
 }
 
@@ -628,7 +626,7 @@ port::Status MIOpenSupport::Init() {
       LOG(ERROR) << "error retrieving driver version: "
                  << rocm::DriverVersionStatusToString(result);
     } else {
-      const auto& version = result.ValueOrDie();
+      const auto& version = result.value();
       LOG(INFO) << "possibly insufficient driver version: "
                 << rocm::DriverVersionToString(version);
     }
@@ -1049,13 +1047,10 @@ class ScopedActivationDescriptor {
   miopenActivationDescriptor_t handle() const { return handle_; }
 
   uint64_t GetHashValue() {
-    uint64_t hash_value = tensorflow::hash<int>()(miopen_activation_mode_);
-    hash_value = tensorflow::Hash64Combine(hash_value,
-                                           tensorflow::hash<double>()(alpha_));
-    hash_value = tensorflow::Hash64Combine(hash_value,
-                                           tensorflow::hash<double>()(beta_));
-    hash_value = tensorflow::Hash64Combine(hash_value,
-                                           tensorflow::hash<double>()(gamma_));
+    uint64_t hash_value = tsl::hash<int>()(miopen_activation_mode_);
+    hash_value = tsl::Hash64Combine(hash_value, tsl::hash<double>()(alpha_));
+    hash_value = tsl::Hash64Combine(hash_value, tsl::hash<double>()(beta_));
+    hash_value = tsl::Hash64Combine(hash_value, tsl::hash<double>()(gamma_));
 
     return hash_value;
   }
@@ -1367,21 +1362,18 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
       miopenConvolutionDescriptor_t conv_descriptor,
       miopenTensorDescriptor_t bias_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
-    uint64_t hash_value = tensorflow::Hash64("ConvolutionBiasActivation");
+    uint64_t hash_value = tsl::Hash64("ConvolutionBiasActivation");
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+    hash_value = tsl::Hash64Combine(hash_value,
+                                    tsl::hash<miopenHandle_t>()(miopen_handle));
 
+    hash_value = tsl::Hash64Combine(hash_value, GetHashValue(input_descriptor));
     hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(input_descriptor));
+        tsl::Hash64Combine(hash_value, GetHashValue(filter_descriptor));
+    hash_value = tsl::Hash64Combine(hash_value, GetHashValue(conv_descriptor));
+    hash_value = tsl::Hash64Combine(hash_value, GetHashValue(bias_descriptor));
     hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(filter_descriptor));
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(conv_descriptor));
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(bias_descriptor));
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, activation_descriptor.GetHashValue());
+        tsl::Hash64Combine(hash_value, activation_descriptor.GetHashValue());
     return hash_value;
   }
 
@@ -1471,19 +1463,18 @@ class ScopedFusionPlanBatchNormActivationInference
       miopenHandle_t miopen_handle, miopenTensorDescriptor_t input_descriptor,
       miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
-    uint64_t hash_value = tensorflow::Hash64("BatchNormActivationInference");
+    uint64_t hash_value = tsl::Hash64("BatchNormActivationInference");
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+    hash_value = tsl::Hash64Combine(hash_value,
+                                    tsl::hash<miopenHandle_t>()(miopen_handle));
 
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(input_descriptor));
+    hash_value = tsl::Hash64Combine(hash_value, GetHashValue(input_descriptor));
 
-    hash_value = tensorflow::Hash64Combine(
+    hash_value = tsl::Hash64Combine(
         hash_value, GetHashValue(scale_offset_mean_variance_descriptor));
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, activation_descriptor.GetHashValue());
+    hash_value =
+        tsl::Hash64Combine(hash_value, activation_descriptor.GetHashValue());
     return hash_value;
   }
 
@@ -1571,19 +1562,18 @@ class ScopedFusionPlanBatchNormActivationForward : public ScopedFusionPlanBase {
       miopenHandle_t miopen_handle, miopenTensorDescriptor_t input_descriptor,
       miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
-    uint64_t hash_value = tensorflow::Hash64("BatchNormActivationForward");
+    uint64_t hash_value = tsl::Hash64("BatchNormActivationForward");
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+    hash_value = tsl::Hash64Combine(hash_value,
+                                    tsl::hash<miopenHandle_t>()(miopen_handle));
 
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(input_descriptor));
+    hash_value = tsl::Hash64Combine(hash_value, GetHashValue(input_descriptor));
 
-    hash_value = tensorflow::Hash64Combine(
+    hash_value = tsl::Hash64Combine(
         hash_value, GetHashValue(scale_offset_mean_variance_descriptor));
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, activation_descriptor.GetHashValue());
+    hash_value =
+        tsl::Hash64Combine(hash_value, activation_descriptor.GetHashValue());
     return hash_value;
   }
 
@@ -1673,19 +1663,18 @@ class ScopedFusionPlanBatchNormActivationBackward
       miopenHandle_t miopen_handle, miopenTensorDescriptor_t input_descriptor,
       miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
-    uint64_t hash_value = tensorflow::Hash64("BatchNormActivationBackward");
+    uint64_t hash_value = tsl::Hash64("BatchNormActivationBackward");
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+    hash_value = tsl::Hash64Combine(hash_value,
+                                    tsl::hash<miopenHandle_t>()(miopen_handle));
 
-    hash_value =
-        tensorflow::Hash64Combine(hash_value, GetHashValue(input_descriptor));
+    hash_value = tsl::Hash64Combine(hash_value, GetHashValue(input_descriptor));
 
-    hash_value = tensorflow::Hash64Combine(
+    hash_value = tsl::Hash64Combine(
         hash_value, GetHashValue(scale_offset_mean_variance_descriptor));
 
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, activation_descriptor.GetHashValue());
+    hash_value =
+        tsl::Hash64Combine(hash_value, activation_descriptor.GetHashValue());
     return hash_value;
   }
 
@@ -2118,7 +2107,7 @@ bool CreateRnnWorkspace(Stream* stream, miopenHandle_t miopen_handle,
   if (workspace_size_in_bytes > 0) {
     auto allocated =
         workspace_allocator->AllocateBytes(workspace_size_in_bytes);
-    if (!allocated.ok() || (*workspace = allocated.ValueOrDie()) == nullptr) {
+    if (!allocated.ok() || (*workspace = allocated.value()) == nullptr) {
       LOG(ERROR) << "Failed to allocate RNN workspace";
 
       return false;
@@ -2197,7 +2186,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
       auto allocated =
           reserve_space_allocator->AllocateBytes(reserve_space_size_in_bytes);
       if (!allocated.ok() ||
-          (reserve_space = allocated.ValueOrDie()) == nullptr) {
+          (reserve_space = allocated.value()) == nullptr) {
         LOG(ERROR) << "Fail to allocate RNN reserve space";
         return false;
       }
@@ -2487,7 +2476,7 @@ port::Status MIOpenSupport::DoPrepareForCtcLoss(
     }
     auto scratch_or = scratch_allocator->AllocateBytes(workspace_size_in_bytes);
     if (scratch_or.ok()) {
-      *scratch_memory = scratch_or.ValueOrDie();
+      *scratch_memory = scratch_or.value();
     } else {
       LOG(ERROR)
           << "Failed to allocate scratch memory - "
@@ -2888,7 +2877,7 @@ void* MIOpenAllocatorCallback(void* ctx, size_t size_in_bytes) {
 
   DeviceMemory<uint8> scratch;
   if (allocated.ok()) {
-    scratch = allocated.ValueOrDie();
+    scratch = allocated.value();
     return scratch.opaque();
   } else {
     return nullptr;
@@ -2931,7 +2920,7 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
     }
     auto allocated = scratch_allocator->AllocateBytes(scratch_memory_size);
     if (allocated.ok()) {
-      *scratch_memory = allocated.ValueOrDie();
+      *scratch_memory = allocated.value();
     } else {
       LOG(ERROR)
           << "Failed to allocate scratch memory - "
@@ -3517,7 +3506,7 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
     }
     auto allocated = scratch_allocator->AllocateBytes(scratch_memory_size);
     if (allocated.ok()) {
-      scratch_memory = allocated.ValueOrDie();
+      scratch_memory = allocated.value();
     } else {
       LOG(FATAL)
           << "Failed to allocate scratch memory - "
@@ -4225,7 +4214,7 @@ port::Status MIOpenSupport::DoPoolBackward(
       assert(workspace_allocator);
       auto allocated =
           workspace_allocator->AllocateBytes(workspace_size_in_bytes);
-      if (!allocated.ok() || (workspace = allocated.ValueOrDie()) == nullptr) {
+      if (!allocated.ok() || (workspace = allocated.value()) == nullptr) {
         return port::InternalError(
             "Failed to allocate backward pooling workspace");
       }
@@ -4246,7 +4235,7 @@ port::Status MIOpenSupport::DoPoolBackward(
       if (dest2_size > 0) {
         assert(workspace_allocator);
         auto allocated = workspace_allocator->AllocateBytes(dest2_size);
-        if (!allocated.ok() || (dest2 = allocated.ValueOrDie()) == nullptr) {
+        if (!allocated.ok() || (dest2 = allocated.value()) == nullptr) {
           return port::InternalError(
               "Failed to allocate backward pooling workspace");
         }
@@ -4358,7 +4347,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
     assert(workspace_allocator);
     auto allocated =
         workspace_allocator->AllocateBytes(workspace_size_in_bytes);
-    if (!allocated.ok() || (workspace = allocated.ValueOrDie()) == nullptr) {
+    if (!allocated.ok() || (workspace = allocated.value()) == nullptr) {
       LOG(ERROR) << "Failed to allocate backward pooling workspace";
       return false;
     }
@@ -4383,7 +4372,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
   if (dest2_size > 0) {
     assert(workspace_allocator);
     auto allocated = workspace_allocator->AllocateBytes(dest2_size);
-    if (!allocated.ok() || (dest2 = allocated.ValueOrDie()) == nullptr) {
+    if (!allocated.ok() || (dest2 = allocated.value()) == nullptr) {
       LOG(ERROR)
           << "Failed to allocate tensor to chain forward and backward LRN";
       return false;

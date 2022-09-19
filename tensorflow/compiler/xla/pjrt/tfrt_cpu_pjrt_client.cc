@@ -54,9 +54,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/denormal.h"
-#include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/tsl/platform/denormal.h"
+#include "tensorflow/tsl/platform/setround.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -178,8 +178,8 @@ TfrtCpuClient::TfrtCpuClient(
       owned_devices_(std::move(devices)),
       host_ctx_(std::move(host_ctx)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
-      eigen_intraop_pool_(new tensorflow::thread::ThreadPool(
-          tensorflow::Env::Default(), "XLAEigen", DefaultThreadPoolSize())),
+      eigen_intraop_pool_(new tsl::thread::ThreadPool(
+          tsl::Env::Default(), "XLAEigen", DefaultThreadPoolSize())),
       eigen_intraop_device_(
           new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
                                       eigen_intraop_pool_->NumThreads())),
@@ -1482,8 +1482,8 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
     // Set denormal and rounding behavior to match the default TF
     // ThreadPool behavior.
-    tensorflow::port::ScopedFlushDenormal flush;
-    tensorflow::port::ScopedSetRound round(FE_TONEAREST);
+    tsl::port::ScopedFlushDenormal flush;
+    tsl::port::ScopedSetRound round(FE_TONEAREST);
 
     XlaCustomCallStatus status;
 
@@ -1538,8 +1538,8 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
           // Set denormal and rounding behavior to match the default TF
           // ThreadPool behavior.
-          tensorflow::port::ScopedFlushDenormal flush;
-          tensorflow::port::ScopedSetRound round(FE_TONEAREST);
+          tsl::port::ScopedFlushDenormal flush;
+          tsl::port::ScopedSetRound round(FE_TONEAREST);
 
           XlaCustomCallStatus status;
 

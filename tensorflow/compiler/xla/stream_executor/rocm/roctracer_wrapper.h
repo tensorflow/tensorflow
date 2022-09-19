@@ -47,9 +47,9 @@ namespace wrap {
     static FuncPtrT loaded = []() -> FuncPtrT {                               \
       static const char* kName = #API_NAME;                                   \
       void* f;                                                                \
-      auto s = Env::Default()->GetSymbolFromLibrary(                          \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                     \
           stream_executor::internal::CachedDsoLoader::GetRoctracerDsoHandle() \
-              .ValueOrDie(),                                                  \
+              .value(),                                                  \
           kName, &f);                                                         \
       CHECK(s.ok()) << "could not find " << kName                             \
                     << " in roctracer DSO; dlerror: " << s.error_message();   \

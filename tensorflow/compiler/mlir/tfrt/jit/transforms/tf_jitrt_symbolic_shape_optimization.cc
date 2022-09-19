@@ -215,20 +215,20 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
     mhlo::DynamicBroadcastInDimOp op, mlir::PatternRewriter& rewriter) const {
   MLIRContext* ctx = getContext();
 
-  auto in_type = op.operand().getType().dyn_cast<RankedTensorType>();
+  auto in_type = op.getOperand().getType().dyn_cast<RankedTensorType>();
   auto out_type = op.getResult().getType().dyn_cast<RankedTensorType>();
   if (!in_type || !out_type) return failure();
 
   // Check that broadcast is right-aligned (numpy style), so that operand
   // dimensions broadcasted to match inner-most dimensions of the output.
-  auto bcast_dims = op.broadcast_dimensions().getValues<int64_t>();
+  auto bcast_dims = op.getBroadcastDimensions().getValues<int64_t>();
   auto expected_bcast_dims = llvm::seq<int64_t>(
       out_type.getRank() - in_type.getRank(), out_type.getRank());
   if (!llvm::equal(bcast_dims, expected_bcast_dims)) return failure();
 
   ShapeComponentAnalysis shape_component_analysis;
   auto input_map = isNonExpandingBroadcast(
-      shape_component_analysis, op.operand(), op.output_dimensions());
+      shape_component_analysis, op.getOperand(), op.getOutputDimensions());
   if (!input_map) return failure();
 
   // Resolve dynamic output dimensions for the `linalg.init_tensor` operation.
@@ -243,7 +243,7 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
 
     // Resolve the dynamic size of the output dimension.
     Value output_dyn_dim = rewriter.create<tensor::ExtractOp>(
-        loc, op.output_dimensions(),
+        loc, op.getOutputDimensions(),
         ValueRange{rewriter.create<ConstantIndexOp>(loc, d)});
 
     // Symbolic shape analysis might have given us an i32 or i64. Cast to index.
@@ -267,7 +267,7 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
 
   rewriter.replaceOpWithNewOp<linalg::GenericOp>(
       op, /*resultTensorTypes=*/TypeRange{init.getType()},
-      /*inputs=*/ValueRange{op.operand()},
+      /*inputs=*/ValueRange{op.getOperand()},
       /*outputs=*/ValueRange{init},
       /*indexingMaps=*/llvm::makeArrayRef({*input_map, output_map}),
       /*iteratorTypes=*/iterator_types,

@@ -10,6 +10,8 @@ package(
         "//tensorflow/core:__pkg__",
         # tensorflow/core/lib/monitoring:sampler uses histogram
         "//tensorflow/core/lib/monitoring:__pkg__",
+        # TODO(pedaveeraiah): to be removed when histogram.h deps moves to TSL
+        "//tensorflow/tsl/lib/monitoring:__subpackages__",
     ],
     licenses = ["notice"],
 )

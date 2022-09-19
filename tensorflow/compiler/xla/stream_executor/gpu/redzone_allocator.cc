@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 
@@ -40,7 +40,7 @@ namespace stream_executor {
 // then multiplying by the divisor. For example: RoundUpToNearest(13, 8) => 16
 template <typename T>
 static T RoundUpToNearest(T value, T divisor) {
-  return tensorflow::MathUtil::CeilOfRatio(value, divisor) * divisor;
+  return tsl::MathUtil::CeilOfRatio(value, divisor) * divisor;
 }
 
 // The size of the redzone at the end of the user buffer is rounded up to a
@@ -226,12 +226,12 @@ static port::Status RunRedzoneChecker(
   int64_t threads_per_block = std::min(
       executor->GetDeviceDescription().threads_per_block_limit(), num_elements);
   int64_t block_count =
-      tensorflow::MathUtil::CeilOfRatio(num_elements, threads_per_block);
+      tsl::MathUtil::CeilOfRatio(num_elements, threads_per_block);
 
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
       ThreadDim(threads_per_block), BlockDim(block_count), comparison_kernel,
       redzone, redzone_pattern, redzone.size(), out_param));
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 // Since we reuse the same buffer for multiple checks, we re-initialize redzone
@@ -245,7 +245,7 @@ static port::Status ReinitializeRedzone(Stream* stream,
   redzone_array.fill(redzone_pattern);
   stream->ThenMemcpy(&redzone, redzone_array.data(), redzone.size());
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 // Check redzones around the user allocation.

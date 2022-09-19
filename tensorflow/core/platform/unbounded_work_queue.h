@@ -31,4 +31,8 @@ limitations under the License.
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
 
+namespace tensorflow {
+using tsl::UnboundedWorkQueue;  // NOLINT(misc-unused-using-decls)
+}  // namespace tensorflow
+
 #endif  // TENSORFLOW_CORE_PLATFORM_UNBOUNDED_WORK_QUEUE_H_

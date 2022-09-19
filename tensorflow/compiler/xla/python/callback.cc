@@ -72,7 +72,7 @@ Status CpuCallback::PrepareAndCallInternal(void* result, void** arg_ptrs) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void CpuCallback::PrepareAndCall(void* result, void** arg_ptrs,

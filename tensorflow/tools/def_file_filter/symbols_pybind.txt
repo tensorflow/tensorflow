@@ -436,13 +436,9 @@ tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
 tensorflow::ResetJitCompilerFlags
 
-[//tensorflow/core/platform:tensor_float_32_utils] # tensor_float_32
-enable_tensor_float_32_execution
-tensor_float_32_execution_enabled
-
 [//tensorflow/tsl/platform:tensor_float_32_utils] # tensor_float_32
-enable_tensor_float_32_execution
-tensor_float_32_execution_enabled
+tsl::enable_tensor_float_32_execution
+tsl::tensor_float_32_execution_enabled
 
 [//tensorflow/core/util:determinism] # determinism
 tensorflow::OpDeterminismRequired

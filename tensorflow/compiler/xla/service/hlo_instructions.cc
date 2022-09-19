@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -467,23 +467,23 @@ namespace {
 // Currently implements a small subset of cases; feel free to add more as
 // needed.
 std::vector<std::string> AttributeProtoToStringVector(
-    const tensorflow::protobuf::Message& message) {
-  const tensorflow::protobuf::Reflection* reflection = message.GetReflection();
-  std::vector<const tensorflow::protobuf::FieldDescriptor*> fields;
+    const tsl::protobuf::Message& message) {
+  const tsl::protobuf::Reflection* reflection = message.GetReflection();
+  std::vector<const tsl::protobuf::FieldDescriptor*> fields;
   reflection->ListFields(message, &fields);
 
   std::vector<std::string> output;
-  for (const tensorflow::protobuf::FieldDescriptor* field : fields) {
+  for (const tsl::protobuf::FieldDescriptor* field : fields) {
     std::string s = absl::StrCat(field->name(), "=");
     CHECK(!field->is_repeated()) << "Repeated fields aren't implemented";
     switch (field->type()) {
-      case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
+      case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
         bool val = reflection->GetBool(message, field);
         absl::StrAppend(&s, val ? "true" : "false");
         break;
       }
-      case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
-        const tensorflow::protobuf::EnumValueDescriptor* evd =
+      case tsl::protobuf::FieldDescriptor::TYPE_ENUM: {
+        const tsl::protobuf::EnumValueDescriptor* evd =
             reflection->GetEnum(message, field);
         absl::StrAppend(&s, evd->name());
         break;

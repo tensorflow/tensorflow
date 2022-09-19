@@ -41,15 +41,32 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT after-all = token[] after-all()
 }
 
+// Test all-gather
+
 // CHECK-LABEL:  func private @test_all_gather
 // CHECK-SAME:  ([[INPUT:%.*]]: tensor<128x32xf32>)
 %test_all_gather {
   input = f32[128,32] parameter(0)
   // CHECK-NEXT:  "mhlo.all_gather"([[INPUT]])
   // CHECK-SAME: all_gather_dim = 1 : i64
+  // CHECK-NOT: use_global_device_ids
+  // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  // CHECK-NOT: use_global_device_ids
+  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  // CHECK-NOT: use_global_device_ids
+  ROOT ag = f32[128,128] all-gather(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}
+}
+
+// CHECK-LABEL:  func private @test_all_gather_global
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<128x32xf32>)
+%test_all_gather_global {
+  input = f32[128,32] parameter(0)
+  // CHECK-NEXT:  "mhlo.all_gather"([[INPUT]])
+  // CHECK-SAME: all_gather_dim = 1 : i64
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
-  ROOT ag = f32[128,128] all-gather(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}
+  // CHECK-SAME: use_global_device_ids
+  ROOT ag = f32[128,128] all-gather(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}, use_global_device_ids=true
 }
 
 // Test all-to-all
@@ -996,10 +1013,30 @@ add {
   // CHECK-NEXT:     mhlo.return [[ADD]]
   // CHECK-NEXT:   }) {
   // CHECK-SAME:           channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  // CHECK-NOT: use_global_device_ids
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  // CHECK-NOT: use_global_device_ids
   // CHECK-SAME:           scatter_dimension = 1 : i64
+  // CHECK-NOT: use_global_device_ids
   // CHECK-SAME: } : (tensor<4x8xf32>) -> tensor<4x4xf32>
   ROOT ars = f32[4,4] reduce-scatter(input), channel_id=1, replica_groups={{0,1}}, dimensions={1}, to_apply=reduce_helper_add
+}
+
+// CHECK-LABEL:  func private @test_reduce_scatter_global
+// CHECK-SAME: ([[ARG0:%.*]]: tensor<4x8xf32>)
+%test_reduce_scatter_global {
+  input = f32[4,8] parameter(0)
+  // CHECK-NEXT: "mhlo.reduce_scatter"([[ARG0]]) ({
+  // CHECK-NEXT:   ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>):
+  // CHECK-NEXT:     [[ADD:%.*]] = mhlo.add [[BARG0]], [[BARG1]] : tensor<f32>
+  // CHECK-NEXT:     mhlo.return [[ADD]]
+  // CHECK-NEXT:   }) {
+  // CHECK-SAME:           channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  // CHECK-SAME:           scatter_dimension = 1 : i64
+  // CHECK-SAME:           use_global_device_ids
+  // CHECK-SAME: } : (tensor<4x8xf32>) -> tensor<4x4xf32>
+  ROOT ars = f32[4,4] reduce-scatter(input), channel_id=1, replica_groups={{0,1}}, dimensions={1}, use_global_device_ids=true, to_apply=reduce_helper_add
 }
 
 

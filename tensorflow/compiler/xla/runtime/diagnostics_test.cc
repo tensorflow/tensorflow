@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace runtime {

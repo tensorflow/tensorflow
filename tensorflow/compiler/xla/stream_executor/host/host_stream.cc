@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
 
 #include "absl/synchronization/notification.h"
-#include "tensorflow/core/platform/denormal.h"
-#include "tensorflow/core/platform/setround.h"
+#include "tensorflow/tsl/platform/denormal.h"
+#include "tensorflow/tsl/platform/setround.h"
 
 namespace stream_executor {
 namespace host {
@@ -51,7 +51,7 @@ HostStream::~HostStream() {
 bool HostStream::EnqueueTask(std::function<void()> task) {
   return EnqueueTaskWithStatus([task = std::move(task)]() {
     task();
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   });
 }
 
@@ -68,8 +68,8 @@ void HostStream::WorkLoop() {
   // Set denormal and rounding behavior to match the default TF ThreadPool
   // behavior.
   // TODO(phawkins, jlebar): it's not clear this is the best place to set this.
-  tensorflow::port::ScopedFlushDenormal flush;
-  tensorflow::port::ScopedSetRound round(FE_TONEAREST);
+  tsl::port::ScopedFlushDenormal flush;
+  tsl::port::ScopedSetRound round(FE_TONEAREST);
   while (true) {
     std::queue<std::function<port::Status()>> queue;
     {
@@ -96,7 +96,7 @@ port::Status HostStream::BlockUntilDone() {
     // with the result of the task (always OK() in this case), so we don't need
     // to worry about locking access to 'status_'.
     status = status_;
-    status_ = ::tensorflow::OkStatus();
+    status_ = ::tsl::OkStatus();
     done.Notify();
   });
   done.WaitForNotification();

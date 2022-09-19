@@ -214,7 +214,7 @@ port::Status GpuExecutor::LoadModuleFromCuBin(const char* cubin,
             << " is already loaded as module " << *module;
   }
   gpu_binary_to_module_[cubin] = {*module, module_refcount};
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status GpuExecutor::LoadModuleFromPtx(const char* ptx, CUmodule* module) {
@@ -232,7 +232,7 @@ port::Status GpuExecutor::LoadModuleFromPtx(const char* ptx, CUmodule* module) {
             << " is already loaded as module " << module;
   }
   gpu_binary_to_module_[ptx] = {*module, module_refcount};
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
@@ -290,7 +290,7 @@ port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   TF_RETURN_IF_ERROR(GetKernelMetadata(cuda_kernel, &kernel_metadata));
   kernel->set_metadata(kernel_metadata);
   kernel->set_name(*kernelname);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
@@ -338,7 +338,7 @@ port::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
         &cu_module));
     *module_handle = ModuleHandle(const_cast<void*>(
         static_cast<const void*>(spec.cuda_cubin_in_memory().data())));
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   } else if (spec.has_cuda_ptx_in_memory()) {
     if (cc_major_ == 0 && cc_minor_ == 0) {
       return port::InternalError("Compute capability not set");
@@ -353,7 +353,7 @@ port::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
         LoadModuleFromPtx(spec.cuda_ptx_in_memory(), &cu_module));
     *module_handle = ModuleHandle(
         const_cast<void*>(static_cast<const void*>(spec.cuda_ptx_in_memory())));
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
   return port::InternalError("No method of loading CUDA module provided");
 }
@@ -436,7 +436,7 @@ port::Status GpuExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
       GpuDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
                                   *cuda_kernel->gpu_function_ptr(), &value));
   kernel_metadata->set_shared_memory_bytes(value);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
@@ -727,7 +727,7 @@ port::Status GpuExecutor::RecordEvent(Stream* stream, Event* event) {
 port::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
   if (GpuDriver::WaitStreamOnEvent(context_, AsGpuStream(stream)->gpu_stream(),
                                    AsGpuEvent(event)->gpu_event())) {
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   } else {
     return port::Status(
         port::error::INTERNAL,

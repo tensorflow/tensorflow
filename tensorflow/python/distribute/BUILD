@@ -2347,10 +2347,7 @@ tpu_py_test(
     disable_mlir_bridge = False,
     disable_v3_4chips = False,
     python_version = "PY3",
-    tags = [
-        "no_oss",
-        "notsan",  # b/239832964
-    ],
+    tags = ["no_oss"],
     deps = [
         ":distribute_lib",
         ":strategy_test_lib",

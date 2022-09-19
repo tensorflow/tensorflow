@@ -124,7 +124,7 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   host->Await({executable->CopyRef()});
 
   CHECK(!executable->IsError())
-      << "Failed to get executable: " << tfrt::StrCat(executable->GetError());
+      << "Failed to get executable: " << executable->GetError().message();
   CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
   // Placeholders for returned values.

@@ -204,6 +204,13 @@ LocalService::CompileAotResults(
       std::unique_ptr<HloModuleConfig> module_config,
       GetHloModuleConfig(computation, argument_layouts, build_options));
 
+  // TODO(b/244260928): Remove this check if we can avoid compiling twice for
+  // both AOT and JIT pipelines.
+  if (!module_config->debug_options().xla_gpu_enable_xla_runtime_executable()) {
+    return InternalError(
+        "AOT compilation is supported only if JitRt is enabled");
+  }
+
   TF_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,
       execute_backend_->stream_executor(build_options.device_ordinal()));

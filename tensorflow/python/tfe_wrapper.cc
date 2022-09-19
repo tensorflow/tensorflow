@@ -461,7 +461,7 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
             .c_str());
   }
 
-  xla::StatusOr<std::string> hlo_str =
+  StatusOr<std::string> hlo_str =
       GetCompilerIr(selected_stage, context->pflr(), concrete_function_name,
                     *selected_device, context, input_handles);
 

@@ -177,5 +177,10 @@ def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
   let constructor = "hlo::createAllocToArgPass()";
 }
 
+def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
+  let summary = "Converts ops on tensors with 1 element to scalar ops.";
+  let dependentDialects = ["tensor::TensorDialect", "arith::ArithmeticDialect"];
+  let constructor = "createScalarizationPass()";
+}
 
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

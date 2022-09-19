@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+#include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/cc/ops/const_op.h"
-#include "tensorflow/cc/ops/image_ops.h"
-#include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -476,10 +476,13 @@ TEST_F(ConvOpTest, AnisotropicStride) { AnisotropicStrides(); }
 template <typename T>
 class FusedConv2DOpTest : public OpsTestBase {
  protected:
-  static constexpr int kDepth = 3;
+  static constexpr int kDepth = 4;
   static constexpr int kImageWidth = 32;
   static constexpr int kImageHeight = 32;
   static constexpr int kImageBatchCount = 8;
+
+  static constexpr bool kIsInt8 =
+      std::is_same<T, int8>::value || std::is_same<T, qint8>::value;
 
   using BiasAddGraphRunner =
       std::function<void(const Tensor& input_data, const Tensor& filter_data,
@@ -490,11 +493,29 @@ class FusedConv2DOpTest : public OpsTestBase {
       const Tensor& scale_data, const Tensor& offset_data,
       const Tensor& mean_data, const Tensor& variance_data, Tensor* out)>;
 
+  // Checks if it is a GPU test not a CPU test
+  static bool HasGpuDevice() {
+    tensorflow::SessionOptions session_options;
+    std::unique_ptr<tensorflow::Session> session(
+        tensorflow::NewSession(session_options));
+
+    std::vector<DeviceAttributes> available_devices;
+    [&]() { TF_ASSERT_OK(session->ListDevices(&available_devices)); }();
+
+    // Check if session has an available GPU device.
+    const bool has_gpu_device =
+        absl::c_any_of(available_devices, [](const DeviceAttributes& device) {
+          return device.device_type() == DEVICE_GPU;
+        });
+
+    return has_gpu_device;
+  }
+
   // Runs a Tensorflow graph defined by the root scope, and fetches the result
   // of 'fetch' node into the output Tensor. Optional `fetch_node` parameter
   // allows to define a fetch node directly using a NodeDef for the ops that are
   // not supported by the C++ Api.
-  void RunAndFetch(const tensorflow::Scope& root, const string& fetch,
+  void RunAndFetch(const tensorflow::Scope& root, const std::string& fetch,
                    Tensor* output, bool allow_gpu_device,
                    const NodeDef* fetch_node = nullptr) {
     tensorflow::GraphDef graph;
@@ -524,22 +545,16 @@ class FusedConv2DOpTest : public OpsTestBase {
     std::unique_ptr<tensorflow::Session> session(
         tensorflow::NewSession(session_options));
 
-    std::vector<DeviceAttributes> available_devices;
-    TF_ASSERT_OK(session->ListDevices(&available_devices))
-        << "Failed to get available session devices";
-
-    // Check if session has an available GPU device.
-    const bool has_gpu_device =
-        absl::c_any_of(available_devices, [](const DeviceAttributes& device) {
-          return device.device_type() == DEVICE_GPU;
-        });
+    // Check if there is an available GPU device.
+    const bool has_gpu_device = HasGpuDevice();
 
     // Some of the `FusedConv2D` fusion types are implemented only for CPU, and
     // in this test we don't want to compare GPU vs CPU numbers, so place all
     // nodes on CPU in this case.
     const bool place_all_on_gpu = allow_gpu_device && has_gpu_device;
 
-    const string device = place_all_on_gpu ? "/device:GPU:0" : "/device:CPU:0";
+    const std::string device =
+        place_all_on_gpu ? "/device:GPU:0" : "/device:CPU:0";
     for (NodeDef& mutable_node : *graph.mutable_node()) {
       mutable_node.set_device(device);
     }
@@ -557,28 +572,39 @@ class FusedConv2DOpTest : public OpsTestBase {
                          const std::vector<int>& explicit_paddings,
                          Tensor* output, bool allow_gpu_device = false,
                          int stride = 1) {
-    Scope root = tensorflow::Scope::NewRootScope();
-
-    ops::Conv2D conv = ops::Conv2D(
-        root.WithOpName("conv"),
-        ops::Const(root.WithOpName("input"), Input::Initializer(input_data)),
-        ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
-        {1, stride, stride, 1}, padding,
-        ops::Conv2D::Attrs().ExplicitPaddings(explicit_paddings));
-
-    ops::BiasAdd with_bias = ops::BiasAdd(
-        root.WithOpName("with_bias"), conv,
-        ops::Const(root.WithOpName("bias"), Input::Initializer(bias_data)));
-
-    RunAndFetch(root, "with_bias", output, allow_gpu_device);
+    RunConv2DWithBiasAndActivation(input_data, filter_data, bias_data,
+                                   std::nullopt, padding, explicit_paddings,
+                                   output, allow_gpu_device, stride);
   }
 
+  template <typename From, typename To>
+  static Tensor Cast(
+      const Tensor& from, const std::function<To(From)>& cast = [](From v) {
+        return static_cast<To>(v);
+      }) {
+    Tensor to(DataTypeToEnum<To>::v(), from.shape());
+    for (int i = 0; i < from.NumElements(); ++i) {
+      to.flat<To>()(i) = cast(from.flat<From>()(i));
+    }
+    return to;
+  }
+
+  // Run unfused convolution with bias and optional activation. For every data
+  // type the input tensor is in NHWC format and the input filter is in HWIO
+  // format. This function converts int8 input data to float and converts float
+  // result back to int8 in the case of int8 data type.
   void RunConv2DWithBiasAndActivation(
-      const Tensor& input_data, const Tensor& filter_data,
-      const Tensor& bias_data, const string& activation_type,
-      const std::string& padding, const std::vector<int>& explicit_paddings,
-      Tensor* output, bool allow_gpu_device = false, int stride = 1) {
+      Tensor input_data, Tensor filter_data, Tensor bias_data,
+      std::optional<std::string> activation_type, const std::string& padding,
+      const std::vector<int>& explicit_paddings, Tensor* output,
+      bool allow_gpu_device = false, int stride = 1) {
     Scope root = tensorflow::Scope::NewRootScope();
+
+    if (kIsInt8) {
+      input_data = Cast<T, float>(input_data);
+      filter_data = Cast<T, float>(filter_data);
+      bias_data = Cast<T, float>(bias_data);
+    }
 
     ops::Conv2D conv = ops::Conv2D(
         root.WithOpName("conv"),
@@ -591,19 +617,28 @@ class FusedConv2DOpTest : public OpsTestBase {
         root.WithOpName("with_bias"), conv,
         ops::Const(root.WithOpName("bias"), Input::Initializer(bias_data)));
 
-    if (activation_type == "Relu") {
-      ops::Relu(root.WithOpName("with_activation"), with_bias);
-    } else if (activation_type == "Relu6") {
-      ops::Relu6(root.WithOpName("with_activation"), with_bias);
-    } else if (activation_type == "Elu") {
-      ops::Elu(root.WithOpName("with_activation"), with_bias);
-    } else if (activation_type == "LeakyRelu") {
-      ops::internal::LeakyRelu(root.WithOpName("with_activation"), with_bias);
-    } else {
-      ops::Identity(root.WithOpName("with_activation"), with_bias);
+    if (activation_type.has_value()) {
+      if (*activation_type == "Relu") {
+        ops::Relu(root.WithOpName("with_activation"), with_bias);
+      } else if (*activation_type == "Relu6") {
+        ops::Relu6(root.WithOpName("with_activation"), with_bias);
+      } else if (*activation_type == "Elu") {
+        ops::Elu(root.WithOpName("with_activation"), with_bias);
+      } else if (*activation_type == "LeakyRelu") {
+        ops::internal::LeakyRelu(root.WithOpName("with_activation"), with_bias);
+      } else {
+        ops::Identity(root.WithOpName("with_activation"), with_bias);
+      }
     }
 
-    RunAndFetch(root, "with_activation", output, allow_gpu_device);
+    RunAndFetch(root,
+                activation_type.has_value() ? "with_activation" : "with_bias",
+                output, allow_gpu_device);
+
+    if (kIsInt8) {
+      *output = Cast<float, T>(
+          *output, [](float v) { return static_cast<T>(std::lround(v)); });
+    }
   }
 
   void RunConv2DWithBatchNorm(
@@ -681,7 +716,7 @@ class FusedConv2DOpTest : public OpsTestBase {
 
   void RunFusedConv2DOp(const Tensor& input_data, const Tensor& filter_data,
                         const std::vector<Tensor>& args_data,
-                        const std::vector<string>& fused_ops,
+                        const std::vector<std::string>& fused_ops,
                         const std::string& padding,
                         const std::vector<int>& explicit_paddings,
                         Tensor* output, bool allow_gpu_device = false,
@@ -689,18 +724,127 @@ class FusedConv2DOpTest : public OpsTestBase {
     Scope root = tensorflow::Scope::NewRootScope();
 
     DataType dtype = DataTypeToEnum<T>::v();
+
+    const Tensor* input_data_ptr = &input_data;
+    const Tensor* filter_data_ptr = &filter_data;
+    const std::vector<Tensor>* args_data_ptr = &args_data;
+
+    Tensor input_data_nchwv;
+    Tensor filter_data_oihwv;
+    std::vector<Tensor> args_data_for_int8;
+
+    // Check if there is an available GPU device.
+    const bool has_gpu_device = HasGpuDevice();
+    const bool packed = kIsInt8 && allow_gpu_device && has_gpu_device;
+    const bool has_extra_parameters = kIsInt8;
+    const bool has_float_bias = kIsInt8;
+
+    DataType dtype_args =
+        has_float_bias ? DataTypeToEnum<float>::v() : DataTypeToEnum<T>::v();
+
+    if (packed) {
+      {
+        // Convert the input from NHWC to NCHW_VECT_C
+        int n = GetTensorDim(input_data, FORMAT_NHWC, 'N');
+        int h = GetTensorDim(input_data, FORMAT_NHWC, 'H');
+        int w = GetTensorDim(input_data, FORMAT_NHWC, 'W');
+        int c = GetTensorDim(input_data, FORMAT_NHWC, 'C');
+
+        input_data_nchwv =
+            Tensor(dtype, ShapeFromFormat(FORMAT_NCHW_VECT_C, n, h, w, c));
+        input_data_nchwv.tensor<T, 5>() =
+            input_data.shaped<T, 5>({n, h, w, c / 4, 4})
+                .shuffle(Eigen::array<int, 5>{0, 3, 1, 2, 4});
+
+        input_data_ptr = &input_data_nchwv;
+      }
+
+      {
+        // Convert the filter from HWIO to OIHW_VECT_I
+        int h = GetFilterDim(filter_data, FORMAT_HWIO, 'H');
+        int w = GetFilterDim(filter_data, FORMAT_HWIO, 'W');
+        int i = GetFilterDim(filter_data, FORMAT_HWIO, 'I');
+        int o = GetFilterDim(filter_data, FORMAT_HWIO, 'O');
+
+        filter_data_oihwv = Tensor(
+            dtype, ShapeFromFilterTensorFormat(FORMAT_OIHW_VECT_I, h, w, i, o));
+
+        filter_data_oihwv.tensor<T, 5>() =
+            filter_data.shaped<T, 4>({h, w, i, o})
+                .shuffle(Eigen::array<int, 4>{3, 0, 1, 2})
+                .reshape(Eigen::array<int, 5>{o, h, w, i / 4, 4})
+                .shuffle(Eigen::array<int, 5>{0, 3, 1, 2, 4});
+
+        filter_data_ptr = &filter_data_oihwv;
+      }
+    }
+
+    if (has_float_bias) {
+      // Convert the bias to float
+      for (const Tensor& from : args_data) {
+        TensorShape shape = from.shape();
+        Tensor to = Tensor(dtype_args, shape);
+        for (int index = 0; index < from.NumElements(); index++) {
+          int8 v = *(reinterpret_cast<int8*>(from.data()) + index);
+          *(reinterpret_cast<float*>(to.data()) + index) =
+              static_cast<float>(v);
+        }
+        args_data_for_int8.push_back(to);
+      }
+
+      args_data_ptr = &args_data_for_int8;
+    }
+
     int num_args = static_cast<int>(args_data.size());
 
-    Output input =
-        ops::Const(root.WithOpName("input"), Input::Initializer(input_data));
-    Output filter =
-        ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data));
+    Output input = ops::Const(root.WithOpName("input"),
+                              Input::Initializer(*input_data_ptr));
+    Output filter = ops::Const(root.WithOpName("filter"),
+                               Input::Initializer(*filter_data_ptr));
 
     std::vector<NodeDefBuilder::NodeOut> args;
+    std::vector<DataType> args_dtypes;
     for (int i = 0; i < num_args; ++i) {
       Output arg = ops::Const(root.WithOpName(absl::StrCat("arg", i)),
-                              Input::Initializer(args_data[i]));
-      args.emplace_back(arg.name(), 0, dtype);
+                              Input::Initializer((*args_data_ptr)[i]));
+      args.emplace_back(arg.name(), 0, dtype_args);
+      args_dtypes.emplace_back(dtype_args);
+    }
+
+    Tensor side_input(dtype);
+    if (has_extra_parameters) {
+      // Create side_input
+      int n = GetTensorDim(input_data, FORMAT_NHWC, 'N');
+      int h = GetTensorDim(input_data, FORMAT_NHWC, 'H');
+      int w = GetTensorDim(input_data, FORMAT_NHWC, 'W');
+      int c = GetFilterDim(filter_data, FORMAT_HWIO, 'O');
+      side_input =
+          Tensor(dtype, ShapeFromFormat(FORMAT_NCHW_VECT_C, n, h, w, c));
+      side_input.flat<T>() = side_input.flat<T>().setConstant(0);
+    }
+
+    Tensor conv_input_scale(DT_FLOAT, {1});
+    Tensor side_input_scale(DT_FLOAT, {1});
+    std::vector<NodeDefBuilder::NodeOut> host_args;
+    int num_host_args = 0;
+    if (has_extra_parameters) {
+      ++num_args;
+      Output arg2 = ops::Const(root.WithOpName("side_input"),
+                               Input::Initializer(side_input));
+      args.emplace_back(arg2.name(), 0, dtype);
+      args_dtypes.emplace_back(dtype);
+
+      ++num_host_args;
+      conv_input_scale.scalar<float>()() = 1;
+      Output arg3 = ops::Const(root.WithOpName("conv_input_scale"),
+                               Input::Initializer(conv_input_scale));
+      host_args.emplace_back(arg3.name(), 0, DT_FLOAT);
+
+      ++num_host_args;
+      side_input_scale.scalar<float>()() = 1;
+      Output arg4 = ops::Const(root.WithOpName("side_input_scale"),
+                               Input::Initializer(side_input_scale));
+      host_args.emplace_back(arg4.name(), 0, DT_FLOAT);
     }
 
     NodeDef fused_conv2d;
@@ -708,16 +852,49 @@ class FusedConv2DOpTest : public OpsTestBase {
                      .Input({input.name(), 0, dtype})
                      .Input({filter.name(), 0, dtype})
                      .Input(args)
+                     .Input(host_args)
                      .Attr("num_args", num_args)
+                     .Attr("num_host_args", num_host_args)
                      .Attr("T", dtype)
+                     .Attr("TArgs", args_dtypes)
+                     .Attr("data_format", packed ? "NCHW_VECT_C" : "NHWC")
                      .Attr("strides", {1, stride, stride, 1})
                      .Attr("padding", padding)
                      .Attr("explicit_paddings", explicit_paddings)
                      .Attr("fused_ops", fused_ops)
                      .Finalize(&fused_conv2d));
 
-    RunAndFetch(root, fused_conv2d.name(), output, allow_gpu_device,
+    Tensor raw_output;
+    RunAndFetch(root, fused_conv2d.name(), &raw_output, allow_gpu_device,
                 &fused_conv2d);
+
+    if (packed) {
+      // Convert the output from NCHW_VECT_C to NHWC
+      TensorShape raw_output_shape = raw_output.shape();
+      int n = raw_output_shape.dim_size(0);
+      int c = raw_output_shape.dim_size(1);
+      int h = raw_output_shape.dim_size(2);
+      int w = raw_output_shape.dim_size(3);
+      int v = raw_output_shape.dim_size(4);
+
+      *output = Tensor(dtype, ShapeFromFormat(FORMAT_NHWC, n, h, w, c * v));
+      output->tensor<T, 4>() =
+          raw_output.tensor<T, 5>()
+              .shuffle(Eigen::array<int, 5>{0, 2, 3, 1, 4})
+              .reshape(Eigen::array<int, 4>{n, h, w, c * v});
+    } else {
+      *output = raw_output;
+    }
+  }
+
+  void ExpectMatch(const Tensor& x, const Tensor& y, double atol) {
+    constexpr bool exact_match =
+        std::is_same<T, int8>::value || std::is_same<T, qint8>::value;
+    if (exact_match) {
+      test::ExpectEqual(x, y);
+    } else {
+      test::ExpectClose(x, y, atol);
+    }
   }
 
   void VerifyBiasAddTensorsNear(int depth, int image_width, int image_height,
@@ -727,18 +904,46 @@ class FusedConv2DOpTest : public OpsTestBase {
                                 const BiasAddGraphRunner& run_fused) {
     DataType dtype = DataTypeToEnum<T>::v();
 
-    Tensor image(dtype, {image_batch_count, image_height, image_width, depth});
-    image.flat<T>() = image.flat<T>().setRandom();
+    constexpr int int8_scale = 80;
+
+    using ConvT = typename std::conditional<kIsInt8, int8, T>::type;
+    DataType dtype_conv = DataTypeToEnum<ConvT>::v();
+
+    TensorShape image_shape{image_batch_count, image_height, image_width,
+                            depth};
+    Tensor image_tmp(dtype_conv, image_shape);
+    image_tmp.flat<ConvT>() = image_tmp.flat<ConvT>().setRandom();
+    if (kIsInt8) {
+      image_tmp.flat<ConvT>() /= image_tmp.flat<ConvT>().constant(int8_scale);
+    }
+    Tensor image(dtype, image_shape);
+    ASSERT_TRUE(image.BitcastFrom(image_tmp, dtype, image_shape).ok());
 
     // Add some negative values to filter to properly test Relu.
-    Tensor filter(dtype, {filter_size, filter_size, depth, filter_count});
-    filter.flat<T>() = filter.flat<T>().setRandom();
-    filter.flat<T>() -= filter.flat<T>().constant(static_cast<T>(0.5f));
+    TensorShape filter_shape{filter_size, filter_size, depth, filter_count};
+    Tensor filter_tmp(dtype_conv, filter_shape);
+    filter_tmp.flat<ConvT>() = filter_tmp.flat<ConvT>().setRandom();
+    if (kIsInt8) {
+      filter_tmp.flat<ConvT>() /= filter_tmp.flat<ConvT>().constant(int8_scale);
+    } else {
+      filter_tmp.flat<ConvT>() -=
+          filter_tmp.flat<ConvT>().constant(static_cast<ConvT>(0.5f));
+    }
+    Tensor filter(dtype, filter_shape);
+    ASSERT_TRUE(filter.BitcastFrom(filter_tmp, dtype, filter_shape).ok());
 
     const int bias_size = filter_count;
-    Tensor bias(dtype, {bias_size});
-    bias.flat<T>() = bias.flat<T>().setRandom();
-    bias.flat<T>() += bias.flat<T>().constant(static_cast<T>(0.5f));
+    TensorShape bias_shape{bias_size};
+    Tensor bias_tmp(dtype_conv, bias_shape);
+    bias_tmp.flat<ConvT>() = bias_tmp.flat<ConvT>().setRandom();
+    if (kIsInt8) {
+      bias_tmp.flat<ConvT>() /= bias_tmp.flat<ConvT>().constant(int8_scale);
+    } else {
+      bias_tmp.flat<ConvT>() +=
+          bias_tmp.flat<ConvT>().constant(static_cast<ConvT>(0.5f));
+    }
+    Tensor bias(dtype, bias_shape);
+    ASSERT_TRUE(bias.BitcastFrom(bias_tmp, dtype, bias_shape).ok());
 
     Tensor conv_2d;
     Tensor fused_conv_2d;
@@ -754,9 +959,9 @@ class FusedConv2DOpTest : public OpsTestBase {
     // a full sum reduction, which causes larger numerical error
     // than usual cases.
     if (image_width == filter_size && image_height == filter_size) {
-      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
+      ExpectMatch(conv_2d, fused_conv_2d, /*atol=*/1e-4);
     } else {
-      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-5);
+      ExpectMatch(conv_2d, fused_conv_2d, /*atol=*/1e-5);
     }
   }
 
@@ -817,21 +1022,25 @@ class FusedConv2DOpTest : public OpsTestBase {
                             int depth = kDepth, int image_width = kImageWidth,
                             int image_height = kImageHeight,
                             int image_batch_count = kImageBatchCount) {
+    if (kIsInt8 && !explicit_paddings.empty()) {
+      // This combination is not supported
+      return;
+    }
+
     std::string padding = explicit_paddings.empty() ? "SAME" : "EXPLICIT";
     const BiasAddGraphRunner run_default =
-        [this, &explicit_paddings, padding](
-            const Tensor& input_data, const Tensor& filter_data,
+        [&](const Tensor& input_data, const Tensor& filter_data,
             const Tensor& bias_data, Tensor* out) {
           RunConv2DWithBias(input_data, filter_data, bias_data, padding,
                             explicit_paddings, out);
         };
 
     const BiasAddGraphRunner run_fused =
-        [this, explicit_paddings, padding](
-            const Tensor& input_data, const Tensor& filter_data,
+        [&](const Tensor& input_data, const Tensor& filter_data,
             const Tensor& bias_data, Tensor* out) {
           RunFusedConv2DOp(input_data, filter_data, {bias_data}, {"BiasAdd"},
-                           padding, explicit_paddings, out);
+                           padding, explicit_paddings, out,
+                           /*allow_gpu_device=*/kIsInt8);
         };
 
     VerifyBiasAddTensorsNear(depth, image_width, image_height,
@@ -842,10 +1051,15 @@ class FusedConv2DOpTest : public OpsTestBase {
   // Verifies that computing Conv2D+BiasAdd+{Activation} in a graph is identical
   // to FusedConv2D.
   void VerifyConv2DWithBiasAndActivation(
-      const string& activation, int filter_size, int filter_count,
+      const std::string& activation, int filter_size, int filter_count,
       const std::vector<int>& explicit_paddings = {}, int depth = kDepth,
       int image_width = kImageWidth, int image_height = kImageHeight,
       int image_batch_count = kImageBatchCount) {
+    if (kIsInt8 && (activation != "Relu" || !explicit_paddings.empty())) {
+      // These combinations are not supported
+      return;
+    }
+
     std::string padding = explicit_paddings.empty() ? "SAME" : "EXPLICIT";
     const BiasAddGraphRunner run_default =
         [this, &activation, &explicit_paddings, &padding](
@@ -987,12 +1201,14 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, ExplicitPaddingConvolution) {
 }
 #endif
 
+static auto activations = {"Relu", "Relu6", "Elu", "LeakyRelu"};
+
 TYPED_TEST_P(FusedConv2DWithBiasOpTest, OneByOneConvolutionAndActivation) {
   // Requires full precision Conv2D op
   tensorflow::enable_tensor_float_32_execution(false);
   const int filter_size = 1;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+  for (const std::string& activation : activations) {
     this->VerifyConv2DWithBiasAndActivation(activation, filter_size,
                                             filter_count);
   }
@@ -1001,7 +1217,7 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, OneByOneConvolutionAndActivation) {
 TYPED_TEST_P(FusedConv2DWithBiasOpTest, ImageSizeConvolutionAndActivation) {
   const int filter_size = TestFixture::kImageWidth;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+  for (const std::string& activation : activations) {
     this->VerifyConv2DWithBiasAndActivation(activation, filter_size,
                                             filter_count);
   }
@@ -1010,7 +1226,7 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, ImageSizeConvolutionAndActivation) {
 TYPED_TEST_P(FusedConv2DWithBiasOpTest, SpatialConvolutionAndActivation) {
   const int filter_size = 3;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+  for (const std::string& activation : activations) {
     this->VerifyConv2DWithBiasAndActivation(activation, filter_size,
                                             filter_count);
   }
@@ -1021,7 +1237,7 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest,
              ExplicitPaddingConvolutionAndActivation) {
   const int filter_size = 3;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+  for (const std::string& activation : activations) {
     this->VerifyConv2DWithBiasAndActivation(
         activation, filter_size, filter_count,
         /*explicit_paddings=*/{0, 0, 1, 2, 3, 4, 0, 0});
@@ -1064,7 +1280,7 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, ExplicitPaddingConvolution) {
 TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, OneByOneConvolutionAndActivation) {
   const int filter_size = 1;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+  for (const std::string& activation : activations) {
     this->VerifyConv2DWithBatchNormAndActivation(activation, filter_size,
                                                  filter_count);
   }
@@ -1074,7 +1290,7 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest,
              ImageSizeConvolutionAndActivation) {
   const int filter_size = TestFixture::kImageWidth;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+  for (const std::string& activation : activations) {
     this->VerifyConv2DWithBatchNormAndActivation(activation, filter_size,
                                                  filter_count);
   }
@@ -1083,7 +1299,7 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest,
 TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, SpatialConvolutionAndActivation) {
   const int filter_size = 3;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+  for (const std::string& activation : activations) {
     this->VerifyConv2DWithBatchNormAndActivation(activation, filter_size,
                                                  filter_count);
   }
@@ -1094,7 +1310,7 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest,
              ExplicitPaddingConvolutionAndActivation) {
   const int filter_size = 3;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+  for (const std::string& activation : activations) {
     this->VerifyConv2DWithBatchNormAndActivation(
         activation, filter_size, filter_count,
         /*explicit_paddings=*/{0, 0, 1, 2, 3, 4, 0, 0});
@@ -1140,7 +1356,7 @@ REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest,     //
                             SpatialConvolutionAndActivation);
 #endif
 
-using FusedBiasAddDataTypes = ::testing::Types<float, double>;
+using FusedBiasAddDataTypes = ::testing::Types<float, double, int8, qint8>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBiasOpTest,
                                FusedBiasAddDataTypes);
 

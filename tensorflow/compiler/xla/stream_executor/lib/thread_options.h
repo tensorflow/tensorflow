@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_THREAD_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_THREAD_OPTIONS_H_
 
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace stream_executor {
 namespace port {
 
-using tensorflow::ThreadOptions;
+using tsl::ThreadOptions;  // NOLINT(misc-unused-using-decls)
 
 }  // namespace port
 }  // namespace stream_executor

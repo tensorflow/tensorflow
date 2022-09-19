@@ -31,6 +31,9 @@ string JobName();
 // Returns the Borg job UID as an int64_t if it exists. Otherwise return -1.
 int64_t JobUid();
 
+// Returns the Borg task ID as an int64_t if it exists. Otherwise return -1.
+int64_t TaskId();
+
 }  // namespace port
 }  // namespace tsl
 

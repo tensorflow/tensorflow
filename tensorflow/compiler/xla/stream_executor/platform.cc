@@ -95,7 +95,7 @@ port::Status Platform::Initialize(
     return port::Status(port::error::UNIMPLEMENTED,
                         "this platform does not support custom initialization");
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::Status Platform::ForceExecutorShutdown() {
@@ -134,7 +134,7 @@ port::Status Platform::EnablePeerAccess() {
                 << devices.first << " to device ordinal " << devices.second;
     }
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 }  // namespace stream_executor

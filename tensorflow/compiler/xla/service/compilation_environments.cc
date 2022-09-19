@@ -28,8 +28,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -136,7 +136,7 @@ CompilationEnvironments& CompilationEnvironments::operator=(
 }
 
 void CompilationEnvironments::AddEnv(
-    std::unique_ptr<tensorflow::protobuf::Message> env) {
+    std::unique_ptr<tsl::protobuf::Message> env) {
   auto descriptor = env->GetDescriptor();
   if (environments_.contains(descriptor)) {
     LOG(WARNING) << "Replacing CompilationEnvironment of type "

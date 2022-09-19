@@ -86,13 +86,13 @@ void IrDumpingPassManager::run(llvm::Module &module) {
       const llvm::PassInfo *PI =
           llvm::PassRegistry::getPassRegistry()->getPassInfo(P->getPassID());
       const std::string basename = ReplaceFilenameExtension(
-          absl::string_view(tensorflow::io::Basename(input_filename_)),
+          absl::string_view(tsl::io::Basename(input_filename_)),
           absl::StrFormat(
               "pass-%02d.before.%s.ll", i,
               absl::string_view(PI == nullptr ? "unknown"
                                               : PI->getPassArgument().data())));
       llvm::legacy::PassManager::add(
-          new DumpIrPass(tensorflow::io::JoinPath(output_dir_, basename)));
+          new DumpIrPass(tsl::io::JoinPath(output_dir_, basename)));
     }
     llvm::legacy::PassManager::add(P);
   }

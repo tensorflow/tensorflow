@@ -238,6 +238,7 @@ def HLO_CosineOp: HLO_UnaryElementwiseOp<"cosine",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 
+  let hasFolder = 1;
   let hasCustomHLOConverter = 1;
 }
 
@@ -250,6 +251,7 @@ def HLO_ExpOp: HLO_UnaryElementwiseOp<"exponential",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
 }
 def HLO_Expm1Op: HLO_UnaryElementwiseOp<"exponential_minus_one",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
@@ -327,6 +329,7 @@ def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
 }
 def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_PredOrIntTensor> {
@@ -441,6 +444,7 @@ def HLO_SineOp: HLO_UnaryElementwiseOp<"sine",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
   let hasCustomHLOConverter = 1;
 }
 
@@ -466,6 +470,7 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
 }
 //===----------------------------------------------------------------------===//
 // MHLO binary elementwise op definitions.
@@ -1116,9 +1121,24 @@ def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
     HLO_Tensor:$operand,
     I64Attr:$all_gather_dim,
     I64ElementsAttr:$replica_groups,
-    OptionalAttr<ChannelHandle>:$channel_handle
+    OptionalAttr<ChannelHandle>:$channel_handle,
+    UnitAttr:$use_global_device_ids
   );
   let results = (outs HLO_Tensor);
+  // use_global_device_ids is rarely used, so we add simplified builder methods
+  // for convenience.
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "::mlir::IntegerAttr":$all_gather_dim,
+      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>,
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "uint64_t":$all_gather_dim,
+      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
+
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
@@ -1140,8 +1160,8 @@ def HLO_AllReduceOp : HLO_Op<"all_reduce",
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);
-  // use_global_device_ids is rarely used, so we add a simplified
-  // builder method for convenience.
+  // use_global_device_ids is rarely used, so we add a simplified builder method
+  // for convenience.
   let builders = [
     OpBuilder<(ins
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
@@ -1164,10 +1184,25 @@ def HLO_ReduceScatterOp : HLO_Op<"reduce_scatter",
     HLO_Tensor:$operand,
     I64Attr:$scatter_dimension,
     I64ElementsAttr:$replica_groups,
-    OptionalAttr<ChannelHandle>:$channel_handle
+    OptionalAttr<ChannelHandle>:$channel_handle,
+    UnitAttr:$use_global_device_ids
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);
+  // use_global_device_ids is rarely used, so we add simplified builder methods
+  // for convenience.
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "::mlir::IntegerAttr":$scatter_dimension,
+      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>,
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "uint64_t":$scatter_dimension,
+      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
+
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }

@@ -68,6 +68,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_STATUSOR_H_
 #define TENSORFLOW_TSL_PLATFORM_STATUSOR_H_
 
+#include "absl/base/attributes.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -203,10 +204,8 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   T&& value() &&;
 
   // Deprecated, use `value()` instead.
-  const T& ValueOrDie() const&;
-  T& ValueOrDie() &;
-  const T&& ValueOrDie() const&&;
-  T&& ValueOrDie() &&;
+  ABSL_DEPRECATED("Use `value()` instead.") T& ValueOrDie() &;
+  ABSL_DEPRECATED("Use `value()` instead.") T&& ValueOrDie() &&;
 
   // Returns a reference to the current value.
   //
@@ -340,11 +339,6 @@ T&& StatusOr<T>::value() && {
   return std::move(this->data_);
 }
 
-template <typename T>
-const T& StatusOr<T>::ValueOrDie() const& {
-  this->EnsureOk();
-  return this->data_;
-}
 
 template <typename T>
 T& StatusOr<T>::ValueOrDie() & {
@@ -352,11 +346,6 @@ T& StatusOr<T>::ValueOrDie() & {
   return this->data_;
 }
 
-template <typename T>
-const T&& StatusOr<T>::ValueOrDie() const&& {
-  this->EnsureOk();
-  return std::move(this->data_);
-}
 
 template <typename T>
 T&& StatusOr<T>::ValueOrDie() && {

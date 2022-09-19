@@ -79,10 +79,18 @@ StatusOr<std::string> GetCompilerIr(
     IrExportStage stage, ProcessFunctionLibraryRuntime* pflr,
     absl::string_view func_name, Device* dev, EagerContext* context,
     absl::Span<const TensorHandle* const> inputs_handles) {
-  // TODO(b/238830423): support GetCompilerIr on TFRT TPU device.
+  auto is_tfrt_tpu_supported_stage = [](IrExportStage stage) {
+    return stage == IrExportStage::HLO ||
+           stage == IrExportStage::HLO_NO_METADATA ||
+           stage == IrExportStage::HLO_SERIALIZED;
+  };
+  // TODO(b/238830423): support GetCompilerIr on TFRT TPU device for stages
+  // that requires compilation from HLO to executable.
   if (dev->device_type() != DEVICE_CPU &&
-      dev->tensorflow_accelerator_device_info()->stream == nullptr) {
-    return errors::Internal("GetCompilerIr is not supported on this device.");
+      dev->tensorflow_accelerator_device_info()->stream == nullptr &&
+      !is_tfrt_tpu_supported_stage(stage)) {
+    return errors::Internal(
+        "GetCompilerIr with requested stage is not supported on this device.");
   }
   NameAttrList function;
   function.set_name(std::string{func_name});
@@ -141,9 +149,13 @@ StatusOr<std::string> GetCompilerIr(
     stream = accelerator_device_info->stream;
   }
 
-  XlaCompiler::Options options =
-      GenerateCompilerOptions(*cache, *flr, dev, stream, platform_info,
-                              /*has_ref_vars=*/false);
+  XlaCompiler::Options options;
+  if (platform_info.device_type() == DEVICE_TPU && stream == nullptr) {
+    options = GenerateTfrtTpuCompilerOptions(*cache, *flr);
+  } else {
+    options = GenerateCompilerOptions(*cache, *flr, dev, stream, platform_info,
+                                      /*has_ref_vars=*/false);
+  }
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.always_return_tuple = false;

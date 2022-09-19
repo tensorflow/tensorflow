@@ -178,7 +178,6 @@ cc_library(
         ":rocm_gpu_executor",
         ":rocm_platform_id",
         "//third_party/eigen3",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:host_or_device_scalar",
@@ -256,7 +255,6 @@ cc_library(
         ":rocm_gpu_executor",
         ":rocm_platform_id",
         "//third_party/eigen3",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:plugin_registry",
@@ -273,6 +271,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/tsl/util:env_var",
     ]),
     alwayslink = True,
 )

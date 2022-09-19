@@ -48,12 +48,12 @@ namespace wrap {
     static void* GetDsoHandle() {                                              \
       auto s =                                                                 \
           stream_executor::internal::CachedDsoLoader::GetHipsparseDsoHandle(); \
-      return s.ValueOrDie();                                                   \
+      return s.value();                                                   \
     }                                                                          \
     static FuncPtrT LoadOrDie() {                                              \
       void* f;                                                                 \
-      auto s =                                                                 \
-          Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), kName, &f);     \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(),       \
+                                                         kName, &f);           \
       CHECK(s.ok()) << "could not find " << kName                              \
                     << " in miopen DSO; dlerror: " << s.error_message();       \
       return reinterpret_cast<FuncPtrT>(f);                                    \

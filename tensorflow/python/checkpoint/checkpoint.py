@@ -1042,11 +1042,11 @@ class NameBasedSaverStatus(_LoadStatus):
         if all(a[0] is not x for x in self._optionally_restored)
     ]
     if unused_attributes:
-      unused_attribute_strings = [
-          f"\n    {obj}: {attributes}" for obj, attributes in unused_attributes]
+      unused_attribute_string = "".join(
+          f"\n    {obj}: {attributes}" for obj, attributes in unused_attributes)
       raise AssertionError(
           "Some objects had attributes which were not restored: "
-          f"{unused_attribute_strings}")
+          f"{unused_attribute_string}")
     for trackable in util.list_objects(self._object_graph_view):
       # pylint: disable=protected-access
       trackable._maybe_initialize_trackable()

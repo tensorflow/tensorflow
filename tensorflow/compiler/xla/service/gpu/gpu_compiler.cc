@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/gpu_passes.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -125,6 +126,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
+#include "tensorflow/compiler/xla/service/gpu/scatter_slice_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
@@ -182,19 +184,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 #if XLA_ENABLE_XLIR
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 #endif  // XLA_ENABLE_XLIR
@@ -521,6 +522,7 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<ScatterSimplifier>();
       pipeline.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
+      pipeline.AddPass<ScatterSliceSimplifier>();
       pipeline.AddPass<AlgebraicSimplifier>(layout_insensitive_algsimp_opts);
       pipeline.AddPass<BitcastDtypesExpander>();
       // AlgebraicSimplifier may add contracting dimensions to a dot.
@@ -639,8 +641,7 @@ Status GpuCompiler::OptimizeHloModule(
     horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
     // FusionBitcastLift must be after InstructionFusion, as it undoes
     // part of it.
-    // TODO(b/209005695) Renable once the bug is fixed.
-    // horizontal_fusion.AddPass<FusionBitcastLift>();
+    horizontal_fusion.AddPass<FusionBitcastLift>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();
@@ -836,7 +837,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     const CompileOptions& options) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
-  uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_usecs = tsl::Env::Default()->NowMicros();
   tensorflow::profiler::TraceMe activity(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
       tensorflow::profiler::TraceMeLevel::kInfo);
@@ -845,7 +846,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
-  uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_usecs = tsl::Env::Default()->NowMicros();
 
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).
@@ -885,6 +886,27 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 }
 
 #if XLA_ENABLE_XLIR
+
+// Lowers MLIR module to the XLA Gpu runtime custom calls.
+static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
+                                   llvm::StringRef entry_function_name,
+                                   llvm::ArrayRef<int64_t> buffer_sizes,
+                                   ThunkSequence* thunk_sequence) {
+  if (!module) {
+    return InternalError("No MLIR module to lower.");
+  }
+
+  mlir::PassManager pm(module.getContext(),
+                       mlir::PassManager::Nesting::Implicit);
+  populateXlaGpuRuntimePasses(pm, thunk_sequence);
+
+  if (pm.run(module).failed()) {
+    return InternalError("Failed to lower LMHLO to Gpu runtime custom calls.");
+  }
+
+  return OkStatus();
+}
+
 static StatusOr<OwnedJitRtProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module,
@@ -901,7 +923,7 @@ static StatusOr<OwnedJitRtProgram> LowerToJitRt(
   func->setAttr("num_partitions", num_partitions_attr);
 
   // Lower LMHLO operations to the JitRt compatible custom calls.
-  TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToJitRt(
+  TF_RETURN_IF_ERROR(LowerToXlaGpuRuntime(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},
       buffer_sizes, thunk_sequence.get()));
   // Serialize module to pass it to GpuExecutable for compilation.
@@ -1024,7 +1046,7 @@ static Status CompileModuleToLlvmIrImpl(
                          absl::StrCat("sm_", cuda_compute_capability.ToString(),
                                       "_gpu_after_optimizations"));
 
-  uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_usecs = tsl::Env::Default()->NowMicros();
   mlir::DialectRegistry registry;
   IrEmitterUnnested::GetDependentDialects(registry);
   mlir::MLIRContext mlir_context(registry);
@@ -1083,7 +1105,7 @@ static Status CompileModuleToLlvmIrImpl(
     }
 
     results->constants = std::move(ir_emitter_context.constants());
-    uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_usecs = tsl::Env::Default()->NowMicros();
 
     // This won't record values for calls that error out (because if they error
     // out we have no way of telling how far through the process we got).
@@ -1210,8 +1232,8 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
     return result;
   };
 
-  tensorflow::thread::ThreadPool* thread_pool;
-  std::optional<tensorflow::thread::ThreadPool> overriding_thread_pool;
+  tsl::thread::ThreadPool* thread_pool;
+  std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
   switch (
       module_config.debug_options().xla_gpu_force_compilation_parallelism()) {
     case 0:
@@ -1222,7 +1244,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
       break;
     default:
       overriding_thread_pool.emplace(
-          tensorflow::Env::Default(), "",
+          tsl::Env::Default(), "",
           module_config.debug_options()
               .xla_gpu_force_compilation_parallelism());
       thread_pool = &*overriding_thread_pool;
@@ -1291,7 +1313,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 
   std::vector<StatusOr<BackendCompileResult>> compile_results(
       llvm_modules.size());
-  tensorflow::BlockingCounter counter(llvm_modules.size());
+  tsl::BlockingCounter counter(llvm_modules.size());
   for (int i = 0; i < llvm_modules.size(); i++) {
     thread_pool->Schedule(
         [&compile_results, compile_single_module, i, &llvm_modules, &counter] {
@@ -1446,15 +1468,12 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
   }
 
-  // Dump computation proto state and buffer assignment for debug and test, if
-  // dump or embed_ir_in_executable is enabled.
-  if (embed_ir_in_executable ||
-      DumpingEnabledForHloModule(gpu_executable->module())) {
-    auto hlo_proto = std::make_unique<HloProto>();
-    *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
-    *hlo_proto->mutable_buffer_assignment() = buffer_assignment->ToProto();
-    gpu_executable->set_hlo_proto(std::move(hlo_proto));
-  }
+  // Dump computation proto state and buffer assignment for
+  // CompiledMemoryAnalysis.
+  auto hlo_proto = std::make_unique<HloProto>();
+  *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
+  *hlo_proto->mutable_buffer_assignment() = buffer_assignment->ToProto();
+  gpu_executable->set_hlo_proto(std::move(hlo_proto));
   gpu_executable->set_debug_info(buffer_assignment->GetStats().ToString());
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
 }
@@ -1511,14 +1530,14 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     runtime::JitExecutable::Options opts;
     opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
     opts.compiler.register_dialects =
-        runtime::RegisterDefaultXlaRuntimeDialects;
+        runtime::RegisterDefaultXlaGpuRuntimeDialects;
 
     // Register JitRt Gpu runtime custom calls with the linker.
     opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
         PopulateXlaGpuCustomCalls, PopulateXlaGpuTypeIdNames);
 
     opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
-      runtime::CreateDefaultXlaRuntimeCompilationPipeline(pm, copts);
+      runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
     };
 
     // Instantiate new JitExecutable from the MLIR source.

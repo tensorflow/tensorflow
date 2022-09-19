@@ -226,7 +226,7 @@ func.func @yield_op_inside_mhlo_reduce(
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%init: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %init, %arg3 : tensor<f32>
-    // expected-error @+1{{'thlo.yield' op expects parent op to be one of 'thlo.map, thlo.reduction'}}
+    // expected-error @+1{{'thlo.yield' op expects parent op to be one of 'thlo.map, thlo.reduction, thlo.scatter'}}
     thlo.yield %1: tensor<f32>
   }) {dimensions = dense<1> : tensor<1xi64>} :
     (tensor<5x4xf32>, tensor<f32>) -> tensor<5xf32>
@@ -265,6 +265,37 @@ func.func @map_buffer_semantics_with_tensor_result(
 
 // -----
 
+func.func @map_input_mapper_arity_mismatch(
+    %lhs: tensor<64xf32>, %rhs: tensor<64xf32>, %init: tensor<64xf32>)
+    -> tensor<64xf32> {
+  // expected-error@+1{{'thlo.map' op expects number of operands to match the arity of mapper, but got: 2 and 3}}
+  %add = thlo.map
+      ins(%lhs:tensor<64xf32>, %rhs:tensor<64xf32>)
+      outs(%init:tensor<64xf32>)
+      (%lhs_elem: f32, %rhs_elem: f32, %extra_elem: f32) {
+        %0 = arith.addf %lhs_elem, %rhs_elem: f32
+        thlo.yield %0: f32
+      }
+  func.return %add : tensor<64xf32>
+}
+
+// -----
+func.func @map_input_mapper_type_mismatch(
+    %lhs: tensor<64xf32>, %rhs: tensor<64xf32>, %init: tensor<64xf32>)
+    -> tensor<64xf32> {
+    // expected-error@+1{{'thlo.map' op expected element type of input 'f32' to match bbArg type 'f64'}}
+  %add = thlo.map
+      ins(%lhs:tensor<64xf32>, %rhs:tensor<64xf32>)
+      outs(%init:tensor<64xf32>)
+      (%lhs_elem: f64, %rhs_elem: f64) {
+        %0 = arith.addf %lhs_elem, %rhs_elem: f64
+        thlo.yield %0: f64
+      }
+  func.return %add : tensor<64xf32>
+}
+
+// -----
+
 func.func @variadic_reduction_wrong_yield_operand_types(
     %input1: tensor<16x32x64xf32>, %init1: tensor<16x64xf32>,
     %input2: tensor<16x32x64xi64>, %init2: tensor<16x64xi64>)
@@ -288,8 +319,11 @@ func.func @scatter_output_result_mismatch(
     %indices: tensor<3x3xi64>, %updates: tensor<3xf32>, %dst: tensor<3x3xf32>)
     -> () {
   // expected-error@+1{{'thlo.scatter' op expected the number of results (0) to be equal to the number of output tensors (1)}}
-  "thlo.scatter"(%indices, %updates, %dst) :
-      (tensor<3x3xi64>, tensor<3xf32>, tensor<3x3xf32>) -> ()
+  "thlo.scatter"(%indices, %updates, %dst) ({
+  ^bb0(%in: f32, %out: f32):
+    %1 = "arith.addf"(%in, %out) : (f32, f32) -> f32
+    "thlo.yield"(%1) : (f32) -> ()
+  }) : (tensor<3x3xi64>, tensor<3xf32>, tensor<3x3xf32>) -> ()
   func.return
 }
 

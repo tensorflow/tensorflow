@@ -61,8 +61,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:numbers",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:numbers",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -91,6 +91,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 

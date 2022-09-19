@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_replication_analysis.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 

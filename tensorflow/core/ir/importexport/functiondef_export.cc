@@ -150,7 +150,7 @@ tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
   auto *tfg_dialect = cast<TFGraphDialect>(func_op->getDialect());
 
   FunctionDef fdef;
-  for (Operation &op : func_op.getBody()->without_terminator()) {
+  for (Operation &op : func_op.SingleBlock::getBody()->without_terminator()) {
     if (op.getDialect() != tfg_dialect)
       return InvalidArgument("Non tfg op encountered when exporting function");
 
@@ -231,8 +231,8 @@ tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
   // An ArgDef entry needs to be constructed for all non-control returned value,
   // and a mapping from the output name to the signature is also recorded in the
   // FunctionDef.
-  auto return_op =
-      llvm::cast<tfg::ReturnOp>(func_op.getBody()->getTerminator());
+  auto return_op = llvm::cast<tfg::ReturnOp>(
+      func_op.SingleBlock::getBody()->getTerminator());
   ArrayAttr results_attr = func_op.getAllResultAttrs();
   for (auto &indexed_result : llvm::enumerate(return_op->getOperands())) {
     int res_num = indexed_result.index();

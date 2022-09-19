@@ -64,7 +64,7 @@ func.func @dynamic_broadcast_in_dim_at_tile(%arg : tensor<?x?xf32>,
       broadcast_dimensions = [0, 2]
       { op_label = "producer" }
   %bcast_sub = gml_st.materialize %bcast[%tile]
-      : tensor<?x?x?xf32>[!gml_st.tile<3x4x?>]
+      : tensor<?x?x?xf32>[!gml_st.tile<3x4x?>] to tensor<3x4x?xf32>
   func.return { op_label = "consumer" } %bcast_sub : tensor<3x4x?xf32>
 }
 
@@ -131,7 +131,7 @@ func.func @dynamic_broadcast_in_dim_at_point(%arg : tensor<?x?xf32>,
       broadcast_dimensions = [0, 2]
       { op_label = "producer" }
   %bcast_sub = gml_st.materialize %bcast[%point]
-      : tensor<?x?x?xf32>[!gml_st.tile<1x1x1>]
+      : tensor<?x?x?xf32>[!gml_st.tile<1x1x1>] to tensor<1x1x1xf32>
   func.return { op_label = "consumer" } %bcast_sub : tensor<1x1x1xf32>
 }
 
@@ -204,7 +204,7 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
       dimension = 1 : i64,
       op_label = "producer" }
   %concat_sub = gml_st.materialize %concat[%tile]
-      : tensor<?x?xi32>[!gml_st.tile<?x?>]
+      : tensor<?x?xi32>[!gml_st.tile<?x?>] to tensor<?x?xi32>
   func.return { op_label = "consumer" } %concat_sub : tensor<?x?xi32>
 }
 
@@ -287,7 +287,7 @@ func.func @concatenate_at_point(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>,
       dimension = 1 : i64,
       op_label = "producer" }
   %concat_sub = gml_st.materialize %concat[%point]
-      : tensor<?x?xi32>[!gml_st.tile<1x1>]
+      : tensor<?x?xi32>[!gml_st.tile<1x1>] to tensor<1x1xi32>
   func.return { op_label = "consumer" } %concat_sub : tensor<1x1xi32>
 }
 
@@ -334,7 +334,7 @@ func.func @add(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
     linalg.yield %add : f32
   } -> tensor<32x32xf32>
   %result = gml_st.materialize %linalg[%tile]
-      : tensor<32x32xf32>[!gml_st.tile<?x?>]
+      : tensor<32x32xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
   return { op_label = "consumer" } %result : tensor<?x?xf32>
 }
 
@@ -384,7 +384,7 @@ func.func @add_point(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
     linalg.yield %add : f32
   } -> tensor<32x32xf32>
   %result = gml_st.materialize %linalg[%point]
-      : tensor<32x32xf32>[!gml_st.tile<1x1>]
+      : tensor<32x32xf32>[!gml_st.tile<1x1>] to tensor<1x1xf32>
   return { op_label = "consumer" } %result : tensor<1x1xf32>
 }
 
@@ -446,9 +446,9 @@ func.func @add_two_users(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
     linalg.yield %add : f32
   } -> tensor<32x32xf32>
   %user0 = gml_st.materialize %linalg0[%tile]
-      : tensor<32x32xf32>[!gml_st.tile<?x?>]
+      : tensor<32x32xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
   %user1 = gml_st.materialize %linalg0[%tile]
-      : tensor<32x32xf32>[!gml_st.tile<?x?>]
+      : tensor<32x32xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
   %init1 = linalg.init_tensor [%d0, %d1] : tensor<?x?xf32>
   %linalg1 = linalg.generic {
       indexing_maps = [#id_map, #id_map, #id_map],
@@ -505,7 +505,7 @@ func.func @cos(%arg: tensor<32x32xf32>, %tile: !gml_st.tile<?x?>)
     linalg.yield %cos : f32
   } -> tensor<32x32xf32>
   %result = gml_st.materialize %linalg[%tile]
-      : tensor<32x32xf32>[!gml_st.tile<?x?>]
+      : tensor<32x32xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
   return { op_label = "consumer" } %result : tensor<?x?xf32>
 }
 
@@ -553,7 +553,7 @@ func.func @cos_point(%arg: tensor<32x32xf32>, %point: !gml_st.tile<1x1>)
     linalg.yield %cos : f32
   } -> tensor<32x32xf32>
   %result = gml_st.materialize %linalg[%point]
-      : tensor<32x32xf32>[!gml_st.tile<1x1>]
+      : tensor<32x32xf32>[!gml_st.tile<1x1>] to tensor<1x1xf32>
   return { op_label = "consumer" } %result : tensor<1x1xf32>
 }
 
@@ -613,7 +613,7 @@ func.func @transpose_point(%arg: tensor<1x2x3x?xf32>,
     linalg.yield %a : f32
   } -> tensor<2x1x?x3xf32>
   %transpose_sub = gml_st.materialize %transpose[%point]
-      : tensor<2x1x?x3xf32>[!gml_st.tile<1x1x1x1>]
+      : tensor<2x1x?x3xf32>[!gml_st.tile<1x1x1x1>] to tensor<1x1x1x1xf32>
   return { op_label = "consumer" } %transpose_sub : tensor<1x1x1x1xf32>
 }
 
@@ -671,7 +671,7 @@ func.func @transpose_tile(%arg: tensor<1x2x3x?xf32>,
     linalg.yield %a : f32
   } -> tensor<2x1x?x3xf32>
   %transposed_sub = gml_st.materialize %transposed[%tile]
-      : tensor<2x1x?x3xf32>[!gml_st.tile<?x?x?x?>]
+      : tensor<2x1x?x3xf32>[!gml_st.tile<?x?x?x?>] to tensor<?x?x?x?xf32>
   return { op_label = "consumer" } %transposed_sub : tensor<?x?x?x?xf32>
 }
 
@@ -714,7 +714,7 @@ func.func @empty(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
   ^bb0(%_0: f32, %_1: f32, %arg2: f32):
     linalg.yield %arg2 : f32
   } -> tensor<?x?xf32>
-  %elem =  gml_st.materialize %result[%pt] : tensor<?x?xf32>[!gml_st.tile<1x1>]
+  %elem =  gml_st.materialize %result[%pt] : tensor<?x?xf32>[!gml_st.tile<1x1>] to tensor<1x1xf32>
   return { op_label = "consumer" } %elem : tensor<1x1xf32>
 }
 
@@ -742,7 +742,7 @@ func.func @dim_reification_materialize(%arg: tensor<?x?xf32>,
   // CHECK-DAG: %[[RES:.*]] = gml_st.size %[[TILE]][%[[C0]]]
   // CHECK:     return %[[RES]]
   %c0 = arith.constant 0 : index
-  %0 = gml_st.materialize %arg[%tile] : tensor<?x?xf32>[!gml_st.tile<?x?>]
+  %0 = gml_st.materialize %arg[%tile] : tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
   %1 = tensor.dim %0, %c0 : tensor<?x?xf32>
   return %1 : index
 }

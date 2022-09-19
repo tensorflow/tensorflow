@@ -104,8 +104,8 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
 xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
                                           bool ptx, int sm) {
   std::string full_text;
-  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
-                                                  file_name, &full_text));
+  TF_RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), file_name, &full_text));
 
   std::vector<std::string> hlo_module_texts =
       absl::StrSplit(full_text, "// -----");

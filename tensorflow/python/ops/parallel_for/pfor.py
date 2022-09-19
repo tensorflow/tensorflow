@@ -1077,10 +1077,13 @@ def _wrap_and_tile_variants(tensor, length):
   return wrap(tensor)
 
 
-def _fallback_converter(pfor_input, root_cause="", warn=True):
+def _fallback_converter(pfor_input, root_cause="", warn=False):
+  msg = ("Using a while_loop for converting "
+         f"{pfor_input.op_type} cause {root_cause}")
   if warn:
-    logging.warning("Using a while_loop for converting %s cause %s",
-                    pfor_input.op_type, root_cause)
+    logging.warning(msg)
+  else:
+    logging.debug(msg)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
   iters = pfor_input.pfor.loop_len_vector[0]
 

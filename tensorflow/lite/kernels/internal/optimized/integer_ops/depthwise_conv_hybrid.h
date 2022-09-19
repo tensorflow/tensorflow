@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_HYBRID_H_
 
 #include <algorithm>
+#include <memory>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -38,16 +39,18 @@ inline void DepthwiseConvInitAccBuffer(int num_output_pixels, int output_depth,
          sizeof(acc_buffer[0]) * output_depth * num_output_pixels);
 }
 
+// Base DWConv Implementation used with both static and dynamic
+// accumulator buffers.
 // Initializes the accumulator buffer with bias values.
-inline void DepthwiseConvHybridGeneral(
-    const DepthwiseParams& params,
-    const float* input_scales, const RuntimeShape& input_shape,
-    const int8* input_data, const RuntimeShape& filter_shape,
-    const int8* filter_data, const RuntimeShape& bias_shape,
-    const float* bias_data, const RuntimeShape& output_shape,
-    float* output_data, const float* per_channel_scales,
-    const int32_t* input_offsets, int thread_start, int thread_end,
-    int thread_dim) {
+static void DoDepthwiseConvHybridGeneral(
+    const DepthwiseParams& params, const float* input_scales,
+    const RuntimeShape& input_shape, const int8* input_data,
+    const RuntimeShape& filter_shape, const int8* filter_data,
+    const RuntimeShape& bias_shape, const float* bias_data,
+    const RuntimeShape& output_shape, float* output_data,
+    const float* per_channel_scales, const int32_t* input_offsets,
+    int thread_start, int thread_end, int thread_dim, int32* acc_buffer,
+    int32 acc_buffer_size) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -67,14 +70,12 @@ inline void DepthwiseConvHybridGeneral(
   const int output_rows = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
 
-  static const int kAccBufferMaxSize = 2048;
-  int32 acc_buffer[kAccBufferMaxSize];
-  TFLITE_DCHECK_GE(kAccBufferMaxSize, output_depth);
-  const int kOutputPixelsInAccBuffer = kAccBufferMaxSize / output_depth;
+  TFLITE_DCHECK_GE(acc_buffer_size, output_depth);
+  const int kOutputPixelsInAccBuffer = acc_buffer_size / output_depth;
   const int kAccBufferActualSize = kOutputPixelsInAccBuffer * output_depth;
   TFLITE_DCHECK_LE(kOutputPixelsInAccBuffer * output_depth,
                    kAccBufferActualSize);
-  TFLITE_DCHECK_LE(kAccBufferActualSize, kAccBufferMaxSize);
+  TFLITE_DCHECK_LE(kAccBufferActualSize, acc_buffer_size);
   TFLITE_DCHECK_GE(kOutputPixelsInAccBuffer, 1);
   TFLITE_DCHECK(thread_dim == 0 || thread_dim == 1);
 
@@ -253,6 +254,60 @@ inline void DepthwiseConvHybridGeneral(
     }
     output_ptr += batch_step;
   }
+}
+
+// Utilize the base implementation of DWConv with a stack allocated accumulator
+// buffer. The static allocation limits the number of depthwise channels that
+// can be processed to kStaticAccBufferMaxSize.
+static void DoDepthwiseConvHybridGeneralStatic(
+    const DepthwiseParams& params, const float* input_scales,
+    const RuntimeShape& input_shape, const int8* input_data,
+    const RuntimeShape& filter_shape, const int8* filter_data,
+    const RuntimeShape& bias_shape, const float* bias_data,
+    const RuntimeShape& output_shape, float* output_data,
+    const float* per_channel_scales, const int32_t* input_offsets,
+    int thread_start, int thread_end, int thread_dim) {
+  static const int kStaticAccBufferMaxSize = 2048;
+  int32 stack_acc_buffer[kStaticAccBufferMaxSize];
+  DoDepthwiseConvHybridGeneral(
+      params, input_scales, input_shape, input_data, filter_shape, filter_data,
+      bias_shape, bias_data, output_shape, output_data, per_channel_scales,
+      input_offsets, thread_start, thread_end, thread_dim, stack_acc_buffer,
+      kStaticAccBufferMaxSize);
+}
+
+// This DWConv function uses static memory for accumulation by default for upto
+// kStaticAccBufferMaxSize channels. Beyound that, a dynamic buffer is used on
+// a per call basis. The function errors out if number of channels is larger
+// than kStaticAccBufferMaxSize and TF_LITE_STATIC_MEMORY is defined.
+inline void DepthwiseConvHybridGeneral(
+    const DepthwiseParams& params, const float* input_scales,
+    const RuntimeShape& input_shape, const int8* input_data,
+    const RuntimeShape& filter_shape, const int8* filter_data,
+    const RuntimeShape& bias_shape, const float* bias_data,
+    const RuntimeShape& output_shape, float* output_data,
+    const float* per_channel_scales, const int32_t* input_offsets,
+    int thread_start, int thread_end, int thread_dim) {
+#ifndef TF_LITE_STATIC_MEMORY
+  static const int kStaticAccBufferMaxSize = 2048;
+  const int output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
+
+  if (kStaticAccBufferMaxSize < output_depth) {
+    std::unique_ptr<int32[]> heap_acc_buffer(new int32[output_depth]);
+    DoDepthwiseConvHybridGeneral(
+        params, input_scales, input_shape, input_data, filter_shape,
+        filter_data, bias_shape, bias_data, output_shape, output_data,
+        per_channel_scales, input_offsets, thread_start, thread_end, thread_dim,
+        heap_acc_buffer.get(), output_depth);
+
+    return;
+  }
+#endif
+
+  DoDepthwiseConvHybridGeneralStatic(
+      params, input_scales, input_shape, input_data, filter_shape, filter_data,
+      bias_shape, bias_data, output_shape, output_data, per_channel_scales,
+      input_offsets, thread_start, thread_end, thread_dim);
 }
 
 }  // namespace depthwise_conv

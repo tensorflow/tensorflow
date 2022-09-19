@@ -53,6 +53,13 @@ This release contains contributions from many people at Google, as well as:
 *   RNG behavior change for `tf.keras.initializers`. Keras initializers will now use stateless random ops to generate random numbers.
     *   Both seeded and unseeded initializers will always generate the same values every time they are called (for a given variable shape). For unseeded initializers (`seed=None`), a random seed will be created and assigned at initializer creation (different initializer instances get different seeds).
     *   An unseeded initializer will raise a warning if it is reused (called) multiple times. This is because it would produce the same values each time, which may not be intended.
+*   API changes under `tf.experimental.dtensor`:
+    * New API for initialization of CPU/GPU/TPU in dtensor.
+      `dtensor.initialize_accelerator_system` and
+      `dtensor.shutdown_accelerator_system`.
+    * The following existing API will be removed:
+      `dtensor.initialize_multi_client`, `dtensor.initialize_tpu_system`, and
+      `dtensor.shutdown_tpu_system`.
 
 ## Deprecations
 
@@ -100,6 +107,10 @@ This release contains contributions from many people at Google, as well as:
     *   Added a new field, `inject_prefetch`, to `tf.data.experimental.OptimizationOptions`. If it is set to `True`,`tf.data` will now automatically add a `prefetch` transformation to datasets that end in synchronous transformations. This enables data generation to be overlapped with  data consumption. This may cause a small increase in memory usage due to buffering. To enable this behavior, set `inject_prefetch=True` in `tf.data.experimental.OptimizationOptions`.
     *   Added a new value to `tf.data.Options.autotune.autotune_algorithm`: STAGE_BASED. If the autotune algorithm is set to STAGE_BASED, then it runs a new algorithm that can get the same performance with lower CPU/memory usage.
     *   Added [`tf.data.experimental.from_list`](https://www.tensorflow.org/api_docs/python/tf/data/experimental/from_list), a new API for creating `Dataset`s from lists of elements.
+    *   Graduated experimental APIs:
+        * [`tf.data.Dataset.counter`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#counter), which creates `Dataset`s of indefinite sequences of numbers.
+        * [`tf.data.Dataset.ignore_errors`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#ignore_errors), which drops erroneous elements from `Dataset`s.
+    *   Added [`tf.data.Dataset.rebatch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#rebatch), a new API for rebatching the elements of a dataset.
 
 *   `tf.distribute`:
 

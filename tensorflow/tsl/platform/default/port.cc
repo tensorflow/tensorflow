@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/base/internal/sysinfo.h"
-#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mem.h"
 #include "tensorflow/tsl/platform/numa.h"
+#include "tensorflow/tsl/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/tsl/platform/snappy.h"
 #include "tensorflow/tsl/platform/types.h"
 
@@ -85,6 +85,8 @@ string JobName() {
 }
 
 int64_t JobUid() { return -1; }
+
+int64_t TaskId() { return -1; }
 
 int NumSchedulableCPUs() {
 #if defined(__linux__) && !defined(__ANDROID__)
@@ -366,7 +368,7 @@ string Demangle(const char* mangled) {
 }
 
 double NominalCPUFrequency() {
-  return tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency();
+  return tsl::profile_utils::CpuUtils::GetCycleCounterFrequency();
 }
 
 }  // namespace port

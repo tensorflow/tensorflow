@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -159,9 +160,13 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
 
         std::string tool_name = std::string(py_tool_name);
         ToolOptions tool_options = ToolOptionsFromPythonDict(options);
-        auto status_or_tool_data =
-            tensorflow::profiler::ConvertMultiXSpacesToToolData(
-                status_or_session_snapshot.value(), tool_name, tool_options);
+        ::tensorflow::StatusOr<std::string> status_or_tool_data;
+        {
+          py::gil_scoped_release release;
+          status_or_tool_data =
+              tensorflow::profiler::ConvertMultiXSpacesToToolData(
+                  status_or_session_snapshot.value(), tool_name, tool_options);
+        }
         if (!status_or_tool_data.ok()) {
           LOG(ERROR) << status_or_tool_data.status().error_message();
           return py::make_tuple(py::bytes(""), py::bool_(false));
@@ -187,6 +192,11 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
             auto xspace = std::make_unique<tensorflow::profiler::XSpace>();
             if (!xspace->ParseFromString(xspace_string)) {
               return py::make_tuple(py::bytes(""), py::bool_(false));
+            }
+            for (int i = 0; i < xspace->hostnames_size(); ++i) {
+              std::string hostname = xspace->hostnames(i);
+              std::replace(hostname.begin(), hostname.end(), ':', '_');
+              xspace->mutable_hostnames(i)->swap(hostname);
             }
             xspaces.push_back(std::move(xspace));
           }

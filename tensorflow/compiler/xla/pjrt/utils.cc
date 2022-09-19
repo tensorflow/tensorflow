@@ -274,7 +274,7 @@ int DefaultThreadPoolSize() {
   if (nproc_str && absl::SimpleAtoi(nproc_str, &nproc)) {
     return std::max(0, nproc);
   }
-  return tensorflow::port::MaxParallelism();
+  return tsl::port::MaxParallelism();
 }
 
 bool HasMajorToMinorLayout(PrimitiveType type, absl::Span<int64_t const> dims,

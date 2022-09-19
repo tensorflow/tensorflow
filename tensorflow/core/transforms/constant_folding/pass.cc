@@ -23,6 +23,8 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -245,9 +247,27 @@ static FailureOr<TFOp> ReplaceOpWithIdentity(OpBuilder &builder, TFOp owner,
   return TFOp(identity_op);
 }
 
-static FailureOr<TFOp> ReplaceOperationWithConstant(OpBuilder &builder,
-                                                    Operation *op,
-                                                    double constant_value) {
+static FailureOr<TFOp> ReplaceOpWithNoOp(OpBuilder &builder, TFOp op) {
+  OperationState state(op->getLoc(), "tfg.NoOp");
+  // Op may not have non-control results
+  if (TFOp(op)->getNumResults() > 1) return failure();
+
+  state.addTypes({ControlType::get(builder.getContext())});
+
+  for (Value value : op->getOperands()) {
+    Value control = GetControlDependency(builder, value);
+    if (!llvm::is_contained(state.operands, control))
+      state.addOperands(control);
+  }
+
+  TFOp noop_op = builder.create(state);
+  noop_op.setName(op.nameAttr());
+  if (!op.device().empty()) noop_op.setRequestedDevice(op.device());
+  return noop_op;
+}
+
+static FailureOr<TFOp> ReplaceOpWithConstant(OpBuilder &builder, Operation *op,
+                                             double constant_value) {
   auto res = (*op->result_type_begin()).cast<ShapedType>();
   Type dtype = GetDataTypeFromOp(builder, op);
   Attribute value_attr;
@@ -261,8 +281,8 @@ static FailureOr<TFOp> ReplaceOperationWithConstant(OpBuilder &builder,
   return ReplaceOpWithConstantTensor(builder, op, const_attr);
 }
 
-static FailureOr<TFOp> ReplaceOperationWithSnapshot(OpBuilder &builder, TFOp op,
-                                                    int idx) {
+static FailureOr<TFOp> ReplaceOpWithSnapshot(OpBuilder &builder, TFOp op,
+                                             int idx) {
   // TODO(chiahungduan): If the graph contains no ops that mutate their
   // inputs, we can use Identity instead of Snapshot.
   // if (!graph_contains_assign_or_inplace_op_)
@@ -290,9 +310,8 @@ static FailureOr<TFOp> ReplaceOperationWithSnapshot(OpBuilder &builder, TFOp op,
   return TFOp(snapshot_op);
 }
 
-static FailureOr<TFOp> ReplaceOperationWithBroadcastTo(OpBuilder &builder,
-                                                       TFOp op,
-                                                       int idx_to_replace) {
+static FailureOr<TFOp> ReplaceOpWithBroadcastTo(OpBuilder &builder, TFOp op,
+                                                int idx_to_replace) {
   ShapedType tensor_type = (*op->result_type_begin()).cast<ShapedType>();
   if (!tensor_type.hasStaticShape()) return failure();
   ElementsAttr const_attr = ConvertShapeToAttr(tensor_type);
@@ -443,7 +462,20 @@ bool OpPropertyHelper::MaybeFoldable(TFOp op) {
   // Don't fold stateful ops such as TruncatedNormal.
   if (!IsFreeOfSideEffect(op)) return false;
 
-  // TODO(chiahungduan): Handle preserve nodes
+  // Fold fetch nodes iff it has a single fanout. Note that if a fetch node
+  // has a single fanout, it would be rewritten as a constant with the same
+  // node name, and therefore users are still able to fetch it. This is not
+  // the case if the node has multiple fanouts, and constant folding would
+  // replace the node with multiple constants (each for one fanout) with
+  // new names, and as a result users would not be able to fetch the node any
+  // more with the original node name.
+  if (ShouldPreserveOp(op) &&
+      !(llvm::any_of(  // Is a fetch node
+            op->getResults().drop_back().getUsers(),
+            [&](TFOp child_op) { return dialect_->IsReturn(child_op); }) &&
+        op->getNumResults() == 2  // Has single non-control output
+        ))
+    return false;
 
   // Skips ops that don't benefit from folding.
   if (dialect_->IsPlaceholder(op)) return false;
@@ -499,12 +531,6 @@ bool OpPropertyHelper::MaybeFoldable(TFOp op) {
     }
   }
 
-  // Don't fold nodes that have no outgoing edges except allowlisted nodes.
-  // Such nodes could be introduced by an earlier constant folding pass and are
-  // preserved in case users want to fetch their values; re-processing them
-  // would lead to an error of adding a duplicated node to graph.
-  // TODO(chiahungduan): Op has no users and doesn't in nodes_allowlist_ can't
-  // be folded.
   return true;
 }
 
@@ -681,17 +707,13 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
                                 PatternRewriter &rewriter) const override {
     if (!helper_.IsFoldable(op)) return failure();
 
-    // TODO(chiahungduan): Switch folding needs to delete dead values.
-    if (dialect_->IsSwitch(op)) return failure();
-
     // The op has been folded but it has multiple results which we can just
     // replace it with a constant op and it also has control edges which prevent
     // it from removing. Use the attr to avoid evaluating them again.
     if (op->hasAttr(folded_attr_name_)) return failure();
 
     // If the op has no users, don't invoke the eager runtime.
-    if (op->getNumResults() > 2 &&
-        llvm::all_of(op->getResults().drop_back(),
+    if (llvm::all_of(op->getResults().drop_back(),
                      [](Value v) { return v.use_empty(); })) {
       return failure();
     }
@@ -713,23 +735,34 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
       return failure();
     }
 
+    // Check if CreateConstantTensorNode ops can fail before creating any nodes
+    // TODO(tlongeri): Is CreateConstantTensorNode check correct? Shouldn't it
+    // always be a ShapedType?
+    for (TypedAttr r : result)
+      if (r && r.getType().isa<VariantType>()) return failure();
+
     StringAttr name_attr = static_cast<TFGraphDialect *>(op->getDialect())
                                ->getNameAttrIdentifier();
     SmallVector<Value> control_operands(
         OperandControlRetRange(op->getOperands()));
 
-    StringAttr device_attr = TFOp(op).deviceAttr();
-    SmallVector<TFOp> const_ops;
+    SmallVector<TFOp> const_ops(result.size());
     for (auto &it : llvm::enumerate(result)) {
       TypedAttr attr = it.value();
-      FailureOr<TFOp> const_op = CreateConstantTensorOp(
+      // Null values represent dead outputs. They can result from evaluating a
+      // switch op.
+      if (!attr) continue;
+      if (op->getResult(it.index()).use_empty()) continue;
+      // CreateConstantTensorOp cannot return failure, we checked failure
+      // conditions above.
+      TFOp const_op = *CreateConstantTensorOp(
           rewriter, op->getLoc(),
           (Twine(TFOp(op).name(), "/eval_") + Twine(it.index())).str(),
-          attr.getType().cast<ShapedType>(), control_operands, attr,
+          attr.getType(), control_operands, attr,
           NamedAttribute(name_attr, TFOp(op).nameAttr()));
-      if (failed(const_op)) return failure();
-      if (device_attr) (*const_op).setRequestedDevice(device_attr);
-      const_ops.emplace_back(*const_op);
+      if (StringAttr device_attr = TFOp(op).deviceAttr())
+        const_op.setRequestedDevice(device_attr);
+      const_ops[it.index()] = const_op;
     }
 
     // If this is single output, just replace the op.
@@ -737,21 +770,27 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
       // Use the same node name for the replacement. Note that even this is not
       // in nodes_to_preserve, certain cases may still expect the op has the
       // same name after folding.
-      const_ops[0].setName(TFOp(op).nameAttr());
-      rewriter.replaceOp(op, const_ops[0]->getResults());
+      TFOp const_op = const_ops[0];
+      assert(const_op);
+      const_op.setName(TFOp(op).nameAttr());
+      rewriter.replaceOp(op, const_op->getResults());
     } else {
       for (auto &it : llvm::enumerate(const_ops)) {
-        for (OpOperand &user :
+        if (!it.value()) continue;
+        for (OpOperand &use :
              llvm::make_early_inc_range(op->getResult(it.index()).getUses())) {
-          rewriter.startRootUpdate(user.getOwner());
-          user.set(it.value()->getResult(0));
-          rewriter.finalizeRootUpdate(user.getOwner());
+          rewriter.startRootUpdate(use.getOwner());
+          use.set(it.value()->getResult(0));
+          rewriter.finalizeRootUpdate(use.getOwner());
         }
       }
-
-      // Now all the non-control operands are replaced with constant ops, remove
-      // the op if it doesn't have control operand either.
-      if (TFOp(op).controlRet().use_empty()) {
+      // All the non-control outputs are replaced with constant ops, except for
+      // dead outputs (in the case of a switch op).
+      // If the op has no dead outputs and no uses of its control output, then
+      // it can be removed.
+      // Dead code removal for switches with dead outputs (because of a constant
+      // pred) is handled in Grappler's LoopOptimizer pass.
+      if (op->use_empty()) {
         rewriter.eraseOp(op);
       } else {
         // We can't remove it directly. To avoid folding it again, add an attr
@@ -2202,14 +2241,13 @@ class SimplifyArithmeticOp
     if ((is_mul && x_is_one) || (is_add && x_is_zero)) {
       // 1 * y = y or 0 + y = y.
       if (y_matches_output_shape) {
-        FailureOr<TFOp> snapshot_op =
-            ReplaceOperationWithSnapshot(rewriter, op, 1);
+        FailureOr<TFOp> snapshot_op = ReplaceOpWithSnapshot(rewriter, op, 1);
         if (failed(snapshot_op)) return failure();
         rewriter.replaceOp(op, (*snapshot_op)->getResults());
         return success();
       } else if (x_matches_output_shape) {
         FailureOr<TFOp> broadcast_to_op =
-            ReplaceOperationWithBroadcastTo(rewriter, op, 1);
+            ReplaceOpWithBroadcastTo(rewriter, op, 1);
         rewriter.replaceOp(op, (*broadcast_to_op)->getResults());
         return success();
       }
@@ -2255,14 +2293,13 @@ class SimplifyArithmeticOp
         ((is_add || is_sub) && y_is_zero)) {
       // x * 1 = x or x / 1 = x or x +/- 0 = x
       if (x_matches_output_shape) {
-        FailureOr<TFOp> snapshot_op =
-            ReplaceOperationWithSnapshot(rewriter, op, 0);
+        FailureOr<TFOp> snapshot_op = ReplaceOpWithSnapshot(rewriter, op, 0);
         if (failed(snapshot_op)) return failure();
         rewriter.replaceOp(op, (*snapshot_op)->getResults());
         return success();
       } else if (y_matches_output_shape) {
         FailureOr<TFOp> broadcast_to_op =
-            ReplaceOperationWithBroadcastTo(rewriter, op, 0);
+            ReplaceOpWithBroadcastTo(rewriter, op, 0);
         if (failed(broadcast_to_op)) return failure();
         rewriter.replaceOp(op, (*broadcast_to_op)->getResults());
         return success();
@@ -2273,7 +2310,7 @@ class SimplifyArithmeticOp
     // x OR true = true OR y = true.
     if (op_type.hasStaticShape() && dialect_->IsLogicalOr(op) &&
         (y_is_one || x_is_one)) {
-      FailureOr<TFOp> const_op = ReplaceOperationWithConstant(rewriter, op, 1);
+      FailureOr<TFOp> const_op = ReplaceOpWithConstant(rewriter, op, 1);
       if (failed(const_op)) return failure();
       rewriter.replaceOp(op, (*const_op)->getResults());
       return success();
@@ -2294,8 +2331,7 @@ class SimplifyArithmeticOp
           return failure();
         }
 
-        FailureOr<TFOp> const_op =
-            ReplaceOperationWithConstant(rewriter, op, 0);
+        FailureOr<TFOp> const_op = ReplaceOpWithConstant(rewriter, op, 0);
         if (failed(const_op)) return failure();
 
         rewriter.replaceOp(op, (*const_op)->getResults());
@@ -2310,7 +2346,7 @@ class SimplifyArithmeticOp
           return success();
         } else if (y_matches_output_shape) {
           FailureOr<TFOp> broadcast_to_op =
-              ReplaceOperationWithBroadcastTo(rewriter, op, 0);
+              ReplaceOpWithBroadcastTo(rewriter, op, 0);
           if (failed(broadcast_to_op)) return failure();
           rewriter.replaceOp(op, (*broadcast_to_op)->getResults());
           return success();
@@ -2323,7 +2359,7 @@ class SimplifyArithmeticOp
           return success();
         } else if (x_matches_output_shape) {
           FailureOr<TFOp> broadcast_to_op =
-              ReplaceOperationWithBroadcastTo(rewriter, op, 1);
+              ReplaceOpWithBroadcastTo(rewriter, op, 1);
           if (failed(broadcast_to_op)) return failure();
           rewriter.replaceOp(op, (*broadcast_to_op)->getResults());
           return success();
@@ -3199,7 +3235,7 @@ class ConstantPushDownBiasAdd
 
     if (!hasRank(op->getOperand(0)) || !hasRank(op->getOperand(1)) ||
         !hasRank(add_child->getOperand(0)) ||
-        !hasRank(add_child->getOperand(0))) {
+        !hasRank(add_child->getOperand(1))) {
       return failure();
     }
 
@@ -3361,6 +3397,67 @@ class ConstantPushDownAdd : public ConstantPushDownBase<ConstantPushDownAdd> {
   }
 };
 
+// This implementation is mapped with
+// ConstantFolding::RemoveRedundantVariableUpdates in
+// grappler/optimizers/constant_folding.cc
+class RemoveRedundantVariableUpdates
+    : public FolderPatternBase<RemoveRedundantVariableUpdates> {
+ public:
+  explicit RemoveRedundantVariableUpdates(OpPropertyHelper &helper)
+      : FolderPatternBase<RemoveRedundantVariableUpdates>(MatchAnyOpTypeTag(),
+                                                          helper) {}
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    static const auto *kVariableReadOps =
+        new absl::flat_hash_set<std::string>{"AssignAddVariableOp",
+                                             "AssignSubVariableOp",
+                                             "AssignAdd",
+                                             "AssignSub",
+                                             "ScatterAdd",
+                                             "ScatterSub",
+                                             "ScatterMul",
+                                             "ScatterDiv",
+                                             "ScatterNdAdd",
+                                             "ScatterNdSub",
+                                             "ScatterNdMul",
+                                             "ScatterNdDiv",
+                                             "ResourceScatterAdd",
+                                             "ResourceScatterSub",
+                                             "ResourceScatterMul",
+                                             "ResourceScatterDiv",
+                                             "ResourceScatterNdAdd",
+                                             "ResourceScatterNdSub",
+                                             "ResourceScatterNdMul",
+                                             "ResourceScatterNdDiv"};
+    StringRef op_name = op->getName().stripDialect();
+    if (kVariableReadOps == nullptr ||
+        kVariableReadOps->find({op_name.data(), op_name.size()}) ==
+            kVariableReadOps->end())
+      return failure();
+    const int value_index = op_name.contains("Scatter") ? 2 : 1;
+    Operation *delta_op = op->getOpOperand(value_index).get().getDefiningOp();
+    if (delta_op == nullptr) return failure();
+    const bool is_add_or_sub =
+        op_name.contains("Add") || op_name.contains("Sub");
+    if ((is_add_or_sub && helper_.IsZeros(delta_op)) ||
+        (!is_add_or_sub && helper_.IsOnes(delta_op))) {
+      if (op_name.contains("Variable") || op_name.contains("Resource")) {
+        FailureOr<TFOp> no_op = ReplaceOpWithNoOp(rewriter, op);
+        if (failed(no_op)) return failure();
+        rewriter.replaceOp(op, (*no_op)->getResults());
+        return success();
+      } else {
+        FailureOr<TFOp> identity =
+            ReplaceOpWithIdentity(rewriter, op, /*idx*/ 0);
+        if (failed(identity)) return failure();
+        rewriter.replaceOp(op, (*identity)->getResults());
+        return success();
+      }
+    }
+    return failure();
+  }
+};
+
 // This implementation is mapped with ConstantFolding::SimplifyCase in
 // grappler/optimizers/constant_folding.cc
 class SimplifyCaseOp : public FolderPatternBase<SimplifyCaseOp> {
@@ -3449,7 +3546,7 @@ class SimplifySelectOpBase : public FolderPatternBase<ConcreteType> {
       rewriter.replaceOp(op, identity->getResults());
     } else {
       FailureOr<TFOp> broadcast_to_op =
-          ReplaceOperationWithBroadcastTo(rewriter, op, live_input_idx);
+          ReplaceOpWithBroadcastTo(rewriter, op, live_input_idx);
       if (failed(broadcast_to_op)) return failure();
       rewriter.replaceOp(op, (*broadcast_to_op)->getResults());
     }
@@ -3523,11 +3620,11 @@ void RegisterPatterns(::mlir::RewritePatternSet &patterns,
       RemoveReverse, SimplifyStridedSlice, SimplifyTileOp, SimplifySqueezeOp,
       SimplifySliceOp, RemoveTransposeOp, RemoveRandomShuffleOp,
       RemoveShuffleOp, SimplifyPackOp, SimplifyReductionOp, SimplifyPadOp,
-      SimplifyPadV2Op, RemoveSplitOp, RemoveSplitVOp, MaterializeFillNode,
-      MaterializeConstantValuedNode, MaterializeShapeOp, MaterializeRankOp,
-      MaterializeSizeOp, MaterializeTensorArraySizeV3Op, MergeConcatOp,
-      SimplifyCaseOp, SimplifySelectOp,
-      SimplifySelectV2Op>::type>::Register(patterns, helper);
+      SimplifyPadV2Op, RemoveRedundantVariableUpdates, RemoveSplitOp,
+      RemoveSplitVOp, MaterializeFillNode, MaterializeConstantValuedNode,
+      MaterializeShapeOp, MaterializeRankOp, MaterializeSizeOp,
+      MaterializeTensorArraySizeV3Op, MergeConcatOp, SimplifyCaseOp,
+      SimplifySelectOp, SimplifySelectV2Op>::type>::Register(patterns, helper);
 }
 }  // namespace
 
@@ -3576,34 +3673,19 @@ void ConstantFolding::runOnOperation() {
   // operation creation.
 
   GraphFuncOp func = getOperation();
-  Operation *return_op = func.getBody()->getTerminator();
-  DenseSet<Operation *> unfoldable_ops;
-  for (Value v : return_op->getOperands())
-    unfoldable_ops.insert(v.getDefiningOp());
 
   // The max iteration is the same as the max default iteration in
   // applyPatternsAndFoldGreedily.
   constexpr int max_iterations = 10;
   int iteration = 0;
 
-  SmallVector<Operation *> foldable_ops;
+  SmallVector<Operation *> ops;
   do {
-    // We need to collect the valid operations before each run because the ops
-    // may be updated or removed.
-    foldable_ops.clear();
-    for (Operation &op : func.getBody()->without_terminator()) {
-      if (unfoldable_ops.contains(&op)) continue;
-      foldable_ops.push_back(&op);
+    ops.clear();
+    for (Operation &op : func.SingleBlock::getBody()->without_terminator()) {
+      ops.push_back(&op);
     }
-
-    // Unfoldable ops can't be folded. You may update its operands but the op
-    // kind needs to be the same. For example, you may update an operand of an
-    // AddOp with a constant but you can't fold the AddOp into a ConstOp even if
-    // all its operands are constants. Therefore, we can't use
-    // applyPatternsAndFoldGreedily which may optimize the ops as much as
-    // possible.
-    if (!applyOpPatternsAndFold(foldable_ops, final_patterns_, /*strict=*/true))
-      break;
+    if (!applyOpPatternsAndFold(ops, final_patterns_, /*strict=*/true)) break;
   } while (iteration++ < max_iterations);
 
   // TODO(chiahungduan): This is used to avoid evaluating a node multiple times.

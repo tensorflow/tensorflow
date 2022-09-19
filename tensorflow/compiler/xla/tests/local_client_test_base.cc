@@ -31,9 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -110,12 +110,12 @@ int64_t TestAllocator::deallocation_count(int device_ordinal) const {
 // these types in the header.
 struct LocalClientTestBase::EigenThreadPoolWrapper {
   explicit EigenThreadPoolWrapper()
-      : pool(new tensorflow::thread::ThreadPool(
-            tensorflow::Env::Default(), "XLAEigenTest", /*num_threads=*/2)),
+      : pool(new tsl::thread::ThreadPool(tsl::Env::Default(), "XLAEigenTest",
+                                         /*num_threads=*/2)),
         device(new Eigen::ThreadPoolDevice(pool->AsEigenThreadPool(),
                                            pool->NumThreads())) {}
 
-  std::unique_ptr<tensorflow::thread::ThreadPool> pool;
+  std::unique_ptr<tsl::thread::ThreadPool> pool;
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
 

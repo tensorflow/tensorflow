@@ -37,6 +37,13 @@ from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
+# Each field may contain one of the following types of Tensors.
+_FieldValue = Union[ops.Tensor, ragged_tensor.RaggedTensor, 'StructuredTensor',
+                    extension_type.ExtensionType]
+# Function that takes a FieldValue as input and returns the transformed
+# FieldValue.
+_FieldFn = Callable[[_FieldValue], _FieldValue]
+
 
 class StructuredTensor(extension_type.BatchableExtensionType):
   """A multidimensional collection of structures with the same schema.
@@ -82,8 +89,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   A *field path* is a tuple of field names, specifying the path to a nested
   field.
   """
-  _fields: Mapping[str, Union[ops.Tensor, ragged_tensor.RaggedTensor,
-                              'StructuredTensor', extension_type.ExtensionType]]
+  _fields: Mapping[str, _FieldValue]
   _ragged_shape: dynamic_ragged_shape.DynamicRaggedShape
 
   __name__ = 'tf.StructuredTensor'
@@ -95,19 +101,12 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   # sub-levels (embedded) StructuredTensor's.
   FieldName = Union[str, Sequence[str]]
 
-  # Each field may contain one of the following types of Tensors.
-  FieldValue = Union[ops.Tensor, ragged_tensor.RaggedTensor, 'StructuredTensor']
-
-  # Function that takes a FieldValue as input and returns the transformed
-  # FieldValue.
-  FieldFn = Callable[[FieldValue], FieldValue]
-
   # pylint: enable=invalid-name
 
   #=============================================================================
   # Constructor & Factory Methods
   #=============================================================================
-  def __init__(self, fields: Mapping[str, FieldValue],
+  def __init__(self, fields: Mapping[str, _FieldValue],
                ragged_shape: dynamic_ragged_shape.DynamicRaggedShape):
     self._fields = fields
     self._ragged_shape = ragged_shape
@@ -299,7 +298,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
 
   def with_updates(
       self,
-      updates: Dict[FieldName, Union[FieldValue, FieldFn, None]],
+      updates: Dict[FieldName, Union[_FieldValue, _FieldFn, None]],
       validate: bool = False
   ) -> 'StructuredTensor':
     """Creates a new `StructuredTensor` with the updated fields.
@@ -391,7 +390,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   def _with_updates_impl(
       self,
       error_prefix: Tuple[str],
-      updates: List[Tuple[FieldName, Union[FieldValue, FieldFn]]],
+      updates: List[Tuple[FieldName, Union[_FieldValue, _FieldFn]]],
       validate: bool) -> 'StructuredTensor':
     """Recursive part of `with_updates` implementation."""
     # Get current fields.
@@ -402,8 +401,8 @@ class StructuredTensor(extension_type.BatchableExtensionType):
       return str(error_prefix + (name,))
 
     # Apply value if a function or the value itself.
-    def apply_value(name: str, value: Union['FieldValue',
-                                            'FieldFn']) -> 'FieldValue':
+    def apply_value(name: str, value: Union[_FieldValue,
+                                            _FieldFn]) -> _FieldValue:
       if callable(value):
         # `value` is actually a transforming function.
         if name not in new_fields:

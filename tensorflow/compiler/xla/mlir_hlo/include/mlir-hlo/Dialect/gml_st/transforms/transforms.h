@@ -17,8 +17,15 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TRANSFORMS_H
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/IR/PatternMatch.h"
+
+namespace mlir {
+namespace linalg {
+class LinalgOp;
+class TiledLinalgOp;
+class LinalgTilingOptions;
+}  // namespace linalg
+}  // namespace mlir
 
 namespace mlir {
 namespace gml_st {
@@ -70,6 +77,21 @@ bool hasTransformationAttr(Operation *op);
 
 // Checks if `op` has the matching label attribute.
 bool hasMatchingLabel(Operation *op, StringRef label);
+
+// Uncollapse materialize operations with nested tile chains t1, t2, ..., tn. A
+// materialize op of the form ...
+//   `materialize(t1(t2(...(tn(sn)))), arg)`
+// ... is expanded into ...
+//   `materialize(t1(s1), materialize(t2(...(tn(sn))), arg))`.
+FailureOr<MaterializeOp> uncollapseMaterializeOp(OpBuilder &b,
+                                                 MaterializeOp op);
+
+// Collapse materialize operations with nested tile chains t1, t2, ..., tn, and
+// u1, u2, ..., un. A materialize op of the form ...
+//   `materialize(t1(t2(...(tn(sn)))), materialize(u1(u2(...(un(sn')))), arg))`
+// ... is collapsed as ...
+//   `materialize(t1(t2(...(tn(u1(u2(...(un(sn'))))))), arg)`.
+FailureOr<MaterializeOp> collapseMaterializeOp(OpBuilder &b, MaterializeOp op);
 
 }  // namespace gml_st
 }  // namespace mlir

@@ -43,9 +43,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace se = ::stream_executor;
 
@@ -237,7 +237,7 @@ xla::StatusOr<xla::Shape> DecodeSelfDescribingShapeConstant(
     const void* shape_ptr, int32_t size_bytes) {
   xla::ShapeProto shape_proto;
   if (!shape_proto.ParseFromArray(shape_ptr, size_bytes)) {
-    return tensorflow::errors::Internal("Failed parsing the shape proto");
+    return tsl::errors::Internal("Failed parsing the shape proto");
   }
   xla::Shape shape(shape_proto);
   auto status = xla::ShapeUtil::ValidateShape(shape);

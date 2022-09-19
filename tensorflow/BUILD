@@ -58,6 +58,8 @@ PACKAGE_STATIC_DEPS = [
     "@nsync//:__subpackages__",
     "@png//:__subpackages__",
     "@sobol_data//:__subpackages__",
+    "@stablehlo//:__subpackages__",
+    "@tf_runtime//:__subpackages__",
     "@bazel_tools//:__subpackages__",
     "@boringssl//:__subpackages__",
     "@com_github_cares_cares//:__subpackages__",

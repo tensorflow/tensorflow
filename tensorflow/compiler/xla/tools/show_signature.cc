@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -49,8 +49,7 @@ void RealMain(absl::Span<char* const> args) {
   Client* client = ClientLibrary::LocalClientOrDie();
   for (char* arg : args) {
     HloSnapshot module;
-    TF_CHECK_OK(
-        tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg, &module));
+    TF_CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), arg, &module));
     auto computation = client->LoadSnapshot(module).value();
     std::unique_ptr<ProgramShape> shape =
         client->GetComputationShape(computation).value();

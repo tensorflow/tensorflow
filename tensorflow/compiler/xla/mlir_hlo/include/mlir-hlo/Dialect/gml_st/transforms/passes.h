@@ -22,9 +22,12 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
+#define GEN_PASS_DECL_COLLAPSEMATERIALIZEOPSPASS
 #define GEN_PASS_DECL_DEPRECATEDTILINGPASS
 #define GEN_PASS_DECL_FUSIONPASS
 #define GEN_PASS_DECL_TILINGPASS
+#define GEN_PASS_DECL_GMLSTTOGPUPASS
+#define GEN_PASS_DECL_TILINGCWISEPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 namespace mlir {
@@ -49,12 +52,17 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
     StringRef producer = "", StringRef consumer = "");
 
+/// Pass to tile and fuse all cwise ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
+    bool distribute, ArrayRef<int64_t> tileSizes);
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass();
+
 /// Pass to compose set operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createComposeSetOpsPass();
 
-/// Pass to uncollapse materialize operations.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createUncollapseMaterializeOpsPass();
+/// Pass to collapse (or uncollapse) materialize operations.
+std::unique_ptr<OperationPass<func::FuncOp>> createCollapseMaterializeOpsPass(
+    bool reverse = false);
 
 /// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
 /// loops and memref.load/memref.store accesses.

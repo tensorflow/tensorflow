@@ -63,6 +63,10 @@ tf_class {
     argspec: "args=[\'self\', \'loss\', \'var_list\', \'tape\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "set_weights"
+    argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "update_step"
     argspec: "args=[\'self\', \'gradient\', \'variable\'], varargs=None, keywords=None, defaults=None"
   }

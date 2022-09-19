@@ -101,6 +101,7 @@ distribute_py_test(
 tf_py_test(
     name = "fault_tolerance_test",
     srcs = ["fault_tolerance_test.py"],
+    flaky = True,
     python_version = "PY3",
     shard_count = 36,
     tags = [

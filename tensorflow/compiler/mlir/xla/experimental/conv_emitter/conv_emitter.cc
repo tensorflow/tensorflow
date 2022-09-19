@@ -65,10 +65,9 @@ struct ShapeInfo {
   mlir::Type element_type;
 };
 
-ShapeInfo GetShapeInfo(
-    const Shape& shape, int64_t n_dim, int64_t c_dim,
-    absl::Span<const tensorflow::protobuf_int64> spatial_dims,
-    mlir::Builder builder) {
+ShapeInfo GetShapeInfo(const Shape& shape, int64_t n_dim, int64_t c_dim,
+                       absl::Span<const tsl::protobuf_int64> spatial_dims,
+                       mlir::Builder builder) {
   ShapeInfo shape_info;
 
   std::vector<int64_t> physical_to_logical(

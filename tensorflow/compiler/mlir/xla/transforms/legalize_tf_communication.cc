@@ -569,7 +569,7 @@ void RewriteControlFlowTerminator(OpBuilder& builder, Operation* terminator,
   // `mhlo.while` cond terminator does not need to be rewritten as it always
   // returns a tensor<i1> predicate value.
   if (auto while_parent = dyn_cast_or_null<WhileOp>(terminator->getParentOp()))
-    if (terminator->getParentRegion() == &while_parent.cond()) return;
+    if (terminator->getParentRegion() == &while_parent.getCond()) return;
 
   builder.setInsertionPoint(terminator);
   llvm::SmallDenseMap<Value, Value> rewritten_operands;
@@ -594,11 +594,11 @@ void RewriteRegionIfOp(OpBuilder& builder, IfOp region_if,
 
   // Create new `mhlo.if` op with extra token operands and result.
   auto new_if = builder.create<IfOp>(region_if.getLoc(), new_result_types,
-                                     region_if.pred());
+                                     region_if.getPred());
 
   // Move all regions from the old `mhlo.if` op to its replacement.
-  new_if.true_branch().takeBody(region_if.true_branch());
-  new_if.false_branch().takeBody(region_if.false_branch());
+  new_if.getTrueBranch().takeBody(region_if.getTrueBranch());
+  new_if.getFalseBranch().takeBody(region_if.getFalseBranch());
 
   // Forward result from old `mhlo.if` with replacement.
   SmallVector<Value> old_if_results = region_if.getResults();
@@ -722,8 +722,8 @@ void RewriteRegionWhileOp(OpBuilder& builder, WhileOp region_while,
                                            new_result_types, new_val_operands);
 
   // Move all regions from the old `mhlo.while` op to its replacement.
-  new_while.cond().takeBody(region_while.cond());
-  new_while.body().takeBody(region_while.body());
+  new_while.getCond().takeBody(region_while.getCond());
+  new_while.getBody().takeBody(region_while.getBody());
 
   // Forward result from old `mhlo.while` with replacement.
   SmallVector<Value> old_while_results = region_while.getResults();
@@ -758,7 +758,7 @@ bool ProcessRegionWhileOp(
 
   if (*region_idx < region_while.getNumRegions()) {
     SmallVector<Type> operand_types;
-    for (auto operand : region_while.operand())
+    for (auto operand : region_while.getOperand())
       operand_types.push_back(operand.getType());
     RewriteControlFlowOpRegion(builder, region_while, *region_idx,
                                operand_types, ops_to_visit, control_flow_blocks,

@@ -3167,7 +3167,7 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
                 1) /
                per_partition_size)) {
         handle_with_replicate_slice_dims();
-        return Status::OK();
+        return OkStatus();
       }
 
       // within_partition = (offset >= partition_id * per_partition_size) &&

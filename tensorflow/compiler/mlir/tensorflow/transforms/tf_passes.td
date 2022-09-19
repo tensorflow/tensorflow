@@ -49,9 +49,21 @@ def CanonicalizeCompileAndReplicateAttributesPass : Pass<"tf-canonicalize-compil
     ```mlir
     %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_replication_info = "cluster", _xla_compile_device_type = "TPU", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], name = "TPUReplicateMetadata", num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
     ```
+
+    `_XlaMustCompile=true` in the following code
+
+    ```mlir
+    %outputs_67, %control_68 = tf_executor.island wraps "tf.PartitionedCall"(%arg0, %outputs_0) {_XlaMustCompile = true, _collective_manager_ids = [], _read_only_resource_inputs = [], config = "", config_proto = "\0A\07\0A\03CPU\10\01\0A\07\0A\03GPU\10\00\0A\07\0A\03TPU\10\02\0A\0E\0A\0ATPU_SYSTEM\10\012\02J\008\01\82\01\05h\01\88\01\01", device = "", executor_type = "", f = @__inference__jit_compiled_convolution_op_1510} : (tensor<4x32x32x8xf32>, tensor<*xf32>) -> tensor<*xf32>
+    ```
+
+    will be replaced by `_xla_compile_device_type`, with its value set to the value of `device`.
+
+    ```mlir
+    %outputs_67, %control_68 = tf_executor.island wraps "tf.PartitionedCall"(%arg0, %outputs_0) {_collective_manager_ids = [], _read_only_resource_inputs = [], _xla_compile_device_type = "", config = "", config_proto = "\0A\07\0A\03CPU\10\01\0A\07\0A\03GPU\10\00\0A\07\0A\03TPU\10\02\0A\0E\0A\0ATPU_SYSTEM\10\012\02J\008\01\82\01\05h\01\88\01\01", device = "", executor_type = "", f = @__inference__jit_compiled_convolution_op_1510} : (tensor<4x32x32x8xf32>, tensor<*xf32>) -> tensor<*xf32>
+    ```
   }];
 
-  let constructor = "TFTPU::CreateCanonicalizeCompileAndReplicateAttributesPass()";
+  let constructor = "TF::CreateCanonicalizeCompileAndReplicateAttributesPass()";
 }
 
 def ClusterTFOpsByHostPass : Pass<"cluster-tf-ops-by-host", "ModuleOp"> {
@@ -2086,6 +2098,50 @@ def BreakUpIslandsPass : Pass<"tf-executor-break-up-islands", "mlir::func::FuncO
   let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
 }
 
+def SplitIntoIslandPerOpPass : Pass<"tf-executor-split-into-island-per-op", "mlir::func::FuncOp"> {
+  let summary = "Transform from TF control dialect to TF executor dialect.";
+  let description = [{
+    Splits an island with multiple ops into multiple islands (one per op). Does
+    not create any control dependencies between new islands, and does not
+    propagate control dependencies that potentially existed between the old
+    islands into the new islands. Maintains existing data dependencies between
+    ops wrapped by the new islands.
+
+    Example: original program:
+
+    ```mlir
+        func.func @dangling_print(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
+          %graph:2 = tf_executor.graph {
+            %island1:3 = tf_executor.island {
+              %add1 = "tf.Add"(%arg0, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+              %add2 = "tf.Add"(%add1, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+              %res = "tf.Print"(%add2) { message = "add result" } : (tensor<*xi32>) -> (tensor<*xi32>)
+              tf_executor.yield %add1, %add2 : tensor<*xi32>, tensor<*xi32>
+            }
+            tf_executor.fetch %island1#0, %island1#1 : tensor<*xi32>, tensor<*xi32>
+          }
+          func.return %graph#0, %graph#1 : tensor<*xi32>, tensor<*xi32>
+        }
+    ```
+
+    will be converted by this pass into:
+
+    ```mlir
+        func.func @dangling_print(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
+          %0:2 = tf_executor.graph {
+            %outputs, %control = tf_executor.island wraps "tf.Add"(%arg0, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+            %outputs_0, %control_1 = tf_executor.island wraps "tf.Add"(%outputs, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+            %outputs_2, %control_3 = tf_executor.island wraps "tf.Print"(%outputs_0) {message = "add result"} : (tensor<*xi32>) -> tensor<*xi32>
+            tf_executor.fetch %outputs, %outputs_0 : tensor<*xi32>, tensor<*xi32>
+          }
+          return %0#0, %0#1 : tensor<*xi32>, tensor<*xi32>
+        }
+    ```
+  }];
+  let constructor = "mlir::CreateSplitIntoIslandPerOpPass()";
+  let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
+}
+
 def FunctionalToExecutorDialectConversionPass : Pass<"tf-functional-to-executor-conversion", "mlir::func::FuncOp"> {
   let summary = "Transform from func op to TF executor dialect.";
   let constructor = "CreateFunctionalToExecutorDialectConversionPass()";
@@ -2285,4 +2341,27 @@ def GroupByDialectPass : Pass<"tf-group-by-dialect", "mlir::func::FuncOp"> {
       with @x_1, @x_2 and @y_1 filled in.
   }];
   let constructor = "TF::CreateGroupByDialectPass()";
+}
+
+def RemoveUnusedArgumentsPass : Pass<"tf-remove-unused-arguments", "ModuleOp"> {
+  let summary = "Removes unused args from private functions & their callers.";
+  let description = [{
+      Removes arguments from functions that aren't used in the function
+      body. Also adjusts the callers of said functions.
+
+      For example, the code
+        func.func @f(%arg0, %arg1) {
+          return %arg0
+        }
+        ...
+        call @x_1(x, y)
+
+      would be transformed into
+        func.func @f(%arg0) {
+          return %arg0
+        }
+        ...
+        call @x_1(x)
+  }];
+  let constructor = "TF::CreateRemoveUnusedArgumentsPass()";
 }

@@ -18,27 +18,23 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
-#include <tuple>
 #include <utility>
 
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/Arithmetic/Utils/Utils.h"
+#include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
-#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeUtilities.h"
-#include "mlir/Interfaces/ViewLikeInterface.h"
 
 namespace mlir {
 namespace {
@@ -738,10 +734,30 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
 //===----------------------------------------------------------------------===//
 
 ParseResult ScatterOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseDstStyleOp(parser, result);
+  if (parseDstStyleOp(parser, result)) return failure();
+
+  SmallVector<OpAsmParser::Argument> regionArgs;
+  if (parser.parseArgumentList(regionArgs, OpAsmParser::Delimiter::Paren,
+                               /*allowType=*/true, /*allowAttrs=*/true)) {
+    return failure();
+  }
+
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, regionArgs)) return failure();
+
+  return success();
 }
 
-void ScatterOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
+void ScatterOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<ScatterOp>(*this, p);
+
+  p << "(";
+  llvm::interleaveComma(update_computation().getArguments(), p,
+                        [&](auto arg) { p.printRegionArgument(arg); });
+  p << ") ";
+
+  p.printRegion(update_computation(), /*printEntryBlockArgs=*/false);
+}
 
 LogicalResult ScatterOp::verify() {
   if (failed(verifyDestinationStyleOp(getOperation()))) return failure();
@@ -758,8 +774,8 @@ LogicalResult ScatterOp::verify() {
 }
 
 SmallVector<StringRef> ScatterOp::getLoopIteratorTypes() {
-  auto indexVectorDimSize = indices().getType().getShape().back();
-  return getParallelIteratorTypes(indexVectorDimSize);
+  auto indicesRank = indices().getType().getRank();
+  return SmallVector<StringRef>(indicesRank - 1, getParallelIteratorTypeName());
 }
 
 SmallVector<Value> ScatterOp::getDestinationOperands(OpBuilder &) {
@@ -767,110 +783,47 @@ SmallVector<Value> ScatterOp::getDestinationOperands(OpBuilder &) {
 }
 
 SmallVector<Range> ScatterOp::getIterationDomain(OpBuilder &b) {
-  auto indexVectorDimSize = indices().getType().getShape().back();
-  return getIterationDomainForTensor(b, getLoc(), init(), indexVectorDimSize);
+  return getIterationDomainForTensor(b, getLoc(), updates());
+}
+
+static Value getSlice(OpBuilder &b, Location loc, Value tensor,
+                      ArrayRef<OpFoldResult> offsets,
+                      ArrayRef<OpFoldResult> sizes) {
+  auto tensorType = tensor.getType().cast<RankedTensorType>();
+  SmallVector<Value> dynSizes = tensor::createDynamicDimValues(b, loc, tensor);
+  auto staticSizes = b.getI64ArrayAttr(tensorType.getShape());
+
+  Value space = b.create<gml_st::SpaceOp>(loc, dynSizes, staticSizes);
+  if (sizes.empty()) return b.create<gml_st::MaterializeOp>(loc, tensor, space);
+
+  SmallVector<OpFoldResult> strides(offsets.size(), b.getIndexAttr(1));
+  Value tile = b.create<gml_st::TileOp>(loc, space, offsets, sizes, strides);
+  return b.create<gml_st::MaterializeOp>(loc, tensor, tile);
 }
 
 mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
     OpBuilder &b, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
-  // TODO(jreiffers): Verify that all sizes are 1 once the sizes are statically
-  // known here.
-  // We iterate over all indices for each output point. This is obviously very
-  // inefficient, but for now only correctness is the goal.
-  auto loc = getLoc();
-  TensorType indicesTy = indices().getType();
-  auto initTy = init().getType();
+  Location loc = getLoc();
 
-  // We accumulate all the updates for the current point.
-  Type elementTy = initTy.getElementType();
-  Value accumulatedUpdates =
-      (elementTy.isIntOrIndex()
-           ? b.create<arith::ConstantOp>(loc, b.getIntegerAttr(elementTy, 0))
-           : b.create<arith::ConstantOp>(loc, b.getFloatAttr(elementTy, 0)))
-          .getResult();
+  Value update = this->updates();
+  Value updateSlice = getSlice(b, loc, update, offsets, sizes);
 
-  // The index vector dim is the last dimension of `indices`, so we generate
-  // loops for all the others.
-  Value zero = b.create<arith::ConstantIndexOp>(loc, 0);
-  Value one = b.create<arith::ConstantIndexOp>(loc, 1);
-  SmallVector<scf::ForOp> forOps;
-  SmallVector<Value> ivs;
-  for (int64_t i = 0; i < indicesTy.getRank() - 1; ++i) {
-    Value ub = b.createOrFold<tensor::DimOp>(loc, indices(), i);
-    auto &forOp = forOps.emplace_back(b.create<scf::ForOp>(
-        loc, zero, ub, one, ValueRange{accumulatedUpdates}));
-    ivs.push_back(forOp.getInductionVar());
-    b.setInsertionPointToStart(forOp.getBody());
-    // Pass the accumulator down the for loops.
-    accumulatedUpdates = forOp.getBody()->getArgument(1);
-  }
+  Value indices = this->indices();
+  auto indicesOffsets = to_vector(offsets);
+  indicesOffsets.push_back(b.getIndexAttr(0));
+  auto indicesSizes = to_vector(sizes);
+  auto indicesType = indices.getType().cast<RankedTensorType>();
+  indicesSizes.push_back(b.getIndexAttr(indicesType.getShape().back()));
+  Value indicesSlice = getSlice(b, loc, indices, indicesOffsets, indicesSizes);
 
-  SmallVector<Value> materializedOffsets;
-  for (auto &offset : offsets)
-    materializedOffsets.push_back(
-        getValueOrCreateConstantIndexOp(b, loc, offset));
-  Value isCorrectIndex =
-      b.create<arith::ConstantOp>(loc, b.getIntegerAttr(b.getI1Type(), 1));
-  auto indexInIndices = ivs;
-  indexInIndices.emplace_back();
-  int64_t indexVectorDimSize = indicesTy.getShape().back();
-  // Check if the coordinates from `indices` match the point we're currently
-  // computing.
-  for (int64_t i = 0; i < indexVectorDimSize; ++i) {
-    indexInIndices.back() = b.create<arith::ConstantIndexOp>(loc, i);
-    Value updateIndex = b.create<arith::IndexCastOp>(
-        loc, b.getIndexType(),
-        b.create<tensor::ExtractOp>(loc, indices(), indexInIndices));
-    isCorrectIndex = b.createOrFold<arith::AndIOp>(
-        loc, isCorrectIndex,
-        b.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq, updateIndex,
-                                materializedOffsets[i]));
-  }
+  Value init = this->init();
+  Value initSlice = getSlice(b, loc, init, llvm::None, llvm::None);
 
-  // If the coordinates match, accumulate the corresponding update. Otherwise,
-  // keep the current value.
-  auto ifOp = b.create<scf::IfOp>(
-      loc, TypeRange{elementTy}, isCorrectIndex,
-      [&](OpBuilder &builder, Location loc) {
-        Value update = builder.create<tensor::ExtractOp>(loc, updates(), ivs);
-        builder.create<scf::YieldOp>(
-            loc, ArithBuilder(builder, loc).add(accumulatedUpdates, update));
-      },
-      [&](OpBuilder &builder, Location loc) {
-        builder.create<scf::YieldOp>(loc, ValueRange{accumulatedUpdates});
-      });
-
-  accumulatedUpdates = ifOp.getResult(0);
-
-  // Pass the accumulated update back up through the loops.
-  for (auto &forOp : llvm::reverse(forOps)) {
-    b.setInsertionPointToEnd(forOp.getBody());
-    b.create<scf::YieldOp>(loc, accumulatedUpdates);
-    accumulatedUpdates = forOp.getResult(0);
-  }
-  b.setInsertionPointAfter(forOps.front().getOperation());
-
-  // Construct a unit scatter.
-  Value zeroIndexVector = b.create<arith::ConstantOp>(
-      loc, DenseElementsAttr::get(RankedTensorType::get({1}, b.getI32Type()),
-                                  b.getI32IntegerAttr(0)));
-  Value updateScalar = b.create<tensor::FromElementsOp>(
-      loc, RankedTensorType::get({}, elementTy), accumulatedUpdates);
-  auto sliceOffsets = offsets.vec();
-  auto sliceSizes = sizes.vec();
-  for (size_t i = offsets.size(), e = initTy.getRank(); i < e; ++i) {
-    sliceOffsets.emplace_back(b.getIndexAttr(0));
-    sliceSizes.emplace_back(
-        b.create<tensor::DimOp>(loc, init(), i).getResult());
-  }
-  Value initSlice =
-      getMaterializedTile(b, loc, init(), sliceOffsets, sliceSizes);
-
-  return b
-      .create<ScatterOp>(loc, TypeRange{initSlice.getType()},
-                         ValueRange{zeroIndexVector, updateScalar, initSlice})
-      .getOperation();
+  auto dpsInterface =
+      cast<linalg::DestinationStyleOpInterface>(this->getOperation());
+  return dpsInterface.clone(b, loc, TypeRange{initSlice.getType()},
+                            ValueRange{indicesSlice, updateSlice, initSlice});
 }
 
 FailureOr<Value> ScatterOp::generateResultTileValue(
@@ -1180,6 +1133,25 @@ void MapOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult MapOp::verify() {
+  auto *bodyBlock = getBody();
+  auto blockArgs = bodyBlock->getArguments();
+
+  // Checks if the number of `inputs` match the arity of the `mapper` region.
+  if (inputs().size() != blockArgs.size())
+    return emitOpError() << "expects number of operands to match the arity of "
+                            "mapper, but got: "
+                         << inputs().size() << " and " << blockArgs.size();
+
+  // The parameters of mapper should all match the element type // of inputs.
+  for (const auto &[bbArgType, inputArg] :
+       llvm::zip(bodyBlock->getArgumentTypes(), inputs())) {
+    auto inputElemType = inputArg.getType().cast<ShapedType>().getElementType();
+    if (bbArgType != inputElemType) {
+      return emitOpError() << "expected element type of input " << inputElemType
+                           << " to match bbArg type " << bbArgType;
+    }
+  }
+
   return verifyDestinationStyleOp(getOperation());
 }
 

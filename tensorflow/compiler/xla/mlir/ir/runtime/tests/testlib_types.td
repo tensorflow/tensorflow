@@ -20,10 +20,20 @@ class TESTLIB_Type<string name, string typeMnemonic>
   let mnemonic = typeMnemonic;
 }
 
+// TODO(ezhulenev): Remove this type once all tests are migrated to the type
+// defined below. This requires moving tests from `jitrt/cpp_tests` to XLA.
 def TESTLIB_CustomArgType : TESTLIB_Type<"CustomArg", "custom_arg"> {
   let summary = "custom argument type";
   let description = [{
     Type for testing passing custom user-defined arguments to XLA executables.
+  }];
+}
+
+def TESTLIB_ValueType : TESTLIB_Type<"Value", "value"> {
+  let summary = "custom value type";
+  let description = [{
+    Custom type for testing passing custom user-defined types as XLA executable
+    and XLA runtime custom calls arguments and results.
   }];
 }
 

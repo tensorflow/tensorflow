@@ -76,7 +76,7 @@ func.func @tiled_add(%A: tensor<10xf32>, %B: tensor<10xf32>,
   // CHECK-NEXT:  %[[SV_C:.*]] = memref.subview %[[C]]
   // CHECK-NEXT:  linalg.generic
   // CHECK-SAME:    ins(%[[SV_A]], %[[SV_B]]
-  // CHECK-SAME:    outs(%[[SV_C]] : memref<2xf32, #map{{[0-9]}}>)
+  // CHECK-SAME:    outs(%[[SV_C]] : memref<2xf32, strided{{.*}}>)
   // CHECK:         linalg.yield %{{[0-9]}} : f32
   // CHECK:       gml_st.yield
   func.return %sum : tensor<10xf32>

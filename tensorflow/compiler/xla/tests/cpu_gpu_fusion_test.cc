@@ -41,9 +41,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -269,7 +269,7 @@ XLA_TEST_F(CpuGpuFusionTest, RandomizedParallelPartition) {
   // Tests parallel partitioning of a fusion instruction.
   // Create shape with random outer dimension size to generate random parallel
   // partition counts for each test run.
-  const int seed = tensorflow::testing::RandomSeed();
+  const int seed = tsl::testing::RandomSeed();
   LOG(INFO) << "RandomizedParallelPartition seed: " << seed;
   std::mt19937 generator(seed);
   std::uniform_int_distribution<int> distribution(128, 1024);
@@ -649,23 +649,23 @@ XLA_TEST_F(CpuGpuFusionTest, DISABLED_ON_CPU(ReduceWindow)) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
   Window window;
   ASSERT_TRUE(
-      tensorflow::protobuf::TextFormat::ParseFromString("dimensions:{\n"
-                                                        "size:2\n"
-                                                        "stride:1\n"
-                                                        "padding_low:0\n"
-                                                        "padding_high:0\n"
-                                                        "window_dilation:1\n"
-                                                        "base_dilation:1\n"
-                                                        "}\n"
-                                                        "dimensions:{\n"
-                                                        "size:2\n"
-                                                        "stride:1\n"
-                                                        "padding_low:0\n"
-                                                        "padding_high:0\n"
-                                                        "window_dilation:1\n"
-                                                        "base_dilation:1\n"
-                                                        "}\n",
-                                                        &window));
+      tsl::protobuf::TextFormat::ParseFromString("dimensions:{\n"
+                                                 "size:2\n"
+                                                 "stride:1\n"
+                                                 "padding_low:0\n"
+                                                 "padding_high:0\n"
+                                                 "window_dilation:1\n"
+                                                 "base_dilation:1\n"
+                                                 "}\n"
+                                                 "dimensions:{\n"
+                                                 "size:2\n"
+                                                 "stride:1\n"
+                                                 "padding_low:0\n"
+                                                 "padding_high:0\n"
+                                                 "window_dilation:1\n"
+                                                 "base_dilation:1\n"
+                                                 "}\n",
+                                                 &window));
   auto nested_builder = HloComputation::Builder("mul");
   {
     auto x = nested_builder.AddInstruction(
@@ -888,8 +888,8 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
   stream.Init();
 
   // Initialize thread pool.
-  tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
-                                      intra_op_parallelism_threads);
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "XLAEigen",
+                               intra_op_parallelism_threads);
   Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
 
   // Initialize ExecutableRunOptions.

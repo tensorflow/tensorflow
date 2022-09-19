@@ -236,6 +236,9 @@ class HloFunctionImporter {
   mlir::ModuleOp module_;
   mlir::Builder* builder_;
 
+  // Fresh variable supply
+  int64_t fresh_ = 0;
+
   // Mapping from HloComputation to the created MLIR function.
   std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>*
       function_map_;

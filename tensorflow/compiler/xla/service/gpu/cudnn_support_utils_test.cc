@@ -32,15 +32,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using ::tensorflow::testing::IsOkAndHolds;
+using ::tsl::testing::IsOkAndHolds;
 
 class CudnnSupportUtilsTest : public HloTestBase {
  public:
@@ -54,7 +54,7 @@ class CudnnSupportUtilsTest : public HloTestBase {
         if (inst->IsCustomCall(target)) {
           VLOG(1) << inst->ToString();
           if (call != nullptr) {
-            return tensorflow::errors::FailedPrecondition(
+            return tsl::errors::FailedPrecondition(
                 "Found more than one custom call.");
           }
           call = Cast<HloCustomCallInstruction>(inst);
@@ -62,7 +62,7 @@ class CudnnSupportUtilsTest : public HloTestBase {
       }
     }
     if (call == nullptr) {
-      return tensorflow::errors::FailedPrecondition(
+      return tsl::errors::FailedPrecondition(
           "Did not find any matching custom call.");
     }
     return call;

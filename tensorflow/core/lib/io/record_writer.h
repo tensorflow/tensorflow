@@ -30,10 +30,10 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
-
+namespace tsl {
 class WritableFile;
-
+}  // namespace tsl
+namespace tensorflow {
 namespace io {
 
 struct RecordWriterOptions {

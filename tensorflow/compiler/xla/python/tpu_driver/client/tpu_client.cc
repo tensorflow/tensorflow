@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -127,8 +127,8 @@ PyTpuClient::PyTpuClient(std::string platform_name,
   // TODO(frankchn): Check if thread pool size needs to be adjusted (perhaps
   // something like min(cores, devices_.size()) might be appropriate depending
   // on the number of devices.
-  pool_ = std::make_unique<tensorflow::thread::ThreadPool>(
-      tensorflow::Env::Default(), "PyTpuClient", devices_.size());
+  pool_ = std::make_unique<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "PyTpuClient", devices_.size());
 }
 
 Status PyTpuClient::TransferToInfeed(const LiteralSlice& literal,
@@ -621,7 +621,7 @@ Status WaitForExecuteEvent(tpu_driver::Event* event) {
   }
 
   if (!opt_status.has_value()) {
-    return tensorflow::errors::DeadlineExceeded(
+    return tsl::errors::DeadlineExceeded(
         absl::StrFormat("TPU program took more than %d seconds to complete.",
                         absl::ToInt64Seconds(kMaxExecutionDelay)));
   }

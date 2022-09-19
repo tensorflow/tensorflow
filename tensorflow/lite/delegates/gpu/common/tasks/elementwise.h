@@ -27,6 +27,10 @@ namespace gpu {
 
 // Creates simple one input operation without any parameters, for example
 // log, sin, cos, etc.
+ElementwiseDescriptor CreateElementwiseOneInput(const GpuInfo& gpu_info,
+                                                CalculationsPrecision precision,
+                                                const OperationType& op_type);
+
 GPUOperation CreateElementwiseOneInput(const GpuInfo& gpu_info,
                                        const OperationDef& definition,
                                        const OperationType& op_type);

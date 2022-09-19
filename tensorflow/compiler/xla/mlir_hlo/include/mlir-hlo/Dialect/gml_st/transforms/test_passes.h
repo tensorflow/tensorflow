@@ -30,6 +30,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTestGmlStLoopTilingPass();
 std::unique_ptr<OperationPass<ModuleOp>> createTestGmlStBufferizationPass();
 
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_TESTGMLSTBUFFERIZATION
+#define GEN_PASS_DECL_TESTGMLSTLOOPPEELING
+#define GEN_PASS_DECL_TESTGMLSTLOOPTILING
 #include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h.inc"
 
 }  // namespace gml_st

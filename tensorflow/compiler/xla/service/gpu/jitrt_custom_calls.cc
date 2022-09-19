@@ -48,40 +48,23 @@
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
-#include "tensorflow/core/platform/human_readable_json.h"
+#include "tensorflow/tsl/platform/human_readable_json.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                          xla::gpu::JitRtKernelsCache);
-XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                          xla::gpu::JitRtGemmConfigCache);
-XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                          xla::gpu::JitRtCollectiveSupport);
-XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(
-    xla::runtime::CustomCall, xla::gpu::JitRtAsyncCollectiveSupport);
-XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(
-    xla::runtime::CustomCall, const xla::ServiceExecutableRunOptions);
-XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                          const xla::DebugOptions);
-XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                          const std::string);
-XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                          const std::vector<uint8_t>);
-XLA_RUNTIME_DEFINE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                          se::DeviceMemoryBase);
-
 namespace xla {
 namespace gpu {
 
+using Eigen::bfloat16;
 using Eigen::half;
 
 using llvm::ArrayRef;
@@ -97,7 +80,6 @@ using ::xla::runtime::AggregateAttrDef;
 using ::xla::runtime::AggregateAttrEncoding;
 using ::xla::runtime::CustomCall;
 using ::xla::runtime::CustomCallAttrEncodingSet;
-using ::xla::runtime::DirectCustomCallRegistry;
 using ::xla::runtime::EnumAttrEncoding;
 using ::xla::runtime::Executable;
 using ::xla::runtime::Tagged;
@@ -213,30 +195,6 @@ void PopulateLmhloToXlaAttrEncoding(CustomCallAttrEncodingSet& encoding) {
 }
 
 // -------------------------------------------------------------------------- //
-
-se::KernelBase* JitRtKernelsCache::Get(se::StreamExecutor* executor,
-                                       const char* data, StringRef name) {
-  Key key(executor, data, name);
-
-  absl::MutexLock lock(&mutex_);
-  auto it = kernels_cache_.find(key);
-  if (it != kernels_cache_.end()) return it->second.get();
-
-  return nullptr;
-}
-
-se::KernelBase* JitRtKernelsCache::Set(se::StreamExecutor* executor,
-                                       const char* data, StringRef name,
-                                       std::unique_ptr<se::KernelBase> kernel) {
-  Key key(executor, data, name);
-
-  absl::MutexLock lock(&mutex_);
-  auto it = kernels_cache_.find(key);
-  if (it != kernels_cache_.end()) return it->second.get();
-
-  auto emplaced = kernels_cache_.try_emplace(key, std::move(kernel));
-  return emplaced.first->second.get();
-}
 
 template <typename MemrefArg>
 static se::DeviceMemoryBase GetDeviceAddress(MemrefArg& memref) {
@@ -393,108 +351,6 @@ FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
         GetDeviceAddress(*destination)});
   }
   return device_buffers;
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
-struct LaunchFunc {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          const std::string* ptx,
-                          const std::vector<uint8_t>* cubin,
-                          se::DeviceMemoryBase* temp_buffer,
-                          JitRtKernelsCache* kernels_cache, int32_t grid_size_x,
-                          int32_t grid_size_y, int32_t grid_size_z,
-                          int32_t block_size_x, int32_t block_size_y,
-                          int32_t block_size_z, CustomCall::RemainingArgs args,
-                          StringRef name) const;
-
-  static LaunchFunc Handler() { return LaunchFunc(); }
-};
-}  // namespace
-
-absl::Status LaunchFunc::operator()(
-    const ServiceExecutableRunOptions* run_options, const std::string* ptx,
-    const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
-    JitRtKernelsCache* kernels_cache, int32_t grid_size_x, int32_t grid_size_y,
-    int32_t grid_size_z, int32_t block_size_x, int32_t block_size_y,
-    int32_t block_size_z, CustomCall::RemainingArgs args,
-    StringRef name) const {
-  se::Stream* stream = run_options->stream();
-  se::StreamExecutor* executor = stream->parent();
-
-  LaunchDimensions launch_dimensions(
-      {grid_size_x, grid_size_y, grid_size_z},
-      {block_size_x, block_size_y, block_size_z});
-
-  se::KernelBase* kernel = kernels_cache->Get(executor, ptx->data(), name);
-  const int args_size_including_temp_buffer = args.size() + 1;
-
-  // If kernel does not exists create it from the ptx.
-  if (kernel == nullptr) {
-    auto created =
-        CreateKernel(absl::string_view(name.data(), name.size()),
-                     args_size_including_temp_buffer, *ptx, *cubin, executor);
-    if (!created.ok()) return ToAbslStatus(created.status());
-
-    kernel =
-        kernels_cache->Set(executor, ptx->data(), name, std::move(*created));
-  }
-
-  VLOG(3) << "Launching " << kernel->name();
-  absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
-  buffer_args.reserve(args_size_including_temp_buffer);
-
-  // Add MemRef arguments as buffer arguments.
-  for (unsigned i = 0; i < args.size(); ++i) {
-    // Simple row major memref passed as shapeless buffer.
-    auto memref = args.get<runtime::FlatMemrefView>(i);
-    if (succeeded(memref)) {
-      buffer_args.emplace_back(GetDeviceAddress(*memref));
-      continue;
-    }
-
-    // Memref layout must be encoded in the compiled device kernel, so we don't
-    // have to pass strides or minor to major dimensions order to the kernel.
-    auto strided = args.get<runtime::StridedMemrefView>(i);
-    if (succeeded(strided)) {
-      buffer_args.emplace_back(GetDeviceAddress(*strided));
-      continue;
-    }
-
-    return absl::InvalidArgumentError("Unsupported argument type");
-  }
-  buffer_args.push_back(*temp_buffer);
-
-  // Execute device kernel on a main stream.
-  auto executed =
-      ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions, stream);
-  if (!executed.ok()) return ToAbslStatus(executed);
-
-  return absl::OkStatus();
-}
-
-static bool LaunchFunc(runtime::ExecutionContext* ctx, void** args,
-                       void** attrs, void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.func.launch")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const std::string*>()
-                             .UserData<const std::vector<uint8_t>*>()
-                             .UserData<se::DeviceMemoryBase*>()
-                             .UserData<JitRtKernelsCache*>()
-                             .Arg<int32_t>()   // grid_size_x
-                             .Arg<int32_t>()   // grid_size_y
-                             .Arg<int32_t>()   // grid_size_z
-                             .Arg<int32_t>()   // block_size_x
-                             .Arg<int32_t>()   // block_size_y
-                             .Arg<int32_t>()   // block_size_x
-                             .RemainingArgs()  // args
-                             .Attr<std::string_view>("kernel")
-                             .To<RuntimeChecks()>(LaunchFunc::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1059,8 +915,29 @@ absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
   if (args.size() != dest_buffers->leaf_count())
     return absl::InvalidArgumentError("Incorrect number of arguments");
 
-  size_t index = 0;
-  for (auto& dest : dest_buffers->leaves()) {
+  int64_t leaf_count = dest_buffers->leaf_count();
+  auto dest_leaf_it = dest_buffers->leaf_begin();
+
+  for (int64_t index = 0; index < leaf_count; ++index) {
+    const ShapeIndex& shape_index = dest_leaf_it->first;
+    std::unique_ptr<OutfeedBuffer>& buffer = dest_leaf_it->second;
+
+    // NOTE: This code needs deal with the `dest_buffers` object getting
+    // deleted when it is executing. Specifically, objects in the outfeed queue
+    // are pointers to instances of stack-allocated objects in
+    // `GpuTransferManager::TransferLiteralFromOutfeed`. When all leaf node
+    // buffers are notified via "buffer->Done()" below in the stream host
+    // callback, `TransferLiteralFromOutfeed` deletes this stack-allocated
+    // object when it returns. This means that it is possible that during the
+    // last iteration, after the call to "buffer->Done()" is scheduled onto the
+    // stream, the `dest_buffers` object might get deleted, so we should avoid
+    // accessing the object after that.
+    //
+    // To achieve that, increment the leaf iterator here before the last "Done"
+    // is enqueued, instead of in the loop increment, which would be after the
+    // "Done" is scheduled.
+    ++dest_leaf_it;
+
     // Get the source buffer.
     auto source = args.get<runtime::StridedMemrefView>(index);
     if (failed(source))
@@ -1068,7 +945,7 @@ absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
 
     // Get the source buffer shape.
     const Shape& dest_shape =
-        ShapeUtil::GetSubshape(dest_buffers->shape(), dest.first);
+        ShapeUtil::GetSubshape(dest_buffers->shape(), shape_index);
 
     // Check that destination shape matches the source shape.
     Shape source_shape = ToShape(*source);
@@ -1078,14 +955,11 @@ absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
     }
 
     se::DeviceMemoryBase source_address = GetDeviceAddress(*source);
-    std::unique_ptr<OutfeedBuffer>& buffer = dest.second;
 
     // Schedule the memory transfer.
     auto* dest_address = buffer->destination()->untyped_data();
     stream->ThenMemcpy(dest_address, source_address, buffer->length())
         .ThenDoHostCallback([&buffer]() { buffer->Done(); });
-
-    ++index;
   }
 
   Status block_status = stream->BlockHostUntilDone();
@@ -1117,36 +991,41 @@ enum class MemcpyDirection { kDeviceToDevice, kDeviceToHost, kHostToDevice };
 template <MemcpyDirection direction>
 struct Memcpy {
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          runtime::FlatMemrefView dst,
-                          runtime::FlatMemrefView src) const;
+                          runtime::StridedMemrefView dst,
+                          runtime::StridedMemrefView src) const;
   static Memcpy Handler() { return Memcpy(); }
 };
 }  // namespace
 
 template <MemcpyDirection direction>
 absl::Status Memcpy<direction>::operator()(
-    const ServiceExecutableRunOptions* run_options, runtime::FlatMemrefView dst,
-    runtime::FlatMemrefView src) const {
+    const ServiceExecutableRunOptions* run_options,
+    runtime::StridedMemrefView dst, runtime::StridedMemrefView src) const {
   se::Stream* stream = run_options->stream();
 
-  if (dst.size_in_bytes != src.size_in_bytes) {
+  if (dst.sizes != src.sizes) {
     return absl::InvalidArgumentError(
-        "Source memref size does not match destination memref size");
+        "Source memref sizes do not match destination memref sizes");
+  }
+
+  if (dst.strides != src.strides) {
+    return absl::InvalidArgumentError(
+        "Source memref strides do not match destination memref strides");
   }
 
   switch (direction) {
     case MemcpyDirection::kDeviceToDevice: {
       se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
       se::DeviceMemoryBase src_data = GetDeviceAddress(src);
-      stream->ThenMemcpy(&dst_data, src_data, src.size_in_bytes);
+      stream->ThenMemcpy(&dst_data, src_data, src_data.size());
     } break;
     case MemcpyDirection::kDeviceToHost: {
       se::DeviceMemoryBase src_data = GetDeviceAddress(src);
-      stream->ThenMemcpy(dst.data, src_data, src.size_in_bytes);
+      stream->ThenMemcpy(dst.data, src_data, src_data.size());
     } break;
     case MemcpyDirection::kHostToDevice: {
       se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
-      stream->ThenMemcpy(&dst_data, src.data, src.size_in_bytes);
+      stream->ThenMemcpy(&dst_data, src.data, dst_data.size());
     } break;
   }
 
@@ -1166,8 +1045,8 @@ static bool MemcpyFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
                      void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
                              .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::FlatMemrefView>()  // dst
-                             .Arg<runtime::FlatMemrefView>()  // src
+                             .Arg<runtime::StridedMemrefView>()  // dst
+                             .Arg<runtime::StridedMemrefView>()  // src
                              .To<RuntimeChecks()>(Memcpy<direction>::Handler())
                              .release();
 
@@ -1180,7 +1059,7 @@ namespace {
 
 struct Memset {
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          runtime::FlatMemrefView dst,
+                          runtime::StridedMemrefView dst,
                           CustomCall::VariantArg constant) const;
   static Memset Handler() { return Memset(); }
 };
@@ -1188,7 +1067,7 @@ struct Memset {
 }  // namespace
 
 absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
-                                runtime::FlatMemrefView dst,
+                                runtime::StridedMemrefView dst,
                                 CustomCall::VariantArg constant) const {
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
@@ -1197,17 +1076,27 @@ absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
   bool set_zero = false;
 
   // Check all supported data types to see if we have a zero value.
-  if (auto i1 = constant.get<bool>(); succeeded(i1) && *i1 == false)
-    set_zero = true;
-  else if (auto i32 = constant.get<int32_t>(); succeeded(i32) && *i32 == 0)
-    set_zero = true;
-  else if (auto f16 = constant.get<half>(); succeeded(f16) && *f16 == half(0.0))
-    set_zero = true;
-  else if (auto f32 = constant.get<float>(); succeeded(f32) && *f32 == 0.0)
-    set_zero = true;
+  if (auto i1 = constant.get<bool>(); succeeded(i1))
+    set_zero = *i1 == false;
+  else if (auto i8 = constant.get<int8_t>(); succeeded(i8))
+    set_zero = *i8 == 0;
+  else if (auto i16 = constant.get<int16_t>(); succeeded(i16))
+    set_zero = *i16 == 0;
+  else if (auto i32 = constant.get<int32_t>(); succeeded(i32))
+    set_zero = *i32 == 0;
+  else if (auto i64 = constant.get<int64_t>(); succeeded(i64))
+    set_zero = *i64 == 0;
+  else if (auto bf16 = constant.get<bfloat16>(); succeeded(bf16))
+    set_zero = *bf16 == bfloat16(0.0);
+  else if (auto f16 = constant.get<half>(); succeeded(f16))
+    set_zero = *f16 == half(0.0);
+  else if (auto f32 = constant.get<float>(); succeeded(f32))
+    set_zero = *f32 == 0.0;
+  else if (auto f64 = constant.get<double>(); succeeded(f64))
+    set_zero = *f64 == 0.0;
 
   if (set_zero) {
-    stream->ThenMemZero(&dst_data, dst.size_in_bytes);
+    stream->ThenMemZero(&dst_data, dst_data.size());
     return absl::OkStatus();
   }
 
@@ -1221,10 +1110,10 @@ absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
   else
     return absl::InvalidArgumentError("Unsupported memset bit pattern type");
 
-  if (dst.size_in_bytes % 4 != 0)
+  if (dst_data.size() % 4 != 0)
     return absl::InvalidArgumentError("Memref size is not divisible by 4");
 
-  stream->ThenMemset32(&dst_data, pattern, dst.size_in_bytes);
+  stream->ThenMemset32(&dst_data, pattern, dst_data.size());
 
   return absl::OkStatus();
 }
@@ -1233,8 +1122,8 @@ static bool MemsetFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
                      void** rets) {
   static auto* handler = CustomCall::Bind("xla.gpu.memset")
                              .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::FlatMemrefView>()  // dst
-                             .Arg<CustomCall::VariantArg>()   // constant
+                             .Arg<runtime::StridedMemrefView>()  // dst
+                             .Arg<CustomCall::VariantArg>()      // constant
                              .To<RuntimeChecks()>(Memset::Handler())
                              .release();
 
@@ -1315,7 +1204,8 @@ struct Cholesky {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
                           const DebugOptions* debug_options,
-                          runtime::MemrefView operand, runtime::MemrefView a,
+                          runtime::StridedMemrefView operand,
+                          runtime::StridedMemrefView a,
                           runtime::MemrefView workspace,
                           runtime::MemrefView info, int64_t batch_size,
                           bool is_lower, int64_t n) const;
@@ -1325,8 +1215,8 @@ struct Cholesky {
 
 absl::Status Cholesky::operator()(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, runtime::MemrefView operand,
-    runtime::MemrefView a, runtime::MemrefView workspace,
+    const DebugOptions* debug_options, runtime::StridedMemrefView operand,
+    runtime::StridedMemrefView a, runtime::MemrefView workspace,
     runtime::MemrefView info, int64_t batch_size, bool is_lower,
     int64_t n) const {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1362,10 +1252,10 @@ static bool Cholesky(runtime::ExecutionContext* ctx, void** args, void** attrs,
   static auto* handler = CustomCall::Bind("xla.gpu.cholesky")
                              .UserData<const ServiceExecutableRunOptions*>()
                              .UserData<const DebugOptions*>()
-                             .Arg<runtime::MemrefView>()  // operand
-                             .Arg<runtime::MemrefView>()  // a
-                             .Arg<runtime::MemrefView>()  // workspace
-                             .Arg<runtime::MemrefView>()  // info
+                             .Arg<runtime::StridedMemrefView>()  // operand
+                             .Arg<runtime::StridedMemrefView>()  // a
+                             .Arg<runtime::MemrefView>()         // workspace
+                             .Arg<runtime::MemrefView>()         // info
                              .Attr<int64_t>("batch_size")
                              .Attr<bool>("is_lower")
                              .Attr<int64_t>("n")
@@ -1424,7 +1314,7 @@ absl::Status TriangularSolve::run(
 
   // Parse backend config string.
   TriangularSolveOptions opts;
-  auto st = tensorflow::HumanReadableJsonToProto(backend_config.str(), &opts);
+  auto st = tsl::HumanReadableJsonToProto(backend_config.str(), &opts);
   if (!st.ok()) return ToAbslStatus(st);
 
   return handler(run_options, debug_options, *a, *b, *result, *temp,
@@ -2195,10 +2085,11 @@ static bool PartitionId(runtime::ExecutionContext* ctx, void** args,
 // -------------------------------------------------------------------------- //
 
 void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
+  RegisterKernelLaunchCustomCalls(registry);
+
   registry.Register("xla.gpu.fft", &xla::gpu::Fft);
   registry.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);
   registry.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
-  registry.Register("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);
   registry.Register("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
   registry.Register("xla.gpu.cublas.lt.matmul.bias",

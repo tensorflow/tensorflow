@@ -113,6 +113,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTileLoopsPass(
 // and scf.if.
 std::unique_ptr<OperationPass<func::FuncOp>> createDetensorizeScfOpsPass();
 
+// Converts ops on tensors with 1 element to scalar ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass();
+
 namespace hlo {
 std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
 

@@ -1149,7 +1149,8 @@ static void RuntimeFallbackExecuteOp(
   // assume runtime fallback execution is always synchronous.
   DCHECK(chain.IsAvailable());
   if (chain.IsError()) {
-    EmitErrorAndSetInResults(exec_ctx, chain.GetError(), results.values());
+    EmitErrorAndSetInResults(
+        exec_ctx, tfrt::DecodedDiagnostic(chain.GetError()), results.values());
     return;
   }
 

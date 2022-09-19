@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
 #include <cfloat>
+#include <map>
 #include <string>
+#include <vector>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -74,6 +76,10 @@ std::string GetGlslConversion(const GpuInfo& gpu_info, DataType src_type,
   } else {
     return "";
   }
+}
+
+bool IsWordSymbol(char symbol) {
+  return absl::ascii_isalnum(symbol) || symbol == '_';
 }
 }  // namespace
 
@@ -267,6 +273,70 @@ std::string GetTypeConversion(const GpuInfo& gpu_info, DataType src_type,
     }
   }
   return "$0";
+}
+
+std::string GetNextWord(const std::string& code, size_t first_position) {
+  size_t pos = first_position;
+  char t = code[pos];
+  while (IsWordSymbol(t)) {
+    pos++;
+    t = code[pos];
+  }
+  return code.substr(first_position, pos - first_position);
+}
+
+size_t FindEnclosingBracket(const std::string& text, size_t first_pos,
+                            char bracket) {
+  const std::map<char, char> brackets = {
+      {'(', ')'},
+      {'{', '}'},
+      {'[', ']'},
+      {'<', '>'},
+  };
+  char b_open = bracket;
+  auto it = brackets.find(b_open);
+  if (it == brackets.end()) {
+    return -1;
+  }
+  char b_close = it->second;
+  size_t pos = first_pos;
+  int opened = 1;
+  int closed = 0;
+  while (opened != closed && pos < text.size()) {
+    if (text[pos] == b_open) {
+      opened++;
+    } else if (text[pos] == b_close) {
+      closed++;
+    }
+    pos++;
+  }
+  if (opened == closed) {
+    return pos;
+  } else {
+    return -1;
+  }
+}
+
+absl::Status ParseArgsInsideBrackets(const std::string& text,
+                                     size_t open_bracket_pos,
+                                     size_t* close_bracket_pos,
+                                     std::vector<std::string>* args) {
+  *close_bracket_pos =
+      FindEnclosingBracket(text, open_bracket_pos + 1, text[open_bracket_pos]);
+  if (*close_bracket_pos == -1) {
+    return absl::NotFoundError("Not found enclosing bracket");
+  }
+  std::string str_args = text.substr(open_bracket_pos + 1,
+                                     *close_bracket_pos - open_bracket_pos - 2);
+  std::vector<absl::string_view> words = absl::StrSplit(str_args, ',');
+  args->reserve(words.size());
+  for (const auto& word : words) {
+    absl::string_view arg = absl::StripAsciiWhitespace(word);
+    if (!arg.empty()) {
+      args->push_back(std::string(arg));
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

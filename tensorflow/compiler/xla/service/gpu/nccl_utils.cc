@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/rendezvous.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 namespace gpu {
@@ -52,7 +52,7 @@ Status ToStatus(ncclResult_t s, const char* file, int64_t line,
   if (s == ncclSuccess) {
     return OkStatus();
   }
-  return tensorflow::errors::Internal(
+  return tsl::errors::Internal(
       absl::StrFormat("%s:%d: NCCL operation %s failed: %s", file, line, expr,
                       ncclGetErrorString(s)));
 }
@@ -100,7 +100,7 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
       return ncclBfloat16;
 #endif
     default:
-      return tensorflow::errors::InvalidArgument(absl::StrFormat(
+      return tsl::errors::InvalidArgument(absl::StrFormat(
           "Unsupported data type: %s", PrimitiveType_Name(element_type)));
   }
 }
@@ -242,17 +242,16 @@ StatusOr<NcclComm::Lock> AcquireNcclComm(
   // Launch a thread that periodically checks all NCCL communicators for
   // asynchronous errors. If an asynchronous error is observed, the communicator
   // is aborted and an error message logged.
-  static auto check_async_error_thread =
-      tensorflow::Env::Default()->StartThread(
-          tensorflow::ThreadOptions(), "nccl_async_error_thread", [&] {
-            while (true) {
-              absl::SleepFor(absl::Seconds(30));
-              absl::MutexLock lock(&all_communicators.mu);
-              for (NcclComm* comm : all_communicators.communicators) {
-                CheckNcclAsyncError(*comm);
-              }
-            }
-          });
+  static auto check_async_error_thread = tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "nccl_async_error_thread", [&] {
+        while (true) {
+          absl::SleepFor(absl::Seconds(30));
+          absl::MutexLock lock(&all_communicators.mu);
+          for (NcclComm* comm : all_communicators.communicators) {
+            CheckNcclAsyncError(*comm);
+          }
+        }
+      });
   (void)check_async_error_thread;  // Silence unused variable warning.
 
   NcclComm::Lock comm;

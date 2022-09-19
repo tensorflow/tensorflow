@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
 
@@ -55,6 +56,14 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
     *cache = new XlaCompilationCache(
         std::move(cache_config), platform_info.xla_device_metadata()->client(),
         platform_info.xla_device_metadata()->jit_device_type());
+    return OkStatus();
+  }
+
+  // TFRT-TPU is used if device type is `DEVICE_TPU` and platform_info does not
+  // have `xla_device_metadata`.
+  if (platform_info.device_type() == DEVICE_TPU) {
+    *cache = new XlaCompilationCache(std::move(cache_config), nullptr,
+                                     DeviceType(DEVICE_TPU_XLA_JIT));
     return OkStatus();
   }
 
@@ -188,6 +197,19 @@ XlaCompiler::Options GenerateCompilerOptions(
   // passthrough parameters without performing a copy.
   options.alias_passthrough_params =
       !has_ref_vars && !platform_info.is_on_xla_device();
+  return options;
+}
+
+XlaCompiler::Options GenerateTfrtTpuCompilerOptions(
+    const XlaCompilationCache& cache,
+    const FunctionLibraryRuntime& function_library) {
+  XlaCompiler::Options options;
+  // TODO(b/238830423): consider device_ordinal and shape_determination_fns.
+  options.device_type = cache.device_type();
+  options.flib_def = function_library.GetFunctionLibraryDefinition();
+  options.graph_def_version = function_library.graph_def_version();
+  options.allow_cpu_custom_calls = false;
+  options.alias_passthrough_params = false;
   return options;
 }
 

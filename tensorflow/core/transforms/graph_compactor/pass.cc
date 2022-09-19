@@ -133,7 +133,8 @@ class NameCompressPass : public impl::NameCompressBase<NameCompressPass> {
     }
 
     // Rename the control results.
-    ReturnOp terminator = cast<ReturnOp>(func.getBody()->getTerminator());
+    ReturnOp terminator =
+        cast<ReturnOp>(func.SingleBlock::getBody()->getTerminator());
     ArrayAttr control_attrs = terminator.control_ret_attrs();
     if (!attrs.empty()) {
       SmallVector<Attribute> control_ret_attrs;

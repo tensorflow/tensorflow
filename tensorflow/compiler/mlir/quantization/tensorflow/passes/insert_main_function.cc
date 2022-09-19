@@ -24,11 +24,14 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace mlir {
 namespace quant {
 namespace {
+
+using ::tensorflow::kImportModelDefaultGraphFuncName;
 
 constexpr char kEntryFunctionAttr[] = "tf.entry_function";
 constexpr char kExportedNameAttr[] = "tf_saved_model.exported_names";
@@ -56,7 +59,8 @@ class InsertMainFunctionPass
 
 // Checks if the module has a main function.
 bool HasMainFunction(ModuleOp& module) {
-  StringAttr main_func_id = StringAttr::get(module.getContext(), "main");
+  StringAttr main_func_id =
+      StringAttr::get(module.getContext(), kImportModelDefaultGraphFuncName);
   for (auto function : module.getOps<func::FuncOp>()) {
     if (function.getName() == main_func_id) return true;
   }
@@ -158,8 +162,8 @@ bool CreateMainFunction(ModuleOp& module) {
 
   // Creates a new main function.
   auto func_type = FunctionType::get(context, arg_types, result_types);
-  auto main_func =
-      builder.create<func::FuncOp>(module.getLoc(), "main", func_type);
+  auto main_func = builder.create<func::FuncOp>(
+      module.getLoc(), kImportModelDefaultGraphFuncName, func_type);
   builder.createBlock(&main_func.getBody(), main_func.begin(), arg_types,
                       arg_locs);
   SmallVector<NamedAttribute> func_attrs;
@@ -171,7 +175,9 @@ bool CreateMainFunction(ModuleOp& module) {
        StringAttr::get(context, absl::StrJoin(output_names, ","))});
   auto dictAttr = DictionaryAttr::get(context, func_attrs);
   main_func->setAttr(StringAttr::get(context, kEntryFunctionAttr), dictAttr);
-  main_func->setAttr(kExportedNameAttr, builder.getStrArrayAttr({"main"}));
+  main_func->setAttr(
+      kExportedNameAttr,
+      builder.getStrArrayAttr({kImportModelDefaultGraphFuncName}));
 
   if (input_names.size() != main_func.getNumArguments() ||
       output_names.size() != main_func.getNumResults()) {

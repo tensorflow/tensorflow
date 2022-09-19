@@ -123,7 +123,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
     ] + tf_additional_cuda_driver_deps()) + select({
         # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
-        "//tensorflow:is_cuda_enabled_and_oss": ["cudart_stub"],
+        "//tensorflow/tsl:is_cuda_enabled_and_oss": ["cudart_stub"],
         "//conditions:default": ["//tensorflow/core:cuda"],
     }) + [
         "@com_google_absl//absl/base:core_headers",
@@ -177,13 +177,13 @@ cc_library(
     name = "cudart_stub",
     srcs = select({
         # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
-        "//tensorflow:is_cuda_enabled_and_oss": ["cudart_stub.cc"],
+        "//tensorflow/tsl:is_cuda_enabled_and_oss": ["cudart_stub.cc"],
         "//conditions:default": [],
     }),
     textual_hdrs = glob(["cuda_runtime_*.inc"]),
     visibility = ["//visibility:public"],
     deps = select({
-        "//tensorflow:is_cuda_enabled_and_oss": [
+        "//tensorflow/tsl:is_cuda_enabled_and_oss": [
             ":cuda_stub",
             "@local_config_cuda//cuda:cuda_headers",
             "//tensorflow/compiler/xla/stream_executor/lib",
@@ -246,7 +246,7 @@ cc_library(
 alias(
     name = "cublas_lib",
     actual = select({
-        "//tensorflow:oss": ":cublas_stub",
+        "//tensorflow/tsl:oss": ":cublas_stub",
         "//conditions:default": "@local_config_cuda//cuda:cublas",
     }),
     visibility = ["//visibility:public"],
@@ -261,7 +261,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor:host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
@@ -283,7 +283,7 @@ cc_library(
 alias(
     name = "cublas_lt_lib",
     actual = select({
-        "//tensorflow:oss": ":cublas_lt_stub",
+        "//tensorflow/tsl:oss": ":cublas_lt_stub",
         "//conditions:default": "@local_config_cuda//cuda:cublasLt",
     }),
     visibility = ["//visibility:public"],
@@ -364,7 +364,7 @@ cc_library(
 alias(
     name = "cufft_lib",
     actual = select({
-        "//tensorflow:oss": ":cufft_stub",
+        "//tensorflow/tsl:oss": ":cufft_stub",
         "//conditions:default": "@local_config_cuda//cuda:cufft",
     }),
     visibility = ["//visibility:public"],
@@ -410,7 +410,7 @@ cc_library(
 alias(
     name = "cudnn_lib",
     actual = select({
-        "//tensorflow:oss": ":cudnn_stub",
+        "//tensorflow/tsl:oss": ":cudnn_stub",
         "//conditions:default": "@local_config_cuda//cuda:cudnn",
     }),
     visibility = ["//visibility:public"],
@@ -450,9 +450,8 @@ cc_library(
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/tsl/platform:tensor_float_32_utils",
-        "//tensorflow/core/util:determinism",
+        "//tensorflow/tsl/util:determinism",
         "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:plugin_registry",
@@ -479,7 +478,7 @@ cc_library(
 alias(
     name = "curand_lib",
     actual = select({
-        "//tensorflow:oss": ":curand_stub",
+        "//tensorflow/tsl:oss": ":curand_stub",
         "//conditions:default": "@local_config_cuda//cuda:curand",
     }),
     visibility = ["//visibility:public"],
@@ -536,7 +535,7 @@ cc_library(
 alias(
     name = "cusolver_lib",
     actual = select({
-        "//tensorflow:oss": ":cusolver_stub",
+        "//tensorflow/tsl:oss": ":cusolver_stub",
         "//conditions:default": "@local_config_cuda//cuda:cusolver",
     }),
     visibility = ["//visibility:public"],
@@ -556,7 +555,7 @@ cc_library(
 alias(
     name = "cusparse_lib",
     actual = select({
-        "//tensorflow:oss": ":cusparse_stub",
+        "//tensorflow/tsl:oss": ":cusparse_stub",
         "//conditions:default": "@local_config_cuda//cuda:cusparse",
     }),
     visibility = ["//visibility:public"],

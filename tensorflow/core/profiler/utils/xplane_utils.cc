@@ -496,12 +496,22 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
   XPlaneVisitor plane(&full_trace);
   XPlaneBuilder aggregated_plane(&aggregated_trace);
 
+  uint64_t first_op_start_ps = kint64max;
+  uint64_t last_op_end_ps = 0;
+
   plane.ForEachLine([&](const XLineVisitor& line) {
     if (!IsOpLineName(line.Name())) return;
     XLineBuilder aggregated_line = aggregated_plane.GetOrCreateLine(line.Id());
     aggregated_line.SetName(line.Name());
     std::vector<XEventVisitor> event_stack;
     line.ForEachEvent([&](XEventVisitor event) {
+      first_op_start_ps = first_op_start_ps <= event.TimestampPs()
+                              ? first_op_start_ps
+                              : event.TimestampPs();
+      last_op_end_ps = last_op_end_ps >= event.EndTimestampPs()
+                           ? last_op_end_ps
+                           : event.EndTimestampPs();
+
       StatByEvent& line_stats = stats[line.Id()];
       line_stats[event.Id()].stat.UpdateStat(event.DurationPs());
       DCHECK(event_stack.empty() || !(event < event_stack.back()));
@@ -516,6 +526,16 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
       event_stack.push_back(std::move(event));
     });
   });
+
+  uint64_t total_time_ps =
+      (last_op_end_ps && last_op_end_ps > first_op_start_ps)
+          ? last_op_end_ps - first_op_start_ps
+          : 0;
+
+  aggregated_plane.AddStatValue(
+      *aggregated_plane.GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kTotalProfileDurationPs)),
+      total_time_ps);
 
   // TODO(b/238349654): Remove when XPlane better XPlane Comparison mechanism
   // exists.

@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 namespace {
@@ -111,7 +111,7 @@ port::Status MultiPlatformManagerImpl::RegisterPlatform(
   for (const auto& listener : listeners_) {
     listener->PlatformRegistered(platform_ptr);
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithName(
@@ -187,7 +187,7 @@ port::Status MultiPlatformManagerImpl::RegisterListener(
   CHECK(id_map_.empty());
   CHECK(name_map_.empty());
   listeners_.push_back(std::move(listener));
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 port::StatusOr<std::vector<Platform*>>

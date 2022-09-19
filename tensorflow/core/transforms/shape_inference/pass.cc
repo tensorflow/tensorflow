@@ -303,7 +303,7 @@ void ShapeInference::runOnOperation() {
   // Update the function signature.
   getOperation()->walk([&](GraphFuncOp func) {
     FunctionType func_type = func.function_type();
-    Operation *return_op = func.getBody()->getTerminator();
+    Operation *return_op = func.SingleBlock::getBody()->getTerminator();
 
     bool types_updated = false;
     for (auto &indexed_type : llvm::enumerate(func_type.getResults())) {

@@ -89,7 +89,7 @@ bool isNonTiledCwiseGeneric(Operation *op) {
   if (linalg_op) {
     if (!linalg_op.hasTensorSemantics()) return false;
     return llvm::all_of(linalg_op.iterator_types(), [](auto type) {
-      return mlir::isParallelIterator(type);
+      return mlir::linalg::isParallelIterator(type);
     });
   }
   if (auto fill_op = mlir::dyn_cast<FillOp>(op)) {

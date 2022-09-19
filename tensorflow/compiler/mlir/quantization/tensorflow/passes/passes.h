@@ -107,6 +107,13 @@ std::unique_ptr<OperationPass<mlir::func::FuncOp>> CreateOptimizePass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplaceCastHacksWithTFXLAOpsPass();
 
+// Creates a pass that moves & merges initializer function's ops into the @main
+// function. This pass should be run on a valid tf_executor dialect. The control
+// outputs from the initializer functions will be merged into the main
+// function's FetchOp. The initializer functions will be removed.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateMergeInitializerFunctionOpsToMainPass();
+
 }  // namespace quant
 }  // namespace mlir
 

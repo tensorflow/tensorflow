@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -49,19 +50,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 #if XLA_ENABLE_XLIR
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
-#include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
+#include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #endif  // XLA_ENABLE_XLIR
 
 namespace xla {
@@ -109,7 +110,7 @@ class GpuExecutable::JitRtExecutable {
     runtime::JitExecutable::Options opts;
     opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
     opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-      runtime::RegisterDefaultXlaRuntimeDialects(registry);
+      runtime::RegisterDefaultXlaGpuRuntimeDialects(registry);
       // For the encoding of attributes to custom calls.
       registry.insert<mlir::lmhlo_gpu::LmhloGpuDialect>();
     };
@@ -124,7 +125,7 @@ class GpuExecutable::JitRtExecutable {
     // starting from the LMHLO dialect. However this intermediate step helps
     // with debugging, by materializing IR with XLA runtime custom calls.
     opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
-      runtime::CreateDefaultXlaRuntimeCompilationPipeline(pm, copts);
+      runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
     };
 
     // TODO(b/241296710): LLVM optimizations interact badly with the memory
@@ -158,7 +159,7 @@ class GpuExecutable::JitRtExecutable {
         std::move(debug_options));
   }
 
-  JitRtKernelsCache& kernels_cache() { return kernels_cache_; }
+  GpuExecutableKernelsCache& kernels_cache() { return kernels_cache_; }
   JitRtGemmConfigCache& gemm_configs_cache() { return gemm_configs_cache_; }
   JitRtCollectiveSupport& collectives() { return collectives_; }
 
@@ -207,7 +208,7 @@ class GpuExecutable::JitRtExecutable {
   DebugOptions debug_options_;
 
   // Keep a cache of kernels instantiated by this executable.
-  JitRtKernelsCache kernels_cache_;
+  GpuExecutableKernelsCache kernels_cache_;
 
   // Keep a cache of gemm configs for all gemm operation in the program.
   JitRtGemmConfigCache gemm_configs_cache_;
@@ -328,7 +329,7 @@ Status ExecuteThunks(const std::string& module_name,
   StatusOr<StreamPool::Ptr> async_comms_stream =
       run_options->BorrowStream(executor->device_ordinal());
 
-  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
@@ -371,7 +372,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
   // FinishExecution() blocks until main_stream has completed if profiling is
   // enabled; we therefore do not need to defer profile collection onto a
   // stream.
-  uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_micros = tsl::Env::Default()->NowMicros();
 
   if (run_options->run_options().execution_profile()) {
     ExecutionProfile* profile = run_options->run_options().execution_profile();
@@ -580,7 +581,7 @@ static Status ExecuteJitRt(const std::string& module_name,
                            size_t num_allocations,
                            std::optional<const BufferAllocation*> temp_buffer,
                            bool block_host_until_done) {
-  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
@@ -1063,8 +1064,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   mlir::MLIRContext context;
 
   mlir::DialectRegistry registry;
-  tfrt::RegisterTFRTDialects(registry);
-  tfrt::RegisterTFRTCompiledDialects(registry);
+  runtime::RegisterDefaultXlaGpuRuntimeDialects(registry);
   context.appendDialectRegistry(registry);
 
   auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_module, &context);

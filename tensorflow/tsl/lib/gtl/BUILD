@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
@@ -12,6 +13,7 @@ package(
         "//tensorflow/core/lib/random:__pkg__",
         # tensorflow/core/lib/strings:proto_serialization uses on gtl:inlined_vector
         "//tensorflow/core/lib/strings:__pkg__",
+        "//tensorflow/tsl/lib/strings:__pkg__",
         # tensorflow/core/lib/histogram uses array_slice
         "//tensorflow/core/lib/histogram:__pkg__",
         # tensorflow/core/framework uses array_slice, map_util, and flatmap
@@ -33,7 +35,7 @@ package(
 cc_library(
     name = "compactptrset",
     hdrs = ["compactptrset.h"],
-    deps = ["//tensorflow/tsl/lib/gtl:flatset"],
+    deps = [":flatset"],
 )
 
 cc_library(
@@ -49,7 +51,7 @@ cc_library(
     name = "flatset",
     hdrs = ["flatset.h"],
     deps = [
-        "//tensorflow/tsl/lib/gtl:flatrep",
+        ":flatrep",
         "//tensorflow/tsl/platform:hash",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",
@@ -181,12 +183,25 @@ filegroup(
     ],
 )
 
-filegroup(
-    name = "legacy_lib_gtl_tests",
+tf_cc_tests(
+    name = "tsl_lib_gtl_tests",
     srcs = [
-    ],  # TODO(ddunleavy) move tests once core/platform/test.h is in tsl
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/lib/gtl:__pkg__",
+        "compactptrset_test.cc",
+        "flatset_test.cc",
+        "int_type_test.cc",
+        "iterator_range_test.cc",
+        "map_util_test.cc",
+    ],
+    deps = [
+        ":compactptrset",
+        ":flatset",
+        ":int_type",
+        ":iterator_range",
+        ":map_util",
+        "//tensorflow/core/platform:test_main",
+        "//tensorflow/tsl/platform:hash",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:types",
     ],
 )

@@ -25,6 +25,7 @@ namespace tosa {
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMhloPass();
 
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_TOSALEGALIZEMHLOPASS
 #include "mhlo_tosa/Transforms/passes.h.inc"
 
 }  // namespace tosa

@@ -115,7 +115,7 @@ class GpuKernelToBlobPass
       if (!hsaco_or.ok()) {
         return tensorflow::errors::Internal("Failure when generating HSACO");
       }
-      auto hsaco = hsaco_or.ValueOrDie();
+      auto hsaco = hsaco_or.value();
       images.push_back({arch_str, std::move(hsaco)});
     }
 
@@ -243,7 +243,7 @@ class GpuKernelToBlobPass
       std::string libdevice_dir =
           tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
       VLOG(2) << "Looking for libdevice at " << libdevice_dir;
-      if (tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok()) {
+      if (tsl::Env::Default()->IsDirectory(libdevice_dir).ok()) {
         VLOG(2) << "Found libdevice dir " << libdevice_dir;
         return libdevice_dir;
       }
