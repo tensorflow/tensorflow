@@ -299,6 +299,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_to_xla_attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",

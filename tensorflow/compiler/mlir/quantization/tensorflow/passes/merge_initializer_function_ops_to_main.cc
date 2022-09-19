@@ -29,12 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 
 namespace mlir {
 namespace quant {
 namespace {
 
-constexpr absl::string_view kMainFunctionName = "main";
+using ::tensorflow::kImportModelDefaultGraphFuncName;
 
 // This pass moves all ops from initializer functions to the main function. The
 // main function's tf_executor::GraphOp fetches all the control outputs from the
@@ -73,7 +74,7 @@ class MergeInitializerFunctionOpsToMainPass
 // exist.
 func::FuncOp GetMainFunction(ModuleOp module_op) {
   const StringAttr main_func_id =
-      StringAttr::get(module_op.getContext(), kMainFunctionName);
+      StringAttr::get(module_op.getContext(), kImportModelDefaultGraphFuncName);
   auto func_ops = module_op.getOps<func::FuncOp>();
   auto main_func_itr = absl::c_find_if(func_ops, [&main_func_id](auto func_op) {
     return func_op.getName() == main_func_id;
