@@ -1488,9 +1488,35 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     XlaCustomCallStatus status;
 
     // Call generated function.
-    cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
-                                       buffer_pointers.data(), &status,
-                                       nullptr);
+    if (cpu_executable->IsXlaRuntime()) {
+      std::vector<xla::runtime::BufferDesc> buffers;
+      buffers.reserve(buffer_table.size());
+      auto is_result_index = [this](int i) {
+        for (const auto& result_idx : result_buffer_indices_) {
+          if (result_idx == i) return true;
+        }
+        return false;
+      };
+      // Input buffers go first; result buffers go last.
+      // TODO(ecg): revisit this when implementing tuple support.
+      for (unsigned i = 0; i < buffer_table.size(); ++i) {
+        if (is_result_index(i)) continue;
+        const auto& buf = buffer_table[i];
+        buffers.emplace_back(
+            xla::runtime::BufferDesc{buf->data(), buf->size()});
+      }
+      for (const auto& result_idx : result_buffer_indices_) {
+        const auto& buf = buffer_table[result_idx];
+        buffers.emplace_back(
+            xla::runtime::BufferDesc{buf->data(), buf->size()});
+      }
+      Status status = cpu_executable->ExecuteXlaRuntime(buffers);
+      if (!status.ok()) return status;
+    } else {
+      cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
+                                         buffer_pointers.data(), &status,
+                                         nullptr);
+    }
 
     for (auto& donation_transaction : donation_transactions) {
       std::move(donation_transaction).Commit();
