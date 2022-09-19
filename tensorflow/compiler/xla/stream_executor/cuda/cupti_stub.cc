@@ -30,7 +30,7 @@ void* GetDsoHandle() {
   static auto handle = []() -> void* {
     auto handle_or = stream_executor::internal::DsoLoader::GetCuptiDsoHandle();
     if (!handle_or.ok()) return nullptr;
-    return handle_or.ValueOrDie();
+    return handle_or.value();
   }();
   return handle;
 #endif
