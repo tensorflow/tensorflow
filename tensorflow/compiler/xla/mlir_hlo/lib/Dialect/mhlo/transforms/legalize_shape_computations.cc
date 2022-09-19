@@ -25,7 +25,6 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -50,6 +49,11 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
+namespace mhlo {
+
+#define GEN_PASS_DEF_HLOLEGALIZESHAPECOMPUTATIONSPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 // We assume that if one of the operands is a FromElements operation that means
@@ -149,11 +153,11 @@ class GetDimSizeConverter : public OpRewritePattern<mhlo::GetDimensionSizeOp> {
     Location loc = op.getLoc();
     auto resultTy = op.getType();
     auto elementTy = getElementTypeOrSelf(resultTy);
-    auto dimAttr = rewriter.getIndexAttr(op.dimension());
+    auto dimAttr = rewriter.getIndexAttr(op.getDimension());
     auto dimConst = rewriter.create<arith::ConstantOp>(loc, dimAttr);
 
     Value dimOp = rewriter.create<tensor::DimOp>(loc, rewriter.getIndexType(),
-                                                 op.operand(), dimConst);
+                                                 op.getOperand(), dimConst);
 
     // Cast to the correct element type and convert to a tensor.
     Value cast = rewriter.create<arith::IndexCastOp>(loc, elementTy, dimOp);
@@ -168,13 +172,13 @@ class ReshapeConverter : public OpRewritePattern<mhlo::ReshapeOp> {
 
   LogicalResult matchAndRewrite(mhlo::ReshapeOp op,
                                 PatternRewriter &rewriter) const final {
-    auto operand = op.operand();
+    auto operand = op.getOperand();
     auto shapedTy = operand.getType().template cast<ShapedType>();
     if (!shapedTy.hasRank() || shapedTy.getRank() > 1) return failure();
 
     auto resultTy = op.getType().cast<ShapedType>();
 
-    auto fromElements = op.operand().getDefiningOp<tensor::FromElementsOp>();
+    auto fromElements = op.getOperand().getDefiningOp<tensor::FromElementsOp>();
     if (!fromElements) return failure();
 
     rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(
@@ -184,7 +188,7 @@ class ReshapeConverter : public OpRewritePattern<mhlo::ReshapeOp> {
 };
 
 struct HloLegalizeShapeComputationsPass
-    : public mhlo::HloLegalizeShapeComputationsPassBase<
+    : public impl::HloLegalizeShapeComputationsPassBase<
           HloLegalizeShapeComputationsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<arith::ArithmeticDialect, math::MathDialect,
@@ -204,8 +208,6 @@ struct HloLegalizeShapeComputationsPass
 };
 
 }  // namespace
-
-namespace mhlo {
 
 void populateShapeComputationPatterns(MLIRContext *context,
                                       RewritePatternSet *patterns) {

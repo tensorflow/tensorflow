@@ -90,6 +90,11 @@ def HloLegalizeToLinalgPass : Pass<"hlo-legalize-to-linalg", "func::FuncOp"> {
   let constructor = "createLegalizeHloToLinalgPass()";
 }
 
+def LegalizeMHLOToTHLOPass : Pass<"legalize-mhlo-to-thlo", "mlir::func::FuncOp"> {
+  let summary = "Legalize from HLO dialect to tHLO dialect.";
+  let constructor = "::mlir::mhlo::createLegalizeMHLOToTHLOPass()";
+}
+
 def HloLegalizeShapeComputationsPass : Pass<"hlo-legalize-shape-computations", "func::FuncOp"> {
   let summary = "Legalize HLOs shape operations to core-mlir operations.";
   let constructor = "createLegalizeShapeComputationsPass()";

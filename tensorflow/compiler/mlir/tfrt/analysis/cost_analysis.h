@@ -42,10 +42,7 @@ class CostAnalysis {
     AnalyzeBlock(&func_op.front());
   }
 
-  int64_t GetCost(mlir::Operation* op) const {
-    assert(cost_map_.count(op) > 0);
-    return cost_map_.lookup(op);
-  }
+  int64_t GetCost(mlir::Operation* op, int64_t op_key) const;
 
  private:
   void AnalyzeArguments(mlir::func::FuncOp func_op);
@@ -56,7 +53,6 @@ class CostAnalysis {
   int64_t max_arg_size_ = 1;
   llvm::DenseMap<mlir::Operation*, int64_t> cost_map_;
   tfrt_stub::OpCostMapProto op_cost_map_proto_;
-  bool is_cost_measured_ = false;
 };
 
 struct CostContext {

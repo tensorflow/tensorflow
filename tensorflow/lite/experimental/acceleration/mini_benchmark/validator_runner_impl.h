@@ -1,0 +1,118 @@
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_VALIDATOR_RUNNER_IMPL_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_VALIDATOR_RUNNER_IMPL_H_
+
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
+#include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
+
+namespace tflite {
+namespace acceleration {
+
+// This class implements the logic of managing models and triggering validation
+// tests in separate processes, so that we can provide blocking and non-blocking
+// API of ValidatorRunner.
+class ValidatorRunnerImpl {
+ public:
+  // nnapi_sl should be valid until Init() finishes. error_reporter should be
+  // valid during the entire lifetime of the class.
+  // TODO(b/246912769): Create a common Context class to store shared params.
+  ValidatorRunnerImpl(const std::string& fd_or_model_path,
+                      const std::string& storage_path,
+                      const std::string& data_directory_path,
+                      ErrorReporter* error_reporter,
+                      const NnApiSLDriverImplFL5* nnapi_sl,
+                      const std::string& validation_entrypoint_name)
+      : fd_or_model_path_(fd_or_model_path),
+        storage_path_(storage_path),
+        data_directory_path_(data_directory_path),
+        nnapi_helper_(nnapi_sl),
+        validation_entrypoint_helper_(validation_entrypoint_name,
+                                      error_reporter),
+        error_reporter_(error_reporter) {}
+
+  MinibenchmarkStatus Init();
+
+  // Trigger the test for the given tflite_settings in a new thread. The
+  // settings will run sequentially.
+  void TriggerValidationAsync(
+      std::unique_ptr<std::vector<flatbuffers::FlatBufferBuilder>>
+          tflite_settings);
+
+ private:
+  class NnapiHelper {
+   public:
+    // nnapi_sl should be valid when Load() is called.
+    explicit NnapiHelper(const NnApiSLDriverImplFL5* nnapi_sl)
+        : nnapi_sl_(nnapi_sl) {}
+
+    // Load the NNAPI SL from dynamic linking loader. Returns the error status
+    // if failed.
+    MinibenchmarkStatus Load();
+
+    // Returns the pathname of the shared object.
+    const std::string& nnapi_sl_path() const { return nnapi_sl_path_; }
+
+   private:
+    const NnApiSLDriverImplFL5* nnapi_sl_;
+    std::string nnapi_sl_path_;
+  };
+
+  class ValidationEntrypointHelper {
+   public:
+    using EntrypointFunc = int(int argc, char** argv);
+
+    explicit ValidationEntrypointHelper(
+        const std::string& validation_entrypoint_name,
+        ErrorReporter* error_reporter)
+        : validation_entrypoint_name_(validation_entrypoint_name),
+          error_reporter_(error_reporter) {}
+
+    // Verify that the entrypoint function can be found with dlsym(). Returns
+    // the error status if failed.
+    MinibenchmarkStatus Validate();
+
+    // Returns the entrypoint function from dlsym(). Returns nullptr if failed.
+    // Note this function will perform the lookup each time when it's called.
+    EntrypointFunc* LoadEntrypoint();
+
+    // Returns the function name. Lifetime is the same as the helper class
+    // itself.
+    const std::string& name() { return validation_entrypoint_name_; }
+
+   private:
+    std::string validation_entrypoint_name_;
+    ErrorReporter* error_reporter_;
+  };
+
+  std::string fd_or_model_path_;
+  std::string storage_path_;
+  std::string data_directory_path_;
+  NnapiHelper nnapi_helper_;
+  ValidationEntrypointHelper validation_entrypoint_helper_;
+  ErrorReporter* error_reporter_;
+};
+
+}  // namespace acceleration
+}  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_VALIDATOR_RUNNER_IMPL_H_

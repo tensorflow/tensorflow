@@ -22,7 +22,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/PassDetail.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
 
 namespace mlir {
@@ -30,11 +29,12 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_KERNELGENFINALBUFFERIZEPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct KernelgenFinalBufferizePass
-    : public KernelgenFinalBufferizePassBase<KernelgenFinalBufferizePass> {
+    : public impl::KernelgenFinalBufferizePassBase<
+          KernelgenFinalBufferizePass> {
   // Default alignment_ specified in passes.td
   KernelgenFinalBufferizePass() = default;
 

@@ -21,7 +21,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -49,6 +48,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_HLOLEGALIZETOLHLOPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 template <typename T>
@@ -205,7 +208,7 @@ struct HloToLhloCustomCallOpConverter
         static_cast<int32_t>(adaptor.getOperands().size()),
         static_cast<int32_t>(op->getNumResults())};
     lhloOp->setAttr(lhloOp.getOperandSegmentSizeAttr(),
-                    rewriter.getI32VectorAttr(segments));
+                    rewriter.getDenseI32ArrayAttr(segments));
 
     rewriter.replaceOp(
         op, ArrayRef<Value>(bufferArgs).slice(adaptor.getOperands().size()));
@@ -262,7 +265,7 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
       ConversionPatternRewriter& rewriter) const final {
     Operation* op = hloOp.getOperation();
     auto loc = op->getLoc();
-    if (!llvm::hasSingleElement(hloOp.body())) {
+    if (!llvm::hasSingleElement(hloOp.getBody())) {
       return op->emitOpError()
              << "tensor to buffer conversion expects a single block "
                 "in the region containing the operation";
@@ -273,7 +276,7 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
         loc, llvm::None, bufferArgs, op->getAttrs());
 
     // Copy over the operations inside the region.
-    rewriter.inlineRegionBefore(hloOp.body(), newOp.getBody(),
+    rewriter.inlineRegionBefore(hloOp.getBody(), newOp.getBody(),
                                 newOp.getBody().end());
 
     // Convert the region signature to memref and add extra result.
@@ -287,7 +290,7 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
       sigConversion.addInputs(arg.getArgNumber(), newType);
     }
     auto returnOp = cast<mhlo::ReturnOp>(entryBlock.getTerminator());
-    if (auto tupleTy = returnOp.results()
+    if (auto tupleTy = returnOp.getResults()
                            .front()
                            .getType()
                            .template dyn_cast<TupleType>()) {
@@ -301,7 +304,7 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
             MemRefType::get(tensorTy.getShape(), tensorTy.getElementType()));
       }
     } else {
-      for (auto result : returnOp.results()) {
+      for (auto result : returnOp.getResults()) {
         auto resultType = result.getType().template cast<TensorType>();
         sigConversion.addInputs({MemRefType::get(resultType.getShape(),
                                                  resultType.getElementType())});
@@ -411,7 +414,8 @@ struct HloToLhloReturnOpConverter : public BaseOpConversion<mhlo::ReturnOp> {
 //   "lmhlo.terminator"() : () -> ()
 // }
 
-struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
+struct HloLegalizeToLhlo
+    : public impl::HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
   using HloLegalizeToLhloPassBase<HloLegalizeToLhlo>::HloLegalizeToLhloPassBase;
 
   void getDependentDialects(DialectRegistry& registry) const override {

@@ -21,10 +21,12 @@ import weakref
 import numpy as np
 import six
 
+from tensorflow.python.eager.polymorphic_function import composite_tensor_utils
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
@@ -500,10 +502,16 @@ def _validate_signature(signature):
     raise TypeError("input_signature must be either a tuple or a list, got "
                     f"{type(signature)}.")
 
-  if any(not isinstance(arg, tensor_spec.DenseSpec)
+  # TODO(xjun): Allow VariableSpec once we figure out API for de-aliasing.
+  variable_specs = _get_variable_specs(signature)
+  if variable_specs:
+    raise TypeError(
+        f"input_signature doesn't support VariableSpec, got {variable_specs}")
+
+  if any(not isinstance(arg, tensor_spec.TensorSpec)
          for arg in nest.flatten(signature, expand_composites=True)):
     bad_args = [arg for arg in nest.flatten(signature, expand_composites=True)
-                if not isinstance(arg, tensor_spec.DenseSpec)]
+                if not isinstance(arg, tensor_spec.TensorSpec)]
     raise TypeError("input_signature must be a possibly nested sequence of "
                     f"TensorSpec objects, got invalid args {bad_args} with "
                     f"types {list(six.moves.map(type, bad_args))}.")
@@ -561,12 +569,7 @@ def _convert_variables_to_tensors(args, kwargs):
 
 def _convert_numpy_inputs(inputs):
   """Converts numpy array inputs to tensors."""
-  # We assume that any CompositeTensors have already converted their components
-  # from numpy arrays to Tensors, so we don't need to expand composites here for
-  # the numpy array conversion. Instead, we do so because the flattened inputs
-  # are eventually passed to ConcreteFunction()._call_flat, which requires
-  # expanded composites.
-  flat_inputs = nest.flatten(inputs, expand_composites=True)
+  flat_inputs = composite_tensor_utils.flatten_with_variables(inputs)
 
   # Check for NumPy arrays in arguments and convert them to Tensors.
   # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
@@ -590,9 +593,13 @@ def _convert_numpy_inputs(inputs):
       filtered_flat_inputs.append(flat_inputs[index])
       need_packing = True
   if need_packing:
-    return (nest.pack_sequence_as(
-        structure=inputs, flat_sequence=flat_inputs,
-        expand_composites=True), flat_inputs, filtered_flat_inputs)
+    return (
+        nest.pack_sequence_as(
+            structure=inputs,
+            flat_sequence=nest.flatten(flat_inputs, expand_composites=True),
+            expand_composites=True),
+        flat_inputs,
+        filtered_flat_inputs)
   else:
     return inputs, flat_inputs, filtered_flat_inputs
 
@@ -644,9 +651,23 @@ def convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
         flat_sequence=flatten_inputs,
         expand_composites=True)
 
-  flat_inputs = nest.flatten(inputs, expand_composites=True)
+  flat_inputs = composite_tensor_utils.flatten_with_variables(inputs)
 
   return (inputs, flat_inputs, [
       t for t in flat_inputs
       if isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
   ])
+
+
+def _get_variable_specs(args):
+  """Returns `VariableSpecs` from `args`."""
+  variable_specs = []
+  for arg in nest.flatten(args):
+    if not isinstance(arg, type_spec.TypeSpec):
+      continue
+    if isinstance(arg, resource_variable_ops.VariableSpec):
+      variable_specs.append(arg)
+    elif not isinstance(arg, tensor_spec.TensorSpec):
+      # arg is a CompositeTensor spec.
+      variable_specs.extend(_get_variable_specs(arg._component_specs))  # pylint: disable=protected-access
+  return variable_specs

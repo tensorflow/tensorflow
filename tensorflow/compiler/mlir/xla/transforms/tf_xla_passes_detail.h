@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_PASSES_DETAIL_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_PASSES_DETAIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_TF_XLA_PASSES_DETAIL_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_TF_XLA_PASSES_DETAIL_H_
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -31,4 +31,4 @@ class MhloDialect;
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_PASSES_DETAIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_TF_XLA_PASSES_DETAIL_H_

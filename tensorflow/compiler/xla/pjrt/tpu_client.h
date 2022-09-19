@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/stream_executor/tpu/tpu_topology.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 
 namespace xla {
 

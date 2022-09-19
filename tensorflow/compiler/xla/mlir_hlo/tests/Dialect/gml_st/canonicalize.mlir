@@ -270,3 +270,120 @@ func.func @remove_empty_loop(%in: tensor<16xf32>, %out: tensor<f32>,
   }
   func.return %0 : tensor<f32>
 }
+
+// -----
+
+// CHECK-LABEL: @fold_offset
+// CHECK-SAME:  %[[I:.*]]: index, %[[J:.*]]: index, %[[A:.*]]: index, %[[B:.*]]: index
+func.func @fold_offset(%i : index, %j : index, %a : index, %b : index)
+    -> (index, index, index, index, index, index, index) {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2
+  // CHECK-DAG: %[[C16:.*]] = arith.constant 16
+  // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [%[[A]], %[[B]], 128, 256]
+  // CHECK-DAG: %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[I]], %[[J]], 16, 32] [16, 32, 64, 128] [1, 1, 1, 1]
+  // CHECK-DAG: %[[NESTED_POINT:.*]] = gml_st.point %[[TILE]] [%[[I]], %[[J]], 0, 8]
+  // CHECK-DAG: %[[NESTED_TILE:.*]] = gml_st.tile %[[TILE]] [%[[I]], %[[J]], 0, 8] [2, 4, 8, 16] [1, 1, 1, 1]
+  // CHECK-DAG: %[[UNFOLDABLE_OFFSET:.*]] = gml_st.offset %[[NESTED_TILE]][%[[C1]]]
+  // CHECK-DAG: %[[UNFOLDABLE_OFFSET_:.*]] = gml_st.offset %[[NESTED_POINT]][%[[C2]]]
+  // CHECK:     return %[[J]], %[[C16]], %[[J]], %[[C0]], %[[C0]], %[[UNFOLDABLE_OFFSET]], %[[UNFOLDABLE_OFFSET_]]
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %space = gml_st.space [%a, %b, 128, 256] : !gml_st.tile<?x?x128x256>
+  %tile = gml_st.tile %space [%i, %j, 16, 32] [16, 32, 64, 128] [1, 1, 1, 1]
+      : !gml_st.tile<?x?x128x256> to !gml_st.tile<16x32x64x128>
+  %point = gml_st.point %space [%i, %j, 0, 8]
+      : !gml_st.tile<?x?x128x256> to !gml_st.point
+  %nested_tile = gml_st.tile %tile [%i, %j, 0, 8] [2, 4, 8, 16] [1, 1, 1, 1] 
+      : !gml_st.tile<16x32x64x128> to !gml_st.tile<2x4x8x16>
+  %nested_point = gml_st.point %tile [%i, %j, 0, 8] 
+      : !gml_st.tile<16x32x64x128> to !gml_st.point
+
+  // Foldable case: offset(tile(space))
+  %j_ = gml_st.offset %tile [%c1] : !gml_st.tile<16x32x64x128>
+  %c16_ = gml_st.offset %tile [%c2] : !gml_st.tile<16x32x64x128>
+
+  // Foldable case: offset(point(space))
+  %j__ = gml_st.offset %point [%c1] : !gml_st.point
+  %c0_ = gml_st.offset %point [%c2] : !gml_st.point
+
+  // Foldable case: offset(space)
+  %c0__ = gml_st.offset %space [%c2] : !gml_st.tile<?x?x128x256>
+
+  // Unfoldable case: offset(tile(tile(space)))
+  %nested_tile_offset = gml_st.offset %nested_tile [%c1] 
+      : !gml_st.tile<2x4x8x16>
+
+  // Unfoldable case: offset(point(tile(space)))
+  %nested_point_offset = gml_st.offset %nested_point [%c2] : !gml_st.point
+
+  return %j_, %c16_, %j__, %c0_, %c0__, %nested_tile_offset, 
+      %nested_point_offset : index, index, index, index, index, index, index
+}
+
+// -----
+
+// CHECK-LABEL: @fold_size
+// CHECK-SAME:  %[[I:.*]]: index, %[[J:.*]]: index, %[[A:.*]]: index, %[[B:.*]]: index
+func.func @fold_size(%i : index, %j : index, %a : index, %b : index)
+    -> (index, index, index, index) {
+  // CHECK-DAG: %[[C4:.*]] = arith.constant 4
+  // CHECK-DAG: %[[C64:.*]] = arith.constant 64
+  // CHECK-DAG: %[[C32:.*]] = arith.constant 32
+  // CHECK:     return %[[C32]], %[[C64]], %[[B]], %[[C4]]
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %space = gml_st.space [%a, %b, 128, 256] : !gml_st.tile<?x?x128x256>
+  %tile = gml_st.tile %space [%i, %j, 16, 32] [16, 32, 64, 128] [1, 1, 1, 1]
+      : !gml_st.tile<?x?x128x256> to !gml_st.tile<16x32x64x128>
+  %nested_tile = gml_st.tile %tile [%i, %j, 0, 8] [2, 4, 8, 16] [1, 1, 1, 1] 
+      : !gml_st.tile<16x32x64x128> to !gml_st.tile<2x4x8x16>
+
+  // Foldable case: size(tile(space))
+  %c32_ = gml_st.size %tile [%c1] : !gml_st.tile<16x32x64x128>
+  %c64_ = gml_st.size %tile [%c2] : !gml_st.tile<16x32x64x128>
+
+  // Foldable case: size(space)
+  %b_ = gml_st.size %space [%c1] : !gml_st.tile<?x?x128x256>
+
+  // Foldable case: size(tile(tile(space)))
+  %c4_ = gml_st.size %nested_tile [%c1] 
+      : !gml_st.tile<2x4x8x16>
+
+  return %c32_, %c64_, %b_, %c4_ : index, index, index, index
+}
+
+// -----
+
+// CHECK-LABEL: @fold_stride
+// CHECK-SAME:  %[[I:.*]]: index, %[[J:.*]]: index, %[[A:.*]]: index, %[[B:.*]]: index
+func.func @fold_stride(%i : index, %j : index, %a : index, %b : index)
+    -> (index, index, index, index) {
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1
+  // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [%[[A]], %[[B]], 128, 256]
+  // CHECK-DAG: %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[I]], %[[J]], 16, 32] [16, 32, 64, 128] [1, 1, 1, 1]
+  // CHECK-DAG: %[[NESTED_TILE:.*]] = gml_st.tile %[[TILE]] [%[[I]], %[[J]], 0, 8] [2, 4, 8, 16] [1, 1, 1, 1]
+  // CHECK-DAG: %[[UNFOLDABLE_STRIDE:.*]] = gml_st.stride %[[NESTED_TILE]][%[[C1]]]
+  // CHECK:     return %[[C1]], %[[C1]], %[[C1]], %[[UNFOLDABLE_STRIDE]]
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %space = gml_st.space [%a, %b, 128, 256] : !gml_st.tile<?x?x128x256>
+  %tile = gml_st.tile %space [%i, %j, 16, 32] [16, 32, 64, 128] [1, 1, 1, 1]
+      : !gml_st.tile<?x?x128x256> to !gml_st.tile<16x32x64x128>
+  %nested_tile = gml_st.tile %tile [%i, %j, 0, 8] [2, 4, 8, 16] [1, 1, 1, 1] 
+      : !gml_st.tile<16x32x64x128> to !gml_st.tile<2x4x8x16>
+
+  // Foldable case: stride(tile(space))
+  %c1_ = gml_st.stride %tile [%c1] : !gml_st.tile<16x32x64x128>
+  %c1__ = gml_st.stride %tile [%c2] : !gml_st.tile<16x32x64x128>
+
+  // Foldable case: stride(space)
+  %c1___ = gml_st.stride %space [%c1] : !gml_st.tile<?x?x128x256>
+
+  // Unfoldable case: stride(tile(tile(space)))
+  %nested_tile_stride = gml_st.stride %nested_tile [%c1] 
+      : !gml_st.tile<2x4x8x16>
+
+  return %c1_, %c1__, %c1___, %nested_tile_stride : index, index, index, index
+}

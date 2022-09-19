@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+// #include "perftools/accelerators/xprof/convert/device_type_utils.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/ascii.h"
@@ -144,6 +145,26 @@ void FinalizeDeduplicatedNodes(bool by_program, Node* root) {
   }
 }
 
+// Recursively find computation size for HLOs -- applied only for convolutions.
+// This is only for convolutions, not other HLOs, categories or whole programs.
+// TODO(b/243596435) Find a permanent fix to this problem.
+int64_t GetComputationSize(Node node) {
+  int64_t computation_size = 0;
+  for (const auto& child : node.children()) {
+    if (GetComputationSize(child) != 0) {
+      computation_size = GetComputationSize(child);
+    }
+  }
+  if (node.has_xla()) {
+    if (node.xla().computation_primitive_size() > 0) {
+      return node.xla().computation_primitive_size();
+    } else {
+      return computation_size;
+    }
+  }
+  return 0;
+}
+
 // Fills op metrics into a node.
 void PopulateOpMetricsNode(const OpMetrics& op_metrics,
                            double peak_gigaflops_per_second_per_core,
@@ -162,6 +183,14 @@ void PopulateOpMetricsNode(const OpMetrics& op_metrics,
   // "time" is the op or category fraction of total time.
   metrics->set_time(SafeDivide(op_metrics.time_ps(), total_time_ps));
 
+  // Hack to approximate utilization for INT8/4 convolution HLOs:
+  // Since MXU BW is 2x/4x for INT8/4, multiply peak BW by the factor detemrined
+  // by the computation size
+  if (GetComputationSize(*node) == 8) {
+    peak_gigaflops_per_second_per_core *= 2;
+  } else if (GetComputationSize(*node) == 4) {
+    peak_gigaflops_per_second_per_core *= 4;
+  }
   double flops_utilization = SafeDivide(GigaFlopsPerSecondPerCore(op_metrics),
                                         peak_gigaflops_per_second_per_core);
   // The UI expects flops_utilization = flops / time. See:

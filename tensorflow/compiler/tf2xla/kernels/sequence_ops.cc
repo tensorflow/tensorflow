@@ -131,15 +131,15 @@ class RangeOp : public XlaOpKernel {
                              xla::One(ctx->builder(), ctx->input_xla_type(0))) /
                             xla::Abs(delta);
         dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
-        output = xla::SetDimensionSize(output.ValueOrDie(), dynamic_size, 0);
+        output = xla::SetDimensionSize(output.value(), dynamic_size, 0);
       } else {
         auto dynamic_size = (xla::Ceil(xla::Abs((limit - start) / delta)));
         dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
-        output = xla::SetDimensionSize(output.ValueOrDie(), dynamic_size, 0);
+        output = xla::SetDimensionSize(output.value(), dynamic_size, 0);
       }
     }
 
-    ctx->SetOutput(0, output.ValueOrDie());
+    ctx->SetOutput(0, output.value());
   }
 };
 

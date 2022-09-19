@@ -25,12 +25,13 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LOWERTRANSPOSE
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using mlir::linalg::CodegenStrategy;
 
-struct LowerTransposePass : public LowerTransposeBase<LowerTransposePass> {
+struct LowerTransposePass
+    : public impl::LowerTransposeBase<LowerTransposePass> {
   void runOnOperation() override {
     mlir::OpPassManager dynamic_pm("func.func");
     auto avx_lowering_options =

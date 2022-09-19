@@ -67,7 +67,8 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
                Status(const CoordinationServiceDeviceInfo& local_devices));
   MOCK_METHOD0(GetClusterDeviceInfo, const CoordinationServiceDeviceInfo&());
   MOCK_METHOD0(GetOwnTask, StatusOr<CoordinatedTask>());
-  MOCK_METHOD1(GetTaskStatus, StatusOr<TaskState>(const CoordinatedTask& task));
+  MOCK_METHOD1(GetTaskStatus,
+               StatusOr<CoordinatedTaskState>(const CoordinatedTask& task));
   MOCK_METHOD1(ReportError, Status(const Status& error));
   MOCK_METHOD0(Shutdown, Status());
   MOCK_METHOD0(Reset, Status());

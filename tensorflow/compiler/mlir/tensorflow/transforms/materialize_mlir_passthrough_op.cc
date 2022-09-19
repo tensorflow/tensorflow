@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <iterator>
 #include <memory>
+#include <string>
 #include <tuple>
 
 #include "llvm/ADT/STLExtras.h"
@@ -43,13 +45,11 @@ class MaterializePassthroughOpPass
 };
 
 void MaterializePassthroughOpPass::runOnOperation() {
-  getOperation().walk([](Operation *op) {
-    auto passthrough_op = dyn_cast<TF::MlirPassthroughOp>(op);
-    if (!passthrough_op) return;
-    std::string module_string(passthrough_op.mlir_module());
+  getOperation().walk([](TF::MlirPassthroughOp op) {
+    std::string module_string(op.mlir_module());
     // Parse the module.
     auto nested_module =
-        parseSourceString<ModuleOp>(module_string, op->getContext());
+        parseSourceString<ModuleOp>(module_string, op.getContext());
     if (!nested_module) {
       op->emitError() << "could not parse attached MLIR module";
       return;

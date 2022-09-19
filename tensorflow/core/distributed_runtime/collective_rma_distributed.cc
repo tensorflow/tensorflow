@@ -245,7 +245,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
   WorkerInterface* wi = worker_cache_->GetOrCreateWorker(peer_task);
   if (wi == nullptr) {
     done(errors::InvalidArgument(peer_task,
-                                 " not found. It's probably in valid. The "
+                                 " not found. It's probably invalid. The "
                                  "valid form is /job:xxx/replica:0/task:N"));
     return;
   }

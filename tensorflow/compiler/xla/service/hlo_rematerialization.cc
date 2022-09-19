@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -1429,8 +1429,7 @@ MemoryUsageTracker::PickRematerializationCandidates(
               !output_buffer.live_out) {
             const Shape& original_shape = item->instruction->shape();
             if (original_shape.IsArray()) {
-              Shape compact_shape =
-                  GetCompactShape(item->instruction).ValueOrDie();
+              Shape compact_shape = GetCompactShape(item->instruction).value();
               const int64_t memory_reduced =
                   MemoryReducedIfCompressed(item, compact_shape);
               // Since the compressed and uncompressed buffers need to be alive
@@ -1841,8 +1840,8 @@ StatusOr<InstructionsAdded> RematerializeBestBlock(
 }  // namespace
 
 StatusOr<int64_t> HloRematerialization::ComputePeakMemory(
-    const HloComputation* computation,
-    const HloInstructionSequence& order) const {
+    const HloComputation* computation, const HloInstructionSequence& order,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
   InstructionList instruction_list(order);
   MemoryUsageTracker tracker(computation, size_function_,
                              compact_shape_function_, *points_to_analysis_,
@@ -1852,8 +1851,9 @@ StatusOr<int64_t> HloRematerialization::ComputePeakMemory(
        item = instruction_list.next(item)) {
     const HloInstruction* instruction = item->instruction;
     TF_RETURN_IF_ERROR(tracker.BeginInstruction(item));
-    TF_ASSIGN_OR_RETURN(int64_t callee_usage,
-                        CalledComputationsMemoryUsage(instruction));
+    TF_ASSIGN_OR_RETURN(
+        int64_t callee_usage,
+        CalledComputationsMemoryUsage(instruction, execution_threads));
     peak_memory =
         std::max<int64_t>(peak_memory, tracker.memory_usage() + callee_usage);
     TF_RETURN_IF_ERROR(tracker.EndInstruction());
@@ -1864,7 +1864,8 @@ StatusOr<int64_t> HloRematerialization::ComputePeakMemory(
 }
 
 StatusOr<int64_t> HloRematerialization::CalledComputationsMemoryUsage(
-    const HloInstruction* instruction) const {
+    const HloInstruction* instruction,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
   const CallSite* callsite =
       call_graph_->GetNode(instruction->parent()).GetCallSite(instruction);
   if (callsite == nullptr || callsite->context() == CallContext::kEmbedded) {
@@ -1872,15 +1873,26 @@ StatusOr<int64_t> HloRematerialization::CalledComputationsMemoryUsage(
   }
   int64_t callee_usage = 0;
   for (const HloComputation* computation : callsite->called_computations()) {
+    if (!IsExecutionThreadIncluded(execution_threads,
+                                   computation->execution_thread())) {
+      continue;
+    }
     TF_RET_CHECK(ContainsKey(computation_peak_memory_, computation));
     callee_usage += computation_peak_memory_.at(computation);
   }
   return callee_usage;
 }
 
+bool HloRematerialization::IsExecutionThreadIncluded(
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::string_view thread) const {
+  return execution_threads.empty() || execution_threads.contains(thread);
+}
+
 StatusOr<bool> HloRematerialization::RematerializeComputation(
     HloComputation* computation, HloSchedule* schedule,
-    int64_t memory_limit_bytes, int64_t min_remat_size) {
+    int64_t memory_limit_bytes, int64_t min_remat_size,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Rematerializing computation " << computation->name()
           << " with limit " << HumanReadableNumBytes(memory_limit_bytes);
   VLOG(1) << "peak memory usage is "
@@ -1926,8 +1938,9 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   for (auto* item = instruction_list.first(); item != nullptr;
        item = instruction_list.next(item)) {
     const HloInstruction* instruction = item->instruction;
-    TF_ASSIGN_OR_RETURN(int64_t callee_usage,
-                        CalledComputationsMemoryUsage(instruction));
+    TF_ASSIGN_OR_RETURN(
+        int64_t callee_usage,
+        CalledComputationsMemoryUsage(instruction, execution_threads));
     TF_RETURN_IF_ERROR(memory_tracker.BeginInstruction(item));
 
     VLOG(2) << "Program point at " << instruction->name()
@@ -2020,13 +2033,13 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
               bool subcomputation_changed,
               RematerializeComputation(called_computation, schedule,
                                        subcomputation_memory_limit_bytes,
-                                       min_remat_size));
+                                       min_remat_size, execution_threads));
           changed |= subcomputation_changed;
         }
       }
 
-      TF_ASSIGN_OR_RETURN(callee_usage,
-                          CalledComputationsMemoryUsage(instruction));
+      TF_ASSIGN_OR_RETURN(callee_usage, CalledComputationsMemoryUsage(
+                                            instruction, execution_threads));
     }
 
     peak_memory = std::max<int64_t>(
@@ -2107,12 +2120,15 @@ StatusOr<bool> HloRematerialization::Run(
   // sequential context.
   call_graph_ = CallGraph::Build(module);
   TF_RETURN_IF_ERROR(call_graph_->VisitNodes(
-      [this, module](const CallGraphNode& node) -> Status {
-        if (node.context() == CallContext::kControlFlow) {
+      [this, module, &execution_threads](const CallGraphNode& node) -> Status {
+        if (node.context() == CallContext::kControlFlow &&
+            IsExecutionThreadIncluded(execution_threads,
+                                      node.computation()->execution_thread())) {
           TF_ASSIGN_OR_RETURN(
               computation_peak_memory_[node.computation()],
-              ComputePeakMemory(node.computation(), module->schedule().sequence(
-                                                        node.computation())));
+              ComputePeakMemory(node.computation(),
+                                module->schedule().sequence(node.computation()),
+                                execution_threads));
         }
         return OkStatus();
       },
@@ -2132,7 +2148,8 @@ StatusOr<bool> HloRematerialization::Run(
   TF_ASSIGN_OR_RETURN(
       bool changed,
       RematerializeComputation(module->entry_computation(), &module->schedule(),
-                               adjusted_memory_limit_bytes, min_remat_size_));
+                               adjusted_memory_limit_bytes, min_remat_size_,
+                               execution_threads));
   // Rematerialization can introduce dead code. This occurs if all uses of an
   // instruction are replaced with rematerializations of the instruction.
 
@@ -2145,7 +2162,7 @@ StatusOr<bool> HloRematerialization::Run(
 
   // After DCE, the module sequence may include instructions which no longer
   // exist. Update the schedule and restore it.
-  TF_RETURN_IF_ERROR(saved_schedule.Update());
+  TF_RETURN_IF_ERROR(saved_schedule.Update(execution_threads));
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(saved_schedule)));
   VLOG(1) << "Rematerialized " << instructions_rematerialized_
           << " instructions in module " << module->name() << "; "

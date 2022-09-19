@@ -8,6 +8,7 @@ load(
 package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -29,21 +30,11 @@ cc_library(
 
 cc_library(
     name = "bitmap",
-    srcs = ["bitmap.cc"],
     hdrs = ["bitmap.h"],
     deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/core:bitmap",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "blocking_counter",
-    hdrs = ["blocking_counter.h"],
-    deps = [
-        "//tensorflow/core/platform:blocking_counter",
-    ],
 )
 
 cc_library(
@@ -144,6 +135,7 @@ tf_proto_library(
     visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/core/protobuf:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
     ],
     exports = ["//tensorflow/core/protobuf:error_codes_proto_impl"],
 )
@@ -152,7 +144,6 @@ tf_proto_library(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "blocking_counter.h",
         "coding.h",
         "errors.h",
         "refcount.h",
@@ -183,7 +174,6 @@ filegroup(
         "arena.h",
         "bitmap.h",
         "bits.h",
-        "blocking_counter.h",
         "coding.h",
         "errors.h",
         "notification.h",
@@ -195,6 +185,7 @@ filegroup(
         "threadpool.h",
         "threadpool_interface.h",
         "threadpool_options.h",
+        "//tensorflow/tsl/lib/core:legacy_lib_core_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -203,8 +194,6 @@ filegroup(
     name = "legacy_lib_core_all_tests",
     srcs = [
         "arena_test.cc",
-        "bitmap_test.cc",
-        "blocking_counter_test.cc",
         "coding_test.cc",
         "notification_test.cc",
         "status_test.cc",
@@ -216,7 +205,6 @@ filegroup(
 filegroup(
     name = "legacy_lib_internal_core_headers",
     srcs = [
-        "blocking_counter.h",
         "refcount.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -234,6 +222,7 @@ filegroup(
     name = "legacy_lib_core_status_test_util_header",
     srcs = [
         "status_test_util.h",
+        "//tensorflow/tsl/lib/core:legacy_lib_core_status_test_util_header",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -270,6 +259,7 @@ filegroup(
         "errors.h",
         "notification.h",
         "raw_coding.h",
+        "refcount.h",
         "status.h",
         "stringpiece.h",
         "threadpool.h",

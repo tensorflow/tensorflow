@@ -43,7 +43,7 @@ class AutoShardRewriter {
   StatusOr<GraphDef> ApplyAutoShardRewrite(const GraphDef& graph_def);
 
  private:
-  AutoShardRewriter(AutoShardPolicy auto_shard_policy, int64 num_workers,
+  AutoShardRewriter(AutoShardPolicy auto_shard_policy, int64_t num_workers,
                     int64_t worker_index);
 
   // Creates a rewrite config based on the auto-shard policy.

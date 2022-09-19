@@ -16,6 +16,7 @@
 
 import distutils.spawn
 import enum
+import hashlib
 import os as _os
 import platform as _platform
 import subprocess as _subprocess
@@ -939,33 +940,47 @@ def deduplicate_readonly_buffers(tflite_model):
                            model.buffers[buffer_idx].data.size == 0)):
       read_only_buffer_indices.discard(buffer_idx)
 
-  # Sort by buffer size.
-  read_only_buffer_indices = list(read_only_buffer_indices)
-  sorted(
-      read_only_buffer_indices,
-      key=lambda idx: model.buffers[idx].data.data.tobytes())
+  class BufferIndex:
+    """A class to store index, size, hash of the buffers in TFLite model."""
+
+    def __init__(self, idx, size, hash_value):
+      self.idx = idx
+      self.size = size
+      self.hash_value = hash_value
+
+  read_only_buffers = list(
+      map(
+          lambda index: BufferIndex(  # pylint: disable=g-long-lambda
+              index, model.buffers[index].data.size,
+              hashlib.md5(model.buffers[index].data.data.tobytes()).hexdigest()
+          ),
+          read_only_buffer_indices))
+
+  # Sort read_only_buffers by buffer size & hash in descending order.
+  read_only_buffers = sorted(
+      read_only_buffers,
+      key=lambda buffer: (buffer.size, buffer.hash_value),
+      reverse=True)
 
   # Create a map of duplicate buffers (same size and same type).
   # eg: In [1, 2, 3, 4, 5, 6] if (1, 4, 6) and (2, 5) are each, groups of buffer
   # indices of the same size and type, then the map would be {4:1, 6:1, 5:2}
   duplicate_buffer_map = {}
-  for i, buffer_i_idx in enumerate(read_only_buffer_indices):
+  for i, buffer_i in enumerate(read_only_buffers):
     # This buffer is a duplicate.
-    if buffer_i_idx in duplicate_buffer_map:
+    if buffer_i.idx in duplicate_buffer_map:
       continue
     # This buffer is unique. Scan rest of the list to find duplicates
     # of this buffer and mark them accordingly.
-    buffer_i = model.buffers[buffer_i_idx]
-    for buffer_j_idx in read_only_buffer_indices[i + 1:]:
-      if buffer_j_idx in duplicate_buffer_map:
+    for buffer_j in read_only_buffers[i + 1:]:
+      if buffer_j.idx in duplicate_buffer_map:
         continue
-      buffer_j = model.buffers[buffer_j_idx]
-      if buffer_i.data.size != buffer_j.data.size:
+      if buffer_i.size != buffer_j.size:
         break
-      if buffer_i.data.data != buffer_j.data.data:
+      if buffer_i.hash_value != buffer_j.hash_value:
         continue
       # Found duplicate. Nullify j-th buffer and use i-th buffer instead.
-      duplicate_buffer_map[buffer_j_idx] = buffer_i_idx
+      duplicate_buffer_map[buffer_j.idx] = buffer_i.idx
 
   # Make the duplicated tensors use the single shared buffer index.
   for subgraph in model.subgraphs:

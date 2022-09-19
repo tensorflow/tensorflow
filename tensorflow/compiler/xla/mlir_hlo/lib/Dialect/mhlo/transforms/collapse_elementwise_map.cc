@@ -16,7 +16,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -27,6 +26,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_COLLAPSEELEMENTWISEMAPPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 // TODO(b/228448038): consider to move this pattern to mhlo.map canonicalizer.
@@ -46,7 +49,7 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
   LogicalResult matchAndRewrite(MapOp map,
                                 PatternRewriter &rewriter) const override {
     // Matches that the computation block only has element-wise ops.
-    if (llvm::any_of(map.computation().front().without_terminator(),
+    if (llvm::any_of(map.getComputation().front().without_terminator(),
                      [](Operation &op) {
                        return op.getNumResults() != 1 ||
                               !op.hasTrait<::mlir::OpTrait::Elementwise>();
@@ -56,11 +59,12 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
 
     rewriter.setInsertionPointAfter(map);
     BlockAndValueMapping blockAndValueMap;
-    for (mlir::BlockArgument barg : map.computation().front().getArguments()) {
+    for (mlir::BlockArgument barg :
+         map.getComputation().front().getArguments()) {
       blockAndValueMap.map(barg, map->getOperand(barg.getArgNumber()));
     }
     auto shape = map.getType().getShape();
-    for (Operation &op : map.computation().front().without_terminator()) {
+    for (Operation &op : map.getComputation().front().without_terminator()) {
       SmallVector<Value, 2> operands;
       // Remaps the operands.
       operands.reserve(op.getNumOperands());
@@ -73,7 +77,7 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
       blockAndValueMap.map(op.getResult(0), newOp->getResult(0));
     }
 
-    auto retOp = cast<ReturnOp>(map.computation().front().back());
+    auto retOp = cast<ReturnOp>(map.getComputation().front().back());
     map->getResult(0).replaceAllUsesWith(
         blockAndValueMap.lookup(retOp->getOperand(0)));
     return success();
@@ -81,7 +85,7 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
 };
 
 struct CollapseElementwiseMapPass
-    : public CollapseElementwiseMapPassBase<CollapseElementwiseMapPass> {
+    : public impl::CollapseElementwiseMapPassBase<CollapseElementwiseMapPass> {
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);

@@ -277,6 +277,12 @@ func.func @testLogicalNot(tensor<? x i1>) -> tensor<? x i1> {
   func.return %0 : tensor<? x i1>
 }
 
+// CHECK-LABEL: testSign
+func.func @testSign(%arg0: tensor<? x f32>) -> tensor<? x f32> {
+  %0 = "tfl.sign"(%arg0): (tensor<? x f32>) -> tensor<? x f32>
+  func.return %0 : tensor<? x f32>
+}
+
 // -----
 
 func.func @testLogicalNotWrongOperandType(tensor<? x i32>) -> tensor<? x i32> {
@@ -320,6 +326,14 @@ func.func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   // CHECK: tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"}
   %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x i32>
   func.return %0#0 : tensor<? x i32>
+}
+
+// CHECK-LABEL: testMulComplex
+func.func @testMulComplex(tensor<? x complex<f32>>, tensor<? x complex<f32>>) -> tensor<? x complex<f32>> {
+^bb0(%arg0: tensor<? x complex<f32>>, %arg1: tensor<? x complex<f32>>):
+  // CHECK: tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"}
+  %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"}: tensor<? x complex<f32>>
+  func.return %0#0 : tensor<? x complex<f32>>
 }
 
 // CHECK-LABEL: testAddWithI64Broadcasting
@@ -464,6 +478,15 @@ func.func @testPow(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   %0 = tfl.pow %arg0, %arg1 : tensor<? x i32>
   func.return %0#0 : tensor<? x i32>
 }
+
+// CHECK-LABEL: testAtan2
+func.func @testAtan2(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK: "tfl.atan2"(%arg0, %arg1)
+  %0 = "tfl.atan2"(%arg0, %arg1): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// -----
 
 // CHECK-LABEL: testConv2D
 func.func @testConv2D(tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x32x32x16xf32> {
@@ -3035,3 +3058,13 @@ func.func @testControlNodeShortForm(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>)-
   func.return %0 : tensor<8xf32>
 }
 
+
+// -----
+
+// CHECK-LABEL: testUnsortedSegmentMin
+func.func @testUnsortedSegmentMin(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>,  %arg2: tensor<i32>) -> tensor<8xf32> {
+  // CHECK: "tfl.unsorted_segment_min"(%arg0, %arg1, %arg2)
+  %0 = "tfl.unsorted_segment_min"(%arg0, %arg1, %arg2) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+  // CHECK: return %0 : tensor<8xf32>
+}

@@ -16,18 +16,21 @@ limitations under the License.
 #include <list>
 
 #include "mlir-hlo/Analysis/userange_analysis.h"
-#include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir-hlo/utils/hlo_utils.h"
-#include "mlir/Analysis/BufferViewFlowAnalysis.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferViewFlowAnalysis.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+
+#define GEN_PASS_DEF_BUFFERPACKING
+#define GEN_PASS_DEF_MEMORYCOUNT
+#include "mlir-hlo/Transforms/passes.h.inc"
 
 namespace {
 
@@ -308,16 +311,16 @@ class SortedPackingStrategy {
       size_t allocUserangeId = userangeAnalysis.computeId(v, v.getDefiningOp());
 
       // Computes the last use of the allocated buffer.
-      size_t lastUse = std::prev((*userangeIntervals.getValue()).end())->end;
+      size_t lastUse = std::prev((*userangeIntervals.value()).end())->end;
 
       // Computes the first use of the allocated buffer.
-      size_t firstUse = (*userangeIntervals.getValue()).begin()->start;
+      size_t firstUse = (*userangeIntervals.value()).begin()->start;
 
       // Computes the number of aligend segments of the buffer.
       size_t numSegments = computeAlignedSegments(v);
       maxUserangeId = std::max(maxUserangeId, lastUse);
       allocInfos.emplace_back(v, allocUserangeId, firstUse, lastUse,
-                              numSegments, 0, userangeIntervals.getValue());
+                              numSegments, 0, userangeIntervals.value());
     }
 
     // If the window size is zero we need no sorting anymore.
@@ -422,7 +425,7 @@ class BufferPacking : bufferization::BufferPlacementTransformationBase {
 /// memory. The window size is used as sliding window size. Allocation
 /// userangepoitions that are in the same range are mapped to the same window
 /// id. The information of the allocation starting position is blured.
-struct BufferPackingPass : public BufferPackingBase<BufferPackingPass> {
+struct BufferPackingPass : public impl::BufferPackingBase<BufferPackingPass> {
   explicit BufferPackingPass(unsigned windowSize) {
     this->window_size_ = windowSize;
   }
@@ -441,7 +444,7 @@ struct BufferPackingPass : public BufferPackingBase<BufferPackingPass> {
 };
 
 /// Pass to find all allocations and to compute memory usage.
-struct MemoryCountPass : MemoryCountBase<MemoryCountPass> {
+struct MemoryCountPass : impl::MemoryCountBase<MemoryCountPass> {
   void runOnOperation() override {
     Operation *op = getOperation();
     std::vector<Value> allocs;

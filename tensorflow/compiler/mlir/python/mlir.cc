@@ -265,7 +265,7 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
     return "// error";
   }
 
-  return MlirModuleToString(*module_or.ValueOrDie(), show_debug_info);
+  return MlirModuleToString(*module_or.value(), show_debug_info);
 }
 
 std::string ExperimentalConvertSavedModelV1ToMlir(

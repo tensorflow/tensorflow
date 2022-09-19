@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_DETENSORIZELINALG
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using mlir::AffineMap;
@@ -90,7 +90,7 @@ struct DetensorizeLinalgOp : public OpConversionPattern<GenericOp> {
 };
 
 struct DetensorizeLinalgPass
-    : public DetensorizeLinalgBase<DetensorizeLinalgPass> {
+    : public impl::DetensorizeLinalgBase<DetensorizeLinalgPass> {
   DetensorizeLinalgPass() = default;
 
   void runOnOperation() override {

@@ -45,26 +45,42 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 const TfLiteTensor* segment_ids,
                                 const TfLiteTensor* num_segments,
                                 TfLiteTensor* output) {
-  // We take the first element in num_segments as the valid number of segments
-  // in the case where num_segments tensor is initialized with more than one
-  // elements
+  // The shape of segment_ids is permitted to be any non-empty prefix of
+  // the input data's shape. The shape of output's first dimension is always
+  // equal to num_segments. The remaining dimensions of output's shape are then
+  // taken to be the suffix of input shape after rank(segment_ids)th position.
+  // Public facing tensorflow erroneously describe unsorted_segment ops as only
+  // supporting segment_ids of rank 1, however tensorflow implementation
+  // supports higher dimensional segment_ids as described.
+  const int segment_ids_rank = NumDimensions(segment_ids);
+  const int data_rank = NumDimensions(data);
+  TF_LITE_ENSURE(context, segment_ids_rank <= data_rank);
+  for (int i = 0; i < segment_ids_rank; ++i) {
+    // segment_ids shape must be prefix of data shape.
+    TF_LITE_ENSURE_EQ(context, segment_ids->dims->data[i], data->dims->data[i]);
+  }
   TF_LITE_ENSURE(context, (num_segments->dims->size == 1 &&
                            num_segments->dims->data[0] == 1) ||
                               num_segments->dims->size == 0);
-  int32_t output_dim = GetTensorData<int32_t>(num_segments)[0];
-  const int segment_id_size = segment_ids->dims->data[0];
-  TF_LITE_ENSURE_EQ(context, segment_id_size, data->dims->data[0]);
+  // num_segments can be thought of as number of buckets (segments) in output,
+  // where each segment is the reduction of all elements mapped to that
+  // segment_ids. The shape of said elements is the respective
+  // suffix of the data shape.
+  int32_t num_segments_ = GetTensorData<int32_t>(num_segments)[0];
+  const int num_segment_ids = NumElements(segment_ids);
   int max_index = -1;
-  for (int i = 0; i < segment_id_size; i++) {
+  for (int i = 0; i < num_segment_ids; i++) {
     max_index = std::max(GetTensorData<int32_t>(segment_ids)[i], max_index);
   }
-  TF_LITE_ENSURE(context, max_index < output_dim);
-
-  const int data_rank = NumDimensions(data);
-  TfLiteIntArray* output_shape = TfLiteIntArrayCreate(NumDimensions(data));
-  output_shape->data[0] = output_dim;
-  for (int i = 1; i < data_rank; ++i) {
-    output_shape->data[i] = data->dims->data[i];
+  // num_segments_ must be at greater than max_index else would map elements
+  // to non existent output segments.
+  TF_LITE_ENSURE(context, max_index < num_segments_);
+  const int output_rank = data_rank - segment_ids_rank + 1;
+  TfLiteIntArray* output_shape = TfLiteIntArrayCreate(output_rank);
+  output_shape->data[0] = num_segments_;
+  // output_shape[1:] should be data_shape[Rank(segment_ids):]
+  for (int i = segment_ids_rank; i < data_rank; ++i) {
+    output_shape->data[i - segment_ids_rank + 1] = data->dims->data[i];
   }
   return context->ResizeTensor(context, output, output_shape);
 }

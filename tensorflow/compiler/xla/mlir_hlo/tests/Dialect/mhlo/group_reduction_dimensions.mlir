@@ -209,7 +209,7 @@ func.func @more_than_one_dyn_parallel_dim(%arg : tensor<?x?x3x3xf32>)
   // CHECK:      %[[CRED:.*]] = mhlo.reduce(%[[CED]] init: %[[C0]])
   // CHECK-SAME:     applies mhlo.add across dimensions = [1]
   // CHECK-SAME:     : (tensor<?x9xf32>, tensor<f32>) -> tensor<?xf32>
-  // CHECK:      %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[CRED]], %[[SHAPE]])
+  // CHECK:      %[[RESULT:.*]] = mhlo.dynamic_reshape %[[CRED]], %[[SHAPE]]
   // CHECK-SAME:     : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   // CHECK:      return %[[RESULT]]
   %c0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
@@ -233,7 +233,7 @@ func.func @ignore_if_multiple_operands(%arg0: tensor<?x?x3x3xf32>,
   // CHECK-SAME:       (%[[E1:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>)
   // CHECK-DAG:    %[[A0_:.*]] = mhlo.add %[[E0]], %[[A0]]
   // CHECK-DAG:    %[[A1_:.*]] = mhlo.add %[[E1]], %[[A1]]
-  // CHECK:        "mhlo.return"(%[[A0_]], %[[A1_]])
+  // CHECK:        mhlo.return %[[A0_]], %[[A1_]]
   // CHECK:      return %[[RESULTS]]#0, %[[RESULTS]]#1
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %1:2 = mhlo.reduce(%arg0 init: %0), (%arg1 init: %0)
@@ -456,8 +456,8 @@ func.func @needs_transpose_and_dynamic_reshape(
   // CHECK:      %[[CTCRED:.*]] = mhlo.reduce(%[[CTCED]] init: %[[C0]])
   // CHECK-SAME:     applies mhlo.add across dimensions = [0]
   // CHECK-SAME:     : (tensor<42432x?xf32>, tensor<f32>) -> tensor<?xf32>
-  // CHECK-DAG:  %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[CTCRED]],
-  // CHECK-SAME:     %[[SHAPE]])
+  // CHECK-DAG:  %[[RESULT:.*]] = mhlo.dynamic_reshape %[[CTCRED]],
+  // CHECK-SAME:     %[[SHAPE]]
   // CHECK:      return %[[RESULT]]
   %c0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %0 = mhlo.reduce(%arg init: %c0)

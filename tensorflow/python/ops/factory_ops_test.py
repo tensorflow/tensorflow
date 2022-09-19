@@ -51,6 +51,7 @@ class FactoryOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (sparse_int64,),
       (sparse_str,),
   )
+  @test_util.run_gpu_only
   def testSparseWithDistributedDataset(self, sparse_factory):
 
     @def_function.function
@@ -59,7 +60,11 @@ class FactoryOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       sparse_ds = dataset_ops.Dataset.from_tensor_slices(t).batch(2)
       dist_dataset = strategy.experimental_distribute_dataset(sparse_ds)
       ds = iter(dist_dataset)
-      return strategy.experimental_local_results(next(ds))[0]
+      result = strategy.experimental_local_results(next(ds))[0]
+      # Reach the end of the iterator
+      for ignore in ds:  # pylint: disable=unused-variable
+        pass
+      return result
 
     t = sparse_factory()
 

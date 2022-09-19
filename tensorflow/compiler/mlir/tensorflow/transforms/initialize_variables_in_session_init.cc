@@ -41,7 +41,7 @@ void InitializeVariable(TF::VarHandleOp var_handle_op,
   tensorflow::StatusOr<ElementsAttr> tensor_attr_or =
       tensorflow::ConvertTensor(*tensor, &builder);
   assert(tensor_attr_or.ok() && "Expect valid tensor");
-  ElementsAttr tensor_attr = tensor_attr_or.ValueOrDie();
+  ElementsAttr tensor_attr = tensor_attr_or.value();
 
   builder.setInsertionPointToStart(&session_init_func.getBlocks().front());
   auto var_handle_op_in_init = var_handle_op->clone();

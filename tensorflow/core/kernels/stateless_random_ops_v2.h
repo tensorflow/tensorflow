@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-inline Status CheckKeyCounterShape(Algorithm const& alg,
+inline Status CheckKeyCounterShape(int minimum_counter_size,
                                    TensorShape const& key_shape,
                                    TensorShape const& counter_shape) {
   if (!(key_shape.dims() == 1 && key_shape.dim_size(0) == RNG_KEY_SIZE)) {
@@ -30,11 +30,10 @@ inline Status CheckKeyCounterShape(Algorithm const& alg,
         key_shape.DebugString(),
         ". (Note that batched keys are not supported yet.)");
   }
-  auto counter_size = GetCounterSize(alg);
   if (!(counter_shape.dims() == 1 &&
-        counter_shape.dim_size(0) >= counter_size)) {
+        counter_shape.dim_size(0) >= minimum_counter_size)) {
     return errors::InvalidArgument(
-        "counter must be a vector with length at least ", counter_size,
+        "counter must be a vector with length at least ", minimum_counter_size,
         "; got shape: ", counter_shape.DebugString(),
         ". (Note that batched counters are not supported yet.)");
   }

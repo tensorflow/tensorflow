@@ -67,6 +67,7 @@ Status WithLogBacktrace(const Status& status);
 // memory to store its values.
 inline constexpr int InlineRank() { return 6; }
 using DimensionVector = absl::InlinedVector<int64_t, InlineRank()>;
+using DimLevelTypeVector = absl::InlinedVector<DimLevelType, InlineRank()>;
 
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
@@ -209,57 +210,57 @@ template <typename... Args>
 Status InvalidArgument(const absl::FormatSpec<Args...>& format,
                        const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::InvalidArgument(absl::StrFormat(format, args...)));
+      tsl::errors::InvalidArgument(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Unimplemented(const absl::FormatSpec<Args...>& format,
                      const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Unimplemented(absl::StrFormat(format, args...)));
+      tsl::errors::Unimplemented(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status InternalError(const absl::FormatSpec<Args...>& format,
                      const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+      tsl::errors::Internal(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status FailedPrecondition(const absl::FormatSpec<Args...>& format,
                           const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::FailedPrecondition(absl::StrFormat(format, args...)));
+      tsl::errors::FailedPrecondition(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Cancelled(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Cancelled(absl::StrFormat(format, args...)));
+      tsl::errors::Cancelled(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status ResourceExhausted(const absl::FormatSpec<Args...>& format,
                          const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::ResourceExhausted(absl::StrFormat(format, args...)));
+      tsl::errors::ResourceExhausted(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status NotFound(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::NotFound(absl::StrFormat(format, args...)));
+      tsl::errors::NotFound(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Unavailable(const absl::FormatSpec<Args...>& format,
                    const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Unavailable(absl::StrFormat(format, args...)));
+      tsl::errors::Unavailable(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Unknown(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Unknown(absl::StrFormat(format, args...)));
+      tsl::errors::Unknown(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+      tsl::errors::Internal(absl::StrFormat(format, args...)));
 }
 
 template <typename... Args>
@@ -337,7 +338,7 @@ std::string VectorString(const std::initializer_list<T>& c) {
 }
 
 // Returns a string which can losslessly round trip to a bfloat.
-std::string RoundTripFpToString(tensorflow::bfloat16 value);
+std::string RoundTripFpToString(tsl::bfloat16 value);
 
 // Returns a string which can losslessly round trip to a fp16.
 std::string RoundTripFpToString(Eigen::half value);
@@ -676,16 +677,16 @@ using Vector3 = std::array<int64_t, 3>;
 #define XLA_LOG_LINES(SEV, STRING) \
   ::xla::LogLines(SEV, STRING, __FILE__, __LINE__)
 
-#define XLA_VLOG_LINES(LEVEL, STRING)                                 \
-  do {                                                                \
-    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(::tensorflow::INFO, STRING); \
+#define XLA_VLOG_LINES(LEVEL, STRING)                          \
+  do {                                                         \
+    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(::tsl::INFO, STRING); \
   } while (false);
 
 // Utility macro that performs the equivalent of what one would expect
 // LOG_LINES(FATAL, X) to do but can be used at the end of a function that
 // returns a value without getting a compiler warning that no value is returned.
-#define XLA_FATAL_LOG(X)                 \
-  XLA_LOG_LINES(::tensorflow::ERROR, X); \
+#define XLA_FATAL_LOG(X)          \
+  XLA_LOG_LINES(::tsl::ERROR, X); \
   LOG(FATAL) << "Aborting in " << __FUNCTION__ << " due to previous errors.";
 
 #endif  // TENSORFLOW_COMPILER_XLA_UTIL_H_

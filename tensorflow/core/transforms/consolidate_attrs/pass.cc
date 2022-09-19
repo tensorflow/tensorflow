@@ -32,10 +32,13 @@ limitations under the License.
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utility.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
+
+#define GEN_PASS_DEF_CONSOLIDATEATTRIBUTES
+#define GEN_PASS_DEF_PREPAREATTRIBUTESFOREXPORT
+#include "tensorflow/core/transforms/passes.h.inc"
 
 static const char *kRegenerateOutputShapes = "tfg.regenerate_output_shapes";
 
@@ -176,7 +179,8 @@ ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionArgumentAttributes(
   auto empty_dict = DictionaryAttr::get(&getContext());
   for (auto i : llvm::seq<unsigned>(0, num_args)) {
     BlockArgument arg = GraphFuncOp::getDataValue(func.body(), i);
-    NamedAttrList attrs(func.getArgAttrs(arg.getArgNumber()));
+    NamedAttrList attrs(
+        func.FunctionOpInterfaceTrait::getArgAttrs(arg.getArgNumber()));
     Type arg_type = arg.getType();
     arg_type = refineTypeWithOutputShapes(arg_type, attrs);
     arg_type = refineTypeWithHandleData(arg_type, attrs.erase(handle_data_id_));
@@ -662,7 +666,7 @@ void PrepareAttributesForExportPassImpl::runOnOperation() {
 
 namespace {
 struct ConsolidateAttributesPass
-    : public ConsolidateAttributesBase<ConsolidateAttributesPass> {
+    : public impl::ConsolidateAttributesBase<ConsolidateAttributesPass> {
   void runOnOperation() override {
     // Run the sub-pass on both `tfg.graph` and `tfg.func`.
     PassManager mgr(&getContext());
@@ -675,7 +679,8 @@ struct ConsolidateAttributesPass
 };
 
 struct PrepareAttributesForExportPass
-    : public PrepareAttributesForExportBase<PrepareAttributesForExportPass> {
+    : public impl::PrepareAttributesForExportBase<
+          PrepareAttributesForExportPass> {
   void runOnOperation() override {
     // Run the sub-pass on both `tfg.graph` and `tfg.func`.
     PassManager mgr(&getContext());

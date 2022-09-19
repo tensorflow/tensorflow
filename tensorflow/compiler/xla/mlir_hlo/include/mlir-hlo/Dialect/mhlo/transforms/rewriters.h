@@ -81,7 +81,7 @@ void populateShapeComputationPatterns(MLIRContext *context,
                                       RewritePatternSet *patterns);
 
 // Converter to signless intergers to be used with linalg conversion patterns.
-std::unique_ptr<TypeConverter> createHloToLinalgSignedIntegerConverter();
+std::unique_ptr<TypeConverter> createHloToLinalgTypeConverter();
 
 // Sets up legality definitions for materializing broadcasts.
 void setupMaterializeBroadcastsLegality(MLIRContext *context,

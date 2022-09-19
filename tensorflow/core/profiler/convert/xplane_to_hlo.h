@@ -17,19 +17,25 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_HLO_H_
 
 #include <string>
-#include <vector>
 
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/profiler/convert/repository.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Extracts and deduplicates the HLO protos from all the XSpace <xspaces>.
-// Stores the HLO protos as file in the same directory as the xspace files.
-Status GetHloProtoFromMultiXSpaceAndSaveToFile(
-    const std::vector<XSpace>& xspaces,
-    const std::vector<std::string>& xspace_file_names);
+// Get HLO proto by module name.
+StatusOr<xla::HloProto> GetHloProtoByModuleName(
+    const SessionSnapshot& session_snapshot,
+    const absl::string_view module_name);
+
+// Converts multiple XSpaces to HLO protos.
+// Stores the HLO protos as files in the same directory as the xspace files.
+// Returns whether there are HLO protos in this profile.
+StatusOr<bool> ConvertMultiXSpaceToHloProto(
+    const SessionSnapshot& session_snapshot);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -25,10 +25,11 @@ of servers to mobile and edge devices.
 Originally developed by researchers and engineers from the Google Brain team
 within Google's AI organization, it comes with strong support for machine
 learning and deep learning and the flexible numerical computation core is used
-across many other scientific domains.
+across many other scientific domains.TensorFlow is licensed under [Apache
+2.0](https://github.com/tensorflow/tensorflow/blob/master/LICENSE).
 """
 # We use this to build installer wheels whose only job would be to install the
-# third-party TensorFlow packages from Google's official partners.
+# third-party TensorFlow packages from Google's official collaborators.
 # Note: This is experimental for now and is used internally for testing.
 import sys
 
@@ -59,8 +60,8 @@ if '--project_name' in sys.argv:
 def standard_or_nightly(standard, nightly):
   return nightly if 'tf_nightly' in project_name else standard
 
-# Install the trusted partner packages with the same version as the installer
-# wheel
+# Install the trusted collaborator packages with the same version as the
+# installer wheel
 REQUIRED_PACKAGES = [
     # Install the TensorFlow package built by AWS if the user is running
     # Linux on an Aarch64 machine.

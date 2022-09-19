@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -36,6 +35,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_LEGALIZEGENERALDOTPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 Value transposeReshape(Value arg, Location loc,
@@ -187,7 +190,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
-    auto dotNumbers = op.dot_dimension_numbers();
+    auto dotNumbers = op.getDotDimensionNumbers();
     if (!dotNumbers.getLhsBatchingDimensions().empty() ||
         !dotNumbers.getRhsBatchingDimensions().empty()) {
       return failure();
@@ -196,18 +199,18 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     auto lhsContractingDims = dotNumbers.getLhsContractingDimensions();
     auto rhsContractingDims = dotNumbers.getRhsContractingDimensions();
 
-    auto lhs = op.lhs();
-    auto rhs = op.rhs();
+    auto lhs = op.getLhs();
+    auto rhs = op.getRhs();
 
     RankedTensorType lhsTy = lhs.getType().dyn_cast<RankedTensorType>();
     RankedTensorType rhsTy = rhs.getType().dyn_cast<RankedTensorType>();
     if (!lhsTy || !rhsTy) return failure();
 
-    lhs = processDotArg(op.lhs(), op.getLoc(),
+    lhs = processDotArg(op.getLhs(), op.getLoc(),
                         dotNumbers.getLhsContractingDimensions(),
                         /*outerDimsFirst=*/true, rewriter);
 
-    rhs = processDotArg(op.rhs(), op.getLoc(),
+    rhs = processDotArg(op.getRhs(), op.getLoc(),
                         dotNumbers.getRhsContractingDimensions(),
                         /*outerDimsFirst=*/false, rewriter);
 
@@ -217,7 +220,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     if (!lhsShapeType || !rhsShapeType) return failure();
 
     ArrayAttr precisionConfig;
-    if (op.precision_config()) precisionConfig = *op.precision_config();
+    if (op.getPrecisionConfig()) precisionConfig = *op.getPrecisionConfig();
     SmallVector<Type, 1> results;
     LogicalResult res =
         DotOp::inferReturnTypes(rewriter.getContext(), None, {lhs, rhs},
@@ -234,6 +237,15 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
             lhsTy.getRank() - 1 &&
         static_cast<int64_t>(rhsContractingDims.size()) ==
             rhsTy.getRank() - 1) {
+      // Retain the sparse encoding if any.
+      // TODO(peiming): A more general problem is how to infer the sparse
+      // encoding for dot operator?
+      auto enc = sparse_tensor::getSparseTensorEncoding(resultTy);
+      if (enc) {
+        // If there is a sparse encoding, it is a ranked tensor.
+        newDotOp.setType(RankedTensorType::get(newTy.getShape(),
+                                               newTy.getElementType(), enc));
+      }
       rewriter.replaceOp(op, newDotOp);
       return success();
     }
@@ -269,8 +281,8 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
       }
     };
 
-    getDynamicDims(op.lhs(), lhsContractingDims);
-    getDynamicDims(op.rhs(), rhsContractingDims);
+    getDynamicDims(op.getLhs(), lhsContractingDims);
+    getDynamicDims(op.getRhs(), rhsContractingDims);
 
     Value reshapeDimsTensor = rewriter.create<ConcatenateOp>(
         loc,
@@ -289,7 +301,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 };
 
 struct LegalizeGeneralDotPass
-    : public LegalizeGeneralDotPassBase<LegalizeGeneralDotPass> {
+    : public impl::LegalizeGeneralDotPassBase<LegalizeGeneralDotPass> {
   /// Lower all general dots that can be represented as a non-batched matmul.
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());

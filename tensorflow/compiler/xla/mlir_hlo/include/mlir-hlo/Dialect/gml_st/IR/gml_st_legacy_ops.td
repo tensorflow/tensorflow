@@ -223,7 +223,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
                                 getLoc());
       getOperation()->setAttr(
           LoopOp::getOperandSegmentSizeAttr(),
-          builder.getI32VectorAttr(
+          builder.getDenseI32ArrayAttr(
               {numLoops, numLoops, numLoops, numInputs + 1, numOutputs}));
       return getOperation()->getOpOperand(getNumControlOperands() + numInputs);
     }
@@ -240,7 +240,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
                                 operand.getType(), getLoc());
       getOperation()->setAttr(
           LoopOp::getOperandSegmentSizeAttr(),
-          builder.getI32VectorAttr(
+          builder.getDenseI32ArrayAttr(
               {numLoops, numLoops, numLoops, numInputs, numOutputs + 1}));
       return getOperation()->getOpOperand(getNumControlOperands() + numInputs +
                                           numOutputs);
@@ -267,7 +267,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
       getBody()->eraseArgument(operandIndex - 2 * numLoops);
       getOperation()->setAttr(
           LoopOp::getOperandSegmentSizeAttr(),
-          builder.getI32VectorAttr(
+          builder.getDenseI32ArrayAttr(
               {numLoops, numLoops, numLoops, numInputs, numOutputs}));
     }
 
@@ -296,10 +296,10 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
     static constexpr StringRef getParallelIteratorTypeName() {
       return "parallel";
     }
-    static constexpr StringRef getDistributionTypesAttrName() {
+    static constexpr StringRef getDistributionTypesAttrStrName() {
       return "distribution_types";
     }
-    static constexpr StringRef getIteratorTypesAttrName() {
+    static constexpr StringRef getIteratorTypesAttrStrName() {
       return "iterator_types";
     }
 

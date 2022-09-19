@@ -23,7 +23,6 @@ import os
 import time
 
 import numpy as np
-import six
 
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
@@ -47,7 +46,7 @@ _HOOKS = "hooks"
 _STEPS_PER_RUN_VAR = "steps_per_run"
 
 
-class _HookTimer(object):
+class _HookTimer:
   """Base timer for determining when Hooks should trigger.
 
   Should not be instantiated directly.
@@ -455,7 +454,7 @@ class StopAtStepHook(session_run_hook.SessionRunHook):
 
 
 @tf_export(v1=["train.CheckpointSaverListener"])
-class CheckpointSaverListener(object):
+class CheckpointSaverListener:
   """Interface for listeners that take action before or after checkpoint save.
 
   `CheckpointSaverListener` triggers only in steps when `CheckpointSaverHook` is
@@ -1098,7 +1097,7 @@ class ProfilerHook(session_run_hook.SessionRunHook):
 def _as_graph_element(obj):
   """Retrieves Graph element."""
   graph = ops.get_default_graph()
-  if not isinstance(obj, six.string_types):
+  if not isinstance(obj, str):
     if not hasattr(obj, "graph") or obj.graph != graph:
       raise ValueError("Passed %s should have graph attribute that is equal "
                        "to current graph %s." % (obj, graph))

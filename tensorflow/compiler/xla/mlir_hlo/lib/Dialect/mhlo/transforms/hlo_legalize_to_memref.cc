@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/bufferizable_op_interface_impl.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -36,6 +35,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_HLOLEGALIZETOMEMREFPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 using bufferization::AnalysisState;
@@ -98,10 +101,10 @@ struct CustomCallOpInterface
         op->getLoc(), llvm::None, bufferArgs, op->getAttrs());
     // lmhlo.custom_call uses a segment_size attribute to tell input from output
     // arguments.
-    lhloOp->setAttr(
-        lhloOp.getOperandSegmentSizeAttr(),
-        rewriter.getI32VectorAttr({static_cast<int32_t>(op->getNumOperands()),
-                                   static_cast<int32_t>(op->getNumResults())}));
+    lhloOp->setAttr(lhloOp.getOperandSegmentSizeAttr(),
+                    rewriter.getDenseI32ArrayAttr(
+                        {static_cast<int32_t>(op->getNumOperands()),
+                         static_cast<int32_t>(op->getNumResults())}));
     bufferization::replaceOpWithBufferizedValues(
         rewriter, op, makeArrayRef(bufferArgs).slice(op->getNumOperands()));
     return success();
@@ -136,12 +139,12 @@ struct ReshapeOpInterface
                           const BufferizationOptions &options) const {
     auto reshapeOp = cast<mhlo::ReshapeOp>(op);
     auto unrankedOperandType =
-        reshapeOp.operand().getType().dyn_cast<UnrankedTensorType>();
+        reshapeOp.getOperand().getType().dyn_cast<UnrankedTensorType>();
     if (unrankedOperandType == nullptr) return success();
 
     // The buffer still has the old (pre-reshape) type.
     FailureOr<Value> operandBuffer =
-        getBuffer(rewriter, reshapeOp.operand(), options);
+        getBuffer(rewriter, reshapeOp.getOperand(), options);
     if (failed(operandBuffer)) return failure();
 
     auto resultType = reshapeOp.getType().cast<RankedTensorType>();
@@ -183,9 +186,9 @@ struct DynamicReshapeOpInterface
 
     // The buffer still has the old (pre-reshape) type.
     FailureOr<Value> operandBuffer =
-        getBuffer(rewriter, reshapeOp.operand(), options);
+        getBuffer(rewriter, reshapeOp.getOperand(), options);
     FailureOr<Value> outputShapeBuffer =
-        getBuffer(rewriter, reshapeOp.output_shape(), options);
+        getBuffer(rewriter, reshapeOp.getOutputShape(), options);
     if (failed(operandBuffer) || failed(outputShapeBuffer)) return failure();
 
     ShapedType resultType;
@@ -262,13 +265,13 @@ FailureOr<Value> insertDynamicMemrefCastOp(
   strides.reserve(resultRank);
 
   DenseMap<int, int> outputToInputDim;
-  for (const auto &dim : llvm::enumerate(op.broadcast_dimensions())) {
+  for (const auto &dim : llvm::enumerate(op.getBroadcastDimensions())) {
     outputToInputDim[dim.value().getSExtValue()] = dim.index();
   }
   for (int i = 0; i < resultRank; ++i) {
     Value iVal = rewriter.create<arith::ConstantIndexOp>(loc, i);
     FailureOr<Value> outputDimsBuffer =
-        getBuffer(rewriter, op.output_dimensions(), options);
+        getBuffer(rewriter, op.getOutputDimensions(), options);
     if (failed(outputDimsBuffer)) return failure();
     Value resultDimSize =
         rewriter.create<memref::LoadOp>(loc, *outputDimsBuffer, iVal);
@@ -351,7 +354,7 @@ struct DynamicBroadcastInDimOpInterface
 
     // The buffer still has the old (pre-reshape) type.
     FailureOr<Value> operandBuffer =
-        getBuffer(rewriter, broadcastInDimOp.operand(), options);
+        getBuffer(rewriter, broadcastInDimOp.getOperand(), options);
     if (failed(operandBuffer)) return failure();
     FailureOr<Value> result = insertDynamicMemrefCastOp(
         broadcastInDimOp, *operandBuffer, rewriter, options);
@@ -362,7 +365,7 @@ struct DynamicBroadcastInDimOpInterface
 };
 
 struct HloLegalizeToMemrefPass
-    : public HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
+    : public impl::HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<bufferization::BufferizationDialect, memref::MemRefDialect,
                     mhlo::MhloDialect, lmhlo::LmhloDialect>();

@@ -207,3 +207,35 @@ std::pair<size_t, size_t> computeMemory(const std::vector<Value>& allocs) {
 
 }  // namespace hlo
 }  // namespace mlir
+
+namespace mlir {
+namespace chlo {
+
+Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val) {
+  auto ty = getElementTypeOrSelf(val.getType()).cast<FloatType>();
+  return getConstantLike(
+      b, loc, llvm::APFloat::getLargest(ty.getFloatSemantics()), val);
+}
+
+Value getConstantLikeInfValue(OpBuilder& b, Location loc, Value val,
+                              bool negative) {
+  auto ty = getElementTypeOrSelf(val.getType()).cast<FloatType>();
+  return getConstantLike(
+      b, loc, llvm::APFloat::getInf(ty.getFloatSemantics(), negative), val);
+}
+
+Value getConstantLikeSmallestFiniteValue(OpBuilder& b, Location loc,
+                                         Value val) {
+  auto ty = getElementTypeOrSelf(val.getType()).cast<FloatType>();
+  return getConstantLike(
+      b, loc, llvm::APFloat::getSmallest(ty.getFloatSemantics()), val);
+}
+
+Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
+                      Value val) {
+  Type ty = getElementTypeOrSelf(val.getType());
+  return b.create<ConstantLikeOp>(loc, b.getFloatAttr(ty, constant), val);
+}
+
+}  // namespace chlo
+}  // namespace mlir

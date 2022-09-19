@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// RUN: tf-quant-opt %s -split-input-file -quant-lift-quantizable-spots-as-functions -quant-prepare-quantize-drq -quant-quantize --quant-quantize-quantization-method='ptq_dynamic_range' -verify-each=false | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-lift-quantizable-spots-as-functions -quant-prepare-quantize-drq -quant-quantize='weight-quantization=true' -verify-each=false | FileCheck %s
 
 // -----
 

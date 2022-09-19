@@ -37,10 +37,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/tracing.h"
@@ -537,6 +539,49 @@ static void BM_FeedInputFetchOutput(::testing::benchmark::State& state) {
 }
 BENCHMARK(BM_FeedInputFetchOutput);
 
+Status ReplaceEdgeWithSendRecv(Graph* g, const Edge* edge, const string& tensor,
+                               const string& sender,
+                               const uint64 sender_incarnation,
+                               const string& receiver) {
+  Node* send;
+  NodeDef send_def;
+  TF_CHECK_OK(NodeDefBuilder(g->NewName("n"), "_Send")
+                  .Input(edge->src()->name(), edge->src_output(),
+                         edge->src()->output_type(edge->src_output()))
+                  .Attr("tensor_name", tensor)
+                  .Attr("send_device", sender)
+                  .Attr("send_device_incarnation",
+                        static_cast<int64_t>(sender_incarnation))
+                  .Attr("recv_device", receiver)
+                  .Finalize(&send_def));
+
+  TF_ASSIGN_OR_RETURN(send, g->AddNode(send_def));
+
+  Node* recv;
+  NodeDef recv_def;
+  TF_CHECK_OK(
+      NodeDefBuilder(g->NewName("n"), "_Recv")
+          .Attr("tensor_name", tensor)
+          .Attr("send_device", sender)
+          .Attr("send_device_incarnation",
+                static_cast<int64_t>(sender_incarnation))
+          .Attr("recv_device", receiver)
+          .Attr("tensor_type", edge->dst()->input_type(edge->dst_input()))
+          .Finalize(&recv_def));
+
+  TF_ASSIGN_OR_RETURN(recv, g->AddNode(recv_def));
+
+  g->AddEdge(edge->src(), edge->src_output(), send, 0);
+  g->AddEdge(recv, 0, edge->dst(), edge->dst_input());
+
+  // This control dependency can ensure Exit op can still be downstream
+  // op of Enter after inserting Send/Recv.
+  g->AddControlEdge(edge->src(), recv);
+
+  g->RemoveEdge(edge);
+  return OkStatus();
+}
+
 // Defines a graph to perform the following computation:
 //
 //     i = 0
@@ -546,7 +591,8 @@ BENCHMARK(BM_FeedInputFetchOutput);
 // ...using the functional `WhileOp` (if `lower` is false) or the
 // `Switch`/`Merge`-style of control flow (if `lower` is true).
 static void BM_WhileLoopHelper(::testing::benchmark::State& state,
-                               int loop_iters, int loop_vars, bool lower) {
+                               int loop_iters, int loop_vars, bool lower,
+                               bool transfer) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   // Add test functions for cond and body.
@@ -576,7 +622,7 @@ static void BM_WhileLoopHelper(::testing::benchmark::State& state,
   body_nodes.push_back({{"y"}, "Add", {"x", "one"}, {{"T", DT_INT32}}});
   for (int i = 1; i < loop_vars; ++i) {
     body_nodes.push_back({{strings::StrCat("y", i)},
-                          "Identity",
+                          "Relu",
                           {strings::StrCat("x", i)},
                           {{"T", DT_INT32}}});
   }
@@ -632,7 +678,7 @@ static void BM_WhileLoopHelper(::testing::benchmark::State& state,
           .Attr("T", input_types)
           .Attr("cond", cond_func)
           .Attr("body", body_func)
-          .Attr("parallel_iterations", 100)
+          .Attr("parallel_iterations", 20)
           .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
           .Finalize(root.graph(), &while_node));
   auto c = ops::Identity(
@@ -653,10 +699,32 @@ static void BM_WhileLoopHelper(::testing::benchmark::State& state,
     opt_options.flib_def = &flib_def;
     LowerFunctionalOpsPass pass;
     TF_ASSERT_OK(pass.Run(opt_options));
+
+    if (transfer) {
+      // Insert Send/Recv between LoopCond and Switch. This can represent
+      // distributed training loop which has been used widely in TF2.
+      for (Node* node : graph->nodes()) {
+        if (node->type_string() != "LoopCond") {
+          continue;
+        }
+
+        for (const Edge* edge : node->out_edges()) {
+          if (edge->dst()->type_string() != "Switch") {
+            continue;
+          }
+          string tensor_name = strings::StrCat("c", edge->id());
+          TF_ASSERT_OK(ReplaceEdgeWithSendRecv(graph.get(), edge, tensor_name,
+                                               BOB, 1, ALICE));
+        }
+      }
+    }
   }
 
+  SessionOptions options;
+  options.config.set_inter_op_parallelism_threads(4);
   FixupSourceAndSinkEdges(graph.get());
-  test::Benchmark("cpu", graph.release(), /*old_benchmark_api=*/false)
+  test::Benchmark("cpu", graph.release(), &options, nullptr, nullptr, "",
+                  /*old_benchmark_api=*/false)
       .Run(state);
 }
 
@@ -664,7 +732,8 @@ static void BM_LoweredWhileLoop(::testing::benchmark::State& state) {
   const int loop_iters = state.range(0);
   const int loop_vars = state.range(1);
 
-  BM_WhileLoopHelper(state, loop_iters, loop_vars, /* lower= */ true);
+  BM_WhileLoopHelper(state, loop_iters, loop_vars, /* lower= */ true,
+                     /* transfer= */ false);
 }
 BENCHMARK(BM_LoweredWhileLoop)
     ->ArgPair(0, 1)
@@ -678,11 +747,31 @@ BENCHMARK(BM_LoweredWhileLoop)
     ->ArgPair(100, 100)
     ->ArgPair(1000, 100);
 
+static void BM_LoweredWhileLoopWithTransfer(
+    ::testing::benchmark::State& state) {
+  const int loop_iters = state.range(0);
+  const int loop_vars = state.range(1);
+
+  BM_WhileLoopHelper(state, loop_iters, loop_vars, /* lower= */ true,
+                     /* transfer= */ true);
+}
+BENCHMARK(BM_LoweredWhileLoopWithTransfer)
+    ->ArgPair(0, 100)
+    ->ArgPair(1, 100)
+    ->ArgPair(10, 100)
+    ->ArgPair(100, 100)
+    ->ArgPair(1000, 100)
+    ->ArgPair(1, 5000)
+    ->ArgPair(10, 5000)
+    ->ArgPair(100, 5000)
+    ->ArgPair(1000, 5000);
+
 static void BM_FunctionalWhileLoop(::testing::benchmark::State& state) {
   const int loop_iters = state.range(0);
   const int loop_vars = state.range(1);
 
-  BM_WhileLoopHelper(state, loop_iters, loop_vars, /* lower= */ false);
+  BM_WhileLoopHelper(state, loop_iters, loop_vars, /* lower= */ false,
+                     /* transfer= */ false);
 }
 BENCHMARK(BM_FunctionalWhileLoop)
     ->ArgPair(0, 1)

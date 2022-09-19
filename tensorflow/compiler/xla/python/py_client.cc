@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/python/py_client_gpu.h"
@@ -167,7 +167,7 @@ Status PyClient::Defragment() {
             pjrt_client_
                 ->BufferFromHostLiteral(*tmp_buffer.host_copy,
                                         tmp_buffer.py_buffer->buffer_->device())
-                .ValueOrDie();
+                .value();
         TF_CHECK_OK(new_copy->BlockHostUntilReady());
         tmp_buffer.py_buffer->buffer_.reset(new_copy.release());
       }

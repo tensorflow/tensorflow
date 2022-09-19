@@ -23,104 +23,13 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
-#include "third_party/gpus/cudnn/cudnn.h"
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#include "tensorflow/core/kernels/autotune_conv_impl.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
-
-#if GOOGLE_CUDA
-namespace {
-
-template <typename LaunchFunc, typename Sig>
-StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
-    OpKernelContext* ctx,
-    std::vector<std::unique_ptr<const se::dnn::OpRunner<Sig>>>& runners,
-    bool actually_do_autotune, const LaunchFunc& launch_func,
-    size_t scratch_size_limit, const se::RedzoneAllocator& rz_allocator) {
-  auto* stream = ctx->op_device_context()->stream();
-
-  se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
-                                              stream);
-
-  std::vector<tensorflow::AutotuneResult> results;
-  // TODO(reedwm): Warn if determinism is enabled after autotune is run
-  for (auto& runner : runners) {
-    // TODO(zhengxq): profile each algorithm multiple times to better
-    // accuracy.
-    se::RedzoneAllocator rz_scratch_allocator(
-        stream, &tf_allocator_adapter, se::GpuAsmOpts(),
-        /*memory_limit=*/scratch_size_limit);
-    DnnScratchAllocator scratch_allocator(scratch_size_limit, ctx);
-    se::ScratchAllocator* allocator_used =
-        !RedzoneCheckDisabled()
-            ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
-            : static_cast<se::ScratchAllocator*>(&scratch_allocator);
-
-    TF_ASSIGN_OR_RETURN(auto desc, runner->ToAlgorithmDesc());
-    se::dnn::ProfileResult profile_result;
-    Status cudnn_launch_status =
-        actually_do_autotune
-            ? launch_func(allocator_used, runner, &profile_result)
-            : OkStatus();
-    if (!actually_do_autotune) {
-      // Make the result valid according to `is_valid`.
-      profile_result.set_algorithm(desc);
-      profile_result.set_elapsed_time_in_ms(0);
-    }
-
-    // We need to make sure the profiling results are one-to-one with the
-    // "runners". So, we insert dummy results when the execution fails.
-    results.emplace_back();
-    auto& result = results.back();
-    *result.mutable_algorithm() = desc.ToProto();
-    if (cudnn_launch_status.ok() && profile_result.is_valid()) {
-      result.set_scratch_bytes(
-          !RedzoneCheckDisabled()
-              ? rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones()
-              : scratch_allocator.TotalByteSize());
-      *result.mutable_run_time() = proto_utils::ToDurationProto(
-          absl::Milliseconds(profile_result.elapsed_time_in_ms()));
-
-      CheckRedzones(rz_scratch_allocator, &result);
-      CheckRedzones(rz_allocator, &result);
-    } else {
-      result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
-      result.mutable_failure()->set_msg(
-          absl::StrCat("Profiling failure on CUDNN engine ", desc.ToString(),
-                       ": ", cudnn_launch_status.ToString()));
-    }
-  }
-
-  return results;
-}
-}  // namespace
-#endif  // GOOGLE_CUDA
-
-bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
-                          bool is_conv2d) {
-#if GOOGLE_CUDA
-  // Tensor Core supports efficient convolution with fp16 for NVIDIA Volta+
-  // GPUs and tf32 for Ampere+ GPUs in NHWC data layout. In all other
-  // configurations it's more efficient to run computation in NCHW data format.
-  bool use_nhwc_tf32 = data_type == DT_FLOAT &&
-                       stream->GetCudaComputeCapability().IsAtLeast(
-                           se::CudaComputeCapability::AMPERE) &&
-                       tensorflow::tensor_float_32_execution_enabled();
-  bool use_nhwc_fp16 =
-      data_type == DT_HALF && stream->GetCudaComputeCapability().IsAtLeast(
-                                  se::CudaComputeCapability::VOLTA);
-  if (is_conv2d) {
-    return use_nhwc_fp16 || use_nhwc_tf32;
-  }
-  return CUDNN_VERSION >= 8000 && (use_nhwc_fp16 || use_nhwc_tf32);
-#else
-  return false;
-#endif  // GOOGLE_CUDA
-}
 
 // Finds the best convolution algorithm for the given ConvLaunch (cuda
 // convolution on the stream) and parameters, by running all possible
@@ -137,10 +46,10 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc,
     const se::dnn::ActivationMode activation_mode, double conv_scale,
-    double side_input_scale, se::DeviceMemory<T> input_ptr,
-    se::DeviceMemory<T> filter_ptr, se::DeviceMemory<T> output_ptr,
-    se::DeviceMemory<T> bias_ptr, se::DeviceMemory<T> side_input_ptr,
-    int64_t scratch_size_limit) {
+    double side_input_scale, double leakyrelu_alpha,
+    se::DeviceMemory<T> input_ptr, se::DeviceMemory<T> filter_ptr,
+    se::DeviceMemory<T> output_ptr, se::DeviceMemory<T> bias_ptr,
+    se::DeviceMemory<T> side_input_ptr, int64_t scratch_size_limit) {
 #if GOOGLE_CUDA
   AutotuneEntry<se::dnn::FusedConvOp> autotune_entry;
   auto* stream = ctx->op_device_context()->stream();
@@ -159,9 +68,10 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
     auto element_type = se::dnn::ToDataType<T>::value;
     TF_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
         CudnnUseFrontend(), se::dnn::ConvolutionKind::FORWARD, element_type,
-        element_type, element_type, conv_scale, side_input_scale, stream,
-        input_desc, filter_desc, bias_desc, output_desc, conv_desc,
-        /*use_fallback=*/false, activation_mode, &runners));
+        element_type, element_type, conv_scale, side_input_scale,
+        leakyrelu_alpha, stream, input_desc, filter_desc, bias_desc,
+        output_desc, conv_desc, /*use_fallback=*/false, activation_mode,
+        &runners));
 
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
@@ -173,10 +83,10 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
                        side_input_ptr, bias_ptr, output_ptr_rz);
     };
 
-    TF_ASSIGN_OR_RETURN(
-        auto results,
-        AutotuneConvImpl(ctx, runners, cudnn_use_autotune, launch_func,
-                         scratch_size_limit, rz_allocator));
+    TF_ASSIGN_OR_RETURN(auto results,
+                        internal::AutotuneConvImpl(
+                            ctx, runners, cudnn_use_autotune, launch_func,
+                            scratch_size_limit, rz_allocator));
     // Only log on an AutotuneConv cache miss.
     LogFusedConvForwardAutotuneResults(
         se::dnn::ToDataType<T>::value, input_ptr, filter_ptr, output_ptr,
@@ -209,14 +119,15 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
           fallback_runners;
       TF_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
           CudnnUseFrontend(), se::dnn::ConvolutionKind::FORWARD, element_type,
-          element_type, element_type, conv_scale, side_input_scale, stream,
-          input_desc, filter_desc, bias_desc, output_desc, conv_desc,
-          /*use_fallback=*/true, activation_mode, &fallback_runners));
+          element_type, element_type, conv_scale, side_input_scale,
+          leakyrelu_alpha, stream, input_desc, filter_desc, bias_desc,
+          output_desc, conv_desc, /*use_fallback=*/true, activation_mode,
+          &fallback_runners));
 
-      TF_ASSIGN_OR_RETURN(
-          auto fallback_results,
-          AutotuneConvImpl(ctx, fallback_runners, cudnn_use_autotune,
-                           launch_func, scratch_size_limit, rz_allocator));
+      TF_ASSIGN_OR_RETURN(auto fallback_results,
+                          internal::AutotuneConvImpl(
+                              ctx, fallback_runners, cudnn_use_autotune,
+                              launch_func, scratch_size_limit, rz_allocator));
 
       LogFusedConvForwardAutotuneResults(
           se::dnn::ToDataType<T>::value, input_ptr, filter_ptr, output_ptr,
@@ -250,10 +161,10 @@ AutotuneFusedConv<double>(
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc,
     const se::dnn::ActivationMode activation_mode, double conv_scale,
-    double side_input_scale, se::DeviceMemory<double> input_ptr,
-    se::DeviceMemory<double> filter_ptr, se::DeviceMemory<double> output_ptr,
-    se::DeviceMemory<double> bias_ptr, se::DeviceMemory<double> side_input_ptr,
-    int64_t scratch_size_limit);
+    double side_input_scale, double leakyrelu_alpha,
+    se::DeviceMemory<double> input_ptr, se::DeviceMemory<double> filter_ptr,
+    se::DeviceMemory<double> output_ptr, se::DeviceMemory<double> bias_ptr,
+    se::DeviceMemory<double> side_input_ptr, int64_t scratch_size_limit);
 
 template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv<float>(
     bool cudnn_use_autotune,
@@ -266,10 +177,10 @@ template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv<float>(
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc,
     const se::dnn::ActivationMode activation_mode, double conv_scale,
-    double side_input_scale, se::DeviceMemory<float> input_ptr,
-    se::DeviceMemory<float> filter_ptr, se::DeviceMemory<float> output_ptr,
-    se::DeviceMemory<float> bias_ptr, se::DeviceMemory<float> side_input_ptr,
-    int64_t scratch_size_limit);
+    double side_input_scale, double leakyrelu_alpha,
+    se::DeviceMemory<float> input_ptr, se::DeviceMemory<float> filter_ptr,
+    se::DeviceMemory<float> output_ptr, se::DeviceMemory<float> bias_ptr,
+    se::DeviceMemory<float> side_input_ptr, int64_t scratch_size_limit);
 
 template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
 AutotuneFusedConv<Eigen::half>(
@@ -283,7 +194,8 @@ AutotuneFusedConv<Eigen::half>(
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc,
     const se::dnn::ActivationMode activation_mode, double conv_scale,
-    double side_input_scale, se::DeviceMemory<Eigen::half> input_ptr,
+    double side_input_scale, double leakyrelu_alpha,
+    se::DeviceMemory<Eigen::half> input_ptr,
     se::DeviceMemory<Eigen::half> filter_ptr,
     se::DeviceMemory<Eigen::half> output_ptr,
     se::DeviceMemory<Eigen::half> bias_ptr,
@@ -349,10 +261,10 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
       return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,
                        output_ptr);
     };
-    TF_ASSIGN_OR_RETURN(
-        auto results,
-        AutotuneConvImpl(ctx, runners, cudnn_use_autotune, launch_func,
-                         scratch_size_limit, rz_allocator));
+    TF_ASSIGN_OR_RETURN(auto results,
+                        internal::AutotuneConvImpl(
+                            ctx, runners, cudnn_use_autotune, launch_func,
+                            scratch_size_limit, rz_allocator));
 
     LogConvAutotuneResults(kind, se::dnn::ToDataType<T>::value, input_ptr,
                            filter_ptr, output_ptr, input_desc, filter_desc,
@@ -386,10 +298,10 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
           output_ptr, conv_desc, /*use_fallback=*/true, &rz_allocator,
           &fallback_runners));
 
-      TF_ASSIGN_OR_RETURN(
-          auto fallback_results,
-          AutotuneConvImpl(ctx, fallback_runners, cudnn_use_autotune,
-                           launch_func, scratch_size_limit, rz_allocator));
+      TF_ASSIGN_OR_RETURN(auto fallback_results,
+                          internal::AutotuneConvImpl(
+                              ctx, fallback_runners, cudnn_use_autotune,
+                              launch_func, scratch_size_limit, rz_allocator));
 
       LogConvAutotuneResults(kind, se::dnn::ToDataType<T>::value, input_ptr,
                              filter_ptr, output_ptr, input_desc, filter_desc,

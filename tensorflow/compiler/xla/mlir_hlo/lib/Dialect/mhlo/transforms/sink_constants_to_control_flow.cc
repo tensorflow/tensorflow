@@ -16,7 +16,6 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
@@ -26,6 +25,9 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_SINKCONSTANTSTOCONTROLFLOWPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 
 namespace {
 
@@ -40,7 +42,7 @@ namespace {
 // option in case of values defined outside that are BlockArguments of any of
 // the parent region.
 class SinkConstantsToControlFlowPass
-    : public SinkConstantsToControlFlowPassBase<
+    : public impl::SinkConstantsToControlFlowPassBase<
           SinkConstantsToControlFlowPass> {
   void runOnOperation() override {
     getOperation().walk([](Operation* op) {

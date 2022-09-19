@@ -185,6 +185,7 @@ aar_with_jni(
     android_library = ":tensorflowlite_gpu_impl",
     headers = [
         "//tensorflow/lite/delegates/gpu:delegate.h",
+        "//tensorflow/lite/delegates/gpu:delegate_options.h",
     ],
 )
 
@@ -348,10 +349,7 @@ android_library(
     exports_manifest = 1,
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
-    deps = [
-        ":tensorflowlite_api",
-        "//third_party/java/error_prone:annotations",
-    ],
+    deps = [":tensorflowlite_api"],
 )
 
 #-----------------------------------------------------------------------------

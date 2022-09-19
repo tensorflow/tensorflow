@@ -74,7 +74,8 @@ tool_names = [
     'xla-opt', 'hlo_to_llvm_ir', 'kernel-gen-opt', 'tf_to_kernel',
     'tf_to_gpu_binary', 'tfjs-opt', 'tac-opt-all-backends', 'tac-translate',
     'tfg-opt-no-passes', 'tfg-transforms-opt', 'tfg-translate', 'tf-tfrt-opt',
-    'lhlo-tfrt-opt', 'tf-quant-opt', 'mhlo-tosa-opt', 'xla-runtime-opt'
+    'lhlo-tfrt-opt', 'tf-quant-opt', 'mhlo-tosa-opt', 'xla-runtime-opt',
+    'tf-mhlo-tfl-opt', 'odml_to_stablehlo'
 ]
 tools = [ToolSubst(s, unresolved='ignore') for s in tool_names]
 llvm_config.add_tool_substitutions(tools, tool_dirs)

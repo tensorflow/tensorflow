@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -34,6 +33,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_RESTRICTMAXRANKPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 // Maximum rank that is allowed. Other Tensors should be restricted to this
@@ -63,7 +66,7 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
                                 PatternRewriter &rewriter) const override {
     Value result = op.getResult();
     TensorType resultTy = result.getType().cast<TensorType>();
-    Value operand = op.operand();
+    Value operand = op.getOperand();
     TensorType operandTy = operand.getType().cast<TensorType>();
     if (!operandTy.hasStaticShape() || !resultTy.hasStaticShape())
       return rewriter.notifyMatchFailure(op,
@@ -87,7 +90,7 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
       return rewriter.notifyMatchFailure(op,
                                          "user of the result is not reshape");
 
-    Value input = defOp.operand();
+    Value input = defOp.getOperand();
     auto inputTy = input.getType().cast<TensorType>();
     auto outputTy = userOp.getType();
     if (!inputTy.hasStaticShape() || !outputTy.hasStaticShape())
@@ -125,7 +128,7 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
     }
     expectedPerm[1 + 2 * spatialDims] = 1 + 2 * spatialDims;
 
-    SmallVector<int64_t, 6> perm(op.permutation().getValues<int64_t>());
+    SmallVector<int64_t, 6> perm(op.getPermutation().getValues<int64_t>());
     if (perm != expectedPerm)
       return rewriter.notifyMatchFailure(
           op, "reshape op isn't only moving spatial dims");
@@ -187,7 +190,7 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
 };
 
 struct RestrictMaxRankPass
-    : public RestrictMaxRankPassBase<RestrictMaxRankPass> {
+    : public impl::RestrictMaxRankPassBase<RestrictMaxRankPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect>();
   }

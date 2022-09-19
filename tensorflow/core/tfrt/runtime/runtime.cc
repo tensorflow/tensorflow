@@ -130,7 +130,7 @@ std::unique_ptr<Runtime> Runtime::Create(
     std::unique_ptr<WorkQueueInterface> work_queue) {
   auto* work_queue_ptr = work_queue.get();
   auto expected_core_runtime = tfrt::CoreRuntime::Create(
-      [](const tfrt::DecodedDiagnostic& diag) { LOG(ERROR) << diag.message; },
+      [](const tfrt::DecodedDiagnostic& diag) { LOG(ERROR) << diag.message(); },
       tfrt::CreateMallocAllocator(), std::move(work_queue),
       kDefaultHostDeviceName);
   DCHECK(expected_core_runtime);

@@ -1507,10 +1507,7 @@ py_test(
 
 cuda_py_test(
     name = "ragged_factory_ops_test",
-    size = "small",
     srcs = ["ragged_factory_ops_test.py"],
-    tags = [
-    ],
     deps = [
         ":ragged_functional_ops",
         "//tensorflow/python:map_fn",

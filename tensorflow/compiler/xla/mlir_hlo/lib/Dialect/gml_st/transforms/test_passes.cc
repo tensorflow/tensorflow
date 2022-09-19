@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"
 #include "mlir/Dialect/Bufferization/Transforms/OneShotModuleBufferize.h"
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -32,7 +33,9 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TESTGMLSTBUFFERIZATION
+#define GEN_PASS_DEF_TESTGMLSTLOOPPEELING
+#define GEN_PASS_DEF_TESTGMLSTLOOPTILING
 #include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h.inc"
 
 static constexpr char kPeeledLoopsLabel[] = "__peeled_loops__";
@@ -61,7 +64,7 @@ struct TiledLoopPeelingPattern : public OpRewritePattern<LoopOp> {
       // No peeling of loop nests with a partial iteration.
       return failure();
 
-    if (static_cast<int64_t>(loopOp.iterator_types().size()) <= idx)
+    if (static_cast<int64_t>(loopOp.getIteratorTypes().size()) <= idx)
       return failure();
 
     // Peel loop and canonicalize.
@@ -88,7 +91,7 @@ struct TiledLoopPeelingPattern : public OpRewritePattern<LoopOp> {
 };
 
 class TestGmlStLoopPeelingPass
-    : public TestGmlStLoopPeelingBase<TestGmlStLoopPeelingPass> {
+    : public impl::TestGmlStLoopPeelingBase<TestGmlStLoopPeelingPass> {
   void runOnOperation() final {
     auto funcOp = getOperation();
     MLIRContext *ctx = funcOp.getContext();
@@ -136,7 +139,7 @@ struct LinalgTilingPattern
 };
 
 struct TestGmlStLoopTilingPass
-    : public TestGmlStLoopTilingBase<TestGmlStLoopTilingPass> {
+    : public impl::TestGmlStLoopTilingBase<TestGmlStLoopTilingPass> {
   TestGmlStLoopTilingPass() = default;
   TestGmlStLoopTilingPass(ArrayRef<int64_t> tileSizes,
                           ArrayRef<StringRef> distributionTypes) {
@@ -164,7 +167,7 @@ struct TestGmlStLoopTilingPass
 };
 
 struct TestGmlStBufferizationPass
-    : public TestGmlStBufferizationBase<TestGmlStBufferizationPass> {
+    : public impl::TestGmlStBufferizationBase<TestGmlStBufferizationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
         .insert<bufferization::BufferizationDialect, memref::MemRefDialect>();

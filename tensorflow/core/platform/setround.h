@@ -16,37 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_SETROUND_H_
 #define TENSORFLOW_CORE_PLATFORM_SETROUND_H_
 
-#if defined(__ANDROID_API__) && (__ANDROID_API__ < 21)
-// The <cfenv> header is broken pre-API 21 for several NDK releases.
-#define TF_BROKEN_CFENV
-#endif
-
-#if defined(TF_BROKEN_CFENV)
-#include <fenv.h>  // NOLINT
-#else
-#include <cfenv>  // NOLINT
-#endif
-
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/tsl/platform/setround.h"
 
 namespace tensorflow {
 namespace port {
-
-// While this class is active, floating point rounding mode is set to the given
-// mode. The mode can be one of the modes defined in <cfenv>, i.e. FE_DOWNWARD,
-// FE_TONEAREST, FE_TOWARDZERO, or FE_UPWARD. The destructor restores the
-// original rounding mode if it could be determined. If the original rounding
-// mode could not be determined, the destructor sets it to FE_TONEAREST.
-class ScopedSetRound {
- public:
-  ScopedSetRound(int mode);
-  ~ScopedSetRound();
-
- private:
-  int original_mode_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedSetRound);
-};
+using tsl::port::ScopedSetRound;  // NOLINT
 
 }  // namespace port
 }  // namespace tensorflow

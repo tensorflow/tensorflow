@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <string_view>
 
 #include "tensorflow/compiler/xla/service/gpu/tests/mlir_gpu_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -85,6 +86,33 @@ TEST_F(GemmTest, GemmPrecisionHighest) {
   ASSERT_EQ(1, outputs.size());
   EXPECT_THAT(FromUint8Span<float>(outputs[0]),
               ElementsAreArray<float>({0x1.fffffcp+1, 0, 0, 0x1.fffffcp+1}));
+}
+
+TEST_F(GemmTest, GemmBatchedPrecisionHighest) {
+  std::vector<float> arg0 = {0x1.fffffep+0, 0, 0, 0x1.fffffep+0,
+                             0x1.fffffep+0, 0, 0, 0x1.fffffep+0};
+  std::vector<float> arg1 = {0x1.fffffep+0, 0, 0, 0x1.fffffep+0};
+
+  std::string_view mlir_text = R"(
+    module attributes {hlo.unique_id = 0 : i32} {
+      func.func @main(%arg0: memref<2x2x2xf32> {lmhlo.params = 0 : index},
+                 %arg1: memref<2x2xf32> {lmhlo.params = 1 : index},
+                 %arg2: memref<2x2x2xf32> {lmhlo.output_index = dense<[0]> : tensor<1xindex>}) attributes {
+                     result_xla_shape = "(f32[8]) "
+                 } {
+        "lmhlo_gpu.gemm"(%arg0, %arg1, %arg2) {alpha_imag = 0.000000e+00 : f64, alpha_real = 1.000000e+00 : f64, beta = 0.000000e+00 : f64, batch_size = 2 : i64, lhs_stride = 4 : i64, rhs_stride = 4 : i64, dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [0]>, precision_config = [#mhlo<precision HIGH>, #mhlo<precision HIGHEST>]} : (memref<2x2x2xf32>, memref<2x2xf32>, memref<2x2x2xf32>) -> ()
+        "lmhlo.terminator"() : () -> ()
+      }
+    })";
+
+  auto outputs = RunMlirTextWithHostBuffers(
+                     mlir_text, {ToUint8Span(&arg0), ToUint8Span(&arg1)})
+                     .value();
+
+  ASSERT_EQ(1, outputs.size());
+  EXPECT_THAT(FromUint8Span<float>(outputs[0]),
+              ElementsAreArray<float>({0x1.fffffcp+1, 0, 0, 0x1.fffffcp+1,
+                                       0x1.fffffcp+1, 0, 0, 0x1.fffffcp+1}));
 }
 
 }  // namespace gpu

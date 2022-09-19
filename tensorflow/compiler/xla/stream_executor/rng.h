@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits.h>
 
 #include <complex>
+#include <cstdint>
 
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
@@ -81,7 +82,7 @@ class RngSupport {
   // data must be provided, but not all seed data will necessarily be used.
   // seed: Pointer to seed data. Must not be null.
   // seed_bytes: Size of seed buffer in bytes. Must be >= 16.
-  virtual bool SetSeed(Stream *stream, const uint8 *seed,
+  virtual bool SetSeed(Stream *stream, const uint8_t *seed,
                        uint64_t seed_bytes) = 0;
 
  protected:

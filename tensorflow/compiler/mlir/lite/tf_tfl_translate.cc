@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/None.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -51,11 +52,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/xla/xla_mlir_translate.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 using mlir::MLIRContext;
 using mlir::ModuleOp;
@@ -273,6 +274,7 @@ int main(int argc, char **argv) {
   pass_config.runtime_verification = true;
   pass_config.outline_tf_while = true;
   pass_config.preserve_assert_op = preserve_assert_op;
+  pass_config.enable_stablehlo_conversion = enable_stablehlo_conversion;
 
   if (enable_hlo_to_tf_conversion) {
     pass_config.enable_hlo_to_tf_conversion = true;
@@ -294,10 +296,11 @@ int main(int argc, char **argv) {
   });
 
   std::string result;
-  // TODO(b/153507667): Pass the session object when importing logic is removed.
+  llvm::Optional<tensorflow::Session *> session = llvm::None;
+  if (bundle) session = bundle->GetSession();
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
-      module.ValueOrDie().get(), output_mlir, toco_flags, pass_config, tags,
-      /*saved_model_dir=*/"", /*session=*/llvm::None, &result);
+      module.value().get(), output_mlir, toco_flags, pass_config, tags,
+      /*saved_model_dir=*/"", session, &result);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;
@@ -311,6 +314,6 @@ int main(int argc, char **argv) {
 
   // Print out debugging info related to function mapping.
   if (print_function_result_mapping)
-    return PrintFunctionResultMapping(result, module.ValueOrDie().get());
+    return PrintFunctionResultMapping(result, module.value().get());
   return kTrSuccess;
 }

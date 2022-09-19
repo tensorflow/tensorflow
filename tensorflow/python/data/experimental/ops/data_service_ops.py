@@ -16,11 +16,9 @@
 
 import enum
 import functools
-import six
 
 from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import compression_ops
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils
@@ -182,7 +180,7 @@ def _get_validated_sharding_policy(processing_mode):
 def _validate_job_name(job_name):
   if job_name is None:
     return
-  if not isinstance(job_name, six.string_types):
+  if not isinstance(job_name, str):
     raise ValueError("`job_name` must be a string, but `job_name` was of type "
                      f"{type(job_name)}. job_name={job_name}")
   if not job_name:
@@ -358,20 +356,12 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     if data_transfer_protocol is not None:
       compat_kwargs["data_transfer_protocol"] = data_transfer_protocol
 
-    if (compat.forward_compatible(2022, 8, 31) or
-        self._dataset_id.dtype == dtypes.string):
-      data_service_dataset = (
-          gen_experimental_dataset_ops.data_service_dataset_v4)
-    else:
-      data_service_dataset = (
-          gen_experimental_dataset_ops.data_service_dataset_v3)
-
     # If `uncompress` is `True`, the dataset will query the servers to find
     # out the actual compression used. It is always set to `True` the first
     # time the graph is built, and set to false when serializing, so we will
     # uncompress at most once.
     uncompress = True
-    variant_tensor = data_service_dataset(
+    variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v4(
         dataset_id=self._dataset_id,
         processing_mode=self._processing_mode,
         address=self._address,
@@ -439,7 +429,7 @@ def _parse_service(service):
   Returns:
     The (protocol, address) tuple
   """
-  if not isinstance(service, six.string_types):
+  if not isinstance(service, str):
     raise ValueError("`service` must be a string, but `service` was of type "
                      f"{type(service)}. service={service}")
   if not service:
@@ -851,21 +841,13 @@ def _register_dataset(service, dataset, compression, dataset_id=None):
       element_spec=encoded_spec,
       compression=_get_compression_proto(compression))
 
-  if compat.forward_compatible(2022, 8, 31) or dataset_id:
-    return gen_experimental_dataset_ops.register_dataset_v2(
-        dataset._variant_tensor,  # pylint: disable=protected-access
-        address=address,
-        protocol=protocol,
-        external_state_policy=external_state_policy.value,
-        requested_dataset_id=dataset_id,
-        metadata=metadata.SerializeToString())
-  else:
-    return gen_experimental_dataset_ops.register_dataset(
-        dataset._variant_tensor,  # pylint: disable=protected-access
-        address=address,
-        protocol=protocol,
-        external_state_policy=external_state_policy.value,
-        metadata=metadata.SerializeToString())
+  return gen_experimental_dataset_ops.register_dataset_v2(
+      dataset._variant_tensor,  # pylint: disable=protected-access
+      address=address,
+      protocol=protocol,
+      external_state_policy=external_state_policy.value,
+      requested_dataset_id=dataset_id,
+      metadata=metadata.SerializeToString())
 
 
 @tf_export("data.experimental.service.register_dataset")
@@ -1047,8 +1029,7 @@ def _from_dataset_id(processing_mode,
     protocol, address = _parse_service(service)
   _validate_compression(compression)
   if job_name is not None:
-    if not isinstance(job_name, six.string_types) and not isinstance(
-        job_name, ops.Tensor):
+    if not isinstance(job_name, str) and not isinstance(job_name, ops.Tensor):
       raise ValueError(
           "`job_name` must be a string or Tensor, but `job_name` was of type "
           f"{type(job_name)}. job_name={job_name}.")

@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -190,7 +191,7 @@ StatusOr<mlir::Type> ConvertToMlirTensorType(const TensorShapeProto& shape,
   }
   llvm::SmallVector<int64_t, 4> shape_dims;
   TF_RETURN_IF_ERROR(ConvertToMlirShape(shape, &shape_dims));
-  return mlir::RankedTensorType::get(shape_dims, element_type);
+  return GetTypeFromTFTensorShape(shape_dims, element_type);
 }
 
 }  // namespace tensorflow

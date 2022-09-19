@@ -22,7 +22,7 @@ limitations under the License.
 include "mlir/Dialect/Shape/IR/ShapeOps.td"
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
-include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
+include "stablehlo/dialect/ChloOps.td"
 
 class HLO_ComparisonDirectionValue<string enumStr> :
   ConstantAttr<HLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
@@ -35,8 +35,8 @@ class HLO_ComparisonDirectionValue<string enumStr> :
 //   acos(x) = 2 * atan2(sqrt(1 - x^2), (1 + x))  if x != -1
 //           = pi                                 if x == -1
 //
-// TODO(hinsu): Support operands with complex element types separately using
-// the following formula.
+// TODO(b/237376133): Support operands with complex element types separately
+// using the following formula.
 //   acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
 def : Pat<(CHLO_AcosOp NonComplexElementType:$input),
   (HLO_SelectOp
@@ -349,3 +349,6 @@ def : Pat<(CHLO_IsNegInfOp NonComplexElementType:$input),
     HLO_ComparisonDirectionValue<"EQ">,
     (HLO_DEFAULT_COMPARISON_TYPE)
   )>;
+
+def : Pat<(CHLO_ConstantOp $v),
+          (HLO_ConstantOp $v)>;

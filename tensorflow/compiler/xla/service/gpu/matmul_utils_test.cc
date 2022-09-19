@@ -20,14 +20,14 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using ::tensorflow::testing::IsOkAndHolds;
 using ::testing::ElementsAre;
+using ::tsl::testing::IsOkAndHolds;
 
 TEST(GetNonContractingDimsTest, Valid) {
   Shape shape = ParseShape("f32[1,2,3,4,5,6]").ValueOrDie();

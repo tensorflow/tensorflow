@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/iterator.h"
 
-namespace tensorflow {
-
+namespace tsl {
 class RandomAccessFile;
-
+}  // namespace tsl
+namespace tensorflow {
 namespace table {
 
 struct Options;
@@ -43,7 +43,7 @@ class Table {
   // to NULL and returns a non-ok status.  Does not take ownership of
   // "*file", but the client must ensure that "file" remains live
   // for the duration of the returned table's lifetime.
-  static Status Open(const Options& options, RandomAccessFile* file,
+  static Status Open(const Options& options, tsl::RandomAccessFile* file,
                      uint64 file_size, Table** table);
 
   ~Table();

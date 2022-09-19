@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
-#include "tfrt/jitrt/support.h"  // from @tf_runtime
+#include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
 
 namespace tensorflow {
 
@@ -903,7 +903,7 @@ mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
       continue;
 
     if (constraint == ValueConstraint::kValue &&
-        tfrt::jitrt::SupportsValueSpecialization(value.getType()))
+        xla::runtime::SupportsValueSpecialization(value.getType()))
       continue;
 
     Operation* op = value.getDefiningOp();

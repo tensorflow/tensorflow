@@ -134,6 +134,35 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
+  def testStringInput(self):
+
+    class Model(tf.Module):
+
+      @tf.function
+      def __call__(self, x):
+        return x
+
+    root = Model()
+    concrete_func = root.__call__.get_concrete_function(
+        tf.constant([str(x) for x in range(11)]))
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
+    tflite_model = converter.convert()
+    input_data = tf.constant([str(x) for x in range(11)],
+                             shape=(11,),
+                             dtype=tf.dtypes.string)
+    # Check values from converted model.
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    my_signature = interpreter.get_signature_runner()
+
+    with self.assertRaises(ValueError) as error:
+      _ = my_signature(x=input_data)
+    self.assertIn('Passed in value type is not a numpy array, got type ',
+                  str(error.exception))
+
+  @test_util.run_v2_only
   def testModelWithoutInputs(self):
 
     def _get_random_number_gen():

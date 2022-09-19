@@ -461,6 +461,13 @@ TEST(OpVersionTest, VersioningSubTest) {
   SimpleVersioningTest(BuiltinOperator_SUB);
 }
 
+TEST(OpVersionTest, VersioningMUL6Test) {
+  OpSignature fake_op_sig;
+  fake_op_sig.op = BuiltinOperator_MUL;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteComplex64);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
+}
+
 TEST(OpVersionTest, VersioningMUL5Test) {
   OpSignature fake_op_sig;
   fake_op_sig.op = BuiltinOperator_MUL;

@@ -25,18 +25,6 @@ set(LLVM_TARGET_DEFINITIONS mhlo_canonicalize.td)
 mlir_tablegen(mhlo_canonicalize.inc -gen-rewriters)
 add_public_tablegen_target(MLIRMhloCanonicalizeIncGen)
 
-add_mlir_dialect_library(ChloDialect
-  chlo_ops.cc
-
-  DEPENDS
-  MLIRchlo_opsIncGen
-
-  LINK_LIBS PUBLIC
-  MhloDialect
-  MLIRIR
-  MLIRMhloUtils
-)
-
 add_mlir_library(HloOpsCommon
   hlo_ops_common.cc
 
@@ -54,10 +42,12 @@ add_mlir_dialect_library(MhloDialect
 )
 target_link_libraries(MhloDialect
   PUBLIC
+  MLIRComplexDialect
   MLIRIR
   MLIRMhloUtils
   MLIRQuantDialect
   HloOpsCommon
+  StablehloBase
 )
 target_include_directories(MhloDialect
   PUBLIC
@@ -68,11 +58,9 @@ target_include_directories(MhloDialect
 add_mlir_dialect_library(MhloRegisterDialects
   init.cc
 DEPENDS
-  MLIRchlo_opsIncGen
   MLIRhlo_opsIncGen
 )
 target_link_libraries(MhloRegisterDialects
   PUBLIC
-  ChloDialect
   MhloDialect
 )

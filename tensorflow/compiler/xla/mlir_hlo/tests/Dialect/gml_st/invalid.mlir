@@ -1,5 +1,51 @@
 // RUN: mlir-hlo-opt %s -split-input-file -verify-diagnostics
 
+
+func.func @materialize_rank_mismatch(%tensor: tensor<?x?xf32>,
+                                     %tile: !gml_st.tile<4>) {
+  // expected-error @+1 {{expected source rank = 2 to match tile rank = 1}}
+  %0 = gml_st.materialize %tensor[%tile]
+     : tensor<?x?xf32>[!gml_st.tile<4>] to tensor<4xf32>
+}
+
+// -----
+
+func.func @materialize_inferred_type_mismatch(%tensor: tensor<?x?xf32>,
+                                              %tile: !gml_st.tile<?x4>) {
+  // expected-error @+1 {{expected result type = 'tensor<4x?xf32>' to match the inferred type = 'tensor<?x4xf32>}}
+  %0 = gml_st.materialize %tensor[%tile]
+     : tensor<?x?xf32>[!gml_st.tile<?x4>] to tensor<4x?xf32>
+}
+
+// -----
+
+func.func @materialize_scalar_with_dynamic_tile(
+    %tensor: tensor<?x?xf32>, %tile: !gml_st.tile<?x2>) {
+  // expected-error @+1 {{expected tile type '!gml_st.tile<?x2>' to have a single element shape}}
+  %0 = gml_st.materialize %tensor[%tile]
+     : tensor<?x?xf32>[!gml_st.tile<?x2>] to f32
+}
+
+// -----
+
+func.func @materialize_scalar_with_nonsingle_element_tile(
+    %tensor: tensor<?x?xf32>, %tile: !gml_st.tile<1x2>) {
+  // expected-error @+1 {{expected tile type '!gml_st.tile<1x2>' to have a single element shape}}
+  %0 = gml_st.materialize %tensor[%tile]
+     : tensor<?x?xf32>[!gml_st.tile<1x2>] to f32
+}
+
+// -----
+
+func.func @materialize_scalar_element_type_mismatch(
+    %tensor: tensor<?x?xf32>, %tile: !gml_st.tile<1x1>) {
+  // expected-error @+1 {{expected the result type 'i32' to match source element type 'f32'}}
+  %0 = gml_st.materialize %tensor[%tile]
+     : tensor<?x?xf32>[!gml_st.tile<1x1>] to i32
+}
+
+// -----
+
 #map0 = affine_map<(d0) -> (24, -d0 + 192)>
 #map1 = affine_map<(d0, d1)[s0] -> (d0 * 192 + s0 + d1)>
 #map2 = affine_map<(d0) -> (16, -d0 + 192)>
@@ -75,7 +121,7 @@ func.func @loop_incorrent_iterator_types_count(%A: memref<192x192xf32>,
       gml_st.yield %CT_ : tensor<192x192xf32>
     }) {
       iterator_types = ["parallel"],
-      operand_segment_sizes = dense<2> : vector<5xi32>
+      operand_segment_sizes = array<i32: 2, 2, 2, 2, 2>
     } : (index, index, index, index, index, index, memref<192x192xf32>,
       memref<192x192xf32>, tensor<192x192xf32>, memref<192x192xf32>
     ) -> tensor<192x192xf32>
@@ -97,7 +143,7 @@ func.func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
       gml_st.yield
     }) {
       iterator_types = ["parallel"],
-      operand_segment_sizes = dense<[1, 1, 1, 0, 1]> : vector<5xi32>
+      operand_segment_sizes = array<i32: 1, 1, 1, 0, 1>
     } : (index, index, index, memref<192xf32>) -> ()
   func.return
 }
@@ -167,7 +213,7 @@ func.func @point_op_negative_static_indices(%size: index, %i: index) -> !gml_st.
 func.func @tile_op_mismatch_sizes_and_static_sizes(%i: index) {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{expected 0 dynamic size values}}
-  %1 = "gml_st.tile"(%0, %i) { static_offsets = [0, 0], static_sizes = [1, 1], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32> } : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x?>
+  %1 = "gml_st.tile"(%0, %i) { static_offsets = [0, 0], static_sizes = [1, 1], static_strides = [1, 1], operand_segment_sizes = array<i32: 1, 0, 1, 0> } : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x?>
   func.return
 }
 
@@ -176,7 +222,7 @@ func.func @tile_op_mismatch_sizes_and_static_sizes(%i: index) {
 func.func @tile_op_mismatch_offsets_and_static_offsets(%i: index) -> !gml_st.tile<8x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{expected 0 dynamic offset values}}
-  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [8, 8], static_strides = [1, 1], operand_segment_sizes = dense<[1, 1, 0, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<8x8>
+  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [8, 8], static_strides = [1, 1], operand_segment_sizes = array<i32: 1, 1, 0, 0>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<8x8>
   func.return %1 : !gml_st.tile<8x8>
 }
 
@@ -185,7 +231,7 @@ func.func @tile_op_mismatch_offsets_and_static_offsets(%i: index) -> !gml_st.til
 func.func @tile_op_mismatch_strides_and_static_strides(%i: index)  -> !gml_st.tile<8x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{expected 0 dynamic stride values}}
-  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [8, 8], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 0, 1]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<8x8>
+  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [8, 8], static_strides = [1, 1], operand_segment_sizes = array<i32: 1, 0, 0, 1>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<8x8>
   func.return %1 : !gml_st.tile<8x8>
 }
 
@@ -194,7 +240,7 @@ func.func @tile_op_mismatch_strides_and_static_strides(%i: index)  -> !gml_st.ti
 func.func @tile_op_negative_static_size(%i: index)  -> !gml_st.tile<?x?> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op expected size = -2 to be non-negative}}
-  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [-1, -2], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x?>
+  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [-1, -2], static_strides = [1, 1], operand_segment_sizes = array<i32: 1, 0, 1, 0>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x?>
   func.return %1 : !gml_st.tile<?x?>
 }
 
@@ -203,7 +249,7 @@ func.func @tile_op_negative_static_size(%i: index)  -> !gml_st.tile<?x?> {
 func.func @tile_op_negative_static_stride(%i: index)  -> !gml_st.tile<?x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op expected stride = -2 to be non-negative}}
-  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [-1, 8], static_strides = [1, -2], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x8>
+  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, 0], static_sizes = [-1, 8], static_strides = [1, -2], operand_segment_sizes = array<i32: 1, 0, 1, 0>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x8>
   func.return %1 : !gml_st.tile<?x8>
 }
 
@@ -212,7 +258,7 @@ func.func @tile_op_negative_static_stride(%i: index)  -> !gml_st.tile<?x8> {
 func.func @tile_op_negative_static_offset(%i: index)  -> !gml_st.tile<?x8> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op expected offset = -2 to be non-negative}}
-  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, -2], static_sizes = [-1, 8], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 1, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x8>
+  %1 = "gml_st.tile"(%0, %i) {static_offsets = [0, -2], static_sizes = [-1, 8], static_strides = [1, 1], operand_segment_sizes = array<i32: 1, 0, 1, 0>} : (!gml_st.tile<64x32>, index) -> !gml_st.tile<?x8>
   func.return %1 : !gml_st.tile<?x8>
 }
 
@@ -221,7 +267,7 @@ func.func @tile_op_negative_static_offset(%i: index)  -> !gml_st.tile<?x8> {
 func.func @tile_op_offset_out_of_bounds(%i: index) -> !gml_st.tile<?x?> {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{'gml_st.tile' op offset = 32 is out of bounds for argument dimension size = 32}}
-  %1 = "gml_st.tile"(%0, %i, %i) {static_offsets = [0, 32], static_sizes = [-1, -1], static_strides = [1, 1], operand_segment_sizes = dense<[1, 0, 2, 0]>: tensor<4xi32>} : (!gml_st.tile<64x32>, index, index) -> !gml_st.tile<?x?>
+  %1 = "gml_st.tile"(%0, %i, %i) {static_offsets = [0, 32], static_sizes = [-1, -1], static_strides = [1, 1], operand_segment_sizes = array<i32: 1, 0, 2, 0>} : (!gml_st.tile<64x32>, index, index) -> !gml_st.tile<?x?>
   func.return %1 : !gml_st.tile<?x?>
 }
 
@@ -285,9 +331,9 @@ func.func @for_loop_wrong_yield_target(
     %tile = gml_st.tile %space [%i] [4] [1]
       : !gml_st.tile<8> to !gml_st.tile<4>
     %arg_sub = gml_st.materialize %arg[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %out_sub = gml_st.materialize %out_[%space_0]
-      : tensor<f32>[!gml_st.tile<>]
+      : tensor<f32>[!gml_st.tile<>] to tensor<f32>
 
     %result_sub = linalg.dot
         ins(%arg_sub, %arg_sub : tensor<4xf32>, tensor<4xf32>)
@@ -315,9 +361,9 @@ func.func @yield_with_accumulator_mismatched_type(
     %tile = gml_st.tile %space_1d [%i] [4] [1]
       : !gml_st.tile<8> to !gml_st.tile<4>
     %arg_sub = gml_st.materialize %arg[%tile]
-      : tensor<8xf32>[!gml_st.tile<4>]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %out_sub = gml_st.materialize %output[%space_0d]
-      : tensor<f32>[!gml_st.tile<>]
+      : tensor<f32>[!gml_st.tile<>] to tensor<f32>
 
     %result_sub = linalg.dot
        ins(%arg_sub, %arg_sub : tensor<4xf32>, tensor<4xf32>)
@@ -347,7 +393,7 @@ func.func @reduce_points(%arg: tensor<8xf32>,
     %point = gml_st.point %space_1d [%i]
       : !gml_st.tile<8> to !gml_st.point
     %arg_sub = gml_st.materialize %arg[%point]
-      : tensor<8xf32>[!gml_st.point]
+      : tensor<8xf32>[!gml_st.point] to f32
 
     %point_out = gml_st.point %space_0d []
       : !gml_st.tile<> to !gml_st.point

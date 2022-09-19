@@ -43,6 +43,8 @@ cc_library(
         ":pluggable_device_simple_allocator",
         "//tensorflow/c/experimental/stream_executor",
         "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor:kernel",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -53,8 +55,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/device:device_event_mgr",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:kernel",
     ],
     alwayslink = 1,
 )
@@ -87,8 +87,8 @@ cc_library(
         "//tensorflow/core/common_runtime:process_state",
         "//tensorflow/core/common_runtime:shared_counter",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:kernel",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor:kernel",
         ":pluggable_device_runtime_impl",
     ] + if_static([
         "//tensorflow/core/common_runtime:copy_tensor",
@@ -110,8 +110,8 @@ cc_library(
         "//tensorflow/core/common_runtime:shared_counter",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:kernel",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor:kernel",
     ] + if_static([
         # Temporary workaround for duplicated symbols issues.
         ":pluggable_device_runtime_impl",

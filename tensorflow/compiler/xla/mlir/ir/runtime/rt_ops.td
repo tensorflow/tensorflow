@@ -23,6 +23,7 @@ limitations under the License.
 #else
 #define RT_OPS
 
+include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/xla/mlir/ir/runtime/rt_base.td"
 
 //===----------------------------------------------------------------------===//
@@ -39,7 +40,7 @@ class RT_Op<string mnemonic, list<Trait> traits = []> :
 
 // TODO(ezhulenev): Rename to SetResult for consistent use of argument/result.
 
-def SetOutputOp : RT_Op<"set_output"> {
+def RT_SetOutputOp : RT_Op<"set_output"> {
   let summary = "set the result to a given value";
 
   let description = [{
@@ -61,7 +62,7 @@ def SetOutputOp : RT_Op<"set_output"> {
     Example:
 
       ```mlir
-      func @compute(%ctx: !rt.kernel_context) {
+      func @compute(%ctx: !rt.execution_context) {
         %out0 = ... : memref<?xf32>
         %out1 = ... : memref<?x?xf32>
         rt.set_output %ctx, 0, %out0 : memref<?xf32>
@@ -81,8 +82,8 @@ def SetOutputOp : RT_Op<"set_output"> {
   }];
 
   let arguments = (ins
-    KernelContextType:$ctx,
-    Confined<I64Attr, [IntNonNegative]>:$index,
+    ExecutionContextType:$ctx,
+    ConfinedAttr<I64Attr, [IntNonNegative]>:$index,
     AnyType:$value
   );
 
@@ -95,7 +96,7 @@ def SetOutputOp : RT_Op<"set_output"> {
 // SetErrorOp
 //===----------------------------------------------------------------------===//
 
-def SetErrorOp : RT_Op<"set_error"> {
+def RT_SetErrorOp : RT_Op<"set_error"> {
   let summary = "set all executable results to the error state";
 
   let description = [{
@@ -107,7 +108,7 @@ def SetErrorOp : RT_Op<"set_error"> {
     Example:
 
       ```mlir
-      func @compute(%ctx: !rt.kernel_context) {
+      func @compute(%ctx: !rt.execution_context) {
         %precondition = arith.cmpi ...
         cond_br %precondition, ^ok, ^err
 
@@ -124,7 +125,7 @@ def SetErrorOp : RT_Op<"set_error"> {
   }];
 
   let arguments = (ins
-    KernelContextType:$ctx,
+    ExecutionContextType:$ctx,
     StrAttr:$error);
 
   let assemblyFormat = "$ctx `,` $error attr-dict";
@@ -134,7 +135,7 @@ def SetErrorOp : RT_Op<"set_error"> {
 // IsOkOp
 //===----------------------------------------------------------------------===//
 
-def IsOkOp : RT_Op<"is_ok"> {
+def RT_IsOkOp : RT_Op<"is_ok"> {
   let summary = "returns true if status is ok";
   let description = "Checks if the runtime status is ok.";
 
@@ -148,7 +149,7 @@ def IsOkOp : RT_Op<"is_ok"> {
 // CustomCallOp
 //===----------------------------------------------------------------------===//
 
-def CustomCallOp : RT_Op<"custom_call"> {
+def RT_CustomCallOp : RT_Op<"custom_call"> {
   let summary = "calls a custom function registered with the runtime";
 
   let description = [{
@@ -163,7 +164,7 @@ def CustomCallOp : RT_Op<"custom_call"> {
     Example:
 
       ```mlir
-      func @compute(%ctx: !rt.kernel_context, %arg0: memref<?xf32>,
+      func @compute(%ctx: !rt.execution_context, %arg0: memref<?xf32>,
                                               %arg1: memref<?xf32>) {
         %status = rt.custom_call %ctx["one_dnn.some_operation"] (%arg0, %arg1)
           : (memref<?xf32>, memref<?xf32>) -> ()
@@ -188,13 +189,13 @@ def CustomCallOp : RT_Op<"custom_call"> {
     implementing the custom call API:
 
       ```
-      bool OneDnnSomeOpImpl(xla::runtime::KernelContext* ctx,
+      bool OneDnnSomeOpImpl(xla::runtime::ExecutionContext* ctx,
                             void** args, void** attrs);
       ```
   }];
 
   let arguments = (ins
-    KernelContextType:$ctx,
+    ExecutionContextType:$ctx,
     StrAttr:$callee,
     UnitAttr:$direct,
     Variadic<AnyType>:$operands
@@ -209,6 +210,32 @@ def CustomCallOp : RT_Op<"custom_call"> {
     (`direct` $direct^)? $ctx `[` $callee `]`  `(` $operands `)`
     attr-dict `:` functional-type($operands, $results)
   }];
+}
+
+//===----------------------------------------------------------------------===//
+// UnsignedCast
+//===----------------------------------------------------------------------===//
+
+// TODO(ezhulenev): This is not a reasonable long term solution for the problem.
+// We should either get rid of unsigned types before we lower to gpu dialect, or
+// at least put this operation to some other dialect that facilitates lowering
+// to LLVM, and do not keep it in `rt`.
+
+def RT_UnsignedCastOp : RT_Op<"unsigned_cast"> {
+  let summary = [{
+    Converts any integer value to an unsigned integer value.
+  }];
+
+  let description = [{
+    This is a work around the fact that `arith` and `LLVM` dialects do not
+    support unsigned integer constants, and we need to generate a valid IR for
+    `gpu.memset` operation with unsigned memref argument.
+
+    This operation is erased by the `rt-to-llvm` pass.
+  }];
+
+  let arguments = (ins SignlessIntegerLike:$value );
+  let results = (outs AnyType:$result );
 }
 
 #endif // RT_OPS

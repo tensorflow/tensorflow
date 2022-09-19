@@ -27,12 +27,6 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
-constexpr char kAttrMapAttribute[] = "attr_map";
-// This attribute will be set for functions created by this pass.
-constexpr char kFusedFunctionAttr[] = "tf_quant.composite_function";
-// The keyword to detect if this is a `NullAttribute`.
-constexpr char kNullAttributeValue[] = "N/A";
-
 // Checks if the op is inside a lifted function.
 bool IsInLiftedFunc(Operation *op) {
   return op->getParentOfType<func::FuncOp>()->hasAttr(kFusedFunctionAttr);

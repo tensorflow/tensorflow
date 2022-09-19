@@ -711,7 +711,8 @@ def _trace_gradient_functions(graph, saveable_view):
             "Check the error log to see the error that was raised when "
             "converting a gradient function to a concrete function. You may "
             "need to update the custom gradient, or disable saving gradients "
-            "with the option tf.saved_model.SaveOptions(custom_gradients=False)"
+            "with the option "
+            "tf.saved_model.SaveOptions(experimental_custom_gradients=False)"
             f".\n\tProblematic op name: {op.name}\n\tGradient inputs: "
             f"{op.inputs}") from exc
 
@@ -838,9 +839,8 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
           object_map=object_map,
           to_graph=exported_graph,
           call_with_mapped_captures=call_with_mapped_captures))
-  saver = functional_saver.MultiDeviceSaver(named_saveable_objects,
-                                            registered_savers,
-                                            call_with_mapped_captures)
+  saver = functional_saver.MultiDeviceSaver.from_saveables(
+      named_saveable_objects, registered_savers, call_with_mapped_captures)
 
   with exported_graph.as_default():
     saver_def = saver.to_proto()
@@ -1303,7 +1303,7 @@ def save_and_return_nodes(obj,
         compat.as_str(export_dir),
         compat.as_str(constants.FINGERPRINT_FILENAME))
     fingerprint_proto = fingerprinting.CreateFingerprintDef(
-        saved_model_serialized)
+        saved_model_serialized, export_dir)
     file_io.atomic_write_string_to_file(fingerprint_path, fingerprint_proto)
 
   path = file_io.join(

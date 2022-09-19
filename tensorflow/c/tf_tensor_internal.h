@@ -127,6 +127,8 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
 
+TF_Tensor* TF_TensorFromTensorShallow(const Tensor& src, Status* status);
+
 namespace internal {
 
 struct TFTensorDeleter {

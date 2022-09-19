@@ -20,7 +20,6 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -43,6 +42,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_LEGALIZECONTROLFLOWPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 // All transformations in this file take mhlo blocks which end with
@@ -88,7 +91,7 @@ struct WhileOpPattern : public OpConversionPattern<mhlo::WhileOp> {
 
     // Inline while condition. The block is the same, except the boolean result
     // needs to be extracted and used with an scf.condition.
-    rewriter.inlineRegionBefore(op.cond(), newWhileOp.getBefore(),
+    rewriter.inlineRegionBefore(op.getCond(), newWhileOp.getBefore(),
                                 newWhileOp.getBefore().end());
     auto conditionReturn =
         cast<mhlo::ReturnOp>(newWhileOp.getBefore().front().getTerminator());
@@ -98,7 +101,8 @@ struct WhileOpPattern : public OpConversionPattern<mhlo::WhileOp> {
         conditionReturn, i1, newWhileOp.getBeforeArguments());
 
     // Inline while body, and only replace the mhlo.return with an scf.yield.
-    inlineMhloRegionIntoSCFRegion(rewriter, op.body(), newWhileOp.getAfter());
+    inlineMhloRegionIntoSCFRegion(rewriter, op.getBody(),
+                                  newWhileOp.getAfter());
 
     rewriter.replaceOp(op, newWhileOp.getResults());
     return success();
@@ -112,13 +116,13 @@ struct IfOpPattern : public OpConversionPattern<mhlo::IfOp> {
   LogicalResult matchAndRewrite(
       mhlo::IfOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    auto scfIf =
-        rewriter.create<scf::IfOp>(op.getLoc(), op.getResultTypes(),
-                                   extractTensorValue(rewriter, adaptor.pred()),
-                                   /*withElseRegion=*/true);
-    inlineMhloRegionIntoSCFRegion(rewriter, op.true_branch(),
+    auto scfIf = rewriter.create<scf::IfOp>(
+        op.getLoc(), op.getResultTypes(),
+        extractTensorValue(rewriter, adaptor.getPred()),
+        /*withElseRegion=*/true);
+    inlineMhloRegionIntoSCFRegion(rewriter, op.getTrueBranch(),
                                   scfIf.getThenRegion());
-    inlineMhloRegionIntoSCFRegion(rewriter, op.false_branch(),
+    inlineMhloRegionIntoSCFRegion(rewriter, op.getFalseBranch(),
                                   scfIf.getElseRegion());
     rewriter.replaceOp(op, scfIf.getResults());
     return success();
@@ -133,8 +137,8 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
   scf::IfOp createNestedCases(int currentIdx, CaseOp op, OpAdaptor adaptor,
                               PatternRewriter& outerBuilder) const {
     Location loc = op.getLoc();
-    Value idxValue = adaptor.index();
-    auto finalIdx = op.branches().size() - 2;
+    Value idxValue = adaptor.getIndex();
+    auto finalIdx = op.getBranches().size() - 2;
 
     // Determine if the current index matches the case index.
     auto scalarType = idxValue.getType();
@@ -150,12 +154,12 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
                                              loc, idxValue, currentIdxVal,
                                              ComparisonDirection::EQ)),
         /*withElseRegion=*/true);
-    inlineMhloRegionIntoSCFRegion(outerBuilder, op.branches()[currentIdx],
+    inlineMhloRegionIntoSCFRegion(outerBuilder, op.getBranches()[currentIdx],
                                   scfIf.getThenRegion());
     int nextIdx = currentIdx + 1;
     // Don't recurse for the final default block.
     if (currentIdx == static_cast<int64_t>(finalIdx)) {
-      inlineMhloRegionIntoSCFRegion(outerBuilder, op.branches()[nextIdx],
+      inlineMhloRegionIntoSCFRegion(outerBuilder, op.getBranches()[nextIdx],
                                     scfIf.getElseRegion());
     } else {
       PatternRewriter::InsertionGuard guard(outerBuilder);
@@ -170,8 +174,8 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
       mhlo::CaseOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     // Inline the op if there is only a default block.
-    if (op.branches().size() == 1) {
-      Block& block = op.branches().front().front();
+    if (op.getBranches().size() == 1) {
+      Block& block = op.getBranches().front().front();
       auto results = block.getTerminator()->getOperands();
       // Remove the mhlo.return terminator, then inline the block.
       rewriter.eraseOp(block.getTerminator());
@@ -189,7 +193,7 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
 };
 
 struct LegalizeControlFlowPass
-    : public LegalizeControlFlowPassBase<LegalizeControlFlowPass> {
+    : public impl::LegalizeControlFlowPassBase<LegalizeControlFlowPass> {
   // Perform the lowering to MLIR control flow.
   void runOnOperation() override {
     func::FuncOp f = getOperation();

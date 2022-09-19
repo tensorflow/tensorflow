@@ -122,7 +122,7 @@ class CoarseningAnalysis {
 CoarseningAnalysis::CoarseningAnalysis(GraphOp graph) {
   // As an initial step, construct a merged island for each island in the
   // graph.
-  for (IslandOp island : graph.getBody()->getOps<IslandOp>())
+  for (IslandOp island : graph.SingleBlock::getBody()->getOps<IslandOp>())
     merged_islands_.push_back(MergedIsland(island));
 
   // Record the mapping from the island to the merge group as a secondary step,

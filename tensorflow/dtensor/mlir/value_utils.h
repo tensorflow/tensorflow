@@ -49,7 +49,9 @@ mlir::Value FloatConst(mlir::OpBuilder& builder, mlir::Location loc,
 // Returns a 1-D tf.string constant array with given values.
 mlir::Value StringConst(mlir::OpBuilder& builder, mlir::Location loc,
                         llvm::ArrayRef<llvm::StringRef> values);
-
+// Returns a tf.string scalar constant with given value.
+mlir::Value StringScalarConst(mlir::OpBuilder& builder, mlir::Location loc,
+                              llvm::StringRef value);
 StatusOr<int64_t> ExtractConstIntFromValue(mlir::Value value);
 Status ExtractConstVectorFromValue(mlir::Value value,
                                    llvm::SmallVector<int64_t, 4>* out_vector);

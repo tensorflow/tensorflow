@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/register.h"
+#include "stablehlo/dialect/ChloOps.h"
 
 void mlir::mhlo::registerAllMhloDialects(mlir::DialectRegistry &registry) {
-  // clang-format off
-  registry.insert<mlir::chlo::ChloDialect,
-                  mlir::mhlo::MhloDialect>();
-  // clang-format on
+  registry.insert<mlir::mhlo::MhloDialect>();
+  // Backward compatibility with the old way of registering CHLO dialect
+  registry.insert<mlir::chlo::ChloDialect>();
 }

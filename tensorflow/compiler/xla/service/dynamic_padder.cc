@@ -47,8 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -951,7 +950,7 @@ HloInstruction* RewriteInputWithDynamicPadding(
   // Reconstruct dynamic padding using pad and dynamic slice.
 
   HloInstruction* pad =
-      MakePadHlo(input, padding_value, padding_configs).ValueOrDie();
+      MakePadHlo(input, padding_value, padding_configs).value();
   input = conv->AddInstruction(HloInstruction::CreateDynamicSlice(
       padded_shape, pad, start_indices, padded_shape.dimensions()));
   return input;
@@ -1282,8 +1281,7 @@ StatusOr<bool> RewriteDynamicSelectAndScatterSamePadding(
     }
     *padding_configs.add_dimensions() = padding_dim;
   }
-  HloInstruction* padded =
-      MakePadHlo(rewritten, init, padding_configs).ValueOrDie();
+  HloInstruction* padded = MakePadHlo(rewritten, init, padding_configs).value();
   rewritten = hlo->AddInstruction(HloInstruction::CreateDynamicSlice(
       hlo->shape(), padded, start_indices, hlo->shape().dimensions()));
   TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rewritten));
@@ -1379,7 +1377,7 @@ StatusOr<bool> RewriteDynamicSort(
       "inbound_rhs");
   std::vector<const HloInstruction*> extra_parameters{new_param_0.get(),
                                                       new_param_1.get()};
-  HloComputation* sort_comp = sort->parent()->parent()->AddEmbeddedComputation(
+  HloComputation* sort_comp = sort->GetModule()->AddEmbeddedComputation(
       sort->called_computations()[0]->CloneWithReplacements(
           /*replacements=*/nullptr, extra_parameters));
   auto inbound_lhs =

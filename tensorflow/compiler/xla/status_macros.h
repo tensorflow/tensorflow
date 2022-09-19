@@ -18,12 +18,13 @@ limitations under the License.
 
 #include <memory>
 #include <ostream>  // NOLINT
+#include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status.h"
 
 namespace xla {
 namespace status_macros {
@@ -67,8 +68,10 @@ class MakeErrorStream {
 
     // Implicit cast operators to Status and StatusOr.
     // Exactly one of these must be called exactly once before destruction.
+    // NOLINTNEXTLINE(google-explicit-constructor)
     operator Status() { return wrapped_error_stream_->GetStatus(); }
     template <typename T>
+    // NOLINTNEXTLINE(google-explicit-constructor)
     operator xla::StatusOr<T>() {
       return wrapped_error_stream_->GetStatus();
     }

@@ -27,7 +27,6 @@ import sys
 
 from absl import app  # pylint: disable=unused-import
 import numpy as np
-import six
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
@@ -244,7 +243,7 @@ def _print_args(arguments, argument_type='Argument', indent=0):
   for index, element in enumerate(arguments, 1):
     if indent == 4:
       in_print('%s #%d' % (argument_type, index))
-    if isinstance(element, six.string_types):
+    if isinstance(element, str):
       in_print('  %s' % element)
     elif isinstance(element, tensor_spec.TensorSpec):
       print((indent + 1) * '  ' + '%s: %s' % (element.name, repr(element)))
@@ -623,7 +622,7 @@ def _create_example_string(example_dict):
     elif isinstance(feature_list[0], bytes):
       example.features.feature[feature_name].bytes_list.value.extend(
           feature_list)
-    elif isinstance(feature_list[0], six.integer_types):
+    elif isinstance(feature_list[0], int):
       example.features.feature[feature_name].int64_list.value.extend(
           feature_list)
     else:

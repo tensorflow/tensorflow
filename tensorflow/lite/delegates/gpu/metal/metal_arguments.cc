@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
 
 #include <cstring>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -22,9 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/buffer.h"
-#include "tensorflow/lite/delegates/gpu/metal/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
-#include "tensorflow/lite/delegates/gpu/metal/texture2d.h"
 
 namespace tflite {
 namespace gpu {
@@ -68,25 +67,7 @@ absl::Status CreateMetalObject(id<MTLDevice> device, GPUObjectDescriptor* desc,
     Buffer gpu_buffer;
     RETURN_IF_ERROR(
         gpu_buffer.CreateFromBufferDescriptor(*buffer_desc, device));
-    *result = absl::make_unique<Buffer>(std::move(gpu_buffer));
-    return absl::OkStatus();
-  }
-
-  const auto* texture_desc = dynamic_cast<const Texture2DDescriptor*>(desc);
-  if (texture_desc) {
-    Texture2D gpu_texture;
-    RETURN_IF_ERROR(
-        gpu_texture.CreateFromTexture2DDescriptor(*texture_desc, device));
-    *result = absl::make_unique<Texture2D>(std::move(gpu_texture));
-    return absl::OkStatus();
-  }
-
-  const auto* linear_desc = dynamic_cast<const TensorLinearDescriptor*>(desc);
-  if (linear_desc) {
-    LinearStorage gpu_storage;
-    RETURN_IF_ERROR(
-        gpu_storage.CreateFromTensorLinearDescriptor(*linear_desc, device));
-    *result = absl::make_unique<LinearStorage>(std::move(gpu_storage));
+    *result = std::make_unique<Buffer>(std::move(gpu_buffer));
     return absl::OkStatus();
   }
 
@@ -94,7 +75,7 @@ absl::Status CreateMetalObject(id<MTLDevice> device, GPUObjectDescriptor* desc,
   if (tensor_desc) {
     MetalSpatialTensor gpu_tensor;
     RETURN_IF_ERROR(gpu_tensor.CreateFromDescriptor(*tensor_desc, device));
-    *result = absl::make_unique<MetalSpatialTensor>(std::move(gpu_tensor));
+    *result = std::make_unique<MetalSpatialTensor>(std::move(gpu_tensor));
     return absl::OkStatus();
   }
 

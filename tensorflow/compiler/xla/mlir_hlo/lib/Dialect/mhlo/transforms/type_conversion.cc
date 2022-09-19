@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -67,6 +68,19 @@ llvm::Optional<Value> materializeCastToIllegal(OpBuilder& builder, Type type,
       ->getResult(0);
 }
 
+llvm::Optional<Value> scalarToTensor(OpBuilder& builder, Type /*type*/,
+                                     ValueRange inputs, Location loc) {
+  assert(inputs.size() == 1);
+  if (inputs.front().getType().isa<ShapedType>()) {
+    return llvm::None;
+  }
+  return builder
+      .create<tensor::FromElementsOp>(
+          loc, RankedTensorType::get({}, inputs.front().getType()),
+          inputs.front())
+      .getResult();
+}
+
 }  // namespace
 
 RemoveSignTypeConverter::RemoveSignTypeConverter() {
@@ -78,6 +92,10 @@ RemoveSignTypeConverter::RemoveSignTypeConverter() {
   addArgumentMaterialization(materializeCastFromIllegal);
   addSourceMaterialization(materializeCastToIllegal);
   addTargetMaterialization(materializeCastFromIllegal);
+}
+
+LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
+  addArgumentMaterialization(scalarToTensor);
 }
 
 }  // namespace mhlo

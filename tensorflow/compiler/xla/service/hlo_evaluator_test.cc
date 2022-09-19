@@ -42,8 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -60,7 +60,7 @@ class HloEvaluatorTest : public HloTestBase {
   StatusOr<Literal> Evaluate(
       absl::Span<const Literal* const> arg_literals = {}) {
     if (use_bfloat16_) {
-      HloElementTypeConverter(F32, BF16).Run(m_.get()).ValueOrDie();
+      HloElementTypeConverter(F32, BF16).Run(m_.get()).value();
     }
     return evaluator_.Evaluate(*m_->entry_computation(), arg_literals);
   }
@@ -71,7 +71,7 @@ class HloEvaluatorTest : public HloTestBase {
   Literal EvaluateWithModule(
       HloModule* module, absl::Span<const Literal* const> arg_literals = {}) {
     if (use_bfloat16_) {
-      HloElementTypeConverter(F32, BF16).Run(m_.get()).ValueOrDie();
+      HloElementTypeConverter(F32, BF16).Run(m_.get()).value();
     }
     return evaluator_.Evaluate(*module->entry_computation(), arg_literals)
         .value();

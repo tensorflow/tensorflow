@@ -86,8 +86,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/transpose_kernels.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 

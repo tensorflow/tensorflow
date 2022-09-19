@@ -16,26 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_TRANSFER_MANAGER_INTERFACE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_TRANSFER_MANAGER_INTERFACE_H_
 
-#include <deque>
-
-#include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/stream_executor/tpu/noncopyable_buffer.h"
-
-namespace xla {
-
-class TpuTransferManagerInterface : public xla::TransferManager {
- public:
-  virtual Status TransferBuffersToInfeed(
-      se::StreamExecutor* executor,
-      const std::deque<tensorflow::tpu::NoncopyableBuffer>& buffers) = 0;
-
-  virtual Status LinearizeToBuffers(
-      const LiteralSlice& literal,
-      std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) = 0;
-
-  static TpuTransferManagerInterface* GetRegisteredTpuTransferManager();
-};
-
-}  // namespace xla
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_TRANSFER_MANAGER_INTERFACE_H_

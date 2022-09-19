@@ -506,6 +506,9 @@ void AdaptiveSharedBatchScheduler<TaskType>::RemoveQueue(
 template <typename TaskType>
 void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleNextBatchFIFO() {
   const internal::ASBSBatch<TaskType>* batch = *fifo_batches_.begin();
+  if (batch->schedulable_time_micros() > GetEnv()->NowMicros()) {
+    return;
+  }
   fifo_batches_.pop_front();
   // Queue may destroy itself after ReleaseBatch is called.
   batch->queue()->ReleaseBatch(batch);

@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 
@@ -85,14 +85,14 @@ void Stats::StartPass(absl::string_view pass_name) {
                         << current_pass_;
   pass_running_ = true;
   current_pass_ = std::string(pass_name);
-  start_micros_ = tensorflow::Env::Default()->NowMicros();
+  start_micros_ = tsl::Env::Default()->NowMicros();
 }
 
 void Stats::EndPass(absl::string_view pass_name) {
   CHECK(pass_running_);
   CHECK_EQ(current_pass_, std::string(pass_name));
   pass_running_ = false;
-  uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_micros = tsl::Env::Default()->NowMicros();
   double duration_ms = (end_micros - start_micros_) / 1000.0;
   passes_.push_back(PassInfo(current_pass_, duration_ms));
 }

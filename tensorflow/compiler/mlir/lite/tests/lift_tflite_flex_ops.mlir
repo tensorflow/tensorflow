@@ -54,7 +54,7 @@ func.func @TfParseExample(%arg0: tensor<1x!tf_type.string>) -> (tensor<1x1x!tf_t
   ) -> (tensor<1x1x!tf_type.string>, tensor<1x1x!tf_type.string>)
   func.return %4#0, %4#1 : tensor<1x1x!tf_type.string>, tensor<1x1x!tf_type.string>
 // CHECK: "tf.ParseExample"(
-// CHECK-SAME: operand_segment_sizes = dense<[1, 1, 0, 2, 2]> : vector<5xi32>, result_segment_sizes = dense<[0, 0, 0, 2]>
+// CHECK-SAME: operand_segment_sizes = array<i32: 1, 1, 0, 2, 2>, result_segment_sizes = array<i32: 0, 0, 0, 2>
 }
 
 // CHECK-LABEL: FailureOnInvalidOp

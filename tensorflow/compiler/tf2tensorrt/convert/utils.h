@@ -392,8 +392,6 @@ std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
 std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, absl::string_view b);
 
-bool isExperimentalFeatureActivated(string feature_name);
-
 }  // namespace tensorrt
 }  // namespace tensorflow
 

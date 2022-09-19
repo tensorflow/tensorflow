@@ -2151,7 +2151,8 @@ class variable_scope:
   it will behave as if reuse is always set to `AUTO_REUSE`.)
 
   See the
-  [model migration guide](www.tensorflow.org/guide/migrate/model_mapping)
+  [model migration guide](
+      https://www.tensorflow.org/guide/migrate/model_mapping)
   for more info on
   migrating code that relies on `variable_scope`-based variable reuse.
 

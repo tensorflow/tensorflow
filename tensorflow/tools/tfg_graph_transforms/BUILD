@@ -3,10 +3,7 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
-package(
-    default_visibility = ["//tensorflow/tools/tfg_graph_transforms:__subpackages__"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 cc_library(
     name = "utils",

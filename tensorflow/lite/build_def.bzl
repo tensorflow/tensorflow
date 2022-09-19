@@ -128,7 +128,8 @@ def tflite_symbol_opts():
         clean_dep("//tensorflow:debug"): [],
         clean_dep("//tensorflow/lite:tflite_keep_symbols"): [],
         "//conditions:default": [
-            "-s",  # Omit symbol table, for all non debug builds
+            # Omit symbol table, for all non debug builds
+            "-Wl,-s",
         ],
     })
 
@@ -315,34 +316,62 @@ def json_to_tflite(name, src, out):
         tools = [flatc],
     )
 
+def _gen_selected_ops_impl(ctx):
+    args = ctx.actions.args()
+    args.add(ctx.attr.namespace, format = "--namespace=%s")
+    args.add(ctx.outputs.output, format = "--output_registration=%s")
+    tflite_path = "//tensorflow/lite"
+    args.add("--tflite_path=%s" % tflite_path[2:])
+    args.add_joined(
+        ctx.files.models,
+        join_with = ",",
+        format_joined = "--input_models=%s",
+    )
+
+    ctx.actions.run(
+        outputs = [ctx.outputs.output],
+        inputs = ctx.files.models,
+        arguments = [args],
+        executable = ctx.executable._generate_op_registrations,
+        mnemonic = "OpRegistration",
+        progress_message = "gen_selected_ops",
+    )
+
+gen_selected_ops_rule = rule(
+    implementation = _gen_selected_ops_impl,
+    attrs = {
+        "models": attr.label_list(default = [], allow_files = True),
+        "namespace": attr.string(default = ""),
+        "output": attr.output(),
+        "_generate_op_registrations": attr.label(
+            executable = True,
+            default = Label(clean_dep(
+                "//tensorflow/lite/tools:generate_op_registrations",
+            )),
+            cfg = "exec",
+        ),
+    },
+)
+
 def gen_selected_ops(name, model, namespace = "", **kwargs):
-    """Generate the library that includes only used ops.
+    """Generate the source file that includes only used ops.
 
     Args:
-      name: Name of the generated library.
+      name: Prefix of the generated source file.
       model: TFLite models to interpret, expect a list in case of multiple models.
       namespace: Namespace in which to put RegisterSelectedOps.
       **kwargs: Additional kwargs to pass to genrule.
     """
-    out = name + "_registration.cc"
-    tool = clean_dep("//tensorflow/lite/tools:generate_op_registrations")
-    tflite_path = "//tensorflow/lite"
 
-    # isinstance is not supported in skylark.
-    if type(model) != type([]):
+    # If there's only one model provided as a string.
+    if type(model) == type(""):
         model = [model]
 
-    input_models_args = " --input_models=%s" % ",".join(
-        [("$(locations %s)" % f) for f in model],
-    )
-
-    native.genrule(
+    gen_selected_ops_rule(
         name = name,
-        srcs = model,
-        outs = [out],
-        cmd = ("$(location %s) --namespace=%s --output_registration=$(location %s) --tflite_path=%s %s") %
-              (tool, namespace, out, tflite_path[2:], input_models_args),
-        tools = [tool],
+        models = model,
+        namespace = namespace,
+        output = name + "_registration.cc",
         **kwargs
     )
 
@@ -582,7 +611,6 @@ def tflite_custom_c_library(
         srcs = ["//tensorflow/lite/c:c_api_srcs"],
         hdrs = [
             "//tensorflow/lite/c:c_api.h",
-            "//tensorflow/lite/c:c_api_internal.h",
             "//tensorflow/lite/c:c_api_experimental.h",
             "//tensorflow/lite/c:c_api_opaque.h",
         ],
@@ -704,5 +732,64 @@ def tflite_self_contained_libs_test_suite(name):
 
     native.test_suite(
         name = name,
+        tests = build_tests,
+    )
+
+def _label(target):
+    """Return a Label <https://bazel.build/rules/lib/Label#Label> given a string.
+
+    Args:
+      target: (string) a relative or absolute build target.
+    """
+    if target[0:2] == "//":
+        return Label(target)
+    if target[0] == ":":
+        return Label("//" + native.package_name() + target)
+    return Label("//" + native.package_name() + ":" + target)
+
+def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
+    """Defines a C++ library with C-compatible header files.
+
+    This generates a cc_library rule, but also generates
+    build tests that verify that each of the 'hdrs'
+    can be successfully built in a C (not C++!) compilation unit
+    that directly includes only that header file.
+
+    Args:
+      name: (string) as per cc_library.
+      hdrs: (list of string) as per cc_library.
+      **kwargs: Additional kwargs to pass to cc_library.
+    """
+    native.cc_library(name = name, hdrs = hdrs, **kwargs)
+
+    build_tests = []
+    for hdr in hdrs:
+        label = _label(hdr)
+        basename = "%s__test_self_contained_c__%s" % (name, label.name)
+        native.genrule(
+            name = "%s_gen" % basename,
+            outs = ["%s.c" % basename],
+            cmd = "echo '#include \"%s/%s\"' > $@" % (label.package, label.name),
+            visibility = ["//visibility:private"],
+            testonly = True,
+        )
+        native.cc_library(
+            name = "%s_lib" % basename,
+            srcs = ["%s.c" % basename],
+            deps = [":" + name],
+            copts = kwargs.get("copts", []),
+            visibility = ["//visibility:private"],
+            testonly = True,
+            tags = ["allow_undefined_symbols"],
+        )
+        build_test(
+            name = "%s_build_test" % basename,
+            visibility = ["//visibility:private"],
+            targets = ["%s_lib" % basename],
+        )
+        build_tests.append("%s_build_test" % basename)
+
+    native.test_suite(
+        name = name + "_self_contained_c_build_tests",
         tests = build_tests,
     )

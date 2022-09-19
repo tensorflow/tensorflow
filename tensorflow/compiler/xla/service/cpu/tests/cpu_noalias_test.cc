@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {
@@ -69,7 +69,7 @@ TEST_F(CpuNoAliasTest, Concat) {
   ASSERT_EQ(status_or_buffer_assn.status(), OkStatus());
 
   llvm::LLVMContext context;
-  llvm_ir::AliasAnalysis aa(*hlo_module, *status_or_buffer_assn.ValueOrDie(),
+  llvm_ir::AliasAnalysis aa(*hlo_module, *status_or_buffer_assn.value(),
                             &context);
 
   // Construct an LLVM module containing loads that we annotate as being from

@@ -92,6 +92,7 @@ class ZeroFractionTest(test_lib.TestCase):
                           sess.run(sparsity, {value: [[0., 1.], [0.3, 2.]]}))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 
   def _softmax(self, x):
@@ -103,7 +104,6 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     z = u.sum(1)[:, np.newaxis]
     return u / z
 
-  @test_util.run_in_graph_and_eager_modes
   def testSoftmax(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float32)
@@ -142,18 +142,15 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     self.assertAllClose(y_bf16_tf, expected, rtol=tol, atol=tol)
 
   @parameterized.parameters(((5, 10),), ((2, 3, 4),))
-  @test_util.run_deprecated_v1
   def testGradient(self, x_shape):
     x_np = np.random.randn(*x_shape).astype(np.float64)
-    with self.cached_session():
-      x_tf = constant_op.constant(x_np)
-      y_tf = nn_ops.softmax_v2(x_tf)
-      err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
-                                                    x_shape)
-    eps = 2e-8
-    self.assertLess(err, eps)
+    x_tf = constant_op.constant(x_np)
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        nn_ops.softmax_v2, [x_tf])
+    self.assertAllClose(theoretical, numerical)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LogPoissonLossTest(test_lib.TestCase):
 
   def _log_poisson_loss(self, x, z, compute_full_loss=False):
@@ -163,7 +160,6 @@ class LogPoissonLossTest(test_lib.TestCase):
       lpl += np.ma.masked_array(stirling_approx, mask=(z <= 1)).filled(0.)
     return lpl
 
-  @test_util.run_in_graph_and_eager_modes
   def testLogPoissonLoss(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float32)
@@ -178,25 +174,19 @@ class LogPoissonLossTest(test_lib.TestCase):
     self.assertAllClose(y_tf_np, y_np, eps)
     self.assertAllClose(y_tf_np_stirling, y_np_stirling, eps)
 
-  @test_util.run_deprecated_v1
   def testGradient(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float64)
     z_np = np.random.randint(0, 5, size=x_shape).astype(np.float64)
     with self.cached_session():
       x_tf = constant_op.constant(x_np)
-      y_tf = nn_impl.log_poisson_loss(z_np, x_tf, compute_full_loss=False)
-      y_tf_stirling = nn_impl.log_poisson_loss(
-          z_np, x_tf, compute_full_loss=True)
-      err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
-                                                    x_shape)
-      err_stirling = gradient_checker.compute_gradient_error(
-          x_tf, x_shape, y_tf_stirling, x_shape)
-    eps = 1e-6
-    self.assertLess(err, eps)
-    self.assertLess(err_stirling, eps)
+      # TODO(b/241834841): Test with `compute_full_loss` set as True
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          nn_impl.log_poisson_loss, [z_np, x_tf])
+      self.assertAllClose(theoretical, numerical)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 
   def _log_softmax(self, x):
@@ -205,7 +195,6 @@ class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     u = x - m
     return u - np.log(np.sum(np.exp(u), 1, keepdims=True))
 
-  @test_util.run_in_graph_and_eager_modes
   def testLogSoftmax(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float32)
@@ -229,21 +218,18 @@ class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
 
   @parameterized.parameters(((5, 10),), ((2, 3, 4),))
-  @test_util.run_deprecated_v1
   def testGradient(self, x_shape):
     x_np = np.random.randn(*x_shape).astype(np.float64)
     with self.cached_session():
       x_tf = constant_op.constant(x_np)
-      y_tf = nn_ops.log_softmax_v2(x_tf)
-      err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
-                                                    x_shape)
-    eps = 1e-7
-    self.assertLess(err, eps)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          nn_ops.log_softmax_v2, [x_tf])
+      self.assertAllClose(theoretical, numerical)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class L2LossTest(test_lib.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testL2Loss(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       x = constant_op.constant([1.0, 0.0, 3.0, 2.0],
@@ -254,20 +240,18 @@ class L2LossTest(test_lib.TestCase):
       value = self.evaluate(l2loss)
       self.assertAllClose(7.0, value)
 
-  @test_util.run_deprecated_v1
   def testGradient(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)  # Make it reproducible.
     x_val = np.random.random_sample(x_shape).astype(np.float64)
     with self.cached_session():
       x = constant_op.constant(x_val, name="x")
-      output = nn_ops.l2_loss(x)
-      err = gradient_checker.compute_gradient_error(x, x_shape, output, [1])
-    print("L2Loss gradient err = %g " % err)
-    err_tolerance = 1e-10
-    self.assertLess(err, err_tolerance)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          nn_ops.l2_loss, [x])
+      self.assertAllClose(theoretical, numerical)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class L2NormalizeTest(test_lib.TestCase):
 
   def _l2Normalize(self, x, dim):
@@ -280,7 +264,6 @@ class L2NormalizeTest(test_lib.TestCase):
       norm = np.apply_along_axis(np.linalg.norm, dim, x)
       return x / np.expand_dims(norm, dim)
 
-  @test_util.run_in_graph_and_eager_modes
   def testL2Normalize(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)
@@ -291,7 +274,6 @@ class L2NormalizeTest(test_lib.TestCase):
       y_tf = nn_impl.l2_normalize(x_tf, dim)
       self.assertAllClose(y_np, self.evaluate(y_tf))
 
-  @test_util.run_in_graph_and_eager_modes
   def testL2NormalizeDimArray(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)
@@ -302,21 +284,17 @@ class L2NormalizeTest(test_lib.TestCase):
     y_tf = nn_impl.l2_normalize(x_tf, dim)
     self.assertAllClose(y_np, self.evaluate(y_tf))
 
-  @test_util.run_deprecated_v1
   def testL2NormalizeGradient(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)
     x_np = np.random.random_sample(x_shape).astype(np.float64)
-    for dim in range(len(x_shape)):
-      with self.cached_session():
-        x_tf = constant_op.constant(x_np, name="x")
-        y_tf = nn_impl.l2_normalize(x_tf, dim)
-        err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
-                                                      x_shape)
-      print("L2Normalize gradient err = %g " % err)
-      self.assertLess(err, 1e-4)
+    with self.cached_session():
+      x_tf = constant_op.constant(x_np, name="x")
+      # TODO(b/241834841): Test l2_normalize with `axis` set to other dims
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          nn_impl.l2_normalize, [x_tf])
+      self.assertAllClose(theoretical, numerical)
 
-  @test_util.run_in_graph_and_eager_modes
   def testL2NormalizeComplex(self):
     x_shape = [20, 7, 3]
     for dtype in [np.complex64, np.complex128]:

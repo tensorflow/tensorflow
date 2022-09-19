@@ -42,12 +42,7 @@ config_setting(
 cc_library(
     name = "tflite_with_xnnpack_qs8_default",
     compatible_with = get_compatible_with_portable(),
-    defines = select({
-        # Enable for WebAssembly builds
-        "//tensorflow:emscripten": ["XNNPACK_DELEGATE_ENABLE_QS8=1"],
-        # Disable for all other builds
-        "//conditions:default": [],
-    }),
+    defines = ["XNNPACK_DELEGATE_ENABLE_QS8=1"],
 )
 
 cc_library(

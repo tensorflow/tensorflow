@@ -128,9 +128,9 @@ def make_cache_key(
   if captures is None:
     captures = dict()
   signature_context = trace_type.InternalTracingContext()
-  args_signature = trace_type.from_object(
+  args_signature = trace_type.from_value(
       args, signature_context)
-  captures_dict_tracetype = trace_type.from_object(
+  captures_dict_tracetype = trace_type.from_value(
       captures, signature_context)
   captures_signature = function_cache.CaptureSnapshot(
       captures_dict_tracetype.mapping)

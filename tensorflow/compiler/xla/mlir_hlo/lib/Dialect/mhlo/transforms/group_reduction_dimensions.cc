@@ -21,7 +21,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -33,6 +32,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_GROUPREDUCTIONDIMENSIONSPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 LogicalResult tryLowerToCollapseShape(
@@ -218,11 +221,11 @@ LogicalResult tryLowerTo1DOr2DReduction(
                         : dimGroups.front().kind == DimensionKind::kReduction;
   int64_t reductionDim = leadingReduction ? 0 : 1;
   auto reductionDimAttr = rewriter.getI64VectorAttr({reductionDim});
-  Value initVal = op.init_values().front();
+  Value initVal = op.getInitValues().front();
   auto reductionOp =
       rewriter.create<ReduceOp>(loc, intermResult, initVal, reductionDimAttr);
-  rewriter.inlineRegionBefore(op.body(), reductionOp.body(),
-                              reductionOp.body().begin());
+  rewriter.inlineRegionBefore(op.getBody(), reductionOp.getBody(),
+                              reductionOp.getBody().begin());
   intermResult = reductionOp->getResults().front();
 
   // Restore the expected shape by dynamic reshape, if required.
@@ -263,14 +266,14 @@ struct GroupReductionDimensionsPattern : public OpRewritePattern<ReduceOp> {
   LogicalResult matchAndRewrite(ReduceOp op,
                                 PatternRewriter& rewriter) const override {
     // Only apply to reduction of a unique argument.
-    if (op.operands().size() != 1 || op.init_values().size() != 1)
+    if (op.operands().size() != 1 || op.getInitValues().size() != 1)
       return failure();
     Value arg = op.operands().front();
     auto argTy = arg.getType().cast<RankedTensorType>();
 
     // Sort reduction dimensions, which is not an invariant of the op.
     SmallVector<int64_t> orderedReductionDims =
-        llvm::to_vector<4>(llvm::map_range(op.dimensions(), [](auto d) {
+        llvm::to_vector<4>(llvm::map_range(op.getDimensions(), [](auto d) {
           return static_cast<int64_t>(d.getLimitedValue());
         }));
     std::sort(orderedReductionDims.begin(), orderedReductionDims.end());
@@ -297,7 +300,8 @@ struct GroupReductionDimensionsPattern : public OpRewritePattern<ReduceOp> {
 };
 
 struct GroupReductionDimensionsPass
-    : public GroupReductionDimensionsPassBase<GroupReductionDimensionsPass> {
+    : public impl::GroupReductionDimensionsPassBase<
+          GroupReductionDimensionsPass> {
   explicit GroupReductionDimensionsPass(bool preferColumnsReductions)
       : GroupReductionDimensionsPassBase<
             GroupReductionDimensionsPass>::GroupReductionDimensionsPassBase() {

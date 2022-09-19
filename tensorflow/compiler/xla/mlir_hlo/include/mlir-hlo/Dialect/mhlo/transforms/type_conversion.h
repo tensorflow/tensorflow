@@ -21,9 +21,20 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
+// Type converter to use as part of lowerings from dialects that carry signs
+// in their types to those that are signless.
 class RemoveSignTypeConverter : public TypeConverter {
  public:
   RemoveSignTypeConverter();
+};
+
+// Type converter which adds additional materializations (beyond signless)
+// that are needed as part of the HloToLinalg conversion patterns.
+// This is the type converter used by the test pass and is the sanctioned
+// way to use the underlying patterns.
+class LinalgTypeConverter : public RemoveSignTypeConverter {
+ public:
+  LinalgTypeConverter();
 };
 
 }  // namespace mhlo

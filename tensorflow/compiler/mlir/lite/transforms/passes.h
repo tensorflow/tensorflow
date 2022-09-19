@@ -215,6 +215,14 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateGetArithmeticCountPass();
 // tensors with fill op.
 std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldLargeSplatConstantPass();
 
+// Creates a pass that adds control dependencies to keep the relative execution
+// order of operations with side effects frozen.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePinOpsWithSideEffectsPass();
+
+// Creates a pass that brings operations into the same order as graph_info.cc.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreatePartitionedTopologicalSortPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 }  // namespace TFL

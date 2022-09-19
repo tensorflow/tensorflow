@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_FUNCTION_IMPORTER_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_FUNCTION_IMPORTER_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_FUNCTION_IMPORTER_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_HLO_FUNCTION_IMPORTER_H_
 
 #include <unordered_map>
 
@@ -226,12 +226,18 @@ class HloFunctionImporter {
   // Converts channel id to attribute
   mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id);
 
+  // Convert use global device ids flag to attribute
+  mlir::NamedAttribute ConvertUseGlobalDeviceIds();
+
   // Converts channel handle to attribute
   mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);
 
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;
   mlir::Builder* builder_;
+
+  // Fresh variable supply
+  int64_t fresh_ = 0;
 
   // Mapping from HloComputation to the created MLIR function.
   std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>*
@@ -244,4 +250,4 @@ class HloFunctionImporter {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_FUNCTION_IMPORTER_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_HLO_FUNCTION_IMPORTER_H_

@@ -33,7 +33,7 @@ namespace {
 
 Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
                          PjRtClient* client) {
-  XlaComputation computation = builder->Build(root).ValueOrDie();
+  XlaComputation computation = builder->Build(root).value();
 
   CompileOptions compile_options;
   compile_options.executable_build_options.set_num_replicas(1);
@@ -127,7 +127,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
   XlaOp send = outfeed_receiver
                    ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
                                          consumer_id0, {data})
-                   .ValueOrDie();
+                   .value();
   EXPECT_TRUE(CompileAndExecute(&builder, send, 0, cpu_client.get()).ok());
 
   // Shutdown the receiver, to force it to wait to deliver the callbacks.
@@ -160,7 +160,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   XlaOp send0 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder0, CreateToken(&builder0),
                                           consumer_id0, {data0})
-                    .ValueOrDie();
+                    .value();
   EXPECT_TRUE(CompileAndExecute(&builder0, send0, 0, cpu_client.get()).ok());
 
   XlaBuilder builder1("execute_test_outfeed_1");
@@ -170,7 +170,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   XlaOp send1 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder1, CreateToken(&builder1),
                                           consumer_id1, {data1})
-                    .ValueOrDie();
+                    .value();
   EXPECT_TRUE(CompileAndExecute(&builder1, send1, 0, cpu_client.get()).ok());
 
   // Shutdown the receiver, to force it to wait to deliver the callbacks.
@@ -205,7 +205,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
   XlaOp send0 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
                                           consumer_id0, {data0})
-                    .ValueOrDie();
+                    .value();
 
   constexpr int consumer_id1 = 6;
   const Shape shape1 = ShapeUtil::MakeShape(U32, {128});
@@ -213,7 +213,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
   XlaOp send1 =
       outfeed_receiver
           ->AddOutfeedToBuilder(&builder, send0, consumer_id1, {data1})
-          .ValueOrDie();
+          .value();
   EXPECT_TRUE(CompileAndExecute(&builder, send1, 0, cpu_client.get()).ok());
 
   // Shutdown the receiver, to force it to wait to deliver the callbacks.
@@ -248,7 +248,7 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
   XlaOp send0 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
                                           consumer_id0, {data0})
-                    .ValueOrDie();
+                    .value();
 
   const Shape shape1 = ShapeUtil::MakeShape(U32, {128});
   XlaOp data1 = Iota(&builder, shape1, 0);
@@ -308,7 +308,7 @@ TEST(OutfeedReceiverTest, NonLocalDevicesIgnored) {
   XlaOp send = outfeed_receiver
                    ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
                                          consumer_id0, {data})
-                   .ValueOrDie();
+                   .value();
   EXPECT_TRUE(CompileAndExecute(&builder, send, 0, cpu_client.get()).ok());
 
   // Shutdown the receiver, to force it to wait to deliver the callbacks.

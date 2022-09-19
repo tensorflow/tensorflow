@@ -163,7 +163,7 @@ Status DataServiceDispatcherClient::GetOrCreateJob(
         status);
   }
   job_id = resp.job_id();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetOrCreateIteration(

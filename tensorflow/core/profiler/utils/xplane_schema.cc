@@ -129,8 +129,6 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ASBSQueue::Schedule", kASBSQueueSchedule},
       // TFRT related.
       {"TfrtModelRun", kTfrtModelRun},
-      // JAX related.
-      {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},
@@ -280,6 +278,7 @@ const StatTypeMap& GetStatTypeMap() {
       // Aggregrated Stat
       {"self_duration_ps", kSelfDurationPs},
       {"min_duration_ps", kMinDurationPs},
+      {"total_profile_duration_ps", kTotalProfileDurationPs},
       {"max_iteration_num", kMaxIterationNum},
       {"device_type", kDeviceType},
       {"uses_megacore", kUsesMegaCore},
@@ -376,6 +375,8 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
     case StatType::kIsRoot:
     case StatType::kFlops:
     case StatType::kBytesAccessed:
+    case StatType::kProgramId:
+    case StatType::kSymbolId:
       return true;
     default:
       return false;

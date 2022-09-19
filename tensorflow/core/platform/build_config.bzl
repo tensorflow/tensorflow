@@ -1,7 +1,7 @@
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
 load(
-    "//tensorflow/core/platform/default:build_config.bzl",
+    "//tensorflow/tsl/platform/default:build_config.bzl",
     _if_llvm_aarch64_available = "if_llvm_aarch64_available",
     _if_llvm_system_z_available = "if_llvm_system_z_available",
     _pyx_library = "pyx_library",

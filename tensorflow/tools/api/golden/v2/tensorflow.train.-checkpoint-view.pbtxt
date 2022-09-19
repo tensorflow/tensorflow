@@ -15,6 +15,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "diff"
+    argspec: "args=[\'self\', \'obj\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "match"
     argspec: "args=[\'self\', \'obj\'], varargs=None, keywords=None, defaults=None"
   }

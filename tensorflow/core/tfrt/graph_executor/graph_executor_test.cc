@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,17 +23,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
-#include "tensorflow/cc/ops/functional_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
+#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -57,13 +55,13 @@ TEST_F(GraphExecutorTest, Vanilla) {
       CreateDefaultSessionOptions(options), graph_def.library());
   ASSERT_TRUE(statusor_fallback_state.ok());
   tensorflow::tfrt_stub::FallbackState* fallback_state =
-      statusor_fallback_state.ValueOrDie().get();
+      statusor_fallback_state.value().get();
   auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
 
   auto status_or_graph_executor = GraphExecutor::Create(
       std::move(options), *fallback_state, tpu_model_resource.get(), graph_def);
   ASSERT_TRUE(status_or_graph_executor.ok());
-  GraphExecutor* graph_executor = status_or_graph_executor.ValueOrDie().get();
+  GraphExecutor* graph_executor = status_or_graph_executor.value().get();
 
   // Set input 'x' to [[1, 1, 1]]
   std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
