@@ -53,6 +53,9 @@ struct StridedSliceShapeSpec {
 // <processing_shape> are valid; <is_identity>, <is_simple_slice> and other
 // output parameters will not be accurate.
 //
+// If the rank of <input_shape> is unknown (i.e., "input_shape.unknown_rank()"
+// is true)), the method returns an invalid status.
+//
 // If <begin_tensor> or <end_tensor> are nullptr, <begin> and <end> will not be
 // valid. In this case, <slice_dim0> and <is_identity> will be true only if a
 // determination can be made based on the information given. A best effort is
