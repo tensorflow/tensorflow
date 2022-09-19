@@ -204,10 +204,7 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   T&& value() &&;
 
   // Deprecated, use `value()` instead.
-  // Deprecated, use `value()` instead.
-  ABSL_DEPRECATED("Use `value()` instead.") const T& ValueOrDie() const&;
   ABSL_DEPRECATED("Use `value()` instead.") T& ValueOrDie() &;
-  ABSL_DEPRECATED("Use `value()` instead.") const T&& ValueOrDie() const&&;
   ABSL_DEPRECATED("Use `value()` instead.") T&& ValueOrDie() &&;
 
   // Returns a reference to the current value.
@@ -342,11 +339,6 @@ T&& StatusOr<T>::value() && {
   return std::move(this->data_);
 }
 
-template <typename T>
-const T& StatusOr<T>::ValueOrDie() const& {
-  this->EnsureOk();
-  return this->data_;
-}
 
 template <typename T>
 T& StatusOr<T>::ValueOrDie() & {
@@ -354,11 +346,6 @@ T& StatusOr<T>::ValueOrDie() & {
   return this->data_;
 }
 
-template <typename T>
-const T&& StatusOr<T>::ValueOrDie() const&& {
-  this->EnsureOk();
-  return std::move(this->data_);
-}
 
 template <typename T>
 T&& StatusOr<T>::ValueOrDie() && {
