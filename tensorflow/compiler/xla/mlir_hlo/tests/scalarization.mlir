@@ -120,6 +120,24 @@ func.func @multiple_ops(%lhs: tensor<f32>, %rhs: tensor<f32>) -> tensor<f32>  {
 
 // -----
 
+func.func @outside_yield() -> tensor<1x1xi1>  {
+  %true = arith.constant true
+  %0 = linalg.init_tensor [1, 1]: tensor<1x1xi1>
+  %1 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>],
+                       iterator_types = ["parallel", "parallel"]}
+       outs(%0 : tensor<1x1xi1>) {
+  ^bb0(%arg1: i1):
+    linalg.yield %true : i1
+  } -> tensor<1x1xi1>
+  return %1: tensor<1x1xi1>
+}
+
+// CHECK-LABEL: func @outside_yield
+// CHECK:         %[[CST:.*]] = arith.constant dense<true> : tensor<1x1xi1>
+// CHECK:         return %[[CST]]
+
+// -----
+
 func.func @scatter_i32_i64(%indices: tensor<1x2xi32>, %updates: tensor<1xi64>,
                            %init: tensor<?x?xi64>) -> tensor<?x?xi64> {
   %0 = thlo.scatter ins(%indices: tensor<1x2xi32>, %updates: tensor<1xi64>)

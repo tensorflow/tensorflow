@@ -84,7 +84,7 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
     for (auto [resultType, yieldOperand] :
          llvm::zip(genericOp->getResultTypes(),
                    body->getTerminator()->getOperands())) {
-      auto scalarValue = bvm.lookup(yieldOperand);
+      auto scalarValue = bvm.lookupOrDefault(yieldOperand);
       newResults.push_back(
           rewriter.create<FromElementsOp>(loc, resultType, scalarValue));
     }
