@@ -961,6 +961,7 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
   // initialized. Currently one such use case is the TPU_SYSTEM device, which
   // is a virtual device specifically used to initialize TPUs.
   std::vector<std::string> virtual_device_names;
+  int64_t ncpus = 0;
 
   for (const auto& d :
        GetHostContext()->GetDeviceManager()->ListDevices<Device>()) {
@@ -974,6 +975,9 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
       virtual_device_names.push_back(tensorflow::DeviceNameUtils::FullName(
           server_def.job_name(), /*replica=*/0, server_def.task_index(), p.type,
           p.id));
+    }
+    if (d->IsDeviceType(tfrt::CpuDevice::kDeviceType)) {
+      ++ncpus;
     }
   }
 
@@ -991,10 +995,15 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
   GetHostContext()->ResetHostDevice(
       GetHostContext()
           ->GetDeviceManager()
-          ->MaybeAddDevice(TakeRef(
-              new CpuDevice(absl::StrCat(name_prefix, "/device:CPU:0"))))
+          ->MaybeAddDevice(
+              MakeRef<CpuDevice>(absl::StrCat(name_prefix, "/device:CPU:0")))
           .release());
 
+  // Create additional host logical CPU devices.
+  for (int64_t i = 1; i < ncpus; ++i) {
+    GetHostContext()->GetDeviceManager()->MaybeAddDevice(
+        MakeRef<CpuDevice>(absl::StrCat(name_prefix, "/device:CPU:", i)));
+  }
   // Update virtual devices in TFRT HostContext.
   AddDummyTfrtDevices(virtual_device_names, GetHostContext());
 
