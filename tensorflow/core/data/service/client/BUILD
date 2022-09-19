@@ -23,32 +23,6 @@ cc_library(
 )
 
 cc_library(
-    name = "data_service_client",
-    srcs = ["data_service_client.cc"],
-    hdrs = ["data_service_client.h"],
-    deps = [
-        ":common",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:statusor",
-    ],
-)
-
-tf_cc_test(
-    name = "data_service_client_test",
-    srcs = ["data_service_client_test.cc"],
-    deps = [
-        ":common",
-        ":data_service_client",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:status_matchers",
-        "//tensorflow/core/platform:statusor",
-    ],
-)
-
-cc_library(
     name = "validate_utils",
     srcs = ["validate_utils.cc"],
     hdrs = ["validate_utils.h"],
