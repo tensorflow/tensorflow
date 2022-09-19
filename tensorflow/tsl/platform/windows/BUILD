@@ -217,16 +217,16 @@ cc_library(
 cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
-    hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
+    hdrs = ["//tensorflow/tsl/platform:stacktrace_handler.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:stacktrace",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:stacktrace",
+        "//tensorflow/tsl/platform:types",
     ],
 )
 

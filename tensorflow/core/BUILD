@@ -1821,7 +1821,7 @@ cc_library(
 # Main program for tests
 alias(
     name = "test_main",
-    actual = "//tensorflow/core/platform:test_main",
+    actual = "//tensorflow/tsl/platform:test_main",
     visibility = ["//tensorflow:internal"],
 )
 

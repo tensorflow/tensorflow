@@ -394,11 +394,11 @@ cc_library(
 cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
-    hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
+    hdrs = ["//tensorflow/tsl/platform:stacktrace_handler.h"],
     linkstatic = 1,
     deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:stacktrace",
     ],
     alwayslink = 1,
 )
