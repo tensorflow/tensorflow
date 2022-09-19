@@ -24,7 +24,9 @@ module attributes {tf_saved_model.semantics} {
 
 // CHECK-LABEL: module
 module attributes {tf_saved_model.semantics} {
-  // CHECK: ml_program.global{{.*}}vars.v
+  // CHECK: ml_program.global
+  // CHECK-NOT: mutable
+  // CHECK-SAME: vars.v
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<10xf32>, value = dense<[0.,10.,2.,3.,4.,5.,6.,7.,8.,9.]> : tensor<10xf32> } : () -> ()
   func.func @read_twice() -> (tensor<10xf32> {tf_saved_model.index_path = []})
   attributes {tf_saved_model.exported_names = ["read_twice"]} {
@@ -43,7 +45,7 @@ module attributes {tf_saved_model.semantics} {
 
 // CHECK-LABEL: module
 module attributes {tf_saved_model.semantics} {
-  // CHECK: ml_program.global {{.*}} @vars.v
+  // CHECK: ml_program.global{{.*}}mutable{{.*}}@vars.v
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<10xf32>, value = dense<[0.,10.,2.,3.,4.,5.,6.,7.,8.,9.]> : tensor<10xf32> } : () -> ()
   func.func @assign_twice(%arg0: tensor<!tf_type.resource<tensor<10xf32>>> {tf_saved_model.bound_input = @v})
   -> ()
@@ -73,5 +75,23 @@ module attributes {tf_saved_model.semantics} {
     %2 = "tf.VarHandleOp"() {container = "", shared_name = "v"} : () -> tensor<!tf_type.resource<tensor<?xf32>>>
     "tf.AssignVariableOp"(%2, %arg0) : (tensor<!tf_type.resource<tensor<?xf32>>>, tensor<?xf32>) -> ()
     return
+  }
+}
+
+// -----
+
+// CHECK-LABEL: module
+module attributes {tf_saved_model.semantics} {
+  // CHECK: ml_program.global
+  // CHECK-NOT: mutable
+  // CHECK-SAME: vars.v(dense<[0{{.*}}1{{.*}}2{{.*}}3{{.*}}4{{.*}}5{{.*}}6{{.*}}7{{.*}}8{{.*}}9
+  "tf_saved_model.global_tensor"() {
+      is_mutable, sym_name = "v", type = tensor<10xf32>,
+          value = dense<[0.,1.,2.,3.,4.,5.,6.,7.,8.,9.]> : tensor<10xf32> } : () -> ()
+  func.func @preserves_constants(%arg0: tensor<!tf_type.resource<tensor<10xf32>>> {tf_saved_model.bound_input = @v})
+  -> (tensor<10xf32> {tf_saved_model.index_path = []})
+  attributes {tf_saved_model.exported_names = ["read"]} {
+    %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<10xf32>>>) -> tensor<10xf32>
+    return %0 : tensor<10xf32>
   }
 }
