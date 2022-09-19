@@ -33,19 +33,23 @@ constexpr float kSqrt2dPi = M_2_SQRTPI * M_SQRT1_2;  // sqrt( 2 / pi )
 
 }  // namespace gelu_internal
 
-// Plain implementations for GELU. Used for populating lookup table.
-inline float GeluTransform(float in) {
-  // 0.5 * x * ( 1 + erf( x / sqrt( 2 ) ) )
-  return 0.5f * in * (1.f + std::erf(in * M_SQRT1_2));
-}
-
-inline float GeluTransformApproximate(float in) {
-  // 0.5 * x * ( 1 + tanh( sqrt( 2 / pi ) * ( x + 0.044715 * x^3 ) ) )
-  return 0.5f * in *
-         (1.f + std::tanh(gelu_internal::kSqrt2dPi *
-                          // Note: Avoid std::pow for integer exponents
-                          // as it leads to much slower performance.
-                          (in + 0.044715f * in * in * in)));
+// Plain implementation for GELU. Used for populating lookup table.
+inline std::function<float(float)> GeluTransform(bool approximate) {
+  if (approximate) {
+    return [](float in) {
+      // 0.5 * x * ( 1 + tanh( sqrt( 2 / pi ) * ( x + 0.044715 * x^3 ) ) )
+      return 0.5f * in *
+             (1.f + std::tanh(gelu_internal::kSqrt2dPi *
+                              // Note: Avoid std::pow for integer exponents
+                              // as it leads to much slower performance.
+                              (in + 0.044715f * in * in * in)));
+    };
+  } else {
+    return [](float in) {
+      // 0.5 * x * ( 1 + erf( x / sqrt( 2 ) ) )
+      return 0.5f * in * (1.f + std::erf(in * M_SQRT1_2));
+    };
+  }
 }
 
 template <typename T>
