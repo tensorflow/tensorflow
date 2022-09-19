@@ -138,6 +138,32 @@ func.func @outside_yield() -> tensor<1x1xi1>  {
 
 // -----
 
+#map0 = affine_map<(d0) -> ()>
+#map1 = affine_map<(d0) -> (d0)>
+func.func @extra_argument(%arg0: tensor<4xf64>, %arg2: tensor<i1>) -> tensor<f64> {
+  %cst = arith.constant 0.000000e+00 : f64
+  %0 = linalg.init_tensor [] : tensor<f64>
+  %1 = linalg.fill ins(%cst : f64) outs(%0 : tensor<f64>) -> tensor<f64>
+  %2 = linalg.generic {
+    indexing_maps = [affine_map<(d0) -> ()>,
+                     affine_map<(d0) -> (d0)>,
+                     affine_map<(d0) -> ()>],
+    iterator_types = ["reduction"]}
+    ins(%arg2, %arg0 : tensor<i1>, tensor<4xf64>) outs(%1 : tensor<f64>) {
+  ^bb0(%arg3: i1, %arg4: f64, %arg5: f64):
+    %3 = arith.cmpf une, %arg4, %arg4 : f64
+    %4 = arith.select %3, %cst, %arg4 : f64
+    %5 = arith.select %arg3, %4, %cst : f64
+    %6 = arith.addf %arg5, %5 : f64
+    linalg.yield %6 : f64
+  } -> tensor<f64>
+  return %2 : tensor<f64>
+}
+
+// CHECK-LABEL: func @extra_argument
+
+// -----
+
 func.func @scatter_i32_i64(%indices: tensor<1x2xi32>, %updates: tensor<1xi64>,
                            %init: tensor<?x?xi64>) -> tensor<?x?xi64> {
   %0 = thlo.scatter ins(%indices: tensor<1x2xi32>, %updates: tensor<1xi64>)

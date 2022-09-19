@@ -48,9 +48,12 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
 
   LogicalResult matchAndRewrite(GenericOp genericOp,
                                 PatternRewriter &rewriter) const override {
-    if (llvm::any_of(genericOp->getResultTypes(), [](Type resultType) {
-          return !hasSingleElement(resultType.cast<RankedTensorType>());
-        }))
+    auto isNonScalar = [](Type type) {
+      return type.isa<TensorType>() &&
+             !hasSingleElement(type.cast<TensorType>());
+    };
+    if (llvm::any_of(genericOp.getOperandTypes(), isNonScalar) ||
+        llvm::any_of(genericOp.getResultTypes(), isNonScalar))
       return failure();
 
     // Map block arguments of genericOp to tensor.extract ops of its args.
@@ -60,15 +63,10 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
       Value operandValue = opOperand.get();
       Type operandType = operandValue.getType();
       auto bbArg = genericOp.getTiedBlockArgument(&opOperand);
-      if (!operandType.isa<ShapedType>()) {
-        bvm.map(bbArg, operandValue);
-        continue;
-      }
-      auto tensorType = operandType.dyn_cast<RankedTensorType>();
-      if (!tensorType || !hasSingleElement(tensorType)) return failure();
+      if (!operandType.isa<ShapedType>()) continue;
 
       SmallVector<Value> indices(
-          tensorType.getRank(),
+          operandType.cast<RankedTensorType>().getRank(),
           rewriter.create<arith::ConstantIndexOp>(loc, 0));
       Value extractedElement =
           rewriter.create<ExtractOp>(loc, operandValue, indices);
