@@ -853,6 +853,8 @@ cc_library(
     includes = ["include"],
     deps = [
         ":MhloPassIncGen",
+        ":legalize_to_linalg_utils",
+        ":map_mhlo_to_scalar_op",
         ":mlir_hlo",
         ":thlo",
         ":type_conversion",
@@ -862,6 +864,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",

@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --legalize-mhlo-to-thlo | FileCheck %s
+// RUN: mlir-hlo-opt %s --legalize-mhlo-to-thlo=enable-experimental=true | FileCheck %s
 
 // CHECK-LABEL: @dynamic_broadcast_in_dim
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?xf32>, %[[SHAPE:.*]]: tensor<3xindex>
@@ -188,7 +188,9 @@ func.func @simple_scatter(%dst: tensor<3xi32>, %indices: tensor<1x1xi32>,
 //  CHECK-SAME:                    %[[UPDATE]] : tensor<1xi32>)
 //  CHECK-SAME:                outs(%[[DST]] : tensor<3xi32>)
 //  CHECK-COUNT-2: tensor.from_elements
-//  CHECK-NEXT:    mhlo.add
+//  CHECK-COUNT-2: tensor.extract
+//  CHECK-NEXT:    arith.addi
+//  CHECK-NEXT:    tensor.from_elements
 //  CHECK-NEXT:    tensor.extract
 
 func.func @scatter_wrong_update(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
@@ -213,7 +215,9 @@ func.func @scatter_wrong_update(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
 // CHECK-LABEL: @scatter_wrong_update
 //       CHECK: thlo.scatter
 // CHECK-COUNT-2: tensor.from_elements
-//    CHECK-NEXT: mhlo.subtract
+// CHECK-COUNT-2: tensor.extract
+//    CHECK-NEXT: arith.subi
+//    CHECK-NEXT: tensor.from_elements
 //    CHECK-NEXT: tensor.extract
 
 func.func @scatter_wrong_index_vector_dim(
@@ -279,8 +283,11 @@ func.func @reduce_add(
 // CHECK-SAME: dimensions = [1] (%[[ARG2:.*]]: f32, %[[ARG3:.*]]: f32) {
 // CHECK: %[[ARG3_TENSOR:.*]] = tensor.from_elements %[[ARG3]] : tensor<f32>
 // CHECK: %[[ARG2_TENSOR:.*]] = tensor.from_elements %[[ARG2]] : tensor<f32>
-// CHECK: %[[ADD:.*]] = mhlo.add %[[ARG3_TENSOR]], %[[ARG2_TENSOR]] : tensor<f32>
-// CHECK: %[[RES:.*]] = tensor.extract %[[ADD]][] : tensor<f32>
+// CHECK: %[[ARG3_VAL:.*]] = tensor.extract %[[ARG3_TENSOR]][] : tensor<f32>
+// CHECK: %[[ARG2_VAL:.*]] = tensor.extract %[[ARG2_TENSOR]][] : tensor<f32>
+// CHECK: %[[ADD_VAL:.*]] = arith.addf %[[ARG3_VAL]], %[[ARG2_VAL]] : f32
+// CHECK: %[[ADD_TENSOR:.*]] = tensor.from_elements %[[ADD_VAL]] : tensor<f32>
+// CHECK: %[[RES:.*]] = tensor.extract %[[ADD_TENSOR]][] : tensor<f32>
 // CHECK: thlo.yield %[[RES]] : f32
 // CHECK: return %[[REDUCTION]] : tensor<5xf32>
 
@@ -307,3 +314,612 @@ func.func @variadic_reduce_add(
 // CHECK: %[[REDUCTION:.*]]:2 = thlo.reduction ins(%arg0 : tensor<5x4xf32>, %arg1 : tensor<?x?xi32>) outs(%[[FILL_F32]] : tensor<5xf32>, %[[FILL_I32]] : tensor<?xi32>)
 // CHECK: thlo.yield %{{.*}}, %{{.*}} : f32, i32
 // CHECK: return %[[REDUCTION]]#0, %[[REDUCTION]]#1 : tensor<5xf32>, tensor<?xi32>
+
+// -----
+
+// CHECK-LABEL: func @float_add
+func.func @float_add(%lhs: tensor<2x2xf32>,
+                %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK:  %[[INIT:.*]] = linalg.init_tensor
+  // CHECK: thlo.map
+  // CHECK-SAME: ins(%[[ARG0:[a-zA-Z0-9]*]] : tensor<2x2xf32>
+  // CHECK-SAME: %[[ARG1:[a-zA-Z0-9]*]] : tensor<2x2xf32>)
+  // CHECK-SAME: outs(%[[INIT]] : tensor<2x2xf32>)
+  // CHECK-SAME: (%[[ARG2:.*]]: f32, %[[ARG3:.*]]: f32)
+  // CHECK: %[[RESULT:[a-zA-Z0-9_0*]]] = arith.addf %[[ARG2]], %[[ARG3]]
+  // CHECK: thlo.yield %[[RESULT]]
+  %0 = "mhlo.add"(%lhs, %rhs) {someattr}
+      : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: integer_add
+func.func @integer_add(%lhs: tensor<2x2xi32>,
+                  %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: thlo.map
+  // CHECK: addi
+  %0 = "mhlo.add"(%lhs, %rhs) : (tensor<2x2xi32>,
+                                    tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: complex_add
+func.func @complex_add(%lhs: tensor<2x2xcomplex<f32>>,
+                  %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: thlo.map
+  // CHECK: complex.add
+  %0 = "mhlo.add"(%lhs, %rhs) : (tensor<2x2xcomplex<f32>>,
+      tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_atan2
+func.func @complex_atan2(%lhs: tensor<2x2xcomplex<f32>>,
+    %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.atan2"(%lhs, %rhs)
+      : (tensor<2x2xcomplex<f32>>, tensor<2x2xcomplex<f32>>)
+      -> tensor<2x2xcomplex<f32>>
+  // CHECK: thlo.map
+  // CHECK: complex.atan2
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
+}
+
+
+// -----
+
+// CHECK-LABEL: func @float_mul
+func.func @float_mul(%lhs: tensor<2x2xf32>,
+                %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: mulf
+  %0 = "mhlo.multiply"(%lhs, %rhs) : (tensor<2x2xf32>,
+                                    tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @integer_mul
+func.func @integer_mul(%lhs: tensor<2x2xi32>,
+                  %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: thlo.map
+  // CHECK: muli
+  %0 = "mhlo.multiply"(%lhs, %rhs) : (tensor<2x2xi32>,
+                                    tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_mul
+func.func @complex_mul(%lhs: tensor<2x2xcomplex<f32>>,
+                  %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: thlo.map
+  // CHECK: complex.mul
+  %0 = "mhlo.multiply"(%lhs, %rhs)
+          : (tensor<2x2xcomplex<f32>>, tensor<2x2xcomplex<f32>>)
+          -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_remainder
+func.func @float_remainder(%lhs: tensor<2x2xf32>,
+                      %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: remf
+  %0 = "mhlo.remainder"(%lhs, %rhs) : (tensor<2x2xf32>,
+                                    tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @integer_remainder
+func.func @integer_remainder(%lhs: tensor<2x2xi32>,
+                        %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: thlo.map
+  // CHECK: arith.remsi
+  %0 = "mhlo.remainder"(%lhs, %rhs) : (tensor<2x2xi32>,
+                                          tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @population_count_integer
+func.func @population_count_integer(%lhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: thlo.map
+  // CHECK: math.ctpop
+  %0 = "mhlo.popcnt"(%lhs) : (tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_sqrt
+func.func @complex_sqrt(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.sqrt"(%operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  // CHECK: thlo.map
+  // CHECK: complex.sqrt
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_rsqrt
+func.func @float_rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %tensor_result = "mhlo.rsqrt"(%operand)
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: thlo.map
+  // CHECK: rsqrt
+  func.return %tensor_result : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_rsqrt
+func.func @complex_rsqrt(%operand: tensor<2x2xcomplex<f32>>)
+    -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.rsqrt"(%operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  // CHECK: thlo.map
+  // CHECK: complex.rsqrt
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_cbrt
+func.func @float_cbrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %tensor_result = "mhlo.cbrt"(%operand)
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-DAG: %[[THIRD:.+]] = arith.constant 0.333333343
+  // CHECK-DAG: %[[ABS:.+]] = math.absf %arg1
+  // CHECK-DAG: %[[POW:.+]] = math.powf %[[ABS]], %[[THIRD]]
+  // CHECK-DAG: %[[RESULT:.+]] = math.copysign %[[POW]], %arg1
+  // CHECK: thlo.yield %[[RESULT]]
+  func.return %tensor_result : tensor<2x2xf32>
+}
+
+// -----
+
+
+// CHECK-LABEL: func @float_sub
+func.func @float_sub(%lhs: tensor<2x2xf32>,
+                %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: subf
+  %0 = "mhlo.subtract"(%lhs, %rhs) : (tensor<2x2xf32>,
+                                    tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @integer_sub
+func.func @integer_sub(%lhs: tensor<2x2xi32>,
+                  %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: thlo.map
+  // CHECK: subi
+  %0 = "mhlo.subtract"(%lhs, %rhs) : (tensor<2x2xi32>,
+                                    tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: complex_sub
+func.func @complex_sub(%lhs: tensor<2x2xcomplex<f32>>,
+                  %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: thlo.map
+  // CHECK: complex.sub
+  %0 = "mhlo.subtract"(%lhs, %rhs) : (tensor<2x2xcomplex<f32>>,
+      tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_abs
+func.func @float_abs(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: math.absf
+  %0 = "mhlo.abs"(%arg0) {someattr} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_exp
+func.func @float_exp(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: exp
+  %0 = "mhlo.exponential"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_exp
+func.func @complex_exp(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: thlo.map
+  // CHECK: complex.exp
+  %0 = "mhlo.exponential"(%arg0) : (tensor<2x2xcomplex<f32>>)
+                                 -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_expm1
+func.func @float_expm1(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: expm1
+  %0 = "mhlo.exponential_minus_one"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_expm1
+func.func @complex_expm1(%arg0: tensor<2x2xcomplex<f32>>)
+    -> tensor<2x2xcomplex<f32>> {
+  // CHECK: thlo.map
+  // CHECK: complex.expm1
+  %0 = "mhlo.exponential_minus_one"(%arg0)
+    : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_log
+func.func @float_log(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: math.log
+  %0 = "mhlo.log"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_log
+func.func @complex_log(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: thlo.map
+  // CHECK: complex.log
+  %0 = "mhlo.log"(%arg0) : (tensor<2x2xcomplex<f32>>)
+                         -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_log1p
+func.func @float_log1p(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: math.log1p
+  %0 = "mhlo.log_plus_one"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_log1p
+func.func @complex_log1p(%arg0: tensor<2x2xcomplex<f32>>)
+    -> tensor<2x2xcomplex<f32>> {
+  // CHECK: thlo.map
+  // CHECK: complex.log1p
+  %0 = "mhlo.log_plus_one"(%arg0) : (tensor<2x2xcomplex<f32>>)
+                                  -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_logistic
+func.func @float_logistic(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: (%[[ARG:[0-9a-z]*]]: f32) {
+  // CHECK: %[[C1:.*]] = arith.constant 1.{{.*}}e+00
+  // CHECK: %[[NEG_ARG:.*]] = arith.negf %[[ARG]]
+  // CHECK: %[[EXP_NEG_ARG:.*]] = math.exp %[[NEG_ARG]]
+  // CHECK: %[[ONE_ADD_EXP_NEG_ARG:.*]] = arith.addf %[[C1]], %[[EXP_NEG_ARG]]
+  // CHECK: %[[RESULT:.*]] = arith.divf %[[C1]], %[[ONE_ADD_EXP_NEG_ARG]]
+  // CHECK: thlo.yield %[[RESULT]]
+  %0 = "mhlo.logistic"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_ceil
+func.func @float_ceil(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: math.ceil
+  %0 = "mhlo.ceil"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @floor
+func.func @floor(%input: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: math.floor
+  %0 = "mhlo.floor"(%input) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_neg
+func.func @float_neg(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: negf
+  %0 = "mhlo.negate"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_neg
+func.func @complex_neg(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: thlo.map
+  // CHECK: complex.neg
+  %0 = "mhlo.negate"(%arg0) : (tensor<2x2xcomplex<f32>>)
+                            -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_sign
+func.func @complex_sign(
+    %arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: thlo.map
+  // CHECK: complex.sign
+  %0 = "mhlo.sign"(%arg0) : (tensor<2x2xcomplex<f32>>)
+                          -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_tanh
+func.func @float_tanh(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: tanh
+  %0 = "mhlo.tanh"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_tanh
+func.func @complex_tanh(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.tanh"(%operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  // CHECK: thlo.map
+  // CHECK: complex.tanh
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @integer_and
+func.func @integer_and(%lhs: tensor<2x2xi32>,
+                  %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: thlo.map
+  // CHECK: and
+  %0 = "mhlo.and"(%lhs, %rhs) : (tensor<2x2xi32>,
+                                    tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @integer_or
+func.func @integer_or(%lhs: tensor<2x2xi32>,
+                  %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: thlo.map
+  // CHECK: or
+  %0 = "mhlo.or"(%lhs, %rhs) : (tensor<2x2xi32>,
+                                    tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @integer_xor
+func.func @integer_xor(%lhs: tensor<2x2xi32>,
+                  %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: thlo.map
+  // CHECK: xor
+  %0 = "mhlo.xor"(%lhs, %rhs) : (tensor<2x2xi32>,
+                                    tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @count_leading_zeros
+func.func @count_leading_zeros(%lhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: thlo.map
+  // CHECK: math.ctlz
+  %0 = "mhlo.count_leading_zeros"(%lhs) : (tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_cmp
+func.func @float_cmp(%lhs: tensor<2x2xf32>,
+                %rhs: tensor<2x2xf32>) -> (tensor<2x2xi1>) {
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction EQ>}
+          : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
+  func.return %0 : tensor<2x2xi1>
+}
+// CHECK: linalg.init_tensor [2, 2] : tensor<2x2xi1>
+// CHECK: thlo.map
+// CHECK-SAME: ins({{[^)]*}}) outs(%{{[^)]*}})
+// CHECK-SAME: (%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32) {
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.cmpf oeq, %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   thlo.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @float_cmp_ne
+func.func @float_cmp_ne(%lhs: tensor<2x2xf32>,
+                %rhs: tensor<2x2xf32>) -> (tensor<2x2xi1>) {
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction NE>}
+          : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
+  func.return %0 : tensor<2x2xi1>
+}
+// CHECK: linalg.init_tensor [2, 2] : tensor<2x2xi1>
+// CHECK: thlo.map
+// CHECK-SAME: ins({{[^)]*}}) outs(%{{[^)]*}})
+// CHECK-SAME: (%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32) {
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.cmpf une, %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   thlo.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @int_cmp
+func.func @int_cmp(%lhs: tensor<2x2xi32>,
+              %rhs: tensor<2x2xi32>) -> tensor<2x2xi1> {
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction LT>}
+          : (tensor<2x2xi32>, tensor<2x2xi32>) -> (tensor<2x2xi1>)
+  func.return %0 : tensor<2x2xi1>
+}
+// CHECK: linalg.init_tensor [2, 2] : tensor<2x2xi1>
+// CHECK: thlo.map
+// CHECK-SAME: ins({{[^)]*}}) outs(%{{[^)]*}})
+// CHECK-SAME: (%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32) {
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.cmpi slt, %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   thlo.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @complex_cmp_eq
+func.func @complex_cmp_eq(%lhs: tensor<2xcomplex<f32>>,
+                     %rhs: tensor<2xcomplex<f32>>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction EQ>}
+          : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> (tensor<2xi1>)
+  func.return %0 : tensor<2xi1>
+}
+// CHECK: linalg.init_tensor [2] : tensor<2xi1>
+// CHECK: thlo.map
+// CHECK-SAME: ins({{[^)]*}}) outs(%{{[^)]*}})
+// CHECK-SAME: (%[[LHS_IN:.*]]: complex<f32>, %[[RHS_IN:.*]]: complex<f32>) {
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.eq %[[LHS_IN]], %[[RHS_IN]] : complex<f32>
+// CHECK-NEXT:   thlo.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @complex_cmp_neq
+func.func @complex_cmp_neq(%lhs: tensor<2xcomplex<f64>>,
+                      %rhs: tensor<2xcomplex<f64>>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction NE>}
+          : (tensor<2xcomplex<f64>>, tensor<2xcomplex<f64>>) -> (tensor<2xi1>)
+  func.return %0 : tensor<2xi1>
+}
+// CHECK: linalg.init_tensor [2] : tensor<2xi1>
+// CHECK: thlo.map
+// CHECK-SAME: ins({{[^)]*}}) outs(%{{[^)]*}})
+// CHECK-SAME: (%[[LHS_IN:.*]]: complex<f64>, %[[RHS_IN:.*]]: complex<f64>) {
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.neq %[[LHS_IN]], %[[RHS_IN]] : complex<f64>
+// CHECK-NEXT:   thlo.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @float_cos
+func.func @float_cos(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: math.cos
+  %0 = "mhlo.cosine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_cos
+func.func @complex_cos(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: thlo.map
+  // CHECK: complex.cos
+  %0 = "mhlo.cosine"(%arg0) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @float_sin
+func.func @float_sin(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: thlo.map
+  // CHECK: math.sin
+  %0 = "mhlo.sine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_sin
+func.func @complex_sin(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: thlo.map
+  // CHECK: complex.sin
+  %0 = "mhlo.sine"(%arg0) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @copy
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
+func.func @copy(%input: tensor<2x4x8xf32>) -> tensor<2x4x8xf32> {
+  %0 = "mhlo.copy"(%input) : (tensor<2x4x8xf32>) -> (tensor<2x4x8xf32>)
+  func.return %0 : tensor<2x4x8xf32>
+}
+// CHECK: return [[ARG]] : tensor<2x4x8xf32>
+
+// -----
+
+// CHECK-LABEL: func @is_finite
+func.func @is_finite(%input: tensor<2x2xf32>) -> tensor<2x2xi1> {
+  %0 = "mhlo.is_finite"(%input) : (tensor<2x2xf32>) -> tensor<2x2xi1>
+  func.return %0 : tensor<2x2xi1>
+}
+// CHECK: thlo.map
+// CHECK-SAME: ins({{[^)]*}}) outs(%{{[^)]*}})
+// CHECK-SAME: (%[[OPERAND_IN:.*]]: f32) {
+// CHECK-NEXT:   %[[POS_INF:.+]] = arith.constant 0x7F800000 : f32
+// CHECK-NEXT:   %[[ABS_X:.+]] = math.absf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.+]] = arith.cmpf one, %[[ABS_X]], %[[POS_INF]] : f32
+// CHECK-NEXT:   thlo.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @round_nearest_even
+func.func @round_nearest_even(%val: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: %[[ROUND:.+]] = math.roundeven %arg1
+  // CHECK: thlo.yield %[[ROUND]]
+  %0 = "mhlo.round_nearest_even"(%val) : (tensor<2x2xf32>) -> (tensor<2x2xf32>)
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @round
+func.func @round(%val: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: %[[ROUND:.+]] = math.round %arg1
+  // CHECK: thlo.yield %[[ROUND]]
+  %0 = "mhlo.round_nearest_afz"(%val) : (tensor<2x2xf32>) -> (tensor<2x2xf32>)
+  func.return %0 : tensor<2x2xf32>
+}

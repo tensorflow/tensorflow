@@ -93,6 +93,17 @@ def HloLegalizeToLinalgPass : Pass<"hlo-legalize-to-linalg", "func::FuncOp"> {
 def LegalizeMHLOToTHLOPass : Pass<"legalize-mhlo-to-thlo", "mlir::func::FuncOp"> {
   let summary = "Legalize from HLO dialect to tHLO dialect.";
   let constructor = "::mlir::mhlo::createLegalizeMHLOToTHLOPass()";
+  let options =
+      [Option<"enableExperimental", "enable-experimental", "bool",
+              /*default=*/"false",
+              "Enable conversion to operations that are still under "
+              "developement and might not be working in some pipelines. For "
+              "example, thlo.map and thlo.transpose.">];
+  let dependentDialects = [
+    "arith::ArithmeticDialect", "complex::ComplexDialect",
+    "linalg::LinalgDialect", "math::MathDialect", "shape::ShapeDialect",
+    "tensor::TensorDialect", "thlo::THLODialect"
+  ];
 }
 
 def HloLegalizeShapeComputationsPass : Pass<"hlo-legalize-shape-computations", "func::FuncOp"> {
