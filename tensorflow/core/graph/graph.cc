@@ -66,7 +66,6 @@ Node::NodeClass Node::GetNodeClassForOp(const std::string& ts) {
               {"Variable", NC_VARIABLE},
               {"VariableV2", NC_VARIABLE},
               REF_CLASS("Identity", NC_IDENTITY),
-              {"IdentityN", NC_IDENTITY},
               {"GetSessionHandle", NC_GET_SESSION_HANDLE},
               {"GetSessionHandleV2", NC_GET_SESSION_HANDLE},
               {"GetSessionTensor", NC_GET_SESSION_TENSOR},
