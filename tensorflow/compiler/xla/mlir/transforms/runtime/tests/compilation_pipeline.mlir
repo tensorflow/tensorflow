@@ -22,4 +22,4 @@ func.func @main(%arg0: memref<?xf32>) attributes { rt.entrypoint } {
 // CHECK: llvm.func @target
 // CHECK-SAME: passthrough = ["nounwind"]
 func.func private @custom_call(%arg0: memref<?xf32>)
-  attributes { rt.direct_custom_call = "target" }
+  attributes { rt.custom_call = "target" }

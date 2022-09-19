@@ -34,8 +34,9 @@ def ConvertToEntrypoint
      - all results returned via the `rt.set_result` operation
      - failed asserts set the results error via the `rt.set_error` operation
      - function calls marked with `rt.custom_call` attribute (on the callee)
-       converted to the `rt.custom_call` operations (or `rt.direct_custom_call`
-       attribute for direct custom calls)
+       converted to the `rt.custom_call` operations.
+     - function declarations annotated with `rt.dynamic` attribute converted to
+       dynamic custom calls that are resolved at run time by name
 
     See the `ir/runtime/rt_ops.td` to find how Xla executable returns results
     and errors usin the runtime APIs.

@@ -62,6 +62,7 @@ void RuntimeDialect::initialize() {
 
 mlir::LogicalResult RuntimeDialect::verifyOperationAttribute(
     mlir::Operation *op, mlir::NamedAttribute attribute) {
+  // Only functions can be marked as rt entrypoints.
   if (attribute.getName() == "rt.entrypoint") {
     if (!(attribute.getValue().isa<mlir::UnitAttr>())) {
       return op->emitOpError()
@@ -80,8 +81,8 @@ mlir::LogicalResult RuntimeDialect::verifyOperationAttribute(
     }
   }
 
-  if (attribute.getName() == "rt.custom_call" ||
-      attribute.getName() == "rt.direct_custom_call") {
+  // Custom call attribute can be defined only on a function declaration.
+  if (attribute.getName() == "rt.custom_call") {
     if (!(attribute.getValue().isa<mlir::StringAttr>())) {
       return op->emitOpError() << "requires " << attribute.getName()
                                << " to only accept string value";
@@ -98,6 +99,17 @@ mlir::LogicalResult RuntimeDialect::verifyOperationAttribute(
     }
   }
 
+  // Dynamic custom call attribute can be applied only to a custom call
+  // declaration.
+  if (attribute.getName() == "rt.dynamic") {
+    if (!op->hasAttr("rt.custom_call")) {
+      return op->emitOpError()
+             << attribute.getName()
+             << " can only be applied to a custom call declaration";
+    }
+  }
+
+  // Check constraints for all function arguments.
   if (auto func = llvm::dyn_cast<mlir::func::FuncOp>(op)) {
     for (int i = 0; i < func.getNumArguments(); ++i) {
       if (!IsRtConstraintAttr(

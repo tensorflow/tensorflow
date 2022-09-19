@@ -38,11 +38,11 @@ func.func @custom_call(%ctx: !rt.execution_context,
   return %0 : f32
 }
 
-// CHECK-LABEL: func @direct_custom_call(
+// CHECK-LABEL: func @dynamic_custom_call(
 // CHECK:  %[[CTX:.*]]: !rt.execution_context
-func.func @direct_custom_call(%ctx: !rt.execution_context) {
-  // CHECK: rt.custom_call direct %[[CTX]]["f32_reduce"] () : () -> ()
-  %status = rt.custom_call direct %ctx["f32_reduce"] () : () -> ()
+func.func @dynamic_custom_call(%ctx: !rt.execution_context) {
+  // CHECK: rt.custom_call dynamic %[[CTX]]["f32_reduce"] () : () -> ()
+  %status = rt.custom_call dynamic %ctx["f32_reduce"] () : () -> ()
   return
 }
 

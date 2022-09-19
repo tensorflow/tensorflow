@@ -12,7 +12,7 @@ func.func @gpu_memset_i32(%dst: memref<?xi32>) {
 }
 
 // CHECK: func private @[[MEMSET]](memref<?xi32>, i32)
-// CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.memset"}
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.memset"}
 
 // -----
 
@@ -28,4 +28,4 @@ func.func @gpu_memset_f32(%dst: memref<?xf32>) {
 }
 
 // CHECK: func private @[[MEMSET]](memref<?xf32>, f32)
-// CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.memset"}
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.memset"}

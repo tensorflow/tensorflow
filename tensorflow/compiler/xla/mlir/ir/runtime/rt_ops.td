@@ -179,9 +179,9 @@ def RT_CustomCallOp : RT_Op<"custom_call"> {
     an assumption that all OneDnn related custom calls will be registered with
     a `one_dnn` prefix.
 
-    Indirect custom calls are resolved at runtime using the custom calls registry,
-    which incurs additional overheads because the custom call handler has to
-    be looked up by name (expensive string map lookup).
+    Dynamic custom calls are resolved at runtime using the custom calls
+    registry, which incurs additional overheads because the custom call handler
+    has to be looked up by name (expensive string map lookup).
 
     Direct custom calls are linked to the custom call handler when compiling the
     XLA executable, and the user must pass a runtime symbol map (see executable
@@ -189,15 +189,15 @@ def RT_CustomCallOp : RT_Op<"custom_call"> {
     implementing the custom call API:
 
       ```
-      bool OneDnnSomeOpImpl(xla::runtime::ExecutionContext* ctx,
-                            void** args, void** attrs);
+      bool CustomCallImpl(xla::runtime::ExecutionContext* ctx,
+                          void** args, void** attrs, void** rets);
       ```
   }];
 
   let arguments = (ins
     ExecutionContextType:$ctx,
     StrAttr:$callee,
-    UnitAttr:$direct,
+    UnitAttr:$dynamic,
     Variadic<AnyType>:$operands
   );
 
@@ -207,7 +207,7 @@ def RT_CustomCallOp : RT_Op<"custom_call"> {
   );
 
   let assemblyFormat = [{
-    (`direct` $direct^)? $ctx `[` $callee `]`  `(` $operands `)`
+    (`dynamic` $dynamic^)? $ctx `[` $callee `]`  `(` $operands `)`
     attr-dict `:` functional-type($operands, $results)
   }];
 }

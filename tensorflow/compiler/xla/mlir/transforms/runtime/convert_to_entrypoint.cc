@@ -49,7 +49,7 @@ static void ConvertCustomCallOperations(func::FuncOp func, Value exec_ctx) {
     func::CallOp call;
     func::FuncOp callee;
     std::string_view target;
-    bool direct;
+    bool dynamic;
   };
 
   // Collect function calls that have to be converted to custom calls.
@@ -58,13 +58,12 @@ static void ConvertCustomCallOperations(func::FuncOp func, Value exec_ctx) {
     auto callee = dyn_cast<func::FuncOp>(sym_table.lookup(op.getCallee()));
     if (!callee) return;
 
-    // Check if the call is an indirect custom call ...
+    // Check if callee is a custom call declaration.
     StringAttr target = callee->getAttrOfType<StringAttr>("rt.custom_call");
-    if (target) custom_calls.push_back({op, callee, target.strref(), false});
+    if (!target) return;
 
-    // ... or a direct custom call.
-    target = callee->getAttrOfType<StringAttr>("rt.direct_custom_call");
-    if (target) custom_calls.push_back({op, callee, target.strref(), true});
+    custom_calls.push_back(
+        {op, callee, target.strref(), callee->hasAttr("rt.dynamic")});
   });
 
   // After converting to custom call we need to clean up all declarations.
@@ -81,7 +80,7 @@ static void ConvertCustomCallOperations(func::FuncOp func, Value exec_ctx) {
 
     // Rewrite function call with a custom call, and check the return status.
     auto call = b.create<CustomCallOp>(results, exec_ctx, custom_call.target,
-                                       custom_call.direct,
+                                       custom_call.dynamic,
                                        custom_call.call.getOperands());
 
     // Copy optional attributes from the custom call function declaration.
