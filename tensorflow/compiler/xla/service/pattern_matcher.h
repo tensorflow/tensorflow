@@ -1284,8 +1284,7 @@ class HloInstructionPatternOptionalUnaryOpImpl {
       if (pattern_.Match(HloOperand(inst, 0), option)) {
         return true;
       } else {
-        EXPLAIN << " \nThe operand of the HloInstruction doesn't match "
-                << pattern_.ToString() << " and the ";
+        EXPLAIN << " and the ";
       }
     } else {
       EXPLAIN << "The HloInstruction doesn't have one of the opcodes {"
@@ -1297,7 +1296,7 @@ class HloInstructionPatternOptionalUnaryOpImpl {
     }
     // In the transparent case, the instruction matches the given operand
     // pattern.
-    if (pattern_.Match(inst, option, false)) {
+    if (pattern_.Match(inst, option, /*explain_instruction=*/false)) {
       return true;
     }
     return false;
@@ -1310,7 +1309,7 @@ class HloInstructionPatternOptionalUnaryOpImpl {
                            absl::StrAppend(out, HloOpcodeString(opcode));
                          })
         << "} before matching ";
-    pattern_.DescribeTo(os);
+    pattern_.DescribeTo(os, indent);
     *os << ".";
   }
 
@@ -1978,14 +1977,14 @@ class HloInstructionPattern {
 
   // Returns true and captures the instruction iff it matches the pattern.
   bool Match(::xla::HloInstruction* inst, MatchOption option,
-             bool print_explanation = true) const {
+             bool explain_instruction = true) const {
     if (impl_.Match(inst, option)) {
       if (option.capture && matched_inst_) {
         *matched_inst_ = inst;
       }
       return true;
     }
-    if (print_explanation) {
+    if (explain_instruction) {
       EXPLAIN << "\nin " << InstToString(inst);
     }
     return false;
@@ -2183,12 +2182,6 @@ class HloInstructionPattern {
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     impl_.DescribeTo(os, indent);
-  }
-
-  std::string ToString() const {
-    std::ostringstream oss;
-    impl_.DescribeTo(&oss, 0);
-    return oss.str();
   }
 
  private:

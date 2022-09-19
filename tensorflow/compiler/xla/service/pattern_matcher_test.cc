@@ -1141,10 +1141,7 @@ TEST_F(PatternMatcherTest, OptionalUnaryOp) {
       "HloInstruction doesn't have opcode ",
       HloOpcodeString(HloOpcode::kBitcast),
       "\nin cos = f32[] cosine(f32[] p0) ",
-      "\nThe operand of the HloInstruction doesn't match an HloInstruction "
-      "with opcode ",
-      HloOpcodeString(HloOpcode::kBitcast),
-      " and the HloInstruction doesn't have opcode ",
+      "and the HloInstruction doesn't have opcode ",
       HloOpcodeString(HloOpcode::kBitcast), "\nin out = f32[] abs(f32[] cos)");
   EXPECT_DESC_AND_EXPLANATION(
       root,
