@@ -80,6 +80,11 @@ class ScatterSliceMatcher {
         if (result_dimensions_[i] != operand_dimensions_[i]) {
           return false;  // Another slice has incompatible dimensions.
         }
+        auto& update_window_dims =
+            scatter_->scatter_dimension_numbers().update_window_dims();
+        if (absl::c_binary_search(update_window_dims, i)) {
+          return false;  // Update dimensions cannot be truncated.
+        }
         result_dimensions_[i] = slice->slice_limits(i);
         VLOG(10) << "Dimension " << i << " truncated to size "
                  << result_dimensions_[i];

@@ -172,6 +172,14 @@ slice_not_found {
   %scatter = f32[8] scatter(%operands, %indices, %updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
   ROOT %exp = f32[8] exponential(%scatter)
 }
+
+slice_update_dimensions {
+  %indices = s32[10] parameter(0)
+  %updates = f32[10,1,128] parameter(1)
+  %operands = f32[100,128] constant(0)
+  %scatter = f32[100,128] scatter(%operands, %indices, %updates), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
+  ROOT %slice = f32[100,64] slice(%scatter), slice={[0:100], [0:64]}
+}
   )")
                     .ValueOrDie();
   ScatterSliceSimplifier test_pass;
