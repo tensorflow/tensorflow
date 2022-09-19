@@ -3600,7 +3600,7 @@ void IrEmitterUnnested::EmitTileElementForTranspose(
       index, output_arrays[0].GetShape(), &b_, tiling_scheme.GetDimsInElems());
   llvm_ir::ElementGenerator output_generator =
       *fused_emitter.GetGenerator(*fused_computation->root_instruction());
-  llvm::Value* output_value = output_generator(untiled_index).ValueOrDie();
+  llvm::Value* output_value = output_generator(untiled_index).value();
   if (output_arrays.size() > 1) {
     DCHECK(output_value->getType()->isStructTy());
     DCHECK_EQ(output_value->getType()->getStructNumElements(),
@@ -3653,7 +3653,7 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
       // Initialize the partial result with the initial value of the reduction.
       llvm::Value* init_ir_value = (*fused_emitter.GetGenerator(*init_value))(
                                        IrArray::Index(b_.getInt32Ty()))
-                                       .ValueOrDie();
+                                       .value();
 
       for (int i = 0; i < num_partial_results; ++i) {
         b_.CreateStore(init_ir_value,
@@ -5083,7 +5083,7 @@ Status IrEmitterUnnested::EmitElementForInputFusibleSlices(
   }
   for (const HloInstruction* slice : slice_instructions) {
     auto input_generator = *fused_emitter.GetGenerator(*slice->operand(0));
-    input_ir_values.push_back(input_generator(index).ValueOrDie());
+    input_ir_values.push_back(input_generator(index).value());
   }
 
   // Emit for slice_instructions.

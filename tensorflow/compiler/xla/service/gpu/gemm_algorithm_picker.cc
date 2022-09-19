@@ -345,7 +345,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* instr,
                       allocator->GetStream(executor->device_ordinal()));
 
   GemmBackendConfig gemm_config =
-      instr->backend_config<GemmBackendConfig>().ValueOrDie();
+      instr->backend_config<GemmBackendConfig>().value();
 
   TF_ASSIGN_OR_RETURN(std::optional<se::blas::AlgorithmType> gemm_algorithm,
                       DoGemmAutotune(instr, gemm_config, allocator, stream));
