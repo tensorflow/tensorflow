@@ -1694,6 +1694,10 @@ static LogicalResult Verify(OpT op) {
     filter_channels = ty.getDimSize(idx);
   }
 
+  if (ShapedType::isDynamic(filter_channels) ||
+      ShapedType::isDynamic(input_channels))
+    return success();
+
   if (input_channels != -1 && filter_channels != -1 &&
       input_channels % filter_channels != 0)
     return op.emitOpError()

@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 
 namespace mlir {
@@ -670,8 +671,8 @@ void buildComparisonBinOp(Builder *builder, OperationState &result, Value lhs,
   // Comparison binary ops always return i1 tensor.
   if (auto shaped_type = result_type.dyn_cast<RankedTensorType>()) {
     auto result_shape = shaped_type.getShape();
-    result.types.push_back(
-        RankedTensorType::get(result_shape, builder->getI1Type()));
+    result.types.push_back(tensorflow::GetTypeFromTFTensorShape(
+        result_shape, builder->getI1Type()));
   } else {
     result.types.push_back(UnrankedTensorType::get(builder->getI1Type()));
   }
@@ -746,22 +747,22 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
                                          int64_t axis) {
   const int64_t output_rank = output_type.getRank();
 
-  constexpr int64_t kDynamicSize = -1;
-  SmallVector<int64_t, 4> result_dim_sizes_loc(output_rank, -1);
+  SmallVector<int64_t, 4> result_dim_sizes_loc(output_rank,
+                                               ShapedType::kDynamicSize);
   SmallVector<int64_t, 4> result_dim_sizes(output_type.getShape().begin(),
                                            output_type.getShape().end());
   result_dim_sizes[axis] = 0;
 
   auto FormatLoc = [&result_dim_sizes_loc](int64_t dim) {
     const int64_t loc = result_dim_sizes_loc[dim];
-    if (loc == -1) return std::string("output");
+    if (loc == ShapedType::kDynamicSize) return std::string("output");
     return llvm::formatv("operand #{0}", loc).str();
   };
 
   for (const auto &operand : llvm::enumerate(operand_types)) {
     auto operand_type = operand.value().dyn_cast<RankedTensorType>();
     if (!operand_type) {
-      result_dim_sizes[axis] = kDynamicSize;
+      result_dim_sizes[axis] = ShapedType::kDynamicSize;
       continue;
     }
 
@@ -778,7 +779,7 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
       if (dim == axis) {
         if (ShapedType::isDynamic(operand_dim_size) ||
             ShapedType::isDynamic(result_dim_size)) {
-          result_dim_sizes[axis] = kDynamicSize;
+          result_dim_sizes[axis] = ShapedType::kDynamicSize;
         } else {
           result_dim_sizes[axis] += operand_dim_size;
         }
@@ -996,7 +997,7 @@ struct ConvertBroadcastToReshape : public OpRewritePattern<BroadcastToOp> {
     }
     // Reshape op supports only new shape as I32. Add a cast op to I32 always
     // to make sure the introduced Reshape Op is a valid one.
-    auto result_type = RankedTensorType::get(
+    auto result_type = tensorflow::GetTypeFromTFTensorShape(
         op.shape().getType().cast<RankedTensorType>().getShape(),
         rewriter.getI32Type());
     auto cast_op =
@@ -1276,8 +1277,8 @@ LogicalResult Conv2DOp::inferReturnTypes(
     return_shape[2] = output_width;
   }
 
-  auto result_type =
-      mlir::RankedTensorType::get(return_shape, input_ty.getElementType());
+  auto result_type = tensorflow::GetTypeFromTFTensorShape(
+      return_shape, input_ty.getElementType());
 
   inferredReturnTypes.assign({result_type});
   return success();
@@ -1399,8 +1400,8 @@ static void BuildGatherOp(OpBuilder *builder, OperationState &result,
 
   TFL::GatherOp::build(
       *builder, result,
-      RankedTensorType::get(shape, params_type.getElementType()), params,
-      indices, axis, batch_dims);
+      tensorflow::GetTypeFromTFTensorShape(shape, params_type.getElementType()),
+      params, indices, axis, batch_dims);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1698,7 +1699,7 @@ struct ConvertShapeTo1D : public OpRewritePattern<ReshapeOp> {
         return failure();
       }
     }
-    auto new_shape = shape.reshape(RankedTensorType::get(
+    auto new_shape = shape.reshape(tensorflow::GetTypeFromTFTensorShape(
         {*old_shape.rbegin()}, shape.getType().getElementType()));
     rewriter.replaceOpWithNewOp<TFL::ConstOp>(reshape.shape().getDefiningOp(),
                                               new_shape);
@@ -1736,8 +1737,8 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
       for (const auto &it : shape_elements.getValues<APInt>()) {
         shape_data.push_back(it.getSExtValue());
       }
-      result_type =
-          RankedTensorType::get(shape_data, input_type.getElementType());
+      result_type = tensorflow::GetTypeFromTFTensorShape(
+          shape_data, input_type.getElementType());
     }
     return dense_elements.reshape(result_type);
   }
@@ -1773,7 +1774,8 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
     if (shape_ty.hasStaticShape()) {
       llvm::SmallVector<int64_t, 8> dynamic_shape(shape_ty.getDimSize(0),
                                                   ShapedType::kDynamicSize);
-      output_ty = RankedTensorType::get(dynamic_shape, element_ty);
+      output_ty =
+          tensorflow::GetTypeFromTFTensorShape(dynamic_shape, element_ty);
     }
     return success();
   }
@@ -1787,7 +1789,7 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
   output_ty_shape.reserve(shape_attr.getNumElements());
   for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
-    if (size == ShapedType::kDynamicSize) {
+    if (size == tensorflow::kTFDynamicSize) {
       if (unknown_index != -1)
         return error_handler(llvm::formatv(
             "requires 'shape' to have at most one dynamic dimension, but got "
@@ -1812,7 +1814,8 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
   }
 
   if (!input_ty.hasStaticShape()) {
-    output_ty = RankedTensorType::get(output_ty_shape, element_ty);
+    output_ty =
+        tensorflow::GetTypeFromTFTensorShape(output_ty_shape, element_ty);
     return success();
   }
 
@@ -1841,7 +1844,7 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
     output_ty_shape[unknown_index] = missing_dim;
   }
 
-  output_ty = RankedTensorType::get(output_ty_shape, element_ty);
+  output_ty = tensorflow::GetTypeFromTFTensorShape(output_ty_shape, element_ty);
 
   return success();
 }
@@ -1987,8 +1990,9 @@ struct ReplacePackWithReshape : public RewritePattern {
 
     auto new_shape = rewriter.create<TFL::ConstOp>(
         loc, DenseIntElementsAttr::get(
-                 RankedTensorType::get(new_shape_array.size(),
-                                       rewriter.getIntegerType(32)),
+                 tensorflow::GetTypeFromTFTensorShape(
+                     {static_cast<int64_t>(new_shape_array.size())},
+                     rewriter.getIntegerType(32)),
                  new_shape_array));
 
     rewriter.replaceOpWithNewOp<ReshapeOp>(op, output_type,
@@ -2078,7 +2082,7 @@ TFL::ConstOp NarrowDownInt64InputValuesForOp(Operation *input_op,
     return nullptr;
   }
 
-  auto value_shape_type = mlir::RankedTensorType::get(
+  auto value_shape_type = tensorflow::GetTypeFromTFTensorShape(
       value_type.getShape(), builder->getIntegerType(32));
 
   SmallVector<int32_t, 4> value_i32;
@@ -2195,8 +2199,10 @@ static void BuildTopKOp(OpBuilder *builder, OperationState &result, Value input,
   std::vector<int64_t> shape(val_type.getShape());
   shape[shape.size() - 1] = const_k;
   TFL::TopKV2Op::build(
-      *builder, result, RankedTensorType::get(shape, val_type.getElementType()),
-      RankedTensorType::get(shape, builder->getIntegerType(32)), input, k);
+      *builder, result,
+      tensorflow::GetTypeFromTFTensorShape(shape, val_type.getElementType()),
+      tensorflow::GetTypeFromTFTensorShape(shape, builder->getIntegerType(32)),
+      input, k);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2298,8 +2304,8 @@ LogicalResult UnpackOp::inferReturnTypes(
   auto output_shape = llvm::to_vector<4>(input_type.getShape());
   output_shape.erase(output_shape.begin() + axis_value);
 
-  auto output_type =
-      RankedTensorType::get(output_shape, input_type.getElementType());
+  auto output_type = tensorflow::GetTypeFromTFTensorShape(
+      output_shape, input_type.getElementType());
   inferredReturnTypes.assign(num_value, output_type);
 
   return success();
@@ -2337,7 +2343,8 @@ static RankedTensorType SubstituteRankedTensorTypeDimSize(
     RankedTensorType input_type, int64_t dim, int64_t dim_size) {
   auto shape = input_type.getShape().vec();
   shape[dim] = dim_size;
-  return RankedTensorType::get(shape, input_type.getElementType());
+  return tensorflow::GetTypeFromTFTensorShape(shape,
+                                              input_type.getElementType());
 }
 
 // Verifies the output tensor types of SplitOp or SplitVOp.
@@ -2427,7 +2434,8 @@ mlir::LogicalResult SplitVOp::verify() {
   if (size_splits_attr.getNumElements() != num_splits) {
     auto size_splits_type = op.size_splits().getType().cast<RankedTensorType>();
     RankedTensorType expected_size_splits_type =
-        RankedTensorType::get({num_splits}, size_splits_type.getElementType());
+        tensorflow::GetTypeFromTFTensorShape({num_splits},
+                                             size_splits_type.getElementType());
     return op.emitOpError("'size_splits' should be ")
            << expected_size_splits_type;
   }
@@ -2652,8 +2660,8 @@ LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
   } else {
     output_shape = {batch, time, n_output};
   }
-  auto result_type =
-      mlir::RankedTensorType::get(output_shape, input_type.getElementType());
+  auto result_type = tensorflow::GetTypeFromTFTensorShape(
+      output_shape, input_type.getElementType());
 
   inferredReturnTypes.assign({result_type});
   return success();
@@ -3031,7 +3039,7 @@ static void BuildSelectV2Op(Builder *builder, OperationState &result,
   auto elementType = x.getType().dyn_cast<ShapedType>().getElementType();
   if (has_static_cond_shape && has_static_operand_shape) {
     result.types.push_back(
-        RankedTensorType::get(broadcastedShape, elementType));
+        tensorflow::GetTypeFromTFTensorShape(broadcastedShape, elementType));
   } else {
     result.types.push_back(UnrankedTensorType::get(elementType));
   }
@@ -3076,7 +3084,7 @@ DenseElementsAttr BuildConstRangeTensor(Type result_elem_type, int num_elements,
   }
   // Result is always a 1-D tensor.
   auto new_result_type =
-      RankedTensorType::get({num_elements}, result_elem_type);
+      tensorflow::GetTypeFromTFTensorShape({num_elements}, result_elem_type);
   return DenseElementsAttr::get(new_result_type, new_values);
 }
 }  // namespace
@@ -3142,8 +3150,8 @@ mlir::LogicalResult TransposeConvOp::verify() {
     output_shape.push_back(dim);
   }
 
-  auto expected_output_type =
-      RankedTensorType::get(output_shape, output_type.getElementType());
+  auto expected_output_type = tensorflow::GetTypeFromTFTensorShape(
+      output_shape, output_type.getElementType());
   if (failed(mlir::verifyCompatibleShape(output_type, expected_output_type))) {
     return op.emitOpError(llvm::formatv("expect output type {0}, got {1}",
                                         expected_output_type, output_type));
@@ -3329,8 +3337,8 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
   std::vector<uint64_t> input_indices(num_dimensions);
   ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
                      /*output_axis=*/0, &input_indices, &new_values);
-  auto result_type =
-      RankedTensorType::get(output_shape, output_type.getElementType());
+  auto result_type = tensorflow::GetTypeFromTFTensorShape(
+      output_shape, output_type.getElementType());
   return DenseElementsAttr::get(result_type, new_values);
 }
 
@@ -3372,8 +3380,8 @@ mlir::LogicalResult TransposeOp::verify() {
     for (int64_t axis : axes) {
       transposed_shape.push_back(input_type.getDimSize(axis));
     }
-    auto expected_output_type =
-        RankedTensorType::get(transposed_shape, input_type.getElementType());
+    auto expected_output_type = tensorflow::GetTypeFromTFTensorShape(
+        transposed_shape, input_type.getElementType());
     if (failed(
             mlir::verifyCompatibleShape(output_type, expected_output_type))) {
       return op.emitOpError(llvm::formatv("expect output type {0}, got {1}",
@@ -3448,9 +3456,10 @@ static void BuildTransposeOp(OpBuilder *builder, OperationState &result,
         per_axis_qtype.getStorageTypeMin(), per_axis_qtype.getStorageTypeMax());
   }
 
-  TFL::TransposeOp::build(*builder, result,
-                          RankedTensorType::get(output_shape, element_type),
-                          input, perm);
+  TFL::TransposeOp::build(
+      *builder, result,
+      tensorflow::GetTypeFromTFTensorShape(output_shape, element_type), input,
+      perm);
 }
 
 //===----------------------------------------------------------------------===//

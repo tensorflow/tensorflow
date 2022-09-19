@@ -266,6 +266,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "@flatbuffers",
