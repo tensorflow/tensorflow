@@ -21,6 +21,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_IMPL_INTERPRETER_H_
 #define TENSORFLOW_LITE_CORE_IMPL_INTERPRETER_H_
 
+// IWYU pragma: private, include "third_party/tensorflow/lite/interpreter.h"
+// IWYU pragma: friend third_party/tensorflow/lite/interpreter.h
+
 #include <stddef.h>
 #include <stdint.h>
 
