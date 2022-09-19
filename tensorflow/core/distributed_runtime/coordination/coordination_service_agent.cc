@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 
 #include <algorithm>
+#include <iterator>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
@@ -29,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -41,6 +45,14 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
+
+auto* enabled_usage_metric =
+    monitoring::Gauge<bool, 0>::New("/coordination_service/agent/enabled",
+                                    "Tracks usage of coordination service.");
+auto* enabled_with_server_def_usage_metric = monitoring::Gauge<bool, 0>::New(
+    "/coordination_service/agent/enabled_with_server_def",
+    "Tracks usage of coordination service that is initialized with "
+    "tf.ServerDef.");
 namespace {
 
 constexpr absl::Duration kDefaultClusterRegisterTimeout = absl::Hours(1);
@@ -155,6 +167,7 @@ Status CoordinationServiceAgentImpl::Initialize(
     Env* env, const ServerDef& server_def,
     std::unique_ptr<CoordinationClientCache> client_cache,
     StatusCallback error_fn) {
+  enabled_with_server_def_usage_metric->GetCell()->Set(true);
   CoordinationServiceConfig configs =
       server_def.default_session_config().experimental().coordination_config();
   if (configs.service_leader().empty()) {
@@ -194,6 +207,7 @@ Status CoordinationServiceAgentImpl::Initialize(
     const CoordinationServiceConfig& configs,
     std::unique_ptr<CoordinationClient> leader_client,
     StatusCallback error_fn) {
+  enabled_usage_metric->GetCell()->Set(true);
   mutex_lock l(state_mu_);
   if (state_ != CoordinatedTaskState::TASKSTATE_UNINITIALIZED) {
     return MakeCoordinationError(errors::FailedPrecondition(
