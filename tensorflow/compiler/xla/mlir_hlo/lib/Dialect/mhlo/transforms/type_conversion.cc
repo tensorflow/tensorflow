@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -22,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 namespace mlir {
 
@@ -99,4 +103,85 @@ LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
 }
 
 }  // namespace mhlo
+
+namespace stablehlo {
+
+// Our guiding principle is to support all StableHLO functionality in MHLO.
+// The inverse is not necessarily true - some MHLO types are missing from
+// StableHLO (either deliberately or haven't yet been proposed to StableHLO).
+// As a result, these MHLO types will fail here.
+HloToStablehloTypeConverter::HloToStablehloTypeConverter() {
+  addConversion([](Type hloType) { return hloType; });
+  // !mhlo.async_bundle is only used in mhlo.async_start, mhlo.async_update
+  // and mhlo.async_done which are private to XLA.
+  // This means that these ops are deliberately not part of StableHLO,
+  // and as a result this type is not part of StableHLO either.
+  addConversion([](mhlo::AsyncBundleType) -> Type { return {}; });
+  addConversion([](mhlo::TokenType hloType) -> Type {
+    return stablehlo::TokenType::get(hloType.getContext());
+  });
+  addConversion([](RankedTensorType hloType) -> Type {
+    if (auto hloExtensions =
+            hloType.getEncoding()
+                .dyn_cast_or_null<mhlo::TypeExtensionsAttr>()) {
+      auto stablehloExtensions = stablehlo::TypeExtensionsAttr::get(
+          hloType.getContext(), hloExtensions.getBounds());
+      return RankedTensorType::get(hloType.getShape(), hloType.getElementType(),
+                                   stablehloExtensions);
+    }
+    return hloType;
+  });
+  addConversion([&](TupleType hloType) -> Type {
+    SmallVector<Type> stablehloTypes;
+    if (failed(convertTypes(hloType.getTypes(), stablehloTypes))) return {};
+    return TupleType::get(hloType.getContext(), stablehloTypes);
+  });
+};
+
+// Our guiding principle is to support all StableHLO functionality in MHLO.
+// This means that the StableHLO => HLO type conversion should always succeed.
+StablehloToHloTypeConverter::StablehloToHloTypeConverter() {
+  addConversion([](Type stablehloType) { return stablehloType; });
+  addConversion([](stablehlo::TokenType stablehloType) -> Type {
+    return mhlo::TokenType::get(stablehloType.getContext());
+  });
+  addConversion([](RankedTensorType stablehloType) -> Type {
+    if (auto stablehloExtensions =
+            stablehloType.getEncoding()
+                .dyn_cast_or_null<stablehlo::TypeExtensionsAttr>()) {
+      auto hloExtensions = mhlo::TypeExtensionsAttr::get(
+          stablehloType.getContext(), stablehloExtensions.getBounds());
+      return RankedTensorType::get(stablehloType.getShape(),
+                                   stablehloType.getElementType(),
+                                   hloExtensions);
+    }
+    return stablehloType;
+  });
+  addConversion([&](TupleType stablehloType) -> Type {
+    SmallVector<Type> hloTypes;
+    if (failed(convertTypes(stablehloType.getTypes(), hloTypes))) return {};
+    return TupleType::get(stablehloType.getContext(), hloTypes);
+  });
+};
+
+void registerFuncOpsForTypeConversion(ConversionTarget& target,
+                                      RewritePatternSet& patterns,
+                                      TypeConverter& converter) {
+  target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+    return converter.isSignatureLegal(op.getFunctionType());
+  });
+  target.addDynamicallyLegalOp<func::CallOp>([&](func::CallOp op) {
+    return converter.isSignatureLegal(op.getCalleeType());
+  });
+  target.addDynamicallyLegalOp<func::ReturnOp>([&](func::ReturnOp op) {
+    return converter.isLegal(op.getOperandTypes());
+  });
+  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                 converter);
+  populateCallOpTypeConversionPattern(patterns, converter);
+  populateReturnOpTypeConversionPattern(patterns, converter);
+}
+
+}  // namespace stablehlo
+
 }  // namespace mlir

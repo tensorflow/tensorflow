@@ -132,8 +132,12 @@ add_mlir_library(MhloTypeConversion
   Core
 
   LINK_LIBS PUBLIC
+  MhloDialect
   MLIRIR
+  MLIRFuncDialect
+  MLIRFuncTransforms
   MLIRTensorDialect
+  StablehloOps
 )
 
 add_mlir_library(MhloToMemrefConversion
@@ -289,6 +293,46 @@ add_mlir_library(MhloShapeOpsToStandard
   MLIRTransformUtils
 )
 
+add_mlir_library(MhloToStablehlo
+  hlo_legalize_to_stablehlo.cc
+  hlo_legalize_to_stablehlo_pass.cc
+
+  DEPENDS
+  MLIRMhloPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MhloDialect
+  MhloTypeConversion
+  MLIRIR
+  MLIRPass
+  MLIRSupport
+  MLIRTransforms
+  StablehloOps
+)
+
+add_mlir_library(StablehloToMhlo
+  stablehlo_legalize_to_hlo.cc
+  stablehlo_legalize_to_hlo_pass.cc
+
+  DEPENDS
+  MLIRMhloPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MhloDialect
+  MhloTypeConversion
+  MLIRIR
+  MLIRPass
+  MLIRSupport
+  MLIRTransforms
+  StablehloOps
+)
+
 add_library(AllMhloPasses INTERFACE)
 target_link_libraries(AllMhloPasses INTERFACE
   ChloPasses
@@ -301,6 +345,8 @@ target_link_libraries(AllMhloPasses INTERFACE
   MhloToLinalg
   MhloToThloConversion
   MhloShapeOpsToStandard
+  MhloToStablehlo
+  StablehloToMhlo
 )
 
 add_library(AllGmlStPasses INTERFACE)
