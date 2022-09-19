@@ -17,8 +17,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,7 +35,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.util import nest
 
 
 _COS_DERIVATIVES = [math_ops.cos,
@@ -62,7 +60,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
   def testGraphModeWithGradients(self):
     v = resource_variable_ops.ResourceVariable(1.0, name='v')
 
-    @def_function.function
+    @polymorphic_function.function
     def step():
       def inner():
         return v * v
@@ -75,7 +73,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default(), self.cached_session():
       v = variables.Variable(1.0)
 
-      @def_function.function
+      @polymorphic_function.function
       def f():
         return 2.0 * v
 
@@ -86,9 +84,9 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(grads.shape, v.shape)
 
   def testSymbolicHigherOrder(self):
-    @def_function.function
+    @polymorphic_function.function
     def f(x, order):
-      y = def_function.function(lambda: math_ops.cos(x))()
+      y = polymorphic_function.function(lambda: math_ops.cos(x))()
       for _ in range(order):
         y, = gradients_impl.gradients(y, [x])
       return y
@@ -100,14 +98,14 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters([dict(persistent=True),
                              dict(persistent=False)])
   def testSymbolicHigherOrderUnderTape(self, persistent):
-    @def_function.function
+    @polymorphic_function.function
     def f(x, order):
       with backprop.GradientTape(persistent=persistent) as tape:
         tape.watch(x)
         # Note that having a tape active, even if we don't use it, forces us
         # down a different function call path. Symbolic gradients should work
         # here too; correctness of tape gradients are tested elsewhere.
-        y = def_function.function(lambda: math_ops.cos(x))()
+        y = polymorphic_function.function(lambda: math_ops.cos(x))()
       tape_dy = tape.gradient(y, x)
       for _ in range(order):
         y, = gradients_impl.gradients(y, [x])
@@ -134,19 +132,19 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
         return tape.gradient(primal_out, primal)
       return _grad_function
 
-    @def_function.function
+    @polymorphic_function.function
     def _forward(x):
       return math_ops.cos(x)
 
     f = _forward
-    traced_f = def_function.function(f)
+    traced_f = polymorphic_function.function(f)
     one = constant_op.constant(1.)
     for expected in _COS_DERIVATIVES:
       self.assertAllClose(expected(one), f(one))
       self.assertAllClose(expected(one), traced_f(one))
-      self.assertAllClose(expected(one), def_function.function(f)(one))
+      self.assertAllClose(expected(one), polymorphic_function.function(f)(one))
       f = _grad(f)
-      traced_f = def_function.function(_grad(traced_f))
+      traced_f = polymorphic_function.function(_grad(traced_f))
 
   def testIteratedGradientsNestedWithVariable(self):
 
@@ -160,7 +158,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
     v = variables.Variable(2.)
 
-    @def_function.function
+    @polymorphic_function.function
     def _forward():
       return math_ops.cos(v)
 
@@ -170,12 +168,12 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
     for expected in _COS_DERIVATIVES:
       self.assertAllClose(expected(two), f())
-      self.assertAllClose(expected(two), def_function.function(f)())
+      self.assertAllClose(expected(two), polymorphic_function.function(f)())
       f = _grad(f)
 
   def testIteratedGradientsPersistent(self):
 
-    @def_function.function
+    @polymorphic_function.function
     def _forward(z):
       return math_ops.cos(z)
 
@@ -192,7 +190,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
     v = variables.Variable(1.)
 
-    @def_function.function
+    @polymorphic_function.function
     def _forward():
       return math_ops.cos(v)
 
@@ -205,7 +203,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   def testGradientsChained(self):
 
-    @def_function.function
+    @polymorphic_function.function
     def _forward(z):
       return math_ops.cos(z)
 
@@ -227,7 +225,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
   def testSymGradGatherNd(self):
     with ops.Graph().as_default(), self.cached_session():
 
-      @def_function.function
+      @polymorphic_function.function
       def f(x):
         return array_ops.gather_nd(x, [[0]])
 
@@ -238,10 +236,10 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   def testNoSymGradNestedDefun(self):
 
-    @def_function.function
+    @polymorphic_function.function
     def outer():
 
-      @def_function.function
+      @polymorphic_function.function
       def f(x):
         return array_ops.gather_nd(x, [[0]])
 
@@ -255,7 +253,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
   def testGraphFunctionWithGradients(self):
     v = resource_variable_ops.ResourceVariable(1.0, name='v')
 
-    @def_function.function
+    @polymorphic_function.function
     def step():
       def inner():
         return v * v
@@ -270,7 +268,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testDefunCondGradient(self):
 
-    @def_function.function
+    @polymorphic_function.function
     def f(x):
       return control_flow_ops.cond(x > 0.5, lambda: 2 * x, lambda: 3 * x)
 
@@ -283,7 +281,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testGraphLoopGradient(self):
 
-    @def_function.function
+    @polymorphic_function.function
     def f(x):
       return control_flow_ops.while_loop(lambda _, i: i < 2,
                                          lambda x, i: (2*x, i + 1),
@@ -300,7 +298,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       n = constant_op.constant(2.0)
       x = array_ops.placeholder(dtypes.float32, shape=None)
 
-      @def_function.function
+      @polymorphic_function.function
       def f():
         c = lambda n: n < 10
         b = lambda n: n * x
@@ -316,7 +314,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
   def testDefunDifferentiable(self):
     v = resource_variable_ops.ResourceVariable(1.0)
 
-    @def_function.function
+    @polymorphic_function.function
     def f():
       return v * v
 
@@ -325,7 +323,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
   def testDefunCanBeDifferentiatedTwice(self):
     v = resource_variable_ops.ResourceVariable(1.0)
 
-    @def_function.function
+    @polymorphic_function.function
     def f():
       return v * v
 
@@ -337,7 +335,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default():
       v = variables.Variable(1.0)
 
-      @def_function.function
+      @polymorphic_function.function
       def f(x, v):
         v.read_value()
         return x * x
@@ -351,11 +349,11 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   def testDefunCallBackprop(self):
 
-    @def_function.function
+    @polymorphic_function.function
     def f(x):
       return math_ops.add(x, x)
 
-    @def_function.function
+    @polymorphic_function.function
     def g(x):
       return backprop.gradients_function(f, [0])(x)[0]
 
@@ -375,7 +373,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   def testDefunCallBackpropUsingSameObjectForMultipleArguments(self):
 
-    @def_function.function
+    @polymorphic_function.function
     def g(x):
       return backprop.gradients_function(math_ops.multiply, [0, 1])(x, x)
 
@@ -389,7 +387,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
   def testGradientTensorConversionWithDefun(self):
     three = resource_variable_ops.ResourceVariable(3.0, name='v')
 
-    @def_function.function
+    @polymorphic_function.function
     def f(x):
       return math_ops.add(x, three)
 
@@ -400,7 +398,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(g, 1.0)
 
   def testGradient(self):
-    matmul = def_function.function(math_ops.matmul)
+    matmul = polymorphic_function.function(math_ops.matmul)
 
     def sq(x):
       return matmul(x, x, transpose_a=True)
@@ -411,7 +409,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   def testGradientInFunction(self):
 
-    @def_function.function
+    @polymorphic_function.function
     def f(x):
       return backprop.gradients_function(lambda y: y * y, [0])(x)[0]
 
@@ -425,7 +423,8 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
     grad_fn = backprop.implicit_grad(sum_gather)
     gradient = grad_fn()
-    defun_grad_fn = backprop.implicit_grad(def_function.function(sum_gather))
+    defun_grad_fn = backprop.implicit_grad(
+        polymorphic_function.function(sum_gather))
     defun_gradient = defun_grad_fn()
     self.assertEqual(len(gradient), len(defun_gradient))
 
@@ -437,7 +436,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   def testDifferentiableFunctionNoneOutputs(self):
 
-    @def_function.function
+    @polymorphic_function.function
     def my_function(x):
       return x, None
 
@@ -447,7 +446,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
     g = backprop.gradients_function(wrapper, [0])(constant_op.constant(0.0))
     self.assertAllEqual(g[0], 1.)
 
-    @def_function.function
+    @polymorphic_function.function
     def foo(a):
       return None, a * a
 
@@ -463,11 +462,11 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNestedDifferentiableFunction(self):
-    @def_function.function
+    @polymorphic_function.function
     def inner_fn(a, b):
       return a * math_ops.add(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_fn(x):
       return inner_fn(x, 1.0)
 
@@ -481,19 +480,19 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunction(self):
-    @def_function.function
+    @polymorphic_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_fn(x):
       return middle_fn(x, 1.0)
 
@@ -507,15 +506,15 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionWithMultipleGradCalls(self):
-    @def_function.function
+    @polymorphic_function.function
     def inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def middle_fn(a, b):
       return math_ops.mul(a, inner_fn(a, b))
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_fn(x):
       return middle_fn(x, 3.0)
 
@@ -555,19 +554,19 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionGradientTapeInDefun(self):
-    @def_function.function
+    @polymorphic_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_fn(x):
       with backprop.GradientTape() as tp:
         tp.watch(x)
@@ -581,19 +580,19 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionGradientTapeInNestedDefun(self):
-    @def_function.function
+    @polymorphic_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def almost_outer_fn(x):
       with backprop.GradientTape() as tp:
         tp.watch(x)
@@ -601,7 +600,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       grad = tp.gradient(result, x)
       return grad
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_fn(x):
       return almost_outer_fn(x)
 
@@ -611,19 +610,19 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionGradientTapeInMultNestedDefun(self):
-    @def_function.function
+    @polymorphic_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def almost_outer_fn(x):
       with backprop.GradientTape() as tp:
         tp.watch(x)
@@ -631,11 +630,11 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       grad = tp.gradient(result, x)
       return grad
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_fn(x):
       return almost_outer_fn(x)
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_outer_fn(x):
       return outer_fn(x)
 
@@ -645,19 +644,19 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionTFGradientInDefun(self):
-    @def_function.function
+    @polymorphic_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_fn(x):
       result = middle_fn(x, 1.0)
       return gradients_impl.gradients(result, [x])[0]
@@ -668,24 +667,24 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionTFGradientInNestedDefun(self):
-    @def_function.function
+    @polymorphic_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def almost_outer_fn(x):
       result = middle_fn(x, 1.0)
       return gradients_impl.gradients(result, [x])[0]
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_fn(x):
       return almost_outer_fn(x)
 
@@ -695,28 +694,28 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionTFGradientInMultNestedDefun(self):
-    @def_function.function
+    @polymorphic_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def almost_outer_fn(x):
       result = middle_fn(x, 1.0)
       return gradients_impl.gradients(result, [x])[0]
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_fn(x):
       return almost_outer_fn(x)
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_outer_fn(x):
       return outer_fn(x)
 
@@ -727,15 +726,15 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
   def testDeeplyNestedDifferentiableFunctionWithVariable(self):
     var = variables.Variable(constant_op.constant(1.0))
 
-    @def_function.function
+    @polymorphic_function.function
     def inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_fn(x):
       return middle_fn(x, var)
 
@@ -750,15 +749,15 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
   def testDeeplyNestedDifferentiableFunctionWithVariableMultipleGradCalls(self):
     v = variables.Variable(constant_op.constant(3.0))
 
-    @def_function.function
+    @polymorphic_function.function
     def inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @def_function.function
+    @polymorphic_function.function
     def middle_fn(a, b):
       return math_ops.mul(a, inner_fn(a, b))
 
-    @def_function.function
+    @polymorphic_function.function
     def outer_fn(x):
       return middle_fn(x, v)
 
@@ -809,15 +808,15 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       v = resource_variable_ops.ResourceVariable(3.0)
       v.initializer.run()
 
-      @def_function.function
+      @polymorphic_function.function
       def inner_fn(a, b):
         return math_ops.add(a, b)
 
-      @def_function.function
+      @polymorphic_function.function
       def middle_fn(a, b):
         return math_ops.mul(a, inner_fn(a, b))
 
-      @def_function.function
+      @polymorphic_function.function
       def outer_fn(x):
         return middle_fn(x, v)
 
@@ -847,11 +846,11 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(grad, 1.0)
 
   def testNestedDifferentiableFunctionNoneOutputs(self):
-    @def_function.function
+    @polymorphic_function.function
     def foo(a, b):
       return None, a * math_ops.add(a, b), None, 2*a
 
-    @def_function.function
+    @polymorphic_function.function
     def bar(x):
       return foo(x, 1.0)
 
@@ -870,7 +869,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(g2, 2.0)
 
   def testGradientWithKeywordArguments(self):
-    matmul = def_function.function(math_ops.matmul)
+    matmul = polymorphic_function.function(math_ops.matmul)
 
     def sq(x):
       return matmul(a=x, b=x, transpose_a=True)
@@ -890,7 +889,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
   def testGradientInFunctionWithKeywordArguments(self):
 
-    @def_function.function
+    @polymorphic_function.function
     def f(x):
       return backprop.gradients_function(lambda y: y * y, [0])(x)[0]
 
@@ -904,13 +903,13 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
     v = variables.Variable(1.)
 
-    @def_function.function
+    @polymorphic_function.function
     def f(labels, logits):
-      return def_function.function(
+      return polymorphic_function.function(
           nn_ops.sparse_softmax_cross_entropy_with_logits)(
               labels=labels, logits=logits + v)
 
-    @def_function.function
+    @polymorphic_function.function
     def f_grad():
       with backprop.GradientTape() as tape:
         logits = constant_op.constant([1., 2.])
@@ -921,33 +920,6 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
     # sparse_softmax_cross_entropy_with_logits not having a second-order
     # gradient defined.
     self.assertAllEqual([2], f_grad().shape)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testBackwardNone(self):
-    model = variables.Variable(1.0, name='model')
-    count = variables.Variable(0)
-
-    @function.defun
-    def forward_pass(value):
-      count.assign_add(1)
-      residuals = value - model
-      loss = 0.5 * math_ops.reduce_mean(math_ops.pow(residuals, 2))
-      # Note: count is an integer, so its doutput will be None
-      return loss, count
-
-    def reduce_fn(x):
-      if context.executing_eagerly():
-        with backprop.GradientTape() as t:
-          loss, count = forward_pass(x)
-        return t.gradient(loss, model), count
-      loss, count = forward_pass(x)
-      grad_only = gradients_impl.gradients(loss, model)
-      return grad_only, count
-
-    g, _ = reduce_fn(constant_op.constant([7.0]))
-
-    self.evaluate(variables.global_variables_initializer())
-    self.assertAllEqual(nest.flatten(self.evaluate(g)), [-6.0])
 
 
 if __name__ == '__main__':

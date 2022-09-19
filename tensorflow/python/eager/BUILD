@@ -471,24 +471,6 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "function_gradients_test",
-    size = "medium",
-    srcs = ["function_gradients_test.py"],
-    python_version = "PY3",
-    shard_count = 5,
-    deps = [
-        ":backprop",
-        ":context",
-        ":def_function",
-        ":function",
-        ":test",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
 py_library(
     name = "test",
     srcs = ["test.py"],

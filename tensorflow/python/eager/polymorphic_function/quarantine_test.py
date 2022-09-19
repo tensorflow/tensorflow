@@ -25,6 +25,7 @@ import numpy
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
@@ -43,6 +44,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
@@ -107,7 +109,6 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     func(constant_op.constant([1.0, 2.0]))
     self.assertTrue(unknown_dim[0])
-    self.assertLen(total_function_cache(func), 2)
 
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
@@ -2034,3 +2035,30 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
     self.assertLen(monomorphic_function._function_callbacks, 2)
     quarantine.clear_function_callbacks()
     self.assertEmpty(monomorphic_function._function_callbacks)  # pylint:disable=protected-access
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBackwardNoneGradient(self):
+    model = variables.Variable(1.0, name='model')
+    count = variables.Variable(0)
+
+    @quarantine.defun
+    def forward_pass(value):
+      count.assign_add(1)
+      residuals = value - model
+      loss = 0.5 * math_ops.reduce_mean(math_ops.pow(residuals, 2))
+      # Note: count is an integer, so its doutput will be None
+      return loss, count
+
+    def reduce_fn(x):
+      if context.executing_eagerly():
+        with backprop.GradientTape() as t:
+          loss, count = forward_pass(x)
+        return t.gradient(loss, model), count
+      loss, count = forward_pass(x)
+      grad_only = gradients_impl.gradients(loss, model)
+      return grad_only, count
+
+    g, _ = reduce_fn(constant_op.constant([7.0]))
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(nest.flatten(self.evaluate(g)), [-6.0])

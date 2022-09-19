@@ -190,6 +190,23 @@ tf_xla_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "gradients_test",
+    size = "medium",
+    srcs = ["gradients_test.py"],
+    python_version = "PY3",
+    shard_count = 5,
+    deps = [
+        ":polymorphic_function",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_library(
     name = "quarantine",
     srcs = ["quarantine.py"],
