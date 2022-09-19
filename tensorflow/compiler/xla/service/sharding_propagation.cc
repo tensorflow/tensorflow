@@ -149,7 +149,8 @@ bool IsConvolutionKernelSmall(const HloInstruction* instruction) {
 }
 
 bool IsPassthroughCustomOps(const HloInstruction* hlo) {
-  if (hlo->IsCustomCall({"Sharding", "X64Combine"})) {
+  if (hlo->IsCustomCall(
+          absl::Span<const absl::string_view>{"Sharding", "X64Combine"})) {
     return true;
   }
   if (hlo->operand_count() != 1 || !hlo->shape().IsArray() ||
