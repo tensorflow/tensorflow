@@ -115,6 +115,30 @@ std::string GetStringWithoutComments(const std::string& code) {
   return result;
 }
 
+bool IsWordSymbol(char symbol) {
+  return absl::ascii_isalnum(symbol) || symbol == '_';
+}
+
+// Word is a token consisting of ascii_isalnum symbols or '_'
+// (see above IsWordSymbol(char symbol))
+// ReplaceAllWords replace all specified word-tokens(old_word) with new_word
+void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
+                     std::string* str) {
+  for (size_t position = str->find(old_word); position != std::string::npos;
+       position = str->find(old_word, position)) {
+    const char prev = position == 0 ? '.' : (*str)[position - 1];
+    const char next = position + old_word.size() < str->size()
+                          ? (*str)[position + old_word.size()]
+                          : '.';
+    if (IsWordSymbol(prev) || IsWordSymbol(next)) {
+      position += 1;
+      continue;
+    }
+    str->replace(position, old_word.size(), new_word);
+    position += new_word.size();
+  }
+}
+
 struct LinkableContext {
   std::string code;
   TensorDescriptor* tensor_desc;
@@ -216,6 +240,102 @@ absl::Status ResolveLinking(
                                         {"B_COORD", b_coord}});
     code->replace(args_pos, close_bracket_pos - args_pos, patch);
     position = args_pos + patch.size();
+  }
+  return absl::OkStatus();
+}
+
+// resolve constructions of type: args.object_name::const_expr_name
+// Example: 'args.dst_tensor::type' can be replaced with 'float4'
+absl::Status ResolveConstExprPass(const GpuInfo& gpu_info,
+                                  const Arguments& args, std::string* code) {
+  std::string result;
+  size_t position = 0;
+  constexpr char kArgsPrefix[] = "args.";
+  size_t next_position = code->find(kArgsPrefix);
+  while (next_position != std::string::npos) {
+    size_t arg_pos = next_position;
+    next_position += strlen(kArgsPrefix);
+    std::string object_name = GetNextWord(*code, next_position);
+    if (next_position + object_name.size() > code->size() - 2) {
+      next_position = code->find(kArgsPrefix, next_position);
+      continue;
+    }
+    char next0 = (*code)[next_position + object_name.size()];
+    char next1 = (*code)[next_position + object_name.size() + 1];
+    if (next0 == ':' && next1 == ':') {
+      next_position += object_name.size() + 2;
+      std::string const_expr_name = GetNextWord(*code, next_position);
+      next_position += const_expr_name.size();
+      std::string patch;
+      tflite::gpu::GPUObjectDescriptor* desc_ptr;
+      RETURN_IF_ERROR(args.GetDescriptor(object_name, &desc_ptr));
+      RETURN_IF_ERROR(
+          desc_ptr->PerformConstExpr(gpu_info, const_expr_name, &patch));
+      code->replace(arg_pos, next_position - arg_pos, patch);
+      position = arg_pos + patch.size();
+    } else {
+      position = arg_pos + strlen(kArgsPrefix);
+    }
+    next_position = code->find(kArgsPrefix, position);
+  }
+  return absl::OkStatus();
+}
+
+// resolve constructions of type: args.object_name.method_name(list of args)
+// Example: 'args.bias.Read(S)' can be replaced with 'args.bias_buffer[S]'
+absl::Status ResolveSelectorsPass(const GpuInfo& gpu_info,
+                                  const Arguments& args, std::string* code) {
+  std::string result;
+  size_t position = 0;
+  constexpr char kArgsPrefix[] = "args.";
+  size_t next_position = code->find(kArgsPrefix);
+  while (next_position != std::string::npos) {
+    size_t arg_pos = next_position;
+    next_position += strlen(kArgsPrefix);
+    std::string object_name = GetNextWord(*code, next_position);
+    char next = (*code)[next_position + object_name.size()];
+    if (next == '.') {
+      next_position += object_name.size() + 1;
+      std::string selector_name = GetNextWord(*code, next_position);
+      next_position += selector_name.size();
+      next = (*code)[next_position];
+      std::vector<std::string> template_args;
+      if (next == '<') {
+        size_t close_bracket_pos;
+        RETURN_IF_ERROR(ParseArgsInsideBrackets(
+            *code, next_position, &close_bracket_pos, &template_args));
+        next_position = close_bracket_pos;
+        next = (*code)[next_position];
+      }
+      if (next != '(') {
+        return absl::NotFoundError(absl::StrCat(
+            "Expected ( after ", object_name, ".", selector_name, " call"));
+      }
+      std::vector<std::string> function_args;
+      size_t close_bracket_pos;
+      RETURN_IF_ERROR(ParseArgsInsideBrackets(
+          *code, next_position, &close_bracket_pos, &function_args));
+      for (auto& arg : function_args) {
+        RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, args, &arg));
+      }
+      std::string patch;
+      GPUObjectDescriptor* desc_ptr;
+      RETURN_IF_ERROR(args.GetDescriptor(object_name, &desc_ptr));
+      auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
+      RETURN_IF_ERROR(desc_ptr->PerformSelector(
+          gpu_info, selector_name, function_args, template_args, &patch));
+      for (const auto& member_name : names) {
+        const std::string new_name =
+            kArgsPrefix + object_name + "_" + member_name;
+        ReplaceAllWords(member_name, new_name, &patch);
+      }
+
+      code->replace(arg_pos, close_bracket_pos - arg_pos, patch);
+      position = arg_pos + patch.size();
+    } else {
+      position = arg_pos + strlen(kArgsPrefix);
+    }
+    next_position = code->find(kArgsPrefix, position);
   }
   return absl::OkStatus();
 }
@@ -549,6 +669,8 @@ absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
     linkables[dst_tensors_names_[0]] = {elementwise_code_, dst_tensor_desc};
   }
   RETURN_IF_ERROR(ResolveLinking(gpu_info, linkables, &code_));
+  RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, args_, &code_));
+  RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, args_, &code_));
   code_ = GetStringWithoutComments(code_);
   RETURN_IF_ERROR(args_.Compile(gpu_info, &code_));
   CalculateConstArgsSize();
