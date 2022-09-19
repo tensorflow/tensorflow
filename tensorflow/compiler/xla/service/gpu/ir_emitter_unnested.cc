@@ -2621,8 +2621,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   const uint64_t kThreadsPerBlock = kTileSize / 2;
 
   // Check whether we should use any tiling. We might not be able to use it if
-  // we have not enough threads, or not enough shared memory. Also it does not
-  // give a speedup if the tile size is < 128.
+  // we have not enough threads, or not enough shared memory.
   int64_t total_shared_memory_needed = 0;
   for (int64_t i = 0; i < operands.size(); ++i) {
     total_shared_memory_needed +=
@@ -2630,17 +2629,15 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
                         GetShape(operands[i]).element_type());
   }
   bool no_tiling =
-      kTileSize < 128 ||
       kThreadsPerBlock >
           ir_emitter_context_->gpu_device_info().threads_per_block_limit ||
       total_shared_memory_needed >
           ir_emitter_context_->gpu_device_info().shared_memory_per_block;
   VLOG(2) << absl::StreamFormat(
       "%s %s use tiling. No tiling if any of the following is true: "
-      "kTileSize=%d < 128, "
       "kThreadsPerBlock=%d > threads_per_block_limit=%d, "
       "total_shared_memory_needed=%d > shared_memory_per_block=%d",
-      op_name, (no_tiling ? "won't" : "will"), kTileSize, kThreadsPerBlock,
+      op_name, (no_tiling ? "won't" : "will"), kThreadsPerBlock,
       ir_emitter_context_->gpu_device_info().threads_per_block_limit,
       total_shared_memory_needed,
       ir_emitter_context_->gpu_device_info().shared_memory_per_block);
