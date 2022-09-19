@@ -483,6 +483,49 @@ def ExecutorConvertControlToDataOutputsPass : Pass<"tf-executor-convert-control-
   let constructor = "tf_executor::CreateTFExecutorConvertControlToDataOutputsPass()";
 }
 
+def ExecutorUpdateControlDependenciesPass : Pass<"tf-executor-update-control-dependencies", "ModuleOp"> {
+  let summary = "Computes and applies all necessary control dependencies based on side effect analysis.";
+  let description = [{
+    This pass is intended to run after the split_into_island_per_op
+    pass. That pass splits up multi-op islands into multiple individual islands
+    wrapping a single op without applying any control deps between the new
+    islands. So, this pass is needed in order to make preservation of the
+    semantic ordering relationships between ops as determined by side effect
+    analysis explicit in the IR.
+
+    Example: original program:
+
+    ```mlir
+        func.func @example(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>, %arg1: tensor<32xf32>) -> (tensor<32xf32>) {
+          %graph = tf_executor.graph {
+            %read0, %read0_control = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+            %assign0_control = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+            %read1, %read1_control = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+            %print, %print_control = tf_executor.island wraps "tf.Print"(%read1) { message = "read1 value" } : (tensor<32xf32>) -> (tensor<32xf32>)
+            tf_executor.fetch %read1#0 : tensor<32xf32>
+          }
+          func.return %graph : tensor<32xf32>
+        }
+    ```
+
+    will be converted by this pass into:
+
+    ```mlir
+        func.func @example(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>, %arg1: tensor<32xf32>) -> tensor<32xf32> {
+          %0 = tf_executor.graph {
+            %read0, %read0_control = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+            %assign0_control = tf_executor.island(%read0_control) wraps "tf.AssignVariableOp"(%arg0, %arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+            %read1, %read1_control = tf_executor.island(%assign0_control) wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+            %print, %print_control = tf_executor.island(%read1_control) wraps "tf.Print"(%read1) {message = "read1 value"} : (tensor<32xf32>) -> tensor<32xf32>
+            tf_executor.fetch %read1, %print_control : tensor<32xf32>, !tf_executor.control
+          }
+          return %0 : tensor<32xf32>
+        }
+    ```
+  }];
+  let constructor = "tf_executor::CreateTFExecutorUpdateControlDependenciesPass()";
+}
+
 def ExecutorCheckControlDependenciesPass : Pass<"tf-executor-check-control-dependencies", "ModuleOp"> {
   let summary = "Checks control dependencies";
 
