@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 
@@ -46,7 +45,10 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
-class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
+#define GEN_PASS_DEF_LEGALIZETF
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
+class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {
  public:
   explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
                       llvm::Optional<StringRef> tf2xla_fallback_device_type,
@@ -63,8 +65,11 @@ class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
   void runOnOperation() override;
 };
 
+#define GEN_PASS_DEF_LEGALIZETFMODULEPASS
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
 class LegalizeTFModulePass
-    : public LegalizeTFModulePassBase<LegalizeTFModulePass> {
+    : public impl::LegalizeTFModulePassBase<LegalizeTFModulePass> {
  public:
   explicit LegalizeTFModulePass(StringRef tf2xla_fallback_device_type) {
     device_type_ = tf2xla_fallback_device_type.str();

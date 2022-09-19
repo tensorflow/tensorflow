@@ -101,7 +101,6 @@ cc_library(
         "transforms/outline_with_xla_framework.cc",
         "transforms/prepare_for_export.cc",
         "transforms/xla_framework_to_llvm_pass.cc",
-        "transforms/xla_passes_detail.h",
     ],
     hdrs = [
         "transforms/xla_passes.h",
@@ -133,7 +132,6 @@ cc_library(
 cc_library(
     name = "tf_xla_passes",
     srcs = [
-        "transforms/tf_xla_passes_detail.h",
         "transforms/xla_legalize_tf_passes.h.inc",
     ],
     hdrs = [
@@ -146,6 +144,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
@@ -193,6 +192,7 @@ cc_library(
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
@@ -205,7 +205,6 @@ cc_library(
     name = "adjust_layout",
     srcs = [
         "transforms/adjust_layout.cc",
-        "transforms/tf_xla_passes_detail.h",
     ],
     hdrs = [
         "transforms/adjust_layout.h",
@@ -249,10 +248,8 @@ cc_library(
         "transforms/legalize_tf_control_flow.cc",
         "transforms/legalize_tf_types.cc",
         "transforms/tf_xla_passes.h.inc",
-        "transforms/tf_xla_passes_detail.h",
         "transforms/xla_legalize_tf.cc",
         "transforms/xla_legalize_tf_passes.h.inc",
-        "transforms/xla_legalize_tf_passes_detail.h",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -293,7 +290,6 @@ cc_library(
     srcs = [
         "transforms/xla_legalize_tf_no_fallback.cc",
         "transforms/xla_legalize_tf_passes.h.inc",
-        "transforms/xla_legalize_tf_passes_detail.h",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -323,7 +319,6 @@ cc_library(
     name = "xla_legalize_tf_with_tf2xla",
     srcs = [
         "transforms/legalize_tf_with_tf2xla.cc",
-        "transforms/tf_xla_passes_detail.h",
     ],
     deps = [
         ":mlir_hlo_builder",

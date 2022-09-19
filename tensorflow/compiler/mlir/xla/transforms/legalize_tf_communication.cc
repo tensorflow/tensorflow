@@ -37,7 +37,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -56,13 +55,16 @@ constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 // TPU core that sends to and receives from host.
 constexpr int64_t kShardingTpuCore = 0;
 
+#define GEN_PASS_DEF_LEGALIZETFCOMMUNICATIONPASS
+#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
+
 // A pass that legalizes TF/XLA communication ops, propagate their respective
 // tokens (for ordering), and rewrite their respective functions and control
 // flow ops when necessary.
 // Note, this currently does not handle nested modules/functions or region based
 // ops other than certain control flow ops (`mhlo.if`, `mhlo.while`).
 class LegalizeTFCommunication
-    : public LegalizeTFCommunicationPassBase<LegalizeTFCommunication> {
+    : public impl::LegalizeTFCommunicationPassBase<LegalizeTFCommunication> {
   void runOnOperation() override;
 };
 
