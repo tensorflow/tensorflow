@@ -465,7 +465,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     rhs = original_hlo->operand(1);
   }
 
-  // Determine if any of the users users have the same shardings that can allow
+  // Determine if any of the users have the same shardings that can allow
   // reuse of the resharding for the operand with original_hlo.
   auto check_users_sharding = [original_hlo](
                                   const HloInstruction* to_loop_over) {

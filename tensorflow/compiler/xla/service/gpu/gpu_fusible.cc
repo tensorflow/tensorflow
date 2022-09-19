@@ -249,7 +249,7 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
   //
   // Don't fuse other constants: Unfused constants in GPU land can be
   // represented as an external constant (i.e. not emitted in LLVM IR / PTX),
-  // but fused constants are handled by shrared CPU/GPU code and always emitted
+  // but fused constants are handled by shared CPU/GPU code and always emitted
   // in the IR/PTX.  The external constant representation makes for faster
   // compiles and significantly smaller assembly code.
   if (producer.opcode() == HloOpcode::kConstant &&

@@ -3902,7 +3902,7 @@ namespace {
 
 // Indicates how an instruction uses a value (such as an operand).
 //
-// Does it (a) not use it, (b) use it, or (c) use it multiple times?
+// Does it (a) use it multiple times, (b) use it, or (c) not use it?
 enum class UseKind { kReuse = 0, kUse = 1, kNoUse = 2 };
 
 // A helper class for memoized, recursive computation of HloOpcode::kFusion
