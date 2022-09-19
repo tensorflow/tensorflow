@@ -37,7 +37,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 
-def TF_AbsOp : TF_Op<"Abs", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
+def TF_AbsOp : TF_Op<"Abs", [TF_Idempotent, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the absolute value of a tensor.";
 
   let description = [{

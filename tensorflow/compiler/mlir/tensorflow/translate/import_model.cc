@@ -1910,7 +1910,7 @@ mlir::Operation* ImporterBase::CreateOperation(
   }
   if (node.IsControlTrigger()) {
     return builder_.create<mlir::tf_executor::ControlTriggerOp>(
-        loc, operands, result.attributes);
+        loc, mlir::ValueRange(operands), result.attributes);
   }
   // Regular TensorFlow operation are wrapped in a tf_executor.island.
   auto island = builder_.create<mlir::tf_executor::IslandOp>(
