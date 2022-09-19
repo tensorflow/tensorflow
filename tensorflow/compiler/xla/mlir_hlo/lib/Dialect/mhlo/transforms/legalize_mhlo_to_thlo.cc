@@ -416,6 +416,28 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
   }
 };
 
+struct TransposePattern : public OpConversionPattern<mhlo::TransposeOp> {
+  using OpConversionPattern<mhlo::TransposeOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::TransposeOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    auto resultTy = typeConverter->convertType(op.getType()).cast<ShapedType>();
+
+    auto loc = op.getLoc();
+    Value initTensor =
+        getInitTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
+
+    auto permutation = rewriter.getDenseI64ArrayAttr(
+        llvm::to_vector(op.permutation().getValues<int64_t>()));
+
+    rewriter.replaceOpWithNewOp<thlo::TransposeOp>(
+        op, op.getType(), op.operand(), initTensor, permutation);
+
+    return success();
+  }
+};
+
 struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
   using OpConversionPattern<mhlo::MapOp>::OpConversionPattern;
 
@@ -578,6 +600,7 @@ class LegalizeMHLOToTHLOPass
     if (enableExperimental) {
       // clang-format off
       patterns.insert<
+          TransposePattern,
           ReductionPattern,
           MapPattern,
           PointwiseToTHLOConverter<mhlo::AbsOp>,

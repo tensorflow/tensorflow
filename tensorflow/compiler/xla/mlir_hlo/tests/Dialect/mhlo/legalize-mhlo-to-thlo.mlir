@@ -923,3 +923,21 @@ func.func @round(%val: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %0 = "mhlo.round_nearest_afz"(%val) : (tensor<2x2xf32>) -> (tensor<2x2xf32>)
   func.return %0 : tensor<2x2xf32>
 }
+
+// -----
+
+func.func @transpose(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
+  %0 = "mhlo.transpose"(%arg0) {
+    permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>
+  } : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
+  func.return %0: tensor<2x1x4x3xi32>
+}
+
+// CHECK-LABEL: @transpose
+// CHECK:       %[[INIT:.*]] = linalg.init_tensor [2, 1, 4, 3]
+// CHECK-SAME:      : tensor<2x1x4x3xi32>
+// CHECK:       %[[TRANSPOSE:.*]] = thlo.transpose
+// CHECK-SAME:      ins(%arg0 : tensor<1x2x3x4xi32>)
+// CHECK-SAME:      outs(%[[INIT]] : tensor<2x1x4x3xi32>)
+// CHECK-SAME:      permutation = [1, 0, 3, 2]
+// CHECK:       return %[[TRANSPOSE]]
