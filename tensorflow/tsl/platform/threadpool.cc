@@ -20,27 +20,19 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/platform/context.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/denormal.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/numa.h"
 #include "tensorflow/tsl/platform/setround.h"
+#include "tensorflow/tsl/platform/tracing.h"
 
 namespace tsl {
 // TODO(aminim): remove after tensorflow/core/platform/context.h migration.
 using tensorflow::Context;
 using tensorflow::ContextKind;
 using tensorflow::WithContext;
-// TODO(aminim): remove after tensorflow/tsl/platform/setround.h migration.
-namespace port {
-using namespace tensorflow::port;  // NOLINT
-}  // namespace port
-// TODO(aminim): remove after tensorflow/core/platform/tracing.h migration.
-namespace tracing {
-using namespace tensorflow::tracing;  // NOLINT
-}  // namespace tracing
 
 namespace thread {
 

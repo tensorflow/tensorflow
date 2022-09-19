@@ -29,18 +29,14 @@ limitations under the License.
 #include "tensorflow/tsl/platform/regexp.h"
 #endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
 
-#include "tensorflow/core/platform/scanner.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/platform.h"
+#include "tensorflow/tsl/platform/scanner.h"
 #include "tensorflow/tsl/platform/str_util.h"
 #include "tensorflow/tsl/platform/strcat.h"
 
 namespace tsl {
-// TODO(aminim): remove after tensorflow/core/platform/scanner.h migration.
-namespace strings {
-using tensorflow::strings::Scanner;  // NOLINT
-}  // namespace strings
 
 bool FileSystem::Match(const string& filename, const string& pattern) {
 #if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)

@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <cstdlib>
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/net.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/net.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace tsl {
 namespace testing {
@@ -64,9 +64,9 @@ string TensorFlowSrcRoot() {
   const char* workspace = getenv("TEST_WORKSPACE");
   if (env && env[0] != '\0') {
     if (workspace && workspace[0] != '\0') {
-      return tensorflow::io::JoinPath(env, workspace, "tensorflow");
+      return io::JoinPath(env, workspace, "tensorflow");
     }
-    return tensorflow::io::JoinPath(env, "tensorflow");
+    return io::JoinPath(env, "tensorflow");
   }
   LOG(WARNING) << "TEST_SRCDIR environment variable not set: "
                << "using $PWD/tensorflow as TensorFlowSrcRoot() for tests.";
