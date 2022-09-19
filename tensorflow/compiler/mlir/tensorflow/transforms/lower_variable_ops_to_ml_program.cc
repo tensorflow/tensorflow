@@ -160,10 +160,14 @@ struct LowerVariableOpsToMlProgramPass
           CreateGlobalOpFromOp(source, globalBuilder, symbol_table);
       if (!globalOp) return;
       OpBuilder builder(op);
-      auto loadOp = builder.create<mlir::ml_program::GlobalLoadOp>(
-          op.getLoc(), op.value().getType(),
+      Operation* load = builder.create<mlir::ml_program::GlobalLoadOp>(
+          op.getLoc(), globalOp.getType(),
           SymbolRefAttr::get(op->getContext(), globalOp.getSymName()));
-      op.getResult().replaceAllUsesWith(loadOp.getResult());
+      if (globalOp.getType() != op.value().getType()) {
+        load = builder.create<TF::CastOp>(op.getLoc(), op.value().getType(),
+                                          load->getResult(0));
+      }
+      op.getResult().replaceAllUsesWith(load->getResult(0));
       op.erase();
     });
 
