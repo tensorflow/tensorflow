@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_DETERMINISM_H_
 #define TENSORFLOW_CORE_UTIL_DETERMINISM_H_
 
+#include "tensorflow/tsl/util/determinism.h"
+
 namespace tensorflow {
 
-bool OpDeterminismRequired();
-bool OpOrderDeterminismRequired();
-void EnableOpDeterminism(bool enabled);
+using tsl::EnableOpDeterminism;
+using tsl::OpDeterminismRequired;
+using tsl::OpOrderDeterminismRequired;
 
 }  // namespace tensorflow
 

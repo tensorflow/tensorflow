@@ -34,6 +34,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/mhlo_tfl_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -185,6 +188,31 @@ Status ApplyDynamicRangeQuantizationFromOldQuantizer(
   return OkStatus();
 }
 
+Status ConvertTFExecutorToStablehloFlatbuffer(
+    mlir::PassManager& pass_manager, mlir::ModuleOp module, bool export_to_mlir,
+    mlir::StatusScopedDiagnosticHandler& statusHandler, std::string* result) {
+  // TODO(b/243835818): add TF quantization pass here.
+  mlir::odml::AddTFToStablehloPasses(pass_manager, false, false);
+  // Print out a detailed report of non-converted stats.
+  pass_manager.addPass(mlir::odml::createPrintOpStatsPass());
+  mlir::odml::AddStablehloOptimizationPasses(pass_manager);
+  if (failed(pass_manager.run(module))) {
+    return statusHandler.ConsumeStatus();
+  }
+
+  // return to avoid adding TFL converter path
+
+  if (export_to_mlir) {
+    llvm::raw_string_ostream os(*result);
+    module.print(os);
+    return statusHandler.ConsumeStatus();
+  }
+
+  // TODO(b/242328935): Add outputing a TFLite Flatbuffer for a stablehlo.
+  return tensorflow::errors::Unknown(
+      "No output mlir specified, please specify output_mlir");
+}
+
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir,
     const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
@@ -220,12 +248,16 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
       std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
           pass_manager.getContext()));
 
+  if (pass_config.enable_stablehlo_conversion) {
+    return ConvertTFExecutorToStablehloFlatbuffer(
+        pass_manager, module, export_to_mlir, statusHandler, result);
+  }
+
   tensorflow::AddPreVariableFreezingTFToTFLConversionPasses(pass_config,
                                                             &pass_manager);
   if (failed(pass_manager.run(module))) {
     return statusHandler.ConsumeStatus();
   }
-
   // Freeze variables if a session is provided.
   if (session.has_value()) {
     mlir::TFL::ErrorCollectorInstrumentation collector(module.getContext());
@@ -246,7 +278,9 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
       return status;
     }
   }
+
   pass_manager.clear();
+
   tensorflow::AddPostVariableFreezingTFToTFLConversionPasses(
       saved_model_dir, toco_flags, pass_config, &pass_manager);
   if (failed(pass_manager.run(module))) {

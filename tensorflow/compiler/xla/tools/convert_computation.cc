@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
@@ -35,14 +35,14 @@ namespace tools {
 
 void RealMain(const std::string& mode, const std::string& path) {
   HloSnapshot module;
-  tensorflow::Env* env = tensorflow::Env::Default();
+  tsl::Env* env = tsl::Env::Default();
   if (mode == "txt2bin") {
-    TF_CHECK_OK(tensorflow::ReadTextProto(env, path, &module));
-    TF_CHECK_OK(tensorflow::WriteBinaryProto(env, path, module));
+    TF_CHECK_OK(tsl::ReadTextProto(env, path, &module));
+    TF_CHECK_OK(tsl::WriteBinaryProto(env, path, module));
   } else if (mode == "bin2txt") {
-    TF_CHECK_OK(tensorflow::ReadBinaryProto(env, path, &module));
+    TF_CHECK_OK(tsl::ReadBinaryProto(env, path, &module));
     std::string out;
-    tensorflow::protobuf::TextFormat::PrintToString(module, &out);
+    tsl::protobuf::TextFormat::PrintToString(module, &out);
     fprintf(stdout, "%s", out.c_str());
   } else {
     LOG(QFATAL) << "unknown mode for computation conversion: " << mode;

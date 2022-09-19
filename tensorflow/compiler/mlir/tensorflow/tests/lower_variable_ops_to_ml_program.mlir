@@ -57,3 +57,21 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 }
+
+// -----
+
+// CHECK-LABEL: module
+module attributes {tf_saved_model.semantics} {
+  // CHECK: ml_program.global{{.*}}mutable [[V:@.+]]({{.*}}) : tensor<3xf32>
+  // CHECK: func.func @inserts_cast_if_necessary(%arg0: tensor<?xf32>
+  // CHECK: ml_program.global_load [[V]]
+  // CHECK: [[C:%.*]] = "tf.Cast"(%arg0
+  // CHECK: ml_program.global_store [[V]] = [[C]]
+  func.func @inserts_cast_if_necessary(%arg0: tensor<?xf32> {tf_saved_model.index_path = [0]}) attributes {tf_saved_model.exported_names = ["f"]} {
+    %0 = "tf.VarHandleOp"() {container = "", shared_name = "v"} : () -> tensor<!tf_type.resource<tensor<3xf32>>>
+    %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<3xf32>>>) -> tensor<3xf32>
+    %2 = "tf.VarHandleOp"() {container = "", shared_name = "v"} : () -> tensor<!tf_type.resource<tensor<?xf32>>>
+    "tf.AssignVariableOp"(%2, %arg0) : (tensor<!tf_type.resource<tensor<?xf32>>>, tensor<?xf32>) -> ()
+    return
+  }
+}

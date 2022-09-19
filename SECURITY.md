@@ -157,6 +157,18 @@ One of the most critical parts of any system is input handling. If malicious
 input can trigger side effects or incorrect behavior, this is a bug, and likely
 a vulnerability.
 
+**Note**: Assertion failures used to be considered a vulnerability in
+TensorFlow. If an assertion failure  only leads to program termination and no
+other exploits, we will no longer consider assertion failures (e.g.,
+`CHECK`-fails) as vulnerabilities. However, if the assertion failure occurs only
+in debug mode (e.g., `DCHECK`) and in production-optimized mode the issue turns
+into other code weakness(e.g., heap overflow, etc.), then we will consider
+this to be a vulnerability. We recommend reporters to try to maximize the impact
+of the vulnerability report (see also [the Google VRP
+rules](https://bughunters.google.com/about/rules/6625378258649088/google-and-alphabet-vulnerability-reward-program-vrp-rules)
+and [the Google OSS VRP
+rules](https://bughunters.google.com/about/rules/6521337925468160/google-open-source-software-vulnerability-reward-program-rules)).
+
 ### Reporting vulnerabilities
 
 Please email reports about any security related issues you find to
@@ -212,6 +224,10 @@ TensorFlow is supported for only 1 year after the release.
 
 Past security advisories are listed below. We credit reporters for identifying
 security issues, although we keep your name confidential if you request it.
+
+Since September 2022, you may also use [the Google OSS VRP
+program](https://bughunters.google.com/about/rules/6521337925468160/google-open-source-software-vulnerability-reward-program-rules))
+to submit vulnerability reports.
 
 #### Encryption key for `security@tensorflow.org`
 

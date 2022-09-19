@@ -171,8 +171,9 @@ bool LayoutAssignment::AllOperandBuffersForwarded(
   PointsToSet::BufferSet* output_buffers = GetBufferSet(instruction);
   PointsToSet::BufferSet* operand_buffers =
       GetBufferSet(instruction->operand(operand_no));
-  return absl::c_all_of(*output_buffers, [&](const LogicalBuffer* b) {
-    return operand_buffers->count(b) > 0;
+  // Each buffer in operand_buffers should also occur in output_buffers.
+  return absl::c_all_of(*operand_buffers, [&](const LogicalBuffer* b) {
+    return output_buffers->count(b) > 0;
   });
 }
 

@@ -405,7 +405,7 @@ enum class EvalErrorDetail : uint32_t {
 };
 
 Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
-  Status error = tensorflow::errors::FailedPrecondition(
+  Status error = tsl::errors::FailedPrecondition(
       "Failed to evaluate instruction (", eval_instruction.name(),
       ") since it depends on infeed or parameters to its parent computation (",
       eval_instruction.parent()->name(), ").");
@@ -980,8 +980,7 @@ Status HloEvaluator::EvaluateInternal(
 
   if (!recursively_evaluate_nonconstant_operands) {
     if (!hlo_query::AllOperandsAreConstants(*instruction)) {
-      return tensorflow::errors::FailedPrecondition(
-          "Not all operands are constants.");
+      return tsl::errors::FailedPrecondition("Not all operands are constants.");
     }
   } else {
     if (instruction->opcode() == HloOpcode::kGetTupleElement) {
@@ -1085,7 +1084,7 @@ Status HloEvaluator::HandleSetDimensionSize(
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   if (arg_literals_.empty()) {
     if (!enable_partial_evaluation_) {
-      return tensorflow::errors::FailedPrecondition(
+      return tsl::errors::FailedPrecondition(
           "Failed to evaluate instruction since its operands are unknown "
           "or undetermined and partial evaluation is not enabled.");
     }
@@ -1114,7 +1113,7 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
 
 Status HloEvaluator::HandleInfeed(HloInstruction* infeed) {
   if (!enable_partial_evaluation_) {
-    return tensorflow::errors::FailedPrecondition(
+    return tsl::errors::FailedPrecondition(
         "Failed to evaluate instruction since its operands are unknown "
         "or undetermined and partial evaluation is not enabled.");
   }
@@ -3091,7 +3090,7 @@ Status HloEvaluator::HandleAsyncDone(HloInstruction* async_done) {
 Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
   if (copy_start->user_count() != 1 ||
       copy_start->users().at(0)->opcode() != HloOpcode::kCopyDone) {
-    return tensorflow::errors::FailedPrecondition(
+    return tsl::errors::FailedPrecondition(
         "Cannot evaluate a kCopyStart that doesn't have a single kCopyDone "
         "user.");
   }
@@ -3111,7 +3110,7 @@ Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
 Status HloEvaluator::HandleCopyDone(HloInstruction* copy_done) {
   const HloInstruction* operand = copy_done->operand(0);
   if (operand->opcode() != HloOpcode::kCopyStart) {
-    return tensorflow::errors::FailedPrecondition(
+    return tsl::errors::FailedPrecondition(
         "Cannot evaluate a kCopyDone that doesn't have a kCopyStart as "
         "operand.");
   }
@@ -3852,7 +3851,7 @@ Status HloEvaluator::Preprocess(HloInstruction* hlo) {
     for (HloInstruction* operand : hlo->mutable_operands()) {
       if (!IsAlreadyEvaluated(operand) ||
           !GetEvaluatedLiteralFor(operand).IsKnown()) {
-        return tensorflow::errors::FailedPrecondition(
+        return tsl::errors::FailedPrecondition(
             "Failed to evaluate instruction since its operands are unknown "
             "or undetermined and partial evaluation is not enabled.");
       }

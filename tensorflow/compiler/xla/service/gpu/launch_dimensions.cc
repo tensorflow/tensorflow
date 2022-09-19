@@ -165,10 +165,10 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   }
   if (gpu_device_info.block_dim_limit_x > 0 &&
       block_count >= gpu_device_info.block_dim_limit_x) {
-    return tensorflow::errors::Unimplemented(
-        "Kernel launch needs more blocks (", block_count,
-        ") than allowed by hardware (", gpu_device_info.block_dim_limit_x,
-        ").");
+    return tsl::errors::Unimplemented("Kernel launch needs more blocks (",
+                                      block_count,
+                                      ") than allowed by hardware (",
+                                      gpu_device_info.block_dim_limit_x, ").");
   }
 
   VLOG(2) << absl::StrFormat(

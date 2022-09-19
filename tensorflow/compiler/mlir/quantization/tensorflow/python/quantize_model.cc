@@ -62,6 +62,7 @@ void AddExportPasses(mlir::PassManager &pm) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
+  pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
 }
 
 // Converts MLIR ModuleOp to TensorFlow GraphDef. Returns InternalError status

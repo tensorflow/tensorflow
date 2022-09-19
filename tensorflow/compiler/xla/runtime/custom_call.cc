@@ -64,13 +64,17 @@ void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
   r.Register<Tagged<void*>>("__type_id_opaque");
   r.Register<Tagged<std::string_view>>("__type_id_string");
 
-  r.Register<Tagged<uint8_t>>("__type_id_uint8");
-  r.Register<Tagged<uint32_t>>("__type_id_uint32");
-  r.Register<Tagged<uint64_t>>("__type_id_uint64");
   r.Register<Tagged<bool>>("__type_id_bool");
+  r.Register<Tagged<int8_t>>("__type_id_int8");
+  r.Register<Tagged<int16_t>>("__type_id_int16");
   r.Register<Tagged<int32_t>>("__type_id_int32");
   r.Register<Tagged<int64_t>>("__type_id_int64");
-  r.Register<Tagged<Eigen::half>>("__type_id_half");
+  r.Register<Tagged<uint8_t>>("__type_id_uint8");
+  r.Register<Tagged<uint16_t>>("__type_id_uint16");
+  r.Register<Tagged<uint32_t>>("__type_id_uint32");
+  r.Register<Tagged<uint64_t>>("__type_id_uint64");
+  r.Register<Tagged<Eigen::bfloat16>>("__type_id_bfloat16");
+  r.Register<Tagged<Eigen::half>>("__type_id_f16");
   r.Register<Tagged<float>>("__type_id_float");
   r.Register<Tagged<double>>("__type_id_double");
 
@@ -78,7 +82,7 @@ void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
   r.Register<Tagged<StridedMemrefView>>("__type_id_strided_memref_view");
   r.Register<Tagged<EmptyArrayRef>>("__type_id_empty_array");
 
-  r.Register<Tagged<ArrayRef<int8_t>>>("__type_id_arrayr_int8");
+  r.Register<Tagged<ArrayRef<int8_t>>>("__type_id_array_int8");
   r.Register<Tagged<ArrayRef<int16_t>>>("__type_id_array_int16");
   r.Register<Tagged<ArrayRef<int32_t>>>("__type_id_array_int32");
   r.Register<Tagged<ArrayRef<int64_t>>>("__type_id_array_int64");

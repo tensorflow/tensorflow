@@ -422,17 +422,17 @@ LogicalResult GraphFuncOp::verifyType() {
 // type and the presence of the (potentially empty) function body.
 LogicalResult GraphFuncOp::verifyBody() {
   FunctionType type = getFunctionType();
+  Block *body = SingleBlock::getBody();
   // Check that the body is terminated with a tfg.return.
-  if (getRegion().empty() || getBody()->empty())
+  if (getRegion().empty() || body->empty())
     return emitOpError() << "expects a non empty body";
 
-  if (getBody()->getNumArguments() != type.getNumInputs())
+  if (body->getNumArguments() != type.getNumInputs())
     return emitOpError() << "function type indicated " << type.getNumInputs()
-                         << " args but block has "
-                         << getBody()->getNumArguments();
+                         << " args but block has " << body->getNumArguments();
 
-  for (auto &arg_types : llvm::enumerate(
-           llvm::zip(type.getInputs(), getBody()->getArgumentTypes()))) {
+  for (auto &arg_types :
+       llvm::enumerate(llvm::zip(type.getInputs(), body->getArgumentTypes()))) {
     Type signature_arg = std::get<0>(arg_types.value());
     Type block_arg = std::get<1>(arg_types.value());
     if (signature_arg != block_arg)
@@ -441,12 +441,12 @@ LogicalResult GraphFuncOp::verifyBody() {
                            << " block arg is " << block_arg;
   }
 
-  if (!isa<ReturnOp>(getBody()->back()))
+  if (!isa<ReturnOp>(body->back()))
     return emitOpError()
            << "expects body to be terminated with a tfg.return, but got: "
-           << getBody()->back().getName().getStringRef();
+           << body->back().getName().getStringRef();
 
-  ReturnOp return_op = cast<ReturnOp>(getBody()->getTerminator());
+  ReturnOp return_op = cast<ReturnOp>(body->getTerminator());
 
   if (type.getNumResults() > return_op->getNumOperands())
     return emitOpError() << "expects " << type.getNumResults()
@@ -476,7 +476,8 @@ LogicalResult GraphFuncOp::verifyBody() {
   }
 
   // Check all ops in the body.
-  if (!all_of(*getBody(), VerifyGenericTFGOperation)) return failure();
+  if (!all_of(*SingleBlock::getBody(), VerifyGenericTFGOperation))
+    return failure();
 
   return success();
 }
@@ -491,8 +492,8 @@ LogicalResult GraphFuncOp::canonicalize(GraphFuncOp func_op,
   bool changed = true;
   while (changed) {
     changed = false;
-    for (Operation &op :
-         llvm::make_early_inc_range(llvm::reverse(*func_op.getBody()))) {
+    for (Operation &op : llvm::make_early_inc_range(
+             llvm::reverse(*func_op.SingleBlock::getBody()))) {
       if (isa<ReturnOp>(op)) continue;
       if (op.getUses().empty()) {
         rewriter.eraseOp(&op);
@@ -750,7 +751,7 @@ BlockArgument GraphFuncOp::getDataValue(Region &region, unsigned idx) {
 // for computing the names.
 void GraphFuncOp::getAsmBlockArgumentNames(Region &region,
                                            OpAsmSetValueNameFn set_name_fn) {
-  ArrayRef<BlockArgument> args = getBody()->getArguments();
+  ArrayRef<BlockArgument> args = SingleBlock::getBody()->getArguments();
   ControlType control_ty = ControlType::get(getContext());
   // Sanity checking: this is verified by the op but this may be called before
   // the verifier or in some diagnostic/debug context, let's not crash.

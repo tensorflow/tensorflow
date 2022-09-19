@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
+#include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -231,9 +232,16 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj, PjRtDevice* to_device,
                                         const DevicePutOptions& options) {
   const auto* py_array = obj.cast<PyArray*>();
 
+  // We only allow single device case for PyArray in device put.
   if (py_array->num_shards() != 1) {
     return InvalidArgument(
         "Only single-sharded Array is expected in device_put.");
+  }
+
+  if (py_array->sharding().get_type() == jax::PmapSharding::type()) {
+    // We are only handling single device case for PmapSharding here. For other
+    // cases, it fallbacks to python.
+    return HandleNumpyArray(obj.attr("_value"), to_device, options);
   }
 
   PjRtBuffer* buffer = py_array->GetBuffer(0);
@@ -548,7 +556,8 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
 
   if (arg.get_type() == xla::PyArray::type()) {
     auto* array = arg.cast<PyArray*>();
-    return PyArgSignature(array->dtype(), array->shape(), array->weak_type());
+    auto dtype = array->GetBuffer(0)->on_device_shape().element_type();
+    return PyArgSignature(dtype, array->shape(), array->weak_type());
   }
 
   // Fast-path for the most common case of PyBuffer.

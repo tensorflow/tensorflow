@@ -97,7 +97,7 @@ Status DoPotrfUnbatched(CholeskyParams* params, GpuSolverContext* context) {
                                       params->n, info_data,
                                       params->workspace_buffer));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

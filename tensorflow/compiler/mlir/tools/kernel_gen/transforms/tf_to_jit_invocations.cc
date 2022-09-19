@@ -200,7 +200,7 @@ struct PackJITCompileOpPattern
 
   LogicalResult matchAndRewrite(tf_framework::JITCompileOp op,
                                 PatternRewriter &rewriter) const override {
-    Block *body = op.getBody();
+    Block *body = op.SingleBlock::getBody();
     auto yield_op =
         llvm::cast<tf_framework::JITCompileYieldOp>(body->getTerminator());
 
@@ -209,7 +209,8 @@ struct PackJITCompileOpPattern
     auto loc = op->getLoc();
     OpBuilder tmp_module_builder(getContext(), rewriter.getListener());
     auto jit_module = tmp_module_builder.create<ModuleOp>(loc);
-    tmp_module_builder.setInsertionPointToStart(jit_module.getBody());
+    tmp_module_builder.setInsertionPointToStart(
+        jit_module.SingleBlock::getBody());
     auto jit_function = tmp_module_builder.create<func::FuncOp>(
         loc, tf_framework::JITCompileFromStrOp::kJITEntryFunctionName,
         tmp_module_builder.getFunctionType(body->getArgumentTypes(),

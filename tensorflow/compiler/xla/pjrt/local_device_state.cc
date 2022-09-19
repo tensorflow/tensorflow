@@ -61,10 +61,10 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
     stream->Init();
     device_to_device_streams_.push_back(std::move(stream));
   }
-  execute_thread_ = std::make_unique<WorkerThread>(tensorflow::Env::Default(),
-                                                   "py_xla_execute");
-  callback_thread_ = std::make_unique<WorkerThread>(tensorflow::Env::Default(),
-                                                    "py_xla_callback");
+  execute_thread_ =
+      std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_execute");
+  callback_thread_ =
+      std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_callback");
 }
 
 LocalDeviceState::~LocalDeviceState() {

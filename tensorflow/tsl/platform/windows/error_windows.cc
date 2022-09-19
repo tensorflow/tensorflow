@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <string>
 
-namespace tensorflow {
+namespace tsl {
 namespace internal {
 namespace {
 
@@ -50,4 +50,4 @@ std::string WindowsWSAGetLastErrorMessage() {
 }
 
 }  // namespace internal
-}  // namespace tensorflow
+}  // namespace tsl

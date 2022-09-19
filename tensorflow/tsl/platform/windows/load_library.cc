@@ -24,7 +24,7 @@ limitations under the License.
 #include <windows.h>
 #undef ERROR
 
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/windows/wide_char.h"
 
 #pragma comment(lib, "Shlwapi.lib")
@@ -37,12 +37,12 @@ Status LoadDynamicLibrary(const char* library_filename, void** handle) {
   string file_name = library_filename;
   std::replace(file_name.begin(), file_name.end(), '/', '\\');
 
-  std::wstring ws_file_name(Utf8ToWideChar(file_name));
+  std::wstring ws_file_name(tsl::Utf8ToWideChar(file_name));
 
   HMODULE hModule =
       LoadLibraryExW(ws_file_name.c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
   if (!hModule) {
-    return errors::NotFound(file_name + " not found");
+    return tsl::errors::NotFound(file_name + " not found");
   }
   *handle = hModule;
   return Status::OK();
@@ -54,7 +54,7 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
 
   found_symbol = GetProcAddress((HMODULE)handle, symbol_name);
   if (found_symbol == NULL) {
-    return errors::NotFound(std::string(symbol_name) + " not found");
+    return tsl::errors::NotFound(std::string(symbol_name) + " not found");
   }
   *symbol = (void**)found_symbol;
   return Status::OK();

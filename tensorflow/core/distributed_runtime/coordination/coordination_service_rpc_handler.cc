@@ -212,7 +212,7 @@ void CoordinationServiceRpcHandler::TryGetKeyValueAsync(
   }
   response->mutable_kv()->set_key(request->key());
   response->mutable_kv()->set_value(result.value());
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::GetKeyValueDirAsync(

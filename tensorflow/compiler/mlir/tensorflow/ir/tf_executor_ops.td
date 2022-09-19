@@ -43,7 +43,7 @@ def TfExecutor_Dialect : Dialect {
     value).
 }];
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
   let cppNamespace = "::mlir::tf_executor";
 }
 

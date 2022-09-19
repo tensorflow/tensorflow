@@ -879,6 +879,7 @@ cc_library(
 cc_library(
     name = "tensor_utils",
     srcs = [
+        "portable_tensor_utils.cc",
         "tensor_utils.cc",
     ],
     hdrs = [

@@ -23,17 +23,17 @@ cc_library(
     srcs = [
         "windows_file_system.cc",
         "windows_file_system.h",
-        "//tensorflow/core/platform:env.cc",
-        "//tensorflow/core/platform:file_system.cc",
-        "//tensorflow/core/platform:file_system_helper.cc",
-        "//tensorflow/core/platform:ram_file_system.h",
-        "//tensorflow/core/platform:threadpool.cc",
+        "//tensorflow/tsl/platform:env.cc",
+        "//tensorflow/tsl/platform:file_system.cc",
+        "//tensorflow/tsl/platform:file_system_helper.cc",
+        "//tensorflow/tsl/platform:ram_file_system.h",
+        "//tensorflow/tsl/platform:threadpool.cc",
     ],
     hdrs = [
-        "//tensorflow/core/platform:env.h",
-        "//tensorflow/core/platform:file_system.h",
-        "//tensorflow/core/platform:file_system_helper.h",
-        "//tensorflow/core/platform:threadpool.h",
+        "//tensorflow/tsl/platform:env.h",
+        "//tensorflow/tsl/platform:file_system.h",
+        "//tensorflow/tsl/platform:file_system_helper.h",
+        "//tensorflow/tsl/platform:threadpool.h",
     ],
     tags = [
         "manual",
@@ -95,13 +95,15 @@ cc_library(
 cc_library(
     name = "env_time",
     srcs = ["env_time.cc"],
-    hdrs = ["//tensorflow/core/platform:env_time.h"],
+    hdrs = ["//tensorflow/tsl/platform:env_time.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
-    deps = ["//tensorflow/core/platform:types"],
+    deps = [
+        "//tensorflow/core/platform:types",
+    ],
 )
 
 cc_library(
@@ -161,8 +163,8 @@ cc_library(
     ],
     deps = [
         ":error_windows",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 

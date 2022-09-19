@@ -122,8 +122,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/human_readable_json.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 #if GOOGLE_CUDA
@@ -1414,7 +1414,7 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
   const Shape b_shape = GetShape(operands[1]);
   const PrimitiveType elem_ty = b_shape.element_type();
   TriangularSolveOptions backend_config;
-  TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(
+  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(
       custom_call.getBackendConfig().str(), &backend_config));
 
   ThunkSequence thunks;
@@ -1716,11 +1716,9 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
   std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fused_computation);
   HloInstruction* first_transpose = *absl::c_find_if(
       hlo_roots,
-      [](HloInstruction* instr) { return IsTiledTranspose(*instr); });
-  HloInstruction* operand = first_transpose->mutable_operand(0);
+      [](HloInstruction* instr) { return FindTiledTranspose(*instr); });
 
-  std::optional<Vector3> dims =
-      ShapeUtil::FindTranspose021(operand->shape(), first_transpose->shape());
+  std::optional<Vector3> dims = FindTiledTranspose(*first_transpose);
 
   // TODO(cheshire): have a more robust way of checking this.
   CHECK(dims.has_value());
@@ -2623,8 +2621,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   const uint64_t kThreadsPerBlock = kTileSize / 2;
 
   // Check whether we should use any tiling. We might not be able to use it if
-  // we have not enough threads, or not enough shared memory. Also it does not
-  // give a speedup if the tile size is < 128.
+  // we have not enough threads, or not enough shared memory.
   int64_t total_shared_memory_needed = 0;
   for (int64_t i = 0; i < operands.size(); ++i) {
     total_shared_memory_needed +=
@@ -2632,17 +2629,15 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
                         GetShape(operands[i]).element_type());
   }
   bool no_tiling =
-      kTileSize < 128 ||
       kThreadsPerBlock >
           ir_emitter_context_->gpu_device_info().threads_per_block_limit ||
       total_shared_memory_needed >
           ir_emitter_context_->gpu_device_info().shared_memory_per_block;
   VLOG(2) << absl::StreamFormat(
       "%s %s use tiling. No tiling if any of the following is true: "
-      "kTileSize=%d < 128, "
       "kThreadsPerBlock=%d > threads_per_block_limit=%d, "
       "total_shared_memory_needed=%d > shared_memory_per_block=%d",
-      op_name, (no_tiling ? "won't" : "will"), kTileSize, kThreadsPerBlock,
+      op_name, (no_tiling ? "won't" : "will"), kThreadsPerBlock,
       ir_emitter_context_->gpu_device_info().threads_per_block_limit,
       total_shared_memory_needed,
       ir_emitter_context_->gpu_device_info().shared_memory_per_block);
@@ -3602,7 +3597,7 @@ void IrEmitterUnnested::EmitTileElementForTranspose(
       index, output_arrays[0].GetShape(), &b_, tiling_scheme.GetDimsInElems());
   llvm_ir::ElementGenerator output_generator =
       *fused_emitter.GetGenerator(*fused_computation->root_instruction());
-  llvm::Value* output_value = output_generator(untiled_index).ValueOrDie();
+  llvm::Value* output_value = output_generator(untiled_index).value();
   if (output_arrays.size() > 1) {
     DCHECK(output_value->getType()->isStructTy());
     DCHECK_EQ(output_value->getType()->getStructNumElements(),
@@ -3655,7 +3650,7 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
       // Initialize the partial result with the initial value of the reduction.
       llvm::Value* init_ir_value = (*fused_emitter.GetGenerator(*init_value))(
                                        IrArray::Index(b_.getInt32Ty()))
-                                       .ValueOrDie();
+                                       .value();
 
       for (int i = 0; i < num_partial_results; ++i) {
         b_.CreateStore(init_ir_value,
@@ -4281,7 +4276,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
   std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion_hlo);
   HloInstruction* first_transpose = *absl::c_find_if(
       hlo_roots,
-      [](HloInstruction* instr) { return IsTiledTranspose(*instr); });
+      [](HloInstruction* instr) { return FindTiledTranspose(*instr); });
   const Shape& out_shape = first_transpose->shape();
   const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
 
@@ -4290,7 +4285,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
   //  -> EITHER it's a kCopy: S{L} -> S{L'}
   //  -> OR it's an elementwise op of shape S{L}
   for (HloInstruction* root : hlo_roots) {
-    if (IsTiledTranspose(*root)) {
+    if (FindTiledTranspose(*root)) {
       CHECK(ShapeUtil::EqualIgnoringElementType(transpose_in_shape,
                                                 root->operand(0)->shape()));
       CHECK(ShapeUtil::EqualIgnoringElementType(out_shape, root->shape()));
@@ -4316,7 +4311,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
 
   absl::flat_hash_map<HloInstruction*, llvm::GlobalVariable*> tiles;
   for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
-    if (IsTiledTranspose(*root)) {
+    if (FindTiledTranspose(*root)) {
       tiles[root] =
           AllocateShared(tiling_scheme,
                          llvm_ir::PrimitiveTypeToIrType(
@@ -4347,7 +4342,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
           for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
             IrArray::Index input_index = GetUnnormalizedIndex(
                 index, transpose_in_shape, &b_, tiling_scheme.GetDimsInElems());
-            if (IsTiledTranspose(*root)) {
+            if (FindTiledTranspose(*root)) {
               llvm_ir::ElementGenerator input_gen =
                   *fused_emitter.GetGenerator(*root->operand(0));
               llvm::Value* value = *input_gen(input_index);
@@ -4383,7 +4378,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
             const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
             llvm::Value* x_loc, llvm::Value* /*x_iter_num*/) {
           for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
-            if (IsTiledTranspose(*root)) {
+            if (FindTiledTranspose(*root)) {
               IrArray::Index untiled_index = GetUnnormalizedIndex(
                   index, root->shape(), &b_,
                   Permute(tiling_scheme.GetDimsInElems(), permutation));
@@ -5085,7 +5080,7 @@ Status IrEmitterUnnested::EmitElementForInputFusibleSlices(
   }
   for (const HloInstruction* slice : slice_instructions) {
     auto input_generator = *fused_emitter.GetGenerator(*slice->operand(0));
-    input_ir_values.push_back(input_generator(index).ValueOrDie());
+    input_ir_values.push_back(input_generator(index).value());
   }
 
   // Emit for slice_instructions.

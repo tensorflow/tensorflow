@@ -61,7 +61,6 @@ cc_library(
         "tf_jitrt_tile_cwise.cc",
         "tf_jitrt_tile_reduction.cc",
         "tf_jitrt_tile_transpose.cc",
-        "tf_jitrt_vectorize_tiled_ops.cc",
     ],
     hdrs = ["tf_jitrt_passes.h"],
     compatible_with = get_compatible_with_cloud(),

@@ -30,6 +30,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/dynamic_annotations.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -280,6 +282,9 @@ inline CustomCallBinding<> CustomCall::Bind(std::string callee) {
   return CustomCallBinding<>(std::move(callee));
 }
 
+// Custom calls return results to the caller through the template
+// specializations of the `Result`. Each template specialization is responsible
+// for definining the result encoding/decoding to/from opaque memory.
 template <typename T>
 class Result;
 
@@ -320,12 +325,10 @@ struct CustomCallAttrDecoding;
 template <typename T, CustomCall::RuntimeChecks>
 struct CustomCallRetDecoding;
 
-// A type tag to represent empty arrays of unknown element type.
-struct EmptyArrayRef {};
-
 //===----------------------------------------------------------------------===//
 // C structures corresponding to the `rt-to-llvm` pass LLVM structs encoding
 // various types of arguments/attributes.
+//===----------------------------------------------------------------------===//
 
 namespace internal {
 struct EncodedMemref {
@@ -352,6 +355,7 @@ struct EncodedDenseElements {
 
 //===----------------------------------------------------------------------===//
 // Helpers for decoding opaque arguments and attributes memory.
+//===----------------------------------------------------------------------===//
 
 namespace internal {
 
@@ -425,6 +429,7 @@ using DecodedRets = DecodedArgs;
 //===----------------------------------------------------------------------===//
 // CustomCall remaining arguments wraps the type-erased `DecodedArg` container,
 // and provides a type-safe API for accessing individual arguments.
+//===----------------------------------------------------------------------===//
 
 class CustomCall::RemainingArgs {
  public:
@@ -506,6 +511,7 @@ class CustomCall::VariantAttr {
 // A little bit of template metaprogramming to implement type safe binding
 // of custom calls to C++ functions. This is internal implementation details,
 // and must not be relied on in any of the client code.
+//===----------------------------------------------------------------------===//
 
 namespace internal {
 
@@ -560,6 +566,72 @@ template <typename T>
 struct NumRets<T> {
   static constexpr int64_t value = IsResult<T>::value;
 };
+
+// Unwrap return type to get the type expected by result `Set` method.
+//
+// TODO(ezhulenev): Result template itself should define what type `T` it
+// expects to see in the `Set` method, because it's not necessery the same as
+// the template type of the result.
+template <typename T>
+struct UnwrapRet;
+
+template <typename T>
+struct UnwrapRet<Result<T>> {
+  using Type = T;
+};
+
+// A helper template to concatenate index + index sequence.
+template <size_t, typename>
+struct ConsIdx;
+
+template <size_t idx, size_t... Is>
+struct ConsIdx<idx, std::index_sequence<Is...>> {
+  using Type = std::index_sequence<idx, Is...>;
+};
+
+// Get indices of the variadic template type parameters corresponding to
+// results. This template will produce an `std::index_sequence` type with
+// indices of custom call result arguments.
+template <size_t idx, typename... Ts>
+struct IndexRets;
+
+template <size_t idx>
+struct IndexRets<idx> {
+  using Is = std::index_sequence<>;
+};
+
+template <size_t idx, typename T, typename... Ts>
+struct IndexRets<idx, T, Ts...> {
+  using Is = std::conditional_t<
+      IsResult<T>::value,
+      typename ConsIdx<idx, typename IndexRets<idx + 1, Ts...>::Is>::Type,
+      typename IndexRets<idx + 1, Ts...>::Is>;
+};
+
+// Get indices of the variadic template type parameters corresponding to
+// all arguments excluding results.
+template <size_t idx, typename... Ts>
+struct IndexArgs;
+
+template <size_t idx>
+struct IndexArgs<idx> {
+  using Is = std::index_sequence<>;
+};
+
+template <size_t idx, typename T, typename... Ts>
+struct IndexArgs<idx, T, Ts...> {
+  using Is = std::conditional_t<
+      !IsResult<T>::value,
+      typename ConsIdx<idx, typename IndexArgs<idx + 1, Ts...>::Is>::Type,
+      typename IndexArgs<idx + 1, Ts...>::Is>;
+};
+
+template <size_t... FnArgsIs, size_t... ResultIs, typename FnArgs,
+          typename Result>
+void SetResultsFromTuple(std::index_sequence<ResultIs...>, FnArgs fn_args,
+                         Result tuple) {
+  ((*std::get<FnArgsIs>(fn_args)).Set(std::get<ResultIs>(tuple)), ...);
+}
 
 // When decoding input data we need to keep track of how many arguments,
 // attributes, and returns we decoded so far to index into the correct data
@@ -702,6 +774,9 @@ class CustomCallHandler : public CustomCall {
   template <typename T>
   using FnArgType = typename internal::FnArgType<T>::Type;
 
+  template <typename T>
+  using UnwrapRet = typename internal::UnwrapRet<T>::Type;
+
   // Custom call can signal error using a LogicalError result.
   static constexpr bool kIsLogicalErr =
       std::is_invocable_r_v<LogicalResult, Fn, FnArgType<Ts>...>;
@@ -710,7 +785,41 @@ class CustomCallHandler : public CustomCall {
   static constexpr bool kIsStatusErr =
       std::is_invocable_r_v<absl::Status, Fn, FnArgType<Ts>...>;
 
-  static_assert(kIsLogicalErr || kIsStatusErr,
+  // Custom call returns results as `absl::StatusOr<std::tuple<Ts...>>`
+  // (multiple results) or `absl::StatusOr<T>` (single result).
+  template <size_t... RetsIs, size_t... ArgsIs>
+  static constexpr bool IsStatusOrInvocable(std::index_sequence<RetsIs...>,
+                                            std::index_sequence<ArgsIs...>) {
+    // Define a tuple to help extracting type by index.
+    using ArgsTuple = std::tuple<FnArgType<Ts>...>;
+
+    // Custom call doesn't have any results.
+    if constexpr (sizeof...(RetsIs) == 0) return false;
+
+    // Custom call returns a single result.
+    if constexpr (sizeof...(RetsIs) == 1) {
+      using StatusOr =
+          absl::StatusOr<UnwrapRet<std::tuple_element_t<RetsIs, ArgsTuple>>...>;
+      return std::is_invocable_r_v<StatusOr, Fn,
+                                   std::tuple_element_t<ArgsIs, ArgsTuple>...>;
+    }
+
+    // Custom call returns multiple results as a tuple.
+    if constexpr (sizeof...(RetsIs) > 1) {
+      using StatusOr = absl::StatusOr<
+          std::tuple<UnwrapRet<std::tuple_element_t<RetsIs, ArgsTuple>>...>>;
+      return std::is_invocable_r_v<StatusOr, Fn,
+                                   std::tuple_element_t<ArgsIs, ArgsTuple>...>;
+    }
+
+    llvm_unreachable("unsupported result rank");
+  }
+
+  static constexpr bool kIsStatusOrResult =
+      IsStatusOrInvocable(typename internal::IndexRets<0, Ts...>::Is{},
+                          typename internal::IndexArgs<0, Ts...>::Is{});
+
+  static_assert(kIsLogicalErr || kIsStatusErr || kIsStatusOrResult,
                 "incompatible custom call handler types");
 
  public:
@@ -776,27 +885,33 @@ class CustomCallHandler : public CustomCall {
       }
     }
 
+    // Define index sequences to access custom call operands.
+    using Is = std::make_index_sequence<kSize>;
+    using ArgsIs = typename internal::IndexArgs<0, Ts...>::Is;
+    using RetsIs = typename internal::IndexRets<0, Ts...>::Is;
+
     return call(decoded_args, decoded_attrs, decoded_rets, user_data,
-                diagnostic, std::make_index_sequence<kSize>{});
+                diagnostic, Is{}, ArgsIs{}, RetsIs{});
   }
 
-  template <size_t... Is>
+  template <size_t... Is, size_t... ArgsIs, size_t... RetsIs>
   LLVM_ATTRIBUTE_ALWAYS_INLINE LogicalResult
   call(internal::DecodedArgs args, internal::DecodedAttrs attrs,
        internal::DecodedRets rets, const UserData* user_data,
-       const DiagnosticEngine* diagnostic, std::index_sequence<Is...>) const {
+       const DiagnosticEngine* diagnostic, std::index_sequence<Is...>,
+       std::index_sequence<ArgsIs...>, std::index_sequence<RetsIs...>) const {
     // A helper structure to allow each decoder find the correct offset in the
-    // arguments or attributes.
+    // arguments, attributes or results.
     internal::DecodingOffsets offsets;
 
-    // Check if all arguments and attributes were decoded.
+    // Check if all operands and results were decoded.
     bool all_decoded = true;
     auto check_all_decoded = [&](auto result) {
       all_decoded &= succeeded(result);
       return std::move(result);
     };
 
-    // Decode all arguments into FailureOr containers. It is guaranteed
+    // Decode all operands into FailureOr containers. It is guaranteed
     // that initializer list will be evaluated left-to-right, and we can rely
     // on correct offsets computation.
     std::tuple<FailureOr<FnArgType<Ts>>...> fn_args = {
@@ -818,6 +933,28 @@ class CustomCallHandler : public CustomCall {
         return diagnostic->EmitError(std::move(st));
       }
       return success();
+    }
+
+    // Custom call returns result(s) as `absl::StatusOr`.
+    if constexpr (kIsStatusOrResult) {
+      auto status_or = fn_(std::move(*std::get<ArgsIs>(fn_args))...);
+      if (!status_or.ok()) {
+        return diagnostic->EmitError(status_or.status());
+      }
+
+      static_assert(sizeof...(RetsIs) >= 1, "unsupported number or results");
+
+      if constexpr (sizeof...(RetsIs) == 1) {
+        (*std::get<RetsIs...>(fn_args)).Set(status_or.value());
+        return success();
+      }
+
+      if constexpr (sizeof...(RetsIs) > 1) {
+        using ResultIs = std::make_index_sequence<kNumRets>;
+        internal::SetResultsFromTuple<RetsIs...>(ResultIs{}, std::move(fn_args),
+                                                 std::move(status_or.value()));
+        return success();
+      }
     }
 
     llvm_unreachable("unexpected custom call type");
@@ -979,6 +1116,8 @@ struct CustomCallArgDecoding<FlatMemrefView, checks> {
   }
 
 XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(bool);
+XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(int8_t);
+XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(int16_t);
 XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(int32_t);
 XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(int64_t);
 XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(float);
@@ -986,25 +1125,32 @@ XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(double);
 
 #undef XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING
 
-template <CustomCall::RuntimeChecks checks>
-struct CustomCallArgDecoding<Eigen::half, checks> {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Eigen::half> Decode(
-      TypeID type_id, void* value) {
-    if (!CustomCall::Isa<Eigen::half>(checks, type_id)) {
-      return failure();
-    }
-
-    auto* src = reinterpret_cast<uint16_t*>(value);
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(uint16_t));
-    return Eigen::numext::bit_cast<Eigen::half>(*src);
+// Register decoding for special floating point types defined in Eigen.
+#define XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING(T, STORAGE)              \
+  template <CustomCall::RuntimeChecks checks>                               \
+  struct CustomCallArgDecoding<T, checks> {                                 \
+    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(TypeID type_id, \
+                                                            void* value) {  \
+      if (!CustomCall::Isa<T>(checks, type_id)) {                           \
+        return failure();                                                   \
+      }                                                                     \
+                                                                            \
+      auto* src = reinterpret_cast<STORAGE*>(value);                        \
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(STORAGE));          \
+      return Eigen::numext::bit_cast<T>(*src);                              \
+    }                                                                       \
   }
-};
+
+XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING(Eigen::bfloat16, uint16_t);
+XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING(Eigen::half, uint16_t);
+
+#undef XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING
 
 //===----------------------------------------------------------------------===//
-
 // Opaque arguments at run time passed as pointers and decoded by wrapping them
 // into a reference type, for example `AsyncValue *` pointer can be wrapped into
 // a typed `AsyncValuePtr<T>` pointer wrapper.
+//===----------------------------------------------------------------------===//
 
 #define XLA_RUNTIME_REGISTER_OPAQUE_ARG_DECODING(T, PTR)                    \
   template <CustomCall::RuntimeChecks checks>                               \
@@ -1060,13 +1206,12 @@ XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(int64_t);
 XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(float);
 XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(double);
 
-#undef XLA_RUNTIME_REGISTER_SCALAR_RESULT
 #undef XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING
 
 //===----------------------------------------------------------------------===//
-
 // Opaque results at run time passed as pointers, and a typed wrapper binds
 // together the reference type and the underlying pointer type.
+//===----------------------------------------------------------------------===//
 
 #define XLA_RUNTIME_REGISTER_OPAQUE_RET_DECODING(T, PTR)             \
   template <>                                                        \
@@ -1096,6 +1241,61 @@ XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(double);
   }
 
 XLA_RUNTIME_REGISTER_OPAQUE_RET_DECODING(void*, void*);
+
+//===----------------------------------------------------------------------===//
+
+// Custom call memref result decoding
+template <>
+class Result<MemrefView> {
+  using EncodedMemref = internal::EncodedMemref;
+
+ public:
+  explicit Result(EncodedMemref* storage) : storage_(storage) {}
+  void Set(MemrefView value) {
+    assert(IsCompatible(value) &&
+           "Custom call return types is not compatible with types in MLIR");
+    storage_->data = value.data;
+    for (unsigned i = 0; i < storage_->rank; ++i) {
+      storage_->dims[i] = value.sizes[i];
+    }
+  }
+
+  PrimitiveType GetDType() { return PrimitiveType{storage_->dtype}; }
+  absl::Span<const int64_t> GetDims() {
+    return absl::Span<const int64_t>(storage_->dims, storage_->rank);
+  }
+
+ private:
+  bool IsCompatible(MemrefView value) {
+    bool is_compatible =
+        storage_->dtype == value.dtype && storage_->rank == value.sizes.size();
+    if (!is_compatible) return false;
+
+    for (unsigned i = 0; i < storage_->rank; ++i) {
+      is_compatible = (storage_->dims[i] == value.sizes[i]) ||
+                      (storage_->dims[i] == /*MemrefType::kDynamicSize=*/-1);
+    }
+    return is_compatible;
+  }
+
+  EncodedMemref* storage_;
+};
+
+template <CustomCall::RuntimeChecks checks>
+struct CustomCallRetDecoding<MemrefView, checks> {
+  using EncodedMemref = internal::EncodedMemref;
+
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  static FailureOr<Result<MemrefView>> Decode(TypeID type_id, void* value) {
+    if (!CustomCall::Isa<MemrefView>(checks, type_id)) return failure();
+
+    auto* encoded = reinterpret_cast<EncodedMemref*>(value);
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+        encoded, sizeof(EncodedMemref) + encoded->rank * sizeof(int64_t));
+    return Result<MemrefView>(encoded);
+  }
+};
 
 //===----------------------------------------------------------------------===//
 // Custom call attributes decoding.
@@ -1142,6 +1342,9 @@ XLA_RUNTIME_REGISTER_SCALAR_ATTR_DECODING(float);
 XLA_RUNTIME_REGISTER_SCALAR_ATTR_DECODING(double);
 
 #undef XLA_RUNTIME_REGISTER_SCALAR_ATTR_DECODING
+
+// A type tag to represent empty arrays of unknown element type.
+struct EmptyArrayRef {};
 
 // Both EncodedArray and 1-D EncodedDenseElements can be decoded as an
 // llvm::ArrayRef. Pointers to both EncodedArray and 1-D EncodedDenseElements

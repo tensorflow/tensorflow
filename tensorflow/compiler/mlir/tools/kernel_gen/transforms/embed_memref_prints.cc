@@ -116,7 +116,7 @@ SmallVector<Value> ExtractValuesToPrint(Operation* op) {
     return linalg.getOutputBufferOperands();
   }
   if (auto loop = dyn_cast<gml_st::LoopOp>(op)) {
-    return loop.outputs();
+    return loop.getOutputs();
   }
   if (auto loop = dyn_cast<scf::ForOp>(op)) {
     return loop.getIterOperands();

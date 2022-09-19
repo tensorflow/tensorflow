@@ -665,7 +665,7 @@ Status SetBuilderInsertionAfterValue(mlir::Value value,
   }
   if (!cluster) return errors::Internal("value not used in any cluster");
 
-  builder.setInsertionPointToStart(cluster.getBody());
+  builder.setInsertionPointToStart(cluster.SingleBlock::getBody());
   return OkStatus();
 }
 

@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <string>
 
-namespace tensorflow {
+namespace tsl {
 
 std::wstring Utf8ToWideChar(const std::string& utf8str) {
   int size_required = MultiByteToWideChar(CP_UTF8, 0, utf8str.c_str(),
@@ -40,4 +40,4 @@ std::string WideCharToUtf8(const std::wstring& wstr) {
   return utf8_translated_str;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

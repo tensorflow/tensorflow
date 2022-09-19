@@ -40,7 +40,9 @@ Status HostCallbackContext::OnSend(int arg_num,
   args_.at(arg_num) = std::move(delinearized);
 
   DCHECK_GE(ready_count_.load(), 1);
-  if (ready_count_.fetch_sub(1) != 1) return Status::OK();
+  if (ready_count_.fetch_sub(1) != 1) {
+    return OkStatus();
+  }
 
   // This atomic store won't race against the next invocation of OnSend()
   // (e.g. by the next iteration of while loop) because send callbacks are

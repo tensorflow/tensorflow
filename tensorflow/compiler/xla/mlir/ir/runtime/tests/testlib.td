@@ -35,7 +35,7 @@ def TestlibDialect : Dialect {
 
   let useDefaultTypePrinterParser = 1;
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
 }
 
 include "testlib_attrs.td"

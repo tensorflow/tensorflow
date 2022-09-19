@@ -45,7 +45,7 @@ namespace acceleration {
 // implementation notes in runner.cc
 //
 // Warning: this class will just run the provided code in-process when compiled
-// for non-Android.
+// for non-Android, and timeout is not enforced.
 class ProcessRunner {
  public:
   // Construct ProcessRunner. 'temporary_path' should be a suitable subdirectory
@@ -55,7 +55,20 @@ class ProcessRunner {
   // between 0 and 127 are well-defined.
   ProcessRunner(const std::string& temporary_path,
                 const std::string& function_name,
-                int (*function_pointer)(int argc, char** argv));
+                int (*function_pointer)(int argc, char** argv))
+      : temporary_path_(temporary_path),
+        function_name_(function_name),
+        function_pointer_(reinterpret_cast<void*>(function_pointer)),
+        timeout_millisec_(0) {}
+
+  ProcessRunner(const std::string& temporary_path,
+                const std::string& function_name,
+                int (*function_pointer)(int argc, char** argv),
+                int timeout_millisec)
+      : temporary_path_(temporary_path),
+        function_name_(function_name),
+        function_pointer_(reinterpret_cast<void*>(function_pointer)),
+        timeout_millisec_(timeout_millisec) {}
 
   // Initialize runner.
   MinibenchmarkStatus Init();
@@ -104,11 +117,21 @@ class ProcessRunner {
   int RunInprocess(flatbuffers::FlatBufferBuilder* model,
                    const std::vector<std::string>& args);
 #endif  // !__ANDROID__
+
+#ifndef _WIN32
+  // This function first reads the subprocess id from fstream, and then block
+  // until timeout_millisec_ has passed, OR fstream is closed. If timeout is
+  // reached first, we will kill the subprocess. Returns whether kill() is
+  // triggered.
+  bool KillProcessWhenTimedOut(FILE* fstream);
+#endif  // !_WIN32
+
   std::string temporary_path_;
   std::string function_name_;
   void* function_pointer_;
   std::string runner_path_;
   std::string soname_;
+  int timeout_millisec_;
 };
 
 }  // namespace acceleration

@@ -50,4 +50,57 @@ typedef struct TfLiteRegistrationExternal {
   TfLiteStatus (*invoke)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
 } TfLiteRegistrationExternal;
 
+// Returns true iff it's safe to dereference
+// 'delegate->opaque_delegate_builder'.
+inline bool TfLiteDelegateHasValidOpaqueDelegateBuilder(
+    const TfLiteDelegate* delegate) {
+  // We want to give precedence to the delegate's `opaque_delegate_builder`
+  // field when it is available.  In an ideal setting, where all client code
+  // properly initializes the delegate, we could simply check if the
+  // `opaque_delegate_builder` contains a non-zero address.  However, in
+  // practice this breaks code that doesn't adhere to these best practices.
+  //
+  // We can avoid this problem by checking the `Prepare` field contained in the
+  // `TfliteDelegate` (not to be confused with the `Prepare` field contained in
+  // `TfLiteOpaqueDelegateBuilder` struct). In order to tell if we should use
+  // the `opaque_delegate_builder` field we check that the `TfLiteDelegate`'s
+  // `Prepare` member is null.  This should be true for every delegate that
+  // adopts the `TfLiteOpaqueDelegateBuilder` interface and should not be true
+  // for any delegate implementation that is using `TfLiteDelegate` directly.
+  //
+  // TODO(b/245730811): Consider signalling to clients if the delegate is not
+  // initialized cleanly.
+  return delegate->Prepare == nullptr &&
+         delegate->opaque_delegate_builder != nullptr;
+}
+
+// Invokes 'Prepare' on the provided 'delegate', giving the 'delegate' a view
+// of the current graph through the provided 'context'.  Returns the delegate's
+// 'Prepare' return value.
+TfLiteStatus TfLiteDelegatePrepareInternal(TfLiteContext* context,
+                                           TfLiteDelegate* delegate);
+
+// Invokes 'CopyFromBufferHandle' on the provided 'delegate', supplying the
+// provided 'buffer_handle' and 'tensor' as arguments. The provided
+// 'buffer_handle' must have a non-null buffer handle value (i.e., not
+// 'kTfLiteNullBufferHandle').  Returns the delegate's 'CopyFromBufferHandle'
+// return value.
+TfLiteStatus TfLiteDelegateCopyFromBufferHandleInternal(
+    TfLiteContext* context, TfLiteDelegate* delegate,
+    TfLiteBufferHandle buffer_handle, TfLiteTensor* tensor);
+
+// Invokes 'FreeBufferHandle' on the provided 'delegate', supplying the provided
+// 'buffer_handle' as an argument.  The '*buffer_handle' must have a non-null
+// buffer handle value (i.e., not 'kTfLiteNullBufferHandle').  Returns
+// 'kTfLiteOk' if 'FreeBufferHandle' was called, or 'kTfLiteError' if the
+// callback is not available.
+TfLiteStatus TfLiteDelegateFreeBufferHandleInternal(
+    TfLiteContext* context, TfLiteDelegate* delegate,
+    TfLiteBufferHandle* buffer_handle);
+
+// Returns the 'delegate' flags value.  Note, if the delegate contains a valid
+// opaque_delegate_builder field, then the flags of the delegate external are
+// returned.  Otherwise, the flags field inside `TfLiteDelegate` is returned.
+int64_t TfLiteDelegateGetFlagsInternal(TfLiteDelegate* delegate);
+
 #endif  // TENSORFLOW_LITE_C_COMMON_INTERNAL_H_

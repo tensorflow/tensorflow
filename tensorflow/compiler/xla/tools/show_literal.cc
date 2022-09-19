@@ -15,7 +15,7 @@ limitations under the License.
 
 // Usage: show_literal <path-to-serialized-literal-proto>
 //
-// Dumps out the Literal::ToString of a tensorflow::WriteBinaryProto format
+// Dumps out the Literal::ToString of a tsl::WriteBinaryProto format
 // Literal serialized on disk.
 
 #include <stdio.h>
@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -39,8 +39,8 @@ int main(int argc, char **argv) {
   }
 
   xla::LiteralProto literal_proto;
-  TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), argv[1],
-                                          &literal_proto));
+  TF_CHECK_OK(
+      tsl::ReadBinaryProto(tsl::Env::Default(), argv[1], &literal_proto));
   xla::Literal literal = xla::Literal::CreateFromProto(literal_proto).value();
   LOG(INFO) << "literal: " << literal_proto.ShortDebugString();
   fprintf(stderr, "%s\n", literal.ToString().c_str());

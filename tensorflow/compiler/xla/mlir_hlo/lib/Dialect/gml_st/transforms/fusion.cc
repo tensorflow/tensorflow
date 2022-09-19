@@ -70,7 +70,7 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
     // Case MaterializeOp.
     if (auto materializeOp = llvm::dyn_cast<MaterializeOp>(def)) {
       assert(materializeOp->getNumResults() == 1 && "assume single result");
-      Value set = materializeOp.set();
+      Value set = materializeOp.getSet();
       if (!set.getType().isa<TileType>()) return failure();
       rewriter.replaceOpWithNewOp<gml_st::SizeOp>(op, set, op.getIndex());
       return success();
@@ -132,13 +132,13 @@ struct DeprecatedFusionPattern : public OpRewritePattern<MaterializeOp> {
 
   LogicalResult matchAndRewrite(MaterializeOp op,
                                 PatternRewriter& rewriter) const override {
-    Operation* def = op.source().getDefiningOp();
+    Operation* def = op.getSource().getDefiningOp();
     if (!def) return failure();
 
     auto iface = llvm::dyn_cast<FusionInterface>(def);
     if (!iface) return failure();
 
-    Value fused = iface.fuse(op.getLoc(), op.set(), rewriter);
+    Value fused = iface.fuse(op.getLoc(), op.getSet(), rewriter);
     if (!fused) return failure();
 
     rewriter.replaceOp(op, fused);
@@ -180,7 +180,7 @@ void getOrMaterializeMixedOffsetsAndSizes(OpBuilder& b, Location loc,
                                           SmallVector<OpFoldResult>& sizes) {
   // If the tile is not nested, we can extract the indices from the op.
   if (auto tileOp = tile.getDefiningOp<TileOp>()) {
-    if (tileOp.superset().getDefiningOp<SpaceOp>()) {
+    if (tileOp.getSuperset().getDefiningOp<SpaceOp>()) {
       offsets = tileOp.getMixedOffsets();
       sizes = tileOp.getMixedSizes();
       return;
@@ -205,10 +205,10 @@ void getOrMaterializeMixedOffsetsAndSizes(OpBuilder& b, Location loc,
 
 FailureOr<Value> fuseIntoMaterializeOp(OpBuilder& b, Location loc,
                                        MaterializeOp materializeOp) {
-  auto tileableOp = materializeOp.source().getDefiningOp<TilingInterface>();
+  auto tileableOp = materializeOp.getSource().getDefiningOp<TilingInterface>();
   if (!tileableOp) return failure();
 
-  Value tile = materializeOp.set();
+  Value tile = materializeOp.getSet();
   if (!tile.getType().isa<TileType>()) return failure();
 
   SmallVector<OpFoldResult> offsets;
@@ -271,7 +271,7 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
 
     auto filterFn = [&](Operation* op) {
       auto materializeOp = cast<MaterializeOp>(op);
-      Operation* producerOp = materializeOp.source().getDefiningOp();
+      Operation* producerOp = materializeOp.getSource().getDefiningOp();
       if (!producerOp || (!producerLabel.empty() &&
                           !hasMatchingLabel(producerOp, producerLabel))) {
         return failure();
@@ -314,8 +314,7 @@ void populateFusionPatterns(MLIRContext* ctx, OpFilterFn filterFn,
   // clang-format off
   patterns->insert<
       DimOpFissionPattern,
-      DimOpReificationPattern,
-      DeprecatedFusionPattern>(ctx);
+      DimOpReificationPattern>(ctx);
   // clang-format on
 }
 

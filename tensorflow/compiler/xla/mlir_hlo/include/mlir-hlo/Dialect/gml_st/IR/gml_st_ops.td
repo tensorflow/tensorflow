@@ -23,15 +23,19 @@ include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
-def GMLST_MaterializeOp : GMLST_Op<"materialize", [
-    NoSideEffect,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let arguments = (ins AnyShaped:$source, AnySet:$set);
-  let results = (outs AnyType:$result);
+def RankedTensor : AnyTypeOf<[AnyRankedTensor], "", "::mlir::RankedTensorType">;
+def RankedTensorOrScalar : AnyTypeOf<[AnyRankedTensor, AnyFloat, AnyInteger]>;
+
+def GMLST_MaterializeOp : GMLST_Op<"materialize", [NoSideEffect]> {
+  let arguments = (ins RankedTensor:$source, AnySet:$set);
+  let results = (outs RankedTensorOrScalar:$result);
+
+  let builders = [OpBuilder<(ins "Value":$source, "Value":$set)>];
+
   let assemblyFormat = [{
     $source`[` $set `]` attr-dict `:` type($source) `[` type($set) `]`
+      `to` type($result)
   }];
-  let hasVerifier = 0;
 }
 
 def GMLST_OffsetOp : GMLST_Op<"offset", [NoSideEffect]> {
@@ -278,9 +282,9 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
       : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
     ```
   }];
-  let arguments = (ins Variadic<AnyType>:$srcs,
-                       Variadic<AnyType>:$dsts,
-                       Variadic<AnyType>:$sets,
+  let arguments = (ins Variadic<RankedTensorOrScalar>:$srcs,
+                       Variadic<RankedTensor>:$dsts,
+                       Variadic<AnySet>:$sets,
                        BoolArrayAttr:$accumulatorFlags);
   let regions = (region VariadicRegion<SizedRegion<1>>:$accumulators);
   let hasCustomAssemblyFormat = 1;

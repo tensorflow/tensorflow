@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/core/notification.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/mutex.h"
 
-namespace tensorflow {
+namespace tsl {
 
 // An `UnboundedWorkQueue` provides a mechanism for temporally multiplexing a
 // potentially large number of "logical" threads onto a smaller number of
@@ -63,6 +63,6 @@ class UnboundedWorkQueue {
       TF_GUARDED_BY(thread_pool_mu_);
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_UNBOUNDED_WORK_QUEUE_H_

@@ -58,8 +58,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
@@ -242,7 +242,7 @@ Service::ResolveAndValidateArguments(
   for (size_t i = 0; i < arguments.size(); ++i) {
     auto buffer_status = allocation_tracker_.Resolve(*arguments[i]);
     if (!buffer_status.ok()) {
-      return tensorflow::errors::CreateWithUpdatedMessage(
+      return tsl::errors::CreateWithUpdatedMessage(
           buffer_status.status(),
           StrCat(buffer_status.status().error_message(), ", ",
                  "failed to resolve allocation for parameter ", i));

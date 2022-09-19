@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
-#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/platform/profile_utils/cpu_utils.h"
 
 namespace stream_executor {
 namespace host {
@@ -280,7 +280,7 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
   builder.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
 
   float cycle_counter_frequency = static_cast<float>(
-      tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());
+      tsl::profile_utils::CpuUtils::GetCycleCounterFrequency());
   builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
 
   builder.set_name("Host");

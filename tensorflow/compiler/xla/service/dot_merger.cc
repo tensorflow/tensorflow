@@ -41,7 +41,7 @@ bool IsCanonicalDot(HloInstruction* dot) {
 
   // Checks that the given list is a permutation of [0, 1, ..., n].
   auto is_permutation_of_iota =
-      [](const tensorflow::protobuf::RepeatedField<int64_t>& vals) {
+      [](const tsl::protobuf::RepeatedField<int64_t>& vals) {
         DimensionVector copy(vals.begin(), vals.end());
         absl::c_sort(copy);
         for (int i = 0; i < copy.size(); i++) {

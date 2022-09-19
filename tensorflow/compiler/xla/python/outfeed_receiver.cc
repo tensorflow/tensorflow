@@ -220,7 +220,7 @@ class OutfeedReceiverImpl {
       ABSL_GUARDED_BY(mu_);
   // The threadpool must come last to ensure the queue exists
   // when the pool destructor is called.
-  std::unique_ptr<tensorflow::thread::ThreadPool> threads_;
+  std::unique_ptr<tsl::thread::ThreadPool> threads_;
 };
 
 OutfeedReceiverImpl::OutfeedReceiverImpl(
@@ -250,8 +250,8 @@ void OutfeedReceiverImpl::Start() {
   }
 
   int num_threads = 2 * devices_.size();
-  threads_ = std::make_unique<tensorflow::thread::ThreadPool>(
-      tensorflow::Env::Default(), "outfeed_receiver", num_threads);
+  threads_ = std::make_unique<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "outfeed_receiver", num_threads);
   for (int device_idx = 0; device_idx < devices_.size(); ++device_idx) {
     threads_->Schedule(
         [this, device_idx]() { DeviceListenerThreadLoop(device_idx); });

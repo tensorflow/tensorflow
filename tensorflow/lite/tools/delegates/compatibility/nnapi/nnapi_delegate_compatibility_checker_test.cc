@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/resource_loader.h"
@@ -65,41 +66,50 @@ class NnapiDccTest : public ::testing::Test {
 TEST_F(NnapiDccTest, ValidRuntimeFeatureLevel) {
   std::unordered_map dcc_configs = nnapi_dcc_.getDccConfigurations();
   EXPECT_EQ(dcc_configs["nnapi-runtime_feature_level"], "8");
-  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs), absl::OkStatus());
+  EXPECT_OK(nnapi_dcc_.setDccConfigurations(dcc_configs));
 
   dcc_configs["nnapi-runtime_feature_level"] = "1";
-  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs), absl::OkStatus());
+  EXPECT_OK(nnapi_dcc_.setDccConfigurations(dcc_configs));
 
   dcc_configs["nnapi-runtime_feature_level"] = "8";
-  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs), absl::OkStatus());
-  EXPECT_EQ(dcc_configs["nnapi-runtime_feature_level"], "8");
+  EXPECT_OK(nnapi_dcc_.setDccConfigurations(dcc_configs));
+
+  dcc_configs.clear();
+  EXPECT_OK(nnapi_dcc_.setDccConfigurations(dcc_configs));
+  EXPECT_EQ(nnapi_dcc_.getDccConfigurations()["nnapi-runtime_feature_level"],
+            "8");
 }
 
 TEST_F(NnapiDccTest, InvalidRuntimeFeatureLevel) {
   std::unordered_map dcc_configs = nnapi_dcc_.getDccConfigurations();
   dcc_configs["nnapi-runtime_feature_level"] = "03";
-  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs),
-            absl::InvalidArgumentError("Invalid runtime feature level."));
+  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
 
   dcc_configs["nnapi-runtime_feature_level"] = "a";
-  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs),
-            absl::InvalidArgumentError("Invalid runtime feature level."));
+  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
 
   dcc_configs["nnapi-runtime_feature_level"] = "28123497123489123841212344516";
-  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs),
-            absl::InvalidArgumentError("Invalid runtime feature level."));
+  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
 
   dcc_configs["nnapi-runtime_feature_level"] = "30.0";
-  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs),
-            absl::InvalidArgumentError("Invalid runtime feature level."));
+  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
 
   dcc_configs["nnapi-runtime_feature_level"] = "-30";
-  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs),
-            absl::InvalidArgumentError("Invalid runtime feature level."));
+  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
 
   dcc_configs["nnapi-runtime_feature_level"] = "9";
-  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs),
-            absl::InvalidArgumentError("Invalid runtime feature level."));
+  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  dcc_configs.clear();
+  dcc_configs["nnapi-runtim_feature_level"] = "8";
+  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
+              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(NnapiDccTest, CompatibleModelOnlineMode) {
@@ -112,13 +122,11 @@ TEST_F(NnapiDccTest, CompatibleModelOnlineMode) {
   EXPECT_EQ(model->subgraphs()->size(), 1);
   EXPECT_EQ(model->subgraphs()->Get(0)->operators()->size(), 2);
 
-  auto nnapi_configs = nnapi_dcc_.getDccConfigurations();
-  EXPECT_EQ(nnapi_dcc_.checkModelCompatibilityOnline(fb_model.get(),
-                                                     &compatibility_result_),
-            absl::OkStatus());
+  EXPECT_OK(nnapi_dcc_.checkModelCompatibilityOnline(fb_model.get(),
+                                                     &compatibility_result_));
   for (auto op_compatibility_result :
        compatibility_result_.compatibility_results()) {
-    EXPECT_EQ(op_compatibility_result.is_supported(), true);
+    EXPECT_TRUE(op_compatibility_result.is_supported());
   }
   EXPECT_EQ(compatibility_result_.compatibility_results_size(), 2);
 }
@@ -133,12 +141,11 @@ TEST_F(NnapiDccTest, IncompatibleModelOperation) {
       tflite::GetModel(add_op_model.GetModelBuffer()));
   ASSERT_TRUE(fb_model);
 
-  EXPECT_EQ(nnapi_dcc_.checkModelCompatibilityOnline(fb_model.get(),
-                                                     &compatibility_result_),
-            absl::OkStatus());
+  EXPECT_OK(nnapi_dcc_.checkModelCompatibilityOnline(fb_model.get(),
+                                                     &compatibility_result_));
   for (auto op_compatibility_result :
        compatibility_result_.compatibility_results()) {
-    EXPECT_EQ(op_compatibility_result.is_supported(), false);
+    EXPECT_FALSE(op_compatibility_result.is_supported());
   }
   EXPECT_EQ(compatibility_result_.compatibility_results_size(), 1);
 }
@@ -155,13 +162,12 @@ TEST_F(NnapiDccTest, IncompatibleModelFeatureLevel) {
 
   auto nnapi_configs = nnapi_dcc_.getDccConfigurations();
   nnapi_configs["nnapi-runtime_feature_level"] = "2";
-  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(nnapi_configs), absl::OkStatus());
-  EXPECT_EQ(nnapi_dcc_.checkModelCompatibilityOnline(fb_model.get(),
-                                                     &compatibility_result_),
-            absl::OkStatus());
+  EXPECT_OK(nnapi_dcc_.setDccConfigurations(nnapi_configs));
+  EXPECT_OK(nnapi_dcc_.checkModelCompatibilityOnline(fb_model.get(),
+                                                     &compatibility_result_));
   for (auto op_compatibility_result :
        compatibility_result_.compatibility_results()) {
-    EXPECT_EQ(op_compatibility_result.is_supported(), false);
+    EXPECT_FALSE(op_compatibility_result.is_supported());
   }
   EXPECT_EQ(compatibility_result_.compatibility_results_size(), 1);
 }

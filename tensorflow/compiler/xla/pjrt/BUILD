@@ -129,7 +129,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:random",
+        "//tensorflow/tsl/platform:random",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -506,13 +506,13 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo_pass",
         "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:chlo_ops",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
@@ -674,8 +674,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:env",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:test_benchmark",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",

@@ -322,21 +322,21 @@ struct ShapeVisitor {
   void backwardDynamicBroadcastInDimShape(mhlo::DynamicBroadcastInDimOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     backwardsWorklist.push_back(
-        ShapeOrValueInfo::getValueInfoOf(op.output_dimensions()));
+        ShapeOrValueInfo::getValueInfoOf(op.getOutputDimensions()));
   }
   void forwardDynamicBroadcastInDimShape(mhlo::DynamicBroadcastInDimOp op) {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
-    dims = lookup(ShapeOrValueInfo::getValueInfoOf(op.output_dimensions()));
+    dims = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOutputDimensions()));
   }
   void backwardDynamicReshapeShape(mhlo::DynamicReshapeOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     backwardsWorklist.push_back(
-        ShapeOrValueInfo::getValueInfoOf(op.output_shape()));
+        ShapeOrValueInfo::getValueInfoOf(op.getOutputShape()));
   }
   void forwardDynamicReshapeShape(mhlo::DynamicReshapeOp op) {
     auto rankedTy = op.getResult().getType().cast<RankedTensorType>();
     auto shapeDims =
-        lookup(ShapeOrValueInfo::getValueInfoOf(op.output_shape()));
+        lookup(ShapeOrValueInfo::getValueInfoOf(op.getOutputShape()));
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     dimsFromStaticShape(rankedTy, shapeDims, &dims);
   }
@@ -354,28 +354,30 @@ struct ShapeVisitor {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     for (const auto &dim : llvm::enumerate(lookup(
              ShapeOrValueInfo::getShapeInfoOf(reduceOp.operands().back())))) {
-      if (!llvm::is_contained(reduceOp.dimensions(), dim.index()))
+      if (!llvm::is_contained(reduceOp.getDimensions(), dim.index()))
         dims.push_back(dim.value());
     }
   }
   void backwardTransposeShape(mhlo::TransposeOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
-    backwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op.operand()));
+    backwardsWorklist.push_back(
+        ShapeOrValueInfo::getShapeInfoOf(op.getOperand()));
   }
   void forwardTransposeShape(mhlo::TransposeOp op) {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
-    auto in = lookup(ShapeOrValueInfo::getShapeInfoOf(op.operand()));
-    auto elem = op.permutation().cast<DenseIntElementsAttr>();
+    auto in = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getOperand()));
+    auto elem = op.getPermutation().cast<DenseIntElementsAttr>();
     for (const auto &val : elem) dims.push_back(in[val.getZExtValue()]);
   }
   void backwardSelectShape(mhlo::SelectOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
-    backwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op.on_true()));
+    backwardsWorklist.push_back(
+        ShapeOrValueInfo::getShapeInfoOf(op.getOnTrue()));
   }
   void forwardSelectShape(mhlo::SelectOp op) {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     // Forward the `on_true` operand, it has the same shape as the output.
-    dims = lookup(ShapeOrValueInfo::getShapeInfoOf(op.on_true()));
+    dims = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getOnTrue()));
   }
   void backwardSameOperandsAndResultShape(Value v) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(v));
@@ -632,17 +634,19 @@ struct ShapeVisitor {
   }
   void backwardReshape(mhlo::ReshapeOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op));
-    backwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op.operand()));
+    backwardsWorklist.push_back(
+        ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
   }
   void forwardReshape(mhlo::ReshapeOp op) {
-    auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.operand()));
+    auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
     if (in.size() != 1) return forwardUnknown(op);
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
     dims.push_back({in[0].symbols, in[0].expr});
   }
   void backwardSlice(mhlo::SliceOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op));
-    backwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op.operand()));
+    backwardsWorklist.push_back(
+        ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
   }
   void forwardSlice(mhlo::SliceOp op) {
     // Only handle slices equivalent to an extract.
@@ -650,8 +654,8 @@ struct ShapeVisitor {
       return forwardUnknown(op);
     }
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
-    auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.operand()));
-    auto elem = op.start_indices().cast<DenseIntElementsAttr>();
+    auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
+    auto elem = op.getStartIndices().cast<DenseIntElementsAttr>();
     auto i = (*elem.begin()).getZExtValue();
     if (i >= in.size()) {  // Bounds check.
       return forwardUnknown(op);

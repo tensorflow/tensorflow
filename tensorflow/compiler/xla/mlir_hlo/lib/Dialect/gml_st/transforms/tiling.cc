@@ -324,7 +324,7 @@ OpFoldResult computeTileSizeInDim(OpBuilder &builder, Location loc,
 
   bool hasTileSizeOne = tileCst && *tileCst == 1;
   bool dividesEvenly = tileCst && dimCst && ((*dimCst % *tileCst) == 0);
-  if (hasTileSizeOne || dividesEvenly) return tileSize;
+  if (hasTileSizeOne || dividesEvenly) return builder.getIndexAttr(*tileCst);
 
   AffineExpr d0, s0;
   bindDims(builder.getContext(), d0);
@@ -415,7 +415,7 @@ struct DimOfMaterializedTilePattern : public OpRewritePattern<tensor::DimOp> {
     if (!def) return failure();
 
     if (auto materializeOp = llvm::dyn_cast<MaterializeOp>(def)) {
-      Value set = materializeOp.set();
+      Value set = materializeOp.getSet();
       if (!set.getType().isa<TileType>()) return failure();
       rewriter.replaceOpWithNewOp<gml_st::SizeOp>(op, set, op.getIndex());
       return success();
@@ -460,8 +460,11 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     // zero" skips tiling a particular dimension. This convention is
     // significantly simpler to handle instead of adjusting affine maps to
     // account for missing dimensions.
-    SmallVector<Value> tileSizeVector =
-        options.tileSizeComputationFn(rewriter, op);
+    SmallVector<Value> tileSizeVector;
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      tileSizeVector = options.tileSizeComputationFn(rewriter, op);
+    }
     if (tileSizeVector.size() < iterationDomain.size()) {
       auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
       tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
@@ -484,7 +487,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     // 5. Add `gml_st.set_yield` terminator.
     SmallVector<Value> dstSubsets;
     for (Value dst : tilingResult.tiledOp.getDestinationOperands(rewriter))
-      dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().set());
+      dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().getSet());
     rewriter.replaceOpWithNewOp<SetYieldOp>(terminator,
                                             tilingResult.tiledOp->getResults(),
                                             dstOperands, dstSubsets);

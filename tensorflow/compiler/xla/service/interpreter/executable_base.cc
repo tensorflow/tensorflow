@@ -72,11 +72,11 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     }
   }
 
-  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   const HloComputation* computation = module().entry_computation();
   if (computation->num_parameters() != arguments.size()) {
-    return tensorflow::errors::Internal(
+    return tsl::errors::Internal(
         "Mismatch between argument count and graph parameter count.");
   }
 
@@ -139,7 +139,7 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDevice(
       run_options->stream(), result_literal, result.Result()));
 
-  uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_micros = tsl::Env::Default()->NowMicros();
 
   ExecutionProfile* profile = run_options->run_options().execution_profile();
   if (profile) {

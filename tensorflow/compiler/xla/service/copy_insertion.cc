@@ -365,7 +365,7 @@ Status AddCopiesForAliasedInputOutputs(
   HloComputation* entry = module->entry_computation();
   if (!HloInstruction::IsThreadIncluded(entry->execution_thread(),
                                         execution_threads)) {
-    return Status::OK();
+    return OkStatus();
   }
   HloInstruction* root = entry->root_instruction();
 
@@ -2050,7 +2050,7 @@ Status CopyInsertion::RemoveUnnecessaryCopies(
   int64_t num_existing_copies = GetNumExistingCopies(module, execution_threads);
   bool changed = true;
   int64_t num_iterations = -1;
-  VLOG(6) << "Copy Insertion analyzing module with instructino count = "
+  VLOG(6) << "Copy Insertion analyzing module with instruction count = "
           << module->instruction_count() << "\n";
   BoundNonLinearCompilerAnalysis allowance(module, name(), 10);
   while (changed) {

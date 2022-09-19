@@ -24,6 +24,7 @@ add_mlir_library(MLIRBufferTransforms
   generic_host_to_llvm.cc
   propagate_static_shapes_to_kernel.cc
   lower_index_cast_pass.cc
+  scalarization.cc
   symbolic_shape_optimization.cc
   shape_simplification.cc
   tile_loops_pass.cc

@@ -44,7 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -570,11 +570,9 @@ std::map<int, llvm::MDNode*> MergeMetadata(
 static Status CreateAndWriteStringToFile(const std::string& directory_name,
                                          const std::string& file_name,
                                          const std::string& text) {
-  std::unique_ptr<tensorflow::WritableFile> f;
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
+  std::unique_ptr<tsl::WritableFile> f;
+  TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(directory_name));
+  TF_RETURN_IF_ERROR(tsl::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(text));
   TF_RETURN_IF_ERROR(f->Close());
   return OkStatus();

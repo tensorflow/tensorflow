@@ -30,7 +30,7 @@ void* GetDsoHandle() {
                    "up on your machine.";
       return nullptr;
     }
-    return handle_or.ValueOrDie();
+    return handle_or.value();
   }();
   return handle;
 }

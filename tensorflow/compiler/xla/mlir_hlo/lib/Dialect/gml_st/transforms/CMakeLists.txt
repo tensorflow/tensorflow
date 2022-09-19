@@ -97,7 +97,9 @@ add_mlir_library(GmlStPasses
   compose_set_ops.cc
   fusion.cc
   gml_st_to_scf.cc
+  gml_st_to_gpu.cc
   tiling.cc
+  tiling_cwise.cc
   collapse_materialize_ops.cc
   vectorization.cc
 
@@ -115,7 +117,10 @@ add_mlir_library(GmlStPasses
   GmlStTilingInterfaceImpl
   MhloDialect
   MLIRDialectUtils
+  MLIRAffineDialect
+  MLIRArithmeticDialect
   MLIRFuncDialect
+  MLIRGPUOps
   MLIRIR
   MLIRLinalgDialect
   MLIRLinalgTransforms

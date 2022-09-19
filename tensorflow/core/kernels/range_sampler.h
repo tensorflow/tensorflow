@@ -28,9 +28,11 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
-
+namespace tsl {
 class Env;
+}  // namespace tsl
+namespace tensorflow {
+using Env = tsl::Env;
 
 // Abstract subclass for sampling from the set of non-negative integers
 // [0, range)

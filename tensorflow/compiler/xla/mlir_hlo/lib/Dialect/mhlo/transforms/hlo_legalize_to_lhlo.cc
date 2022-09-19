@@ -265,7 +265,7 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
       ConversionPatternRewriter& rewriter) const final {
     Operation* op = hloOp.getOperation();
     auto loc = op->getLoc();
-    if (!llvm::hasSingleElement(hloOp.body())) {
+    if (!llvm::hasSingleElement(hloOp.getBody())) {
       return op->emitOpError()
              << "tensor to buffer conversion expects a single block "
                 "in the region containing the operation";
@@ -276,7 +276,7 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
         loc, llvm::None, bufferArgs, op->getAttrs());
 
     // Copy over the operations inside the region.
-    rewriter.inlineRegionBefore(hloOp.body(), newOp.getBody(),
+    rewriter.inlineRegionBefore(hloOp.getBody(), newOp.getBody(),
                                 newOp.getBody().end());
 
     // Convert the region signature to memref and add extra result.
@@ -290,7 +290,7 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
       sigConversion.addInputs(arg.getArgNumber(), newType);
     }
     auto returnOp = cast<mhlo::ReturnOp>(entryBlock.getTerminator());
-    if (auto tupleTy = returnOp.results()
+    if (auto tupleTy = returnOp.getResults()
                            .front()
                            .getType()
                            .template dyn_cast<TupleType>()) {
@@ -304,7 +304,7 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
             MemRefType::get(tensorTy.getShape(), tensorTy.getElementType()));
       }
     } else {
-      for (auto result : returnOp.results()) {
+      for (auto result : returnOp.getResults()) {
         auto resultType = result.getType().template cast<TensorType>();
         sigConversion.addInputs({MemRefType::get(resultType.getShape(),
                                                  resultType.getElementType())});

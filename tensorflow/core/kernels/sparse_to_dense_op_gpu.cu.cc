@@ -131,7 +131,7 @@ Status LaunchComputeKernels(OpKernelContext* c, const int64 dense_size,
                         config1.thread_per_block, 0, d.stream(), indices,
                         values, num_elems, num_values, shape, num_dims, dense));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

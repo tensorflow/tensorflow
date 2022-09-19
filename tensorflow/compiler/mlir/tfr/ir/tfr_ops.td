@@ -42,7 +42,7 @@ def TFR_Dialect : Dialect {
 
   let cppNamespace = "::mlir::TFR";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
 }
 
 //===----------------------------------------------------------------------===//
@@ -140,8 +140,6 @@ def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {
     Variadic<TFR_allowedResultType>:$outs);
 
   let extraClassDeclaration = [{
-    StringRef getCallee() { return callee(); }
-
     // Get the argument operands to the called function.
     operand_range getArgOperands() { return args(); }
 
@@ -436,11 +434,6 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   ];
 
   let extraClassDeclaration = [{
-    /// Returns the type of this function.
-    /// FIXME: We should drive this via the ODS `type` param.
-    FunctionType getFunctionType() {
-      return getFunctionTypeAttr().getValue().cast<FunctionType>();
-    }
     LogicalResult verifyType() { return success(); }
 
     /// Returns the argument types of this function.

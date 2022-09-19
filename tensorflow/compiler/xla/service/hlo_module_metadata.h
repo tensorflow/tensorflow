@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 
@@ -31,7 +31,7 @@ namespace xla {
 // set the fields of any pass not currently running.
 class HloModuleMetadata {
  public:
-  explicit HloModuleMetadata(tensorflow::Env* env) : env_(env) {}
+  explicit HloModuleMetadata(tsl::Env* env) : env_(env) {}
 
   const HloModuleMetadataProto& proto() const { return module_metadata_; }
 
@@ -115,7 +115,7 @@ class HloModuleMetadata {
       const std::function<void(HloPassMetadata*)>& mutator);
 
   HloModuleMetadataProto module_metadata_;
-  tensorflow::Env* env_;
+  tsl::Env* env_;
   int64_t next_pass_id_ = 1;
 
   // Stack of metadata for passes that are currently running. Size > 1 iff

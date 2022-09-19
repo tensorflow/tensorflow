@@ -19,9 +19,12 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
@@ -39,6 +42,22 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
+class XlaRuntimeCpuExecutable {
+ public:
+  explicit XlaRuntimeCpuExecutable(
+      std::unique_ptr<xla::runtime::JitExecutable> jit_executable)
+      : jit_executable_(std::move(jit_executable)),
+        default_executable_(&jit_executable_->DefaultExecutable().get()) {}
+  Status Execute(const std::vector<xla::runtime::BufferDesc>& buffers);
+  xla::runtime::Executable& default_executable() {
+    return *default_executable_;
+  }
+
+ private:
+  std::unique_ptr<xla::runtime::JitExecutable> jit_executable_;
+  xla::runtime::Executable* default_executable_;  // owned by jit_executable_.
+};
+
 // CPU-targeting implementation of the XLA Executable interface.
 //
 // Wraps a JIT-ed object that can be executed "on device". We JIT for the host
@@ -51,7 +70,22 @@ class CpuExecutable : public Executable {
                 const std::string& entry_function_name,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
+  // XLA Runtime constructor.
+  CpuExecutable(
+      std::unique_ptr<HloModule> hlo_module,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+      std::unique_ptr<const BufferAssignment> assignment,
+      std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable);
+
   ~CpuExecutable() override;
+
+  bool IsXlaRuntime() { return xla_runtime_executable_ != nullptr; }
+
+  Status ExecuteXlaRuntime(
+      const std::vector<xla::runtime::BufferDesc>& buffers) {
+    return xla_runtime_executable_->Execute(buffers);
+  }
 
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
@@ -144,6 +178,9 @@ class CpuExecutable : public Executable {
 
   // Entry function name for the computation.
   const std::string entry_function_name_;
+
+  // If not null, XLA Runtime is enabled.
+  std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable_;
 
   CpuExecutable(const CpuExecutable&) = delete;
   CpuExecutable& operator=(const CpuExecutable&) = delete;

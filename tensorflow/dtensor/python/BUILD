@@ -13,21 +13,18 @@ package(
 )
 
 # -----------------------------------------------------------------------------
-# Public API.
+# A list of all modules linked into TensorFlow.
 
-pytype_strict_library(
+py_library(
     name = "core",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
-    visibility = default_visibility + [
-        "//tensorflow/dtensor:dtensor-users",
-    ],
+    visibility = ["//tensorflow/python:__pkg__"],
     deps = [
+        ":accelerator_util",
         ":api",
         ":config",
         ":d_checkpoint",
         ":d_variable",
-        ":gen_dtensor_ops",
         ":input_util",
         ":layout",
         ":mesh_util",

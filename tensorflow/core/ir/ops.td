@@ -139,20 +139,8 @@ def TFGraph_GraphFuncOp : TFG_IntrinsicOp<"func", [
 
   let regions = (region AnyRegion:$body);
   let extraClassDeclaration = [{
-    using SingleBlock::getBody;
-
-    FlatSymbolRefAttr getGradient() {
-      return (*this)->getAttrOfType<FlatSymbolRefAttr>("gradient");
-    }
-
     TFGraphDialect *getDialect() {
       return cast<TFGraphDialect>((*this)->getDialect());
-    }
-
-    /// Returns the type of this function.
-    /// FIXME: We should drive this via the ODS `type` param.
-    FunctionType getFunctionType() {
-      return getFunctionTypeAttr().getValue().cast<FunctionType>();
     }
 
     // Returns true if this function is marked for JIT compilation.

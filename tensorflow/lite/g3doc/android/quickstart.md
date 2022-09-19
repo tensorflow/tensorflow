@@ -85,6 +85,13 @@ Android device's camera. The code for this feature is primarily in these files:
     Builds the camera image data stream, prepares data for the model, and
     displays the object detection results.
 
+Note: This example app uses the TensorFlow Lite
+[Task Library](../inference_with_metadata/task_library/overview#supported_tasks),
+which provides easy-to-use, task-specific APIs for performing common machine
+learning operations. For apps with more specific needs and customized ML
+functions, consider using the
+[Interpreter API](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/InterpreterApi).
+
 The next sections show you the key components of these code files, so you can
 modify an Android app to add this functionality.
 
@@ -139,15 +146,18 @@ you also enable that support as part of this initialization.
 
 To initialize TensorFlow Lite with Google Play services:
 
-1.  Create a `TfLiteInitializationOptions` object and modify it to enable
-    GPU support:
+1.  Create a `TfLiteInitializationOptions` object and modify it to enable GPU
+    support:
+
     ```
     val options = TfLiteInitializationOptions.builder()
         .setEnableGpuDelegateSupport(true)
         .build()
     ```
+
 1.  Use the `TfLiteVision.initialize()` method to enable use of the Play
     services runtime, and set a listener to verify that it loaded successfully:
+
     ```
     TfLiteVision.initialize(context, options).addOnSuccessListener {
         objectDetectorListener.onInitialized()
@@ -159,7 +169,7 @@ To initialize TensorFlow Lite with Google Play services:
             objectDetectorListener.onError("TfLiteVision failed to initialize: "
                     + it.message)
         }
-    }    
+    }
     ```
 
 ### Initialize the ML model interpreter
@@ -339,8 +349,12 @@ To handle model prediction results:
 
 ## Next steps
 
+*   Learn more about the
+    [Task Library APIs](../inference_with_metadata/task_library/overview#supported_tasks)
+*   Learn more about the
+    [Interpreter APIs](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/InterpreterApi).
 *   Explore the uses of TensorFlow Lite in the [examples](../examples).
 *   Learn more about using and building machine learning models with TensorFlow
     Lite in the [Models](../models) section.
-*   Learn more about implementing machine learning in your mobile
-    application in the [TensorFlow Lite Developer Guide](../guide).
+*   Learn more about implementing machine learning in your mobile application in
+    the [TensorFlow Lite Developer Guide](../guide).

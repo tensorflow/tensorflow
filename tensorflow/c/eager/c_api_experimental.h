@@ -510,6 +510,14 @@ typedef struct TFE_CustomDevice {
   TFE_TensorHandle* (*pack)(TFE_Context* context, TFE_TensorHandle** handles,
                             int num_handles, TF_Status* s,
                             void* device_info) = nullptr;
+
+  // Pins the op to `device` based on inputs to `op`. Returns true
+  // signifying to pin to the current custom device. Returns false
+  // to pin to the physical device.
+  //
+  // This function is guaranteed to be called only when all of the custom-device
+  // inputs are on this device.
+  bool (*shall_pin_to_this_device)(const TFE_Op* op, TF_Status* s) = nullptr;
 } TFE_CustomDevice;
 
 // Registers a custom device for use with eager execution.

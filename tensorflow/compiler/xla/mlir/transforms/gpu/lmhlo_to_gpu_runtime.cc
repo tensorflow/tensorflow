@@ -155,9 +155,16 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
       int64_t num_args = mapping.getNumArgs();
       int64_t num_results = mapping.getNumResults();
 
+      // Always create an `alloca` in the parent function entry block.
+      // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
+      Value hole = [&]() -> Value {
+        OpBuilder::InsertionGuard guard(b);
+        b.setInsertionPointToStart(
+            &op->getParentOfType<func::FuncOp>().front());
+        return b.create<memref::AllocaOp>(MemRefType::get({0}, b.getI8Type()));
+      }();
+
       // We represent holes as empty i8 memrefs.
-      Value hole =
-          b.create<memref::AllocaOp>(MemRefType::get({0}, b.getI8Type()));
       operands = llvm::SmallVector<Value>(num_args + num_results, hole);
 
       // Update operands to mapped custom call arguments.
@@ -236,10 +243,14 @@ class CaseOpLowering : public OpRewritePattern<CaseOp> {
     // Copy index buffer to the host ...
     auto index_type = op.getIndex().getType().dyn_cast<MemRefType>();
 
-    // TODO(ezhulenev): We need to make sure that `alloca` is placed in the
-    // parent function entry block.
-    // https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-    Value index_on_host = b.create<memref::AllocaOp>(index_type);
+    // Always create an `alloca` in the parent function entry block.
+    // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
+    Value index_on_host = [&]() -> Value {
+      OpBuilder::InsertionGuard guard(b);
+      b.setInsertionPointToStart(&op->getParentOfType<func::FuncOp>().front());
+      return b.create<memref::AllocaOp>(index_type);
+    }();
+
     b.create<MemcpyOp>(TypeRange(), ValueRange({index_on_host, op.getIndex()}));
 
     // Get the index value from the buffer.
@@ -270,9 +281,18 @@ class CaseOpLowering : public OpRewritePattern<CaseOp> {
       index = b.create<arith::SelectOp>(out_of_range, cN, index);
     }
 
-    // Split block right at the case operation.
-    Block* cont = rewriter.splitBlock(op->getBlock(), op->getIterator());
-    Block* orig = cont->getPrevNode();
+    // Wrap the CFG constructed from the `lmhlo.case` operation in an
+    // `scf.execute_region` operation, so that we do not introduce the CFG
+    // into regions that expect a single block (e.g. inside the loop body).
+    auto execute = b.create<scf::ExecuteRegionOp>(TypeRange());
+
+    // Add an entry block to the execute region operation.
+    Block& entry = execute.getRegion().emplaceBlock();
+
+    // Create a block with `scf.yield` terminator.
+    Block& yield = execute.getRegion().emplaceBlock();
+    b.setInsertionPointToStart(&yield);
+    b.create<scf::YieldOp>();
 
     // Prepare case destinations for the `scf.switch` operation.
     llvm::SmallVector<llvm::APInt> case_values;
@@ -281,16 +301,16 @@ class CaseOpLowering : public OpRewritePattern<CaseOp> {
 
     // Create blocks from each of the case regions.
     for (Region& region : op->getRegions()) {
-      // Move `lmhlo.case` block before the continuation.
+      // Move `lmhlo.case` block into the execute region.
       Block& block = region.front();
-      block.moveBefore(cont);
+      block.moveBefore(&yield);
 
       // Erase original `lmhlo.terminator`.
       rewriter.eraseOp(block.getTerminator());
 
-      // Branch into the continuation block.
+      // Branch into the yield block.
       b.setInsertionPointToEnd(&block);
-      b.create<cf::BranchOp>(cont);
+      b.create<cf::BranchOp>(&yield);
 
       // Add a `cf.switch` case.
       int32_t idx = case_blocks.size();
@@ -299,10 +319,10 @@ class CaseOpLowering : public OpRewritePattern<CaseOp> {
       case_operands.push_back({});
     }
 
-    // Replace `lmhlo.case` with a `cf.switch` operation on the host.
-    b.setInsertionPointToEnd(orig);
-    b.create<cf::SwitchOp>(index, cont, ValueRange(), case_values, case_blocks,
-                           case_operands);
+    // Create a `cf.switch` operation in the execute region entry block.
+    b.setInsertionPointToEnd(&entry);
+    b.create<cf::SwitchOp>(index, &yield, ValueRange(), case_values,
+                           case_blocks, case_operands);
 
     // Erase the original case operation.
     rewriter.eraseOp(op);
@@ -328,18 +348,29 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
     assert(op.getNumOperands() == 1 && "expected single cond operand");
     Value pred = op.getOperand(0);
 
-    // Clone condition and body blocks into the new loop operation.
+    // Inline condition and body regions into the new loop operation.
     BlockAndValueMapping mapping;
-    op.getCond().cloneInto(&loop.getBefore(), mapping);
-    op.getBody().cloneInto(&loop.getAfter(), mapping);
+    rewriter.inlineRegionBefore(op.getCond(), loop.getBefore(),
+                                loop.getBefore().begin());
+    rewriter.inlineRegionBefore(op.getBody(), loop.getAfter(),
+                                loop.getAfter().begin());
 
     {  // Replace loop condition terminator.
       auto* terminator = loop.getBefore().back().getTerminator();
       b.setInsertionPointAfter(terminator);
 
-      // Copy predicate buffer to the host ...
       auto i1 = b.getI1Type();
-      Value pred_on_host = b.create<memref::AllocaOp>(MemRefType::get({}, i1));
+
+      // Always create an `alloca` in the parent function entry block.
+      // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
+      Value pred_on_host = [&]() -> Value {
+        OpBuilder::InsertionGuard guard(b);
+        b.setInsertionPointToStart(
+            &op->getParentOfType<func::FuncOp>().front());
+        return b.create<memref::AllocaOp>(MemRefType::get({}, i1));
+      }();
+
+      // Copy predicate buffer to the host ...
       b.create<gpu::MemcpyOp>(TypeRange(), ValueRange({pred_on_host, pred}));
 
       // .. and check if we need to continue loop iteration.

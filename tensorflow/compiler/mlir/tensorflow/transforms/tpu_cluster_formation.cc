@@ -152,6 +152,13 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
     auto device_type_attr =
         op.getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
     if (device_type_attr) {
+      // Some graphs in TPU bridge may have both tf.StatefulPartitionedCall
+      // ops with and without _tpu_replicate attributes. As a result, the ops
+      // without such attribute would have _xla_compile_device_type="" after
+      // CanonicalizeCompileAndReplicateAttributesPass, if they also had
+      // _XlaMustCompile = true before the pass. We should filter out such
+      // unspecified device type here.
+      if (device_type_attr.getValue().empty()) continue;
       device_types.insert(device_type_attr);
       // Stop here for ops with non-TPU devices, they are handled elsewhere.
       if (device_type_attr.getValue() != TF::kTpuDevice) continue;

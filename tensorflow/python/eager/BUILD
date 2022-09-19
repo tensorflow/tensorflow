@@ -489,6 +489,7 @@ cuda_py_test(
     ],
 )
 
+<<<<<<< HEAD
 cuda_py_test(
     name = "function_test",
     size = "medium",
@@ -531,6 +532,8 @@ cuda_py_test(
     ],
 )
 
+=======
+>>>>>>> upstream/master
 py_library(
     name = "test",
     srcs = ["test.py"],
@@ -606,6 +609,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager/polymorphic_function:composite_tensor_utils",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
@@ -907,22 +911,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":context",
-        ":function_spec",
-        ":lift_to_graph",
-        "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:control_flow_util",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
-        "//tensorflow/python/distribute/parallel_device",
-        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
-        "//tensorflow/python/profiler:trace",
-        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/eager/polymorphic_function",
     ],
 )
 
@@ -948,94 +937,6 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:test",
-    ],
-)
-
-cuda_py_test(
-    name = "def_function_test",
-    srcs = ["def_function_test.py"],
-    python_version = "PY3",
-    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
-    deps = [
-        ":def_function",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/autograph/core",
-        "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/saved_model:save_options",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "def_function_test_cpu_only",
-    srcs = ["def_function_test_cpu_only.py"],
-    python_version = "PY3",
-    # --config=cuda implicitly links in XLA.
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_gpu",
-        "no_oss",  # No way to force no XLA linkage in OSS build from here.
-        "no_pip",
-    ],
-    deps = [
-        ":def_function",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/autograph/core",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_xla_py_test(
-    name = "def_function_xla_jit_test",
-    srcs = ["def_function_xla_jit_test.py"],
-    disabled_backends = [
-        "cpu_ondemand",
-    ],
-    enable_mlir_bridge = True,
-    python_version = "PY3",
-    tags = [
-        "no_mac",
-        "no_pip",
-        "no_tfrt",  # TODO(b/185944215)
-        "no_windows",
-    ],
-    use_xla_device = False,
-    deps = [
-        ":backprop",
-        ":def_function",
-        "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:collective_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:resource_variable_ops",
-    ],
-)
-
-tf_xla_py_test(
-    name = "def_function_xla_test",
-    srcs = ["def_function_xla_test.py"],
-    enable_mlir_bridge = False,
-    python_version = "PY3",
-    tags = [
-        "no_pip",
-        "no_windows",
-        "nomac",
-    ],
-    deps = [
-        ":def_function",
-        "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:control_flow_util",
-        # TODO(b/145618471): Remove this transitive dependency.
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python:framework_ops",
     ],
 )
 

@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
@@ -53,7 +53,7 @@ Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
                             const std::string& directory,
                             const std::string& file_name,
                             std::string* full_path) {
-  tensorflow::Env* env = tensorflow::Env::Default();
+  tsl::Env* env = tsl::Env::Default();
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
   std::string safe_file_name = SanitizeFileName(file_name) + ".pb";
   std::string full_path_impl;
@@ -61,7 +61,7 @@ Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
     full_path = &full_path_impl;
   }
   *full_path = tsl::io::JoinPath(directory, safe_file_name);
-  return tensorflow::WriteBinaryProto(env, *full_path, message);
+  return tsl::WriteBinaryProto(env, *full_path, message);
 }
 
 }  // namespace protobuf_util

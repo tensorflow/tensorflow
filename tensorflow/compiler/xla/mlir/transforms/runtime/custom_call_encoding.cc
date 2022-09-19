@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -74,11 +76,21 @@ using EncodedRet = CustomCallRetEncodingSet::Encoded;
 
 FailureOr<EncodedRet> CustomCallRetEncodingSet::Encode(Globals &g,
                                                        ImplicitLocOpBuilder &b,
-                                                       Type value,
+                                                       Type type,
                                                        Type converted) const {
   for (auto &encoding : encodings_)
-    if (succeeded(encoding->Match(value, converted)))
-      return encoding->Encode(g, b, value, converted);
+    if (succeeded(encoding->Match(type, converted)))
+      return encoding->Encode(g, b, type, converted);
+  return failure();
+}
+
+FailureOr<Value> CustomCallRetEncodingSet::Decode(ImplicitLocOpBuilder &b,
+                                                  Type type, Type converted,
+                                                  LLVM::AllocaOp alloca) const {
+  for (auto &encoding : encodings_) {
+    if (succeeded(encoding->Match(type, converted)))
+      return encoding->Decode(b, type, converted, alloca);
+  }
   return failure();
 }
 
@@ -396,13 +408,13 @@ static FuncOp GetParentFunc(Value value) {
                                 : parent_op->getParentOfType<FuncOp>();
 }
 
-// Packs value on the stack. Returns `!llvm.ptr<ValueType>`.
-static Value PackValue(ImplicitLocOpBuilder &b, Value value) {
+// Packs value on the stack. Returns allocation holding the value.
+static LLVM::AllocaOp PackValue(ImplicitLocOpBuilder &b, Value value) {
   Type ptr = LLVM::LLVMPointerType::get(value.getType());
 
   // Always create an `alloca` in the parent function entry block.
   // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-  Value mem = [&]() -> Value {
+  LLVM::AllocaOp mem = [&]() -> LLVM::AllocaOp {
     Block &block = GetParentFunc(value).getBody().front();
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(&block);
@@ -526,8 +538,9 @@ static bool IsSupportedScalarType(Type type) {
   };
 
   if (auto i = type.dyn_cast<mlir::IntegerType>())
-    return i.isUnsigned() ? is_supported_width(i.getWidth(), {8, 32, 64})
-                          : is_supported_width(i.getWidth(), {1, 32, 64});
+    return i.isUnsigned()
+               ? is_supported_width(i.getWidth(), {8, 16, 32, 64})
+               : is_supported_width(i.getWidth(), {1, 8, 16, 32, 64});
 
   if (auto fp = type.dyn_cast<mlir::FloatType>())
     return is_supported_width(fp.getWidth(), {16, 32, 64});
@@ -543,13 +556,17 @@ static bool IsSupportedScalarAttribute(Attribute attr) {
 
 static TypeID ScalarRuntimeTypeId(Type type) {
   if (type.isUnsignedInteger(8)) return TypeID::get<Tagged<uint8_t>>();
+  if (type.isUnsignedInteger(16)) return TypeID::get<Tagged<uint16_t>>();
   if (type.isUnsignedInteger(32)) return TypeID::get<Tagged<uint32_t>>();
   if (type.isUnsignedInteger(64)) return TypeID::get<Tagged<uint64_t>>();
 
   if (type.isInteger(1)) return TypeID::get<Tagged<bool>>();
+  if (type.isInteger(8)) return TypeID::get<Tagged<int8_t>>();
+  if (type.isInteger(16)) return TypeID::get<Tagged<int16_t>>();
   if (type.isInteger(32)) return TypeID::get<Tagged<int32_t>>();
   if (type.isInteger(64)) return TypeID::get<Tagged<int64_t>>();
 
+  if (type.isBF16()) return TypeID::get<Tagged<Eigen::bfloat16>>();
   if (type.isF16()) return TypeID::get<Tagged<Eigen::half>>();
   if (type.isF32()) return TypeID::get<Tagged<float>>();
   if (type.isF64()) return TypeID::get<Tagged<double>>();
@@ -884,6 +901,89 @@ FailureOr<EncodedArg> OpaqueArgEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
+// Encodes memref as LLVM struct value:
+//
+//   { i8: dtype, i8: rank, ptr<i8>: data,
+//     array<2*rank x i64>: sizes_and_strides }
+//
+// This is a type erased version of the MLIR memref descriptor without base
+// pointer. We pack sizes and strides as a single array member, so that on
+// the runtime side we can read it back using C flexible array member.
+// If the descriptor value is null, we only encode statically known info: dtype,
+// rank, and dims, otherwise we also encode dynamic info
+static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
+                          Value descriptor) {
+  MLIRContext *ctx = b.getContext();
+  Location loc = b.getLoc();
+
+  // Encode sizes together with strides as a single array.
+  int64_t sizes_and_strides_size = 2 * memref_ty.getRank();
+
+  // Encoded memref type: !llvm.struct<(i8, i8, ptr<i8>, array<... x i64>)>.
+  Type i8 = b.getI8Type();
+  Type ptr = LLVM::LLVMPointerType::get(b.getI8Type());
+  Type arr = LLVM::LLVMArrayType::get(b.getI64Type(), sizes_and_strides_size);
+  Type type = LLVM::LLVMStructType::getLiteral(ctx, {i8, i8, ptr, arr});
+
+  // Helper to unpack MLIR strided memref descriptor value.
+  std::optional<MemRefDescriptor> desc = std::nullopt;
+  if (descriptor) {
+    desc = MemRefDescriptor(descriptor);
+  }
+
+  PrimitiveType element_dtype = ScalarPrimitiveType(memref_ty.getElementType());
+
+  // Create values for filling encoded memref struct.
+  Value dtype = b.create<ConstantOp>(
+      b.getI8IntegerAttr(static_cast<uint8_t>(element_dtype)));
+  Value rank = b.create<ConstantOp>(b.getI8IntegerAttr(memref_ty.getRank()));
+
+  auto i64 = [&](int64_t i) { return b.getI64IntegerAttr(i); };
+
+  // Get the statically known strides and offset from the memref type.
+  llvm::SmallVector<int64_t> strides;
+  int64_t memref_offset;
+  if (failed(getStridesAndOffset(memref_ty, strides, memref_offset)))
+    strides.resize(memref_ty.getRank(), ShapedType::kDynamicStrideOrOffset);
+
+  // Build encoded memref sizes + strides: !llvm.array<... x i64>
+  Value payload = b.create<LLVM::UndefOp>(arr);
+  for (unsigned i = 0; i < memref_ty.getRank(); ++i) {
+    int64_t dim_size = memref_ty.getDimSize(i);
+    int64_t stride_size = strides[i];
+
+    Value dim = ShapedType::isDynamic(dim_size) && desc.has_value()
+                    ? desc->size(b, loc, i)
+                    : b.create<ConstantOp>(i64(dim_size));
+
+    Value stride =
+        ShapedType::isDynamicStrideOrOffset(stride_size) && desc.has_value()
+            ? desc->stride(b, loc, i)
+            : b.create<ConstantOp>(i64(stride_size));
+
+    auto stride_pos = memref_ty.getRank() + i;
+
+    payload = b.create<LLVM::InsertValueOp>(payload, dim, i);
+    payload = b.create<LLVM::InsertValueOp>(payload, stride, stride_pos);
+  }
+
+  // Construct encoded memref value.
+  Value memref = b.create<LLVM::UndefOp>(type);
+  memref = b.create<LLVM::InsertValueOp>(memref, dtype, 0);
+  memref = b.create<LLVM::InsertValueOp>(memref, rank, 1);
+  memref = b.create<LLVM::InsertValueOp>(memref, payload, 3);
+
+  // Previous values almost always are known at compile time, and inserting
+  // dynamic values into the struct after all statically know values leads to a
+  // better canonicalization and cleaner final LLVM IR.
+  if (desc.has_value()) {
+    Value data = b.create<LLVM::BitcastOp>(ptr, desc->alignedPtr(b, loc));
+    memref = b.create<LLVM::InsertValueOp>(memref, data, 2);
+  }
+
+  return memref;
+}
+
 LogicalResult MemrefArgEncoding::Match(Value value, Value converted) const {
   return success(value.getType().isa<MemRefType>());
 }
@@ -907,74 +1007,6 @@ FailureOr<EncodedArg> MemrefArgEncoding::Encode(Globals &g,
   return encoded;
 }
 
-Value MemrefArgEncoding::EncodeMemRef(ImplicitLocOpBuilder &b,
-                                      MemRefType memref_ty,
-                                      Value descriptor) const {
-  MLIRContext *ctx = b.getContext();
-  Location loc = b.getLoc();
-
-  // Encode sizes together with strides as a single array.
-  int64_t sizes_and_strides_size = 2 * memref_ty.getRank();
-
-  // Encoded memref type: !llvm.struct<(i8, i8, ptr<i8>, array<... x i64>)>.
-  Type i8 = b.getI8Type();
-  Type ptr = LLVM::LLVMPointerType::get(b.getI8Type());
-  Type arr = LLVM::LLVMArrayType::get(b.getI64Type(), sizes_and_strides_size);
-  Type type = LLVM::LLVMStructType::getLiteral(ctx, {i8, i8, ptr, arr});
-
-  // Helper to unpack MLIR strided memref descriptor value.
-  MemRefDescriptor desc(descriptor);
-
-  PrimitiveType element_dtype = ScalarPrimitiveType(memref_ty.getElementType());
-
-  // Create values for filling encoded memref struct.
-  Value dtype = b.create<ConstantOp>(
-      b.getI8IntegerAttr(static_cast<uint8_t>(element_dtype)));
-  Value rank = b.create<ConstantOp>(b.getI8IntegerAttr(memref_ty.getRank()));
-  Value data = b.create<LLVM::BitcastOp>(ptr, desc.alignedPtr(b, loc));
-
-  auto i64 = [&](int64_t i) { return b.getI64IntegerAttr(i); };
-
-  // Get the statically known strides and offset from the memref type.
-  llvm::SmallVector<int64_t> strides;
-  int64_t memref_offset;
-  if (failed(getStridesAndOffset(memref_ty, strides, memref_offset)))
-    strides.resize(memref_ty.getRank(), ShapedType::kDynamicStrideOrOffset);
-
-  // Build encoded memref sizes + strides: !llvm.array<... x i64>
-  Value payload = b.create<LLVM::UndefOp>(arr);
-  for (unsigned i = 0; i < memref_ty.getRank(); ++i) {
-    int64_t dim_size = memref_ty.getDimSize(i);
-    int64_t stride_size = strides[i];
-
-    Value dim = ShapedType::isDynamic(dim_size)
-                    ? desc.size(b, loc, i)
-                    : b.create<ConstantOp>(i64(dim_size));
-
-    Value stride = ShapedType::isDynamic(stride_size)
-                       ? desc.stride(b, loc, i)
-                       : b.create<ConstantOp>(i64(stride_size));
-
-    auto stride_pos = memref_ty.getRank() + i;
-
-    payload = b.create<LLVM::InsertValueOp>(payload, dim, i);
-    payload = b.create<LLVM::InsertValueOp>(payload, stride, stride_pos);
-  }
-
-  // Construct encoded memref value.
-  Value memref = b.create<LLVM::UndefOp>(type);
-  memref = b.create<LLVM::InsertValueOp>(memref, dtype, 0);
-  memref = b.create<LLVM::InsertValueOp>(memref, rank, 1);
-  memref = b.create<LLVM::InsertValueOp>(memref, payload, 3);
-
-  // Previous values almost always are known at compile time, and inserting
-  // dynamic values into the struct after all statically know values leads to a
-  // better canonicalization and cleaner final LLVM IR.
-  memref = b.create<LLVM::InsertValueOp>(memref, data, 2);
-
-  return memref;
-}
-
 //===----------------------------------------------------------------------===//
 // Custom call results encodings.
 //===----------------------------------------------------------------------===//
@@ -985,7 +1017,7 @@ LogicalResult ScalarRetEncoding::Match(Type type, Type converted) const {
 
 FailureOr<EncodedRet> ScalarRetEncoding::Encode(Globals &g,
                                                 ImplicitLocOpBuilder &b,
-                                                Type value,
+                                                Type type,
                                                 Type converted) const {
   Encoded encoded;
   encoded.type_id = PackTypeId(g, b, ScalarRuntimeTypeId(converted));
@@ -995,6 +1027,12 @@ FailureOr<EncodedRet> ScalarRetEncoding::Encode(Globals &g,
   encoded.value = b.create<LLVM::AllocaOp>(ptr, one, 0);
 
   return encoded;
+}
+
+FailureOr<Value> ScalarRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
+                                           Type converted,
+                                           LLVM::AllocaOp alloca) const {
+  return Value{b.create<LLVM::LoadOp>(alloca)};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1028,8 +1066,94 @@ FailureOr<EncodedRet> OpaqueRetEncoding::Encode(Globals &g,
   return encoded;
 }
 
+FailureOr<Value> OpaqueRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
+                                           Type converted,
+                                           LLVM::AllocaOp alloca) const {
+  return Value{b.create<LLVM::LoadOp>(alloca)};
+}
+
 //===----------------------------------------------------------------------===//
-// Default encodings for arguments and attributes.
+
+LogicalResult MemrefRetEncoding::Match(Type type, Type converted) const {
+  return success(type.isa<MemRefType>() &&
+                 converted.isa<LLVM::LLVMStructType>());
+}
+
+FailureOr<EncodedRet> MemrefRetEncoding::Encode(Globals &g,
+                                                ImplicitLocOpBuilder &b,
+                                                Type type,
+                                                Type converted) const {
+  auto memref_ty = type.cast<MemRefType>();
+
+  // We assume custom calls can only return row-major memrefs, may need to add
+  // PermutedMemref support in the future.
+  auto type_id = TypeID::get<Tagged<MemrefView>>();
+
+  Encoded encoded;
+  encoded.type_id = PackTypeId(g, b, type_id);
+  // No memref descriptor for result, we only encode compile time known info:
+  // dtype, rank, dims
+  encoded.value =
+      PackValue(b, EncodeMemRef(b, memref_ty, /*descriptor=*/nullptr));
+
+  return encoded;
+}
+
+// Convert EncodedMemRef back to llvm MemRef descriptor, e.g.,
+// !llvm.struct<(i8, i8, ptr<i8>, array<2 x i64>)> ->
+// !llvm.struct<(ptr<f32>, ptr<f32>, i64, array<1 x i64>, array<1 x i64>)>
+FailureOr<Value> MemrefRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
+                                           Type converted,
+                                           LLVM::AllocaOp alloca) const {
+  Location loc = b.getLoc();
+  auto memref_type = cast<MemRefType>(type);
+  auto i64 = [&](int64_t i) { return b.getI64IntegerAttr(i); };
+  auto memref_desc = MemRefDescriptor::undef(b, loc, converted);
+
+  Type ptr_type = LLVM::LLVMPointerType::get(b.getI8Type());
+  Type ptr_ptr_type = LLVM::LLVMPointerType::get(ptr_type);
+  Value c0 = b.create<ConstantOp>(i64(0));
+  Value c2 = b.create<ConstantOp>(i64(2));
+  Value gep = b.create<LLVM::GEPOp>(ptr_ptr_type, alloca, ValueRange({c0, c2}));
+  Value data_ptr = b.create<LLVM::LoadOp>(gep);
+  Value data_type_ptr =
+      b.create<LLVM::BitcastOp>(memref_desc.getElementPtrType(), data_ptr);
+  memref_desc.setAllocatedPtr(b, loc, data_type_ptr);
+  memref_desc.setAlignedPtr(b, loc, data_type_ptr);
+  memref_desc.setConstantOffset(b, loc, 0);
+
+  // Get the statically known strides and offset from the memref type.
+  SmallVector<int64_t> strides;
+  int64_t memref_offset;
+  if (failed(getStridesAndOffset(memref_type, strides, memref_offset))) {
+    return failure();  // we assume no dynamic strides for memref result
+  }
+
+  Value c3 = b.create<ConstantOp>(i64(3));
+  Type i64_ptr_type = LLVM::LLVMPointerType::get(b.getI64Type());
+  for (unsigned i = 0; i < memref_type.getRank(); ++i) {
+    int64_t dim_size = memref_type.getDimSize(i);
+    Value ci = b.create<ConstantOp>(i64(i));
+    Value dim_gep =
+        b.create<LLVM::GEPOp>(i64_ptr_type, alloca, ValueRange({c0, c3, ci}));
+    Value dim = ShapedType::isDynamic(dim_size)
+                    ? Value{b.create<LLVM::LoadOp>(dim_gep)}
+                    : b.create<ConstantOp>(i64(dim_size));
+
+    int64_t stride_size = strides[i];
+    Value stride = b.create<ConstantOp>(i64(stride_size));
+
+    memref_desc.setSize(b, loc, i, dim);
+    memref_desc.setStride(b, loc, i, stride);
+  }
+  auto load_value =
+      b.create<UnrealizedConversionCastOp>(memref_type, Value(memref_desc))
+          .getResult(0);
+  return load_value;
+}
+
+//===----------------------------------------------------------------------===//
+// Default encodings for arguments, attributes, and results
 //===----------------------------------------------------------------------===//
 
 CustomCallAttrEncodingSet DefaultAttrEncodings() {
@@ -1048,7 +1172,7 @@ CustomCallArgEncodingSet DefaultArgEncodings() {
 
 CustomCallRetEncodingSet DefaultRetEncodings() {
   CustomCallRetEncodingSet encodings;
-  encodings.Add<ScalarRetEncoding, OpaqueRetEncoding>();
+  encodings.Add<ScalarRetEncoding, OpaqueRetEncoding, MemrefRetEncoding>();
   return encodings;
 }
 

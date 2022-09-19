@@ -13,6 +13,7 @@ load(
 
 package(
     default_visibility = [
+        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/platform:__subpackages__",
         "//tensorflow/tsl:__pkg__",
         "//tensorflow/tsl/default:__pkg__",

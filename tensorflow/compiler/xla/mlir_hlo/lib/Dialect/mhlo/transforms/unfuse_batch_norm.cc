@@ -108,8 +108,9 @@ class UnfuseBatchNormInferencePattern
     // Enforce type invariants.
     // Note that we deduce the actual element type from the variance,
     // which should not be subject to quantization at a higher level.
-    auto inputType = bnOp.operand().getType().dyn_cast<RankedTensorType>();
-    auto varianceType = bnOp.variance().getType().dyn_cast<RankedTensorType>();
+    auto inputType = bnOp.getOperand().getType().dyn_cast<RankedTensorType>();
+    auto varianceType =
+        bnOp.getVariance().getType().dyn_cast<RankedTensorType>();
     if (!inputType || !varianceType) {
       return failure();
     }
@@ -117,41 +118,41 @@ class UnfuseBatchNormInferencePattern
     if (!fpType) {
       return failure();
     }
-    int64_t featureDim = bnOp.feature_index();
+    int64_t featureDim = bnOp.getFeatureIndex();
 
     // Add epsilon to the variance and sqrt to get stddev:
     // stddev = sqrt(variance + epsilon)
     auto epsilon =
-        materializeEpsilon(bnOp.getOperation(), bnOp.epsilonAttr(), fpType,
-                           bnOp.variance(), varianceType, rewriter);
+        materializeEpsilon(bnOp.getOperation(), bnOp.getEpsilonAttr(), fpType,
+                           bnOp.getVariance(), varianceType, rewriter);
     if (!epsilon) {
       return failure();
     }
-    Value stddev =
-        rewriter.create<mhlo::AddOp>(bnOp.getLoc(), bnOp.variance(), epsilon);
+    Value stddev = rewriter.create<mhlo::AddOp>(bnOp.getLoc(),
+                                                bnOp.getVariance(), epsilon);
     stddev = rewriter.create<mhlo::SqrtOp>(bnOp.getLoc(), stddev);
 
     // Broadcast all terms.
     Value shapeValue;
     if (!inputType.hasStaticShape()) {
-      shapeValue = getShapeValue(bnOp.getLoc(), bnOp.operand(), rewriter);
+      shapeValue = getShapeValue(bnOp.getLoc(), bnOp.getOperand(), rewriter);
     }
     auto broadcastScale =
-        broadcastToFeatureDim(bnOp.getLoc(), inputType, bnOp.scale(),
+        broadcastToFeatureDim(bnOp.getLoc(), inputType, bnOp.getScale(),
                               shapeValue, featureDim, rewriter);
     auto broadcastOffset =
-        broadcastToFeatureDim(bnOp.getLoc(), inputType, bnOp.offset(),
+        broadcastToFeatureDim(bnOp.getLoc(), inputType, bnOp.getOffset(),
                               shapeValue, featureDim, rewriter);
     auto broadcastMean =
-        broadcastToFeatureDim(bnOp.getLoc(), inputType, bnOp.mean(), shapeValue,
-                              featureDim, rewriter);
+        broadcastToFeatureDim(bnOp.getLoc(), inputType, bnOp.getMean(),
+                              shapeValue, featureDim, rewriter);
     auto broadcastStddev = broadcastToFeatureDim(
         bnOp.getLoc(), inputType, stddev, shapeValue, featureDim, rewriter);
 
     // Compute:
     // scale * (input - mean) / stddev + offset
     Value result = rewriter.create<mhlo::SubtractOp>(
-        bnOp.getLoc(), bnOp.operand(), broadcastMean);
+        bnOp.getLoc(), bnOp.getOperand(), broadcastMean);
     result =
         rewriter.create<mhlo::MulOp>(bnOp.getLoc(), result, broadcastScale);
     result =
@@ -175,7 +176,7 @@ Value createReduce(Location loc, Value operand, Value zero,
                                       rewriter.getI64TensorAttr(reduceDims));
 
   // setup "mhlo.reduce"'s body
-  Region& region = reduce.body();
+  Region &region = reduce.getBody();
   Block& block = region.emplaceBlock();
   RankedTensorType blockArgumentType =
       RankedTensorType::get({}, operandType.getElementType());
@@ -251,8 +252,8 @@ class UnfuseBatchNormTrainingPattern
 
   LogicalResult matchAndRewrite(mhlo::BatchNormTrainingOp bnOp,
                                 PatternRewriter& rewriter) const override {
-    auto operandType = bnOp.operand().getType().dyn_cast<RankedTensorType>();
-    auto scaleType = bnOp.scale().getType().dyn_cast<RankedTensorType>();
+    auto operandType = bnOp.getOperand().getType().dyn_cast<RankedTensorType>();
+    auto scaleType = bnOp.getScale().getType().dyn_cast<RankedTensorType>();
     if (!operandType || !scaleType) {
       return failure();
     }
@@ -260,7 +261,7 @@ class UnfuseBatchNormTrainingPattern
     if (!fpType) {
       return failure();
     }
-    int64_t featureIndex = bnOp.feature_index();
+    int64_t featureIndex = bnOp.getFeatureIndex();
     SmallVector<int64_t> dimensionsWithoutFeature;
     for (int64_t i = 0, e = operandType.getRank(); i < e; i++) {
       if (i != featureIndex) {
@@ -275,24 +276,24 @@ class UnfuseBatchNormTrainingPattern
                                  APFloat::getZero(fpType.getFloatSemantics())));
     // epsilon
     auto epsilon =
-        materializeEpsilon(bnOp.getOperation(), bnOp.epsilonAttr(), fpType,
-                           bnOp.scale(), scaleType, rewriter);
+        materializeEpsilon(bnOp.getOperation(), bnOp.getEpsilonAttr(), fpType,
+                           bnOp.getScale(), scaleType, rewriter);
     if (!epsilon) {
       return failure();
     }
     // reduce size constant
     Value reduceSize =
-        calculateReduceSize(bnOp.getOperation(), bnOp.operand(), operandType,
-                            bnOp.scale(), scaleType, featureIndex, rewriter);
+        calculateReduceSize(bnOp.getOperation(), bnOp.getOperand(), operandType,
+                            bnOp.getScale(), scaleType, featureIndex, rewriter);
     if (!reduceSize) {
       return failure();
     }
     // Sum[X]
-    Value sum = createReduce(bnOp.getLoc(), bnOp.operand(), constZero,
+    Value sum = createReduce(bnOp.getLoc(), bnOp.getOperand(), constZero,
                              dimensionsWithoutFeature, featureIndex, rewriter);
     // X^2
     Value operandSquare = rewriter.create<mhlo::MulOp>(
-        bnOp.getLoc(), bnOp.operand(), bnOp.operand());
+        bnOp.getLoc(), bnOp.getOperand(), bnOp.getOperand());
     // Sum[X^2]
     Value squareSum =
         createReduce(bnOp.getLoc(), operandSquare, constZero,
@@ -315,13 +316,13 @@ class UnfuseBatchNormTrainingPattern
 
     Value shapeValue;
     if (!operandType.hasStaticShape()) {
-      shapeValue = getShapeValue(bnOp.getLoc(), bnOp.operand(), rewriter);
+      shapeValue = getShapeValue(bnOp.getLoc(), bnOp.getOperand(), rewriter);
     }
     // X - E[X]
     Value meanBroadcast = broadcastToFeatureDim(
         bnOp.getLoc(), operandType, mean, shapeValue, featureIndex, rewriter);
     Value operandMinusMean = rewriter.create<mhlo::SubtractOp>(
-        bnOp.getLoc(), bnOp.operand(), meanBroadcast);
+        bnOp.getLoc(), bnOp.getOperand(), meanBroadcast);
     // (X - E[X]) / Sqrt(Var[X] + epsilon)
     Value sqrtVarBroadcast =
         broadcastToFeatureDim(bnOp.getLoc(), operandType, sqrtVar, shapeValue,
@@ -331,13 +332,13 @@ class UnfuseBatchNormTrainingPattern
 
     // ((X - E[X]) / Sqrt(Var[X] + epsilon)) * scale
     Value scaleBroadcast =
-        broadcastToFeatureDim(bnOp.getLoc(), operandType, bnOp.scale(),
+        broadcastToFeatureDim(bnOp.getLoc(), operandType, bnOp.getScale(),
                               shapeValue, featureIndex, rewriter);
     Value scaledNormalized =
         rewriter.create<mhlo::MulOp>(bnOp.getLoc(), normalized, scaleBroadcast);
     // ((X - E[X]) / Sqrt(Var[X] + epsilon)) * scale + offset.
     Value offsetBroadcast =
-        broadcastToFeatureDim(bnOp.getLoc(), operandType, bnOp.offset(),
+        broadcastToFeatureDim(bnOp.getLoc(), operandType, bnOp.getOffset(),
                               shapeValue, featureIndex, rewriter);
     Value shiftedNormalized = rewriter.create<mhlo::AddOp>(
         bnOp.getLoc(), scaledNormalized, offsetBroadcast);

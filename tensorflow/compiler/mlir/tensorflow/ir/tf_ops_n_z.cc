@@ -41,6 +41,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -76,6 +77,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -179,7 +181,7 @@ static TensorType InferOneHotOpType(Value indices, Value depth, Value on_value,
       depth_attr.getNumElements() == 1)
     depth_val = (*depth_attr.begin()).getSExtValue();
   shape.insert(shape.begin() + axis_val, depth_val);
-  return RankedTensorType::get(shape, element_ty);
+  return tensorflow::GetTypeFromTFTensorShape(shape, element_ty);
 }
 
 void OneHotOp::build(OpBuilder &builder, OperationState &result, Value indices,
@@ -347,8 +349,8 @@ struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
     }
 
     // Create constant shape for reshape.
-    auto type =
-        RankedTensorType::get(output_ty.getRank(), rewriter.getIntegerType(64));
+    auto type = tensorflow::GetTypeFromTFTensorShape(
+        output_ty.getRank(), rewriter.getIntegerType(64));
     auto shape_attr = DenseIntElementsAttr::get(type, output_ty.getShape());
     auto shape = rewriter.create<ConstOp>(pack_op.getLoc(), shape_attr);
 
@@ -389,8 +391,8 @@ LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 
   // Add constant operation with a new paddings.
   OpBuilder builder(getOperation());
-  auto type = mlir::RankedTensorType::get(paddings_value.getType().getShape(),
-                                          builder.getIntegerType(32));
+  auto type = tensorflow::GetTypeFromTFTensorShape(
+      paddings_value.getType().getShape(), builder.getIntegerType(32));
   auto values = mlir::DenseIntElementsAttr::get(type, shuffled_paddings);
   auto shuffled_paddings_op = builder.create<TF::ConstOp>(getLoc(), values);
 
@@ -611,7 +613,7 @@ DenseElementsAttr BuildConstRangeTensor(Type result_elem_type, int num_elements,
   }
   // Result is always a 1-D tensor.
   auto new_result_type =
-      RankedTensorType::get({num_elements}, result_elem_type);
+      tensorflow::GetTypeFromTFTensorShape({num_elements}, result_elem_type);
   return DenseElementsAttr::get(new_result_type, new_values);
 }
 }  // namespace
@@ -631,14 +633,14 @@ void RangeOp::build(OpBuilder &builder, OperationState &result, Value start,
         llvm::APInt::Rounding::DOWN);
     return RangeOp::build(
         builder, result,
-        RankedTensorType::get(
+        tensorflow::GetTypeFromTFTensorShape(
             size.getSExtValue(),
             start.getType().cast<TensorType>().getElementType()),
         start, limit, delta);
   }
   return RangeOp::build(
       builder, result,
-      RankedTensorType::get(
+      tensorflow::GetTypeFromTFTensorShape(
           {-1}, start.getType().cast<TensorType>().getElementType()),
       start, limit, delta);
 }
@@ -694,9 +696,10 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 void RankOp::build(OpBuilder &builder, OperationState &result, Value input) {
-  return RankOp::build(builder, result,
-                       RankedTensorType::get({}, builder.getIntegerType(32)),
-                       input);
+  return RankOp::build(
+      builder, result,
+      tensorflow::GetTypeFromTFTensorShape({}, builder.getIntegerType(32)),
+      input);
 }
 
 // This will create a constant value for RankOp of a ranked tensor.
@@ -764,7 +767,8 @@ LogicalResult GetReshapeOutputType(Value tensor, Value shape,
     if (shape_ty.hasStaticShape()) {
       llvm::SmallVector<int64_t, 8> dynamic_shape(shape_ty.getDimSize(0),
                                                   ShapedType::kDynamicSize);
-      output_ty = RankedTensorType::get(dynamic_shape, element_ty);
+      output_ty =
+          tensorflow::GetTypeFromTFTensorShape(dynamic_shape, element_ty);
     }
     return success();
   }
@@ -778,7 +782,7 @@ LogicalResult GetReshapeOutputType(Value tensor, Value shape,
   output_ty_shape.reserve(shape_attr.getNumElements());
   for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
-    if (ShapedType::isDynamic(size)) {
+    if (size == tensorflow::kTFDynamicSize) {
       if (unknown_index != -1)
         return error_handler(llvm::formatv(
             "requires 'shape' to have at most one dynamic dimension, but got "
@@ -800,7 +804,8 @@ LogicalResult GetReshapeOutputType(Value tensor, Value shape,
   }
 
   if (!tensor_ty.hasStaticShape()) {
-    output_ty = RankedTensorType::get(output_ty_shape, element_ty);
+    output_ty =
+        tensorflow::GetTypeFromTFTensorShape(output_ty_shape, element_ty);
     return success();
   }
 
@@ -828,8 +833,7 @@ LogicalResult GetReshapeOutputType(Value tensor, Value shape,
     // constant.
     output_ty_shape[unknown_index] = missing_dim;
   }
-
-  output_ty = RankedTensorType::get(output_ty_shape, element_ty);
+  output_ty = tensorflow::GetTypeFromTFTensorShape(output_ty_shape, element_ty);
 
   return success();
 }
@@ -993,7 +997,7 @@ static Type InferSelectV2OpType(Value condition, Value e, Value t) {
                                           broadcasted_ranked_ty.getShape(),
                                           result_shape))
     return unranked_ty;
-  return RankedTensorType::get(result_shape, element_ty);
+  return tensorflow::GetTypeFromTFTensorShape(result_shape, element_ty);
 }
 
 void SelectV2Op::build(OpBuilder &builder, OperationState &result,
@@ -1072,7 +1076,7 @@ static Attribute ConvertShapeToAttr(Type input_ty, int out_width) {
   for (int i = 0; i < rank; ++i)
     dimensions.push_back(APInt(out_width, shape[i]));
 
-  auto result_type = RankedTensorType::get(
+  auto result_type = tensorflow::GetTypeFromTFTensorShape(
       {rank}, IntegerType::get(input_ty.getContext(), out_width));
   return DenseElementsAttr::get(result_type, dimensions);
 }
@@ -1090,7 +1094,8 @@ void ShapeOp::build(OpBuilder &builder, OperationState &result, Value input,
   auto out_type = use32Bit.getValue() ? builder.getIntegerType(32)
                                       : builder.getIntegerType(64);
   return ShapeOp::build(builder, result,
-                        RankedTensorType::get({rank}, out_type), input);
+                        tensorflow::GetTypeFromTFTensorShape({rank}, out_type),
+                        input);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2128,9 +2133,9 @@ OpFoldResult StridedSliceOp::fold(ArrayRef<Attribute> operands) {
   auto output_ty = output().getType().dyn_cast<RankedTensorType>();
   if (!output_ty || !output_ty.hasStaticShape()) {
     if (shrink_axis_mask() == 1) {
-      output_ty = RankedTensorType::get({}, output_elt_ty);
+      output_ty = tensorflow::GetTypeFromTFTensorShape({}, output_elt_ty);
     } else {
-      output_ty = RankedTensorType::get(
+      output_ty = tensorflow::GetTypeFromTFTensorShape(
           {static_cast<int64_t>(sub_shape.size())}, output_elt_ty);
     }
   }
@@ -2583,7 +2588,7 @@ LogicalResult ToBoolOp::inferReturnTypes(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.push_back(
-      RankedTensorType::get({}, IntegerType::get(context, 1)));
+      tensorflow::GetTypeFromTFTensorShape({}, IntegerType::get(context, 1)));
   return success();
 }
 
@@ -2669,7 +2674,8 @@ void TransposeOp::build(OpBuilder &builder, OperationState &result, Value x,
         const_shape.push_back(x_type.getDimSize(dim.getSExtValue()));
     }
     return TransposeOp::build(
-        builder, result, RankedTensorType::get(const_shape, etype), x, perm);
+        builder, result,
+        tensorflow::GetTypeFromTFTensorShape(const_shape, etype), x, perm);
   }
   return TransposeOp::build(builder, result, UnrankedTensorType::get(etype), x,
                             perm);
@@ -2751,7 +2757,7 @@ class NMSV3ToNMSV4Op : public OpRewritePattern<NonMaxSuppressionV3Op> {
     auto input_ty = nms_op.getType().template cast<ShapedType>();
     // corresponds to the second result type of nmsv4
     RankedTensorType valid_output_type =
-        RankedTensorType::get({}, input_ty.getElementType());
+        tensorflow::GetTypeFromTFTensorShape({}, input_ty.getElementType());
     new_result_types.push_back(valid_output_type);
 
     auto nmsv4 = rewriter.create<TF::NonMaxSuppressionV4Op>(
@@ -3456,7 +3462,7 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
     } else {
       shape.assign(shape.size(), ShapedType::kDynamicSize);
     }
-    result_ty = RankedTensorType::get(shape, element_ty);
+    result_ty = tensorflow::GetTypeFromTFTensorShape(shape, element_ty);
   } else {
     result_ty = UnrankedTensorType::get(element_ty);
   }

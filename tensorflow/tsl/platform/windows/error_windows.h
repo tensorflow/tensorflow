@@ -23,7 +23,7 @@ limitations under the License.
 
 #include <string>
 
-namespace tensorflow {
+namespace tsl {
 namespace internal {
 
 // WindowsGetLastErrorMessage calls GetLastError() and then formats the error
@@ -35,6 +35,6 @@ std::string WindowsGetLastErrorMessage();
 std::string WindowsWSAGetLastErrorMessage();
 
 }  // namespace internal
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_WINDOWS_ERROR_WINDOWS_H_

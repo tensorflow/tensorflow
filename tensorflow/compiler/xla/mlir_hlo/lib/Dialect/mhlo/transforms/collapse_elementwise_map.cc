@@ -49,7 +49,7 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
   LogicalResult matchAndRewrite(MapOp map,
                                 PatternRewriter &rewriter) const override {
     // Matches that the computation block only has element-wise ops.
-    if (llvm::any_of(map.computation().front().without_terminator(),
+    if (llvm::any_of(map.getComputation().front().without_terminator(),
                      [](Operation &op) {
                        return op.getNumResults() != 1 ||
                               !op.hasTrait<::mlir::OpTrait::Elementwise>();
@@ -59,11 +59,12 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
 
     rewriter.setInsertionPointAfter(map);
     BlockAndValueMapping blockAndValueMap;
-    for (mlir::BlockArgument barg : map.computation().front().getArguments()) {
+    for (mlir::BlockArgument barg :
+         map.getComputation().front().getArguments()) {
       blockAndValueMap.map(barg, map->getOperand(barg.getArgNumber()));
     }
     auto shape = map.getType().getShape();
-    for (Operation &op : map.computation().front().without_terminator()) {
+    for (Operation &op : map.getComputation().front().without_terminator()) {
       SmallVector<Value, 2> operands;
       // Remaps the operands.
       operands.reserve(op.getNumOperands());
@@ -76,7 +77,7 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
       blockAndValueMap.map(op.getResult(0), newOp->getResult(0));
     }
 
-    auto retOp = cast<ReturnOp>(map.computation().front().back());
+    auto retOp = cast<ReturnOp>(map.getComputation().front().back());
     map->getResult(0).replaceAllUsesWith(
         blockAndValueMap.lookup(retOp->getOperand(0)));
     return success();

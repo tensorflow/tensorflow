@@ -1828,9 +1828,6 @@ class HloInstruction {
   void set_logical_creation_pass_id(int64_t pass_id) {
     metadata_.set_logical_creation_pass_id(pass_id);
   }
-  void set_metadata_replaced_op(absl::string_view replaced_op) {
-    metadata_.set_replaced_op(std::string(replaced_op));
-  }
   const OpMetadata& metadata() const { return metadata_; }
 
   // Set/get the computation containing this instruction. set_parent should only

@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <bitset>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -44,6 +45,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
+
+template <typename T>
+T Nibble0(T t) {
+  if constexpr (std::is_integral_v<T>) {
+    constexpr auto shift = (8 * sizeof(T)) - 4;
+    return (t << shift) >> shift;
+  }
+  return t;
+}
+
+template <typename T>
+T Nibble1(T t) {
+  if constexpr (std::is_integral_v<T>) {
+    return t >> 4;
+  }
+  return t;
+}
 
 // TODO(b/79274244): We'd like these type traits to live inside of
 // HloEvaluatorTypedVisitor so they don't pollute namespace xla, but that
@@ -906,6 +924,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Shape& result_shape = conv->shape();
     const Shape& lhs_shape = lhs_literal.shape();
     const Shape& rhs_shape = rhs_literal.shape();
+    const auto packed_nibble_count =
+        absl::c_count(conv->precision_config().operand_precision(),
+                      PrecisionConfig::PACKED_NIBBLE);
+    CHECK_NE(packed_nibble_count, 1);
+    const bool is_packed_nibble = packed_nibble_count == 2;
 
     TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
     TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
@@ -940,9 +963,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
                  &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
-                 rhs_literal_data, feature_group_count,
-                 batch_group_count](const absl::Span<const int64_t> out_index,
-                                    int /*thread_id*/) {
+                 rhs_literal_data, feature_group_count, batch_group_count,
+                 is_packed_nibble](const absl::Span<const int64_t> out_index,
+                                   int /*thread_id*/) {
       // Dimension number applicable for input (lhs).
       const int64_t input_batch_dim = dnums.input_batch_dimension();
       const int64_t input_z_dim = dnums.input_feature_dimension();
@@ -1062,10 +1085,19 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           rhs_linear_index += out_index[output_z_dim] *
                               rhs_dim_multipliers[kernel_output_z_dim];
           rhs_linear_index += rhs_iz * rhs_dim_multipliers[kernel_input_z_dim];
-
-          result_val +=
-              static_cast<ElementwiseT>(lhs_literal_data[lhs_linear_index]) *
+          auto lhs =
+              static_cast<ElementwiseT>(lhs_literal_data[lhs_linear_index]);
+          auto rhs =
               static_cast<ElementwiseT>(rhs_literal_data[rhs_linear_index]);
+          if (is_packed_nibble) {
+            auto lhs_n0 = ToArithmeticSafeType(Nibble0(lhs));
+            auto lhs_n1 = ToArithmeticSafeType(Nibble1(lhs));
+            auto rhs_n0 = ToArithmeticSafeType(Nibble0(rhs));
+            auto rhs_n1 = ToArithmeticSafeType(Nibble1(rhs));
+            result_val += (lhs_n0 * rhs_n0) + (lhs_n1 * rhs_n1);
+          } else {
+            result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+          }
         }
       cnt : {}
       } while (IndexUtil::BumpIndices(window_shape,
@@ -1232,6 +1264,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), rhs_literal.shape()));
     CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), dot->shape()));
 
+    const auto packed_nibble_count =
+        absl::c_count(dot->precision_config().operand_precision(),
+                      PrecisionConfig::PACKED_NIBBLE);
+    CHECK_NE(packed_nibble_count, 1);
+    const bool is_packed_nibble = packed_nibble_count == 2;
     CHECK_EQ(dnums.lhs_batch_dimensions_size(),
              dnums.rhs_batch_dimensions_size());
 
@@ -1289,10 +1326,21 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           // Accumulate resulting product along the contracting dimensions.
           ElementwiseT result_val = static_cast<ElementwiseT>(0);
           for (int64_t k = 0; k < total_contraction_size; k++) {
-            ElementwiseT lhs_val(lhs_literal.Get<ReturnT>(lhs_index));
-            ElementwiseT rhs_val(rhs_literal.Get<ReturnT>(rhs_index));
-            result_val +=
-                ToArithmeticSafeType(lhs_val) * ToArithmeticSafeType(rhs_val);
+            const auto lhs =
+                static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index));
+            const auto rhs =
+                static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
+            if (is_packed_nibble) {
+              auto lhs_n0 = ToArithmeticSafeType(Nibble0(lhs));
+              auto lhs_n1 = ToArithmeticSafeType(Nibble1(lhs));
+              auto rhs_n0 = ToArithmeticSafeType(Nibble0(rhs));
+              auto rhs_n1 = ToArithmeticSafeType(Nibble1(rhs));
+              result_val += (lhs_n0 * rhs_n0) + (lhs_n1 * rhs_n1);
+
+            } else {
+              result_val +=
+                  ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+            }
 
             // If there are no contracting dimensions, do not try to count down
             // from -1 to 0; that's an infinite loop.

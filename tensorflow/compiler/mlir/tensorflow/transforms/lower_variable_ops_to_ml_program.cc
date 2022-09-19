@@ -141,10 +141,15 @@ struct LowerVariableOpsToMlProgramPass
       if (!globalOp) return;
       symbol_table.insert(globalOp);
       OpBuilder builder(op);
+      Value value_to_store = op.value();
+      if (globalOp.getType() != op.value().getType()) {
+        value_to_store = builder.create<TF::CastOp>(
+            op.getLoc(), globalOp.getType(), value_to_store);
+      }
       builder.create<mlir::ml_program::GlobalStoreOp>(
           op.getLoc(),
           SymbolRefAttr::get(op->getContext(), globalOp.getSymName()),
-          op.value());
+          value_to_store);
       op.erase();
     });
   }

@@ -288,14 +288,6 @@ Status CoordinationServiceAgentImpl::Connect() {
         call_opts.SetTimeout(heartbeat_interval_ms);
 
         while (true) {
-          {
-            mutex_lock l(heartbeat_thread_shutdown_mu_);
-            heartbeat_thread_cv_.wait_for(
-                l, std::chrono::milliseconds(heartbeat_interval_ms));
-            if (shutting_down_) {
-              return;
-            }
-          }
           Status status;
           absl::Notification n;
           // Heartbeat RPC implementation automatically retries to tolerate
@@ -312,6 +304,15 @@ Status CoordinationServiceAgentImpl::Connect() {
             SetError(MakeCoordinationError(
                 errors::Aborted("Leader incarnation ID mismatch: the "
                                 "coordination leader has restarted.")));
+          }
+          // Send next heartbeat after an interval.
+          {
+            mutex_lock l(heartbeat_thread_shutdown_mu_);
+            heartbeat_thread_cv_.wait_for(
+                l, std::chrono::milliseconds(heartbeat_interval_ms));
+            if (shutting_down_) {
+              return;
+            }
           }
         }
       }));

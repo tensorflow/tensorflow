@@ -122,7 +122,7 @@ struct DotDimensionIndexMapping {
 void UpdateDDNums(DotDimensionNumbers* new_ddnums, int64_t reshaped_dim,
                   bool lhs) {
   auto update_dims =
-      [&reshaped_dim](tensorflow::protobuf::RepeatedField<int64_t>* dims) {
+      [&reshaped_dim](tsl::protobuf::RepeatedField<int64_t>* dims) {
         bool add_reshaped_dim = false;
         if (absl::c_linear_search(*dims, reshaped_dim)) {
           add_reshaped_dim = true;
@@ -465,7 +465,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     rhs = original_hlo->operand(1);
   }
 
-  // Determine if any of the users users have the same shardings that can allow
+  // Determine if any of the users have the same shardings that can allow
   // reuse of the resharding for the operand with original_hlo.
   auto check_users_sharding = [original_hlo](
                                   const HloInstruction* to_loop_over) {
@@ -593,6 +593,9 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
           b, dot, new_lhs.sharding(), new_lhs.state().next_channel_id,
           lhs_contracting_dims, new_lhs.state().collective_ops_creator,
           MakeBinaryAdd(dot->shape().element_type(), module));
+      if (collective->opcode() == HloOpcode::kConvert) {
+        collective = collective->mutable_operand(0);
+      }
       communication_time_in_ms = visitor->GetCommunicationTimeInMilliSec(
           ShapeUtil::ByteSizeOf(dot->shape()), collective->replica_groups());
     }

@@ -50,9 +50,9 @@ class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
 }
 
 def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
-    ParentOneOf<["MapOp", "ReductionOp"]>]>,
+    ParentOneOf<["MapOp", "ReductionOp", "ScatterOp"]>]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
-  let summary = "Yield operation for thlo.map and thlo.reduce.";
+  let summary = "Yield operation for tHLO ops with regions.";
   let assemblyFormat = "attr-dict $values `:` type($values)";
   let hasVerifier = 1;
 }
@@ -134,12 +134,12 @@ def THLO_GatherOp : THLO_DstStyleOp<"gather", [
 }
 
 def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
-    DeclareOpInterfaceMethods<TilingInterface>]> {
+    DeclareOpInterfaceMethods<TilingInterface>,
+    SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "Destination-style twin for `mhlo.scatter`";
   let description = [{
     Caveats:
     - the variadic case is not supported.
-    - update_computation is sum.
     - Only point updates are supported
       - update_window_dims is []
       - inserted_window_dims is range(operand.shape.rank)
@@ -154,6 +154,8 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
     TensorOrMemref:$init
   );
   let results = (outs Variadic<AnyTensor>:$result);
+
+  let regions = (region SizedRegion<1>:$update_computation);
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.

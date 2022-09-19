@@ -17,15 +17,11 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/synchronization/notification.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace tsl {
 namespace {
-// TODO(aminim): remove after env migration
-using tensorflow::Env;
-using tensorflow::Thread;
-using tensorflow::ThreadOptions;
 
 class DefaultLogger : public Logger {
  private:

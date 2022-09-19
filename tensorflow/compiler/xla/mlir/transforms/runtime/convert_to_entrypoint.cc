@@ -102,13 +102,13 @@ static void ConvertCustomCallOperations(func::FuncOp func, Value exec_ctx) {
     }
 
     b.create<cf::AssertOp>(
-        b.create<IsOkOp>(TypeRange(b.getI1Type()), call.status()),
+        b.create<IsOkOp>(TypeRange(b.getI1Type()), call.getStatus()),
         b.getStringAttr("custom call '" + std::string(custom_call.target) +
                         "' failed"));
 
     // Forward users of the original results to custom call results.
-    auto rets = llvm::zip(custom_call.call.getResults(),
-                          llvm::drop_begin(call.getResults()));
+    auto rets = llvm::zip(custom_call.call.Op::getResults(),
+                          llvm::drop_begin(call.Op::getResults()));
     llvm::for_each(rets, [](auto ret) {
       std::get<0>(ret).replaceAllUsesWith(std::get<1>(ret));
     });

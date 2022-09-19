@@ -276,11 +276,11 @@ Subgraph::~Subgraph() {
 
   for (size_t i = 0; i < context_.tensors_size; i++) {
     TfLiteTensor* tensor = &context_.tensors[i];
-    if (tensor->buffer_handle != kTfLiteNullBufferHandle &&
-        tensor->delegate->FreeBufferHandle != nullptr) {
-      tensor->delegate->FreeBufferHandle(&context_, tensor->delegate,
-                                         &tensor->buffer_handle);
+    if (tensor->buffer_handle != kTfLiteNullBufferHandle) {
+      TfLiteDelegateFreeBufferHandleInternal(&context_, tensor->delegate,
+                                             &tensor->buffer_handle);
     }
+
     TfLiteTensorFree(tensor);
   }
 }
@@ -623,6 +623,20 @@ void Subgraph::SetCancellationFunction(void* data,
                                        bool (*check_cancelled_func)(void*)) {
   cancellation_data_ = data;
   check_cancelled_func_ = check_cancelled_func;
+}
+
+TfLiteStatus Subgraph::EnsureTensorDataIsReadable(int tensor_index) {
+  TfLiteTensor* t = &tensors_[tensor_index];
+  TF_LITE_ENSURE(&context_, t != nullptr);
+  TfLiteStatus status = kTfLiteOk;
+  if (t->data_is_stale) {
+    TF_LITE_ENSURE(&context_, t->delegate != nullptr);
+    TF_LITE_ENSURE(&context_, t->buffer_handle != kTfLiteNullBufferHandle);
+    status = TfLiteDelegateCopyFromBufferHandleInternal(&context_, t->delegate,
+                                                        t->buffer_handle, t);
+    t->data_is_stale = false;
+  }
+  return status;
 }
 
 bool Subgraph::IsCancelled() {
@@ -1133,7 +1147,7 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   bool prepare_original_plan = false;
   if (!pre_delegation_execution_plan_.empty()) {
     for (int i = 0; i < delegates_applied_.size(); ++i) {
-      if ((delegates_applied_[i]->flags &
+      if ((TfLiteDelegateGetFlagsInternal(delegates_applied_[i]) &
            kTfLiteDelegateFlagsRequirePropagatedShapes)) {
         prepare_original_plan = true;
         break;
@@ -1584,7 +1598,7 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
       }
 
       // Realloc space for heap-allocated tensors.
-      TfLiteTensorRealloc(bytesRequired, tensor);
+      TfLiteTensorResizeMaybeCopy(bytesRequired, tensor, false);
       tensor->bytes = bytesRequired;
     }
     if (tensor->dims) TfLiteIntArrayFree(tensor->dims);
@@ -1817,7 +1831,8 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 
   const bool delegate_supports_dynamic_shapes =
-      delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors;
+      TfLiteDelegateGetFlagsInternal(delegate) &
+      kTfLiteDelegateFlagsAllowDynamicTensors;
   const auto pre_delegation_state = state_;
 
   if (state_ == kStateInvokableAndImmutable) {
@@ -1854,7 +1869,7 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
 
   // Setup additional context interface.
   SwitchToDelegateContext();
-  TfLiteStatus status = delegate->Prepare(&context_, delegate);
+  TfLiteStatus status = TfLiteDelegatePrepareInternal(&context_, delegate);
   // Remove additional context info.
   SwitchToKernelContext();
   TF_LITE_ENSURE_STATUS(reset_delegation_if_not_ok(status));

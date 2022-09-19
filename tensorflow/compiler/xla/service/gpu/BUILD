@@ -356,7 +356,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/core/platform:human_readable_json",
+        "//tensorflow/tsl/platform:human_readable_json",
     ] + if_gpu_is_configured([
         ":triangular_solve_thunk",
         ":cholesky_thunk",
@@ -589,7 +589,7 @@ config_setting(
 #         "//tensorflow/compiler/xla/service:executable",
 #         "//tensorflow/compiler/xla/service/gpu/runtime:kernel_launch",
 #         "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
-#         "//tensorflow/core/platform:human_readable_json",
+#         "//tensorflow/tsl/platform:human_readable_json",
 #         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
 #         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
 #         "@tf_runtime//:dtype",
@@ -1702,6 +1702,7 @@ cc_library(
         ":reduction_layout_normalizer",
         ":reduction_splitter",
         ":hlo_fusion_stats",
+        ":scatter_slice_simplifier",
         ":stream_executor_util",
         ":target_constants",
         ":tree_reduction_rewriter",
@@ -2960,5 +2961,29 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "scatter_slice_simplifier",
+    srcs = ["scatter_slice_simplifier.cc"],
+    hdrs = ["scatter_slice_simplifier.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+tf_cc_test(
+    name = "scatter_slice_simplifier_test",
+    srcs = ["scatter_slice_simplifier_test.cc"],
+    deps = [
+        ":scatter_slice_simplifier",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )

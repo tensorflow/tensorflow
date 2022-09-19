@@ -270,6 +270,7 @@ enum StatType {
   // Aggregrated Stats
   kSelfDurationPs,
   kMinDurationPs,
+  kTotalProfileDurationPs,
   kMaxIterationNum,
   kDeviceType,
   kUsesMegaCore,

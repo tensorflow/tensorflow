@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/compatibility/common/delegate_compatibility_checker_util.h"
 #include "tensorflow/lite/tools/delegates/compatibility/common/online_helper_delegate.h"
 #include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace tools {
@@ -84,18 +86,27 @@ absl::Status IsValidFeatureLevelInt(const std::string& s) {
   return absl::InvalidArgumentError("Invalid runtime feature level.");
 }
 
-// Gets the runtime feature level from the configurations and convert its value
-// to an integer.
+// Gets the runtime feature level from the configurations and convert its
+// value to an integer.
 absl::Status extractRuntimeFeatureLevel(
     const std::unordered_map<std::string, std::string>& dcc_configs,
     int& runtime_feature_level) {
+  std::string str_runtime_feature_level;
   if (dcc_configs.find("nnapi-runtime_feature_level") == dcc_configs.end()) {
-    return absl::InvalidArgumentError(
-        "Flag 'nnapi-runtime_feature_level' is not set.");
+    for (const auto& dcc_config : dcc_configs) {
+      // If an NNAPI parameter is set, but spelled incorrectly, return an error.
+      if (absl::StrContains(dcc_config.first, "nnapi")) {
+        return absl::InvalidArgumentError(
+            "The correct flag name is 'nnapi-runtime_feature_level");
+      }
+    }
+    // Use default as no NNAPI parameter is set.
+    str_runtime_feature_level =
+        std::to_string(tools::kDefaultRuntimeFeatureLevel);
+  } else {
+    str_runtime_feature_level = dcc_configs.at("nnapi-runtime_feature_level");
+    RETURN_IF_ERROR(IsValidFeatureLevelInt(str_runtime_feature_level));
   }
-  std::string str_runtime_feature_level =
-      dcc_configs.at("nnapi-runtime_feature_level");
-  RETURN_IF_ERROR(IsValidFeatureLevelInt(str_runtime_feature_level));
   runtime_feature_level = std::stoi(str_runtime_feature_level);
   return absl::OkStatus();
 }

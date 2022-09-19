@@ -241,7 +241,7 @@ namespace {
 string ROCMPointerToDeviceString(hipDeviceptr_t pointer) {
   auto value = GpuDriver::GetPointerDevice(pointer);
   if (value.ok()) {
-    return absl::StrCat(value.ValueOrDie());
+    return absl::StrCat(value.value());
   }
   LOG(ERROR) << "could not query device: " << value.status();
   return "?";
@@ -253,7 +253,7 @@ string ROCMPointerToDeviceString(hipDeviceptr_t pointer) {
 string ROCMPointerToMemorySpaceString(hipDeviceptr_t pointer) {
   auto value = GpuDriver::GetPointerMemorySpace(pointer);
   if (value.ok()) {
-    return MemorySpaceString(value.ValueOrDie());
+    return MemorySpaceString(value.value());
   }
   LOG(ERROR) << "could not query device: " << value.status();
   return "?";

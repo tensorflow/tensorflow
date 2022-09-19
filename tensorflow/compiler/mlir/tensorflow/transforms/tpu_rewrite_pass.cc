@@ -240,7 +240,7 @@ LogicalResult SetMetadataProtoArgs(
     // Populate set_is_same_data_across_replicas
     // Note: this information is duplicated and can be removed from the proto
     // and here once MLIR bridge phase 2 doesn't fallback to the old bridge.
-    mlir::UnitAttr attr = op.getFunc().getArgAttrOfType<mlir::UnitAttr>(
+    mlir::UnitAttr attr = op.getFuncOp().getArgAttrOfType<mlir::UnitAttr>(
         index, replication_attr_name);
     arg->set_is_same_data_across_replicas(attr != nullptr);
   }

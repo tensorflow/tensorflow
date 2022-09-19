@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.eager.polymorphic_function import composite_tensor_utils
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -52,6 +53,7 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -95,7 +97,7 @@ def convert_structure_to_signature(structure, arg_names=None,
       try:
         user_specified_name = compat.as_str(
             arg.op.get_attr("_user_specified_name"))
-      except ValueError:
+      except (ValueError, AttributeError):
         pass
 
       if path and user_specified_name and user_specified_name != path[0]:
@@ -1282,6 +1284,7 @@ def func_graph_from_py_func(name,
 
       # invariant: `func_outputs` contains only Tensors, CompositeTensors,
       # TensorArrays and `None`s.
+      func_outputs = variable_utils.convert_variables_to_tensors(func_outputs)
       func_outputs = nest.map_structure(
           convert, func_outputs, expand_composites=True)
 
@@ -1295,8 +1298,8 @@ def func_graph_from_py_func(name,
     graph_variables = list(func_graph._watched_variables)  # pylint: disable=protected-access
     arg_variables = object_identity.ObjectIdentitySet()
     inputs = []
-    for arg in (nest.flatten(func_args, expand_composites=True) +
-                nest.flatten(func_kwargs, expand_composites=True)):
+    for arg in composite_tensor_utils.flatten_with_variables([func_args,
+                                                              func_kwargs]):
       if isinstance(arg, resource_variable_ops.BaseResourceVariable):
         # Even if an argument variable was not used in the function, we've
         # already manually captured the resource Tensor when creating argument
@@ -1472,12 +1475,6 @@ def _get_defun_inputs_from_kwargs(kwargs):
   return _get_defun_inputs(args, names, structured_args=kwargs)
 
 
-def _get_composite_tensor_spec(x):
-  """Returns the TypeSpec for x if it's a composite tensor, or x otherwise."""
-  return (x._type_spec  # pylint: disable=protected-access
-          if isinstance(x, composite_tensor.CompositeTensor) else x)
-
-
 def _get_defun_inputs(args, names, structured_args):
   """Maps python function args to graph-construction inputs.
 
@@ -1492,68 +1489,71 @@ def _get_defun_inputs(args, names, structured_args):
   Returns:
     Placeholders with the same structure as `structured_args`.
   """
-  func_graph = ops.get_default_graph()
   function_inputs = []
   if names is None:
     names = [None] * len(args)
 
   for arg_value, name in zip(args, names):
-    # Replace any composite tensors with their TypeSpecs.  This is important
-    # for ensuring that shape information that's not preserved by the TypeSpec
-    # (such as the number of values in a SparseTensor) gets properly masked.
-    arg_value = nest.map_structure(_get_composite_tensor_spec, arg_value)
-    flat_args = nest.flatten(arg_value, expand_composites=True)
-
-    for arg in flat_args:
-      if isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec)):
-        arg_is_spec = isinstance(arg, tensor_spec.TensorSpec)
-        if arg_is_spec and arg.name:
-          requested_name = arg.name
-        else:
-          requested_name = name
-        try:
-          placeholder = graph_placeholder(
-              arg.dtype, arg.shape, name=requested_name)
-        except ValueError as e:
-          # Sometimes parameter names are not valid op names, so fall back to
-          # unnamed placeholders.
-          logging.warning(e)
-          placeholder = graph_placeholder(arg.dtype, arg.shape)
-        if not arg_is_spec:
-          handle_data_util.copy_handle_data(arg, placeholder)
-        if name is not None:
-          # Record the requested/user-specified name in case it's different than
-          # the uniquified name, for validation when exporting signatures.
-          placeholder.op._set_attr(  # pylint: disable=protected-access
-              "_user_specified_name",
-              attr_value_pb2.AttrValue(s=compat.as_bytes(requested_name)))
-        function_inputs.append(placeholder)
-      elif isinstance(arg, (resource_variable_ops.BaseResourceVariable,
-                            resource_variable_ops.VariableSpec)):
-        if isinstance(arg, resource_variable_ops.VariableSpec):
-          name = arg.name or name
-          with func_graph.outer_graph.as_default():
-            placeholder = graph_placeholder(
-                dtypes.resource, arg.shape, name=name)
-
-            arg = resource_variable_ops.ResourceVariable(
-                shape=arg.shape,
-                dtype=arg.dtype,
-                handle=placeholder,
-                trainable=arg.trainable)
-        # Capture arg variables to create placeholders for them. These will be
-        # removed as captures after the function is traced (since otherwise we'd
-        # just add it back with a new placeholder when the variable was
-        # referenced).
-        placeholder = func_graph.capture(arg.handle, name=name)
-        placeholder.op._set_attr(  # pylint: disable=protected-access
-            "_user_specified_name",
-            attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
-        function_inputs.append(arg)
-      else:
-        function_inputs.append(arg)
+    for val in composite_tensor_utils.flatten_with_variables_or_variable_specs(
+        arg_value):
+      function_inputs.append(_get_defun_input(val, name))
   return nest.pack_sequence_as(
-      structured_args, function_inputs, expand_composites=True)
+      structured_args,
+      nest.flatten(function_inputs, expand_composites=True),
+      expand_composites=True)
+
+
+def _get_defun_input(arg, name):
+  """Maps a python function arg to a graph-construction input."""
+  func_graph = ops.get_default_graph()
+  if isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec)):
+    arg_is_spec = isinstance(arg, tensor_spec.TensorSpec)
+    if arg_is_spec and arg.name:
+      requested_name = arg.name
+    else:
+      requested_name = name
+    try:
+      placeholder = graph_placeholder(
+          arg.dtype, arg.shape, name=requested_name)
+    except ValueError as e:
+      # Sometimes parameter names are not valid op names, so fall back to
+      # unnamed placeholders.
+      logging.warning(e)
+      placeholder = graph_placeholder(arg.dtype, arg.shape)
+    if not arg_is_spec:
+      handle_data_util.copy_handle_data(arg, placeholder)
+    if name is not None:
+      # Record the requested/user-specified name in case it's different than
+      # the uniquified name, for validation when exporting signatures.
+      placeholder.op._set_attr(  # pylint: disable=protected-access
+          "_user_specified_name",
+          attr_value_pb2.AttrValue(s=compat.as_bytes(requested_name)))
+    return placeholder
+  # TODO(b/246437883): Investigate how to remove this branch.
+  elif isinstance(arg, (resource_variable_ops.BaseResourceVariable,
+                        resource_variable_ops.VariableSpec)):
+    if isinstance(arg, resource_variable_ops.VariableSpec):
+      name = arg.name or name
+      with func_graph.outer_graph.as_default():
+        placeholder = graph_placeholder(dtypes.resource, [], name=name)
+        # TODO(b/246438937): Replace this with nest.pack_sequence_as after we
+        # can expand Variables.
+        arg = resource_variable_ops.ResourceVariable(
+            shape=arg.shape,
+            dtype=arg.dtype,
+            handle=placeholder,
+            trainable=arg.trainable)
+
+    # Capture arg variables to create placeholders for them. These will be
+    # removed as captures after the function is traced (since otherwise we'd
+    # just add it back with a new placeholder when the variable was referenced).
+    placeholder = func_graph.capture(arg.handle, name=name)
+    placeholder.op._set_attr(  # pylint: disable=protected-access
+        "_user_specified_name",
+        attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
+    return arg
+  else:
+    return arg
 
 
 def dismantle_func_graph(func_graph):

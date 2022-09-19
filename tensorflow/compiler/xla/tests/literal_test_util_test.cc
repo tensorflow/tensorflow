@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/test.h"
@@ -126,7 +126,7 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
     CHECK(LiteralTestUtil::Near(two, four, error)) << "two is not near four";
   };
 
-  tensorflow::Env* env = tensorflow::Env::Default();
+  tsl::Env* env = tsl::Env::Default();
 
   std::string outdir;
   if (!tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
@@ -150,8 +150,8 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
   EXPECT_EQ(3, results.size());
   for (const std::string& result : results) {
     LiteralProto literal_proto;
-    TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), result,
-                                            &literal_proto));
+    TF_CHECK_OK(
+        tsl::ReadBinaryProto(tsl::Env::Default(), result, &literal_proto));
     Literal literal = Literal::CreateFromProto(literal_proto).value();
     if (result.find("expected") != std::string::npos) {
       EXPECT_EQ("f32[] 2", literal.ToString());
@@ -322,6 +322,39 @@ TEST(LiteralTestUtilTest, DynamicEqualityR2Dim1) {
   literal2.PopulateR2<uint32_t>({{1, 2, 99}, {4, 5, 99}, {7, 8, 99}});
   literal2.SetDynamicSize(1, 2);
   EXPECT_TRUE(LiteralTestUtil::Equal(literal1, literal2));
+}
+
+TEST(LiteralTestUtilTest, DynamicNearEqualityR1) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {10}));
+  literal1.PopulateR1<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  literal1.SetDynamicSize(0, 5);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {10}));
+  literal2.PopulateR1<float>({1, 2, 3, 4, 5, 99, 99, 99, 99, 99});
+  literal2.SetDynamicSize(0, 5);
+  ErrorSpec error(0.001);
+  EXPECT_TRUE(LiteralTestUtil::Near(literal1, literal2, error));
+}
+
+TEST(LiteralTestUtilTest, DynamicNearEqualityR2Dim) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal1.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(0, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal2.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {99, 99, 99}});
+  literal2.SetDynamicSize(0, 2);
+  ErrorSpec error(0.001);
+  EXPECT_TRUE(LiteralTestUtil::Near(literal1, literal2, error));
+}
+
+TEST(LiteralTestUtilTest, DynamicNearEqualityR2Dim1) {
+  auto literal1 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal1.PopulateR2<float>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  literal1.SetDynamicSize(1, 2);
+  auto literal2 = Literal(ShapeUtil::MakeShape(F32, {3, 3}));
+  literal2.PopulateR2<float>({{1, 2, 99}, {4, 5, 99}, {7, 8, 99}});
+  literal2.SetDynamicSize(1, 2);
+  ErrorSpec error(0.001);
+  EXPECT_TRUE(LiteralTestUtil::Near(literal1, literal2, error));
 }
 
 }  // namespace

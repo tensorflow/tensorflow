@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/core/util/determinism_test_util.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "tensorflow/tsl/util/determinism_test_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -647,7 +647,7 @@ INSTANTIATE_TEST_SUITE_P(Test, GetOptimizationsTest,
                                            GetOptimizationTestCase4()));
 
 TEST(DeterministicOpsTest, GetOptimizations) {
-  test::DeterministicOpsScope det_scope;
+  tsl::test::DeterministicOpsScope det_scope;
   Options options;
   // options.deterministic should be ignored when deterministic ops are enabled.
   options.set_deterministic(false);

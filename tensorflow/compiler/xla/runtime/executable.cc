@@ -348,7 +348,7 @@ Status Executable::ReturnResults(const ResultConverter& results,
                                  CallFrame* call_frame) const {
   // If execution failed, forward error to all results.
   if (call_frame->is_error) {
-    auto err = InternalError(StrCat("run time error: %s", call_frame->error));
+    auto err = InternalError(StrCat("run time error: ", call_frame->error));
     return (results.ReturnError(err), err);
   }
 
@@ -440,9 +440,8 @@ const DiagnosticEngine* Executable::GetDiagnosticEngine(ExecutionContext* ctx) {
   return ctx->diagnostic_engine;
 }
 
-mlir::LogicalResult Executable::Call(ExecutionContext* ctx,
-                                     class CustomCall& call, void** args,
-                                     void** attrs, void** rets) {
+LogicalResult Executable::Call(ExecutionContext* ctx, class CustomCall& call,
+                               void** args, void** attrs, void** rets) {
   return call.call(args, attrs, rets, ctx->custom_call_data,
                    ctx->diagnostic_engine);
 }

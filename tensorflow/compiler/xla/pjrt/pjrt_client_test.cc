@@ -238,8 +238,8 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsage) {
   options.execution_mode = GetParam();
 
   constexpr int kNumThreads = 4;
-  tensorflow::thread::ThreadPool thread_pool(
-      tensorflow::Env::Default(), "ExecuteWithConcurrentUsage", kNumThreads);
+  tsl::thread::ThreadPool thread_pool(
+      tsl::Env::Default(), "ExecuteWithConcurrentUsage", kNumThreads);
 
   constexpr int kConcurrency = 16;
   absl::BlockingCounter blocking_counter(kConcurrency);
@@ -285,9 +285,9 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
   options.execution_mode = GetParam();
 
   constexpr int kNumThreads = 4;
-  tensorflow::thread::ThreadPool thread_pool(
-      tensorflow::Env::Default(), "ExecuteWithConcurrentUsageAndDonation",
-      kNumThreads);
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
+                                      "ExecuteWithConcurrentUsageAndDonation",
+                                      kNumThreads);
 
   constexpr int kConcurrentUsage = 16;
   absl::BlockingCounter blocking_counter(kConcurrentUsage + 1);
@@ -375,8 +375,8 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
   auto* device_1 = client->addressable_devices()[1];
 
   constexpr int kNumThreads = 4;
-  tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                             "CopyToDeviceAsync", kNumThreads);
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "CopyToDeviceAsync",
+                                      kNumThreads);
 
   constexpr int kConcurrentCopy = 16;
   std::vector<std::unique_ptr<PjRtBuffer>> results(kConcurrentCopy);
@@ -419,8 +419,8 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
   auto* device_1 = client->addressable_devices()[1];
 
   constexpr int kNumThreads = 4;
-  tensorflow::thread::ThreadPool thread_pool(
-      tensorflow::Env::Default(), "CopyToDeviceAsyncExternal", kNumThreads);
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
+                                      "CopyToDeviceAsyncExternal", kNumThreads);
 
   constexpr int kConcurrentCopy = 16;
   std::vector<std::unique_ptr<PjRtBuffer>> results(kConcurrentCopy);

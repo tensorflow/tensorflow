@@ -152,7 +152,7 @@ Status RendezvousInterface::Recv(const ParsedKey& key, const Args& args,
 namespace {
 class LocalRendezvousWrapper : public Rendezvous {
  public:
-  LocalRendezvousWrapper(int num_shards) : impl_(this, num_shards) {}
+  LocalRendezvousWrapper() : impl_(this) {}
 
   Status Send(const ParsedKey& key, const Args& send_args, const Tensor& val,
               const bool is_dead) override {
@@ -173,8 +173,6 @@ class LocalRendezvousWrapper : public Rendezvous {
 };
 }  // namespace
 
-Rendezvous* NewLocalRendezvous(int num_shards) {
-  return new LocalRendezvousWrapper(num_shards);
-}
+Rendezvous* NewLocalRendezvous() { return new LocalRendezvousWrapper; }
 
 }  // end namespace tensorflow

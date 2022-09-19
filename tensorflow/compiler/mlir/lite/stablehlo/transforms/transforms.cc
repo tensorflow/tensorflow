@@ -29,7 +29,7 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 
-void AddTFToStableHLOPasses(OpPassManager& pm, bool skip_resize,
+void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
                             bool smuggle_disallowed_ops) {
   pm.addPass(mlir::TFL::mhlo::CreateRenameEntrypointToMainPass());
   // TODO(b/230572023): Consider improving shape inference for While op instead
@@ -68,6 +68,8 @@ void AddTFToStableHLOPasses(OpPassManager& pm, bool skip_resize,
   }
   pm.addPass(mlir::TFL::mhlo::CreateDropSavedModelSemanticsPass());
 }
+
+void AddStablehloOptimizationPasses(OpPassManager& pm) {}
 
 }  // namespace odml
 }  // namespace mlir

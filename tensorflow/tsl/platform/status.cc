@@ -35,10 +35,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/strcat.h"
 #include "tensorflow/tsl/platform/stringprintf.h"
 
-using tensorflow::TFAddLogSink;
-using tensorflow::TFLogEntry;
-using tensorflow::TFLogSink;
-
 namespace tsl {
 namespace error {
 // TODO(aminim): figure out the protobuf migration story

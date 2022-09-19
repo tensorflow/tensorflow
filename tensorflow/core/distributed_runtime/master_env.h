@@ -25,12 +25,15 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
+namespace tsl {
+class Env;
+}  // namespace tsl
 namespace tensorflow {
+using Env = tsl::Env;
 
 class CollectiveExecutorMgrInterface;
 class Device;
 class DeviceSet;
-class Env;
 class MasterSession;
 class OpRegistryInterface;
 

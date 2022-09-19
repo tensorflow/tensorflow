@@ -157,23 +157,12 @@ cc_library(
     deps = [
         ":dstatus",
         ":tensor_layout",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/dtensor/mlir:value_utils",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
-)
-
-tf_kernel_library(
-    name = "dtensor_kernels",
-    srcs = [
-        "dtensor_sharded_prefix_kernel.cc",
-    ],
-    deps = [
-        ":save_restore_util",
-        ":tensor_layout",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -262,7 +251,6 @@ cc_library(
         ":dstatus",
         ":dtensor_device_util",
         ":dtensor_graph_to_mlir_pass",
-        ":dtensor_kernels",
         ":dtensor_meta_ops",
         ":dtensor_ops",
         ":dtensor_tpu_ops",
