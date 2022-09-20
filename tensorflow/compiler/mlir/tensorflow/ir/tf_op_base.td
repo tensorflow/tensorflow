@@ -99,7 +99,16 @@ def TF_CwiseUnary : NativeOpTrait<"TF::CwiseUnary">;
 // op op X == op X (unary) / X op X == X (binary)
 // This version requires TF_SameOperandsAndResultTypeResolveRef trait unlike
 // the core implementation requiring SameOperandsAndResultType.
+//
+// This shouldn't be used for side effecting ops.
 def TF_Idempotent : NativeOpTrait<"TF::IsIdempotent">;
+
+// op op X == X
+// This version requires TF_SameOperandsAndResultTypeResolveRef trait unlike
+// the core implementation requiring SameOperandsAndResultType.
+//
+// This shouldn't be used for side effecting ops.
+def TF_Involution : NativeOpTrait<"TF::IsInvolution">;
 
 // Variant of broadcastable trait that considers TF's subtype behavior.
 class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[

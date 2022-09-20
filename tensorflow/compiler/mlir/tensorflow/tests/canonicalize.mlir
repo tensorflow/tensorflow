@@ -2130,3 +2130,11 @@ func.func @testUnaryIdempotent(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {
   %1 = "tf.Abs"(%0) : (tensor<4xf32>) -> tensor<4xf32>
   func.return %1 : tensor<4xf32>
 }
+
+// CHECK-LABEL: testInvolution
+func.func @testInvolution(%arg0: tensor<4xi32>) -> (tensor<4xi32>) {
+  // CHECK-NOT: tf.Invert
+  %0 = "tf.Invert"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tf.Invert"(%0) : (tensor<4xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
+}
