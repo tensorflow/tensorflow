@@ -368,6 +368,18 @@ cc_library(
 )
 
 cc_library(
+    name = "c_api_types",
+    hdrs = ["c/c_api_types.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = ["//tensorflow/lite/c:c_api_types"],
+)
+
+cc_library(
     name = "common",
     hdrs = ["c/common.h"],
     copts = tflite_copts_warnings(),
