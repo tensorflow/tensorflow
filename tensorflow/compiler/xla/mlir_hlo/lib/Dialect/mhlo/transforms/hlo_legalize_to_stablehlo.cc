@@ -102,7 +102,8 @@ Attribute convertAttr(Attribute hloAttr) {
   if (auto attr = hloAttr.dyn_cast<mhlo::TransposeAttr>()) {
     RETURN_CONVERTED_ENUM_ATTR(Transpose);
   }
-  if (hloAttr.getDialect().getNamespace() == "mhlo") {
+  if (hloAttr.getDialect().getNamespace() ==
+      mhlo::MhloDialect::getDialectNamespace()) {
     // Our guiding principle is to support all StableHLO functionality in MHLO.
     // The inverse is not necessarily true - some MHLO attributes are missing
     // from StableHLO (either deliberately or haven't yet been proposed).

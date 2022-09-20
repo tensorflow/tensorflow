@@ -1772,6 +1772,15 @@ func.func @type_token_caller(%arg0: !mhlo.token) -> !mhlo.token {
 //       CHECK: function_type = (!stablehlo.token) -> !stablehlo.token
 // CHECK-LABEL: "type_token_caller"
 
+func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "foo"
+  // CHECK: (tuple<tensor<f32>>) -> tuple<!stablehlo.token>
+  } : (tuple<tensor<f32>>) -> tuple<!mhlo.token>
+  return %0 : tuple<!mhlo.token>
+}
+// CHECK-LABEL: "type_tuple"
+
 // ============ NEGATIVE TESTS ============
 // Some ops, attributes and types used in MHLO programs are not supported in StableHLO.
 // For those cases, we have negative tests below.

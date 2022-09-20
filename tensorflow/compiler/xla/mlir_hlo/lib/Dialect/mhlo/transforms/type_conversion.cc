@@ -106,63 +106,90 @@ LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
 
 namespace stablehlo {
 
-// Our guiding principle is to support all StableHLO functionality in MHLO.
-// The inverse is not necessarily true - some MHLO types are missing from
-// StableHLO (either deliberately or haven't yet been proposed to StableHLO).
-// As a result, these MHLO types will fail here.
-HloToStablehloTypeConverter::HloToStablehloTypeConverter() {
-  addConversion([](Type hloType) { return hloType; });
+HloTypeConverter::HloTypeConverter() {
+  addConversion([&](Type type) -> Type {
+    // We cannot use an allowlist here because HLO dialects can be embedded
+    // into programs with other dialects which can involve other types.
+    // However, we restrict the use of types defined in the source dialect.
+    // This check is here only for exceptional situations, e.g. when we added
+    // a new type and forgot to update the converters in the subclass.
+    if (isSourceDialect(type.getDialect())) return {};
+    return type;
+  });
+  addConversion([&](RankedTensorType type) -> Type {
+    auto encoding = type.getEncoding();
+    if (!encoding) return type;
+
+    // Since this type converter can be used in all sorts of programs,
+    // we generally want to allow most of the encodings to pass through,
+    // However, we restrict the use of encodings defined in the source dialect.
+    if (isSourceDialect(encoding.getDialect())) {
+      auto convertedEncoding = convertSourceDialectEncoding(encoding);
+      if (!convertedEncoding) return {};
+      return RankedTensorType::get(type.getShape(), type.getElementType(),
+                                   convertedEncoding);
+    }
+    return type;
+  });
+  addConversion([&](TupleType type) -> Type {
+    SmallVector<Type> convertedTypes;
+    if (failed(convertTypes(type.getTypes(), convertedTypes))) return {};
+    return TupleType::get(type.getContext(), convertedTypes);
+  });
+}
+
+HloToStablehloTypeConverter::HloToStablehloTypeConverter()
+    : HloTypeConverter() {
   // !mhlo.async_bundle is only used in mhlo.async_start, mhlo.async_update
   // and mhlo.async_done which are private to XLA.
   // This means that these ops are deliberately not part of StableHLO,
   // and as a result this type is not part of StableHLO either.
   addConversion([](mhlo::AsyncBundleType) -> Type { return {}; });
-  addConversion([](mhlo::TokenType hloType) -> Type {
-    return stablehlo::TokenType::get(hloType.getContext());
+  addConversion([](mhlo::TokenType type) -> Type {
+    return stablehlo::TokenType::get(type.getContext());
   });
-  addConversion([](RankedTensorType hloType) -> Type {
-    if (auto hloExtensions =
-            hloType.getEncoding()
-                .dyn_cast_or_null<mhlo::TypeExtensionsAttr>()) {
-      auto stablehloExtensions = stablehlo::TypeExtensionsAttr::get(
-          hloType.getContext(), hloExtensions.getBounds());
-      return RankedTensorType::get(hloType.getShape(), hloType.getElementType(),
-                                   stablehloExtensions);
-    }
-    return hloType;
-  });
-  addConversion([&](TupleType hloType) -> Type {
-    SmallVector<Type> stablehloTypes;
-    if (failed(convertTypes(hloType.getTypes(), stablehloTypes))) return {};
-    return TupleType::get(hloType.getContext(), stablehloTypes);
-  });
-};
+}
 
-// Our guiding principle is to support all StableHLO functionality in MHLO.
-// This means that the StableHLO => HLO type conversion should always succeed.
-StablehloToHloTypeConverter::StablehloToHloTypeConverter() {
-  addConversion([](Type stablehloType) { return stablehloType; });
+bool HloToStablehloTypeConverter::isSourceDialect(Dialect& dialect) {
+  return dialect.getNamespace() == mhlo::MhloDialect::getDialectNamespace();
+}
+
+Attribute HloToStablehloTypeConverter::convertSourceDialectEncoding(
+    Attribute attr) {
+  if (auto hloAttr = attr.dyn_cast_or_null<mhlo::TypeExtensionsAttr>()) {
+    return stablehlo::TypeExtensionsAttr::get(hloAttr.getContext(),
+                                              hloAttr.getBounds());
+  }
+  // Our guiding principle is to support all MHLO encodings in StableHLO.
+  // This check is here only for exceptional situations, e.g. when we added
+  // a new MHLO encoding and forgot to update the code above.
+  return {};
+}
+
+StablehloToHloTypeConverter::StablehloToHloTypeConverter()
+    : HloTypeConverter() {
   addConversion([](stablehlo::TokenType stablehloType) -> Type {
     return mhlo::TokenType::get(stablehloType.getContext());
   });
-  addConversion([](RankedTensorType stablehloType) -> Type {
-    if (auto stablehloExtensions =
-            stablehloType.getEncoding()
-                .dyn_cast_or_null<stablehlo::TypeExtensionsAttr>()) {
-      auto hloExtensions = mhlo::TypeExtensionsAttr::get(
-          stablehloType.getContext(), stablehloExtensions.getBounds());
-      return RankedTensorType::get(stablehloType.getShape(),
-                                   stablehloType.getElementType(),
-                                   hloExtensions);
-    }
-    return stablehloType;
-  });
-  addConversion([&](TupleType stablehloType) -> Type {
-    SmallVector<Type> hloTypes;
-    if (failed(convertTypes(stablehloType.getTypes(), hloTypes))) return {};
-    return TupleType::get(stablehloType.getContext(), hloTypes);
-  });
-};
+}
+
+bool StablehloToHloTypeConverter::isSourceDialect(Dialect& dialect) {
+  return dialect.getNamespace() ==
+         stablehlo::StablehloDialect::getDialectNamespace();
+}
+
+Attribute StablehloToHloTypeConverter::convertSourceDialectEncoding(
+    Attribute attr) {
+  if (auto stablehloAttr =
+          attr.dyn_cast_or_null<stablehlo::TypeExtensionsAttr>()) {
+    return mhlo::TypeExtensionsAttr::get(stablehloAttr.getContext(),
+                                         stablehloAttr.getBounds());
+  }
+  // Our guiding principle is to support all StableHLO encodings in MHLO.
+  // This check is here only for exceptional situations, e.g. when we added
+  // a new StableHLO encoding and forgot to update the code above.
+  return {};
+}
 
 void registerFuncOpsForTypeConversion(ConversionTarget& target,
                                       RewritePatternSet& patterns,

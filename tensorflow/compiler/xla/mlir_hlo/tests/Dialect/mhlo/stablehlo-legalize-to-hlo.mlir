@@ -1744,3 +1744,12 @@ func.func @type_token_caller(%arg0: !stablehlo.token) -> !stablehlo.token {
 }
 //       CHECK: function_type = (!mhlo.token) -> !mhlo.token
 // CHECK-LABEL: "type_token_caller"
+
+func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!stablehlo.token> {
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "foo"
+  // CHECK: (tuple<tensor<f32>>) -> tuple<!mhlo.token>
+  } : (tuple<tensor<f32>>) -> tuple<!stablehlo.token>
+  return %0 : tuple<!stablehlo.token>
+}
+// CHECK-LABEL: "type_tuple"
