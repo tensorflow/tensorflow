@@ -13,19 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/random/distribution_sampler.h"
+#include "tensorflow/tsl/lib/random/distribution_sampler.h"
 
 #include <string.h>
+
 #include <memory>
 #include <vector>
 
-#include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/lib/random/simple_philox.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace random {
 
 class DistributionSamplerTest : public ::testing::Test {
@@ -101,4 +102,4 @@ static void BM_DistributionSampler(::testing::benchmark::State& state) {
 BENCHMARK(BM_DistributionSampler)->Arg(10)->Arg(100)->Arg(1000);
 
 }  // namespace random
-}  // namespace tensorflow
+}  // namespace tsl

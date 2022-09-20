@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/random/random_distributions.h"
+#include "tensorflow/tsl/lib/random/random_distributions.h"
 
 #include <algorithm>
 #include <cmath>
@@ -22,14 +22,14 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/lib/random/philox_random.h"
-#include "tensorflow/core/lib/random/philox_random_test_utils.h"
-#include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
+#include "tensorflow/tsl/lib/random/philox_random.h"
+#include "tensorflow/tsl/lib/random/philox_random_test_utils.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/random.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace random {
 namespace {
 
@@ -370,4 +370,4 @@ TEST(SingleSampleAdapterTest, MockGeneratorSkip) {
 
 }  // namespace
 }  // namespace random
-}  // namespace tensorflow
+}  // namespace tsl

@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/tsl/platform/random.h"
 
 #include <set>
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
+
+namespace tsl {
 namespace random {
 namespace {
 
@@ -33,4 +34,4 @@ TEST(New64Test, SanityCheck) {
 
 }  // namespace
 }  // namespace random
-}  // namespace tensorflow
+}  // namespace tsl

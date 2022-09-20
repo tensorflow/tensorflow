@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/random/weighted_picker.h"
+#include "tensorflow/tsl/lib/random/weighted_picker.h"
 
 #include <string.h>
+
 #include <algorithm>
 
-#include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/tsl/lib/random/simple_philox.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace random {
 
 WeightedPicker::WeightedPicker(int N) {
@@ -215,4 +216,4 @@ void WeightedPicker::Resize(int new_size) {
 }
 
 }  // namespace random
-}  // namespace tensorflow
+}  // namespace tsl

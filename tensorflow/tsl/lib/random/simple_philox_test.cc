@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/tsl/lib/random/simple_philox.h"
 
 #include <set>
 #include <string>
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace random {
 namespace {
 
@@ -132,4 +132,4 @@ TEST(SimplePhiloxTest, TestUniform64) {
 
 }  // namespace
 }  // namespace random
-}  // namespace tensorflow
+}  // namespace tsl

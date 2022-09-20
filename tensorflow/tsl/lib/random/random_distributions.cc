@@ -13,27 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/lib/random/exact_uniform_int.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/lib/random/distribution_sampler.h"
+#include "tensorflow/tsl/lib/random/philox_random.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace random {
-
-uint32 SimplePhilox::Uniform(uint32 n) {
-  return ExactUniformInt<uint32>(n, [this]() { return Rand32(); });
+template <>
+void SingleSampleAdapter<PhiloxRandom>::SkipFromGenerator(uint64 num_skips) {
+  // Use the O(1) PhiloxRandom::Skip instead of the default O(N) impl.
+  generator_->Skip(num_skips);
 }
-
-uint64 SimplePhilox::Uniform64(uint64 n) {
-  return ExactUniformInt<uint64>(n, [this]() { return Rand64(); });
-}
-
-uint32 SimplePhilox::Skewed(int max_log) {
-  CHECK(0 <= max_log && max_log <= 32);
-  const int shift = Rand32() % (max_log + 1);
-  const uint32 mask = shift == 32 ? ~static_cast<uint32>(0) : (1 << shift) - 1;
-  return Rand32() & mask;
-}
-
 }  // namespace random
-}  // namespace tensorflow
+}  // namespace tsl

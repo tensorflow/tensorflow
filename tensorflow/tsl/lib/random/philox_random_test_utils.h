@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_LIB_RANDOM_PHILOX_RANDOM_TEST_UTILS_H_
-#define TENSORFLOW_CORE_LIB_RANDOM_PHILOX_RANDOM_TEST_UTILS_H_
+#ifndef TENSORFLOW_TSL_LIB_RANDOM_PHILOX_RANDOM_TEST_UTILS_H_
+#define TENSORFLOW_TSL_LIB_RANDOM_PHILOX_RANDOM_TEST_UTILS_H_
 
 #include <algorithm>
 
-#include "tensorflow/core/lib/random/philox_random.h"
-#include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/lib/random/philox_random.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/random.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace random {
 
 // Return a random seed.
@@ -46,6 +46,6 @@ void FillRandoms(PhiloxRandom gen, typename Distribution::ResultElementType* p,
 }
 
 }  // namespace random
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_LIB_RANDOM_PHILOX_RANDOM_TEST_UTILS_H_
+#endif  // TENSORFLOW_TSL_LIB_RANDOM_PHILOX_RANDOM_TEST_UTILS_H_

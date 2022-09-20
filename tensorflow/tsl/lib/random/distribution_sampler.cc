@@ -13,16 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/random/distribution_sampler.h"
+#include "tensorflow/tsl/lib/random/distribution_sampler.h"
 
 #include <memory>
 #include <vector>
 
-namespace tensorflow {
+#include "absl/types/span.h"
+
+namespace tsl {
 namespace random {
 
 DistributionSampler::DistributionSampler(
-    const gtl::ArraySlice<float>& weights) {
+    const absl::Span<const float> weights) {
   DCHECK(!weights.empty());
   int n = weights.size();
   num_ = n;
@@ -92,4 +94,4 @@ DistributionSampler::DistributionSampler(
 }
 
 }  // namespace random
-}  // namespace tensorflow
+}  // namespace tsl
