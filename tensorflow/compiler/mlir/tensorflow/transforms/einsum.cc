@@ -357,13 +357,13 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
 
   // Try to flatten the "..." if possible.
   int lhs_named_label, rhs_named_label;
-  auto avaiable_labels =
+  auto available_labels =
       GetAvailableLabels(lhs, rhs, &lhs_named_label, &rhs_named_label);
-  if (!avaiable_labels.has_value()) return llvm::None;
+  if (!available_labels.has_value()) return llvm::None;
 
   auto flattended_labels =
       FlattenEllipsis(lhs, lhs_named_label, rhs, rhs_named_label, out, lhs_ty,
-                      rhs_ty, avaiable_labels.getValue());
+                      rhs_ty, available_labels.getValue());
 
   lhs = std::get<0>(flattended_labels);
   rhs = std::get<1>(flattended_labels);
