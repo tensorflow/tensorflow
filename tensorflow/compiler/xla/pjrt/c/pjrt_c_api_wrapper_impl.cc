@@ -525,30 +525,56 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
       Convert2DCBuffersToCppBuffers(args->argument_lists, args->num_devices,
                                     args->num_args);
 
-  std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> cpp_buffer_lists;
-  if (args->device_complete_events != nullptr) {
-    std::optional<std::vector<xla::PjRtFuture<xla::Status>>> returned_futures;
-    returned_futures.emplace();
-
-    PJRT_ASSIGN_OR_RETURN(cpp_buffer_lists,
-                          args->executable->executable->Execute(
-                              cpp_argument_lists, options, returned_futures));
-    for (int i = 0; i < returned_futures->size(); ++i) {
-      args->device_complete_events[i] =
-          new PJRT_Event{std::move((*returned_futures)[i])};
+  if (args->execute_device == nullptr) {
+    std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> cpp_buffer_lists;
+    if (args->device_complete_events != nullptr) {
+      std::optional<std::vector<xla::PjRtFuture<xla::Status>>> returned_futures;
+      returned_futures.emplace();
+      PJRT_ASSIGN_OR_RETURN(cpp_buffer_lists,
+                            args->executable->executable->Execute(
+                                cpp_argument_lists, options, returned_futures));
+      for (int i = 0; i < returned_futures->size(); ++i) {
+        args->device_complete_events[i] =
+            new PJRT_Event{std::move((*returned_futures)[i])};
+      }
+    } else {
+      PJRT_ASSIGN_OR_RETURN(
+          cpp_buffer_lists,
+          args->executable->executable->Execute(cpp_argument_lists, options));
+    }
+    for (int i = 0; i < cpp_buffer_lists.size(); ++i) {
+      for (int j = 0; j < cpp_buffer_lists[i].size(); ++j) {
+        args->output_lists[i][j] = new PJRT_Buffer{
+            std::move(cpp_buffer_lists[i][j]), args->executable->client};
+      }
     }
   } else {
-    PJRT_ASSIGN_OR_RETURN(
-        cpp_buffer_lists,
-        args->executable->executable->Execute(cpp_argument_lists, options));
-  }
-
-  for (int i = 0; i < cpp_buffer_lists.size(); ++i) {
-    for (int j = 0; j < cpp_buffer_lists[i].size(); ++j) {
-      args->output_lists[i][j] = new PJRT_Buffer{
-          std::move(cpp_buffer_lists[i][j]), args->executable->client};
+    if (args->num_devices != 1) {
+      return new PJRT_Error{xla::InvalidArgument(
+          "num_devices and corresponding output list sizes must be 1 when "
+          "calling PJRT_Executable_Execute with non-null execute_device. Got "
+          "num_devices=%i",
+          args->num_devices)};
+    }
+    std::vector<std::unique_ptr<xla::PjRtBuffer>> cpp_buffer_list;
+    if (args->executable->executable->num_partitions() == 1 &&
+        args->executable->executable->num_replicas() == 1) {
+      // TODO(b/247013351): Implement portable execution.
+      return new PJRT_Error{xla::Unimplemented(
+          "PJRT_Executabe_Execute doesn't support portable execution; "
+          "execute_device must be null for single-device executables")};
+    } else {
+      PJRT_ASSIGN_OR_RETURN(
+          cpp_buffer_list,
+          args->executable->executable->ExecuteSharded(
+              cpp_argument_lists[0], args->execute_device->device, options));
+    }
+    for (int i = 0; i < cpp_buffer_list.size(); ++i) {
+      args->output_lists[0][i] = new PJRT_Buffer{std::move(cpp_buffer_list[i]),
+                                                 args->executable->client};
     }
   }
+
   return nullptr;
 }
 

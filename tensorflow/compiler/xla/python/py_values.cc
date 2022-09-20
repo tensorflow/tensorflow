@@ -232,13 +232,16 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj, PjRtDevice* to_device,
                                         const DevicePutOptions& options) {
   const auto* py_array = obj.cast<PyArray*>();
 
-  if (py_array->sharding().get_type() == jax::PmapSharding::type()) {
-    return InvalidArgument("PmapSharding is not supported in jit path.");
-  }
-
+  // We only allow single device case for PyArray in device put.
   if (py_array->num_shards() != 1) {
     return InvalidArgument(
         "Only single-sharded Array is expected in device_put.");
+  }
+
+  if (py_array->sharding().get_type() == jax::PmapSharding::type()) {
+    // We are only handling single device case for PmapSharding here. For other
+    // cases, it fallbacks to python.
+    return HandleNumpyArray(obj.attr("_value"), to_device, options);
   }
 
   PjRtBuffer* buffer = py_array->GetBuffer(0);
