@@ -60,8 +60,6 @@ tf_cc_test(
     deps = [
         ":common",
         ":data_service_client",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -72,7 +70,6 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/public:version",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
 

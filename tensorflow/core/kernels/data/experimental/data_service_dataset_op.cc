@@ -412,10 +412,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params),
           data_service_client_(data_service_params) {}
 
-    ~Iterator() override { data_service_client_.Cancel(); }
+    ~Iterator() override {
+      data_service_client_.Cancel();
+      if (deregister_fn_) {
+        deregister_fn_();
+      }
+    }
 
     Status Initialize(IteratorContext* ctx) override {
-      return data_service_client_.Initialize(ctx);
+      TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+          ctx->cancellation_manager(),
+          [this]() { data_service_client_.Cancel(); }, &deregister_fn_));
+      return data_service_client_.Initialize();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -425,7 +433,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         return std::make_unique<DataServiceIteratorContext>(ctx, this);
       };
       TF_ASSIGN_OR_RETURN(GetNextResult result,
-                          data_service_client_.GetNext(ctx, ctx_factory));
+                          data_service_client_.GetNext(ctx_factory));
       *out_tensors = std::move(result.tensors);
       *end_of_sequence = result.end_of_sequence;
       return OkStatus();
@@ -470,12 +478,19 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         iterator_->RecordBufferDequeue(&ctx_, element);
       }
 
+      std::unique_ptr<Thread> StartThread(const string& name,
+                                          std::function<void()> fn) override {
+        return ctx_.StartThread(name, std::move(fn));
+      }
+
      private:
       IteratorContext ctx_;
       Iterator* iterator_ = nullptr;
     };
 
     DataServiceClient data_service_client_;
+    // Method for deregistering the cancellation callback.
+    std::function<void()> deregister_fn_;
     friend class DataServiceIteratorContext;
   };
 

@@ -46,6 +46,8 @@ class DataServiceContext {
   virtual ~DataServiceContext() = default;
   virtual void RecordBufferEnqueue(const std::vector<Tensor>& element) = 0;
   virtual void RecordBufferDequeue(const std::vector<Tensor>& element) = 0;
+  virtual std::unique_ptr<Thread> StartThread(const string& name,
+                                              std::function<void()> fn) = 0;
 };
 
 using DataServiceContextFactory =
@@ -62,12 +64,12 @@ class DataServiceClient {
   DataServiceClient& operator=(const DataServiceClient&) = delete;
 
   // Initializes the client. The caller owns `ctx` and `recorder`.
-  Status Initialize(IteratorContext* ctx);
+  Status Initialize();
 
   // Reads the next element from tf.data servers. Blocks if the next element is
   // not ready. The caller owns `ctx`.
   virtual StatusOr<GetNextResult> GetNext(
-      IteratorContext* ctx, DataServiceContextFactory context_factory);
+      DataServiceContextFactory context_factory);
 
   // Cancels the client.
   void Cancel();
@@ -114,7 +116,7 @@ class DataServiceClient {
     bool skip TF_GUARDED_BY(&DataServiceClient::mu_) = false;
   };
 
-  void EnsureThreadsStarted(IteratorContext* ctx);
+  void EnsureThreadsStarted();
   void CancelThreads();
   // Returns whether the client has finished and should return.
   bool Finished() const;
@@ -126,7 +128,7 @@ class DataServiceClient {
   // Maintain one thread fetching elements for each task.
   // TODO(aaudibert): Instead of polling, have dispatcher send updates when
   // the list of tasks changes.
-  void TaskThreadManager(std::shared_ptr<IteratorContext> ctx);
+  void TaskThreadManager();
   void TryBlockRound(int64_t round) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void UpdateIterationFinished(bool iteration_finished);
   Status AddTask(const TaskInfo& task_info);
@@ -135,7 +137,7 @@ class DataServiceClient {
   bool ShouldReadFromTask(const TaskInfo& task) const;
   void RecordTFMetrics(const ClientHeartbeatResponse& resp);
   void UpdateBufferSize();
-  void UpdateWorkerThreads(IteratorContext* ctx);
+  void UpdateWorkerThreads();
   void RunWorkerThread(std::function<void()> done);
   // Reports whether we can request another element without violating
   // `max_outstanding_requests_`.
@@ -166,9 +168,6 @@ class DataServiceClient {
   condition_variable manager_thread_cv_ TF_GUARDED_BY(mu_);
 
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
-
-  // Method for deregistering the cancellation callback.
-  std::function<void()> deregister_fn_;
 
   // Number of outstanding requests.
   int64_t outstanding_requests_ TF_GUARDED_BY(mu_) = 0;

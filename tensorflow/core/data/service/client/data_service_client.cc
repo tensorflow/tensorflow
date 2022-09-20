@@ -68,9 +68,6 @@ DataServiceClient::DataServiceClient(const DataServiceParams& params)
 DataServiceClient::~DataServiceClient() {
   VLOG(2) << "Destroying data service client for iteration id "
           << iteration_client_id_;
-  if (deregister_fn_) {
-    deregister_fn_();
-  }
   task_thread_manager_.reset();
   if (initialized_) {
     Status s = dispatcher_->ReleaseIterationClient(iteration_client_id_);
@@ -86,9 +83,7 @@ DataServiceClient::~DataServiceClient() {
           << iteration_client_id_;
 }
 
-Status DataServiceClient::Initialize(IteratorContext* ctx) {
-  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-      ctx->cancellation_manager(), [this]() { Cancel(); }, &deregister_fn_));
+Status DataServiceClient::Initialize() {
   TF_RETURN_IF_ERROR(ValidateDataServiceParams(params_));
   VLOG(3) << "Connecting to " << params_.address
           << " in tf.data service client.";
@@ -124,14 +119,13 @@ Status DataServiceClient::Initialize(IteratorContext* ctx) {
 }
 
 StatusOr<GetNextResult> DataServiceClient::GetNext(
-    IteratorContext* ctx, DataServiceContextFactory context_factory)
-    TF_LOCKS_EXCLUDED(mu_) {
+    DataServiceContextFactory context_factory) TF_LOCKS_EXCLUDED(mu_) {
   VLOG(3) << "Getting the next element from tf.data service client.";
   mutex_lock l(mu_);
   if (ctx_ == nullptr) {
     ctx_ = context_factory();
   }
-  EnsureThreadsStarted(ctx);
+  EnsureThreadsStarted();
   std::shared_ptr<Result> result;
   do {
     while (!ResultReady() && !Finished() && !cancelled_ && status_.ok()) {
@@ -204,13 +198,11 @@ TraceMeMetadata DataServiceClient::GetTraceMeMetadata() const {
   return result;
 }
 
-void DataServiceClient::EnsureThreadsStarted(IteratorContext* ctx)
+void DataServiceClient::EnsureThreadsStarted()
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   if (!task_thread_manager_ && !cancelled_) {
-    auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-    task_thread_manager_ =
-        ctx->StartThread("task-thread-manager",
-                         [this, new_ctx]() { TaskThreadManager(new_ctx); });
+    task_thread_manager_ = ctx_->StartThread("task-thread-manager",
+                                             [this]() { TaskThreadManager(); });
   }
 }
 
@@ -256,8 +248,7 @@ bool DataServiceClient::ShouldDeleteLocalTask(const TaskInfo& task) const
   return params_.target_workers == TARGET_WORKERS_AUTO && IsColocatedTask(task);
 }
 
-void DataServiceClient::TaskThreadManager(std::shared_ptr<IteratorContext> ctx)
-    TF_LOCKS_EXCLUDED(mu_) {
+void DataServiceClient::TaskThreadManager() TF_LOCKS_EXCLUDED(mu_) {
   auto cleanup =
       gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
   VLOG(1) << "Starting task thread manager";
@@ -279,7 +270,7 @@ void DataServiceClient::TaskThreadManager(std::shared_ptr<IteratorContext> ctx)
     }
     Heartbeat();
     UpdateBufferSize();
-    UpdateWorkerThreads(ctx.get());
+    UpdateWorkerThreads();
     next_check =
         Env::Default()->NowMicros() + params_.task_refresh_interval_ms * 1000;
   }
@@ -470,8 +461,7 @@ void DataServiceClient::UpdateBufferSize() TF_LOCKS_EXCLUDED(mu_) {
   }
 }
 
-void DataServiceClient::UpdateWorkerThreads(IteratorContext* ctx)
-    TF_LOCKS_EXCLUDED(mu_) {
+void DataServiceClient::UpdateWorkerThreads() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   const int64_t max_num_threads =
       std::min<int64_t>(tasks_.size(), max_outstanding_requests_);
@@ -483,7 +473,7 @@ void DataServiceClient::UpdateWorkerThreads(IteratorContext* ctx)
       num_running_worker_threads_--;
       get_next_cv_.notify_all();
     };
-    worker_threads_.push_back(ctx->StartThread(
+    worker_threads_.push_back(ctx_->StartThread(
         "tf-data-service-task_thread", [this, done = std::move(done)]() {
           RunWorkerThread(std::move(done));
         }));
