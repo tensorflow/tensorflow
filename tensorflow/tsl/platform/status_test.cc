@@ -10,15 +10,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/status.h"
+
+#include <unordered_map>
 
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 
 TEST(ToStringTest, PayloadsArePrinted) {
   Status status = errors::Aborted("Aborted Error Message");
@@ -126,10 +128,9 @@ TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
   s.SetPayload("key3", "value3");
 
   std::unordered_map<std::string, std::string> payloads;
-  s.ForEachPayload(
-      [&payloads](tensorflow::StringPiece key, tensorflow::StringPiece value) {
-        payloads[std::string(key)] = std::string(value);
-      });
+  s.ForEachPayload([&payloads](StringPiece key, StringPiece value) {
+    payloads[std::string(key)] = std::string(value);
+  });
 
   EXPECT_EQ(payloads.size(), 3);
   EXPECT_EQ(payloads["key1"], "value1");
@@ -144,12 +145,11 @@ TEST(Status, OkStatusForEachPayloadNoIteration) {
   s.SetPayload("key3", "value3");
 
   std::unordered_map<std::string, std::string> payloads;
-  s.ForEachPayload(
-      [&payloads](tensorflow::StringPiece key, tensorflow::StringPiece value) {
-        payloads[std::string(key)] = std::string(value);
-      });
+  s.ForEachPayload([&payloads](StringPiece key, StringPiece value) {
+    payloads[std::string(key)] = std::string(value);
+  });
 
   EXPECT_EQ(payloads.size(), 0);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

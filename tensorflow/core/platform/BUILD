@@ -995,33 +995,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "status_test",
-    size = "small",
-    srcs = ["status_test.cc"],
-    deps = [
-        ":status",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:cord",
-        "@com_google_absl//absl/strings:str_format",
-    ],
-)
-
-tf_cc_test(
-    name = "statusor_test",
-    size = "small",
-    srcs = ["statusor_test.cc"],
-    deps = [
-        ":statusor",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
 # This is a hacky, do-nothing, binary that makes it easy to verify ability to
 # build, link, and in some cases run all of the libraries under platform.
 # Realistically, most of this would be covered by tests but at this point
@@ -1310,21 +1283,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:resource_loader",
-    ],
-)
-
-tf_cc_test(
-    name = "status_matchers_test",
-    size = "small",
-    srcs = ["status_matchers_test.cc"],
-    deps = [
-        ":status_matchers",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
     ],
 )
 

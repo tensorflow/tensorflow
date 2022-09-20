@@ -98,6 +98,17 @@ limitations under the License.
 //   Status status = Status::OK();
 //   EXPECT_THAT(status, IsOk());
 
+namespace tensorflow {
+namespace error {
+// TODO(ddunleavy) Move this to TSL. This stays here until error_codes proto
+// is moved to TSL due to an ADL issue
+inline void PrintTo(const tsl::error::Code code, std::ostream* os) {
+  *os << Code_Name(code);
+}
+
+}  // namespace error
+}  // namespace tensorflow
+
 namespace tsl {
 
 template <typename T>
@@ -107,12 +118,6 @@ void PrintTo(const StatusOr<T>& status_or, std::ostream* os) {
     *os << ": " << ::testing::PrintToString(status_or.value());
   }
 }
-
-namespace error {
-inline void PrintTo(const tsl::error::Code code, std::ostream* os) {
-  *os << Code_Name(code);
-}
-}  // namespace error
 
 namespace testing {
 namespace internal_status {

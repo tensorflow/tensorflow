@@ -15,18 +15,19 @@ limitations under the License.
 
 // Unit tests for StatusOr
 
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 #include <memory>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 class Base1 {
@@ -85,14 +86,14 @@ TEST(StatusOr, NullPointerStatusOr) {
 
 TEST(StatusOr, TestNoDefaultConstructorInitialization) {
   // Explicitly initialize it with an error code.
-  StatusOr<NoDefaultConstructor> statusor(tensorflow::errors::Cancelled(""));
+  StatusOr<NoDefaultConstructor> statusor(errors::Cancelled(""));
   EXPECT_FALSE(statusor.ok());
-  EXPECT_EQ(statusor.status().code(), tensorflow::error::CANCELLED);
+  EXPECT_EQ(statusor.status().code(), error::CANCELLED);
 
   // Default construction of StatusOr initializes it with an UNKNOWN error code.
   StatusOr<NoDefaultConstructor> statusor2;
   EXPECT_FALSE(statusor2.ok());
-  EXPECT_EQ(statusor2.status().code(), tensorflow::error::UNKNOWN);
+  EXPECT_EQ(statusor2.status().code(), error::UNKNOWN);
 }
 
 TEST(StatusOr, TestMoveOnlyInitialization) {
@@ -108,7 +109,7 @@ TEST(StatusOr, TestMoveOnlyInitialization) {
 }
 
 TEST(StatusOr, TestMoveOnlyStatusCtr) {
-  StatusOr<std::unique_ptr<int>> thing(tensorflow::errors::Cancelled(""));
+  StatusOr<std::unique_ptr<int>> thing(errors::Cancelled(""));
   ASSERT_FALSE(thing.ok());
 }
 
@@ -143,15 +144,15 @@ TEST(StatusOr, TestMoveOnlyVector) {
   vec.resize(2);
   auto another_vec = std::move(vec);
   EXPECT_EQ(0, *another_vec[0].value());
-  EXPECT_EQ(tensorflow::error::UNKNOWN, another_vec[1].status().code());
+  EXPECT_EQ(error::UNKNOWN, another_vec[1].status().code());
 }
 
 TEST(StatusOr, TestMoveWithValuesAndErrors) {
   StatusOr<std::string> status_or(std::string(1000, '0'));
   StatusOr<std::string> value1(std::string(1000, '1'));
   StatusOr<std::string> value2(std::string(1000, '2'));
-  StatusOr<std::string> error1(Status(tensorflow::error::UNKNOWN, "error1"));
-  StatusOr<std::string> error2(Status(tensorflow::error::UNKNOWN, "error2"));
+  StatusOr<std::string> error1(Status(error::UNKNOWN, "error1"));
+  StatusOr<std::string> error2(Status(error::UNKNOWN, "error2"));
 
   ASSERT_TRUE(status_or.ok());
   EXPECT_EQ(std::string(1000, '0'), status_or.value());
@@ -181,8 +182,8 @@ TEST(StatusOr, TestCopyWithValuesAndErrors) {
   StatusOr<std::string> status_or(std::string(1000, '0'));
   StatusOr<std::string> value1(std::string(1000, '1'));
   StatusOr<std::string> value2(std::string(1000, '2'));
-  StatusOr<std::string> error1(Status(tensorflow::error::UNKNOWN, "error1"));
-  StatusOr<std::string> error2(Status(tensorflow::error::UNKNOWN, "error2"));
+  StatusOr<std::string> error1(Status(error::UNKNOWN, "error1"));
+  StatusOr<std::string> error2(Status(error::UNKNOWN, "error2"));
 
   ASSERT_TRUE(status_or.ok());
   EXPECT_EQ(std::string(1000, '0'), status_or.value());
@@ -217,7 +218,7 @@ TEST(StatusOr, TestCopyWithValuesAndErrors) {
 TEST(StatusOr, TestDefaultCtor) {
   StatusOr<int> thing;
   EXPECT_FALSE(thing.ok());
-  EXPECT_EQ(thing.status().code(), tensorflow::error::UNKNOWN);
+  EXPECT_EQ(thing.status().code(), error::UNKNOWN);
 }
 
 TEST(StatusOrDeathTest, TestDefaultCtorValue) {
@@ -229,9 +230,9 @@ TEST(StatusOrDeathTest, TestDefaultCtorValue) {
 }
 
 TEST(StatusOr, TestStatusCtor) {
-  StatusOr<int> thing(Status(tensorflow::error::CANCELLED, ""));
+  StatusOr<int> thing(Status(error::CANCELLED, ""));
   EXPECT_FALSE(thing.ok());
-  EXPECT_EQ(thing.status().code(), tensorflow::error::CANCELLED);
+  EXPECT_EQ(thing.status().code(), error::CANCELLED);
 }
 
 TEST(StatusOr, TestValueCtor) {
@@ -250,7 +251,7 @@ TEST(StatusOr, TestCopyCtorStatusOk) {
 }
 
 TEST(StatusOr, TestCopyCtorStatusNotOk) {
-  StatusOr<int> original(Status(tensorflow::error::CANCELLED, ""));
+  StatusOr<int> original(Status(error::CANCELLED, ""));
   StatusOr<int> copy(original);
   EXPECT_EQ(copy.status(), original.status());
 }
@@ -273,7 +274,7 @@ TEST(StatusOr, TestCopyCtorStatusOKConverting) {
 }
 
 TEST(StatusOr, TestCopyCtorStatusNotOkConverting) {
-  StatusOr<int> original(Status(tensorflow::error::CANCELLED, ""));
+  StatusOr<int> original(Status(error::CANCELLED, ""));
   StatusOr<double> copy(original);
   EXPECT_EQ(copy.status(), original.status());
 }
@@ -288,7 +289,7 @@ TEST(StatusOr, TestAssignmentStatusOk) {
 }
 
 TEST(StatusOr, TestAssignmentStatusNotOk) {
-  StatusOr<int> source(Status(tensorflow::error::CANCELLED, ""));
+  StatusOr<int> source(Status(error::CANCELLED, ""));
   StatusOr<int> target;
   target = source;
   EXPECT_EQ(target.status(), source.status());
@@ -297,9 +298,9 @@ TEST(StatusOr, TestAssignmentStatusNotOk) {
 TEST(StatusOr, TestStatus) {
   StatusOr<int> good(4);
   EXPECT_TRUE(good.ok());
-  StatusOr<int> bad(Status(tensorflow::error::CANCELLED, ""));
+  StatusOr<int> bad(Status(error::CANCELLED, ""));
   EXPECT_FALSE(bad.ok());
-  EXPECT_EQ(bad.status(), Status(tensorflow::error::CANCELLED, ""));
+  EXPECT_EQ(bad.status(), Status(error::CANCELLED, ""));
 }
 
 TEST(StatusOr, TestValue) {
@@ -315,19 +316,19 @@ TEST(StatusOr, TestValueConst) {
 }
 
 TEST(StatusOrDeathTest, TestValueNotOk) {
-  StatusOr<int> thing(Status(tensorflow::error::CANCELLED, "cancelled"));
+  StatusOr<int> thing(Status(error::CANCELLED, "cancelled"));
   EXPECT_DEATH(thing.value(), "cancelled");
 }
 
 TEST(StatusOrDeathTest, TestValueNotOkConst) {
-  const StatusOr<int> thing(Status(tensorflow::error::UNKNOWN, ""));
+  const StatusOr<int> thing(Status(error::UNKNOWN, ""));
   EXPECT_DEATH(thing.value(), "");
 }
 
 TEST(StatusOr, TestPointerDefaultCtor) {
   StatusOr<int*> thing;
   EXPECT_FALSE(thing.ok());
-  EXPECT_EQ(thing.status().code(), tensorflow::error::UNKNOWN);
+  EXPECT_EQ(thing.status().code(), error::UNKNOWN);
 }
 
 TEST(StatusOrDeathTest, TestPointerDefaultCtorValue) {
@@ -336,9 +337,9 @@ TEST(StatusOrDeathTest, TestPointerDefaultCtorValue) {
 }
 
 TEST(StatusOr, TestPointerStatusCtor) {
-  StatusOr<int*> thing(Status(tensorflow::error::CANCELLED, ""));
+  StatusOr<int*> thing(Status(error::CANCELLED, ""));
   EXPECT_FALSE(thing.ok());
-  EXPECT_EQ(thing.status(), Status(tensorflow::error::CANCELLED, ""));
+  EXPECT_EQ(thing.status(), Status(error::CANCELLED, ""));
 }
 
 TEST(StatusOr, TestPointerValueCtor) {
@@ -357,7 +358,7 @@ TEST(StatusOr, TestPointerCopyCtorStatusOk) {
 }
 
 TEST(StatusOr, TestPointerCopyCtorStatusNotOk) {
-  StatusOr<int*> original(Status(tensorflow::error::CANCELLED, ""));
+  StatusOr<int*> original(Status(error::CANCELLED, ""));
   StatusOr<int*> copy(original);
   EXPECT_EQ(copy.status(), original.status());
 }
@@ -371,7 +372,7 @@ TEST(StatusOr, TestPointerCopyCtorStatusOKConverting) {
 }
 
 TEST(StatusOr, TestPointerCopyCtorStatusNotOkConverting) {
-  StatusOr<Derived*> original(Status(tensorflow::error::CANCELLED, ""));
+  StatusOr<Derived*> original(Status(error::CANCELLED, ""));
   StatusOr<Base2*> copy(original);
   EXPECT_EQ(copy.status(), original.status());
 }
@@ -386,7 +387,7 @@ TEST(StatusOr, TestPointerAssignmentStatusOk) {
 }
 
 TEST(StatusOr, TestPointerAssignmentStatusNotOk) {
-  StatusOr<int*> source(Status(tensorflow::error::CANCELLED, ""));
+  StatusOr<int*> source(Status(error::CANCELLED, ""));
   StatusOr<int*> target;
   target = source;
   EXPECT_EQ(target.status(), source.status());
@@ -396,8 +397,8 @@ TEST(StatusOr, TestPointerStatus) {
   const int kI = 0;
   StatusOr<const int*> good(&kI);
   EXPECT_TRUE(good.ok());
-  StatusOr<const int*> bad(Status(tensorflow::error::CANCELLED, ""));
-  EXPECT_EQ(bad.status(), Status(tensorflow::error::CANCELLED, ""));
+  StatusOr<const int*> bad(Status(error::CANCELLED, ""));
+  EXPECT_EQ(bad.status(), Status(error::CANCELLED, ""));
 }
 
 TEST(StatusOr, TestPointerValue) {
@@ -418,7 +419,7 @@ TEST(StatusOr, TestArrowOperator) {
 }
 
 TEST(StatusOr, TestArrowOperatorNotOk) {
-  StatusOr<Base1> error(Status(tensorflow::error::CANCELLED, "cancelled"));
+  StatusOr<Base1> error(Status(error::CANCELLED, "cancelled"));
   EXPECT_DEATH(error->pad_++, "cancelled");
 }
 
@@ -428,7 +429,7 @@ TEST(StatusOr, TestStarOperator) {
 }
 
 TEST(StatusOr, TestStarOperatorDeath) {
-  StatusOr<Base1> error(Status(tensorflow::error::CANCELLED, "cancelled"));
+  StatusOr<Base1> error(Status(error::CANCELLED, "cancelled"));
   EXPECT_DEATH(*error, "cancelled");
 }
 
@@ -442,12 +443,12 @@ TEST(StatusOr, TestStarOperatorDeath) {
 // }
 
 TEST(StatusOrDeathTest, TestPointerValueNotOk) {
-  StatusOr<int*> thing(Status(tensorflow::error::CANCELLED, "cancelled"));
+  StatusOr<int*> thing(Status(error::CANCELLED, "cancelled"));
   EXPECT_DEATH(thing.value(), "cancelled");
 }
 
 TEST(StatusOrDeathTest, TestPointerValueNotOkConst) {
-  const StatusOr<int*> thing(Status(tensorflow::error::CANCELLED, "cancelled"));
+  const StatusOr<int*> thing(Status(error::CANCELLED, "cancelled"));
   EXPECT_DEATH(thing.value(), "cancelled");
 }
 
@@ -482,17 +483,17 @@ class BenchmarkFactory {
 
   Status ArgumentFactoryFail(T** result) TF_ATTRIBUTE_NOINLINE {
     *result = nullptr;
-    return Status(tensorflow::error::CANCELLED, "");
+    return Status(error::CANCELLED, "");
   }
 
   Status ArgumentFactoryFailShortMsg(T** result) TF_ATTRIBUTE_NOINLINE {
     *result = nullptr;
-    return Status(::tensorflow::error::INTERNAL, "");
+    return Status(error::INTERNAL, "");
   }
 
   Status ArgumentFactoryFailLongMsg(T** result) TF_ATTRIBUTE_NOINLINE {
     *result = nullptr;
-    return Status(::tensorflow::error::INTERNAL,
+    return Status(error::INTERNAL,
                   "a big string of message junk that will never be read");
   }
 
@@ -504,15 +505,15 @@ class BenchmarkFactory {
   }
 
   StatusOr<T*> StatusOrFactoryFail() TF_ATTRIBUTE_NOINLINE {
-    return Status(tensorflow::error::CANCELLED, "");
+    return Status(error::CANCELLED, "");
   }
 
   StatusOr<T*> StatusOrFactoryFailShortMsg() TF_ATTRIBUTE_NOINLINE {
-    return Status(::tensorflow::error::INTERNAL, "");
+    return Status(error::INTERNAL, "");
   }
 
   StatusOr<T*> StatusOrFactoryFailLongMsg() TF_ATTRIBUTE_NOINLINE {
-    return Status(::tensorflow::error::INTERNAL,
+    return Status(error::INTERNAL,
                   "a big string of message junk that will never be read");
   }
 
@@ -671,4 +672,4 @@ void BM_StatusOrFactoryFailLongMsg(::testing::benchmark::State& state) {
 BENCHMARK(BM_StatusOrFactoryFailLongMsg);
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

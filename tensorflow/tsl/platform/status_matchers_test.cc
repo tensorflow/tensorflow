@@ -12,19 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 #include <sstream>
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace testing {
 namespace {
 
@@ -263,4 +263,4 @@ TEST(IsOkTest, DescribeNegatedExpectedValue) {
 
 }  // namespace
 }  // namespace testing
-}  // namespace tensorflow
+}  // namespace tsl

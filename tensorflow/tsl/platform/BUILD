@@ -1211,3 +1211,47 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+tf_cc_test(
+    name = "status_test",
+    size = "small",
+    srcs = ["status_test.cc"],
+    deps = [
+        ":errors",
+        ":status",
+        ":test",
+        ":test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_cc_test(
+    name = "statusor_test",
+    size = "small",
+    srcs = ["statusor_test.cc"],
+    deps = [
+        ":errors",
+        ":macros",
+        ":statusor",
+        ":test",
+        ":test_benchmark",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "status_matchers_test",
+    size = "small",
+    srcs = ["status_matchers_test.cc"],
+    deps = [
+        ":errors",
+        ":status",
+        ":status_matchers",
+        ":statusor",
+        ":test",
+        ":test_main",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+    ],
+)
