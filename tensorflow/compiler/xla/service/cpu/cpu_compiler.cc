@@ -1229,7 +1229,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
                           std::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allocate_buffers_for_constants=*/true));
-  DumpHloModuleIfEnabled(*module, *assignment, "cpu_after_optimizations");
+  DumpHloModuleIfEnabled(*module, *assignment, "cpu_" + kAfterOptimizationsDumpName);
 
   // Each computation is a single function.  Emit all embedded computations
   // before the entry computation. The order of computations returned from
@@ -1564,7 +1564,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       DumpToFileInDirOrStdout(*module, "", "buffer_assignment",
                               assignment->ToString());
     }
-    DumpHloModuleIfEnabled(*module, *assignment, "cpu_after_optimizations");
+    DumpHloModuleIfEnabled(*module, *assignment, "cpu_" + kAfterOptimizationsDumpName);
 
     absl::flat_hash_map<const HloInstruction*, int64_t>
         instruction_to_profile_idx;

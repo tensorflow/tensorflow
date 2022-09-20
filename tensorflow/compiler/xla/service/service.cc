@@ -70,10 +70,6 @@ namespace {
 using absl::StrCat;
 using absl::StrFormat;
 
-// Argument used when calling DumpHloModuleIfEnabled before optimizations are
-// performed on an HloModule.
-constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
-
 // Records the arguments used to invoke a computation in an HloSnapshot proto.
 Status RecordArguments(const absl::Span<const ShapedBuffer* const> arguments,
                        se::Stream* stream, TransferManager* transfer_manager,

@@ -30,6 +30,11 @@ limitations under the License.
 
 namespace xla {
 
+// Argument used when calling DumpHloModuleIfEnabled before optimizations are
+// performed on an HloModule.
+constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
+constexpr char kAfterOptimizationsDumpName[] = "after_optimizations";
+
 class BufferAssignment;
 class HloSnapshot;
 
