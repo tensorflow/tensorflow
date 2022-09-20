@@ -356,7 +356,8 @@ llvm::Optional<StringRef> GetXlaShardingFromRetval(
     }
 
     if (  // Cast, real/imag, etc.
-        def->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>() ||
+        def->hasTrait<
+            mlir::OpTrait::TF::SameOperandsAndResultTypeResolveRef>() ||
         // Exp, ceil, etc.
         def->hasTrait<mlir::OpTrait::SameOperandsAndResultType>() ||
         // Identity
