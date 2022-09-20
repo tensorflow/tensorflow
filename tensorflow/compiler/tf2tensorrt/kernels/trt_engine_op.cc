@@ -900,8 +900,8 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       GetEngine(input_concrete_shapes, ctx, cache_res);
   OP_REQUIRES_OK_ASYNC(ctx, status.status(), dummy_async_helper);
 
-  EngineContext* engine_context = status.ValueOrDie().first;
-  int trt_context_idx = status.ValueOrDie().second;
+  EngineContext* engine_context = status.value().first;
+  int trt_context_idx = status.value().second;
   auto may_execute_native_segment = [&] {
     if (!AllowEngineNativeSegmentExecution()) {
       ctx->CtxFailure(
@@ -1180,7 +1180,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       if (!result.ok()) {
         return std::pair<EngineContext*, int>(&empty_context, 0);
       }
-      static_engine = std::move(result.ValueOrDie());
+      static_engine = std::move(result.value());
     }
 
     auto raw_static_engine = static_engine.get();
@@ -1254,8 +1254,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     if (!result.ok()) {
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
-    TrtUniquePtrType<nvinfer1::ICudaEngine> engine =
-        std::move(result.ValueOrDie());
+    TrtUniquePtrType<nvinfer1::ICudaEngine> engine = std::move(result.value());
     std::vector<ExecutionContext> exec_contexts;
     TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
         engine.get(), &exec_contexts));

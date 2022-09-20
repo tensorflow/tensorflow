@@ -54,7 +54,7 @@ class ConvertLikeOps : public OpConverterBase<ConvertLikeOps<V>> {
         params.weight_store->GetTempWeights(input.TrtDType(), value_input_dims);
     TF_RETURN_IF_ERROR(value_weights.status());
     TF_RETURN_IF_ERROR(value_weights->SetValues(V));
-    TRT_TensorOrWeights value_input(value_weights.ValueOrDie());
+    TRT_TensorOrWeights value_input(value_weights.value());
 
     const auto is_dims_static = HasStaticShape(dims);
     auto builder = TRTNetworkBuilder::Create(network, params.weight_store);

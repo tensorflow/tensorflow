@@ -250,7 +250,7 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
 
       TF_RETURN_IF_ERROR(value_weights.status());
       TF_RETURN_IF_ERROR(value_weights->SetValues(start_));
-      value_input = TRT_TensorOrWeights(value_weights.ValueOrDie());
+      value_input = TRT_TensorOrWeights(value_weights.value());
 
       trt_dims.d[0] = num_values_;
       StatusOr<nvinfer1::IConstantLayer*> const_layer =

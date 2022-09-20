@@ -4597,7 +4597,7 @@ StatusOr<ITensorProxyPtr> ConvertMatMulImpl(const OpConverterParams* params,
   StatusOr<ITensorProxyPtr> result = ConvertFullyConnectedImpl(
       params, input_a, input_b, transpose_a, transpose_b);
   TF_RETURN_IF_ERROR(result.status());
-  ITensorProxyPtr output = result.ValueOrDie();
+  ITensorProxyPtr output = result.value();
   if (*output) {
     // FC conversion was successful, we can return.
     return output;
@@ -4655,7 +4655,7 @@ Status ConvertMatMulHelper(const OpConverterParams* params,
       ConvertMatMulImpl(params, input_a, input_b, transpose_a, transpose_b);
   TF_RETURN_IF_ERROR(result.status());
   if (!params->validation_only) {
-    params->outputs->push_back(TRT_TensorOrWeights(result.ValueOrDie()));
+    params->outputs->push_back(TRT_TensorOrWeights(result.value()));
   }
   return Status::OK();
 }
@@ -4968,11 +4968,11 @@ CalcDepthSpaceDynamicShape(const OpConverterParams* params, int block_size,
   StatusOr<ITensorProxyPtr> result =
       ConcatenateTensors(params, first_shuffle_tensors, 0);
   TF_RETURN_IF_ERROR(result.status());
-  ITensorProxyPtr first_shuffle_shape = result.ValueOrDie();
+  ITensorProxyPtr first_shuffle_shape = result.value();
 
   result = ConcatenateTensors(params, second_shuffle_tensors, 1);
   TF_RETURN_IF_ERROR(result.status());
-  ITensorProxyPtr second_shuffle_shape = result.ValueOrDie();
+  ITensorProxyPtr second_shuffle_shape = result.value();
 
   return std::make_pair(first_shuffle_shape, second_shuffle_shape);
 }
@@ -5092,8 +5092,8 @@ Status ConvertDepthSpaceShuffle(const OpConverterParams* params) {
     StatusOr<std::pair<ITensorProxyPtr, ITensorProxyPtr>> result =
         CalcDepthSpaceDynamicShape(params, block_size, data_format);
     TF_RETURN_IF_ERROR(result.status());
-    first_shuffle->setInput(1, *result.ValueOrDie().first->trt_tensor());
-    second_shuffle_shape_tensor = result.ValueOrDie().second;
+    first_shuffle->setInput(1, *result.value().first->trt_tensor());
+    second_shuffle_shape_tensor = result.value().second;
   }
 
   // Adjust a transpose constructed assuming implicit batch mode for explicit
@@ -5540,7 +5540,7 @@ Status ConvertResize(const OpConverterParams* params) {
     StatusOr<ITensorProxyPtr> result = ConcatenateTensors(
         params, {batch_size, num_channels, height, width}, 0);
     TF_RETURN_IF_ERROR(result.status());
-    output_shape_tensor = result.ValueOrDie();
+    output_shape_tensor = result.value();
   }
 
   // Add resize layer.
@@ -5701,7 +5701,7 @@ Status ConvertGraphDefToEngine(
                                     use_explicit_precision, ctx);
 
   TF_RETURN_IF_ERROR(statusor.status());
-  std::unique_ptr<Converter> converter = std::move(statusor.ValueOrDie());
+  std::unique_ptr<Converter> converter = std::move(statusor.value());
 
   GraphDef graph = gdef;
   if (cluster != nullptr) {

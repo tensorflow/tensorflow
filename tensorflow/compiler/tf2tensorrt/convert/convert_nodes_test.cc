@@ -212,7 +212,7 @@ TEST(TRT_ShapedWeights_Test, Basic) {
     TrtWeightStore store;
     TRT_ShapedWeights weights =
         store.GetTempWeights(nvinfer1::DataType::kFLOAT, CreateDims({2, 5}))
-            .ValueOrDie();
+            .value();
     TRT_ShapedWeights copy(weights);
     for (auto ptr : {&weights, &copy}) {
       nvinfer1::Weights trt_weights = ptr->GetTrtWeights();
@@ -526,7 +526,7 @@ class ConverterTest : public ::testing::Test {
                                     /*use_implicit_batch=*/true,
                                     /*engine_name=*/"TRTEngineOp_000_000",
                                     /*use_explicit_precision=*/false)
-                      .ValueOrDie());
+                      .value());
     weight_store_ = &converter_->weight_store_;
   }
 
@@ -741,7 +741,7 @@ void TestPrepareTensorForShape(
     input = TRT_TensorOrWeights(
         weight_store
             ->GetTempWeights(nvinfer1::DataType::kFLOAT, CreateDims(input_dims))
-            .ValueOrDie());
+            .value());
   }
   ITensorProxyPtr output_tensor = nullptr;
 
@@ -854,7 +854,7 @@ void TestGetWeightRange(ConverterTest* test, TrtWeightStore* weight_store) {
   nvinfer1::DataType trt_type;
   TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &trt_type));
   TRT_ShapedWeights weights =
-      weight_store->GetTempWeights(trt_type, CreateDims({2, 3})).ValueOrDie();
+      weight_store->GetTempWeights(trt_type, CreateDims({2, 3})).value();
   const std::vector<T> values = {T(3), T(1), T(2), T(6), T(5), T(4)};
   absl::c_copy(values, weights.GetPointer<T>());
   float out_min = 0.0f;
@@ -896,7 +896,7 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
                                           /*use_calibration=*/true, &logger,
                                           /*use_implicit_batch=*/true,
                                           /*engine_name=*/"")
-                            .ValueOrDie();
+                            .value();
   int8_converter->ProvideQuantizationRange(&input, -5.0f, 5.0f);
   int8_converter->ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
 
@@ -1015,8 +1015,7 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
 TEST_F(ConverterTest, CreateConstantLayer) {
   for (auto dtype : {nvinfer1::DataType::kFLOAT, nvinfer1::DataType::kINT32}) {
     TRT_ShapedWeights weights =
-        weight_store_->GetTempWeights(dtype, CreateDims({2, 3, 5}))
-            .ValueOrDie();
+        weight_store_->GetTempWeights(dtype, CreateDims({2, 3, 5})).value();
     ITensorProxyPtr tensor =
         converter_->CreateConstantLayer(weights, CreateDims({3, 10}));
     ASSERT_NE(nullptr, tensor->trt_tensor());
@@ -1157,7 +1156,7 @@ class OpConverterTest : public ::testing::Test {
                                         TrtTestMode::kImplicitBatch,
                                     /*engine_name=*/"",
                                     /*use_explicit_precision=*/false, ctx)
-                      .ValueOrDie());
+                      .value());
 
     // Reset other related artifacts.
     scope_ = Scope::NewRootScope();

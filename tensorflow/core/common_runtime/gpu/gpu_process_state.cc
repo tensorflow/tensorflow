@@ -136,7 +136,7 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
                alloc_visitors, {}, *gpu_context, platform_device_id,
                /*virtual_address_space_size=*/total_bytes * 2,
                platform_peer_gpu_ids_vec)
-        .ValueOrDie()
+        .value()
         .release();
   }
 #else
