@@ -54,9 +54,9 @@ cc_library(
     srcs = ["base64.cc"],
     hdrs = ["base64.h"],
     deps = [
+        ":errors",
         ":status",
         ":stringpiece",
-        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -104,8 +104,8 @@ tf_cc_test(
     srcs = ["denormal_test.cc"],
     deps = [
         ":denormal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        ":test",
+        ":test_main",
     ],
 )
 
@@ -195,10 +195,10 @@ cc_library(
     deps = [
         ":logging",
         ":mutex",
+        ":scanner",
         ":strcat",
         ":stringpiece",
         ":types",
-        "//tensorflow/core/platform:scanner",
         "@com_google_absl//absl/algorithm:container",
     ],
     alwayslink = True,
@@ -271,10 +271,10 @@ cc_library(
     srcs = ["status_matchers.cc"],
     hdrs = ["status_matchers.h"],
     deps = [
+        ":status",
+        ":statusor",
+        ":test",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core/platform:statusor",
-        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -290,7 +290,6 @@ cc_library(
         ":logging",
         ":macros",
         ":status",
-        "//tensorflow/core/lib/core:errors",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -313,7 +312,6 @@ cc_library(
         ":macros",
         ":platform",
         "@com_google_googletest//:gtest",
-        # "//tensorflow/core:tflite_portable_logging",
     ],
 )
 
@@ -925,7 +923,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//third_party/eigen3",
-        # TODO(jakeharmon): Remove deps on core once mutex and types are migrated
+        # TODO(ddunleavy) these can't be moved because internal Eigen
+        # actually depends on these. Need to update Eigen to depend on TSL
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
     ],
@@ -979,9 +978,9 @@ cc_library(
     srcs = ["logger.cc"],
     hdrs = ["logger.h"],
     deps = [
+        "env",
         ":logging",
         ":protobuf",
-        "//tensorflow/tsl/platform:env",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/synchronization",
     ],
@@ -1106,9 +1105,9 @@ tf_cc_test(
     srcs = ["fingerprint_test.cc"],
     deps = [
         ":fingerprint",
+        ":test",
+        ":test_main",
         ":types",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1169,9 +1168,9 @@ tf_cc_test(
     size = "small",
     srcs = ["ctstring_test.cc"],
     deps = [
+        ":test",
+        ":test_main",
         ":tstring",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1184,7 +1183,7 @@ tf_cc_test(
         ":logging",
         ":test",
         ":test_benchmark",
-        "//tensorflow/core:test_main",
+        ":test_main",
     ],
 )
 
@@ -1194,9 +1193,8 @@ tf_cc_test(
     deps = [
         ":random",
         ":test",
+        ":test_main",
         ":types",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1207,9 +1205,9 @@ tf_cc_test(
     deps = [
         ":cord",
         ":stringpiece",
+        ":test",
+        ":test_main",
         ":tstring",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1317,13 +1315,13 @@ tf_cc_test(
     name = "unbounded_work_queue_test",
     srcs = ["unbounded_work_queue_test.cc"],
     deps = [
-        # TODO(jakeharmon): unmigrated deps
+        ":blocking_counter",
+        ":env",
+        ":env_impl",
+        ":random",
+        ":test",
+        ":test_main",
+        ":unbounded_work_queue",
         "@com_google_absl//absl/memory",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:random",
     ],
 )

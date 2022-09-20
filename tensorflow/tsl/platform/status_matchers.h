@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/test.h"
 
 // Defines the following utilities:
 //
