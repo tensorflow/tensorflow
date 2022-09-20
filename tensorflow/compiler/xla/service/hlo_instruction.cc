@@ -1842,8 +1842,6 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kCollectivePermuteDone:
       return true;
 
-    // Collective instructions with channel_id are side effecting only if
-    // they are used in non-spmd context.
     case HloOpcode::kAllToAll:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
@@ -1853,6 +1851,8 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
       }
       [[fallthrough]];
     case HloOpcode::kCollectivePermute:
+      // Collective instructions with channel_id are side effecting only if
+      // they are used in non-spmd context.
       return Cast<HloChannelInstruction>(this)->channel_id().has_value() &&
              !GetModule()->config().use_spmd_partitioning();
 
