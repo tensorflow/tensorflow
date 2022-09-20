@@ -959,6 +959,8 @@ static StatusOr<mlir::lmhlo_gpu::Activation> GetLHLOActivation(
       return mlir::lmhlo_gpu::Activation::Tanh;
     case stream_executor::dnn::kBandPass:
       return mlir::lmhlo_gpu::Activation::BandPass;
+    case stream_executor::dnn::kElu:
+      return mlir::lmhlo_gpu::Activation::Elu;
     default:
       return xla::InternalError("Unknown activation");
   }

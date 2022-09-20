@@ -72,6 +72,8 @@ StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
       return stream_executor::dnn::kReluX;
     case mlir::lmhlo_gpu::Activation::BandPass:
       return stream_executor::dnn::kBandPass;
+    case mlir::lmhlo_gpu::Activation::Elu:
+      return stream_executor::dnn::kElu;
     default:
       return InternalError("Unexpected activation");
   }

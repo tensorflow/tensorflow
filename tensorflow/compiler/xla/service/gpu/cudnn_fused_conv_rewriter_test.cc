@@ -763,6 +763,113 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseReluIfMultipleUses) {
   EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
 }
 
+TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
+  const std::string module_str = R"(
+    HloModule Test
+
+    ENTRY Test {
+      inputs = f16[1,17,9,9] parameter(0)
+      filters = f16[3,3,17,32] parameter(1)
+      bias = f16[32] parameter(2)
+      bias_broadcast = f16[1,32,9,9] broadcast(bias), dimensions={1}
+      zero = f16[] constant(0)
+      zeros = f16[1,32,9,9] broadcast(zero), dimensions={}
+      conv = f16[1,32,9,9] convolution(inputs, filters),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=bf01_01io->bf01
+      sum = add(conv, bias_broadcast)
+      cmp = compare(sum, zeros), direction=GT
+      expm1 = exponential-minus-one(sum)
+      ROOT elu = select(cmp, sum, expm1)
+    })";
+  // Enable the runtime fusion to test the fusion patterns such as
+  // conv-bias-elu.
+  HloModuleConfig cfg = GetModuleConfigForTest();
+  DebugOptions debug_opts = cfg.debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  cfg.set_debug_options(debug_opts);
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnVerifiedModule(module_str, cfg));
+
+  GpuConvRewriter rewriter;
+  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  CudnnFusedConvRewriter fuser;
+  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* conv;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::GetTupleElement(
+              m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+                            m::Parameter(0), m::Parameter(1), m::Parameter(2)),
+              0)
+              .WithShape(F16, {1, 32, 9, 9})));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          conv->backend_config<CudnnConvBackendConfig>());
+  EXPECT_EQ(config.activation_mode(), se::dnn::kElu);
+}
+
+TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
+  const std::string module_str = R"(
+    HloModule Test
+
+    ENTRY Test {
+      inputs = f16[1,17,9,9] parameter(0)
+      filters = f16[3,3,17,32] parameter(1)
+      bias = f16[32] parameter(2)
+      bias_broadcast = f16[1,32,9,9] broadcast(bias), dimensions={1}
+      zero = f16[] constant(0)
+      zeros = f16[1,32,9,9] broadcast(zero), dimensions={}
+      conv = f16[1,32,9,9] convolution(inputs, filters),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=bf01_01io->bf01
+      sum = add(conv, bias_broadcast)
+      cmp = compare(sum, zeros), direction=GT
+      expm1 = exponential-minus-one(sum)
+      elu = select(cmp, sum, expm1)
+      not_elu = minimum(sum, zeros)
+      ROOT root = tuple(elu, not_elu) 
+    })";
+  HloModuleConfig cfg = GetModuleConfigForTest();
+  DebugOptions debug_opts = cfg.debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  cfg.set_debug_options(debug_opts);
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnVerifiedModule(module_str, cfg));
+
+  GpuConvRewriter rewriter;
+  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  CudnnFusedConvRewriter fuser;
+  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* conv;
+  auto gte_pattern =
+      m::GetTupleElement(
+          m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+                        m::Parameter(0), m::Parameter(1), m::Parameter(2)),
+          0)
+          .WithShape(F16, {1, 32, 9, 9});
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Select(m::Compare(gte_pattern,
+                               m::Broadcast(m::ConstantEffectiveScalar(0)))
+                        .WithComparisonDirection(ComparisonDirection::kGt),
+                    gte_pattern,
+                    m::Op()
+                        .WithPredicate([](const HloInstruction* instr) {
+                          return instr->opcode() == HloOpcode::kExpm1;
+                        })
+                        .WithOperand(0, gte_pattern)),
+          m::Minimum())));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          conv->backend_config<CudnnConvBackendConfig>());
+  EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
+}
+
 TEST_F(CudnnFusedConvRewriterHloTest, DontFuseAlphaIfMultipleUsers) {
   const std::string module_str = R"(
     HloModule Test

@@ -44,6 +44,15 @@ bool IsConvCustomCall(const HloInstruction* instr) {
               kCudnnConvBiasActivationForwardCallTarget);
 }
 
+bool IsExponentialMinusOne(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kExpm1;
+}
+
+bool HasThreeUsers(const HloInstruction* instr) {
+  int64_t user_count = instr->user_count();
+  return user_count == 3;
+}
+
 // Can instr be converted to type `dst_ty` without losing any precision?  For
 // our purposes, this is true if:
 //
@@ -445,6 +454,58 @@ StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
   return changed;
 }
 
+StatusOr<bool> FuseElu(HloComputation* comp) {
+  bool changed = false;
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+    const DebugOptions& debug_options =
+        instr->GetModule()->config().debug_options();
+    if (!debug_options.xla_gpu_use_runtime_fusion()) {
+      return false;
+    }
+
+    HloInstruction* gte;
+    HloInstruction* conv;
+    HloInstruction* expm1;
+
+    // In Elu computation, the GetTupleElement node will have three users:
+    // Compare, ExponentialMinusOnem, and Select.
+    auto gte_pattern =
+        m::GetTupleElement(
+            &gte, m::Op(&conv).WithPredicate(IsConvCustomCall).WithOneUse())
+            .WithElementType(F16)
+            .WithPredicate(HasThreeUsers);
+    if (!Match(instr,
+               m::Select(m::Compare(gte_pattern,
+                                    m::Broadcast(m::ConstantEffectiveScalar(0)))
+                             .WithComparisonDirection(ComparisonDirection::kGt)
+                             .WithOneUse(),
+                         gte_pattern,
+                         m::Op(&expm1)
+                             .WithPredicate(IsExponentialMinusOne)
+                             .WithOperand(0, gte_pattern)
+                             .WithOneUse()))) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
+                        conv->backend_config<CudnnConvBackendConfig>());
+    if (config.activation_mode() != se::dnn::kNone) {
+      continue;
+    }
+
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseRelu: ", conv->ToString());
+        })) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
+    config.set_activation_mode(se::dnn::kElu);
+    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
+    changed = true;
+  }
+  return changed;
+}
+
 StatusOr<bool> FuseRelu(HloComputation* comp) {
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
@@ -785,6 +846,7 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     // Relu might appear before or after convert-to-f16/s8, so we check in both
     // cases.
     TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
+    TF_ASSIGN_OR_RETURN(changed, FuseElu(comp));
     any_changed |= changed;
 
     TF_ASSIGN_OR_RETURN(changed, FuseConvertToF16(comp));
@@ -802,6 +864,7 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     any_changed |= changed;
 
     TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
+    TF_ASSIGN_OR_RETURN(changed, FuseElu(comp));
     any_changed |= changed;
 
     // Check that we don't have any convs outputing integer types other than s8.

@@ -431,7 +431,11 @@ message DebugOptions {
   // (much) faster on our hardware.  Set this flag to disable this behavior.
   bool xla_cpu_strict_dot_conv_math = 175;
 
-  // Next id: 181
+  // An option to enable using cuDNN runtime compiled fusion kernels which is
+  // available and recommended for Ampere+ GPUs.
+  bool xla_gpu_use_runtime_fusion = 181;
+
+  // Next id: 182
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -662,6 +662,11 @@ static void AllocateFlags() {
       "An AlgorithmDenylist text proto file as a denylist of convolutions to "
       "avoid to use."));
   flag_objects->push_back(tsl::Flag(
+      "xla_gpu_use_runtime_fusion",
+      bool_setter_for(&DebugOptions::set_xla_gpu_use_runtime_fusion),
+      flag_values->xla_gpu_use_runtime_fusion(),
+      "For using cuDNN runtime compiled fusion kernels."));
+  flag_objects->push_back(tsl::Flag(
       "xla_tpu_detect_nan",
       bool_setter_for(&DebugOptions::set_xla_tpu_detect_nan),
       flag_values->xla_tpu_detect_nan(),
