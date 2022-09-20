@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
@@ -130,16 +131,60 @@ static LogicalResult verifyLoopBoundsMatch(Value currentBound,
                  operands[2] == parallel.getStep().front());
 }
 
+/// Emits code that infers and correctly uses a version of `upperBound` in cases
+/// when the tiling size does not evenly divide the problem size.
+///
+/// In these cases, `upperBound` depends on other values within the `launch`
+/// region, so it cannot be used to infer launch bounds of `launch`. This
+/// function returns an approximation of `upperBound` that does not depend on
+/// such values, and emmits code that masks off extra threads that result from
+/// using the approximated value.
+static Value handleImperfectTile(LaunchOp launch, Value upperBound,
+                                 PatternRewriter& rewriter) {
+  Location loc = upperBound.getLoc();
+  // We are assuming that imperfect tiling is expressed through an affine.min
+  // op with an affine map of the form (<something>)[<something>] ->
+  // (<something>, tileSize), where <something>s possibly depend on values
+  // defined within the regions of nested gml_st.parallel. Since local values
+  // are not available outside of the loops, which is needed for launch bounds
+  // computation, we only use tileSize to compte the launch bounds. We then mask
+  // off the threads that would be computing out-of-bound values.
+  // TODO(b/244314345): Replace this pattern matching with a proper way to
+  // handle imperfect tiling once we figure this out.
+  auto affineMin = upperBound.getDefiningOp<AffineMinOp>();
+  if (!affineMin || affineMin.getMap().getNumResults() != 2) return upperBound;
+  auto tileSize =
+      affineMin.getMap().getResult(1).dyn_cast<AffineConstantExpr>();
+  if (!tileSize) return upperBound;
+
+  // Insert a guard in the region to mask off threads that would operate on
+  // empty / negative-sized tiles.
+  // Here we are relying on the fact that affine.min will produce a negative
+  // value if our index is of bounds, which is currently true, since our maps
+  // are of the form (index)[size] -> (-index + size, tileSize).
+  auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+  auto predicate = rewriter.create<arith::CmpIOp>(
+      loc, arith::CmpIPredicate::sgt, affineMin, zero);
+  auto scfIf =
+      rewriter.create<scf::IfOp>(loc, predicate, /*withElseRegion=*/false);
+  rewriter.setInsertionPointToStart(&scfIf.getThenRegion().front());
+
+  PatternRewriter::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPoint(launch);
+  return rewriter.create<arith::ConstantIndexOp>(loc, tileSize.getValue());
+}
+
 /// Matches the `launchIdx`-th iteration space of `launch` to the iteration
 /// space of `parallel`. Returns an SSA value that is a part of the `launch`'s
 /// region, and represents the value of `parallel`'s induction variable.
-static Value matchLaunchSpaceToLoop(ParallelOp parallel, LaunchOp launch,
-                                    unsigned launchIdx,
+static Value matchLaunchSpaceToLoop(ParallelOp parallel,
+                                    const BlockAndValueMapping& bvm,
+                                    unsigned launchIdx, LaunchOp launch,
                                     PatternRewriter& rewriter) {
   Location loc = parallel.getLoc();
-  Value upperBound = parallel.getUpperBound().front();
-  Value lowerBound = parallel.getLowerBound().front();
-  Value step = parallel.getStep().front();
+  Value upperBound = bvm.lookupOrDefault(parallel.getUpperBound().front());
+  Value lowerBound = bvm.lookupOrDefault(parallel.getLowerBound().front());
+  Value step = bvm.lookupOrDefault(parallel.getStep().front());
 
   // Compute the value that gml_st.parallel's induction variable would have in
   // each iteration, and make it available to operations within the gpu.launch
@@ -153,15 +198,18 @@ static Value matchLaunchSpaceToLoop(ParallelOp parallel, LaunchOp launch,
       ValueRange{launch.body().getArgument(launchIdx), lowerBound, step});
 
   // Infer the launch bound from the loop bounds and the step.
+  Value iterIndependentUpperBound =
+      handleImperfectTile(launch, upperBound, rewriter);
   AffineMap launchBoundMap = AffineMap::get(
       /*dimCount=*/1, /*symbolCount=*/2,
       (rewriter.getAffineDimExpr(0) - rewriter.getAffineSymbolExpr(0))
           .ceilDiv(rewriter.getAffineSymbolExpr(1)));
   PatternRewriter::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(launch);
-  launch.setOperand(launchIdx, rewriter.create<AffineApplyOp>(
-                                   loc, launchBoundMap,
-                                   ValueRange{upperBound, lowerBound, step}));
+  launch.setOperand(
+      launchIdx, rewriter.create<AffineApplyOp>(
+                     loc, launchBoundMap,
+                     ValueRange{iterIndependentUpperBound, lowerBound, step}));
   return inductionVar;
 }
 
@@ -216,8 +264,8 @@ LogicalResult ParallelOpToGpuPattern::matchAndRewrite(
       // We are encountering a loop at this level of nesting for the first time.
       assert(currentBound == defaultSize &&
              "launch bound should use the default size");
-      nestingLevelToInductionVarMap.push_back(
-          matchLaunchSpaceToLoop(parallel, launch, inductionVarIdx, rewriter));
+      nestingLevelToInductionVarMap.push_back(matchLaunchSpaceToLoop(
+          parallel, bvm, inductionVarIdx, launch, rewriter));
     }
 
     bvm.map(parallel.getInductionVars().front(),

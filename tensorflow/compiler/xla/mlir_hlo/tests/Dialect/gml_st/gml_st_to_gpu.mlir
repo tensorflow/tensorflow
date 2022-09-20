@@ -47,6 +47,7 @@ func.func @simple(%arg2: memref<2048xf32>) -> memref<2048xf32> {
 // CHECK:       affine.apply {{.*}}[%[[C0]], %[[C128]]]
 // CHECK:       affine.apply {{.*}}[%[[C0]], %[[C32]]]
 // CHECK:       affine.apply {{.*}}[%[[C0]], %[[C1]]]
+// CHECK-NOT:   scf.if
 // CHECK:       memref.load
 // CHECK:       math.log
 // CHECK:       memref.store
@@ -96,7 +97,7 @@ func.func @sibling_parallels(%arg2: memref<2048xf32>) -> memref<2048xf32> {
 // CHECK:       memref.load
 // CHECK:       math.log
 // CHECK:       memref.store
-// CHECK-NONE:  affine.apply
+// CHECK-NOT:   affine.apply
 // CHECK:       memref.load
 // CHECK:       math.absf
 // CHECK:       memref.store
@@ -157,3 +158,52 @@ func.func @mmultple_induction_vars() {
   }
   return
 }
+
+// -----
+
+#layout = strided<[1], offset: ?>
+
+func.func @imperfect_tiling(%arg0: memref<2051xf32>) -> memref<2051xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c32 = arith.constant 32 : index
+  %c128 = arith.constant 128 : index
+  %c2051 = arith.constant 2051 : index
+  %0 = memref.alloc() {alignment = 64 : i64} : memref<2051xf32>
+  gml_st.parallel (%arg1) = (%c0) to (%c2051) step (%c128) {
+    %1 = affine.min affine_map<(d0) -> (-d0 + 2051, 128)>(%arg1)
+    %2 = memref.subview %arg0[%arg1] [%1] [1] : memref<2051xf32> to memref<?xf32, #layout>
+    %3 = memref.subview %0[%arg1] [%1] [1] : memref<2051xf32> to memref<?xf32, #layout>
+    gml_st.parallel (%arg2) = (%c0) to (%1) step (%c32) {
+      %4 = affine.min affine_map<(d0)[s0] -> (-d0 + s0, 32)>(%arg2)[%1]
+      %5 = memref.subview %2[%arg2] [%4] [1] : memref<?xf32, #layout> to memref<?xf32, #layout>
+      %6 = memref.subview %3[%arg2] [%4] [1] : memref<?xf32, #layout> to memref<?xf32, #layout>
+      gml_st.parallel (%arg3) = (%c0) to (%4) step (%c1) {
+        %7 = memref.load %5[%arg3] : memref<?xf32, #layout>
+        %8 = math.log %7 : f32
+        memref.store %8, %6[%arg3] : memref<?xf32, #layout>
+        gml_st.set_yield
+      }
+      gml_st.set_yield
+    }
+    gml_st.set_yield
+  }
+  return %0 : memref<2051xf32>
+}
+
+// CHECK-LABEL: @imperfect_tiling
+// CHECK-DAG:   %[[ZERO:.*]] = arith.constant 0 : index
+// CHECK:       gpu.launch blocks(%[[BLOCKID:.*]], %{{.*}}, %{{.*}}) in {{.*}} threads
+// CHECK-SAME:             (%[[THREADID:.*]], %[[WARPID:.*]], %{{.*}}) in
+// CHECK-DAG:   %[[ARG1:.*]] = affine.apply {{.*}}(%[[BLOCKID]])
+// CHECK-DAG:   %[[BTILESIZE:.*]] = affine.min {{.*}}(%[[ARG1]])
+// CHECK-DAG:   %[[ARG2:.*]] = affine.apply {{.*}}(%[[WARPID]])
+// CHECK-DAG:   %[[WCOND:.*]] = arith.cmpi sgt, %[[BTILESIZE]], %[[ZERO]]
+// CHECK-DAG:   scf.if %[[WCOND]]
+// CHECK-DAG:   %[[WTILESIZE:.*]] = affine.min {{.*}}(%[[ARG2]])[%[[BTILESIZE]]]
+// CHECK-DAG:   %[[ARG3:.*]] = affine.apply {{.*}}(%[[THREADID]])
+// CHECK-DAG:   %[[TCOND:.*]] = arith.cmpi sgt, %[[WTILESIZE]], %[[ZERO]]
+// CHECK-DAG:   scf.if %[[TCOND]]
+// CHECK:       memref.load
+// CHECK:       math.log
+// CHECK:       memref.store
