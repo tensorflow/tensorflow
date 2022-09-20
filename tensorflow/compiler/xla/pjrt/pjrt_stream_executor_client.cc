@@ -840,7 +840,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
        host_buffer_semantics, transpose{std::move(transpose)}]() {
         PjRtStreamExecutorBuffer::ScopedHold device_buffer(
             movable_device_buffer);
-        // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
+        // This function uses TF_CHECK_OK and value() since we have no way
         // to report failures from a callback. However, the operations here are
         // unlikely to fail and not recoverable even if we were to fail: DMAs to
         // memory that has already been allocated, and a possible Event
@@ -969,7 +969,7 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
                        literal, py_buffer{py_buffer.get()},
                        on_device_shape{py_buffer->on_device_shape()}]() {
     PjRtStreamExecutorBuffer::ScopedHold device_buffer(movable_device_buffer);
-    // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
+    // This function uses TF_CHECK_OK and value() since we have no way
     // to report failures from a callback. However, the operations here are
     // unlikely to fail and not recoverable even if we were to fail: DMAs to
     // memory that has already been allocated, and a possible Event

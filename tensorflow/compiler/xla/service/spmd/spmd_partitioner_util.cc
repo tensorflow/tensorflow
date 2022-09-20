@@ -1986,7 +1986,7 @@ HloInstruction* PadDataFromWindowReshard(
     auto sharded_data_shape =
         ShapeInference::InferPadShape(sharded_data->shape(), pad_value->shape(),
                                       sharded_padding_config)
-            .ValueOrDie();
+            .value();
     return b->AddInstruction(HloInstruction::CreatePad(
         sharded_data_shape, sharded_data, pad_value, sharded_padding_config));
   }

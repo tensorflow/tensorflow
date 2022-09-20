@@ -541,7 +541,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     const Type type_;
 
     // There is an invariant that if ok() then
-    // buffer_.ValueOrDie() != nullptr.
+    // buffer_.value() != nullptr.
     State state_;
     Status status_;
     std::shared_ptr<TrackedDeviceBuffer> buffer_;
