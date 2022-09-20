@@ -227,6 +227,19 @@ func.func @for_with_points(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 
 // -----
 
+func.func @materialize_scalar_from_space(%arg: tensor<1xi64>) -> i64  {
+  %space = gml_st.space [1] : !gml_st.tile<1>
+  %pt = gml_st.materialize %arg[%space] : tensor<1xi64>[!gml_st.tile<1>] to i64
+  return %pt : i64
+}
+// CHECK-LABEL: func @materialize_scalar_from_space(
+// CHECK-SAME:    %[[ARG:.*]]: memref<1xi64>)
+// CHECK-NEXT:  arith.constant 0
+// CHECK-NEXT:  %[[PT:.*]] = memref.load %[[ARG]]
+// CHECK-NEXT:  return %[[PT]] : i64
+
+// -----
+
 func.func @materialize_and_yield_with_constants(
     %in: tensor<8x2xf32>, %out: tensor<8x2xf32>) -> tensor<8x2xf32> {
   %c0 = arith.constant 0 : index
