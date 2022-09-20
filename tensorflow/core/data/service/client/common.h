@@ -38,6 +38,8 @@ struct DataServiceParams final {
   int64_t repetition = 0;
   std::optional<int64_t> num_consumers;
   std::optional<int64_t> consumer_index;
+  int64_t max_outstanding_requests = 0;
+  int64_t task_refresh_interval_ms = 0;
   TargetWorkers target_workers = TargetWorkers::TARGET_WORKERS_UNSPECIFIED;
   DataServiceMetadata metadata;
   std::optional<CrossTrainerCacheOptions> cross_trainer_cache_options;
@@ -48,6 +50,14 @@ struct GetNextResult final {
   explicit GetNextResult() = default;
   GetNextResult(const GetNextResult&) = delete;
   GetNextResult& operator=(const GetNextResult&) = delete;
+  GetNextResult(GetNextResult&&) = default;
+  GetNextResult& operator=(GetNextResult&&) = delete;
+
+  static GetNextResult EndOfSequence() {
+    GetNextResult result;
+    result.end_of_sequence = true;
+    return result;
+  }
 
   std::vector<Tensor> tensors;
   bool end_of_sequence = false;

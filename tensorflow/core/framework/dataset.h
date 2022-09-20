@@ -444,7 +444,7 @@ class IteratorContext {
     std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
 
     // The CancellationManager to be used to cancel execution of ops.
-    CancellationManager* cancellation_manager;
+    CancellationManager* cancellation_manager = nullptr;
 
     // Collective support.
     CollectiveExecutor* collective_executor = nullptr;
@@ -1211,7 +1211,6 @@ class DatasetBaseIterator : public IteratorBase {
                            const std::vector<Tensor>& element) {
     if (collect_resource_usage(ctx)) {
       node_->record_buffer_event(-GetAllocatedBytes(element), -1);
-
       DCHECK_GE(node_->buffered_elements(), 0);
     }
   }
