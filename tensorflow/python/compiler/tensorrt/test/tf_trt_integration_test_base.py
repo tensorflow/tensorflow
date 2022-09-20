@@ -1034,6 +1034,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             data = (scale * np.random.random_sample(np_shape)).astype(np_dtype)
           else:
             data = np.random.choice(a=[False, True], size=np_shape)
+
           if run_params.is_v2:
             with ops.device("/GPU:0"):
               data = ops.convert_to_tensor(data)
