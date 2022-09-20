@@ -405,8 +405,8 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
     for (const auto& [idx, val] : llvm::enumerate(
              thloScatter.getUpdateComputation().getArgumentTypes())) {
       signatureConverter.addInputs(
-          idx, typeConverter->convertType(
-                   val.cast<RankedTensorType>().getElementType()));
+          1 - idx, typeConverter->convertType(
+                       val.cast<RankedTensorType>().getElementType()));
     }
     rewriter.applySignatureConversion(&region, signatureConverter,
                                       getTypeConverter());

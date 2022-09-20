@@ -187,9 +187,12 @@ func.func @simple_scatter(%dst: tensor<3xi32>, %indices: tensor<1x1xi32>,
 //       CHECK: thlo.scatter ins(%[[INDICES]] : tensor<1x1xi32>,
 //  CHECK-SAME:                    %[[UPDATE]] : tensor<1xi32>)
 //  CHECK-SAME:                outs(%[[DST]] : tensor<3xi32>)
-//  CHECK-COUNT-2: tensor.from_elements
-//  CHECK-COUNT-2: tensor.extract
-//  CHECK-NEXT:    arith.addi
+//  CHECK-SAME:                (%[[UPD:.*]]: i32, %[[CUR:.*]]: i32) {
+//  CHECK-NEXT:    %[[CUR_T:.*]] = tensor.from_elements %[[CUR]] : tensor<i32>
+//  CHECK-NEXT:    %[[UPD_T:.*]] = tensor.from_elements %[[UPD]] : tensor<i32>
+//  CHECK-NEXT:    %[[CUR:.*]] = tensor.extract %[[CUR_T]][] : tensor<i32>
+//  CHECK-NEXT:    %[[UPD:.*]] = tensor.extract %[[UPD_T]][] : tensor<i32>
+//  CHECK-NEXT:    arith.addi %[[CUR]], %[[UPD]] : i32
 //  CHECK-NEXT:    tensor.from_elements
 //  CHECK-NEXT:    tensor.extract
 
