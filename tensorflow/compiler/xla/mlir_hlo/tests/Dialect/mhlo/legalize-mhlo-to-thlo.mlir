@@ -941,3 +941,39 @@ func.func @transpose(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
 // CHECK-SAME:      outs(%[[INIT]] : tensor<2x1x4x3xi32>)
 // CHECK-SAME:      permutation = [1, 0, 3, 2]
 // CHECK:       return %[[TRANSPOSE]]
+
+// -----
+
+// CHECK-LABEL: func @select
+func.func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
+             %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %0 = "mhlo.select"(%pred, %lhs, %rhs)
+         : (tensor<2x2xi1>, tensor<2x2xf32>, tensor<2x2xf32>) 
+         -> (tensor<2x2xf32>)
+  func.return %0 : tensor<2x2xf32>
+}
+// CHECK: linalg.init_tensor [2, 2] : tensor<2x2xf32>
+// CHECK: thlo.map
+// CHECK-SAME: (%[[PRED_IN:[a-zA-Z0-9]*]]: i1, %[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32) {
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.select %[[PRED_IN]], %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   thlo.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @select_scalar_pred_dyn
+// CHECK-SAME:  (%[[PRED:.*]]: tensor<i1>, %[[LHS:.*]]: tensor<2x?xf32>, %[[RHS:.*]]: tensor<2x?xf32>)
+func.func @select_scalar_pred_dyn(%pred : tensor<i1>, %lhs: tensor<2x?xf32>,
+                                  %rhs: tensor<2x?xf32>) -> tensor<2x?xf32> {
+  %0 = "mhlo.select"(%pred, %lhs, %rhs) {someattr} :
+    (tensor<i1>, tensor<2x?xf32>, tensor<2x?xf32>) -> (tensor<2x?xf32>)
+  func.return %0 : tensor<2x?xf32>
+}
+// CHECK-DAG:  %[[PRED_:.*]] = tensor.extract %[[PRED]][] : tensor<i1>
+// CHECK-DAG:  %[[SHAPE:.*]] = shape.shape_of %[[LHS]]
+// CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+// CHECK-DAG:  %[[DIM:.*]] = tensor.extract %[[SHAPE]][%[[C1]]] : tensor<2xindex>
+// CHECK-DAG:  %[[DST:.*]] = linalg.init_tensor [2, %[[DIM]]]
+// CHECK:      thlo.map
+// CHECK-SAME: (%[[LHS_IN:[a-zA-Z0-9]*]]: f32, %[[RHS_IN:.*]]: f32) {
+// CHECK-NEXT:   %[[RES:.*]] = arith.select %[[PRED_]], %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   thlo.yield %[[RES]]

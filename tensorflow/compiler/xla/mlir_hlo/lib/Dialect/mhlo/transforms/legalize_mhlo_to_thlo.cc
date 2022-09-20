@@ -473,6 +473,68 @@ struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
   }
 };
 
+struct SelectPattern : public OpConversionPattern<mhlo::SelectOp> {
+  using OpConversionPattern<mhlo::SelectOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::SelectOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    Location loc = op.getLoc();
+    auto resultTy = typeConverter->convertType(op.getType()).cast<ShapedType>();
+
+    // Predicate in mhlo.select can be a shaped type with the same size as other
+    // operands, or a scalar.
+    const bool isScalarPred =
+        op.getPred().getType().cast<ShapedType>().getRank() == 0;
+
+    Value predValue;
+    ValueRange mappedInputs = adaptor.getOperands();
+    // If predicate is a scalar, do not pass it as an argument to thlo.map,
+    // because thlo.map does not support broadcasting scalar values. Instead,
+    // extract the value and use it in the map block directly.
+    if (isScalarPred) {
+      predValue = rewriter.create<tensor::ExtractOp>(loc, adaptor.getPred());
+      mappedInputs = mappedInputs.drop_front();
+    }
+
+    auto initTensor =
+        getInitTensorFor(rewriter, loc, resultTy, op, op.getOperands());
+
+    auto thloMap =
+        rewriter.create<thlo::MapOp>(loc, resultTy, mappedInputs, initTensor);
+
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      Region& region = thloMap.mapper();
+
+      SmallVector<Type, 4> blockArgTypes;
+      SmallVector<Location, 4> blockArgLocs;
+      for (Value v : mappedInputs) {
+        blockArgTypes.push_back(getElementTypeOrSelf(v));
+        blockArgLocs.push_back(v.getLoc());
+      }
+
+      Block* block = rewriter.createBlock(&region, region.end(), blockArgTypes,
+                                          blockArgLocs);
+
+      // If predicate is scalar, the block has two arguments (on_true, on_false)
+      // and the predicate value is extracted outside of the block.
+      // If predicate is shaped, the block has three arguments (pred, on_true,
+      // on_false).
+      Value innerResult = rewriter.create<arith::SelectOp>(
+          loc, getElementTypeOrSelf(initTensor),
+          isScalarPred ? ValueRange{predValue, block->getArgument(0),
+                                    block->getArgument(1)}
+                       : block->getArguments());
+
+      rewriter.create<thlo::YieldOp>(loc, innerResult);
+    }
+
+    rewriter.replaceOp(op, thloMap.getResult());
+    return success();
+  }
+};
+
 /// Converts a HLO operation to a thlo.map op that contains the corresponding
 /// scalar operations.
 template <typename OpTy>
@@ -600,8 +662,6 @@ class LegalizeMHLOToTHLOPass
     if (enableExperimental) {
       // clang-format off
       patterns.insert<
-          TransposePattern,
-          ReductionPattern,
           MapPattern,
           PointwiseToTHLOConverter<mhlo::AbsOp>,
           PointwiseToTHLOConverter<mhlo::AddOp>,
@@ -623,9 +683,9 @@ class LegalizeMHLOToTHLOPass
           PointwiseToTHLOConverter<mhlo::FloorOp>,
           PointwiseToTHLOConverter<mhlo::ImagOp>,
           PointwiseToTHLOConverter<mhlo::IsFiniteOp>,
+          PointwiseToTHLOConverter<mhlo::Log1pOp>,
           PointwiseToTHLOConverter<mhlo::LogOp>,
           PointwiseToTHLOConverter<mhlo::LogisticOp>,
-          PointwiseToTHLOConverter<mhlo::Log1pOp>,
           PointwiseToTHLOConverter<mhlo::MaxOp>,
           PointwiseToTHLOConverter<mhlo::MinOp>,
           PointwiseToTHLOConverter<mhlo::MulOp>,
@@ -635,6 +695,7 @@ class LegalizeMHLOToTHLOPass
           PointwiseToTHLOConverter<mhlo::PopulationCountOp>,
           PointwiseToTHLOConverter<mhlo::PowOp>,
           PointwiseToTHLOConverter<mhlo::RealOp>,
+          PointwiseToTHLOConverter<mhlo::ReducePrecisionOp>,
           PointwiseToTHLOConverter<mhlo::RemOp>,
           PointwiseToTHLOConverter<mhlo::RoundNearestEvenOp>,
           PointwiseToTHLOConverter<mhlo::RoundOp>,
@@ -648,8 +709,10 @@ class LegalizeMHLOToTHLOPass
           PointwiseToTHLOConverter<mhlo::SubtractOp>,
           PointwiseToTHLOConverter<mhlo::TanhOp>,
           PointwiseToTHLOConverter<mhlo::XorOp>,
-          PointwiseToTHLOConverter<mhlo::ReducePrecisionOp>,
-          ThloRegionReturnOpConversion>(*typeConverter, ctx);
+          ReductionPattern,
+          SelectPattern,
+          ThloRegionReturnOpConversion,
+          TransposePattern>(*typeConverter, ctx);
       // clang-format on
     }
 
