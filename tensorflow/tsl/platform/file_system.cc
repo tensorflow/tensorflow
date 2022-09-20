@@ -23,11 +23,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
+    defined(PLATFORM_GOOGLE)
 #include <fnmatch.h>
 #else
 #include "tensorflow/tsl/platform/regexp.h"
-#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
+        // defined(PLATFORM_GOOGLE)
 
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -39,7 +41,8 @@ limitations under the License.
 namespace tsl {
 
 bool FileSystem::Match(const string& filename, const string& pattern) {
-#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
+    defined(PLATFORM_GOOGLE)
   // We avoid relying on RE2 on mobile platforms, because it incurs a
   // significant binary size increase.
   // For POSIX platforms, there is no need to depend on RE2 if `fnmatch` can be
@@ -52,7 +55,8 @@ bool FileSystem::Match(const string& filename, const string& pattern) {
   regexp = str_util::StringReplace(regexp, "(", "\\(", true);
   regexp = str_util::StringReplace(regexp, ")", "\\)", true);
   return RE2::FullMatch(filename, regexp);
-#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
+        // defined(PLATFORM_GOOGLE)
 }
 
 string FileSystem::TranslateName(const string& name) const {
