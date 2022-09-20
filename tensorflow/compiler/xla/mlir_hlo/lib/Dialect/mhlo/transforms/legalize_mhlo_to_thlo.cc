@@ -299,7 +299,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
     auto thloReduction = rewriter.create<thlo::ReductionOp>(
         loc, resultTypes, adaptor.operands(), outputs,
         rewriter.getDenseI64ArrayAttr(reductionDims));
-    Region& region = thloReduction.combiner();
+    Region& region = thloReduction.getCombiner();
     rewriter.inlineRegionBefore(op.getBody(), region, region.end());
 
     // Convert the signature of the body. The reduce op 'computation' region
@@ -396,14 +396,14 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
         loc, opType, adaptor.getScatterIndices(), adaptor.getUpdates().front(),
         adaptor.operands().front());
 
-    Region& region = thloScatter.update_computation();
+    Region& region = thloScatter.getUpdateComputation();
     rewriter.inlineRegionBefore(op.getRegion(), region, region.end());
 
     // Convert the signature of the body by inserting
     // tensor.from_elements/tensor.extract.
     TypeConverter::SignatureConversion signatureConverter(2);
-    for (const auto& [idx, val] :
-         llvm::enumerate(thloScatter.update_computation().getArgumentTypes())) {
+    for (const auto& [idx, val] : llvm::enumerate(
+             thloScatter.getUpdateComputation().getArgumentTypes())) {
       signatureConverter.addInputs(
           idx, typeConverter->convertType(
                    val.cast<RankedTensorType>().getElementType()));
@@ -454,7 +454,7 @@ struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
 
     auto thloMap = rewriter.create<thlo::MapOp>(loc, resultTy,
                                                 adaptor.operands(), initTensor);
-    Region& region = thloMap.mapper();
+    Region& region = thloMap.getMapper();
     rewriter.inlineRegionBefore(op.computation(), region, region.end());
 
     TypeConverter::SignatureConversion signatureConverter(
@@ -505,7 +505,7 @@ struct SelectPattern : public OpConversionPattern<mhlo::SelectOp> {
 
     {
       OpBuilder::InsertionGuard guard(rewriter);
-      Region& region = thloMap.mapper();
+      Region& region = thloMap.getMapper();
 
       SmallVector<Type, 4> blockArgTypes;
       SmallVector<Location, 4> blockArgLocs;

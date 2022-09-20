@@ -205,10 +205,10 @@ LogicalResult verifySubsetChain(Value set) {
   if (isa<SpaceOp>(definingOp)) return success();
 
   if (auto pt = dyn_cast<PointOp>(definingOp))
-    return success(pt.superset().getDefiningOp<SpaceOp>() != nullptr);
+    return success(pt.getSuperset().getDefiningOp<SpaceOp>() != nullptr);
 
   if (auto tile = dyn_cast<TileOp>(definingOp))
-    return success(tile.superset().getDefiningOp<SpaceOp>() != nullptr);
+    return success(tile.getSuperset().getDefiningOp<SpaceOp>() != nullptr);
   return failure();
 }
 

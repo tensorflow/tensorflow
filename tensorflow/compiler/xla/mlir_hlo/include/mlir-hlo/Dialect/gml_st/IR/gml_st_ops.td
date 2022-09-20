@@ -95,7 +95,7 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
 
   code extraBaseClassDeclaration = [{
     /// Number of loops
-    unsigned getNumLoops() { return step().size(); }
+    unsigned getNumLoops() { return getStep().size(); }
 
     /// Number of operands controlling the loop: lbs, ubs, steps
     unsigned getNumControlOperands() { return 3 * getNumLoops(); }
@@ -219,7 +219,7 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     /// Number of output operands
-    unsigned getNumOutputs() { return outputs().size(); }
+    unsigned getNumOutputs() { return getOutputs().size(); }
 
     /// Get the region output args.
     Block::BlockArgListType getRegionOutputArgs() {
@@ -305,7 +305,7 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
 
   let extraClassDeclaration = [{
 
-    unsigned getNumUpdates() { return srcs().size(); }
+    unsigned getNumUpdates() { return getSrcs().size(); }
 
     // Methods for `srcs` arguments.
     OpOperand* getSrcOperand(unsigned i) {

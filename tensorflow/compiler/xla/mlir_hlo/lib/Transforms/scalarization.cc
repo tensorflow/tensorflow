@@ -101,18 +101,18 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
 
     // Extract update.
-    Value updates = scatterOp.updates();
+    Value updates = scatterOp.getUpdates();
     auto updatesType = updates.getType().dyn_cast<RankedTensorType>();
     if (!updatesType || !hasSingleElement(updatesType)) return failure();
     SmallVector<Value> updateIndices(updatesType.getRank(), zero);
     Value updateValue = rewriter.create<ExtractOp>(loc, updates, updateIndices);
 
     // Extract/compute index.
-    Value indices = scatterOp.indices();
+    Value indices = scatterOp.getIndices();
     auto indicesType = indices.getType().dyn_cast<RankedTensorType>();
     SmallVector<Value> indicesIndices(indicesType.getRank(), zero);
 
-    Value init = scatterOp.init();
+    Value init = scatterOp.getInit();
     auto initType = init.getType().dyn_cast<RankedTensorType>();
 
     SmallVector<Value> scatterIndices;

@@ -30,7 +30,7 @@ def THLO_Dialect : Dialect {
   let name = "thlo";
   let cppNamespace = "::mlir::thlo";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 class THLO_Op<string mnemonic, list<Trait> traits> :
@@ -71,8 +71,8 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.
-    mlir::ValueRange inputs() { return operands(); }
-    mlir::ValueRange getInputs() { return operands(); }
+    mlir::ValueRange inputs() { return getOperands().drop_back(1); }
+    mlir::ValueRange getInputs() { return getOperands().drop_back(1); }
     mlir::ValueRange outputs() { return getOperands().take_back(1); }
   }];
 }
@@ -235,10 +235,10 @@ def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
 
   let extraClassDeclaration = [{
     // Implement functions necessary for DestinationStyleOpInterface.
-    mlir::ValueRange getInputs() { return inputs(); }
-    mlir::ValueRange outputs() { return inits(); }
-    unsigned getNumInputs() { return inputs().size(); };
-    unsigned getNumOutputs() { return inits().size(); };
+    mlir::ValueRange inputs() { return getInputs(); }
+    mlir::ValueRange outputs() { return getInits(); }
+    unsigned getNumInputs() { return getInputs().size(); };
+    unsigned getNumOutputs() { return getInits().size(); };
   }];
 }
 
@@ -275,7 +275,7 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.
-    mlir::ValueRange getInputs() { return inputs(); }
+    mlir::ValueRange inputs() { return getInputs(); }
     mlir::ValueRange outputs() { return getOperands().take_back(1); }
   }];
 }
