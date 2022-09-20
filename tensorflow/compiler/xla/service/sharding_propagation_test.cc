@@ -6115,167 +6115,6 @@ ENTRY %module {
 }
 
 TEST_P(ParameterizedMetadataTest,
-       GatherMergedIndexParallelAndTrivialSlicedOperandBackwardPass) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-ENTRY %module {
-  %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0),
-    sharding={devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate metadata={op_name="a"}}
-  %arg.1 =  s32[1,8,4]{2,1,0} parameter(1)
-  %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0)
-  %indices = s32[1,8,4]{2,1,0} copy(s32[1,8,4]{2,1,0} %arg.1)
-  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
-  %concatenate = s32[2,8,4]{2,1,0} concatenate(
-    s32[1,8,4]{2,1,0} %iota, s32[1,8,4]{2,1,0} %indices), dimensions={0}
-  %gather = s32[8,4,2,2]{3,2,1,0} gather(
-    s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %concatenate), offset_dims={2,3},
-    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
-    slice_sizes={1,1,2,2},
-    sharding={devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate metadata={op_name="a"}}
-  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  if (GetParam().clear_metadata) {
-    ClearMetadata(module.get());
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-  const HloInstruction* operand = FindInstruction(module.get(), "operand");
-  ASSERT_NE(operand, nullptr);
-  EXPECT_THAT(operand, op::Sharding("{devices=[2,2,1,1]0,1,4,5}"));
-  const HloInstruction* indices = FindInstruction(module.get(), "concatenate");
-  ASSERT_NE(indices, nullptr);
-  EXPECT_THAT(
-      indices,
-      op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
-  const HloInstruction* gather = FindInstruction(module.get(), "gather");
-  ASSERT_NE(gather, nullptr);
-  EXPECT_THAT(
-      gather,
-      op::Sharding("{devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate}"));
-
-  for (const HloInstruction* instruction : {operand, indices, gather}) {
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      EXPECT_THAT(instruction->sharding(),
-                  ShardingMetadata({CreateMetadata("a")}));
-    } else {
-      EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
-    }
-  }
-}
-
-TEST_P(
-    ParameterizedMetadataTest,
-    GatherMergedOperandPassthroughAndTrivialSlicedOperandFromOperandForwardPass) {  // NOLINT
-  absl::string_view hlo_string = R"(
-HloModule module
-
-ENTRY %module {
-  %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
-  %arg.1 =  s32[2,8,4]{2,1,0} parameter(1)
-  %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0),
-    sharding={devices=[1,2,2,1]0,4,1,5 metadata={op_name="a"}}
-  %indices = s32[2,8,4]{2,1,0} copy(s32[2,8,4]{2,1,0} %arg.1)
-  %gather = s32[8,4,2,2]{3,2,1,0} gather(
-    s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %indices), offset_dims={2,3},
-    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
-    slice_sizes={1,1,2,2}
-  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  if (GetParam().clear_metadata) {
-    ClearMetadata(module.get());
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-  const HloInstruction* operand = FindInstruction(module.get(), "operand");
-  ASSERT_NE(operand, nullptr);
-  EXPECT_THAT(operand, op::Sharding("{devices=[1,2,2,1]0,4,1,5}"));
-  const HloInstruction* indices = FindInstruction(module.get(), "indices");
-  ASSERT_NE(indices, nullptr);
-  EXPECT_THAT(indices, op::Sharding("{replicated}"));
-  const HloInstruction* gather = FindInstruction(module.get(), "gather");
-  ASSERT_NE(gather, nullptr);
-  EXPECT_THAT(
-      gather,
-      op::Sharding("{devices=[1,1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
-
-  for (const HloInstruction* instruction : {operand, indices, gather}) {
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      EXPECT_THAT(instruction->sharding(),
-                  ShardingMetadata({CreateMetadata("a")}));
-    } else {
-      EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
-    }
-  }
-}
-
-TEST_P(ParameterizedMetadataTest,
-       GatherMergedOperandPassthroughAndTrivialSlicedOperandBackwardPass) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-ENTRY %module {
-  %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0),
-    sharding={devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate metadata={op_name="a"}}
-  %arg.1 =  s32[2,8,4]{2,1,0} parameter(1)
-  %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0)
-  %indices = s32[2,8,4]{2,1,0} copy(s32[2,8,4]{2,1,0} %arg.1)
-  %gather = s32[8,4,2,2]{3,2,1,0} gather(
-    s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %indices), offset_dims={2,3},
-    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
-    slice_sizes={1,1,2,2},
-    sharding={devices=[1,1,2,1,2]0,1,4,5 last_tile_dim_replicate metadata={op_name="a"}}
-  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  if (GetParam().clear_metadata) {
-    ClearMetadata(module.get());
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-  const HloInstruction* operand = FindInstruction(module.get(), "operand");
-  ASSERT_NE(operand, nullptr);
-  EXPECT_THAT(operand, op::Sharding("{devices=[1,2,2,1]0,4,1,5}"));
-  const HloInstruction* indices = FindInstruction(module.get(), "indices");
-  ASSERT_NE(indices, nullptr);
-  EXPECT_THAT(indices, op::Sharding("{replicated}"));
-  const HloInstruction* gather = FindInstruction(module.get(), "gather");
-  ASSERT_NE(gather, nullptr);
-  EXPECT_THAT(
-      gather,
-      op::Sharding("{devices=[1,1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
-
-  for (const HloInstruction* instruction : {operand, indices, gather}) {
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      EXPECT_THAT(instruction->sharding(),
-                  ShardingMetadata({CreateMetadata("a")}));
-    } else {
-      EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
-    }
-  }
-}
-
-TEST_P(ParameterizedMetadataTest,
        GatherMergedOperandAndIndexPassthroughFromOperandAndIndexForwardPass) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6382,115 +6221,6 @@ ENTRY %module {
   }
 }
 
-TEST_P(
-    ParameterizedMetadataTest,
-    GatherMergedTrivialSlicedOperandAndIndexPassthroughFromOperandAndIndexForwardPass) {  // NOLINT
-  absl::string_view hlo_string = R"(
-HloModule module
-
-ENTRY %module {
-  %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
-  %arg.1 =  s32[2,8,4]{2,1,0} parameter(1)
-  %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0),
-    sharding={devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate metadata={op_name="a"}}
-  %indices = s32[2,8,4]{2,1,0} copy(s32[2,8,4]{2,1,0} %arg.1),
-    sharding={devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate metadata={op_name="a"}}
-  %gather = s32[8,4,2,2]{3,2,1,0} gather(
-    s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %indices), offset_dims={2,3},
-    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
-    slice_sizes={1,1,2,2}
-  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  if (GetParam().clear_metadata) {
-    ClearMetadata(module.get());
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-  const HloInstruction* operand = FindInstruction(module.get(), "operand");
-  ASSERT_NE(operand, nullptr);
-  EXPECT_THAT(
-      operand,
-      op::Sharding("{devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate}"));
-  const HloInstruction* indices = FindInstruction(module.get(), "indices");
-  ASSERT_NE(indices, nullptr);
-  EXPECT_THAT(
-      indices,
-      op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
-  const HloInstruction* gather = FindInstruction(module.get(), "gather");
-  ASSERT_NE(gather, nullptr);
-  EXPECT_THAT(
-      gather,
-      op::Sharding("{devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate}"));
-
-  for (const HloInstruction* instruction : {operand, indices, gather}) {
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      EXPECT_THAT(instruction->sharding(),
-                  ShardingMetadata({CreateMetadata("a")}));
-    } else {
-      EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
-    }
-  }
-}
-
-TEST_P(ParameterizedMetadataTest,
-       GatherMergedTrivialSlicedOperandAndIndexPassthroughBackwardPass) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-ENTRY %module {
-  %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0),
-    sharding={devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate metadata={op_name="a"}}
-  %arg.1 =  s32[2,8,4]{2,1,0} parameter(1)
-  %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0)
-  %indices = s32[2,8,4]{2,1,0} copy(s32[2,8,4]{2,1,0} %arg.1)
-  %gather = s32[8,4,2,2]{3,2,1,0} gather(
-    s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %indices), offset_dims={2,3},
-    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
-    slice_sizes={1,1,2,2},
-    sharding={devices=[1,1,2,1,2]0,1,4,5 last_tile_dim_replicate metadata={op_name="a"}}
-  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  if (GetParam().clear_metadata) {
-    ClearMetadata(module.get());
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-  const HloInstruction* operand = FindInstruction(module.get(), "operand");
-  ASSERT_NE(operand, nullptr);
-  EXPECT_THAT(operand, op::Sharding("{devices=[1,2,2,1]0,4,1,5}"));
-  const HloInstruction* indices = FindInstruction(module.get(), "indices");
-  ASSERT_NE(indices, nullptr);
-  EXPECT_THAT(indices, op::Sharding("{replicated}"));
-  const HloInstruction* gather = FindInstruction(module.get(), "gather");
-  ASSERT_NE(gather, nullptr);
-  EXPECT_THAT(
-      gather,
-      op::Sharding("{devices=[1,1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
-
-  for (const HloInstruction* instruction : {operand, indices, gather}) {
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      EXPECT_THAT(instruction->sharding(),
-                  ShardingMetadata({CreateMetadata("a")}));
-    } else {
-      EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
-    }
-  }
-}
-
 TEST_P(ParameterizedMetadataTest,
        ScatterMergedIndexParallelAndOperandPassthroughFromOperandForwardPass) {
   absl::string_view hlo_string = R"(
@@ -6545,7 +6275,9 @@ ENTRY %module {
       op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
   const HloInstruction* update = FindInstruction(module.get(), "update");
   ASSERT_NE(update, nullptr);
-  EXPECT_THAT(update, op::Sharding("{devices=[2,1,2,1]0,1,4,5}"));
+  EXPECT_THAT(
+      update,
+      op::Sharding("{devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate}"));
   const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
   ASSERT_NE(scatter, nullptr);
   EXPECT_THAT(scatter, op::Sharding("{devices=[2,1,2,1]0,1,4,5}"));
@@ -6685,155 +6417,12 @@ ENTRY %module {
       op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
   const HloInstruction* update = FindInstruction(module.get(), "update");
   ASSERT_NE(update, nullptr);
-  EXPECT_THAT(update, op::Sharding("{devices=[2,1,2,1]0,1,4,5}"));
+  EXPECT_THAT(
+      update,
+      op::Sharding("{devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate}"));
   const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
   ASSERT_NE(scatter, nullptr);
   EXPECT_THAT(scatter, op::Sharding("{devices=[2,1,2,1]0,1,4,5}"));
-
-  for (const HloInstruction* instruction :
-       {operand, indices, update, scatter}) {
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      EXPECT_THAT(instruction->sharding(),
-                  ShardingMetadata({CreateMetadata("a")}));
-    } else {
-      EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
-    }
-  }
-}
-
-TEST_P(
-    ParameterizedMetadataTest,
-    ScatterMergedIndexParallelAndTrivialSlicedOperandFromOperandForwardPass) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-add (lhs: s32[], rhs: s32[]) -> s32[] {
-  lhs = s32[] parameter(0)
-  rhs = s32[] parameter(1)
-  ROOT sum = s32[] add(lhs, rhs)
-}
-
-ENTRY %module {
-  %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
-  %arg.1 =  s32[1,8,4]{2,1,0} parameter(1)
-  %arg.2 = s32[8,4,2,2]{3,2,1,0} parameter(2)
-  %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0),
-    sharding={devices=[2,2,1,1]0,1,4,5 metadata={op_name="a"}}
-  %indices = s32[1,8,4]{2,1,0} copy(s32[1,8,4]{2,1,0} %arg.1)
-  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
-  %concatenate = s32[2,8,4]{2,1,0} concatenate(
-    s32[1,8,4]{2,1,0} %iota, s32[1,8,4]{2,1,0} %indices), dimensions={0}
-  %update = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.2)
-  %scatter = s32[8,4,2,2]{3,2,1,0} scatter(
-    s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %concatenate,
-    s32[8,4,2,2]{3,2,1,0} %update),
-    to_apply=add,
-    update_window_dims={2,3},
-    inserted_window_dims={0,1},
-    scatter_dims_to_operand_dims={0,1},
-    index_vector_dim=0
-  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%scatter)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  if (GetParam().clear_metadata) {
-    ClearMetadata(module.get());
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-  const HloInstruction* operand = FindInstruction(module.get(), "operand");
-  ASSERT_NE(operand, nullptr);
-  EXPECT_THAT(operand, op::Sharding("{devices=[2,2,1,1]0,1,4,5 }"));
-  const HloInstruction* indices = FindInstruction(module.get(), "concatenate");
-  ASSERT_NE(indices, nullptr);
-  EXPECT_THAT(
-      indices,
-      op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
-  const HloInstruction* update = FindInstruction(module.get(), "update");
-  ASSERT_NE(update, nullptr);
-  EXPECT_THAT(
-      update,
-      op::Sharding("{devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate}"));
-  const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
-  ASSERT_NE(scatter, nullptr);
-  EXPECT_THAT(scatter, op::Sharding("{devices=[2,2,1,1]0,1,4,5}"));
-
-  for (const HloInstruction* instruction :
-       {operand, indices, update, scatter}) {
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      EXPECT_THAT(instruction->sharding(),
-                  ShardingMetadata({CreateMetadata("a")}));
-    } else {
-      EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
-    }
-  }
-}
-
-TEST_P(ParameterizedMetadataTest,
-       ScatterMergedIndexParallelAndTrivialSlicedOperandBackwardPass) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-add (lhs: s32[], rhs: s32[]) -> s32[] {
-  lhs = s32[] parameter(0)
-  rhs = s32[] parameter(1)
-  ROOT sum = s32[] add(lhs, rhs)
-}
-
-ENTRY %module {
-  %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
-  %arg.1 =  s32[1,8,4]{2,1,0} parameter(1)
-  %arg.2 = s32[8,4,2,2]{3,2,1,0} parameter(2)
-  %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0)
-  %indices = s32[1,8,4]{2,1,0} copy(s32[1,8,4]{2,1,0} %arg.1)
-  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
-  %concatenate = s32[2,8,4]{2,1,0} concatenate(
-    s32[1,8,4]{2,1,0} %iota, s32[1,8,4]{2,1,0} %indices), dimensions={0}
-  %update = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.2)
-  %scatter = s32[8,4,2,2]{3,2,1,0} scatter(
-    s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %concatenate,
-    s32[8,4,2,2]{3,2,1,0} %update),
-    to_apply=add,
-    update_window_dims={2,3},
-    inserted_window_dims={0,1},
-    scatter_dims_to_operand_dims={0,1},
-    index_vector_dim=0,
-    sharding={devices=[2,2,1,1]0,1,4,5 metadata={op_name="a"}}
-  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%scatter)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  if (GetParam().clear_metadata) {
-    ClearMetadata(module.get());
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-  const HloInstruction* operand = FindInstruction(module.get(), "operand");
-  ASSERT_NE(operand, nullptr);
-  EXPECT_THAT(operand, op::Sharding("{devices=[2,2,1,1]0,1,4,5 }"));
-  const HloInstruction* indices = FindInstruction(module.get(), "concatenate");
-  ASSERT_NE(indices, nullptr);
-  EXPECT_THAT(
-      indices,
-      op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
-  const HloInstruction* update = FindInstruction(module.get(), "update");
-  ASSERT_NE(update, nullptr);
-  EXPECT_THAT(
-      update,
-      op::Sharding("{devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate}"));
-  const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
-  ASSERT_NE(scatter, nullptr);
-  EXPECT_THAT(scatter, op::Sharding("{devices=[2,2,1,1]0,1,4,5}"));
 
   for (const HloInstruction* instruction :
        {operand, indices, update, scatter}) {
@@ -7065,7 +6654,7 @@ ENTRY %module {
 
 TEST_P(
     ParameterizedMetadataTest,
-    ScatterMergedOperandPassthroughAndTrivialSlicedOperandFromOperandForwardPass) {  // NOLINT
+    ScatterMergedIndexParallelAndTrivialSlicedOperandFromOperandForwardPass) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -7077,15 +6666,18 @@ add (lhs: s32[], rhs: s32[]) -> s32[] {
 
 ENTRY %module {
   %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
-  %arg.1 =  s32[2,8,4]{2,1,0} parameter(1)
+  %arg.1 =  s32[1,8,4]{2,1,0} parameter(1)
   %arg.2 = s32[8,4,2,2]{3,2,1,0} parameter(2)
   %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0),
-    sharding={devices=[1,2,2,1]0,1,4,5 metadata={op_name="a"}}
-  %indices = s32[2,8,4]{2,1,0} copy(s32[2,8,4]{2,1,0} %arg.1)
+    sharding={devices=[2,2,1,1]0,1,4,5 metadata={op_name="a"}}
+  %indices = s32[1,8,4]{2,1,0} copy(s32[1,8,4]{2,1,0} %arg.1)
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
+  %concatenate = s32[2,8,4]{2,1,0} concatenate(
+    s32[1,8,4]{2,1,0} %iota, s32[1,8,4]{2,1,0} %indices), dimensions={0}
   %update = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.2)
   %scatter = s32[8,4,2,2]{3,2,1,0} scatter(
     s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %indices,
+    s32[2,8,4]{2,1,0} %concatenate,
     s32[8,4,2,2]{3,2,1,0} %update),
     to_apply=add,
     update_window_dims={2,3},
@@ -7107,18 +6699,20 @@ ENTRY %module {
   EXPECT_TRUE(changed);
   const HloInstruction* operand = FindInstruction(module.get(), "operand");
   ASSERT_NE(operand, nullptr);
-  EXPECT_THAT(operand, op::Sharding("{devices=[1,2,2,1]0,1,4,5}"));
-  const HloInstruction* indices = FindInstruction(module.get(), "indices");
+  EXPECT_THAT(operand, op::Sharding("{devices=[2,2,1,1]0,1,4,5 }"));
+  const HloInstruction* indices = FindInstruction(module.get(), "concatenate");
   ASSERT_NE(indices, nullptr);
-  EXPECT_THAT(indices, op::Sharding("{replicated}"));
+  EXPECT_THAT(
+      indices,
+      op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
   const HloInstruction* update = FindInstruction(module.get(), "update");
   ASSERT_NE(update, nullptr);
   EXPECT_THAT(
       update,
-      op::Sharding("{devices=[1,1,2,1,2]0,4,1,5 last_tile_dim_replicate}"));
+      op::Sharding("{devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate}"));
   const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
   ASSERT_NE(scatter, nullptr);
-  EXPECT_THAT(scatter, op::Sharding("{devices=[1,2,2,1]0,1,4,5}"));
+  EXPECT_THAT(scatter, op::Sharding("{devices=[2,2,1,1]0,1,4,5}"));
 
   for (const HloInstruction* instruction :
        {operand, indices, update, scatter}) {
@@ -7132,7 +6726,7 @@ ENTRY %module {
 }
 
 TEST_P(ParameterizedMetadataTest,
-       ScatterMergedOperandPassthroughAndTrivialSlicedOperandBackwardPass) {
+       ScatterMergedIndexParallelAndTrivialSlicedOperandBackwardPass) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -7144,21 +6738,24 @@ add (lhs: s32[], rhs: s32[]) -> s32[] {
 
 ENTRY %module {
   %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
-  %arg.1 =  s32[2,8,4]{2,1,0} parameter(1)
+  %arg.1 =  s32[1,8,4]{2,1,0} parameter(1)
   %arg.2 = s32[8,4,2,2]{3,2,1,0} parameter(2)
   %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0)
-  %indices = s32[2,8,4]{2,1,0} copy(s32[2,8,4]{2,1,0} %arg.1)
+  %indices = s32[1,8,4]{2,1,0} copy(s32[1,8,4]{2,1,0} %arg.1)
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
+  %concatenate = s32[2,8,4]{2,1,0} concatenate(
+    s32[1,8,4]{2,1,0} %iota, s32[1,8,4]{2,1,0} %indices), dimensions={0}
   %update = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.2)
   %scatter = s32[8,4,2,2]{3,2,1,0} scatter(
     s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %indices,
+    s32[2,8,4]{2,1,0} %concatenate,
     s32[8,4,2,2]{3,2,1,0} %update),
     to_apply=add,
     update_window_dims={2,3},
     inserted_window_dims={0,1},
     scatter_dims_to_operand_dims={0,1},
     index_vector_dim=0,
-    sharding={devices=[1,2,2,1]0,1,4,5 metadata={op_name="a"}}
+    sharding={devices=[2,2,1,1]0,1,4,5 metadata={op_name="a"}}
   ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%scatter)
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -7174,18 +6771,20 @@ ENTRY %module {
   EXPECT_TRUE(changed);
   const HloInstruction* operand = FindInstruction(module.get(), "operand");
   ASSERT_NE(operand, nullptr);
-  EXPECT_THAT(operand, op::Sharding("{devices=[1,2,2,1]0,1,4,5}"));
-  const HloInstruction* indices = FindInstruction(module.get(), "indices");
+  EXPECT_THAT(operand, op::Sharding("{devices=[2,2,1,1]0,1,4,5 }"));
+  const HloInstruction* indices = FindInstruction(module.get(), "concatenate");
   ASSERT_NE(indices, nullptr);
-  EXPECT_THAT(indices, op::Sharding("{replicated}"));
+  EXPECT_THAT(
+      indices,
+      op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
   const HloInstruction* update = FindInstruction(module.get(), "update");
   ASSERT_NE(update, nullptr);
   EXPECT_THAT(
       update,
-      op::Sharding("{devices=[1,1,2,1,2]0,4,1,5 last_tile_dim_replicate}"));
+      op::Sharding("{devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate}"));
   const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
   ASSERT_NE(scatter, nullptr);
-  EXPECT_THAT(scatter, op::Sharding("{devices=[1,2,2,1]0,1,4,5}"));
+  EXPECT_THAT(scatter, op::Sharding("{devices=[2,2,1,1]0,1,4,5}"));
 
   for (const HloInstruction* instruction :
        {operand, indices, update, scatter}) {
@@ -7402,230 +7001,6 @@ ENTRY %module {
   EXPECT_THAT(
       scatter,
       op::Sharding("{devices=[1,1,2,1,2]0,4,1,5 last_tile_dim_replicate}"));
-
-  for (const HloInstruction* instruction :
-       {operand, indices, update, scatter}) {
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      EXPECT_THAT(instruction->sharding(),
-                  ShardingMetadata({CreateMetadata("a")}));
-    } else {
-      EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
-    }
-  }
-}
-
-TEST_P(
-    ParameterizedMetadataTest,
-    ScatterMergedTrivialSlicedOperandAndIndexPassthroughFromOperandAndIndexForwardPass) {  // NOLINT
-  absl::string_view hlo_string = R"(
-HloModule module
-
-add (lhs: s32[], rhs: s32[]) -> s32[] {
-  lhs = s32[] parameter(0)
-  rhs = s32[] parameter(1)
-  ROOT sum = s32[] add(lhs, rhs)
-}
-
-ENTRY %module {
-  %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
-  %arg.1 =  s32[2,8,4]{2,1,0} parameter(1)
-  %arg.2 = s32[8,4,2,2]{3,2,1,0} parameter(2)
-  %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0),
-    sharding={devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate metadata={op_name="a"}}
-  %indices = s32[2,8,4]{2,1,0} copy(s32[2,8,4]{2,1,0} %arg.1),
-    sharding={devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate metadata={op_name="a"}}
-  %update = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.2)
-  %scatter = s32[8,4,2,2]{3,2,1,0} scatter(
-    s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %indices,
-    s32[8,4,2,2]{3,2,1,0} %update),
-    to_apply=add,
-    update_window_dims={2,3},
-    inserted_window_dims={0,1},
-    scatter_dims_to_operand_dims={0,1},
-    index_vector_dim=0
-  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%scatter)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  if (GetParam().clear_metadata) {
-    ClearMetadata(module.get());
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-  const HloInstruction* operand = FindInstruction(module.get(), "operand");
-  ASSERT_NE(operand, nullptr);
-  EXPECT_THAT(
-      operand,
-      op::Sharding("{devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate}"));
-  const HloInstruction* indices = FindInstruction(module.get(), "indices");
-  ASSERT_NE(indices, nullptr);
-  EXPECT_THAT(
-      indices,
-      op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
-  const HloInstruction* update = FindInstruction(module.get(), "update");
-  ASSERT_NE(update, nullptr);
-  EXPECT_THAT(
-      update,
-      op::Sharding("{devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate}"));
-  const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
-  ASSERT_NE(scatter, nullptr);
-  EXPECT_THAT(
-      scatter,
-      op::Sharding("{devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate}"));
-
-  for (const HloInstruction* instruction :
-       {operand, indices, update, scatter}) {
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      EXPECT_THAT(instruction->sharding(),
-                  ShardingMetadata({CreateMetadata("a")}));
-    } else {
-      EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
-    }
-  }
-}
-
-TEST_P(
-    ParameterizedMetadataTest,
-    ScatterMergedTrivialSlicedOperandAndIndexPassthroughFromOperandAndUpdateForwardPass) {  // NOLINT
-  absl::string_view hlo_string = R"(
-HloModule module
-
-add (lhs: s32[], rhs: s32[]) -> s32[] {
-  lhs = s32[] parameter(0)
-  rhs = s32[] parameter(1)
-  ROOT sum = s32[] add(lhs, rhs)
-}
-
-ENTRY %module {
-  %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
-  %arg.1 =  s32[2,8,4]{2,1,0} parameter(1)
-  %arg.2 = s32[8,4,2,2]{3,2,1,0} parameter(2)
-  %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0),
-    sharding={devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate metadata={op_name="a"}}
-  %indices = s32[2,8,4]{2,1,0} copy(s32[2,8,4]{2,1,0} %arg.1)
-  %update = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.2),
-    sharding={devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate metadata={op_name="a"}}
-  %scatter = s32[8,4,2,2]{3,2,1,0} scatter(
-    s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %indices,
-    s32[8,4,2,2]{3,2,1,0} %update),
-    to_apply=add,
-    update_window_dims={2,3},
-    inserted_window_dims={0,1},
-    scatter_dims_to_operand_dims={0,1},
-    index_vector_dim=0
-  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%scatter)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  if (GetParam().clear_metadata) {
-    ClearMetadata(module.get());
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-  const HloInstruction* operand = FindInstruction(module.get(), "operand");
-  ASSERT_NE(operand, nullptr);
-  EXPECT_THAT(
-      operand,
-      op::Sharding("{devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate}"));
-  const HloInstruction* indices = FindInstruction(module.get(), "indices");
-  ASSERT_NE(indices, nullptr);
-  EXPECT_THAT(
-      indices,
-      op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
-  const HloInstruction* update = FindInstruction(module.get(), "update");
-  ASSERT_NE(update, nullptr);
-  EXPECT_THAT(
-      update,
-      op::Sharding("{devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate}"));
-  const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
-  ASSERT_NE(scatter, nullptr);
-  EXPECT_THAT(
-      scatter,
-      op::Sharding("{devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate}"));
-
-  for (const HloInstruction* instruction :
-       {operand, indices, update, scatter}) {
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      EXPECT_THAT(instruction->sharding(),
-                  ShardingMetadata({CreateMetadata("a")}));
-    } else {
-      EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
-    }
-  }
-}
-
-TEST_P(ParameterizedMetadataTest,
-       ScatterMergedTrivialSlicedOperandAndIndexPassthroughBackwardPass) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-add (lhs: s32[], rhs: s32[]) -> s32[] {
-  lhs = s32[] parameter(0)
-  rhs = s32[] parameter(1)
-  ROOT sum = s32[] add(lhs, rhs)
-}
-
-ENTRY %module {
-  %arg.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
-  %arg.1 =  s32[2,8,4]{2,1,0} parameter(1)
-  %arg.2 = s32[8,4,2,2]{3,2,1,0} parameter(2)
-  %operand = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.0)
-  %indices = s32[2,8,4]{2,1,0} copy(s32[2,8,4]{2,1,0} %arg.1),
-    sharding={devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate metadata={op_name="a"}}
-  %update = s32[8,4,2,2]{3,2,1,0} copy(s32[8,4,2,2]{3,2,1,0} %arg.2)
-  %scatter = s32[8,4,2,2]{3,2,1,0} scatter(
-    s32[8,4,2,2]{3,2,1,0} %operand,
-    s32[2,8,4]{2,1,0} %indices,
-    s32[8,4,2,2]{3,2,1,0} %update),
-    to_apply=add,
-    update_window_dims={2,3},
-    inserted_window_dims={0,1},
-    scatter_dims_to_operand_dims={0,1},
-    index_vector_dim=0,
-    sharding={devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate metadata={op_name="a"}}
-  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%scatter)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  if (GetParam().clear_metadata) {
-    ClearMetadata(module.get());
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-  const HloInstruction* operand = FindInstruction(module.get(), "operand");
-  ASSERT_NE(operand, nullptr);
-  EXPECT_THAT(
-      operand,
-      op::Sharding("{devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate}"));
-  const HloInstruction* indices = FindInstruction(module.get(), "indices");
-  ASSERT_NE(indices, nullptr);
-  EXPECT_THAT(
-      indices,
-      op::Sharding("{devices=[1,2,1,2]0,1,4,5 last_tile_dim_replicate}"));
-  const HloInstruction* update = FindInstruction(module.get(), "update");
-  ASSERT_NE(update, nullptr);
-  EXPECT_THAT(
-      update,
-      op::Sharding("{devices=[2,1,1,1,2]0,1,4,5 last_tile_dim_replicate}"));
-  const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
-  ASSERT_NE(scatter, nullptr);
-  EXPECT_THAT(
-      scatter,
-      op::Sharding("{devices=[1,2,1,1,2]0,4,1,5 last_tile_dim_replicate}"));
 
   for (const HloInstruction* instruction :
        {operand, indices, update, scatter}) {
