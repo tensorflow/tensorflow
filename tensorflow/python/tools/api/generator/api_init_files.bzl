@@ -168,6 +168,8 @@ KERAS_API_INIT_FILES = [
     "keras/premade/__init__.py",
     "keras/models/__init__.py",
     "keras/optimizers/__init__.py",
+    "keras/optimizers/experimental/__init__.py",
+    "keras/optimizers/legacy/__init__.py",
     "keras/optimizers/schedules/__init__.py",
     "keras/preprocessing/__init__.py",
     "keras/preprocessing/image/__init__.py",
