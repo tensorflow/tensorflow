@@ -238,12 +238,6 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     return "the fusion would create a heavy computation";
   }
 
-  // Do not fuse into fusions if the resulting kernel would suffer from
-  // uncoalesced reads due to a transposed memory access pattern.
-  if (IsInputFusibleReduction(consumer) && IsPhysicallyTransposing(producer)) {
-    return "fusing the producer would break read coalescing";
-  }
-
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
   //

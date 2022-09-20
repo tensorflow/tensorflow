@@ -70,6 +70,13 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
     return "the producer is expensive, and the consumer reuses inputs";
   }
 
+  // Do not fuse into fusions if the resulting kernel would suffer from
+  // uncoalesced reads due to a transposed memory access pattern.
+  if (IsInputFusibleReduction(*consumer) &&
+      IsPhysicallyTransposing(*producer)) {
+    return "fusing the producer would break read coalescing";
+  }
+
   if (NoFusionPossible fusible =
           !IsProducerConsumerFusible(*producer, *consumer)) {
     return !fusible;
