@@ -5949,8 +5949,9 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     ssim_uint8 = image_ops.ssim_multiscale(
         img1, img2, 255, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session():
-      with self.assertRaisesRegexp(RuntimeError, 'The maximum "filter_size" value for'):
-          self.evaluate(ssim_uint8)
+      with self.assertRaisesRegexp(
+        RuntimeError, 'The maximum "filter_size" value for'):
+        self.evaluate(ssim_uint8)
 
   def testRange(self):
     """Tests against low MS-SSIM score.

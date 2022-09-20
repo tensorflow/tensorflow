@@ -4509,10 +4509,11 @@ def ssim_multiscale(img1,
     # Filter and Power checks
     min_dimension = math_ops.reduce_min((shape1,shape2))
     if not(min_dimension/(2**(len(power_factors)-1)) >= filter_size):
+      smallest_dim = int(min_dimension/(2**(len(power_factors)-1)))
       raise RuntimeError(
-        f'The maximum "filter_size" value for {len(power_factors)} "power_factors" '
-        f'values and images with {min_dimension} as smallest dimension is '
-        f'{int(min_dimension/(2**(len(power_factors)-1)))}. Reduce the number of '
+        f'The maximum "filter_size" value for {len(power_factors)} '
+        f'"power_factors" values and images with {min_dimension} as '
+        f'smallest dimension is {smallest_dim}. Reduce the number of '
         '"power_factors" or use images with bigger dimensions.')
     with ops.control_dependencies(checks):
       img1 = array_ops.identity(img1)
