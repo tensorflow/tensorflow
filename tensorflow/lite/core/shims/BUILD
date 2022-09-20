@@ -27,7 +27,7 @@ exports_files(
 FRAMEWORK_STABLE_LIB_HDRS = [
     "//tensorflow/lite:allocation.h",
     "//tensorflow/lite:context_util.h",
-    "//tensorflow/lite:core/macros.h",
+    "//tensorflow/lite/core:macros.h",
     "//tensorflow/lite:error_reporter.h",
     "//tensorflow/lite:mutable_op_resolver.h",
     "//tensorflow/lite:op_resolver.h",
@@ -36,7 +36,7 @@ FRAMEWORK_STABLE_LIB_HDRS = [
 
 FRAMEWORK_LIB_HDRS = FRAMEWORK_STABLE_LIB_HDRS + [
     "//tensorflow/lite:context.h",
-    "//tensorflow/lite:core/subgraph.h",
+    "//tensorflow/lite/core:subgraph.h",
     "//tensorflow/lite:graph_info.h",
     "//tensorflow/lite:optional_debug_tools.h",
 ]
