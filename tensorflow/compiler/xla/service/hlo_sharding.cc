@@ -262,11 +262,9 @@ HloSharding HloSharding::Tuple(const Shape& tuple_shape,
         << sharding.ToString() << ShapeUtil::HumanString(tuple_shape);
   }
   std::vector<HloSharding> flattened_list(shardings.begin(), shardings.end());
-  if (!flattened_list.empty()) {
-    CHECK_EQ(flattened_list.size(), RequiredLeaves(tuple_shape))
-        << "Flat list has " << flattened_list.size() << ", required "
-        << RequiredLeaves(tuple_shape);
-  }
+  CHECK_EQ(flattened_list.size(), RequiredLeaves(tuple_shape))
+      << "Flat list has " << flattened_list.size() << ", required "
+      << RequiredLeaves(tuple_shape);
   return HloSharding(flattened_list);
 }
 

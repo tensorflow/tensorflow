@@ -3182,6 +3182,7 @@ tf_cc_test(
         ":conditional_code_motion",
         ":hlo",
         ":hlo_matchers",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -3191,7 +3192,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/flags:flag",
     ],
 )
 
