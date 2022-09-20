@@ -444,7 +444,8 @@ cc_library(
     hdrs = ["notification.h"],
     deps = [
         ":platform",
-    ] + tf_platform_deps("notification"),
+        "//tensorflow/tsl/platform:notification",
+    ],
 )
 
 cc_library(
@@ -530,7 +531,7 @@ cc_library(
     hdrs = ["png.h"],
     deps = [
         ":platform",
-        "@png",
+        "//tensorflow/tsl/platform:png",
     ],
 )
 
@@ -883,6 +884,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":threadpool_interface",
+        "//tensorflow/tsl/platform:threadpool_options",
     ],
 )
 
@@ -936,7 +938,8 @@ cc_library(
     hdrs = ["unbounded_work_queue.h"],
     deps = [
         ":platform",
-    ] + tf_platform_deps("unbounded_work_queue"),
+        "//tensorflow/tsl/platform:unbounded_work_queue",
+    ],
 )
 
 cc_library(
@@ -1417,21 +1420,6 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "unbounded_work_queue_test",
-    srcs = ["unbounded_work_queue_test.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:env",
-        "@com_google_absl//absl/memory",
     ],
 )
 

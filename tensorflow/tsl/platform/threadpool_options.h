@@ -13,18 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_THREADPOOL_OPTIONS_H_
-#define TENSORFLOW_CORE_PLATFORM_THREADPOOL_OPTIONS_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_THREADPOOL_OPTIONS_H_
+#define TENSORFLOW_TSL_PLATFORM_THREADPOOL_OPTIONS_H_
 
-#include "tensorflow/core/platform/threadpool_interface.h"
-#include "tensorflow/tsl/platform/threadpool_options.h"
+#include "tensorflow/tsl/platform/threadpool_interface.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace thread {
 
-using tsl::thread::ThreadPoolOptions;  // NOLINT
+struct ThreadPoolOptions {
+  // If not null, use this threadpool to schedule inter-op operation
+  thread::ThreadPoolInterface* inter_op_threadpool = nullptr;
+
+  // If not null, use this threadpool to schedule intra-op operation
+  thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
+};
 
 }  // namespace thread
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PLATFORM_THREADPOOL_OPTIONS_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_THREADPOOL_OPTIONS_H_

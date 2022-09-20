@@ -25,12 +25,16 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/public/session_options.h"
 
+namespace tsl {
+namespace thread {
+struct ThreadPoolOptions;
+}
+}  // namespace tsl
+
 namespace tensorflow {
 
 namespace thread {
-
-struct ThreadPoolOptions;
-
+using tsl::thread::ThreadPoolOptions;
 }
 
 /// @addtogroup core

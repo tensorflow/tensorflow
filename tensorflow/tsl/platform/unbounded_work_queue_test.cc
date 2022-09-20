@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/unbounded_work_queue.h"
+#include "tensorflow/tsl/platform/unbounded_work_queue.h"
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/random.h"
+#include "tensorflow/tsl/platform/blocking_counter.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 class UnboundedWorkQueueTest : public ::testing::Test {
@@ -102,4 +102,4 @@ TEST_F(UnboundedWorkQueueTest, RacyDestructor) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

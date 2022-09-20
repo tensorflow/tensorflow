@@ -403,6 +403,7 @@ filegroup(
         "logger.h",
         "mem.h",
         "net.h",
+        "notification.h",
         "numa.h",
         "path.h",
         "prefetch.h",
@@ -436,6 +437,7 @@ filegroup(
         "macros.h",
         "threadpool.h",
         "threadpool_interface.h",
+        "threadpool_options.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -543,10 +545,14 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "fingerprint.h",
+        "notification.h",
+        "png.h",
         "random.cc",
         "random.h",
         "subprocess.h",
         "test_benchmark.h",
+        "threadpool_options.h",
+        "unbounded_work_queue.h",
         "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.cc",
         "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.cc",
@@ -581,6 +587,7 @@ filegroup(
         exclude = [
             "dynamic_annotations.h",
             "gif.h",
+            "png.h",
             "jpeg.h",
         ],
     ) + [
@@ -666,6 +673,7 @@ filegroup(
         "setround.h",
         "snappy.h",
         "tracing.h",
+        "unbounded_work_queue.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
@@ -1265,5 +1273,57 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+    ],
+)
+
+cc_library(
+    name = "notification",
+    hdrs = ["notification.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+    ] + tf_platform_deps("notification"),
+)
+
+cc_library(
+    name = "png",
+    hdrs = ["png.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+        "@png",
+    ],
+)
+
+cc_library(
+    name = "threadpool_options",
+    hdrs = ["threadpool_options.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":threadpool_interface",
+    ],
+)
+
+cc_library(
+    name = "unbounded_work_queue",
+    hdrs = ["unbounded_work_queue.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+    ] + tf_platform_deps("unbounded_work_queue"),
+)
+
+tf_cc_test(
+    name = "unbounded_work_queue_test",
+    srcs = ["unbounded_work_queue_test.cc"],
+    deps = [
+        # TODO(jakeharmon): unmigrated deps
+        "@com_google_absl//absl/memory",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:random",
     ],
 )
