@@ -938,6 +938,14 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
 
     if (!resultType.hasStaticShape()) return failure();
 
+    // If any of the output dimensions is 0, the tensor has no elements. In that
+    // case, we can just replace the reshape with an init_tensor.
+    if (llvm::is_contained(resultType.getShape(), 0)) {
+      rewriter.replaceOpWithNewOp<linalg::InitTensorOp>(
+          reshapeOp, resultType.getShape(), elemType);
+      return success();
+    }
+
     resultType = typeConverter->convertType(resultType).cast<ShapedType>();
 
     // Special case where the result is a scalar.

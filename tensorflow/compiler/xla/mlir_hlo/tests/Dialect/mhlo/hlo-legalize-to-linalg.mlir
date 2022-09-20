@@ -1012,6 +1012,17 @@ func.func @reshape_3D_1D_semidynamic(%arg0: tensor<16x1x?xi32>) -> tensor<16xi32
 
 // -----
 
+// CHECK-LABEL: func @reshape_empty
+func.func @reshape_empty(%arg0: tensor<7x0xf64>) -> tensor<0x42x101xf64> {
+  %0 = mhlo.reshape %arg0 : (tensor<7x0xf64>) -> tensor<0x42x101xf64>
+  return %0 : tensor<0x42x101xf64>
+}
+
+// CHECK: %[[INIT:.*]] = linalg.init_tensor
+// CHECK: return %[[INIT]]
+
+// -----
+
 // CHECK-LABEL: func @minf
 func.func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %0 = "mhlo.minimum"(%lhs, %rhs) {someattr}
