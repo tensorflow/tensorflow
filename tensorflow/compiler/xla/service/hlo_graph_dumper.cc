@@ -1706,6 +1706,7 @@ std::string WrapDotInHtml(absl::string_view dot) {
         var panzoom = svgPanZoom(svg, {
             zoomEnabled: true,
             controlIconsEnabled: true,
+            maxZoom: 100,
         });
         document.getElementsByTagName("BODY")[0].onresize = function() {
             panzoom.resize();
