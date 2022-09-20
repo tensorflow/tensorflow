@@ -162,23 +162,24 @@ mlir::Operation* EmitCollectiveReduce(
 
   // Create a scalar group key by slicing device_id_to_group_key with
   // device_id.
+  auto group_key_loc = DT_LOC2(loc, "group_key");
   auto group_key_slice = builder.create<mlir::TF::SliceOp>(
-      loc, EffectivelyScalarR1Type(builder.getIntegerType(32)),
+      group_key_loc, EffectivelyScalarR1Type(builder.getIntegerType(32)),
       /*input=*/IntConst(builder, loc, device_id_to_group_key),
       /*begin=*/device_id,
       /*size=*/IntConst(builder, loc, {1}));
   auto group_key_reshape = builder.create<mlir::TF::ReshapeOp>(
-      loc, /*tensor=*/group_key_slice.getResult(),
+      group_key_loc, /*tensor=*/group_key_slice.getResult(),
       /*shape=*/ops_util::GetR1Const({}, builder, loc));
   group_key_scalar = group_key_reshape.getResult();
 
   // Generate a unique instance key for this collective.
-  mlir::Value instance_key_scalar =
-      ops_util::CreateScalarConst(static_cast<int32>(key_base), builder, loc);
+  mlir::Value instance_key_scalar = ops_util::CreateScalarConst(
+      static_cast<int32>(key_base), builder, DT_LOC2(loc, "instance_key"));
 
   const bool is_mean_op = reduce_op_str == kReduceOpMean;
-  mlir::Value group_size_scalar =
-      ops_util::CreateScalarConst(host_group_size, builder, loc);
+  mlir::Value group_size_scalar = ops_util::CreateScalarConst(
+      host_group_size, builder, DT_LOC2(loc, "group_size"));
   auto collective_reduce = builder.create<mlir::TF::CollectiveReduceV2Op>(
       loc, /*output_type=*/input.getType(), input, group_size_scalar,
       group_key_scalar, instance_key_scalar,

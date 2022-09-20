@@ -215,6 +215,7 @@ cc_library(
         ":collectives_common",
         ":create_dtensor_mlir_passes",
         ":device_utils",
+        ":dtensor_location",
         ":dtensor_passes_inc_gen",
         ":dtensor_send_recv",
         ":group_assignment",
