@@ -33,14 +33,16 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORUPDATETPUMETADATA
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
@@ -145,7 +147,7 @@ mlir::LogicalResult UpdateTPUCompileMetadata(const Mesh& mesh_config,
 // Pass that updates TPU specific metadata including `num_replicas` and device
 // assignment of TPUCompileMlirOp and TPUExecute ops.
 struct DTensorUpdateTPUMetadata
-    : public DTensorUpdateTPUMetadataBase<DTensorUpdateTPUMetadata> {
+    : public impl::DTensorUpdateTPUMetadataBase<DTensorUpdateTPUMetadata> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder builder(&context);

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <map>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -27,22 +29,20 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORMOVECOMPILATIONTOHOST
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Prefix for send/recv key used for transferring compilation program key.
 constexpr char kSendRecvKeyPrefix[] = "compilation_send_recv_key_";
@@ -361,7 +361,8 @@ mlir::LogicalResult HandleCompilationOps(
 // and add necessary send/recv ops to transfer TPU program key to TPU device
 // computation.
 struct DTensorMoveCompilationToHost
-    : public DTensorMoveCompilationToHostBase<DTensorMoveCompilationToHost> {
+    : public impl::DTensorMoveCompilationToHostBase<
+          DTensorMoveCompilationToHost> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder builder(&context);

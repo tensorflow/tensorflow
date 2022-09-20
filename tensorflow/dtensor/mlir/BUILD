@@ -148,7 +148,6 @@ cc_library(
     name = "create_dtensor_mlir_passes",
     hdrs = [
         "create_dtensor_mlir_passes.h",
-        "dtensor_mlir_passes_classes.h",
     ],
     deps = [
         ":device_utils",

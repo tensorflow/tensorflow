@@ -30,12 +30,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORTPUADDRESOURCEDEVICEATTRIBUTE
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
@@ -84,7 +86,7 @@ mlir::Operation* IdentifyConnectedAssignVariableOp(mlir::Value val) {
 }
 
 struct DTensorTpuAddResourceDeviceAttribute
-    : public DTensorTpuAddResourceDeviceAttributeBase<
+    : public impl::DTensorTpuAddResourceDeviceAttributeBase<
           DTensorTpuAddResourceDeviceAttribute> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();

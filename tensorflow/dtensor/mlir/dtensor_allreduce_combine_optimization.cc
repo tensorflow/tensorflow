@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/group_assignment.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -41,6 +40,8 @@ namespace tensorflow {
 namespace dtensor {
 
 namespace {
+#define GEN_PASS_DEF_DTENSORALLREDUCECOMBINEOPTIMIZATION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 namespace ops_util = ::mlir::TF::collection_ops_util;
 
@@ -541,7 +542,7 @@ mlir::LogicalResult CombineAllReduceOpsOfSameType(
 }
 
 struct DTensorAllReduceCombineOptimization
-    : public DTensorAllReduceCombineOptimizationBase<
+    : public impl::DTensorAllReduceCombineOptimizationBase<
           DTensorAllReduceCombineOptimization> {
   void runOnOperation() override {
     mlir::func::FuncOp function = getOperation();

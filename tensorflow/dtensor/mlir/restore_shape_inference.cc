@@ -21,7 +21,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
@@ -29,7 +28,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORINFERSHAPESFORRESTOREV2OP
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // From the Operation that produces `value`, set the result type to `type`.
 //
@@ -144,7 +146,7 @@ mlir::LogicalResult PropagateShapeInformationFromAssignVariableOp(
 }
 
 struct DTensorInferShapesForRestoreV2Op
-    : public DTensorInferShapesForRestoreV2OpBase<
+    : public impl::DTensorInferShapesForRestoreV2OpBase<
           DTensorInferShapesForRestoreV2Op> {
   void runOnOperation() override {
     auto module = getOperation();

@@ -14,15 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include <atomic>
+#include <iterator>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -34,13 +35,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
@@ -49,7 +44,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/group_assignment.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -60,6 +54,11 @@ namespace tensorflow {
 namespace dtensor {
 
 namespace {
+#define GEN_PASS_DEF_DTENSORALLREDUCELOWERING
+#define GEN_PASS_DEF_DTENSORREDUCESCATTERLOWERING
+#define GEN_PASS_DEF_DTENSORALLGATHERLOWERING
+#define GEN_PASS_DEF_DTENSORALLSCATTERLOWERING
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 namespace ops_util = ::mlir::TF::collection_ops_util;
 constexpr int32 kUninitializedGroupKey = 0;
@@ -727,7 +726,7 @@ mlir::LogicalResult LowerAllScatterOp(
 }
 
 struct DTensorAllReduceLowering
-    : public DTensorAllReduceLoweringBase<DTensorAllReduceLowering> {
+    : public impl::DTensorAllReduceLoweringBase<DTensorAllReduceLowering> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::ModuleOp module = getOperation();
@@ -746,7 +745,8 @@ struct DTensorAllReduceLowering
 };
 
 struct DTensorReduceScatterLowering
-    : public DTensorReduceScatterLoweringBase<DTensorReduceScatterLowering> {
+    : public impl::DTensorReduceScatterLoweringBase<
+          DTensorReduceScatterLowering> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
   }
@@ -768,7 +768,7 @@ struct DTensorReduceScatterLowering
 };
 
 struct DTensorAllGatherLowering
-    : public DTensorAllGatherLoweringBase<DTensorAllGatherLowering> {
+    : public impl::DTensorAllGatherLoweringBase<DTensorAllGatherLowering> {
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
 
@@ -785,7 +785,7 @@ struct DTensorAllGatherLowering
 };
 
 struct DTensorAllScatterLowering
-    : public DTensorAllScatterLoweringBase<DTensorAllScatterLowering> {
+    : public impl::DTensorAllScatterLoweringBase<DTensorAllScatterLowering> {
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
 
