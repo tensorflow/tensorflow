@@ -573,8 +573,8 @@ class Function(core.GenericFunction, trackable.Trackable):
       experimental_follow_type_hints = False
     self._experimental_follow_type_hints = experimental_follow_type_hints
     self._created_variables = None  # GUARDED_BY(self._lock)
-    self._stateful_fn = None  # GUARDED_BY(self._lock)
-    self._stateless_fn = None  # GUARDED_BY(self._lock)
+    self._variable_creation_fn = None  # GUARDED_BY(self._lock)
+    self._no_variable_creation_fn = None  # GUARDED_BY(self._lock)
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
     self._key_for_call_stats = self._get_key_for_call_stats()
@@ -741,13 +741,15 @@ class Function(core.GenericFunction, trackable.Trackable):
       return v
 
     self._created_variables = created_variables
-    self._stateful_fn = self._compiler_with_scope(variable_capturing_scope)
-    self._stateful_fn._name = self._name  # pylint: disable=protected-access
+    self._variable_creation_fn = self._compiler_with_scope(
+        variable_capturing_scope)
+    self._variable_creation_fn._name = self._name  # pylint: disable=protected-access
     # Force the definition of the function for these arguments
     self._lifted_initializer_graph = lifted_initializer_graph
     self._graph_deleter = FunctionDeleter(self._lifted_initializer_graph)
-    self._concrete_stateful_fn = (
-        self._stateful_fn._get_concrete_function_internal_garbage_collected(  # pylint: disable=protected-access
+    self._concrete_variable_creation_fn = (
+        self._variable_creation_fn    # pylint: disable=protected-access
+        ._get_concrete_function_internal_garbage_collected(
             *args, **kwds))
 
     def invalid_creator_scope(*unused_args, **unused_kwds):
@@ -759,8 +761,9 @@ class Function(core.GenericFunction, trackable.Trackable):
           "https://www.tensorflow.org/guide/function#creating_tfvariables "
           "for more information.")
 
-    self._stateless_fn = self._compiler_with_scope(invalid_creator_scope)
-    self._stateless_fn._name = self._name  # pylint: disable=protected-access
+    self._no_variable_creation_fn = self._compiler_with_scope(
+        invalid_creator_scope)
+    self._no_variable_creation_fn._name = self._name  # pylint: disable=protected-access
 
   def _clone(self, python_function):
     """Clone the function with different python function."""
@@ -799,7 +802,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     Raises:
       ValueError: If the function has been called a ValueError is raised.
     """
-    if self._stateful_fn is not None or self._stateless_fn is not None:
+    if self._variable_creation_fn is not None or self._no_variable_creation_fn is not None:
       raise ValueError(
           "Functions cannot be decorated after they have been traced.")
 
@@ -841,8 +844,8 @@ class Function(core.GenericFunction, trackable.Trackable):
     different argument type, and so it was traced again.
 
     """
-    result = self._stateless_fn.tracing_count if self._stateless_fn else 0
-    result += self._stateful_fn.tracing_count if self._stateful_fn else 0
+    result = self._no_variable_creation_fn.tracing_count if self._no_variable_creation_fn else 0
+    result += self._variable_creation_fn.tracing_count if self._variable_creation_fn else 0
     return result
 
   @property
@@ -900,7 +903,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     """Calls the graph function."""
     self._lock.acquire()
     if ALLOW_DYNAMIC_VARIABLE_CREATION:
-      condition = self._created_variables and self._stateful_fn is None
+      condition = self._created_variables and self._variable_creation_fn is None
     else:
       condition = self._created_variables
     if condition:
@@ -909,14 +912,14 @@ class Function(core.GenericFunction, trackable.Trackable):
       self._lock.release()
       # In this case we have created variables on the first call, so we run the
       # defunned version which is guaranteed to never create variables.
-      return self._stateless_fn(*args, **kwds)  # pylint: disable=not-callable
-    elif self._stateful_fn is not None:
+      return self._no_variable_creation_fn(*args, **kwds)  # pylint: disable=not-callable
+    elif self._variable_creation_fn is not None:
       # Release the lock early so that multiple threads can perform the call
       # in parallel.
       self._lock.release()
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
-      results = self._stateful_fn(*args, **kwds)
+      results = self._variable_creation_fn(*args, **kwds)
       if self._created_variables and not ALLOW_DYNAMIC_VARIABLE_CREATION:
         raise ValueError("Creating variables on a non-first call to a function"
                          " decorated with tf.function.")
@@ -941,15 +944,17 @@ class Function(core.GenericFunction, trackable.Trackable):
         pass  # Fall through to cond-based initialization.
       else:
         # Lifting succeeded, so variables are initialized and we can run the
-        # stateless function.
-        return self._stateless_fn(*args, **kwds)
+        # no_variable_creation function.
+        return self._no_variable_creation_fn(*args, **kwds)
     else:
       _, _, filtered_flat_args = (
-          self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
+          self._variable_creation_fn._function_spec  # pylint: disable=protected-access
+          .canonicalize_function_inputs(
               args, kwds))
       # If we did not create any variables the trace we have is good enough.
-      return self._concrete_stateful_fn._call_flat(
-          filtered_flat_args, self._concrete_stateful_fn.captured_inputs)  # pylint: disable=protected-access
+      return self._concrete_variable_creation_fn._call_flat(   # pylint: disable=protected-access
+          filtered_flat_args,
+          self._concrete_variable_creation_fn.captured_inputs)
 
     def fn_with_cond(inner_args, inner_kwds, inner_filtered_flat_args):
       """Conditionally runs initialization if it's needed."""
@@ -958,20 +963,21 @@ class Function(core.GenericFunction, trackable.Trackable):
         condition = math_ops.logical_and(
             condition, resource_variable_ops.var_is_initialized_op(
                 v.handle))
-      # We want to call stateless_fn if possible because it avoids recomputing
-      # potentially expensive initializers.
+      # We want to call no_variable_creation if possible because it avoids
+      # recomputing potentially expensive initializers.
       return control_flow_ops.cond(
           condition,
-          lambda: self._stateless_fn(*inner_args, **inner_kwds),
+          lambda: self._no_variable_creation_fn(*inner_args, **inner_kwds),
           functools.partial(
-              self._concrete_stateful_fn._call_flat,  # pylint: disable=protected-access
+              self._concrete_variable_creation_fn._call_flat,  # pylint: disable=protected-access
               inner_filtered_flat_args,
-              captured_inputs=self._concrete_stateful_fn.captured_inputs))
+              captured_inputs=self._concrete_variable_creation_fn
+              .captured_inputs))
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
     canon_args, canon_kwds, filtered_flat_args = (
-        self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
+        self._variable_creation_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
             args, kwds))
     return tracing_compiler.TracingCompiler(
         fn_with_cond, "fn_with_cond")(canon_args, canon_kwds,
@@ -1088,7 +1094,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       RuntimeError: if called after the variables have been initialized.
     """
     with self._lock:
-      if self._stateful_fn is not None:
+      if self._variable_creation_fn is not None:
         raise RuntimeError(
             "get_initialization_function cannot be called after the function "
             "has been used")
@@ -1113,12 +1119,12 @@ class Function(core.GenericFunction, trackable.Trackable):
       self.get_concrete_function()
     concrete_functions = []
     # pylint: disable=protected-access
-    if self._stateful_fn:
+    if self._variable_creation_fn:
       concrete_functions.extend(
-          self._stateful_fn._list_all_concrete_functions())
-    if self._stateless_fn:
+          self._variable_creation_fn._list_all_concrete_functions())
+    if self._no_variable_creation_fn:
       concrete_functions.extend(
-          self._stateless_fn._list_all_concrete_functions())
+          self._no_variable_creation_fn._list_all_concrete_functions())
     # pylint: enable=protected-access
     return concrete_functions
 
@@ -1180,20 +1186,20 @@ class Function(core.GenericFunction, trackable.Trackable):
       ValueError: if this object has not yet been called on concrete values.
     """
     with self._lock:
-      if self._stateful_fn is None:
+      if self._variable_creation_fn is None:
         initializers = []
         self._initialize(args, kwargs, add_initializers_to=initializers)
         self._initialize_uninitialized_variables(initializers)
 
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
-      # defunned version which is guaranteed to never create variables.
-      return self._stateless_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
+      # version which is guaranteed to never create variables.
+      return self._no_variable_creation_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
           *args, **kwargs)
-    elif self._stateful_fn is not None:
+    elif self._variable_creation_fn is not None:
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
-      concrete = self._stateful_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
+      concrete = self._variable_creation_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
           *args, **kwargs)
       if self._created_variables:
         raise ValueError("Creating variables on a non-first call to a function"
