@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "rocm/rocm_config.h"
 #include "tensorflow/tsl/platform/hash.h"
 #include "tensorflow/tsl/util/env_var.h"
 
@@ -5075,7 +5076,7 @@ bool UseNhwcLayoutForRocm() {
 #if TF_ROCM_VERSION >= 50100
   static bool is_enabled = [] {
     bool is_enabled = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar(
         "TF_USE_ROCM_NHWC",
         /*default_val=*/false, &is_enabled));
     return is_enabled;
