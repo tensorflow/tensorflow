@@ -31,6 +31,11 @@
         and Tensorflow-native way to encode structured data such as protocol
         buffers or pandas dataframes.
 
+*   `tf.keras`:
+
+    *   Added method `get_metrics_result()` to `tf.keras.models.Model`.
+        *   Returns the current metrics values of the model as a dict.
+
 # Bug Fixes and Other Changes
 
 *   `tf.image`
