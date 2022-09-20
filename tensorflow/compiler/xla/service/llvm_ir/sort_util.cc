@@ -360,7 +360,7 @@ Status EmitSortInPlace(
       llvm::Type* tile_type = llvm::ArrayType::get(
           llvm_ir::PrimitiveTypeToIrType(
               values_arrays[i].GetShape().element_type(), module),
-          std::max(tile_size, 64L));
+          std::max(tile_size, static_cast<int64_t>(64)));
       param_shmem_buffers[i] = llvm_ir::AllocateSharedMemoryTile(
           module, tile_type, absl::StrCat(name, "_tile_param_", i));
     }
