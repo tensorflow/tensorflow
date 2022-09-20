@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/runtime/tracing.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
 namespace xla {
@@ -539,6 +540,44 @@ class SetErrorOpLowering : public OpConversionPattern<SetErrorOp> {
 };
 
 //===----------------------------------------------------------------------===//
+// Convert rt.trace to a pair of custom calls (push and pop trace annotation).
+//===----------------------------------------------------------------------===//
+
+class TraceOpLowering : public OpConversionPattern<TraceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TraceOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // Custom call always return a status.
+    llvm::SmallVector<Type> status = {StatusType::get(getContext())};
+
+    // Push the trace annotation into the traces stack.
+    b.setInsertionPoint(op);
+    auto push = b.create<CustomCallOp>(status, op.getCtx(), "xla.trace.push",
+                                       /*dynamic=*/false, ValueRange());
+    push->setAttr("annotation", op.getAnnotation());
+
+    // Pop it after executing the attached region.
+    b.setInsertionPointAfter(op);
+    b.create<CustomCallOp>(status, op.getCtx(), "xla.trace.pop",
+                           /*dynamic=*/false, ValueRange());
+
+    // Replace trace operation with inlined region.
+    b.setInsertionPointAfter(op);
+    auto terminator = cast<YieldOp>(op.getBody().front().getTerminator());
+    rewriter.mergeBlockBefore(terminator->getBlock(), op);
+    rewriter.replaceOp(op, terminator->getOperands());
+    rewriter.eraseOp(terminator);
+
+    return success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Convert rt.unsigned_cast to no-op.
 //===----------------------------------------------------------------------===//
 
@@ -617,6 +656,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // Register mappings from the TypeID to type names.
   TypeIDNameRegistry type_id_names;
   PopulateCustomCallTypeIdNames(type_id_names);
+  PopulateTraceTypeIdNames(type_id_names);
   if (opts_.populate_type_id_names) opts_.populate_type_id_names(type_id_names);
 
   // A helper class to create unique global constants.
@@ -628,6 +668,9 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // Lower from the runtime operations to the runtime API function calls.
   patterns.add<SetOutputOpLowering, IsOkOpLowering>(llvm_converter, ctx);
   patterns.add<SetErrorOpLowering>(llvm_converter, ctx, globals);
+
+  // Lower tracing operation to a pair of push/pop custom calls.
+  patterns.add<TraceOpLowering>(llvm_converter, ctx);
 
   // Erase special signless-unsigned casting operation that we added to work
   // around the unsigned constants limitation.

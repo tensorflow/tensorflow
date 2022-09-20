@@ -345,6 +345,16 @@ cc_library(
 )
 
 cc_library(
+    name = "tracing",
+    hdrs = ["tracing.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":custom_call",
+        ":type_id",
+    ],
+)
+
+cc_library(
     name = "type_id",
     srcs = ["type_id.cc"],
     hdrs = ["type_id.h"],

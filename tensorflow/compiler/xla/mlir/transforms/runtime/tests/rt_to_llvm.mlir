@@ -491,3 +491,22 @@ func.func @custom_call(%ctx: !rt.execution_context) -> (memref<2x2xf32>) {
   %status, %0 = rt.custom_call %ctx["f32_reduce"] () : () -> (memref<2x2xf32>)
   return %0 : memref<2x2xf32>
 }
+
+// -----
+
+func.func private @compute() -> tensor<?xf32>
+
+// CHECK: mlir.global internal constant @__rt_aggregate_hlo_trace
+// CHECK: llvm.mlir.addressof @__rt_aggregate_hlo_trace
+
+// CHECK: func @trace
+func.func @trace(%ctx: !rt.execution_context) -> tensor<?xf32> {
+  // CHECK: call @xla.trace.push
+  // CHECK: call @compute
+  // CHECK: call @xla.trace.pop
+  %0 = rt.trace #rt.hlo_trace<"foo", "bar", 0>, %ctx -> tensor<?xf32> {
+    %1 = func.call @compute(): () -> tensor<?xf32>
+    yield %1 : tensor<?xf32>
+  }
+  return %0 : tensor<?xf32>
+}

@@ -41,6 +41,7 @@ cc_library(
         ":passes_inc_gen",
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
         "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:tracing",
         "//tensorflow/compiler/xla/runtime:type_id",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
@@ -175,6 +176,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
         "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:tracing",
         "//tensorflow/compiler/xla/runtime:type_id",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
