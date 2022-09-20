@@ -63,3 +63,10 @@ func.func private @constraint(
       %input1: memref<?x?xf32> { rt.constraint = "shape" },
       %perm: memref<4xi32>     { rt.constraint = "value" }
 ) attributes {rt.custom_call = "target"}
+
+// -----
+func.func @trace(%ctx: !rt.execution_context) {
+  // expected-error @+1 {{'rt.trace' invalid kind of attribute specified}}
+  rt.trace "string attribute", %ctx {}
+  return
+}

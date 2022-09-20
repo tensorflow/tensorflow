@@ -13,121 +13,51 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"  // IWYU pragma: keep
 
-#include "llvm/ADT/TypeSwitch.h"
-#include "llvm/Support/Error.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/runtime/constraints.h"
-
-//===----------------------------------------------------------------------===//
-// RT Dialect
-//===----------------------------------------------------------------------===//
-
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.cpp.inc"
+#include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
 
 namespace xla {
 namespace runtime {
 
-static bool IsRtConstraintAttr(mlir::Attribute attr) {
-  // If attribute is not defined it means that there is no constraint
-  if (!attr) return true;
-  auto str = attr.dyn_cast_or_null<mlir::StringAttr>();
-  absl::StatusOr<ArgumentConstraint> constraint =
-      ParseArgumentConstraint(str.getValue());
-  return constraint.ok();
+using namespace mlir;  // NOLINT
+
+using llvm::Optional;
+
+//===----------------------------------------------------------------------===//
+// TraceOp
+//===----------------------------------------------------------------------===//
+
+void TraceOp::getSuccessorRegions(Optional<unsigned> index,
+                                  ArrayRef<Attribute> operands,
+                                  SmallVectorImpl<RegionSuccessor> &regions) {
+  // If the predecessor is the TraceOp, branch into the body.
+  if (!index) {
+    regions.push_back(RegionSuccessor(&getRegion()));
+    return;
+  }
+
+  // Region branches back to the parent operation.
+  regions.push_back(RegionSuccessor(getResults()));
 }
 
-void RuntimeDialect::initialize() {
-  allowUnknownTypes();
-
-  addOperations<
-#define GET_OP_LIST
-#include "tensorflow/compiler/xla/mlir/ir/runtime//rt_ops.cpp.inc"
-      >();
-  addTypes<
-#define GET_TYPEDEF_LIST
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_types.cpp.inc"
-      >();
+LogicalResult TraceOp::verify() {
+  if (getRegion().front().getNumArguments() > 0)
+    return emitOpError("region cannot have any arguments");
+  return success();
 }
 
-mlir::LogicalResult RuntimeDialect::verifyOperationAttribute(
-    mlir::Operation *op, mlir::NamedAttribute attribute) {
-  // Only functions can be marked as rt entrypoints.
-  if (attribute.getName() == "rt.entrypoint") {
-    if (!(attribute.getValue().isa<mlir::UnitAttr>())) {
-      return op->emitOpError()
-             << "requires " << attribute.getName() << " to be a unit attribute";
-    }
+//===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
 
-    auto func = llvm::dyn_cast<mlir::func::FuncOp>(op);
-    if (!func) {
-      return op->emitError()
-             << attribute.getName() << " can only be applied to a function";
-    }
-    if (func.empty()) {
-      return op->emitOpError()
-             << "requires non-empty body for function with attribute "
-             << attribute.getName();
-    }
-  }
-
-  // Custom call attribute can be defined only on a function declaration.
-  if (attribute.getName() == "rt.custom_call") {
-    if (!(attribute.getValue().isa<mlir::StringAttr>())) {
-      return op->emitOpError() << "requires " << attribute.getName()
-                               << " to only accept string value";
-    }
-
-    auto func = llvm::dyn_cast<mlir::func::FuncOp>(op);
-    if (!func) {
-      return op->emitError()
-             << attribute.getName() << " can only be applied to a function";
-    }
-    if (!func.empty()) {
-      return op->emitOpError() << "requires " << attribute.getName()
-                               << " to only apply to a function declaration";
-    }
-  }
-
-  // Dynamic custom call attribute can be applied only to a custom call
-  // declaration.
-  if (attribute.getName() == "rt.dynamic") {
-    if (!op->hasAttr("rt.custom_call")) {
-      return op->emitOpError()
-             << attribute.getName()
-             << " can only be applied to a custom call declaration";
-    }
-  }
-
-  // Check constraints for all function arguments.
-  if (auto func = llvm::dyn_cast<mlir::func::FuncOp>(op)) {
-    for (int i = 0; i < func.getNumArguments(); ++i) {
-      if (!IsRtConstraintAttr(
-              func.getArgAttr(i, kArgumentConstraintAttrName))) {
-        return op->emitOpError()
-               << "has illegal attribute value of "
-               << kArgumentConstraintAttrName << " for argument " << i;
-      }
-    }
-  }
-
-  return mlir::success();
+MutableOperandRange YieldOp::getMutableSuccessorOperands(
+    Optional<unsigned> index) {
+  return operandsMutable();
 }
+
 }  // namespace runtime
 }  // namespace xla
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.cpp.inc"
-
-#define GET_TYPEDEF_CLASSES
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_types.cpp.inc"
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.cc.inc"

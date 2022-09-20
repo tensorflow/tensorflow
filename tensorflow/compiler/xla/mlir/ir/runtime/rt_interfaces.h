@@ -13,15 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_OPS_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_OPS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_INTERFACES_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_INTERFACES_H_
 
-#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project  // IWYU pragma: keep
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"  // IWYU pragma: keep
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.h"  // IWYU pragma: keep
+#include "mlir/IR/Attributes.h"  // from @llvm-project  // IWYU pragma: keep
 
-#define GET_OP_CLASSES
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h.inc"
+#define GET_ATTR_INTERFACE_CLASSES
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_attr_interfaces.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_OPS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_INTERFACES_H_

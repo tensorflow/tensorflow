@@ -13,18 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-//===- rt_base.td ---------------------------------------------------------===//
+//===- rt_dialect.td ------------------------------------------------------===//
 //
-// Dialect and type definitions for the RT dialect.
+// Dialect, types and attributes definitions for the RT dialect.
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef RT_BASE
+#ifdef RT_DIALECT
 #else
-#define RT_BASE
+#define RT_DIALECT
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
+
+include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.td"
 
 def RuntimeDialect : Dialect {
   let name = "rt";
@@ -40,17 +42,19 @@ def RuntimeDialect : Dialect {
 
   let useDefaultTypePrinterParser = 1;
 
-  let hasOperationAttrVerify = 1;
-}
+  let useDefaultAttributePrinterParser = 1;
 
-class RT_Type<string name, string typeMnemonic> : TypeDef<RuntimeDialect,
-                                                          name> {
-  let mnemonic = typeMnemonic;
+  let hasOperationAttrVerify = 1;
 }
 
 //===----------------------------------------------------------------------===//
 // Types for integrating XLA executables with the runtime.
 //===----------------------------------------------------------------------===//
+
+class RT_Type<string name, string typeMnemonic> : TypeDef<RuntimeDialect,
+                                                          name> {
+  let mnemonic = typeMnemonic;
+}
 
 def ExecutionContextType : RT_Type<"ExecutionContext", "execution_context"> {
   let summary = "Execution Context type";
@@ -74,4 +78,22 @@ def OpaqueValueType : RT_Type<"Opaque", "opaque"> {
   }];
 }
 
-#endif // RT_BASE
+//===----------------------------------------------------------------------===//
+// Tracing Annotation Attributes
+//===----------------------------------------------------------------------===//
+
+def HloTraceAttr : AttrDef<RuntimeDialect, "HloTrace",
+    [RT_TraceAnnotationAttrInterface]> {
+  let mnemonic = "hlo_trace";
+  let summary = "Trace execution of the HLO operation";
+
+  let parameters = (ins
+    StringRefParameter<"hlo_op">:$hlo_op,
+    StringRefParameter<"module">:$module,
+    "int64_t":$program_id
+  );
+
+  let assemblyFormat = "`<` $hlo_op `,` $module `,` $program_id `>`";
+}
+
+#endif // RT_DIALECT

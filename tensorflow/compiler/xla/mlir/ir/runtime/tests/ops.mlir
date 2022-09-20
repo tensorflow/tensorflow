@@ -48,13 +48,32 @@ func.func @dynamic_custom_call(%ctx: !rt.execution_context) {
 
 // CHECK-LABEL: func @opaque_arg(
 // CHECK:  %[[CTX:.*]]: !rt.execution_context,
-// CHECK:   %[[ARG:.*]]: !rt.opaque
+// CHECK:  %[[ARG:.*]]: !rt.opaque
 // CHECK: ) -> !rt.opaque
 func.func @opaque_arg(%ctx: !rt.execution_context,
                       %arg0: !rt.opaque) -> !rt.opaque {
-  // CHECK: rt.custom_call
-  // CEHCK-SAME: (%[[ARG]]) : (!rt.opaque) -> (!rt.opaque)
+  // CHECK: rt.custom_call %[[CTX]]["test"]
+  // CHECK-SAME: (%[[ARG]]) : (!rt.opaque) -> !rt.opaque
   %status, %result = rt.custom_call %ctx["test"] (%arg0)
     : (!rt.opaque) -> (!rt.opaque)
   return %result : !rt.opaque
+}
+
+// CHECK-LABEL: func @trace(
+// CHECK:  %[[CTX:.*]]: !rt.execution_context,
+// CHECK:  %[[ARG:.*]]: memref<?x?xf32>
+// CHECK: ) -> memref<?x?xf32>
+func.func @trace(%ctx: !rt.execution_context,
+                 %arg: memref<?x?xf32>) -> memref<?x?xf32> {
+  // CHECK: rt.trace #rt.hlo_trace<"fusion", "foo", 0>, %[[CTX]]
+  rt.trace #rt.hlo_trace<"fusion", "foo", 0>, %ctx {}
+
+  // CHECK: rt.trace #rt.hlo_trace<"fusion", "bar", 0>
+  // CHECK-SAME: %[[CTX]] -> memref<?x?xf32>
+  // CHECK-NEXT: yield %[[ARG]] : memref<?x?xf32>
+  %0 = rt.trace #rt.hlo_trace<"fusion", "bar", 0>, %ctx -> memref<?x?xf32> {
+    yield %arg : memref<?x?xf32>
+  }
+
+  return %0 : memref<?x?xf32>
 }

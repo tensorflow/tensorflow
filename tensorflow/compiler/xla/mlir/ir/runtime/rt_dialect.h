@@ -13,15 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_OPS_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_OPS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_DIALECT_H_
+#define TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_DIALECT_H_
 
-#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project  // IWYU pragma: keep
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"  // IWYU pragma: keep
+#include "mlir/IR/Dialect.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project  // IWYU pragma: keep
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.h"  // IWYU pragma: keep
 
-#define GET_OP_CLASSES
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h.inc"
+// Runtime dialect definition.
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_OPS_H_
+#define GET_TYPEDEF_CLASSES
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_types.h.inc"
+
+#define GET_ATTRDEF_CLASSES
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_attrs.h.inc"
+
+#endif  // TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_DIALECT_H_
