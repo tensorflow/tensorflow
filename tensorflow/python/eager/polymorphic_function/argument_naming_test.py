@@ -16,8 +16,7 @@
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -28,14 +27,11 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-@parameterized.named_parameters(
-    dict(testcase_name='Defun', function_decorator=function.defun),
-    dict(testcase_name='DefFunction', function_decorator=def_function.function))
 class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
   """Tests for recognizable export signatures from concrete functions."""
 
-  def testBasic(self, function_decorator):
-    @function_decorator
+  def testBasic(self):
+    @polymorphic_function.function
     def fn(a, b):
       return a + b, a * b
     # Call the function to make def_function happy
@@ -50,7 +46,7 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         [b'a', b'b'],
         [inp.op.get_attr('_user_specified_name') for inp in fn_op.inputs])
-    self.assertEqual(2, len(fn_op.graph.structured_outputs))
+    self.assertLen(fn_op.graph.structured_outputs, 2)
     self.assertAllClose(
         [3., 2.],
         fn_op(constant_op.constant(1.), constant_op.constant(2.)))
@@ -58,8 +54,8 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         [3., 2.],
         fn_op(a=constant_op.constant(1.), b=constant_op.constant(2.)))
 
-  def testVariable(self, function_decorator):
-    @function_decorator
+  def testVariable(self):
+    @polymorphic_function.function
     def fn(a, b):
       return a + b, a * b
     # Call the function to make def_function happy
@@ -74,10 +70,10 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         [b'a', b'b'],
         [inp.op.get_attr('_user_specified_name') for inp in fn_op.inputs])
-    self.assertEqual(2, len(fn_op.graph.structured_outputs))
+    self.assertLen(fn_op.graph.structured_outputs, 2)
 
-  def testDictReturned(self, function_decorator):
-    @function_decorator
+  def testDictReturned(self):
+    @polymorphic_function.function
     def fn(x, z=(1., 2.), y=3.):
       z1, z2 = z
       return {'alpha': x + y + z1, 'beta': x * y + z2}
@@ -123,10 +119,10 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         [b'custom', b'z1', b'z2', b'y'],
         [inp.op.get_attr('_user_specified_name') for inp in fn_op3.inputs])
 
-  def testMethod(self, function_decorator):
+  def testMethod(self):
     class HasMethod(object):
 
-      @function_decorator
+      @polymorphic_function.function
       def method(self, x):
         return x
 
@@ -164,11 +160,11 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         [b'y'],
         [inp.op.get_attr('_user_specified_name') for inp in method_op.inputs])
 
-  def testMethodSignature(self, function_decorator):
+  def testMethodSignature(self):
 
     class HasMethod(object):
 
-      @function_decorator(
+      @polymorphic_function.function(
           input_signature=(tensor_spec.TensorSpec(
               shape=None, dtype=dtypes.float64, name='y'),))
       def method(self, x):
@@ -193,8 +189,8 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         [b'y'],
         [inp.op.get_attr('_user_specified_name') for inp in method_op2.inputs])
 
-  def testVariadic(self, function_decorator):
-    @function_decorator
+  def testVariadic(self):
+    @polymorphic_function.function
     def variadic_fn(x, *args, **kwargs):
       return x + math_ops.add_n(list(args) + list(kwargs.values()))
 
@@ -215,8 +211,8 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         [b'x', b'y', b'args_1', b'second_variadic', b'z', b'cust'],
         [inp.op.get_attr('_user_specified_name') for inp in variadic_op.inputs])
 
-  def testVariadicInputSignature(self, function_decorator):
-    @function_decorator(
+  def testVariadicInputSignature(self):
+    @polymorphic_function.function(
         input_signature=(
             tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
             tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),

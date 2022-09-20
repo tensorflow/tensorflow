@@ -269,3 +269,33 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+cuda_py_test(
+    name = "argument_naming_test",
+    size = "medium",
+    srcs = ["argument_naming_test.py"],
+    python_version = "PY3",
+    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
+    deps = [
+        ":polymorphic_function",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "collection_test",
+    size = "medium",
+    srcs = ["collection_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":polymorphic_function",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
