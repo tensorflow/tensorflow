@@ -110,7 +110,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
 
     // First the captured values in the island are function arguments
     llvm::SetVector<Value> operands;
-    getUsedValuesDefinedAbove(island_op.body(), operands);
+    getUsedValuesDefinedAbove(island_op.getBody(), operands);
 
     SmallVector<Type, 16> func_operand_types;
     func_operand_types.reserve(operands.size());
@@ -136,11 +136,11 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     // new function later.
     {
       YieldOp yield_op = island_op.GetYield();
-      outlined_func.getBody().takeBody(island_op.body());
+      outlined_func.getBody().takeBody(island_op.getBody());
 
       // Replace the yield with a return
       OpBuilder replacer(yield_op);
-      island_op.body().push_back(new Block);
+      island_op.getBody().push_back(new Block);
       replacer.create<mlir::func::ReturnOp>(yield_op.getLoc(),
                                             yield_op.getOperands());
       yield_op.erase();

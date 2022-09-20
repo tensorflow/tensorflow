@@ -64,7 +64,7 @@ struct XLABufferToMemOpConversion
         typeConverter->convertType(mem_ref_type.getElementType()),
         mem_ref_type.getMemorySpaceAsInt());
     Value ptr =
-        rewriter.create<LLVM::BitcastOp>(loc, ptr_type, adaptor.buffer());
+        rewriter.create<LLVM::BitcastOp>(loc, ptr_type, adaptor.getBuffer());
 
     Value result = this->createMemRefDescriptor(loc, mem_ref_type, ptr, ptr,
                                                 sizes, strides, rewriter);

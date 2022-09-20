@@ -814,8 +814,8 @@ Status ImporterBase::GetInputOutputNodes(
 // TODO(jpienaar): Remove this post shape inference on import flag is removed.
 Status ImporterBase::AddNodesToShapeRefiner(
     std::unordered_map<string, Node*>* node_name_map) {
-  shape_refiner_ = std::make_unique<ShapeRefiner>(graph_->versions(),
-                                                   graph_->op_registry());
+  shape_refiner_ =
+      std::make_unique<ShapeRefiner>(graph_->versions(), graph_->op_registry());
   // Some operations (for example "TPUExecute") don't have shape inference
   // function defined, so we should set this to false for adding nodes with
   // these types of operations.
@@ -1563,7 +1563,7 @@ Status ImporterBase::Convert(
   // Create the graph operation in which we will convert the individual nodes.
   auto graph = builder_.create<mlir::tf_executor::GraphOp>(
       function.getLoc(), func_type.getResults());
-  builder_.createBlock(&graph.body());
+  builder_.createBlock(&graph.getBody());
 
   for (const Node* node : ordered_nodes_) {
     TF_RETURN_IF_ERROR(ConvertNode(*node));
@@ -1711,7 +1711,7 @@ Status ImporterBase::ConvertFunctionArgAndRets(
 
   // Terminate the function by adding a Fetch operation to terminate the graph
   // and a return operation to return the Graph results.
-  builder_.setInsertionPointToEnd(&graph_op.body().front());
+  builder_.setInsertionPointToEnd(&graph_op.getBody().front());
   builder_.create<mlir::tf_executor::FetchOp>(graph_op.getLoc(),
                                               inst_to_return);
   builder_.setInsertionPointToEnd(bb);
@@ -1894,7 +1894,7 @@ mlir::Operation* ImporterBase::CreateOperation(
         builder_at_begin.create<mlir::tf_executor::NextIterationSourceOp>(
             loc, operands[0].getType(), result.attributes);
     return builder_.create<mlir::tf_executor::NextIterationSinkOp>(
-        loc, source_op.token(), operands, result.attributes);
+        loc, source_op.getToken(), operands, result.attributes);
   }
   if (node.IsLoopCond()) {
     return builder_.create<mlir::tf_executor::LoopCondOp>(loc, types, operands,
@@ -1916,7 +1916,7 @@ mlir::Operation* ImporterBase::CreateOperation(
   auto island = builder_.create<mlir::tf_executor::IslandOp>(
       result.location, types, control_operands,
       mlir::ArrayRef<mlir::NamedAttribute>{});
-  island.body().push_back(new mlir::Block);
+  island.getBody().push_back(new mlir::Block);
   mlir::OpBuilder island_builder =
       mlir::OpBuilder::atBlockEnd(&island.GetBody());
 
@@ -1932,10 +1932,10 @@ mlir::Operation* ImporterBase::CreateOperation(
         values.reserve(args.size());
         for (const auto& arg : args) {
           auto range = arg_ranges.at(arg.name());
-          values.push_back(
-              range.second - range.first);
+          values.push_back(range.second - range.first);
         }
-        auto attr_value = mlir::DenseI32ArrayAttr::get(inner_op->getContext(), values);
+        auto attr_value =
+            mlir::DenseI32ArrayAttr::get(inner_op->getContext(), values);
         inner_op->setAttr(attr_name, attr_value);
       };
 
@@ -3188,7 +3188,7 @@ void AdjustBoundInputArgTypes(mlir::ModuleOp module) {
         auto new_type =
             mlir::tf_saved_model::GetBoundInputArgTypeFor(global_tensor);
         arg.setType(new_type);
-        if (global_tensor.is_mutable()) {
+        if (global_tensor.getIsMutable()) {
           auto arg_with_original_type = builder.create<mlir::TF::CastOp>(
               global_tensor.getLoc(), old_type, arg,
               /*Truncate=*/builder.getBoolAttr(false));

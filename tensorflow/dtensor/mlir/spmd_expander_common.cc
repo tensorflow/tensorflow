@@ -589,7 +589,7 @@ void RemoveUnusedClusterResults(mlir::tf_device::ClusterOp cluster) {
   llvm::SmallVector<mlir::Value, 4> result_producing_values;
   new_result_values.reserve(cluster->getNumResults());
   result_producing_values.reserve(cluster->getNumResults());
-  for (mlir::OpResult result : cluster.results()) {
+  for (mlir::OpResult result : cluster.getResults()) {
     if (!result.use_empty()) {
       new_result_values.emplace_back(result);
       result_producing_values.emplace_back(
@@ -609,7 +609,7 @@ void RemoveUnusedClusterResults(mlir::tf_device::ClusterOp cluster) {
       cluster.getLoc(), new_result_types);
   new_cluster->setAttr(kMeshAttr,
                        cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr));
-  new_cluster.body().push_back(new mlir::Block);
+  new_cluster.getBody().push_back(new mlir::Block);
 
   auto& cluster_body = cluster.GetBody().getOperations();
   new_cluster.GetBody().getOperations().splice(
@@ -621,7 +621,7 @@ void RemoveUnusedClusterResults(mlir::tf_device::ClusterOp cluster) {
                                             result_producing_values);
 
   assert(new_cluster.getNumResults() == new_result_values.size());
-  for (auto it : llvm::zip(new_result_values, new_cluster.results())) {
+  for (auto it : llvm::zip(new_result_values, new_cluster.getResults())) {
     mlir::Value value_to_replace = std::get<0>(it);
     mlir::Value new_result = std::get<1>(it);
     value_to_replace.replaceAllUsesWith(new_result);

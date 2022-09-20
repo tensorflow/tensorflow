@@ -162,7 +162,7 @@ static void ExportVersionAttr(VersionAttr attr, VersionDef *version) {
 Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
   TF_ASSIGN_OR_RETURN(GraphOp graph_op, ValidateModuleForExport(module));
   if (graph_op) {
-    ExportVersionAttr(graph_op.version(), graph->mutable_versions());
+    ExportVersionAttr(graph_op.getVersion(), graph->mutable_versions());
     for (Operation &op : *graph_op.getBody()) {
       TF_RETURN_IF_ERROR(ConvertOperation(&op, graph->mutable_node()->Add(),
                                           /*is_func=*/false));
@@ -173,7 +173,7 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
                                    Optional<GradientDef> &gradient) {
     // Generic functions are not on the hot path and skip the conversion to
     // Graph so just call the existing exporter.
-    if (func.generic()) {
+    if (func.getGeneric()) {
       TF_ASSIGN_OR_RETURN(*def, ConvertGenericFunctionToFunctionDef(func));
     } else {
       TF_ASSIGN_OR_RETURN(gradient, ExportFunction(func, def));
@@ -244,13 +244,13 @@ static Status ConvertAttributes(
 
 StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
     GraphFuncOp func, FunctionDef *def) {
-  std::string func_name = func.sym_name().str();
+  std::string func_name = func.getSymName().str();
 
   // TODO(jeffniu): Exploit the sorted order of the function attributes.
 
   // Get a gradient, if there is one.
   Optional<GradientDef> gradient;
-  if (Optional<StringRef> gradient_name = func.gradient()) {
+  if (Optional<StringRef> gradient_name = func.getGradient()) {
     gradient.emplace();
     gradient->set_gradient_func(gradient_name->str());
     gradient->set_function_name(func_name);
@@ -259,12 +259,12 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
   // Convert the first-class attributes.
   OpDef *signature = def->mutable_signature();
   signature->set_name(func_name);
-  if (Optional<StringRef> description = func.description())
+  if (Optional<StringRef> description = func.getDescription())
     signature->set_description(description->str());
-  signature->set_is_stateful(func.is_stateful());
+  signature->set_is_stateful(func.getIsStateful());
 
-  if (DenseIntElementsAttr keys = func.resource_arg_unique_ids_keysAttr()) {
-    DenseIntElementsAttr values = func.resource_arg_unique_ids_valuesAttr();
+  if (DenseIntElementsAttr keys = func.getResourceArgUniqueIdsKeysAttr()) {
+    DenseIntElementsAttr values = func.getResourceArgUniqueIdsValuesAttr();
     if (!values) {
       return InvalidArgument(
           "'resource_arg_unique_ids_keys' is present but "
@@ -286,7 +286,7 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
 
   // Convert the arguments.
   for (int i = 0, e = func.getNumArguments(); i < e; i += 2) {
-    auto attrs = func.arg_attrs().getValue()[i].cast<DictionaryAttr>();
+    auto attrs = func.getArgAttrs().getValue()[i].cast<DictionaryAttr>();
     TF_ASSIGN_OR_RETURN(OpDef::ArgDef &arg = *signature->add_input_arg(),
                         ConvertArgumentAttributes(attrs));
     DataType dtype;
@@ -322,7 +322,7 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
 
   // Convert the control results.
   for (auto it :
-       llvm::zip(return_op.control_ret_attrs().getAsRange<DictionaryAttr>(),
+       llvm::zip(return_op.getControlRetAttrs().getAsRange<DictionaryAttr>(),
                  TFOp(return_op).getControlOperands())) {
     // The control result attributes contain only the name.
     DictionaryAttr attrs = std::get<0>(it);
@@ -466,7 +466,7 @@ static StatusOr<std::string> GetValueName(
       return InvalidArgument("Expected block argument owner to be tfg.func");
     // If the block argument is a control token, use the attributes of the
     // associated data argument (which preceeds it).
-    auto attrs = func.arg_attrs()
+    auto attrs = func.getArgAttrs()
                      .getValue()[arg.getArgNumber() - is_control]
                      .cast<DictionaryAttr>();
     auto name_attr =

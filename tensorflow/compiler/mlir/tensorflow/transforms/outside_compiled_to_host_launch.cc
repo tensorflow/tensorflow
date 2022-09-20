@@ -44,7 +44,7 @@ void WrapOpInLaunch(Operation* host_op, llvm::StringRef host_device) {
       /*result_types=*/host_op->getResultTypes());
   host_op->replaceAllUsesWith(launch_op);
 
-  launch_op.body().push_back(new Block);
+  launch_op.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&launch_op.GetBody());
   auto* return_op =
       builder

@@ -53,7 +53,7 @@ void AddPlaceholderDeviceAttributeToResource(
   // TPUExecute op is wrapped inside tf_device.Launch op for device assignment.
   auto tpu_execute_device_launch =
       execute_op->getParentOfType<mlir::tf_device::LaunchOp>();
-  mlir::StringRef tpu_device_attr = tpu_execute_device_launch.device();
+  mlir::StringRef tpu_device_attr = tpu_execute_device_launch.getDevice();
 
   auto function = execute_op->getParentOfType<mlir::func::FuncOp>();
   mlir::OpBuilder builder(execute_op);

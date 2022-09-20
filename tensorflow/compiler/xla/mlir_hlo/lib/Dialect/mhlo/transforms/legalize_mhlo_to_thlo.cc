@@ -393,7 +393,7 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
 
     Location loc = op.getLoc();
     auto thloScatter = rewriter.create<thlo::ScatterOp>(
-        loc, opType, adaptor.getScatterIndices(), adaptor.updates().front(),
+        loc, opType, adaptor.getScatterIndices(), adaptor.getUpdates().front(),
         adaptor.operands().front());
 
     Region& region = thloScatter.update_computation();

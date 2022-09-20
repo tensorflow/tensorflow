@@ -110,9 +110,9 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
     const std::string& tensor_name = device_key_map[i];
     auto send = builder.create<mlir::TF::_HostSendOp>(
         compile_op->getLoc(), compilation_key, tensor_name,
-        compile_op_launch.device(),
+        compile_op_launch.getDevice(),
         /*send_device_incarnation=*/0, local_devices[i]);
-    send->setAttr("device", compile_op_launch.deviceAttr());
+    send->setAttr("device", compile_op_launch.getDeviceAttr());
   }
 
   // Create Recv ops to receive program key from host to each xla device
@@ -142,7 +142,7 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
     auto recv = fn_builder.create<mlir::TF::_HostRecvOp>(
         compile_op->getLoc(),
         compilation_key.getType().cast<mlir::TensorType>(), device_key_map[i],
-        compile_op_launch.device(), /*send_device_incarnation=*/0,
+        compile_op_launch.getDevice(), /*send_device_incarnation=*/0,
         local_devices[i]);
     recv->setAttr("device", builder.getStringAttr(local_devices[i]));
 

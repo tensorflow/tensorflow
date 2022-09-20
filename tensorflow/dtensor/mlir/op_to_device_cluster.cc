@@ -87,7 +87,7 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
 
   op->replaceAllUsesWith(cluster);
 
-  cluster.body().push_back(new mlir::Block);
+  cluster.getBody().push_back(new mlir::Block);
 
   builder->setInsertionPointToEnd(&cluster.GetBody());
   builder->create<mlir::tf_device::ReturnOp>(op->getLoc(), op->getResults());

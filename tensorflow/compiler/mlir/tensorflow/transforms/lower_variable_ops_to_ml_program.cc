@@ -54,7 +54,7 @@ std::string GetVariableName(Operation* op) {
       return absl::StrCat("vars.", container, ".", shared_name);
     }
   } else if (auto global = dyn_cast<tf_saved_model::GlobalTensorOp>(op)) {
-    return absl::StrCat("vars.", global.sym_name().str());
+    return absl::StrCat("vars.", global.getSymName().str());
   }
   return "<no name>";
 }

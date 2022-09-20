@@ -45,7 +45,7 @@ bool IsSessionInitializer(mlir::func::FuncOp op) {
       op->getParentOfType<mlir::ModuleOp>());
   if (!session_initializer_op) return false;
 
-  for (auto sym_ref : session_initializer_op.initializers()) {
+  for (auto sym_ref : session_initializer_op.getInitializers()) {
     if (op.getSymName() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
       return true;
   }

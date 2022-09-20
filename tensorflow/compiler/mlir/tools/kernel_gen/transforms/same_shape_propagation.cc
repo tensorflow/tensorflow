@@ -225,7 +225,7 @@ class ShapeEqualityKnowledge {
         // Construct a symbol representing the allocated shape.
         SmallVector<ValueOrConst, 4> shape;
         ShapedType type = alloc.getResult().getType().cast<ShapedType>();
-        fillShapeFromAllocLike(alloc.dyn_sizes(), type, shape);
+        fillShapeFromAllocLike(alloc.getDynSizes(), type, shape);
         registerAssociation(ShapeValue{shape}, alloc.getResult());
         return;
       }

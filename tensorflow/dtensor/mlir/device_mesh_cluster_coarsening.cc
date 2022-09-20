@@ -196,7 +196,7 @@ mlir::LogicalResult CreateMergedMeshCluster(
 
   // Create a terminator op that returns all return values from
   // `current_cluster` and `merging_cluster`.
-  merged_cluster->body().push_back(new mlir::Block);
+  merged_cluster->getBody().push_back(new mlir::Block);
   builder->setInsertionPointToEnd(&merged_cluster->GetBody());
   builder->create<mlir::tf_device::ReturnOp>(merged_cluster->getLoc(),
                                              merged_cluster_output_values);

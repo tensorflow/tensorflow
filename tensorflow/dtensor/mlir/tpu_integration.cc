@@ -108,7 +108,7 @@ mlir::LogicalResult CreateTPUCluster(
 
   auto cluster = builder->create<mlir::tf_device::ClusterOp>(
       tpu_call.getLoc(), function->getCallableResults());
-  cluster.body().push_back(new mlir::Block);
+  cluster.getBody().push_back(new mlir::Block);
 
   auto& function_body = function_block.getOperations();
   cluster.GetBody().getOperations().splice(

@@ -410,7 +410,7 @@ void IdentifyXlaShardingForComputationOutputs(
   // tf_device.ClusterFunc as an attribute and the function as a result
   // attribute.
   for (auto result_and_retval :
-       llvm::zip(cluster_func.results(), terminator->getOpOperands())) {
+       llvm::zip(cluster_func.getResults(), terminator->getOpOperands())) {
     Value result = std::get<0>(result_and_retval);
     OpOperand& retval = std::get<1>(result_and_retval);
 
@@ -454,7 +454,7 @@ LogicalResult IdentifyXlaShardingForTPUComputation(
   // Look up function definition from module.
   func::FuncOp func =
       cluster_func->getParentOfType<ModuleOp>().lookupSymbol<func::FuncOp>(
-          cluster_func.func());
+          cluster_func.getFunc());
 
   bool use_spmd = false;
   if (auto use_spmd_attr = cluster_func->getAttrOfType<BoolAttr>(kUseSpmdAttr))

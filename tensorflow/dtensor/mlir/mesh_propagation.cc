@@ -199,7 +199,7 @@ mlir::LogicalResult InferMeshFromInputs(
     return result;
 
   mlir::visitUsedValuesDefinedAbove(
-      cluster.body(), cluster.body(), [&](mlir::OpOperand* operand) {
+      cluster.getBody(), cluster.getBody(), [&](mlir::OpOperand* operand) {
         if (mlir::failed(result)) return;
         absl::optional<Mesh> extracted_config;
 

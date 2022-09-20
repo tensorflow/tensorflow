@@ -137,7 +137,7 @@ mlir::LogicalResult GetInputProducingValue(mlir::OpOperand& operand,
 //    to computation to be constants.
 mlir::LogicalResult CloneConstantsAcrossMesh(
     mlir::tf_device::ClusterOp cluster) {
-  auto& body_region = cluster.body();
+  auto& body_region = cluster.getBody();
   Mesh mesh;
   if (mlir::failed(ExtractMeshFromCluster(cluster, &mesh)))
     return mlir::failure();
@@ -270,7 +270,7 @@ mlir::LogicalResult ReplaceCopyToMeshWithVirtualSendRecv(
   if (mlir::failed(ExtractMeshFromCluster(cluster, &current_mesh)))
     return mlir::failure();
 
-  mlir::Region& cluster_region = cluster.body();
+  mlir::Region& cluster_region = cluster.getBody();
   mlir::LogicalResult result = mlir::success();
 
   mlir::visitUsedValuesDefinedAbove(
