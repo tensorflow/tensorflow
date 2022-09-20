@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"  // IWYU pragma: keep
 
 #include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.h"
 
 namespace xla {
 namespace runtime {
@@ -45,6 +46,30 @@ LogicalResult TraceOp::verify() {
   if (getRegion().front().getNumArguments() > 0)
     return emitOpError("region cannot have any arguments");
   return success();
+}
+
+void TraceOp::build(OpBuilder &builder, OperationState &result,
+                    TypeRange results, Value exec_ctx,
+                    TraceAnnotationAttrInterface annotation,
+                    function_ref<void(OpBuilder &, Location)> bodyBuilder) {
+  result.addTypes(results);
+  result.addOperands(exec_ctx);
+  result.addAttribute("annotation", annotation);
+
+  Region *bodyRegion = result.addRegion();
+  Block &bodyBlock = bodyRegion->emplaceBlock();
+
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPointToStart(&bodyBlock);
+
+  // Create the default terminator if the builder is not provided and if the
+  // expected result is empty. Otherwise, leave this to the caller
+  // because we don't know which values to return from the trace op.
+  if (results.empty() && !bodyBuilder) {
+    builder.create<YieldOp>(result.location, ValueRange());
+  } else if (bodyBuilder) {
+    bodyBuilder(builder, result.location);
+  }
 }
 
 //===----------------------------------------------------------------------===//

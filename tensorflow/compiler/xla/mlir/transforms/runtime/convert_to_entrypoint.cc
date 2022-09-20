@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.h"
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
 
@@ -78,39 +80,66 @@ static void ConvertCustomCallOperations(func::FuncOp func, Value exec_ctx) {
     results.append(custom_call.call->getResultTypes().begin(),
                    custom_call.call->getResultTypes().end());
 
-    // Rewrite function call with a custom call, and check the return status.
-    auto call = b.create<CustomCallOp>(results, exec_ctx, custom_call.target,
-                                       custom_call.dynamic,
-                                       custom_call.call.getOperands());
+    // Build a custom call operation, maybe inside the trace region.
+    auto build_custom_call = [&](ImplicitLocOpBuilder b) -> CustomCallOp {
+      // Rewrite function call with a custom call, and check the return status.
+      auto call = b.create<CustomCallOp>(results, exec_ctx, custom_call.target,
+                                         custom_call.dynamic,
+                                         custom_call.call.getOperands());
 
-    // Copy optional attributes from the custom call function declaration.
-    llvm::ArrayRef<llvm::StringRef> callee_attrs =
-        custom_call.callee.getAttributeNames();
-    for (auto& attr : custom_call.callee->getAttrs()) {
-      if (isa_and_nonnull<RuntimeDialect>(attr.getNameDialect())) continue;
-      if (llvm::find(callee_attrs, attr.getName()) == callee_attrs.end())
-        call->setAttr(attr.getName(), attr.getValue());
-    }
+      // Copy optional attributes from the custom call function declaration.
+      llvm::ArrayRef<llvm::StringRef> callee_attrs =
+          custom_call.callee.getAttributeNames();
+      for (auto& attr : custom_call.callee->getAttrs()) {
+        if (isa_and_nonnull<RuntimeDialect>(attr.getNameDialect())) continue;
+        if (llvm::find(callee_attrs, attr.getName()) == callee_attrs.end())
+          call->setAttr(attr.getName(), attr.getValue());
+      }
 
-    // Copy optional attributes from the call operation to the custom call.
-    llvm::ArrayRef<llvm::StringRef> orig_attrs =
-        custom_call.call.getAttributeNames();
-    for (auto& attr : custom_call.call->getAttrs()) {
-      if (llvm::find(orig_attrs, attr.getName()) == orig_attrs.end())
-        call->setAttr(attr.getName(), attr.getValue());
+      // Copy optional attributes from the call operation to the custom call.
+      llvm::ArrayRef<llvm::StringRef> orig_attrs =
+          custom_call.call.getAttributeNames();
+      for (auto& attr : custom_call.call->getAttrs()) {
+        if (llvm::find(orig_attrs, attr.getName()) == orig_attrs.end())
+          call->setAttr(attr.getName(), attr.getValue());
+      }
+
+      return call;
+    };
+
+    // Builds the trace operation body region.
+    auto build_trace = [&](OpBuilder& builder, Location loc) {
+      ImplicitLocOpBuilder b(loc, builder);
+      auto call = build_custom_call(b);
+      call->removeAttr("rt.trace");
+      b.create<YieldOp>(call->getOpResults());
+    };
+
+    Value status;                // custom call status
+    SmallVector<OpResult> rets;  // custom call results
+
+    // Check if we must trace the custom call execution.
+    auto attrs = custom_call.call->getAttrDictionary();
+    if (auto traced = attrs.getAs<TraceAnnotationAttrInterface>("rt.trace")) {
+      auto trace = b.create<TraceOp>(results, exec_ctx, traced, build_trace);
+      status = trace.getResult(0);
+      rets = llvm::to_vector(llvm::drop_begin(trace->getResults()));
+    } else {
+      auto call = build_custom_call(b);
+      status = call.getStatus();
+      rets = llvm::to_vector(call.getResults());
     }
 
     b.create<cf::AssertOp>(
-        b.create<IsOkOp>(TypeRange(b.getI1Type()), call.getStatus()),
+        b.create<IsOkOp>(TypeRange(b.getI1Type()), status),
         b.getStringAttr("custom call '" + std::string(custom_call.target) +
                         "' failed"));
 
     // Forward users of the original results to custom call results.
-    auto rets = llvm::zip(custom_call.call.Op::getResults(),
-                          llvm::drop_begin(call.Op::getResults()));
-    llvm::for_each(rets, [](auto ret) {
-      std::get<0>(ret).replaceAllUsesWith(std::get<1>(ret));
-    });
+    llvm::for_each(llvm::zip(custom_call.call->getResults(), rets),
+                   [](auto ret) {
+                     std::get<0>(ret).replaceAllUsesWith(std::get<1>(ret));
+                   });
 
     // Keep track of custom call declaration to erase.
     erase_declarations.insert(custom_call.callee);

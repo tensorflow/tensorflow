@@ -255,10 +255,21 @@ def RT_TraceOp : RT_Op<"trace",
 
   let hasVerifier = 1;
 
-let extraClassDeclaration = [{
+  let extraClassDeclaration = [{
     // OpAsmOpInterface: Allow the dialect prefix to be omitted.
     static llvm::StringRef getDefaultDialect() { return "rt"; }
   }];
+
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    OpBuilder<(ins
+      "mlir::TypeRange":$results,
+      "mlir::Value":$exec_ctx,
+      "TraceAnnotationAttrInterface":$annotation,
+      CArg<"llvm::function_ref<void(mlir::OpBuilder&, mlir::Location)>",
+           "nullptr">:$bodyBuilder)>,
+  ];
 }
 
 //===----------------------------------------------------------------------===//

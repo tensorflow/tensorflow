@@ -70,3 +70,10 @@ func.func @trace(%ctx: !rt.execution_context) {
   rt.trace "string attribute", %ctx {}
   return
 }
+
+// -----
+func.func @trace_attribute(%ctx: !rt.execution_context) {
+  // expected-error @+1 {{"rt.trace" to be a trace annotation attribute}}
+  call @custom_call() { rt.trace = "foo" } : () -> ()
+  return
+}

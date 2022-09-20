@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project  // IWYU pragma: keep
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.h"
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
 
@@ -104,6 +105,14 @@ mlir::LogicalResult RuntimeDialect::verifyOperationAttribute(
       return op->emitOpError()
              << attribute.getName()
              << " can only be applied to a custom call declaration";
+    }
+  }
+
+  // Trace annotation should implement an attribute interface.
+  if (attribute.getName() == "rt.trace") {
+    if (!attribute.getValue().isa<TraceAnnotationAttrInterface>()) {
+      return op->emitOpError() << " requires " << attribute.getName()
+                               << " to be a trace annotation attribute";
     }
   }
 
