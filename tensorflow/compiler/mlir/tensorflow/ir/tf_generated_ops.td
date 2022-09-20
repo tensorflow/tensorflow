@@ -37,7 +37,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 
-def TF_AbsOp : TF_Op<"Abs", [TF_Idempotent, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_AbsOp : TF_Op<"Abs", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the absolute value of a tensor.";
 
   let description = [{
@@ -2077,7 +2077,7 @@ def TF_CastOp : TF_Op<"Cast", [NoSideEffect, SameOperandsAndResultShape]> {
   let hasFolder = 1;
 }
 
-def TF_CeilOp : TF_Op<"Ceil", [TF_Idempotent, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_CeilOp : TF_Op<"Ceil", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns element-wise smallest integer not less than x.";
 
   let arguments = (ins
@@ -2585,7 +2585,7 @@ the memory allocations reserved for TPUEmbedding.}]>:$memory_config
   );
 }
 
-def TF_ConjOp : TF_Op<"Conj", [TF_Involution, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_ConjOp : TF_Op<"Conj", [NoSideEffect, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns the complex conjugate of a complex number.";
 
   let description = [{
@@ -5355,7 +5355,7 @@ into a single Dataset.
   TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
 }
 
-def TF_FloorOp : TF_Op<"Floor", [TF_Idempotent, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_FloorOp : TF_Op<"Floor", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns element-wise largest integer not greater than x.";
 
   let arguments = (ins
@@ -6668,7 +6668,7 @@ I.e., \\(y = 1 / x\\).
   }];
 }
 
-def TF_InvertOp : TF_Op<"Invert", [TF_Involution, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_InvertOp : TF_Op<"Invert", [NoSideEffect, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Invert (flip) each bit of supported types; for example, type `uint8` value 01010101 becomes 10101010.
   }];
@@ -7833,7 +7833,7 @@ tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
   }];
 }
 
-def TF_Log1pOp : TF_Op<"Log1p", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef, TF_CwiseUnary]> {
+def TF_Log1pOp : TF_Op<"Log1p", [NoSideEffect, TF_CwiseUnary, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes natural logarithm of (1 + x) element-wise.";
 
   let description = [{
@@ -7909,7 +7909,7 @@ def TF_LogicalAndOp : TF_Op<"LogicalAnd", [Commutative, NoSideEffect, ResultsBro
   );
 }
 
-def TF_LogicalNotOp : TF_Op<"LogicalNot", [TF_Involution, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_LogicalNotOp : TF_Op<"LogicalNot", [NoSideEffect, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns the truth value of `NOT x` element-wise.";
 
   let arguments = (ins
@@ -10014,7 +10014,7 @@ def TF_NdtriOp : TF_Op<"Ndtri", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_NegOp : TF_Op<"Neg", [TF_Involution, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef, TF_CwiseUnary]> {
+def TF_NegOp : TF_Op<"Neg", [NoSideEffect, TF_CwiseUnary, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes numerical negative value element-wise.";
 
   let description = [{
@@ -10364,7 +10364,7 @@ output =
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Int32, TF_Int64, TF_Uint8]>, [{A tensor of indices.}]>:$indices,
+    Arg<TensorOf<[TF_Int32, TF_Int64, TF_Int8, TF_Uint8]>, [{A tensor of indices.}]>:$indices,
     Arg<TF_Int32Tensor, [{A scalar defining the depth of the one hot dimension.}]>:$depth,
     Arg<TF_Tensor, [{A scalar defining the value to fill in output when `indices[j] = i`.}]>:$on_value,
     Arg<TF_Tensor, [{A scalar defining the value to fill in output when `indices[j] != i`.}]>:$off_value,
@@ -10426,7 +10426,7 @@ op.}], [TF_DatasetIteratorAlloc]>:$handle
   );
 }
 
-def TF_OnesLikeOp : TF_Op<"OnesLike", [TF_Idempotent, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_OnesLikeOp : TF_Op<"OnesLike", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns a tensor of ones with the same shape and type as x.";
 
   let arguments = (ins
@@ -12133,7 +12133,7 @@ If `x` and `y` are reals, this will return the floating-point division.
   let hasFolder = 1;
 }
 
-def TF_ReciprocalOp : TF_Op<"Reciprocal", [TF_Involution, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_ReciprocalOp : TF_Op<"Reciprocal", [NoSideEffect, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the reciprocal of x element-wise.";
 
   let description = [{
@@ -12270,7 +12270,7 @@ set to `1` depending on `keep_dims`.}]>:$output
   );
 }
 
-def TF_ReluOp : TF_Op<"Relu", [TF_Idempotent, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef, TF_LayoutAgnostic]> {
+def TF_ReluOp : TF_Op<"Relu", [NoSideEffect, TF_Idempotent, TF_LayoutAgnostic, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes rectified linear: `max(features, 0)`.";
 
   let description = [{
@@ -12304,7 +12304,7 @@ array([0., 0., 3.], dtype=float32)
   }];
 }
 
-def TF_Relu6Op : TF_Op<"Relu6", [TF_Idempotent, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_Relu6Op : TF_Op<"Relu6", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes rectified linear 6: `min(max(features, 0), 6)`.";
 
   let arguments = (ins
@@ -14398,7 +14398,7 @@ bitwise_ops.right_shift(lhs, rhs)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RintOp : TF_Op<"Rint", [TF_Idempotent, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_RintOp : TF_Op<"Rint", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns element-wise integer closest to x.";
 
   let description = [{
@@ -14479,10 +14479,12 @@ The state of the RNG after
 `rng_read_and_skip(n)` will be the same as that after `uniform([n])`
 (or any other distribution). The actual increment added to the
 counter is an unspecified implementation choice.
+
+In the case that the input algorithm is RNG_ALG_AUTO_SELECT, the counter in the state needs to be of size int64[2], the current maximal counter size among algorithms. In this case, this op will manage the counter as if it is an 128-bit integer with layout [lower_64bits, higher_64bits]. If an algorithm needs less than 128 bits for the counter, it should use the left portion of the int64[2]. In this way, the int64[2] is compatible with all current RNG algorithms (Philox, ThreeFry and xla::RandomAlgorithm::RNG_DEFAULT). Downstream RNG ops can thus use this counter with any RNG algorithm.
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, [{The handle of the resource variable that stores the state of the RNG.}]>:$resource,
+    Arg<TF_ResourceTensor, [{The handle of the resource variable that stores the state of the RNG. The state consists of the counter followed by the key.}]>:$resource,
     Arg<TF_Int32Tensor, [{The RNG algorithm.}]>:$alg,
     Arg<TF_Uint64Tensor, [{The amount of advancement.}]>:$delta
   );
@@ -14541,7 +14543,7 @@ dimensions of `axis`.}]>:$output
   TF_DerivedOperandTypeAttr Tshift = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_RoundOp : TF_Op<"Round", [TF_Idempotent, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_RoundOp : TF_Op<"Round", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Rounds the values of a tensor to the nearest integer, element-wise.
   }];
@@ -14777,7 +14779,7 @@ with two matrices of new values.
 In Python, this scatter operation would look like this:
 
 ```python
-    indices = tf.constant([[0], [2]])
+    indices = tf.constant([[1], [3]])
     updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
                             [7, 7, 7, 7], [8, 8, 8, 8]],
                            [[5, 5, 5, 5], [6, 6, 6, 6],
@@ -14789,10 +14791,10 @@ In Python, this scatter operation would look like this:
 
 The resulting tensor would look like this:
 
-    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+    [[[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
      [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
+     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]]]
 
 Note that on CPU, if an out of bound index is found, an error is returned.
 On GPU, if an out of bound index is found, the index is ignored.
@@ -15514,7 +15516,7 @@ Specifically, `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`, and
   }];
 }
 
-def TF_SignOp : TF_Op<"Sign", [TF_Idempotent, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_SignOp : TF_Op<"Sign", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns an element-wise indication of the sign of a number.";
 
   let description = [{
@@ -16755,7 +16757,7 @@ def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
 
   let arguments = (ins
     Arg<TF_Tensor, [{The tensor to split.}]>:$value,
-    Arg<TF_I32OrI64Tensor, [{list containing the sizes of each output tensor along the split
+    Arg<TensorOf<[TF_Int32, TF_Int64, TF_Int8]>, [{list containing the sizes of each output tensor along the split
 dimension. Must sum to the dimension of value along split_dim.
 Can contain one -1 indicating that dimension is to be inferred.}]>:$size_splits,
     Arg<TF_Int32Tensor, [{0-D.  The dimension along which to split.  Must be in the range
@@ -21191,7 +21193,7 @@ def TF_XlogyOp : TF_Op<"Xlogy", [NoSideEffect, ResultsBroadcastableShape, TF_Sam
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_ZerosLikeOp : TF_Op<"ZerosLike", [TF_Idempotent, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns a tensor of zeros with the same shape and type as x.";
 
   let arguments = (ins
