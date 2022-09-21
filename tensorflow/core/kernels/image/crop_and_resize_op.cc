@@ -148,6 +148,10 @@ class CropAndResizeOp : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(
         context, image_height > 0 && image_width > 0,
         errors::InvalidArgument("image dimensions must be positive"), done);
+    OP_REQUIRES_ASYNC(context, box_index.dims() == 1,
+                      errors::InvalidArgument("box_indices must be 1-D",
+                                              box_index.shape().DebugString()),
+                      done);
     int num_boxes = 0;
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
