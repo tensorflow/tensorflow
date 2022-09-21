@@ -291,6 +291,10 @@ std::unique_ptr<Pass> CreateGroupByDialectPass();
 // Removes unused parameters from functions & their callers.
 std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveUnusedArgumentsPass();
 
+// Removes unused results from WhileRegion ops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateRemoveUnusedWhileResultsPass();
+
 // Populates the supplied passmanager with the passes required to run the
 // CPU/GPU bridge.
 void CreateTFXLABridgePipeline(OpPassManager& pm);
