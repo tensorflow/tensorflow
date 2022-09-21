@@ -44,10 +44,10 @@ namespace data {
 class DataServiceContext {
  public:
   virtual ~DataServiceContext() = default;
-  virtual void RecordBufferEnqueue(const std::vector<Tensor>& element) = 0;
-  virtual void RecordBufferDequeue(const std::vector<Tensor>& element) = 0;
   virtual std::unique_ptr<Thread> StartThread(const string& name,
                                               std::function<void()> fn) = 0;
+  virtual void RecordBufferEnqueue(const std::vector<Tensor>& element) = 0;
+  virtual void RecordBufferDequeue(const std::vector<Tensor>& element) = 0;
 };
 
 using DataServiceContextFactory =
@@ -63,11 +63,11 @@ class DataServiceClient {
   DataServiceClient(const DataServiceClient&) = delete;
   DataServiceClient& operator=(const DataServiceClient&) = delete;
 
-  // Initializes the client. The caller owns `ctx` and `recorder`.
+  // Initializes the client.
   Status Initialize();
 
-  // Reads the next element from tf.data servers. Blocks if the next element is
-  // not ready. The caller owns `ctx`.
+  // Reads the next element from tf.data workers. Blocks if the next element is
+  // not ready.
   virtual StatusOr<GetNextResult> GetNext(
       DataServiceContextFactory context_factory);
 

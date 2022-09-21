@@ -74,13 +74,13 @@ class TestDataServiceContext : public DataServiceContext {
   TestDataServiceContext() = default;
   ~TestDataServiceContext() override = default;
 
-  void RecordBufferEnqueue(const std::vector<Tensor>& element) override {}
-  void RecordBufferDequeue(const std::vector<Tensor>& element) override {}
   std::unique_ptr<Thread> StartThread(const string& name,
                                       std::function<void()> fn) override {
     return absl::WrapUnique(
         Env::Default()->StartThread({}, name, std::move(fn)));
   }
+  void RecordBufferEnqueue(const std::vector<Tensor>& element) override {}
+  void RecordBufferDequeue(const std::vector<Tensor>& element) override {}
 };
 
 std::unique_ptr<TestDataServiceContext> GetTestDataServiceContext() {

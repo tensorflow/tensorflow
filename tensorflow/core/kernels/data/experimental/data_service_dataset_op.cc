@@ -470,17 +470,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       DataServiceIteratorContext& operator=(const DataServiceIteratorContext&) =
           delete;
 
+      std::unique_ptr<Thread> StartThread(const string& name,
+                                          std::function<void()> fn) override {
+        return ctx_.StartThread(name, std::move(fn));
+      }
+
       void RecordBufferEnqueue(const std::vector<Tensor>& element) override {
         iterator_->RecordBufferEnqueue(&ctx_, element);
       }
 
       void RecordBufferDequeue(const std::vector<Tensor>& element) override {
         iterator_->RecordBufferDequeue(&ctx_, element);
-      }
-
-      std::unique_ptr<Thread> StartThread(const string& name,
-                                          std::function<void()> fn) override {
-        return ctx_.StartThread(name, std::move(fn));
       }
 
      private:
