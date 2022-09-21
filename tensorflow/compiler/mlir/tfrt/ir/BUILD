@@ -67,7 +67,6 @@ cc_library(
         ":tfrt_fallback_common",
         ":tfrt_fallback_opdefs",
         ":tfrt_fallback_sync_opdefs_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
