@@ -8,13 +8,10 @@
 // CHECK:         br label %[[VAL_4:.*]]
 // CHECK:       2:                                                ; preds = %[[VAL_5:.*]]
 // CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
-// CHECK-NEXT:                     mul i32
-// CHECK-NEXT:                     add i32
-// CHECK-NEXT:    %[[VAL_6_:.*]] = add i32
-// CHECK-NEXT:    %[[VAL_7:.*]] = getelementptr i32, ptr %[[VAL_0]], i32 %[[VAL_6_]]
+// CHECK:         %[[VAL_7:.*]] = getelementptr i32, ptr %[[VAL_0]], i32 %[[VAL_6]]
 // CHECK:         %[[VAL_8:.*]] = load i32, ptr %[[VAL_7]], align 4
 // CHECK:         %[[VAL_9:.*]] = add i32 %[[VAL_8]], %[[VAL_8]]
-// CHECK:         %[[VAL_10:.*]] = getelementptr i32, ptr %[[VAL_2]], i32 %[[VAL_6_]]
+// CHECK:         %[[VAL_10:.*]] = getelementptr i32, ptr %[[VAL_2]], i32 %[[VAL_6]]
 // CHECK:         store i32 %[[VAL_9]], ptr %[[VAL_10]], align 4
 // CHECK:         ret void
 // CHECK:       entry:
@@ -23,13 +20,10 @@
 // CHECK:         br label %[[VAL_15:.*]]
 // CHECK:       2:                                                ; preds = %[[VAL_16:.*]]
 // CHECK:         %[[VAL_17:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
-// CHECK-NEXT:                      mul i32
-// CHECK-NEXT:                      add i32
-// CHECK-NEXT:    %[[VAL_17_:.*]] = add i32
-// CHECK-NEXT:    %[[VAL_18:.*]] = getelementptr i32, ptr %[[VAL_11]], i32 %[[VAL_17_]]
+// CHECK:         %[[VAL_18:.*]] = getelementptr i32, ptr %[[VAL_11]], i32 %[[VAL_17]]
 // CHECK:         %[[VAL_19:.*]] = load i32, ptr %[[VAL_18]], align 4
 // CHECK:         %[[VAL_20:.*]] = add i32 %[[VAL_19]], %[[VAL_19]]
-// CHECK:         %[[VAL_21:.*]] = getelementptr i32, ptr %[[VAL_13]], i32 %[[VAL_17_]]
+// CHECK:         %[[VAL_21:.*]] = getelementptr i32, ptr %[[VAL_13]], i32 %[[VAL_17]]
 // CHECK:         store i32 %[[VAL_20]], ptr %[[VAL_21]], align 4
 // CHECK:         ret void
 // CHECK:       entry:
@@ -38,13 +32,10 @@
 // CHECK:         br label %[[VAL_26:.*]]
 // CHECK:       2:                                                ; preds = %[[VAL_27:.*]]
 // CHECK:         %[[VAL_28:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
-// CHECK-NEXT:                      mul i32
-// CHECK-NEXT:                      add i32
-// CHECK-NEXT:    %[[VAL_28_:.*]] = add i32
-// CHECK-NEXT:    %[[VAL_29:.*]] = getelementptr i32, ptr %[[VAL_22]], i32 %[[VAL_28_]]
+// CHECK:         %[[VAL_29:.*]] = getelementptr i32, ptr %[[VAL_22]], i32 %[[VAL_28]]
 // CHECK:         %[[VAL_30:.*]] = load i32, ptr %[[VAL_29]], align 4
 // CHECK:         %[[VAL_31:.*]] = add i32 %[[VAL_30]], %[[VAL_30]]
-// CHECK:         %[[VAL_32:.*]] = getelementptr i32, ptr %[[VAL_24]], i32 %[[VAL_28_]]
+// CHECK:         %[[VAL_32:.*]] = getelementptr i32, ptr %[[VAL_24]], i32 %[[VAL_28]]
 // CHECK:         store i32 %[[VAL_31]], ptr %[[VAL_32]], align 4
 // CHECK:         ret void
 // CHECK:       entry:
