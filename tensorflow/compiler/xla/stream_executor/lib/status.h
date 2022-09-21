@@ -28,8 +28,7 @@ namespace port {
 using Status = tsl::Status;  // TENSORFLOW_STATUS_OK
 
 #define SE_CHECK_OK(val) TF_CHECK_OK(val)
-#define SE_ASSERT_OK(val) \
-  ASSERT_EQ(::stream_executor::port::Status::OK(), (val))
+#define SE_ASSERT_OK(val) ASSERT_EQ(::stream_executor::port::Status(), (val))
 
 // Define some canonical error helpers.
 inline Status UnimplementedError(absl::string_view message) {
