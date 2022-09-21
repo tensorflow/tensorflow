@@ -34,6 +34,7 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>  // NOLINT
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -299,6 +300,7 @@ struct CacheEntry {
   // If an error occurred during the compilation, `fall_back_to_python` is set
   // to `true`, and other threads will fail with the same error.
   absl::Notification compilation_complete;
+  std::thread::id thread_id = std::this_thread::get_id();
 
   std::shared_ptr<xla::PyExecutable> executable;
   xla::PyTreeDef out_pytree_def;
@@ -980,6 +982,12 @@ xla::StatusOr<py::object> CompiledFunction::Call(
       // because any donated buffers will now be invalid.
       return py::object(out_tuple[0]);
     } else {
+      if (cache_entry->thread_id == std::this_thread::get_id()) {
+        auto error_string = absl::StrCat("Recursively calling jit: ",
+                                         arguments.signature.DebugString());
+        PyErr_SetString(PyExc_RecursionError, error_string.c_str());
+        throw pybind11::error_already_set();
+      }
       // Release the GIL while we wait, making sure the compile thread can
       // lock it.
       py::gil_scoped_release release;

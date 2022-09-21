@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/weakref_lru_cache.h"
 
 #include <memory>
+#include <string>
+#include <thread>  // NOLINT
 #include <utility>
 
 #include "absl/cleanup/cleanup.h"
@@ -56,6 +58,7 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     bool has_result = false;
     pybind11::object result;
     absl::Notification completed;
+    std::thread::id thread_id = std::this_thread::get_id();
   };
 
   struct CacheInfo {
@@ -153,6 +156,14 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
         entry->result = fn_(weakref_key, *args, **kwargs);
         entry->has_result = true;
       } else {
+        if (entry->thread_id == std::this_thread::get_id()) {
+          auto error_string = absl::StrCat(
+              "Recursively calling ",
+              pybind11::cast<std::string>(pybind11::repr(weakref_key)),
+              pybind11::cast<std::string>(pybind11::repr(args)));
+          PyErr_SetString(PyExc_RecursionError, error_string.c_str());
+          throw pybind11::error_already_set();
+        }
         pybind11::gil_scoped_release release;
         entry->completed.WaitForNotification();
       }
