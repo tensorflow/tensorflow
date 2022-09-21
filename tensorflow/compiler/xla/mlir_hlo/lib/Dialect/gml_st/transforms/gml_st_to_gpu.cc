@@ -131,17 +131,18 @@ static LogicalResult verifyLoopBoundsMatch(Value currentBound,
                  operands[2] == parallel.getStep().front());
 }
 
-/// Emits code that infers and correctly uses a version of `upperBound` in cases
-/// when the tiling size does not evenly divide the problem size.
+/// Emits code that infers and returns an iteration-independent version of
+/// `upperBound` in cases when the tiling size does not evenly divide the
+/// problem size.
 ///
 /// In these cases, `upperBound` depends on other values within the `launch`
-/// region, so it cannot be used to infer launch bounds of `launch`. This
+/// region, so it cannot be used to infer the launch bounds of `launch`. This
 /// function returns an approximation of `upperBound` that does not depend on
-/// such values, and emmits code that masks off extra threads that result from
-/// using the approximated value.
-static Value handleImperfectTile(LaunchOp launch, Value upperBound,
+/// such values, and emmits code that masks off extra threads (identified by
+/// `inductionVar`) that result from using the approximated value.
+static Value handleImperfectTile(Location loc, LaunchOp launch,
+                                 Value upperBound, Value inductionVar,
                                  PatternRewriter& rewriter) {
-  Location loc = upperBound.getLoc();
   // We are assuming that imperfect tiling is expressed through an affine.min
   // op with an affine map of the form (<something>)[<something>] ->
   // (<something>, tileSize), where <something>s possibly depend on values
@@ -157,18 +158,16 @@ static Value handleImperfectTile(LaunchOp launch, Value upperBound,
       affineMin.getMap().getResult(1).dyn_cast<AffineConstantExpr>();
   if (!tileSize) return upperBound;
 
-  // Insert a guard in the region to mask off threads that would operate on
-  // empty / negative-sized tiles.
-  // Here we are relying on the fact that affine.min will produce a negative
-  // value if our index is of bounds, which is currently true, since our maps
-  // are of the form (index)[size] -> (-index + size, tileSize).
-  auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+  // Insert a guard in the region to mask off threads that would operate outside
+  // the tile bounds.
   auto predicate = rewriter.create<arith::CmpIOp>(
-      loc, arith::CmpIPredicate::sgt, affineMin, zero);
+      loc, arith::CmpIPredicate::slt, inductionVar, upperBound);
   auto scfIf =
       rewriter.create<scf::IfOp>(loc, predicate, /*withElseRegion=*/false);
   rewriter.setInsertionPointToStart(&scfIf.getThenRegion().front());
 
+  // Create a constant corresponding to the tile size, and return it as the
+  // iteration-independent upper bound.
   PatternRewriter::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(launch);
   return rewriter.create<arith::ConstantIndexOp>(loc, tileSize.getValue());
@@ -199,7 +198,7 @@ static Value matchLaunchSpaceToLoop(ParallelOp parallel,
 
   // Infer the launch bound from the loop bounds and the step.
   Value iterIndependentUpperBound =
-      handleImperfectTile(launch, upperBound, rewriter);
+      handleImperfectTile(loc, launch, upperBound, inductionVar, rewriter);
   AffineMap launchBoundMap = AffineMap::get(
       /*dimCount=*/1, /*symbolCount=*/2,
       (rewriter.getAffineDimExpr(0) - rewriter.getAffineSymbolExpr(0))

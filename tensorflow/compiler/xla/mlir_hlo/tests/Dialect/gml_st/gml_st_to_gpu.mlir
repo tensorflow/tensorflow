@@ -192,17 +192,16 @@ func.func @imperfect_tiling(%arg0: memref<2051xf32>) -> memref<2051xf32> {
 }
 
 // CHECK-LABEL: @imperfect_tiling
-// CHECK-DAG:   %[[ZERO:.*]] = arith.constant 0 : index
 // CHECK:       gpu.launch blocks(%[[BLOCKID:.*]], %{{.*}}, %{{.*}}) in {{.*}} threads
 // CHECK-SAME:             (%[[THREADID:.*]], %[[WARPID:.*]], %{{.*}}) in
 // CHECK-DAG:   %[[ARG1:.*]] = affine.apply {{.*}}(%[[BLOCKID]])
 // CHECK-DAG:   %[[BTILESIZE:.*]] = affine.min {{.*}}(%[[ARG1]])
 // CHECK-DAG:   %[[ARG2:.*]] = affine.apply {{.*}}(%[[WARPID]])
-// CHECK-DAG:   %[[WCOND:.*]] = arith.cmpi sgt, %[[BTILESIZE]], %[[ZERO]]
+// CHECK-DAG:   %[[WCOND:.*]] = arith.cmpi slt, %[[ARG2:.*]], %[[BTILESIZE]]
 // CHECK-DAG:   scf.if %[[WCOND]]
 // CHECK-DAG:   %[[WTILESIZE:.*]] = affine.min {{.*}}(%[[ARG2]])[%[[BTILESIZE]]]
 // CHECK-DAG:   %[[ARG3:.*]] = affine.apply {{.*}}(%[[THREADID]])
-// CHECK-DAG:   %[[TCOND:.*]] = arith.cmpi sgt, %[[WTILESIZE]], %[[ZERO]]
+// CHECK-DAG:   %[[TCOND:.*]] = arith.cmpi slt, %[[ARG3:.*]], %[[WTILESIZE]]
 // CHECK-DAG:   scf.if %[[TCOND]]
 // CHECK:       memref.load
 // CHECK:       math.log
