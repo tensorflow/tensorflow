@@ -63,7 +63,7 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
     DeclareOpInterfaceMethods<TilingInterface>]> {
   let summary = "Destination-style twin for `mhlo.concatenate`";
   let arguments = (ins
-    Variadic<AnyTensor>:$operands,
+    Variadic<AnyTensor>:$inputs,
     AnyTensor:$init,
     I64Attr:$dimension
   );
@@ -71,8 +71,7 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.
-    mlir::ValueRange inputs() { return getOperands().drop_back(1); }
-    mlir::ValueRange getInputs() { return getOperands().drop_back(1); }
+    mlir::ValueRange inputs() { return getInputs(); }
     mlir::ValueRange outputs() { return getOperands().take_back(1); }
   }];
 }

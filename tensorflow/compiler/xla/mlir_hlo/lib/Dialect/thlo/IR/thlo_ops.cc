@@ -233,7 +233,7 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
   uint64_t concatDim = op.getDimension();
   auto resultTy = op.getResult().getType().cast<RankedTensorType>();
   int64_t rank = resultTy.getRank();
-  OperandRange allOperands = op.operands();
+  OperandRange allOperands = op.getInputs();
   Value anyOperand = allOperands.front();
 
   // Create the shared tile strides, which are the exact same for every operand
@@ -410,7 +410,7 @@ Value fuseConcatenateOpThroughPoint(ConcatenateOp op, OpBuilder &builder,
         loc, subset, builder.create<arith::ConstantIndexOp>(loc, i)));
   }
 
-  ValueRange initialOperands = op.operands();
+  ValueRange initialOperands = op.getInputs();
   return fuseConcatenateOpThroughPointRecursively(
       builder, loc, resultTy, concatDim, initialOffsets, initialOperands);
 }
