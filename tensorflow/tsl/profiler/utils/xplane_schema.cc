@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 
 #include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
 const absl::string_view kHostThreadsPlaneName = "/host:CPU";
@@ -386,4 +386,4 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
 /*static*/ std::atomic<uint64_t> XFlow::next_flow_id_(0);
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
