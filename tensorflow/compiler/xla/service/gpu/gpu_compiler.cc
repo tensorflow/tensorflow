@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <algorithm>
 #include <atomic>
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -462,10 +464,6 @@ Status GpuCompiler::OptimizeHloModule(
                             stream_exec);
     pipeline.AddPass<BFloat16Normalization>(&bf16);
 
-    // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
-    if (debug_options.xla_gpu_simplify_all_fp_conversions())
-      pipeline.AddPass<SimplifyFPConversions>();
-
     pipeline.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
@@ -793,8 +791,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<BFloat16Normalization>(&bf16);
 
   // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
-  if (debug_options.xla_gpu_simplify_all_fp_conversions())
+  if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
     pipeline.AddPass<SimplifyFPConversions>();
+  }
 
   // Choose the fastest algorithm for each conv.
   //
