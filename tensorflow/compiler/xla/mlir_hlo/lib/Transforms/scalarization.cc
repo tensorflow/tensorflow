@@ -75,7 +75,15 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
 
     // Clone everything but terminator.
     Block *body = genericOp.getBody();
-    for (Operation &op : body->without_terminator()) rewriter.clone(op, bvm);
+    for (Operation &op : body->without_terminator()) {
+      // `linalg.index` can only result in 0 for scalar linalg.generic.
+      if (auto indexOp = dyn_cast<linalg::IndexOp>(op)) {
+        Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+        bvm.map(indexOp.getResult(), zero);
+        continue;
+      }
+      rewriter.clone(op, bvm);
+    }
 
     // Wrap every scalar result into a tensor using `tensor.from_elements`.
     SmallVector<Value> newResults;

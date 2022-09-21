@@ -23,6 +23,27 @@ func.func @zero_rank(%lhs: tensor<f32>, %rhs: tensor<f32>) -> tensor<f32>  {
 
 // -----
 
+func.func @linalg_index(%arg0: tensor<1xf64>) -> tensor<1xf64> {
+  %0 = linalg.init_tensor [1] : tensor<1xf64>
+  %1 = linalg.generic {
+    indexing_maps = [affine_map<(d0) -> (d0)>],
+    iterator_types = ["parallel"]}
+    outs(%0 : tensor<1xf64>) {
+  ^bb0(%arg1: f64):
+    %2 = linalg.index 0 : index
+    %3 = tensor.extract %arg0[%2] : tensor<1xf64>
+    linalg.yield %3 : f64
+  } -> tensor<1xf64>
+  return %1 : tensor<1xf64>
+}
+// CHECK-LABEL: func @linalg_index
+// CHECK-SAME:      (%[[ARG:.*]]: tensor<1xf64>)
+// CHECK-NEXT:    %[[C0:.*]] = arith.constant 0
+// CHECK-NEXT:    %[[ELEM:.*]] = tensor.extract %[[ARG]][%[[C0]]]
+// CHECK-NEXT:    tensor.from_elements %[[ELEM]]
+
+// -----
+
 
 func.func @nonzero_rank(%lhs: tensor<1xf32>, %rhs: tensor<1x1xf32>)
     -> tensor<1x1x1xf32>  {
