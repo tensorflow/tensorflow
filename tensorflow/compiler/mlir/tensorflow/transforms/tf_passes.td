@@ -2365,7 +2365,7 @@ def OrderByDialectPass : Pass<"tf-order-by-dialect", "mlir::func::FuncOp"> {
   let constructor = "TF::CreateOrderByDialectPass()";
 }
 
-def GroupByDialectPass : Pass<"tf-group-by-dialect", "mlir::func::FuncOp"> {
+def GroupByDialectPass : Pass<"tf-group-by-dialect", "mlir::ModuleOp"> {
   let summary = "Groups ops into functions that only contain one dialect.";
   let description = [{
       Factors operations into subroutines such that all functions only
