@@ -34,11 +34,11 @@ namespace runtime {
 
 using namespace mlir;  // NOLINT
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_CONVERTTOENTRYPOINT
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
 
 class ConvertToEntrypointPass
-    : public ConvertToEntrypointBase<ConvertToEntrypointPass> {
+    : public impl::ConvertToEntrypointBase<ConvertToEntrypointPass> {
   void runOnOperation() override;
 };
 

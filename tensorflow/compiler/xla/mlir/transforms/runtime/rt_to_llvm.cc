@@ -61,7 +61,7 @@ using mlir::func::FuncOp;
 
 using llvm::DenseMap;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_CONVERTRUNTIMETOLLVMPASS
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
 
 //===----------------------------------------------------------------------===//
@@ -597,7 +597,7 @@ class UnsignedCastOpLowering : public OpConversionPattern<UnsignedCastOp> {
 //===----------------------------------------------------------------------===//
 
 class ConvertRuntimeToLLVMPass
-    : public ConvertRuntimeToLLVMPassBase<ConvertRuntimeToLLVMPass> {
+    : public impl::ConvertRuntimeToLLVMPassBase<ConvertRuntimeToLLVMPass> {
  public:
   explicit ConvertRuntimeToLLVMPass(ConvertRuntimeToLLvmOpts opts)
       : opts_(std::move(opts)) {}

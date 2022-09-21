@@ -47,7 +47,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_CONVERTLMHLOTOGPULAUNCHPASS
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
 
 using namespace mlir;  // NOLINT
@@ -62,7 +62,8 @@ using mlir::gpu::MemsetOp;
 using mlir::gpu::ReturnOp;
 
 class ConvertLmhloToGpuLaunchPass
-    : public ConvertLmhloToGpuLaunchPassBase<ConvertLmhloToGpuLaunchPass> {
+    : public impl::ConvertLmhloToGpuLaunchPassBase<
+          ConvertLmhloToGpuLaunchPass> {
  public:
   explicit ConvertLmhloToGpuLaunchPass(ThunkSequence* thunk_sequence)
       : thunk_sequence_(thunk_sequence) {}

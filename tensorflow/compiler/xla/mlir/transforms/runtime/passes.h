@@ -28,6 +28,10 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
+#define GEN_PASS_DECL_CONVERTTOENTRYPOINT
+#define GEN_PASS_DECL_CONVERTRUNTIMETOLLVMPASS
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
+
 //===-----------------------------------------------------------------------===/
 // Transformations targeting `rt` dialect.
 //===-----------------------------------------------------------------------===/
