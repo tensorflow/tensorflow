@@ -442,6 +442,8 @@ def register_custom_call_target(name, fn, platform='cpu'):
 
 # Deprecated. Use register_custom_call_target instead.
 register_cpu_custom_call_target = register_custom_call_target
+register_custom_call_partitioner = _xla.register_custom_call_partitioner
+hlo_sharding_util = _xla.hlo_sharding_util
 
 
 class PaddingConfigDimension:

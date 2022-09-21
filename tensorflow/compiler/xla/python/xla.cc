@@ -48,6 +48,7 @@ limitations under the License.
 #ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #endif  // XLA_PYTHON_ENABLE_TPU
+#include "tensorflow/compiler/xla/python/custom_call_sharding.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/mlir.h"
@@ -458,6 +459,7 @@ PYBIND11_MODULE(xla_extension, m) {
   jax::BuildTransferGuardSubmodule(m);
   BuildTracebackSubmodule(m);
   BuildMlirSubmodule(m);
+  BuildCustomCallShardingPybindAPI(m);
 
   py::class_<tensorflow::PreemptionSyncManager,
              std::unique_ptr<tensorflow::PreemptionSyncManager>>

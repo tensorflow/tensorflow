@@ -399,6 +399,30 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_call_sharding",
+    srcs = ["custom_call_sharding.cc"],
+    hdrs = ["custom_call_sharding.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/python:status_casters",
+        "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_sharding_util",
+        "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/synchronization",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "ops",
     srcs = ["ops.cc"],
     hdrs = ["ops.h"],
@@ -760,6 +784,7 @@ pybind_extension(
     visibility = ["//visibility:public"],
     deps = [
         ":dlpack",
+        ":custom_call_sharding",
         ":jax_jit",
         ":mlir",
         ":ops",
