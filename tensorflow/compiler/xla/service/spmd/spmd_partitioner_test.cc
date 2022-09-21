@@ -2499,6 +2499,34 @@ ENTRY entry {
           op::Shape("f32[63,14,126]")));
 }
 
+TEST_F(SpmdPartitioningTest, DeviceMaximalTupleSort) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ge {
+  p.0 = f32[] parameter(0)
+  p.1 = f32[] parameter(1)
+  p.2 = s32[] parameter(2)
+  p.3 = s32[] parameter(3)
+  ROOT compare = pred[] compare(p.0, p.1), direction=GT
+}
+
+ENTRY %main {
+  %p.0 = f32[3]{0} parameter(0), sharding={maximal device=0}
+  %iota = s32[3]{0} iota(), iota_dimension=0, sharding={maximal device=0}
+  ROOT %sort = (f32[3]{0}, s32[3]{0}) sort(p.0, iota), dimensions={0},
+    to_apply=ge, sharding={{maximal device=0}, {maximal device=0}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Sort(op::Parameter(0), op::Iota()),
+                          op::Shape("(f32[3], s32[3])")));
+}
+
 TEST_F(SpmdPartitioningTest, SortAlongNonPartitionedDimension) {
   absl::string_view hlo_string = R"(
 HloModule module
