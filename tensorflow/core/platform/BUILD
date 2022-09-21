@@ -164,7 +164,9 @@ cc_library(
 cc_library(
     name = "context",
     textual_hdrs = ["context.h"],
-    deps = tf_platform_deps("context"),
+    deps = [
+        "//tensorflow/tsl/platform:context",
+    ],
 )
 
 cc_library(

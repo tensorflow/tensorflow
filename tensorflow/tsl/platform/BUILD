@@ -388,6 +388,7 @@ filegroup(
         "bfloat16.h",
         "casts.h",
         "coding.h",
+        "context.h",
         "cpu_info.h",
         "crash_analysis.h",
         "dynamic_annotations.h",
@@ -468,6 +469,7 @@ filegroup(
         "casts.h",
         "coding.cc",
         "coding.h",
+        "context.h",
         "cpu_info.cc",
         "cpu_info.h",
         "demangle.h",
@@ -599,6 +601,7 @@ filegroup(
 
 exports_files(
     [
+        "context.h",
         "host_info.h",
         "human_readable_json.h",
         "bfloat16.h",
@@ -1324,4 +1327,11 @@ tf_cc_test(
         ":unbounded_work_queue",
         "@com_google_absl//absl/memory",
     ],
+)
+
+cc_library(
+    name = "context",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["context.h"],
+    deps = tf_platform_deps("context"),
 )

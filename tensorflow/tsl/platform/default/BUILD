@@ -24,14 +24,16 @@ cc_library(
 
 cc_library(
     name = "context",
-    hdrs = ["//tensorflow/core/platform:context.h"],
+    hdrs = ["//tensorflow/tsl/platform:context.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
     textual_hdrs = ["context.h"],
-    deps = ["//tensorflow/core/platform"],
+    deps = [
+        "//tensorflow/tsl/platform",
+    ],
 )
 
 cc_library(
