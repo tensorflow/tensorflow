@@ -490,9 +490,9 @@ class UnsortedSegmentReductionOp : public OpKernel {
                 errors::InvalidArgument("Input num_segments == ", output_rows,
                                         " must not be negative."));
     TensorShape output_shape;
-    output_shape.AddDim(output_rows);
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_rows));
     for (int i = segment_ids.dims(); i < data.dims(); i++) {
-      output_shape.AddDim(data.dim_size(i));
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(data.dim_size(i)));
     }
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
