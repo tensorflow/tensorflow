@@ -73,6 +73,13 @@ createConvertLmhloToGpuRuntimePass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertLmhloGpuToGpuRuntimePass();
 
+//===----------------------------------------------------------------------===//
+// XLA runtime performance tracing passes.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAddHloTraceAnnotationsPass();
+
 //===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION
