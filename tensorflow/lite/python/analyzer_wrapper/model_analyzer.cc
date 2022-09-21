@@ -13,15 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cctype>
+#include <ios>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/tools/delegates/compatibility/gpu/gpu_delegate_compatibility_checker.h"
+#include "tensorflow/lite/tools/delegates/compatibility/nnapi/nnapi_delegate_compatibility_checker.h"
+#include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 #include "tensorflow/lite/version.h"
 
@@ -382,7 +390,102 @@ void dump_model_stats(std::stringstream& out_stream,
                 "tensorflow/lite/schema/schema.fbs\n";
 }
 
-}  // namespace
+void dump_incompatible_nodes(std::stringstream& out_stream,
+                             std::string delegate, int subgraph_idx,
+                             const std::vector<int>& incompatible_nodes,
+                             bool& model_is_compatible) {
+  if (!incompatible_nodes.empty()) {
+    model_is_compatible = false;
+    out_stream << "\n"
+               << delegate << " COMPATIBILITY WARNING: Subgraph#"
+               << subgraph_idx << " has " << delegate
+               << " delegate compatibility issues at nodes "
+               << absl::StrJoin(incompatible_nodes, ", ")
+               << " with TFLite runtime version " << TF_VERSION_STRING << "\n";
+  }
+}
+
+void dump_subgraph_tensors(std::stringstream& out_stream, int subgraph_idx,
+                           const ::tflite::Model* model,
+                           const SubGraph* subgraph, ModelStats& stats) {
+  out_stream << "\nTensors of " << subgraph_str(subgraph_idx) << "\n";
+  auto tensors = subgraph->tensors();
+  for (int j = 0; j < tensors->Length(); ++j) {
+    auto tensor = tensors->Get(j);
+    out_stream << "  ";  // indents for tensors
+    dump_tensor_detail(out_stream, tensor, j, subgraph_idx, model, &stats);
+  }
+  out_stream << "\n";
+}
+
+void dump_if_model_is_compatible(std::stringstream& out_stream,
+                                 const std::string& delegate,
+                                 bool model_is_compatible) {
+  if (model_is_compatible) {
+    out_stream
+        << "\nYour model looks compatible with " << delegate << " delegate"
+        << " with TFLite runtime version " << TF_VERSION_STRING
+        << ".\nBut it doesn't guarantee that your model works well with "
+        << delegate
+        << " delegate.\nThere could be some runtime incompatibililty happen.\n";
+  }
+}
+
+// This function dumps the information about the subgraphs and operations,
+// and show any compatibility issue.
+void dump_result_summary(std::stringstream& out_stream,
+                         const ::tflite::Model* model, std::string delegate,
+                         ModelStats& stats,
+                         proto::CompatibilityResult& result) {
+  auto subgraphs = model->subgraphs();
+  bool model_is_compatible = true;
+  int comp_result_idx = 0;
+  for (int i = 0; i < subgraphs->Length(); ++i) {
+    std::vector<int> incompatible_nodes;
+    const SubGraph* subgraph = subgraphs->Get(i);
+    out_stream << subgraph_str(i);
+    if (subgraph->name()) {
+      out_stream << " " << subgraph->name()->str();
+    }
+    out_stream << "(";
+    dump_tensor_list(out_stream, subgraph->inputs(), i);
+    out_stream << ") -> [";
+    dump_tensor_list(out_stream, subgraph->outputs(), i);
+    out_stream << "]\n";
+    for (int j = 0; j < subgraph->operators()->Length(); ++j) {
+      const Operator* op = subgraph->operators()->Get(j);
+      const OperatorCode* op_code =
+          model->operator_codes()->Get(op->opcode_index());
+      out_stream << "  ";  // indents for operators
+      dump_node(out_stream, /*node_no=*/j, op_code, op, i, model);
+      if (comp_result_idx < result.compatibility_results_size()) {
+        proto::OpCompatibilityResult op_result =
+            result.compatibility_results(comp_result_idx++);
+        if (!op_result.is_supported()) {
+          incompatible_nodes.push_back(j);
+          for (const auto& compatibility_failure :
+               op_result.compatibility_failures()) {
+            out_stream << delegate << " COMPATIBILITY WARNING: "
+                       << compatibility_failure.description() << "\n";
+          }
+        }
+      } else {
+        out_stream.clear();
+        out_stream << delegate
+                   << " COMPATIBILITY WARNING: Check for model with "
+                      "custom operations not supported in "
+                   << delegate << " delegate.\n";
+        model_is_compatible = false;
+        break;
+      }
+    }
+
+    dump_incompatible_nodes(out_stream, delegate, i, incompatible_nodes,
+                            model_is_compatible);
+    dump_subgraph_tensors(out_stream, i, model, subgraph, stats);
+  }
+  dump_if_model_is_compatible(out_stream, delegate, model_is_compatible);
+}
 
 class StreamErrorReporter : public ErrorReporter {
  public:
@@ -407,10 +510,9 @@ std::string get_printable_string(const std::string& src) {
   return out.str();
 }
 
-std::string model_analyzer(const std::string& model_file_or_buffer,
-                           bool input_is_filepath,
-                           bool check_gpu_compatibility) {
-  std::stringstream out_stream;
+std::unique_ptr<FlatBufferModel> get_fb_model(
+    bool input_is_filepath, const std::string& model_file_or_buffer,
+    std::stringstream& out_stream) {
   StreamErrorReporter error_reporter(&out_stream);
   std::unique_ptr<FlatBufferModel> fb_model;
   if (input_is_filepath) {
@@ -418,7 +520,6 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
                                               &error_reporter);
     if (!fb_model) {
       out_stream << "Failed to mmap model " << model_file_or_buffer;
-      return out_stream.str();
     }
   } else {
     fb_model = FlatBufferModel::BuildFromBuffer(model_file_or_buffer.c_str(),
@@ -426,9 +527,21 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
                                                 &error_reporter);
     if (!fb_model) {
       out_stream << "Failed to mmap the given model buffer.";
-      return out_stream.str();
     }
   }
+
+  return fb_model;
+}
+
+}  // namespace
+
+std::string model_analyzer(const std::string& model_file_or_buffer,
+                           bool input_is_filepath,
+                           bool check_gpu_compatibility) {
+  std::stringstream out_stream;
+  auto fb_model =
+      get_fb_model(input_is_filepath, model_file_or_buffer, out_stream);
+
   const ::tflite::Model* model = fb_model->GetModel();
   auto* subgraphs = model->subgraphs();
   ModelStats stats;
@@ -465,31 +578,14 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
         }
       }
     }
-    if (!gpu_incompatible_nodes.empty()) {
-      model_is_gpu_compatible = false;
-      out_stream << "\nGPU COMPATIBILITY WARNING: Subgraph#" << i
-                 << " has GPU delegate compatibility issues at nodes "
-                 << absl::StrJoin(gpu_incompatible_nodes, ", ")
-                 << " with TFLite runtime version " << TF_VERSION_STRING
-                 << "\n";
-    }
+    dump_incompatible_nodes(out_stream, /*delegate=*/"GPU", i,
+                            gpu_incompatible_nodes, model_is_gpu_compatible);
 
-    // Dump Subgraph Tensors.
-    out_stream << "\nTensors of " << subgraph_str(i) << "\n";
-    auto tensors = subgraph->tensors();
-    for (int j = 0; j < tensors->Length(); ++j) {
-      auto tensor = tensors->Get(j);
-      out_stream << "  ";  // indents for tensors
-      dump_tensor_detail(out_stream, tensor, j, i, model, &stats);
-    }
-    out_stream << "\n";
+    dump_subgraph_tensors(out_stream, i, model, subgraph, stats);
   }
-  if (check_gpu_compatibility && model_is_gpu_compatible) {
-    out_stream
-        << "\nYour model looks compatible with GPU delegate"
-        << " with TFLite runtime version " << TF_VERSION_STRING
-        << ".\nBut it doesn't guarantee that your model works well with GPU "
-           "delegate.\nThere could be some runtime incompatibililty happen.\n";
+  if (check_gpu_compatibility) {
+    dump_if_model_is_compatible(out_stream, /*delegate=*/"GPU",
+                                model_is_gpu_compatible);
   }
 
   dump_model_signature_defs(out_stream, model);
@@ -498,4 +594,66 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
   return get_printable_string(out_stream.str());
 }
 
+std::string model_analyzer(
+    const std::vector<std::string>& checked_delegates,
+    const std::unordered_map<std::string, std::string>& delegate_configs,
+    const std::string& model_file_or_buffer, bool input_is_filepath) {
+  std::stringstream out_stream;
+  StreamErrorReporter error_reporter(&out_stream);
+  std::unique_ptr<FlatBufferModel> fb_model =
+      get_fb_model(input_is_filepath, model_file_or_buffer, out_stream);
+
+  const ::tflite::Model* model = fb_model->GetModel();
+  auto* subgraphs = model->subgraphs();
+  ModelStats stats;
+  stats.buffer_usage.resize(subgraphs->Length());
+
+  dump_model_summary(out_stream, model);
+
+  bool multiple_delegates = false;
+  for (const auto& delegate : checked_delegates) {
+    if (multiple_delegates) {
+      out_stream << "\n";
+    }
+    std::string upper_delegate = delegate;
+    for (char& c : upper_delegate) {
+      c = std::toupper(c);
+    }
+    proto::CompatibilityResult result;
+    if (upper_delegate == "NNAPI") {
+      out_stream << "--- NNAPI COMPATIBILITY ---"
+                 << "\n\n";
+      tools::NnapiDelegateCompatibilityChecker nnapi_dcc;
+      auto status = nnapi_dcc.setDccConfigurations(delegate_configs);
+      if (!status.ok()) {
+        out_stream << "Failed to set the configurations: " << status.message()
+                   << "\n";
+        continue;
+      }
+      status = nnapi_dcc.checkModelCompatibilityOnline(fb_model.get(), &result);
+      if (!status.ok()) {
+        out_stream << "Failed to check the model: " << status.message() << "\n";
+      } else {
+        dump_result_summary(out_stream, model, upper_delegate, stats, result);
+      }
+    } else if (upper_delegate == "GPU") {
+      out_stream << "--- GPU COMPATIBILITY ---"
+                 << "\n\n";
+      tools::GpuDelegateCompatibilityChecker gpu_dcc;
+      auto status =
+          gpu_dcc.checkModelCompatibilityOffline(fb_model.get(), &result);
+      if (!status.ok()) {
+        out_stream << "Failed to check the model: " << status.message() << "\n";
+      } else {
+        dump_result_summary(out_stream, model, upper_delegate, stats, result);
+      }
+    }
+    multiple_delegates = true;
+  }
+
+  dump_model_signature_defs(out_stream, model);
+  dump_model_stats(out_stream, model, fb_model->allocation()->bytes(), &stats);
+
+  return get_printable_string(out_stream.str());
+}
 }  // namespace tflite

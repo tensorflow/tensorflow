@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 
 namespace tflite {
 
@@ -70,6 +71,14 @@ void StatefulNnApiDelegate::Data::CacheDelegateKernel(
 NNAPIDelegateKernel* StatefulNnApiDelegate::Data::MaybeGetCachedDelegateKernel(
     const TfLiteDelegateParams* delegate_params) {
   return nullptr;
+}
+
+bool NNAPIDelegateKernel::Validate(
+    const TfLiteContext* context, const TfLiteRegistration* registration,
+    int android_sdk_version, const TfLiteNode* node,
+    bool is_accelerator_specified, NnapiDelegateVendorPlugin* vendor_plugin,
+    std::vector<NNAPIValidationFailure>* map_failures) {
+  return false;
 }
 
 }  // namespace tflite
