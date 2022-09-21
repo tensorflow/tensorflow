@@ -19,6 +19,8 @@ limitations under the License.
 #include <iterator>
 #include <map>
 #include <memory>
+#include <optional>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
@@ -253,38 +256,60 @@ Status CoordinationServiceAgentImpl::Connect() {
           "Coordination service agent is not in DISCONNECTED state."));
     }
   }
+  Status connect_status = errors::Unknown("Connection not attempted yet.");
   RegisterTaskRequest request;
   *request.mutable_source_task() = task_;
   request.set_incarnation(incarnation_id_);
   RegisterTaskResponse response;
-  absl::Notification n;
 
-  // Block until the remote service is up and the task is registered.
-  CallOptions call_opts;
   const int64_t register_timeout =
       configs_.cluster_register_timeout_in_ms() > 0
           ? configs_.cluster_register_timeout_in_ms()
           : absl::ToInt64Milliseconds(kDefaultClusterRegisterTimeout);
-  call_opts.SetTimeout(register_timeout);
-  leader_client_->RegisterTaskAsync(
-      &call_opts, &request, &response, [&](Status s) {
-        if (!s.ok()) {
-          SetError(s);
-        } else {
-          leader_incarnation_ = response.leader_incarnation();
-          {
-            mutex_lock l(state_mu_);
-            state_ = CoordinatedTaskState::TASKSTATE_CONNECTED;
+  const absl::Time deadline =
+      absl::Now() + absl::Milliseconds(register_timeout);
+  int attempt = 0;
+  std::default_random_engine generator;
+  std::uniform_real_distribution<double> distribution(0.0, 1.0);
+
+  do {
+    ++attempt;
+    CallOptions call_opts;
+    call_opts.SetTimeout(absl::ToInt64Milliseconds(deadline - absl::Now()));
+    absl::Notification n;
+    leader_client_->RegisterTaskAsync(
+        &call_opts, &request, &response, [&](Status s) {
+          if (s.ok()) {
+            leader_incarnation_ = response.leader_incarnation();
+            {
+              mutex_lock l(state_mu_);
+              state_ = CoordinatedTaskState::TASKSTATE_CONNECTED;
+            }
           }
-        }
-        n.Notify();
-      });
-  n.WaitForNotification();
-  {
-    mutex_lock l(state_mu_);
-    if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
-      return status_;
+          connect_status = s;
+          n.Notify();
+        });
+    n.WaitForNotification();
+
+    if (!connect_status.ok()) {
+      // Exponential backoff with jitter. Note we will retry for `init_timeout`
+      // time in total; the `14` here corresponds to an ~16s maximum interval
+      // between connection attempts.
+      const int backoff = 1 << std::min(14, attempt);
+      absl::SleepFor(absl::Milliseconds(backoff * distribution(generator)));
     }
+  } while (!connect_status.ok() && absl::Now() < deadline &&
+           // Retries are attempted for:
+           // 1. RPC errors.
+           // 2. aborted duplicate task registration error - this means that
+           // this task restarted and is trying to reconnect but the service
+           // has not restarted yet.
+           (connect_status.GetPayload(
+                tensorflow::CoordinationErrorPayloadKey()) == std::nullopt ||
+            errors::IsAborted(connect_status)));
+  if (!connect_status.ok()) {
+    SetError(connect_status);
+    return connect_status;
   }
 
   LOG(INFO) << "Coordination agent has successfully connected.";
