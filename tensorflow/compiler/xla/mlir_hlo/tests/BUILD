@@ -20,6 +20,7 @@ package(licenses = ["notice"])
             "@llvm-project//mlir:mlir-cpu-runner",
         ],
         # copybara:uncomment driver = "@llvm-project//mlir:run_lit",
+        tags = ["nomsan"],  # b/248097619
     )
     for src in glob(["**/*.mlir"])
 ]
