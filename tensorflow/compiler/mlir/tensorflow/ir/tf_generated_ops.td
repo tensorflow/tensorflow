@@ -21305,7 +21305,7 @@ expected to create these operators.
   TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF__FusedConv2DOp : TF_Op<"_FusedConv2D", [NoSideEffect]> {
+def TF__FusedConv2DOp : TF_Op<"_FusedConv2D", [AttrSizedOperandSegments, NoSideEffect]> {
   let summary = [{
 Performs a convolution followed by a specified series of operations.
   }];
@@ -21331,14 +21331,17 @@ create these operators.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$input,
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$filter,
-    Variadic<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>>:$args,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int8, TF_Qint8]>:$input,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int8, TF_Qint8]>:$filter,
+    Variadic<TF_Tensor>:$args,
+    Variadic<TF_Float32Tensor>:$host_args,
 
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_args,
     I64ArrayAttr:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$explicit_paddings,
-    DefaultValuedOptionalAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "\"NHWC\"">:$data_format,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["HWIO", "OIHW", "OIHW_VECT_I"]>, "\"HWIO\"">:$filter_format,
     DefaultValuedOptionalAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$fused_ops,
@@ -21347,11 +21350,12 @@ create these operators.
   );
 
   let results = (outs
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$output
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int8, TF_Qint8]>:$output
   );
 
-  TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
+  TF_DerivedOperandSizeAttr num_host_args = TF_DerivedOperandSizeAttr<3>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeListAttr TArgs = TF_DerivedOperandTypeListAttr<2>;
 }
 
 def TF__FusedMatMulOp : TF_Op<"_FusedMatMul", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {
