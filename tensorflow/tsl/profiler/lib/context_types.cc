@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/lib/context_types.h"
+#include "tensorflow/tsl/profiler/lib/context_types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
 const char* GetContextTypeString(ContextType context_type) {
@@ -48,4 +48,4 @@ const char* GetContextTypeString(ContextType context_type) {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

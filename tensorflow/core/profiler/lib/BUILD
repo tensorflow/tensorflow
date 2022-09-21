@@ -253,13 +253,14 @@ cc_library(
     name = "context_types_hdrs",
     hdrs = ["context_types.h"],
     visibility = ["//visibility:public"],
+    deps = ["//tensorflow/tsl/profiler/lib:context_types_hdrs"],
 )
 
 cc_library(
     name = "context_types",
-    srcs = ["context_types.cc"],
     hdrs = ["context_types.h"],
     visibility = ["//visibility:public"],
+    deps = ["//tensorflow/tsl/profiler/lib:context_types"],
 )
 
 cc_library(
