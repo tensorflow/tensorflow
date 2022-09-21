@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/tsl/framework/allocator_registry.h"
+
 #include <string>
 
-#include "tensorflow/core/framework/allocator_registry.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
-namespace tensorflow {
+namespace tsl {
 
 // static
 AllocatorFactoryRegistry* AllocatorFactoryRegistry::singleton() {
@@ -127,4 +128,4 @@ SubAllocator* AllocatorFactoryRegistry::GetSubAllocator(int numa_node) {
   }
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

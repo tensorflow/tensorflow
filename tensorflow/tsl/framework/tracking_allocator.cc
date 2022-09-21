@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/tracking_allocator.h"
+#include "tensorflow/tsl/framework/tracking_allocator.h"
 
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
 
-namespace tensorflow {
+namespace tsl {
 
 TrackingAllocator::TrackingAllocator(Allocator* allocator, bool track_sizes)
     : allocator_(allocator),
@@ -202,4 +202,4 @@ bool TrackingAllocator::UnRef() {
   return (ref_ == 0);
 }
 
-}  // end namespace tensorflow
+}  // end namespace tsl

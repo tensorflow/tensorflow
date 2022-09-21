@@ -15,18 +15,18 @@ limitations under the License.
 
 #include <atomic>
 
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/allocator_registry.h"
-#include "tensorflow/core/framework/tracking_allocator.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/framework/allocator.h"
+#include "tensorflow/tsl/framework/allocator_registry.h"
+#include "tensorflow/tsl/framework/tracking_allocator.h"
+#include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/stringprintf.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 
 // If true, cpu allocator collects more stats.
 static bool cpu_allocator_collect_stats = false;
@@ -125,8 +125,8 @@ class CPUAllocator : public Allocator {
     tensorflow::profiler::TraceMe::InstantActivity(
         [this, traceme_name, chunk_ptr, req_bytes,
          alloc_bytes]() TF_NO_THREAD_SAFETY_ANALYSIS {
-          const auto& annotation =
-              profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
+          const auto& annotation = tensorflow::profiler::
+              ScopedMemoryDebugAnnotation::CurrentAnnotation();
           return tensorflow::profiler::TraceMeEncode(
               traceme_name, {{"allocator_name", Name()},
                              {"bytes_reserved", stats_.bytes_reserved},
@@ -141,7 +141,7 @@ class CPUAllocator : public Allocator {
                              {"data_type", annotation.pending_data_type},
                              {"shape", annotation.pending_shape_func()}});
         },
-        /*level=*/profiler::TraceMeLevel::kInfo);
+        /*level=*/tensorflow::profiler::TraceMeLevel::kInfo);
   }
 
   absl::optional<AllocatorStats> GetStats() override {
@@ -217,4 +217,4 @@ class CPUAllocatorFactory : public AllocatorFactory {
 REGISTER_MEM_ALLOCATOR("DefaultCPUAllocator", 100, CPUAllocatorFactory);
 }  // namespace
 
-}  // namespace tensorflow
+}  // namespace tsl

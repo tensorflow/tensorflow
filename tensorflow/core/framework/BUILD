@@ -301,14 +301,11 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "allocator.cc",
         "allocator.h",
-        "allocator_registry.cc",
         "allocator_registry.h",
         "bfloat16.cc",
         "bfloat16.h",
         "bounds_check.h",
-        "cpu_allocator_impl.cc",
         "kernel_shape_util.cc",
         "kernel_shape_util.h",
         "log_memory.cc",
@@ -327,7 +324,6 @@ filegroup(
         "tensor_shape.cc",
         "tensor_shape.h",
         "tensor_types.h",
-        "tracking_allocator.cc",
         "tracking_allocator.h",
         "type_index.h",
         "type_traits.h",
@@ -482,12 +478,6 @@ filegroup(
 # applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
 cc_library(
     name = "allocator",
-    srcs = [
-        "allocator.cc",
-        "allocator_registry.h",
-        "tracking_allocator.cc",
-        "tracking_allocator.h",
-    ],
     hdrs = [
         "allocator.h",
     ],
@@ -498,6 +488,7 @@ cc_library(
         ":type_traits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "//tensorflow/tsl/framework:allocator",
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",
@@ -526,30 +517,9 @@ cc_library(
 # as otherwise duplicate registration in the registry will cause crashes.
 cc_library(
     name = "allocator_registry_impl",
-    srcs = [
-        "allocator.h",
-        "allocator_registry.cc",
-        "allocator_registry.h",
-        "cpu_allocator_impl.cc",
-        "tracking_allocator.h",
-    ],
     visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
-        ":numeric_types",
-        ":type_traits",
-        "//tensorflow/core/lib/gtl:inlined_vector",
-        "//tensorflow/core/lib/strings:strcat",
-        "//tensorflow/core/lib/strings:stringprintf",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:thread_annotations",
-        "//tensorflow/core/platform:types",
-        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
-        "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
+        "//tensorflow/tsl/framework:allocator_registry_impl",
     ],
     alwayslink = 1,
 )
@@ -668,6 +638,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/framework:numeric_types",
         "//third_party/eigen3",
     ],
 )
@@ -796,6 +767,7 @@ cc_library(
     deps = [
         ":numeric_types",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/framework:type_traits",
     ],
 )
 

@@ -39,7 +39,6 @@ namespace tensorflow {
 // Forward declarations.  In particular, we forward declare protos so that their
 // symbols can be removed from .so exports.
 class AllocationDescription;
-class Allocator;
 class OpKernelContext;
 class Tensor;
 class TensorBuffer;

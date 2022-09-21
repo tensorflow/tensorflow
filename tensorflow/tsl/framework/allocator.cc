@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/tsl/framework/allocator.h"
 
 #include <atomic>
 
-#include "tensorflow/core/framework/allocator_registry.h"
-#include "tensorflow/core/framework/tracking_allocator.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/framework/allocator_registry.h"
+#include "tensorflow/tsl/framework/tracking_allocator.h"
+#include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/stringprintf.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 
 string AllocatorStats::DebugString() const {
   return strings::Printf(
@@ -107,4 +107,4 @@ void SubAllocator::VisitFree(void* ptr, int index, size_t num_bytes) {
     free_visitors_[i](ptr, index, num_bytes);
   }
 }
-}  // namespace tensorflow
+}  // namespace tsl

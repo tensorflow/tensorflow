@@ -437,6 +437,7 @@ tf_cuda_library(
         "//tensorflow/core/util:determinism_hdr",
         "//tensorflow/core/public:version.h",
         "//tensorflow/lite/kernels/shim:tf_headers",
+        "//tensorflow/tsl/framework:allocator_hdrs",
     ] + if_mkl([
         "//tensorflow/core/util:mkl_util_hdrs",
     ]),
@@ -490,6 +491,8 @@ cc_library(
         "//tensorflow/core/framework:tensor_types.h",
         "//tensorflow/core/framework:type_traits.h",
         "//tensorflow/core/platform:framework_lite_hdrs",
+        "//tensorflow/tsl/framework:numeric_types.h",
+        "//tensorflow/tsl/framework:type_traits.h",
         "//tensorflow/tsl/platform:framework_lite_hdrs",
         "//tensorflow/tsl/platform/default:integral_types.h",
         "//tensorflow/tsl/platform/default:logging.h",
@@ -832,6 +835,7 @@ filegroup(
         "//tensorflow/core/util:mobile_srcs_no_runtime",
         "//tensorflow/core/util/ctc:mobile_srcs",
         "//tensorflow/core/profiler:mobile_srcs_no_runtime",
+        "//tensorflow/tsl/framework:mobile_srcs_no_runtime",
         "//tensorflow/tsl/platform:mobile_srcs_no_runtime",
     ] + glob(
         [
@@ -1548,6 +1552,7 @@ filegroup(
         "//tensorflow/core/util:framework_internal_private_hdrs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
+        "//tensorflow/tsl/framework:framework_internal_private_hdrs",
     ],
     visibility = ["//visibility:private"],
 )
@@ -1567,6 +1572,7 @@ filegroup(
         "//tensorflow/core/framework:tracking_allocator.h",  # only needed for tests
         "//tensorflow/core/framework:variant.h",
         "//tensorflow/core/util:framework_internal_public_hdrs",
+        "//tensorflow/tsl/framework:tracking_allocator.h",  # only needed for tests
     ],
     visibility = ["//visibility:private"],
 )
