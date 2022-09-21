@@ -56,6 +56,7 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -64,6 +65,19 @@ limitations under the License.
 
 namespace mlir {
 namespace TFL {
+
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ExpOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SqrtOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SquareOp);
+
 namespace {
 
 ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
