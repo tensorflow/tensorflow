@@ -533,6 +533,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status FindCompositeDeviceFromName(StringPiece device_name,
                                      CompositeDevice** device) const;
 
+  bool IsCustomDevice(const string& device_name) override;
+
   Status RegisterCustomDevice(const string& name,
                               std::unique_ptr<CustomDevice> device) override;
 

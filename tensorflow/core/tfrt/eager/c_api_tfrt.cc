@@ -1135,6 +1135,10 @@ ContextInterface::GetCustomDeviceOpHandler() {
   return context_.GetEagerContext()->GetCustomDeviceOpHandler();
 }
 
+bool ContextInterface::IsCustomDevice(const std::string& device_name) {
+  return context_.GetEagerContext()->IsCustomDevice(device_name);
+}
+
 tensorflow::Status ContextInterface::RegisterCustomDevice(
     const std::string& name, std::unique_ptr<tensorflow::CustomDevice> device) {
   return context_.GetEagerContext()->RegisterCustomDevice(name,

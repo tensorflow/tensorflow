@@ -1147,6 +1147,10 @@ TFE_TensorHandle* DefaultCustomDevicePack(TFE_Context* context,
 
 extern "C" {
 
+bool TFE_IsCustomDevice(TFE_Context* ctx, const char* device_name) {
+  return tensorflow::unwrap(ctx)->IsCustomDevice(device_name);
+}
+
 void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
                               const char* device_name, void* device_info,
                               TF_Status* status) {

@@ -1316,6 +1316,11 @@ class Context:
 
     return function_def
 
+  def is_custom_device(self, device_name):
+    """Calls TFE_IsCustomDevice. See the non-member function."""
+    self.ensure_initialized()
+    return pywrap_tfe.TFE_Py_IsCustomDevice(self._handle, device_name)
+
   def register_custom_device(self, device_capsule, device_name,
                              device_info_capsule):
     """Calls TFE_RegisterCustomDevice. See the non-member function."""
@@ -2704,6 +2709,23 @@ def remove_function(name):
 
 def get_function_def(name):
   return context().get_function_def(name)
+
+
+def is_custom_device(device_name):
+  """Calls TFE_IsCustomDevice.
+
+  Enables using C extensions specifying a custom device from Python. See the
+  experimental eager C API in tensorflow/c/eager/c_api_experimental.h for
+  details.
+
+  Args:
+    device_name: A string indicating the name to check whether it is a
+      registered custom device.
+
+  Returns:
+    A boolean.
+  """
+  return context().is_custom_device(device_name)
 
 
 def register_custom_device(device_capsule, device_name, device_info_capsule):

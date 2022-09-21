@@ -557,6 +557,10 @@ TF_CAPI_EXPORT extern void TFE_RegisterCustomDevice(TFE_Context* ctx,
                                                     void* device_info,
                                                     TF_Status* status);
 
+// Returns whether `device_name` maps to a registered custom device.
+TF_CAPI_EXPORT extern bool TFE_IsCustomDevice(TFE_Context* ctx,
+                                              const char* device_name);
+
 // Struct to be filled in to define a custom device tensor handle. Fields are
 // required except where indicated.
 typedef struct TFE_CustomDeviceTensorHandleMethods {
