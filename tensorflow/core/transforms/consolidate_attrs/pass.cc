@@ -179,7 +179,8 @@ ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionArgumentAttributes(
   auto empty_dict = DictionaryAttr::get(&getContext());
   for (auto i : llvm::seq<unsigned>(0, num_args)) {
     BlockArgument arg = GraphFuncOp::getDataValue(func.body(), i);
-    NamedAttrList attrs(func.getArgAttrs(arg.getArgNumber()));
+    NamedAttrList attrs(
+        func.FunctionOpInterfaceTrait::getArgAttrs(arg.getArgNumber()));
     Type arg_type = arg.getType();
     arg_type = refineTypeWithOutputShapes(arg_type, attrs);
     arg_type = refineTypeWithHandleData(arg_type, attrs.erase(handle_data_id_));

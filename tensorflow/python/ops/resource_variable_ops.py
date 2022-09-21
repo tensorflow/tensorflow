@@ -2381,6 +2381,31 @@ ops.NotDifferentiable("VarIsInitializedOp")
 ops.NotDifferentiable("VariableShape")
 
 
+# TODO(b/246356867): This is the draft implementation. Currently VariableSpec is
+# the only class using them. Move them to a separate file when necessary.
+class StructurePattern:
+  pass
+
+
+class PLeaf(StructurePattern):
+  """Represents a singleton leaf StructurePattern."""
+
+  def __new__(cls):
+    if not hasattr(cls, "instance"):
+      cls.instance = super().__new__(cls)
+    return cls.instance
+
+
+class PList(StructurePattern):
+  """Represents a list of StructurePatterns."""
+
+  def __init__(self, *components):
+    self.components = list(components)
+
+  def __eq__(self, other):
+    return isinstance(other, PList) and self.components == other.components
+
+
 class VariableSpec(tensor_spec.DenseSpec):
   """Describes a tf.Variable.
 
@@ -2524,6 +2549,10 @@ class VariableSpec(tensor_spec.DenseSpec):
                                 f"support alias_id=None, got self: {self}.")
 
     return super()._placeholder_value()
+
+  def _get_structure(self):
+    # shape, dtype, trainable, and alias_id are all leaves.
+    return PList(PLeaf(), PLeaf(), PLeaf(), PLeaf())
 
   def __repr__(self):
     return (f"{type(self).__name__}(shape={self.shape}, dtype={self.dtype!r}, "

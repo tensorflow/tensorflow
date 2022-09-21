@@ -17,18 +17,25 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_ENV_H_
 
 #include <vector>
+
 #include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
-
+namespace tsl {
+class Env;
 namespace thread {
 class ThreadPool;
+}  // namespace thread
+}  // namespace tsl
+namespace tensorflow {
+using Env = tsl::Env;
+
+namespace thread {
+using tsl::thread::ThreadPool;
 }  // namespace thread
 
 class CollectiveExecutorMgrInterface;
 class Device;
 class DeviceMgr;
-class Env;
 class RendezvousMgrInterface;
 class SessionMgr;
 

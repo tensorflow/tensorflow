@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 
+#include <memory>
 #include <optional>
+#include <utility>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -66,8 +70,10 @@ class SpmdPartitioningTest : public HloTestBase {
     // might create reshape/transposes around it.
     collective_ops_creator.create_cross_partition_all_gather = nullptr;
 
-    TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
-                                         hlo_module, GetModuleConfigForTest()));
+    HloModuleConfig config = GetModuleConfigForTest();
+    config.set_use_spmd_partitioning(true);
+    TF_ASSIGN_OR_RETURN(auto module,
+                        ParseAndReturnVerifiedModule(hlo_module, config));
     HloPassPipeline pass("spmd-partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
@@ -76,7 +82,25 @@ class SpmdPartitioningTest : public HloTestBase {
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
+
+    VerifyNoShardingOnCollectives(module.get());
     return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+  }
+
+  void VerifyNoShardingOnCollectives(HloModule* module) {
+    for (const HloComputation* c : module->computations()) {
+      for (const HloInstruction* inst : c->instructions()) {
+        if (!absl::c_linear_search(
+                std::vector<HloOpcode>{
+                    HloOpcode::kAllToAll, HloOpcode::kAllReduce,
+                    HloOpcode::kAllGather, HloOpcode::kCollectivePermute,
+                    HloOpcode::kReduceScatter},
+                inst->opcode())) {
+          continue;
+        }
+        EXPECT_FALSE(inst->has_sharding());
+      }
+    }
   }
 };
 
@@ -2561,6 +2585,39 @@ ENTRY %cluster_2013453984438090939__.47
   auto sort = FindInstruction(module.get(), "sort");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 4000);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 4000);
+}
+
+TEST_F(SpmdPartitioningTest, PartitionCustomCall_BatchPartitionedDims) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,32128] parameter(0)
+  %copy.0 = f32[8,32128] copy(%param0),
+    sharding={devices=[8,1]0,1,2,3,4,5,6,7}
+  %custom-call = (f32[8,2]{1,0}, s32[8,2]{1,0})
+    custom-call(%copy.0), custom_call_target="TopK"
+  %get-tuple-element = f32[8,2]{1,0}
+    get-tuple-element((f32[8,2]{1,0}, s32[8,2]{1,0}) %custom-call), index=0,
+    sharding={devices=[8,1]0,1,2,3,4,5,6,7}
+  %get-tuple-element.1 = s32[8,2]{1,0}
+    get-tuple-element((f32[8,2]{1,0}, s32[8,2]{1,0}) %custom-call), index=1,
+    sharding={devices=[8,1]0,1,2,3,4,5,6,7}
+  ROOT %tuple = (f32[8,2]{1,0}, s32[8,2]{1,0})
+    tuple(%get-tuple-element, %get-tuple-element.1),
+    sharding={{replicated}, {replicated}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  LOG(ERROR) << module->ToString();
+  auto custom_call = FindInstruction(module.get(), "custom-call.1");
+  EXPECT_EQ(custom_call->operand(0)->shape().dimensions(1), 32128);
+  auto sort = FindInstruction(module.get(), "sort");
+  EXPECT_EQ(sort->operand(0)->shape().dimensions(0), 1);
+  EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 2);
+  EXPECT_EQ(sort->operand(1)->shape().dimensions(0), 1);
+  EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 2);
 }
 
 TEST_F(SpmdPartitioningTest, PartitionCustomCall_TwoPartitionedDims) {

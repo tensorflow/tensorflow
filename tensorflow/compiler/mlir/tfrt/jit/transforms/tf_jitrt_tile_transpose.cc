@@ -73,9 +73,10 @@ bool IsTransposeGenericOp(Operation *op) {
 
   // Check parallel iterators.
   auto iterator_types = generic_op.iterator_types();
-  if (std::any_of(
-          iterator_types.begin(), iterator_types.end(),
-          [](Attribute attr) { return !mlir::isParallelIterator(attr); }))
+  if (std::any_of(iterator_types.begin(), iterator_types.end(),
+                  [](Attribute attr) {
+                    return !mlir::linalg::isParallelIterator(attr);
+                  }))
     return false;
 
   // Check that the two indexing maps are a permutation.

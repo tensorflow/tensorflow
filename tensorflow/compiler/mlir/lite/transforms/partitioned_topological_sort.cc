@@ -46,7 +46,7 @@ bool IsFlexDelegate(Operation *op) {
 
   // We never see TFL::IfOps in the IR -- it is flatbuffer_export that rewrites
   // them from TF::IfOps.
-  if (dyn_cast<TF::IfOp>(op)) {
+  if (isa<TF::IfOp>(op)) {
     return false;
   }
 

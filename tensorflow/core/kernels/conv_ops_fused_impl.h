@@ -39,12 +39,10 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -307,6 +305,12 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
     }
   }
 };
+
+template <>
+struct LaunchFusedConv2DOp<CPUDevice, int8>;
+
+template <>
+struct LaunchFusedConv2DOp<CPUDevice, qint8>;
 
 #if GOOGLE_CUDA
 
@@ -681,6 +685,12 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
   }
 };
 
+template <>
+struct LaunchFusedConv2DOp<GPUDevice, int8>;
+
+template <>
+struct LaunchFusedConv2DOp<GPUDevice, qint8>;
+
 #endif  // GOOGLE_CUDA
 
 template <typename Device, typename T>
@@ -715,12 +725,17 @@ class FusedConv2DOp : public OpKernel {
     // convolution with BiasAdd, but in practice it doesn't work, cuDNN ignores
     // this parameter and always does Relu activation.
     if (std::is_same<Device, GPUDevice>::value) {
-      patterns = {
-          {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
-          {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
-          {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
-          {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
-      };
+      if (std::is_same<T, int8>::value || std::is_same<T, qint8>::value) {
+        patterns = {{FCT::kBiasAdd, {"BiasAdd"}},
+                    {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}}};
+      } else {
+        patterns = {
+            {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
+            {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
+            {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
+            {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
+        };
+      }
     }
 
     OP_REQUIRES_OK(context, InitializeFusedComputation(
@@ -809,10 +824,12 @@ class FusedConv2DOp : public OpKernel {
   extern template struct PadInput<GPUDevice, T, int, 4>
 
 // Registration of the GPU implementations.
-#define REGISTER_FUSED_GPU_CONV2D(T)                                  \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("_FusedConv2D").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
-      FusedConv2DOp<GPUDevice, T>);
+#define REGISTER_FUSED_GPU_CONV2D(T)                    \
+  REGISTER_KERNEL_BUILDER(Name("_FusedConv2D")          \
+                              .Device(DEVICE_GPU)       \
+                              .TypeConstraint<T>("T")   \
+                              .HostMemory("host_args"), \
+                          FusedConv2DOp<GPUDevice, T>);
 
 #endif  // GOOGLE_CUDA
 

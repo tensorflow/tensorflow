@@ -10,6 +10,7 @@ load(
 
 package(
     default_visibility = [
+        "//tensorflow/compiler/jit:__subpackages__",
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
         "//tensorflow/compiler/xla:__subpackages__",

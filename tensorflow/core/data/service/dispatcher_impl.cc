@@ -492,7 +492,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     VLOG(3) << "RegisterDataset returns an existing dataset with ID = "
             << *dataset_id << ", fingerprint = " << fingerprint << ".";
     response->set_dataset_id(*dataset_id);
-    return Status::OK();
+    return OkStatus();
   }
 
   std::string new_dataset_id;
@@ -598,7 +598,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
   }
   VLOG(3) << "Received job id " << job->id << " for CreateJob("
           << request->DebugString() << ")";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherImpl::GetOrCreateIteration(
@@ -748,7 +748,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
   tensorflow::metrics::RecordTFDataServiceJobsCreated(
       request.processing_mode_def(), is_coordinated_read);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherImpl::CreateIteration(

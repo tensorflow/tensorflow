@@ -289,19 +289,7 @@ class Subgraph {
   // Ensure the data in `tensor.data` is readable. In case delegate is used,
   // it might require to copy the data from delegate buffer to raw memory.
   // WARNING: This is an experimental API and subject to change.
-  TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
-    TfLiteTensor* t = &tensors_[tensor_index];
-    TF_LITE_ENSURE(&context_, t != nullptr);
-    if (t->data_is_stale) {
-      TF_LITE_ENSURE(&context_, t->delegate != nullptr);
-      TF_LITE_ENSURE(&context_, t->buffer_handle != kTfLiteNullBufferHandle);
-      TF_LITE_ENSURE(&context_, t->delegate->CopyFromBufferHandle != nullptr);
-      TF_LITE_ENSURE_STATUS(t->delegate->CopyFromBufferHandle(
-          &context_, t->delegate, t->buffer_handle, t));
-      t->data_is_stale = false;
-    }
-    return kTfLiteOk;
-  }
+  TfLiteStatus EnsureTensorDataIsReadable(int tensor_index);
 
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;

@@ -238,7 +238,7 @@ class LiftTfliteFlexOpsPass
     func::FuncOp func = getOperation();
 
     mlir::RewritePatternSet patterns(context);
-    patterns.add<LiftFlexCustomOp>(context);
+    AddLiftTfliteFlexOpsPatterns(context, patterns);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       signalPassFailure();
       return;
@@ -247,6 +247,11 @@ class LiftTfliteFlexOpsPass
 };
 
 }  // namespace
+
+void AddLiftTfliteFlexOpsPatterns(MLIRContext* context,
+                                  RewritePatternSet& patterns) {
+  patterns.add<LiftFlexCustomOp>(context);
+}
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass() {
   return std::make_unique<LiftTfliteFlexOpsPass>();

@@ -15,20 +15,23 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/base_rendezvous_mgr.h"
 
-#include <memory>
 #include <unordered_set>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/hash/hash.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/distributed_runtime/session_mgr.h"
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -126,14 +129,14 @@ BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
                                            int64_t step_id)
     : env_(env),
       step_id_(step_id),
-      num_shards_(env_->experimental_num_shards),
-      local_(NewLocalRendezvous(num_shards_)),
-      session_(nullptr) {
-  DCHECK_GT(env_->experimental_num_shards, 0);
-}
+      local_(NewLocalRendezvous()),
+      session_(nullptr) {}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
-  calls_.clear();
+  {
+    mutex_lock l(calls_mu_);
+    calls_.clear();
+  }
   local_->Unref();
 }
 
@@ -405,20 +408,15 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
     }
   }
 
-  if (!status_ok) {
-    return;
-  }
-
-  // Aborts all active RecvTensor calls.
-  {
+  if (status_ok) {
+    // Aborts all active RecvTensor calls.
     mutex_lock l(calls_mu_);
-    for (auto& it : calls_) {
-      for (auto& bucket : it.second->buckets) {
-        mutex_lock l(bucket.mu);
-        for (auto& call : bucket.calls) {
-          call->StartAbort(derived_status);
-        }
+    for (auto& cm_and_token_and_calls : calls_) {
+      for (auto& call : cm_and_token_and_calls.second.second) {
+        call->StartAbort(derived_status);
       }
+      auto* cm = cm_and_token_and_calls.first;
+      calls_[cm].second.clear();
     }
     calls_.clear();
   }
@@ -437,106 +435,48 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
   }
 
   CancellationToken token = CancellationManager::kInvalidToken;
-  bool buckets_found = false;
-  {
-    tf_shared_lock l(calls_mu_);
-    if (cm != nullptr) {
-      already_cancelled = cm->IsCancelled();
-    }
-    auto it = calls_.find(cm);
-    buckets_found = it != calls_.end();
-    if (buckets_found && !already_cancelled) {
-      // Fast path for Cancellation manager that has been managed by this class.
-      it->second->num_calls.fetch_add(1);
-      auto& bucket =
-          it->second->buckets[absl::Hash<void*>{}(call) % num_shards_];
-      mutex_lock l(bucket.mu);
-      bool emplaced = bucket.calls.emplace(call).second;
-      CHECK(emplaced);  // Crash OK.
-      return;
-    }
-  }
-  if (!buckets_found) {
+  if (cm != nullptr) {
     mutex_lock l(calls_mu_);
     auto it = calls_.find(cm);
     if (it == calls_.end()) {
-      if (cm != nullptr) {
-        token = cm->get_cancellation_token();
-      }
-      it = calls_
-               .emplace(cm,
-                        std::make_unique<PendingCalls>(token, 1, num_shards_))
-               .first;
-
-      if (cm != nullptr) {
-        already_cancelled = !cm->RegisterCallback(token, [this, cm]() {
-          // Abort all the RecvTensor calls associated with thie cancellation
-          // manager.
-          absl::flat_hash_map<CancellationManager*,
-                              std::unique_ptr<PendingCalls>>::iterator it;
-          absl::flat_hash_set<BaseRecvTensorCall*> calls;
-          {
-            mutex_lock l(calls_mu_);
-            it = calls_.find(cm);
-            if (it == calls_.end()) {
-              return;
-            }
-            for (auto& bucket : it->second->buckets) {
-              {
-                mutex_lock l(bucket.mu);
-                calls.merge(bucket.calls);
-              }
-            }
-            calls_.erase(cm);
-          }
-          for (auto& call : calls) {
-            call->StartAbort(
-                errors::Cancelled("RecvFromRemoteAsync is cancelled."));
-          }
-        });
-
-        if (already_cancelled) {
-          calls_.erase(cm);
-        } else {
-          auto& bucket =
-              it->second->buckets[absl::Hash<void*>{}(call) % num_shards_];
-          mutex_lock l(bucket.mu);
-          bool emplaced = bucket.calls.emplace(call).second;
-          CHECK(emplaced);  // Crash OK.
-          return;
+      token = cm->get_cancellation_token();
+      already_cancelled = !cm->RegisterCallback(token, [this, cm]() {
+        mutex_lock l(calls_mu_);
+        // Abort all the RecvTensor calls associated with thie cancellation
+        // manager.
+        for (const auto& call : calls_[cm].second) {
+          call->StartAbort(
+              errors::Cancelled("RecvFromRemoteAsync is cancelled."));
         }
+      });
+
+      if (!already_cancelled) {
+        calls_.emplace(
+            cm,
+            std::make_pair(token, absl::flat_hash_set<BaseRecvTensorCall*>{}));
       }
     }
   }
 
   if (already_cancelled) {
     call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
+  } else {
+    mutex_lock l(calls_mu_);
+    bool emplaced = calls_[cm].second.emplace(call).second;
+    CHECK(emplaced);  // Crash OK.
   }
 }
 
 void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
                                           const Rendezvous::Args& args) {
   auto cm = args.cancellation_manager;
-  bool is_last_call = false;
-  {
-    tf_shared_lock l(calls_mu_);
-    auto it = calls_.find(cm);
-    if (it == calls_.end()) {
-      return;
-    }
-    auto& bucket = it->second->buckets[absl::Hash<void*>{}(call) % num_shards_];
-    {
-      mutex_lock l(bucket.mu);
-      bucket.calls.erase(call);
-    }
-    is_last_call = it->second->num_calls.fetch_sub(1) == 1 && cm != nullptr;
-  }
-  if (is_last_call) {
-    mutex_lock l(calls_mu_);
-    auto it = calls_.find(cm);
-    if (it->second->num_calls == 0) {
-      cm->TryDeregisterCallback(it->second->token);
-      calls_.erase(it);
+  mutex_lock l(calls_mu_);
+  CancellationToken token = calls_[cm].first;
+  calls_[cm].second.erase(call);
+  if (calls_[cm].second.empty()) {
+    calls_.erase(cm);
+    if (cm != nullptr) {
+      cm->TryDeregisterCallback(token);
     }
   }
 }

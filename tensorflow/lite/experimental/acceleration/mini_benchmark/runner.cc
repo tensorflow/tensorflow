@@ -66,6 +66,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <sys/stat.h>
 #ifndef _WIN32
+#include <poll.h>
+#include <signal.h>
 #include <unistd.h>
 #endif
 
@@ -76,9 +78,12 @@ limitations under the License.
 #include <thread>  // NOLINT(build/c++11)
 #include <vector>
 
+#include "absl/strings/numbers.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 #ifdef __ANDROID__
@@ -90,13 +95,6 @@ namespace acceleration {
 namespace {
 std::string ShellEscape(const std::string& src);
 }  // namespace
-
-ProcessRunner::ProcessRunner(const std::string& temporary_path,
-                             const std::string& function_name,
-                             int (*function_pointer)(int argc, char** argv))
-    : temporary_path_(temporary_path),
-      function_name_(function_name),
-      function_pointer_(reinterpret_cast<void*>(function_pointer)) {}
 
 MinibenchmarkStatus ProcessRunner::Init() {
   if (!function_pointer_) {
@@ -171,6 +169,40 @@ MinibenchmarkStatus ProcessRunner::Init() {
 #endif  // !__ANDROID__
 }
 
+// TODO(b/245901066): Refactor the runner to separate Multi-process
+// implementation and in process implementors, and remove the ifdef guards.
+#ifndef _WIN32
+bool ProcessRunner::KillProcessWhenTimedOut(FILE* fstream) {
+  // The first fread() should get subprocess id. It's important to
+  // read the same number of bytes as on the write side, so that this fread()
+  // does not block.
+  const int array_length = 1 + kPidBufferLength;
+  char buffer[array_length];
+  memset(buffer, '\0', array_length);
+  ssize_t length = fread(buffer, 1, kPidBufferLength, fstream);
+  int pid;
+  if (length != kPidBufferLength || !absl::SimpleAtoi(buffer, &pid)) {
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
+                    "Failed to get Validator subprocess id: %s", buffer);
+    return false;
+  }
+  struct pollfd pfd[1];
+  pfd[0].fd = fileno(fstream);
+  // Wait for the fstream to be closed.
+  pfd[0].events = POLLHUP;
+  int poll_ret = poll(pfd, 1, timeout_millisec_);
+  // Kill the subprocess if timed out.
+  if (poll_ret == 0) {
+    kill(pid, SIGKILL);
+    return true;
+  } else if (poll_ret < 0) {
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Validator timer failed: %s",
+                    strerror(errno));
+  }
+  return false;
+}
+#endif  // _WIN32
+
 MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
                                        const std::vector<std::string>& args,
                                        std::string* output, int* exitcode,
@@ -182,6 +214,7 @@ MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
     return kMinibenchmarkPreconditionNotMet;
   }
   int benchmark_process_status = 0;
+  MinibenchmarkStatus status = kMinibenchmarkCommandFailed;
 #ifndef __ANDROID__
   if (function_pointer_) {
     benchmark_process_status = RunInprocess(model, args);
@@ -238,6 +271,15 @@ MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
     }
   }
 
+  // Note: KillProcessWhenTimedOut() will block until f is closed or timeout has
+  // reached. It will cause issue if subprocess is blocked on writing to f.
+  if (timeout_millisec_ > 0 && KillProcessWhenTimedOut(f)) {
+    status = kMinibenchmarkCommandTimedOut;
+    TFLITE_LOG_PROD(
+        TFLITE_LOG_INFO,
+        "Validator did not finish after %dms. Tried to kill the test.",
+        timeout_millisec_);
+  }
   std::vector<char> buffer(4 * 1024, 0);
   ssize_t length;
   std::string ret;
@@ -252,13 +294,13 @@ MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
     *exitcode = WEXITSTATUS(benchmark_process_status);
     *signal = 0;
     if (*exitcode == kMinibenchmarkSuccess) {
-      return kMinibenchmarkSuccess;
+      status = kMinibenchmarkSuccess;
     }
   } else if (WIFSIGNALED(benchmark_process_status)) {
     *exitcode = 0;
     *signal = WTERMSIG(benchmark_process_status);
   }
-  return kMinibenchmarkCommandFailed;
+  return status;
 #endif  // _WIN32
 }
 
@@ -301,7 +343,7 @@ int ProcessRunner::RunInprocess(flatbuffers::FlatBufferBuilder* model,
       }
       close(pipe_fds[1]);
       if (written_bytes < 0 || remaining_bytes > 0) {
-        TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+        TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
                         "Failed to write Model to pipe: %s. Expect to write %d "
                         "bytes, %d bytes written.",
                         strerror(errno), remaining_bytes, written_bytes);

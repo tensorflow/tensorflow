@@ -585,7 +585,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
   if (!module.has_host_program_shape()) {
-    return tensorflow::errors::FailedPrecondition(
+    return tsl::errors::FailedPrecondition(
         "No program shape found in the proto");
   }
   ProgramShape program_shape(module.host_program_shape());
@@ -977,7 +977,7 @@ HloModule::HloModule(const std::string& name, HloModuleConfig config,
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(std::move(config)),
       unique_id_(next_unique_module_id_++),
-      metadata_(tensorflow::Env::Default()),
+      metadata_(tsl::Env::Default()),
       comp_envs_(std::move(comp_envs)) {
   metadata_.set_canonical_module_id(unique_id_);
 }

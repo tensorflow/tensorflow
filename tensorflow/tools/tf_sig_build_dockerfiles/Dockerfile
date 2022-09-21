@@ -34,12 +34,11 @@ RUN /setup.sources.sh && /setup.packages.sh /devel.packages.txt && /setup.cuda.s
 
 # Install various tools.
 # - bats: bash unit testing framework
-#         NOTE: v1.6.0 seems to have a bug that made "git" in setup_file break
 # - bazelisk: always use the correct bazel version
 # - buildifier: clean bazel build deps
 # - buildozer: clean bazel build deps
 # - gcloud SDK: communicate with Google Cloud Platform (GCP) for RBE, CI
-RUN git clone --branch v1.5.0 https://github.com/bats-core/bats-core.git && bats-core/install.sh /usr/local && rm -rf bats-core
+RUN git clone --branch v1.7.0 https://github.com/bats-core/bats-core.git && bats-core/install.sh /usr/local && rm -rf bats-core
 RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-linux-amd64 -O /usr/local/bin/bazel && chmod +x /usr/local/bin/bazel
 RUN wget https://github.com/bazelbuild/buildtools/releases/download/3.5.0/buildifier -O /usr/local/bin/buildifier && chmod +x /usr/local/bin/buildifier
 RUN wget https://github.com/bazelbuild/buildtools/releases/download/3.5.0/buildozer -O /usr/local/bin/buildozer && chmod +x /usr/local/bin/buildozer

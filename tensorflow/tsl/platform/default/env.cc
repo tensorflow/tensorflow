@@ -34,20 +34,20 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/load_library.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/ram_file_system.h"
-#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/default/posix_file_system.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/ram_file_system.h"
+#include "tensorflow/tsl/platform/strcat.h"
 
-namespace tensorflow {
+namespace tsl {
 
 namespace {
 
-mutex name_mutex(tensorflow::LINKER_INITIALIZED);
+mutex name_mutex(tsl::LINKER_INITIALIZED);
 
 std::map<std::thread::id, string>& GetThreadNameRegistry()
     TF_EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
@@ -251,7 +251,6 @@ REGISTER_FILE_SYSTEM("", PosixFileSystem);
 REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
 REGISTER_FILE_SYSTEM("ram", RamFileSystem);
 
-
 Env* Env::Default() {
   static Env* default_env = new PosixEnv;
   return default_env;
@@ -310,4 +309,4 @@ int setenv(const char* name, const char* value, int overwrite) {
 
 int unsetenv(const char* name) { return ::unsetenv(name); }
 
-}  // namespace tensorflow
+}  // namespace tsl

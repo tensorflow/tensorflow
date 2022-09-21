@@ -158,7 +158,7 @@ struct DTensorUpdateTPUMetadata
       auto mesh_or_status = Mesh::FromString(call_config.str());
       if (!mesh_or_status.ok()) return mlir::WalkResult::advance();
 
-      const auto mesh = mesh_or_status.ValueOrDie();
+      const auto mesh = mesh_or_status.value();
       if (!mesh.is_tpu_mesh()) return mlir::WalkResult::advance();
 
       auto function = MaybeFindFunction(op);

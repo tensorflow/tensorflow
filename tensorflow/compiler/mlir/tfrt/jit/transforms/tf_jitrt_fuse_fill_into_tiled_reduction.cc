@@ -61,8 +61,8 @@ using mlir::tensor::InsertSliceOp;
 
 SmallVector<OpFoldResult> GetParallelDimStep(LoopOp tiled_loop) {
   assert(tiled_loop.getNumLoops() == 2 && "Expected a 2D loop");
-  Value step = tiled_loop.isParallelDimension(0) ? tiled_loop.step().front()
-                                                 : tiled_loop.step().back();
+  Value step = tiled_loop.isParallelDimension(0) ? tiled_loop.getStep().front()
+                                                 : tiled_loop.getStep().back();
   if (auto constant = step.getDefiningOp<mlir::arith::ConstantOp>()) {
     return {constant.getValue()};
   }
@@ -265,10 +265,10 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
     auto loc = tiled_loop.getLoc();
     rewriter.setInsertionPoint(tiled_loop);
     auto new_loop = rewriter.create<LoopOp>(
-        loc, mlir::TypeRange(tiled_loop.outputs()), tiled_loop.getOperands(),
+        loc, mlir::TypeRange(tiled_loop.getOutputs()), tiled_loop.getOperands(),
         tiled_loop->getAttrs());
-    rewriter.inlineRegionBefore(tiled_loop.region(), new_loop.region(),
-                                new_loop.region().begin());
+    rewriter.inlineRegionBefore(tiled_loop.getRegion(), new_loop.getRegion(),
+                                new_loop.getRegion().begin());
 
     rewriter.replaceOp(tiled_loop, new_loop.getResult(0));
     return new_loop;
@@ -285,7 +285,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
     // Find tiled loop output operand and the corresponding block argument.
     mlir::OpOperand *loop_output_operand =
-        tiled_loop.findOutputOperand(tiled_loop.outputs().front());
+        tiled_loop.findOutputOperand(tiled_loop.getOutputs().front());
     BlockArgument loop_output_bb_arg =
         tiled_loop.getTiedBlockArgument(*loop_output_operand);
 

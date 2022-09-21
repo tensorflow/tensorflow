@@ -45,7 +45,7 @@ void ROCmPlatform::InspectNumaNodes() {
     StreamExecutorConfig config;
     for (int i = 0; i < VisibleDeviceCount(); i++) {
       config.ordinal = i;
-      StreamExecutor* exec = GetExecutor(config).ValueOrDie();
+      StreamExecutor* exec = GetExecutor(config).value();
       if (i == 0) {
         // NUMA nodes may not start at 0, so set the minimum node  based on the
         // first executor we see.
@@ -69,7 +69,7 @@ int ROCmPlatform::BusCount() {
 int ROCmPlatform::DeviceToBus(int device_ordinal) {
   StreamExecutorConfig config;
   config.ordinal = device_ordinal;
-  StreamExecutor* exec = GetExecutor(config).ValueOrDie();
+  StreamExecutor* exec = GetExecutor(config).value();
   return exec->GetDeviceDescription().numa_node() - min_numa_node_;
 }
 
@@ -81,7 +81,7 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::FirstExecutorForBus(
     if (DeviceToBus(i) == bus_ordinal) {
       StreamExecutorConfig config;
       config.ordinal = i;
-      return GetExecutor(config).ValueOrDie();
+      return GetExecutor(config).value();
     }
   }
 

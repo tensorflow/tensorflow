@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace {
 bool FLAGS_check_device_leaks = false;
@@ -132,8 +132,8 @@ MakeScopedTracer(StreamExecutor* stream_exec, BeginCallT begin_call,
 // TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.
 static int64_t GetMemoryLimitBytes() {
   int64_t value;
-  SE_CHECK_OK(tensorflow::ReadInt64FromEnvVar("TF_PER_DEVICE_MEMORY_LIMIT_MB",
-                                              0, &value));
+  SE_CHECK_OK(
+      tsl::ReadInt64FromEnvVar("TF_PER_DEVICE_MEMORY_LIMIT_MB", 0, &value));
   return value * (1ll << 20);
 }
 
@@ -935,15 +935,13 @@ port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
   DeviceMemoryBase result =
       executor->AllocateArray<uint8_t>(size, memory_space);
   if (size > 0 && result == nullptr) {
-    return tensorflow::errors::ResourceExhausted(absl::StrFormat(
+    return tsl::errors::ResourceExhausted(absl::StrFormat(
         "Failed to allocate request for %s (%uB) on device ordinal %d",
-        tensorflow::strings::HumanReadableNumBytes(size), size,
-        device_ordinal));
+        tsl::strings::HumanReadableNumBytes(size), size, device_ordinal));
   }
-  VLOG(3) << absl::StreamFormat(
-      "Allocated %s (%uB) on device ordinal %d: %p",
-      tensorflow::strings::HumanReadableNumBytes(size), size, device_ordinal,
-      result.opaque());
+  VLOG(3) << absl::StreamFormat("Allocated %s (%uB) on device ordinal %d: %p",
+                                tsl::strings::HumanReadableNumBytes(size), size,
+                                device_ordinal, result.opaque());
   return OwningDeviceMemory(result, device_ordinal, this);
 }
 
@@ -962,7 +960,7 @@ port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
 port::StatusOr<StreamExecutor*>
 StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) const {
   if (device_ordinal < 0) {
-    return tensorflow::errors::InvalidArgument(absl::StrFormat(
+    return tsl::errors::InvalidArgument(absl::StrFormat(
         "device ordinal value (%d) must be non-negative", device_ordinal));
   }
   for (StreamExecutor* se : stream_executors_) {
@@ -970,7 +968,7 @@ StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) const {
       return se;
     }
   }
-  return tensorflow::errors::NotFound(
+  return tsl::errors::NotFound(
       absl::StrFormat("Device %s:%d present but not supported",
                       platform()->Name(), device_ordinal));
 }

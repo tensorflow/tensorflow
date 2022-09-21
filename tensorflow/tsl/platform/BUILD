@@ -5,6 +5,7 @@
 #   to other TF components outside of TSL.
 
 # buildifier: disable=same-origin-load
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -16,6 +17,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_cuda_libdevice_path_deps",
     "tf_fingerprint_deps",
+    "tf_google_mobile_srcs_no_runtime",
     "tf_logging_deps",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
@@ -39,8 +41,12 @@ package(
 exports_files(
     [
         "mutex.h",
+        "stringpiece_test.cc",
     ],
-    visibility = ["//tensorflow/tsl:__subpackages__"],
+    visibility = [
+        "//tensorflow/core/platform:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
+    ],
 )
 
 cc_library(
@@ -70,6 +76,17 @@ cc_library(
 )
 
 cc_library(
+    name = "coding",
+    srcs = ["coding.cc"],
+    hdrs = ["coding.h"],
+    deps = [
+        ":byte_order",
+        ":stringpiece",
+        ":types",
+    ],
+)
+
+cc_library(
     name = "denormal",
     srcs = ["denormal.cc"],
     hdrs = ["denormal.h"],
@@ -90,6 +107,29 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
+)
+
+cc_library(
+    name = "env",
+    textual_hdrs = [
+        "env.h",
+        "file_system.h",
+        "file_system_helper.h",
+        "threadpool.h",
+    ],
+    deps = tf_windows_aware_platform_deps("env"),
+)
+
+cc_library(
+    name = "env_impl",
+    deps = tf_windows_aware_platform_deps("env_impl"),
+)
+
+cc_library(
+    name = "env_time",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["env_time.h"],
+    deps = tf_windows_aware_platform_deps("env_time"),
 )
 
 cc_library(
@@ -217,6 +257,7 @@ cc_library(
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
@@ -315,6 +356,12 @@ filegroup(
 )
 
 cc_library(
+    name = "tracing",
+    textual_hdrs = ["tracing.h"],
+    deps = tf_platform_deps("tracing"),
+)
+
+cc_library(
     name = "tstring",
     hdrs = [
         "ctstring.h",
@@ -342,10 +389,15 @@ filegroup(
     srcs = [
         "bfloat16.h",
         "casts.h",
+        "coding.h",
         "cpu_info.h",
         "crash_analysis.h",
         "dynamic_annotations.h",
+        "env.h",
         "errors.h",
+        "file_statistics.h",
+        "file_system.h",
+        "file_system_helper.h",
         "fingerprint.h",
         "init_main.h",
         "logger.h",
@@ -355,6 +407,7 @@ filegroup(
         "path.h",
         "prefetch.h",
         "protobuf.h",
+        "ram_file_system.h",
         "random.h",
         "resource.h",
         "stack_frame.h",
@@ -379,7 +432,9 @@ filegroup(
     name = "base_hdrs",
     srcs = [
         "byte_order.h",
+        "env_time.h",
         "macros.h",
+        "threadpool.h",
         "threadpool_interface.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -411,14 +466,23 @@ filegroup(
         "blocking_counter.h",
         "byte_order.h",
         "casts.h",
+        "coding.cc",
+        "coding.h",
         "cpu_info.cc",
         "cpu_info.h",
         "demangle.h",
         "denormal.cc",
         "denormal.h",
         "dynamic_annotations.h",
+        "env.cc",
+        "env.h",
+        "env_time.h",
         "errors.cc",
         "errors.h",
+        "file_statistics.h",
+        "file_system.cc",
+        "file_system.h",
+        "file_system_helper.h",
         "hash.cc",
         "hash.h",
         "host_info.h",
@@ -437,6 +501,7 @@ filegroup(
         "protobuf.cc",
         "protobuf.h",
         "protobuf_util.cc",
+        "ram_file_system.h",
         "raw_coding.h",
         "regexp.h",
         "resource.h",
@@ -459,8 +524,18 @@ filegroup(
         "stringprintf.cc",
         "stringprintf.h",
         "thread_annotations.h",
+        "threadpool.h",
         "threadpool_interface.h",
-    ],
+        "tracing.h",
+    ] + selects.with_or({
+        "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
+        "//conditions:default": [
+            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
+            "file_system_helper.cc",
+            "threadpool.cc",
+            "tracing.cc",
+        ],
+    }),
     compatible_with = get_compatible_with_portable(),
 )
 
@@ -527,11 +602,19 @@ exports_files(
         "crash_analysis.h",
         "cuda_libdevice_path.h",
         "demangle.h",
+        "env.cc",
+        "env.h",
+        "env_time.h",
+        "file_system.cc",
+        "file_system.h",
+        "file_system_helper.cc",
+        "file_system_helper.h",
         "init_main.h",
         "logging.h",
         "mem.h",
         "net.h",
         "numa.h",
+        "ram_file_system.h",
         "resource_loader.h",
         "resource.h",
         "snappy.h",
@@ -542,6 +625,10 @@ exports_files(
         "logging.h",
         "rocm_rocdl_path.h",
         "subprocess.h",
+        "threadpool.cc",
+        "threadpool.h",
+        "tracing.h",
+        "tracing.cc",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -578,6 +665,7 @@ filegroup(
         "platform.h",
         "setround.h",
         "snappy.h",
+        "tracing.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
@@ -665,6 +753,7 @@ filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
         "dynamic_annotations.h",
+        "env_time.h",
         "macros.h",
         "platform.h",
     ],
@@ -884,7 +973,7 @@ cc_library(
     deps = [
         ":logging",
         ":protobuf",
-        "//tensorflow/core/platform:env",
+        "//tensorflow/tsl/platform:env",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/synchronization",
     ],
@@ -986,6 +1075,14 @@ cc_library(
 )
 
 cc_library(
+    name = "file_statistics",
+    hdrs = ["file_statistics.h"],
+    deps = [
+        ":types",
+    ],
+)
+
+cc_library(
     name = "fingerprint",
     hdrs = ["fingerprint.h"],
     compatible_with = get_compatible_with_portable(),
@@ -1057,4 +1154,41 @@ cc_library(
     name = "tensor_float_32_hdr_lib",
     hdrs = [":tensor_float_32_hdr"],
     compatible_with = get_compatible_with_portable(),
+)
+
+tf_cc_test(
+    name = "ctstring_test",
+    size = "small",
+    srcs = ["ctstring_test.cc"],
+    deps = [
+        ":tstring",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "hash_test",
+    size = "small",
+    srcs = ["hash_test.cc"],
+    deps = [
+        ":hash",
+        ":logging",
+        ":test",
+        ":test_benchmark",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "tstring_test",
+    size = "small",
+    srcs = ["tstring_test.cc"],
+    deps = [
+        ":cord",
+        ":stringpiece",
+        ":tstring",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )

@@ -152,8 +152,6 @@ int StaticDeviceMgr::NumDeviceType(const string& type) const {
   return 0;
 }
 
-int StaticDeviceMgr::NumDevices() const { return devices_.size(); }
-
 Device* StaticDeviceMgr::HostCPU() const { return cpu_device_; }
 
 }  // namespace tensorflow

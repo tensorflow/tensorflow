@@ -24,10 +24,10 @@ module attributes {gpu.container_module} {
     %0 = memref.get_global @constant : memref<i32>
     gpu.memcpy  %arg0, %0 : memref<i32>, memref<i32>
 
+    // CHECK: %[[HOST_PRED:.*]] = memref.alloca() : memref<i1>
     // CHECK: scf.while : () -> ()
     "lmhlo.while"(%arg1) ({
       // CHECK: gpu.launch_func @cond::@fn
-      // CHECK: %[[HOST_PRED:.*]] = memref.alloca() : memref<i1>
       // CHECK: gpu.memcpy %[[HOST_PRED]], %[[ARG1]]
       // CHECK: %[[COND:.*]] = memref.load %[[HOST_PRED]][] : memref<i1>
       // CHECK: scf.condition(%[[COND]])

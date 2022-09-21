@@ -24,10 +24,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/subprocess.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -77,7 +77,7 @@ static const char kTestFlagString[] =
 // Test that the environment variable is parsed correctly.
 TEST(ParseFlagsFromEnv, Basic) {
   // Prepare environment.
-  tensorflow::setenv("TF_XLA_FLAGS", kTestFlagString, true /*overwrite*/);
+  tsl::setenv("TF_XLA_FLAGS", kTestFlagString, true /*overwrite*/);
   TestParseFlagsFromEnv("(flags in environment variable)");
 }
 
@@ -104,7 +104,7 @@ TEST(ParseFlagsFromEnv, File) {
   CHECK_EQ(ferror(fp), 0) << "writes failed to " << tmp_file;
   fclose(fp);
   // Prepare environment.
-  tensorflow::setenv("TF_XLA_FLAGS", tmp_file.c_str(), true /*overwrite*/);
+  tsl::setenv("TF_XLA_FLAGS", tmp_file.c_str(), true /*overwrite*/);
   TestParseFlagsFromEnv("(flags in file)");
   unlink(tmp_file.c_str());
 }
@@ -128,11 +128,11 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
   for (int i = 0; i != TF_ARRAYSIZE(test); i++) {
     if (test[i].env == nullptr) {
       // Might be set from previous tests.
-      tensorflow::unsetenv("TF_XLA_FLAGS");
+      tsl::unsetenv("TF_XLA_FLAGS");
     } else {
-      tensorflow::setenv("TF_XLA_FLAGS", test[i].env, /*overwrite=*/true);
+      tsl::setenv("TF_XLA_FLAGS", test[i].env, /*overwrite=*/true);
     }
-    tensorflow::SubProcess child;
+    tsl::SubProcess child;
     std::vector<std::string> argv;
     argv.push_back(binary_name);
     argv.push_back("--recursing");
@@ -140,8 +140,8 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
       argv.push_back(test[i].arg);
     }
     child.SetProgram(binary_name, argv);
-    child.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
-    child.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
+    child.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
+    child.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
     CHECK(child.Start()) << "test " << i;
     std::string stdout_str;
     std::string stderr_str;

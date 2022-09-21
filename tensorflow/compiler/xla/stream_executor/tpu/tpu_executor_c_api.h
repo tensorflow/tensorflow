@@ -292,7 +292,9 @@ void TpuHostLocation_Cores(SE_TpuTopology_Host* tpu_host_location,
                            SE_TpuTopology_Core** cores);
 
 // Async collective offloading.
+// Safe to call multiple times.
 void TpuAsyncCollectiveOffloadHelper_Init();
+// Must be called after TpuAsyncCollectiveOffloadHelper_Init.
 void TpuAsyncCollectiveOffloadHelper_Shutdown();
 
 // C API for XLA::Compiler interface

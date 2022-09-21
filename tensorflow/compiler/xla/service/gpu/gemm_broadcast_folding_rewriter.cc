@@ -54,7 +54,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
                             bcast->operand(0)->shape().dimensions_size());
       int num_batch_dims = dim_nums->lhs_batch_dimensions_size();
 
-      const tensorflow::protobuf::RepeatedField<int64_t> &batch_dimensions =
+      const tsl::protobuf::RepeatedField<int64_t> &batch_dimensions =
           (bcast_operand_index == 1) ? dim_nums->rhs_batch_dimensions()
                                      : dim_nums->lhs_batch_dimensions();
       // This optimization is only valid if the set of broadcasted dimensions

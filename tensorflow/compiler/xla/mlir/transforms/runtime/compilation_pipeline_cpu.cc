@@ -97,6 +97,12 @@ void CreateDefaultXlaCpuRuntimeCompilationPipeline(
 
   // TODO(ecg,ezhulenev): add missing conversion of scf.parallel to async work.
 
+  // Lower from high level async operations to async runtime.
+  pm.addPass(mlir::createAsyncToAsyncRuntimePass());
+
+  // Add async.runtime reference counting operations.
+  pm.addPass(mlir::createAsyncRuntimePolicyBasedRefCountingPass());
+
   // Expand math operations into std/arith dialect operations.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::arith::createArithmeticExpandOpsPass());

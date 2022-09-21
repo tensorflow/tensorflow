@@ -12,18 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include <cstring>
 #include <string>
 
 #include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model_wrapper.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 PYBIND11_MODULE(pywrap_quantize_model, m) {
   m.def(
       "clear_calibrator",
-      []() {
+      [] {
         tensorflow::quantization::ClearCollectedInformationFromCalibrator();
       },
       R"pbdoc(
@@ -59,13 +59,15 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::string_view exported_names_str,
          const absl::string_view tags,
          const absl::string_view quant_opts_serialized) {
-        return tensorflow::PyoOrThrow(
+        const std::string graph_def_serialized =
             tensorflow::quantization::QuantizeQatModel(saved_model_path,
                                                        exported_names_str, tags,
-                                                       quant_opts_serialized));
+                                                       quant_opts_serialized);
+
+        return py::bytes(graph_def_serialized);
       },
       R"pbdoc(
-      Returns a TF model graph def string.
+      Returns serialized GraphDef of a TF model.
     )pbdoc");
   m.def(
       "quantize_ptq_dynamic_range",
@@ -73,25 +75,29 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::string_view exported_names_str,
          const absl::string_view tags,
          const absl::string_view quant_opts_serialized) {
-        return tensorflow::PyoOrThrow(
+        const std::string graph_def_serialized =
             tensorflow::quantization::QuantizePtqDynamicRange(
                 saved_model_path, exported_names_str, tags,
-                quant_opts_serialized));
+                quant_opts_serialized);
+
+        return py::bytes(graph_def_serialized);
       },
       R"pbdoc(
-      Returns a TF model graph def string.
+      Returns serialized GraphDef of a TF model.
     )pbdoc");
   m.def(
       "quantize_ptq_model_pre_calibration",
       [](const absl::string_view saved_model_path,
          const absl::string_view exported_names_str,
          const absl::string_view tags) {
-        return tensorflow::PyoOrThrow(
+        const std::string graph_def_serialized =
             tensorflow::quantization::QuantizePtqModelPreCalibration(
-                saved_model_path, exported_names_str, tags));
+                saved_model_path, exported_names_str, tags);
+
+        return py::bytes(graph_def_serialized);
       },
       R"pbdoc(
-      Returns a TF model graph def string.
+      Returns serialized GraphDef of a TF model.
     )pbdoc");
   m.def(
       "quantize_ptq_model_post_calibration",
@@ -99,12 +105,14 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::string_view exported_names_str,
          const absl::string_view tags,
          const absl::string_view quant_opts_serialized) {
-        return tensorflow::PyoOrThrow(
+        const std::string graph_def_serialized =
             tensorflow::quantization::QuantizePtqModelPostCalibration(
                 saved_model_path, exported_names_str, tags,
-                quant_opts_serialized));
+                quant_opts_serialized);
+
+        return py::bytes(graph_def_serialized);
       },
       R"pbdoc(
-      Returns a TF model graph def string.
+      Returns serialized GraphDef of a TF model.
     )pbdoc");
 }

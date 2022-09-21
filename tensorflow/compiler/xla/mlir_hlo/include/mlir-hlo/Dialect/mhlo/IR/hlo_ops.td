@@ -1121,9 +1121,24 @@ def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
     HLO_Tensor:$operand,
     I64Attr:$all_gather_dim,
     I64ElementsAttr:$replica_groups,
-    OptionalAttr<ChannelHandle>:$channel_handle
+    OptionalAttr<ChannelHandle>:$channel_handle,
+    UnitAttr:$use_global_device_ids
   );
   let results = (outs HLO_Tensor);
+  // use_global_device_ids is rarely used, so we add simplified builder methods
+  // for convenience.
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "::mlir::IntegerAttr":$all_gather_dim,
+      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>,
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "uint64_t":$all_gather_dim,
+      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
+
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
@@ -1145,8 +1160,8 @@ def HLO_AllReduceOp : HLO_Op<"all_reduce",
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);
-  // use_global_device_ids is rarely used, so we add a simplified
-  // builder method for convenience.
+  // use_global_device_ids is rarely used, so we add a simplified builder method
+  // for convenience.
   let builders = [
     OpBuilder<(ins
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
@@ -1169,10 +1184,25 @@ def HLO_ReduceScatterOp : HLO_Op<"reduce_scatter",
     HLO_Tensor:$operand,
     I64Attr:$scatter_dimension,
     I64ElementsAttr:$replica_groups,
-    OptionalAttr<ChannelHandle>:$channel_handle
+    OptionalAttr<ChannelHandle>:$channel_handle,
+    UnitAttr:$use_global_device_ids
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);
+  // use_global_device_ids is rarely used, so we add simplified builder methods
+  // for convenience.
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "::mlir::IntegerAttr":$scatter_dimension,
+      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>,
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "uint64_t":$scatter_dimension,
+      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
+
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }

@@ -275,18 +275,21 @@ class TRTEngineOp : public AsyncOpKernel {
   bool use_explicit_precision_;
 };
 
-#define TYPECASE(dt, X, Y)                                    \
+#define TYPECASE(dt, X)                                       \
   case dt: {                                                  \
     return (void*)X->flat<EnumToDataType<dt>::Type>().data(); \
   }
 
 void* GetTensorAddress(const Tensor* tensor_ptr) {
-  auto tensor_type = tensor_ptr->dtype();
+  const auto tensor_type = tensor_ptr->dtype();
   switch (tensor_type) {
-    TYPECASE(DT_FLOAT, tensor_ptr, dest_ptr);
-    TYPECASE(DT_HALF, tensor_ptr, dest_ptr);
-    TYPECASE(DT_INT8, tensor_ptr, dest_ptr);
-    TYPECASE(DT_INT32, tensor_ptr, dest_ptr);
+    TYPECASE(DT_FLOAT, tensor_ptr);
+    TYPECASE(DT_HALF, tensor_ptr);
+    TYPECASE(DT_INT8, tensor_ptr);
+    TYPECASE(DT_INT32, tensor_ptr);
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    TYPECASE(DT_BOOL, tensor_ptr);
+#endif
     default: {
       LOG(ERROR) << "Unsupported Data type " << DataTypeString(tensor_type);
       return nullptr;
@@ -1285,21 +1288,20 @@ Status TRTEngineOp::AllocateCalibrationResources(
   VLOG(1) << "Constructing calibrator";
   for (int i = 0; i < num_inputs; i++) {
     // allocate workspace on device for inputs
+    auto* input = &cres->device_tensors_.at(i);
     const Tensor& t = ctx->input(i);
     shapes.emplace_back(t.shape());
-    TF_RETURN_IF_ERROR(
-        ctx->allocate_temp(t.dtype(), t.shape(), &cres->device_tensors_.at(i)));
-    CHECK_EQ(t.TotalBytes(),  // Crash OK
-             (cres->device_tensors_.at(i)).TotalBytes());
-    void* device_address = GetTensorAddress(&cres->device_tensors_.at(i));
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(t.dtype(), t.shape(), input));
+    CHECK_EQ(t.TotalBytes(), input->TotalBytes());  // Crash OK
+
+    void* device_address = GetTensorAddress(input);
     if (device_address == nullptr) {
       return errors::InvalidArgument(
           "Unsupported data type encountered in input ", i);
     }
     cres->device_buffers_.emplace(
         StrCat(IONamePrefixes::kInputPHName, i),
-        std::pair<void*, size_t>(device_address,
-                                 cres->device_tensors_.at(i).TotalBytes()));
+        std::pair<void*, size_t>(device_address, input->TotalBytes()));
   }
   cres->calibrator_.reset(
       new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));

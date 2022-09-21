@@ -89,6 +89,7 @@ pybind_extension(
         "@ruy//:__subpackages__",
         "@snappy//:__subpackages__",
         "@sobol_data//:__subpackages__",
+        "@stablehlo//:__subpackages__",
         "//:__subpackages__",
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",

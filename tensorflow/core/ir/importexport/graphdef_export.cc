@@ -304,7 +304,7 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
   }
 
   // Convert the results.
-  auto return_op = cast<ReturnOp>(func.getBody()->getTerminator());
+  auto return_op = cast<ReturnOp>(func.SingleBlock::getBody()->getTerminator());
   for (auto it :
        llvm::zip(func.getResultTypes(),
                  func.getAllResultAttrs().getAsRange<DictionaryAttr>(),
@@ -339,7 +339,7 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
   }
 
   // Convert the body.
-  for (Operation &op : func.getBody()->without_terminator())
+  for (Operation &op : func.SingleBlock::getBody()->without_terminator())
     TF_RETURN_IF_ERROR(
         ConvertOperation(&op, def->add_node_def(), /*is_func=*/true));
 

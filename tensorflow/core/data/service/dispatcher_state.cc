@@ -144,7 +144,7 @@ Status DispatcherState::JobFromId(int64_t job_id,
     return errors::NotFound("Job with id ", job_id, " not found");
   }
   job = it->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DispatcherState::JobByName(const std::string& job_name,
@@ -154,7 +154,7 @@ Status DispatcherState::JobByName(const std::string& job_name,
     return errors::NotFound("Job with name ", job_name, " not found");
   }
   job = it->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 void DispatcherState::CreateIteration(

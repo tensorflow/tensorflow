@@ -92,11 +92,11 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:register",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:ShapeDialect",
+        "@stablehlo//:register",
     ],
 )
 
@@ -210,12 +210,12 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/xla:xla_passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
-        "//tensorflow/compiler/xla/mlir_hlo/stablehlo:register",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirReduceLib",
         "@llvm-project//mlir:Reducer",
+        "@stablehlo//:register",
     ],
 )
 

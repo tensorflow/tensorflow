@@ -236,7 +236,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleConvert(HloInstruction *instr) override {

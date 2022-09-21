@@ -82,8 +82,8 @@ namespace tensorflow {
 // for the StreamExecutor interface (as we don't change its API), whenever we
 // need a TF device id (or platform device id) we should use TfDeviceId (or
 // PlatformDeviceId) instead of a raw integer.
-TF_LIB_GTL_DEFINE_INT_TYPE(TfDeviceId, int32);
-TF_LIB_GTL_DEFINE_INT_TYPE(PlatformDeviceId, int32);
+TSL_LIB_GTL_DEFINE_INT_TYPE(TfDeviceId, int32);
+TSL_LIB_GTL_DEFINE_INT_TYPE(PlatformDeviceId, int32);
 
 }  // namespace tensorflow
 

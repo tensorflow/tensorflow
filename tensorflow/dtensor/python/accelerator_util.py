@@ -103,11 +103,10 @@ def initialize_multi_client_cluster(job_name: str,
 
 
 def _configure_tpu_runtime():
-  was_enabled = context.is_tfrt_enabled()
   if ("tpu_use_tfrt" in flags.FLAGS and flags.FLAGS["tpu_use_tfrt"].value):
+    context.context().use_tfrt = True
+    # Unit tests that skip tfrt backends requires the following line.
     tfrt_utils.set_tfrt_enabled(True)
-  if not was_enabled:
-    context._reset_context()  # pylint:disable=protected-access
 
 
 @tf_export(
@@ -166,6 +165,12 @@ def initialize_accelerator_system(
     raise ValueError(
         "Accelerator system has already been initialized. "
         "Call tf.experimental.dtensor.shutdown_accelerator_system() first.")
+
+  if context.context()._initialized:  # pylint: disable=protected-access
+    raise ValueError(
+        "TensorFlow has already been initialized. "
+        "tf.experimental.dtensor.initialize_accelerator_system() must be "
+        "called before TensorFlow is initialized.")
 
   context.context()._clear_caches()  # pylint: disable=protected-access
 

@@ -107,7 +107,7 @@ Status MakeSendRecvDependencyExplicit(Graph* graph) {
     }
     graph->AddControlEdge(send_recv_pair.send_node, send_recv_pair.recv_node);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

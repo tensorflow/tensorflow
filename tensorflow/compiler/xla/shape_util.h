@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -786,9 +786,9 @@ class ShapeUtil {
     int64_t n = -1;
     std::vector<int64_t> indexes(base.begin(), base.end());
     const int kNumThreads = tsl::port::MaxParallelism();
-    std::optional<tensorflow::thread::ThreadPool> pool;
+    std::optional<tsl::thread::ThreadPool> pool;
     if (parallel) {
-      pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);
+      pool.emplace(tsl::Env::Default(), "foreach", kNumThreads);
     }
 
     absl::Mutex mu;

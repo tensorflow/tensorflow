@@ -14,27 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model_wrapper.h"
 
-#include <memory>
+#include <optional>
 #include <string>
-#include <string_view>
-#include <unordered_set>
 #include <utility>
-#include <vector>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/Debug.h"
-#include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
-#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace tensorflow {
 namespace quantization {
@@ -42,79 +33,70 @@ namespace {
 
 // Serializes GraphDef to python bytes object. Raises python ValueError if
 // serialization fails.
-PyObject* SerializeGraphDefToPyBytes(const GraphDef& graph_def,
-                                     const absl::string_view function_name,
-                                     const int line_no) {
+std::string SerializeGraphDef(const GraphDef& graph_def,
+                              const absl::string_view function_name,
+                              const int line_no) {
   const std::string graph_def_serialized = graph_def.SerializeAsString();
 
   // Empty string means it failed to serialize the protobuf with an error. See
   // the docstring for SerializeAsString for details.
   if (graph_def_serialized.empty()) {
-    PyErr_Format(
-        PyExc_ValueError,
-        absl::StrFormat(
-            "Failed to serialize GraphDef result from function %s [%s:%d].",
-            function_name, __FILE__, line_no)
-            .c_str());
-    return nullptr;
+    throw py::value_error(absl::StrFormat(
+        "Failed to serialize GraphDef result from function %s [%s:%d].",
+        function_name, __FILE__, line_no));
   }
 
-  // Note that Python version 2.x is not supported.
-  return PyBytes_FromStringAndSize(graph_def_serialized.c_str(),
-                                   graph_def_serialized.size());
+  return graph_def_serialized;
 }
 
 }  // namespace
 
-PyObject* QuantizeQatModel(const absl::string_view saved_model_path,
-                           const absl::string_view exported_names_str,
-                           const absl::string_view tags,
-                           const absl::string_view quant_opts_serialized) {
+std::string QuantizeQatModel(const absl::string_view saved_model_path,
+                             const absl::string_view exported_names_str,
+                             const absl::string_view tags,
+                             const absl::string_view quant_opts_serialized) {
   const absl::StatusOr<GraphDef> graph_def = internal::QuantizeQatModel(
       saved_model_path, exported_names_str, tags, quant_opts_serialized);
   if (!graph_def.ok()) {
-    PyErr_Format(PyExc_ValueError, "Failed to quantize QAT model: %s",
-                 std::string(graph_def.status().message()).c_str());
-    return nullptr;
+    throw py::value_error(absl::StrFormat("Failed to quantize QAT model: %s",
+                                          graph_def.status().message()));
   }
 
-  return SerializeGraphDefToPyBytes(*graph_def, __func__, __LINE__);
+  return SerializeGraphDef(*graph_def, __func__, __LINE__);
 }
 
-PyObject* QuantizePtqDynamicRange(
+std::string QuantizePtqDynamicRange(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags,
     const absl::string_view quant_opts_serialized) {
   const absl::StatusOr<GraphDef> graph_def = internal::QuantizePtqDynamicRange(
       saved_model_path, exported_names_str, tags, quant_opts_serialized);
   if (!graph_def.ok()) {
-    PyErr_Format(PyExc_ValueError,
-                 "Failed to apply post-training dynamic range quantization to "
-                 "the model: %s",
-                 std::string(graph_def.status().message()).c_str());
-    return nullptr;
+    throw py::value_error(
+        absl::StrFormat("Failed to apply post-training dynamic range "
+                        "quantization to the model: %s",
+                        graph_def.status().message()));
   }
 
-  return SerializeGraphDefToPyBytes(*graph_def, __func__, __LINE__);
+  return SerializeGraphDef(*graph_def, __func__, __LINE__);
 }
 
-PyObject* QuantizePtqModelPreCalibration(
+std::string QuantizePtqModelPreCalibration(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags) {
   const absl::StatusOr<GraphDef> graph_def =
       internal::QuantizePtqModelPreCalibration(saved_model_path,
                                                exported_names_str, tags);
   if (!graph_def.ok()) {
-    PyErr_Format(PyExc_ValueError,
-                 "Failed to quantize PTQ model at the precalibration stage: %s",
-                 std::string(graph_def.status().message()).c_str());
-    return nullptr;
+    throw py::value_error(absl::StrFormat(
+        "Failed to quantize PTQ model at the precalibration stage: %s",
+        graph_def.status().message()));
   }
 
-  return SerializeGraphDefToPyBytes(*graph_def, __func__, __LINE__);
+  return SerializeGraphDef(*graph_def, __func__, __LINE__);
 }
 
-PyObject* QuantizePtqModelPostCalibration(
+std::string QuantizePtqModelPostCalibration(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags,
     const absl::string_view quant_opts_serialized) {
@@ -122,14 +104,12 @@ PyObject* QuantizePtqModelPostCalibration(
       internal::QuantizePtqModelPostCalibration(
           saved_model_path, exported_names_str, tags, quant_opts_serialized);
   if (!graph_def.ok()) {
-    PyErr_Format(
-        PyExc_ValueError,
+    throw py::value_error(absl::StrFormat(
         "Failed to quantize PTQ model at the postcalibration stage: %s",
-        std::string(graph_def.status().message()).c_str());
-    return nullptr;
+        graph_def.status().message()));
   }
 
-  return SerializeGraphDefToPyBytes(*graph_def, __func__, __LINE__);
+  return SerializeGraphDef(*graph_def, __func__, __LINE__);
 }
 
 void ClearCollectedInformationFromCalibrator() {
@@ -144,9 +124,8 @@ float GetMinFromCalibrator(absl::string_view id) {
   std::optional<std::pair<float, float>> min_max =
       calibrator::CalibratorSingleton::GetMinMax(id);
   if (!min_max.has_value()) {
-    PyErr_Format(PyExc_ValueError, "No calibrated data for '%s'",
-                 std::string{id}.c_str());
-    throw py::error_already_set();
+    throw py::value_error(absl::StrFormat(
+        "No calibrated data; cannot find min value for '%s'", id));
   }
 
   return min_max->first;
@@ -156,9 +135,8 @@ float GetMaxFromCalibrator(absl::string_view id) {
   std::optional<std::pair<float, float>> min_max =
       calibrator::CalibratorSingleton::GetMinMax(id);
   if (!min_max.has_value()) {
-    PyErr_Format(PyExc_ValueError, "No calibrated data for '%s'",
-                 std::string{id}.c_str());
-    throw py::error_already_set();
+    throw py::value_error(absl::StrFormat(
+        "No calibrated data; cannot find max value for '%s'", id));
   }
 
   return min_max->second;

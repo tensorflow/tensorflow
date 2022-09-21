@@ -60,12 +60,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/random.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -285,7 +285,7 @@ Status LinkWithBitcodeVector(
   llvm::Linker linker(*module);
 
   for (auto& bitcode_path : bitcode_path_vector) {
-    if (!tensorflow::Env::Default()->FileExists(bitcode_path).ok()) {
+    if (!tsl::Env::Default()->FileExists(bitcode_path).ok()) {
       LOG(ERROR) << "bitcode module is required by this HLO module but was "
                     "not found at "
                  << bitcode_path;
@@ -322,7 +322,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
   // older CUDAs.
   std::string libdevice_path =
       tsl::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
-  if (!tensorflow::Env::Default()->FileExists(libdevice_path).ok()) {
+  if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
     LOG(WARNING)
         << "libdevice is required by this HLO module but was not found at "
         << libdevice_path;
@@ -488,6 +488,16 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
   // Using div.approx produces incorrect result for float32(max)/float32(max).
   FeedLLVMWithFlags({"-nvptx-prec-divf32=1"});
 
+  // SLPVectorizer is useful (vectorizes f16x2 ops) but slow.  Most of the
+  // slowness appears to be in trying to form horizontal reductions, which don't
+  // exist in PTX *anyway*.  Disable these.  While we're here, tweak
+  // SLPVectorizer so it doesn't try to create large vectors -- f16x2 are the
+  // only vectors supported in PTX.
+  FeedLLVMWithFlags({
+      "-slp-vectorize-hor=false",
+      "-slp-max-reg-size=32",
+  });
+
   llvm_ir::InitializeLLVMCommandLineOptions(
       hlo_module_config.debug_options().xla_backend_extra_options());
 
@@ -548,7 +558,7 @@ StatusOr<std::string> CompileToPtx(
       configure_target(target_machine.get());
     }
 
-    uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+    uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
     // Link with libdevice, and optimize the LLVM module.
     TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
@@ -556,15 +566,15 @@ StatusOr<std::string> CompileToPtx(
         NVPTXTargetModuleLinker, default_target_triple, target_machine.get(),
         kDefaultInlineThreshold));
 
-    uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     RecordLlvmPassesDuration(end_usecs - start_usecs);
 
-    start_usecs = tensorflow::Env::Default()->NowMicros();
+    start_usecs = tsl::Env::Default()->NowMicros();
 
     // Lower optimized LLVM module to PTX.
     ptx = EmitModuleToPTX(module, target_machine.get());
 
-    end_usecs = tensorflow::Env::Default()->NowMicros();
+    end_usecs = tsl::Env::Default()->NowMicros();
     RecordLlvmToPtxDuration(end_usecs - start_usecs);
   }
   return ptx;
@@ -662,7 +672,7 @@ void HsacoCache::Add(const std::string& ir, uint64_t hash,
 // TargetMachine for the AMDGPU target.
 StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
     llvm::Module* module, llvm::TargetMachine* target_machine) {
-  auto* env = tensorflow::Env::Default();
+  auto* env = tsl::Env::Default();
   std::vector<std::string> tempdir_vector;
   env->GetLocalTempDirectories(&tempdir_vector);
   if (tempdir_vector.empty()) {
@@ -678,7 +688,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
                                              &keep_tempfiles));
   // Prepare filenames for all stages of compilation:
   // IR, binary ISA, and HSACO.
-  std::string random_number = std::to_string(tensorflow::random::New64());
+  std::string random_number = std::to_string(tsl::random::New64());
   std::string ir_filename =
       absl::StrCat(module->getModuleIdentifier(), random_number + ".ll");
   std::string ir_path = tsl::io::JoinPath(tempdir_name, ir_filename);

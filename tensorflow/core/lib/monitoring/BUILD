@@ -15,6 +15,7 @@ package(
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         # tensorflow/compiler/mlir/tfrt:tf_jitrt depends on this package
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
+        "//tensorflow/tsl/lib/monitoring:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -90,6 +91,11 @@ cc_library(
     name = "collection_registry",
     srcs = ["collection_registry.cc"],
     hdrs = ["collection_registry.h"],
+    visibility = [
+        "//learning/brain/google/monitoring:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
+    ],
     deps = [
         ":collected_metrics",
         ":metric_def",
@@ -119,6 +125,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/monitoring:counter",
     ],
 )
 
@@ -129,17 +136,18 @@ cc_library(
         ":collection_registry",
         ":metric_def",
         "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:thread_annotations",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/monitoring:gauge",
     ],
 )
 
 cc_library(
     name = "metric_def",
     hdrs = ["metric_def.h"],
+    visibility = [
+        "//learning/brain/google/monitoring:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/tsl/lib/monitoring:__subpackages__",
+    ],
     deps = [
         ":types",
         "//tensorflow/core/framework:summary_proto_cc",
@@ -150,7 +158,6 @@ cc_library(
 
 cc_library(
     name = "sampler",
-    srcs = ["sampler.cc"],
     hdrs = ["sampler.h"],
     deps = [
         ":collection_registry",
@@ -163,6 +170,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/monitoring:sampler",
     ],
 )
 
@@ -212,6 +220,7 @@ filegroup(
         "test_utils.h",
         "timed.h",
         "types.h",
+        "//tensorflow/tsl/lib/monitoring:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -230,6 +239,7 @@ filegroup(
         "test_utils.h",
         "timed.h",
         "types.h",
+        "//tensorflow/tsl/lib/monitoring:legacy_lib_monitoring_lib_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -247,6 +257,7 @@ filegroup(
         "sampler.h",
         "test_utils.h",
         "types.h",
+        "//tensorflow/tsl/lib/monitoring:legacy_lib_monitoring_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

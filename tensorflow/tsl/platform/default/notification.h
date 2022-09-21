@@ -17,14 +17,15 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_NOTIFICATION_H_
 
 #include <assert.h>
+
 #include <atomic>              // NOLINT
 #include <chrono>              // NOLINT
 #include <condition_variable>  // NOLINT
 
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 
 class Notification {
  public:
@@ -82,6 +83,6 @@ inline bool WaitForNotificationWithTimeout(Notification* n,
   return n->WaitForNotificationWithTimeout(timeout_in_us);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_NOTIFICATION_H_

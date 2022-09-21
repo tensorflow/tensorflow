@@ -3,6 +3,23 @@
 load("//tensorflow:tensorflow.bzl", "if_indexing_source_code")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
 
+TENSORFLOW_API_GEN_PACKAGES = [
+    "tensorflow.python",
+    "tensorflow.dtensor.python.accelerator_util",
+    "tensorflow.dtensor.python.api",
+    "tensorflow.dtensor.python.config",
+    "tensorflow.dtensor.python.d_checkpoint",
+    "tensorflow.dtensor.python.d_variable",
+    "tensorflow.dtensor.python.input_util",
+    "tensorflow.dtensor.python.layout",
+    "tensorflow.dtensor.python.mesh_util",
+    "tensorflow.dtensor.python.save_restore",
+    "tensorflow.lite.python.analyzer",
+    "tensorflow.lite.python.lite",
+    "tensorflow.lite.python.authoring.authoring",
+    "tensorflow.python.modules_with_exports",
+]
+
 def get_compat_files(
         file_paths,
         compat_api_version):
@@ -43,22 +60,7 @@ def gen_api_init_files(
         api_version = 2,
         compat_api_versions = [],
         compat_init_templates = [],
-        packages = [
-            "tensorflow.python",
-            "tensorflow.dtensor.python.accelerator_util",
-            "tensorflow.dtensor.python.api",
-            "tensorflow.dtensor.python.config",
-            "tensorflow.dtensor.python.d_checkpoint",
-            "tensorflow.dtensor.python.d_variable",
-            "tensorflow.dtensor.python.input_util",
-            "tensorflow.dtensor.python.layout",
-            "tensorflow.dtensor.python.mesh_util",
-            "tensorflow.dtensor.python.save_restore",
-            "tensorflow.lite.python.analyzer",
-            "tensorflow.lite.python.lite",
-            "tensorflow.lite.python.authoring.authoring",
-            "tensorflow.python.modules_with_exports",
-        ],
+        packages = TENSORFLOW_API_GEN_PACKAGES,
         package_deps = [
             "//tensorflow/python:no_contrib",
             "//tensorflow/python:modules_with_exports",

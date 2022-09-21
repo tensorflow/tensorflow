@@ -1952,6 +1952,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
            {"FusedBatchNorm", "FusedBatchNormV2", "FusedBatchNormV3",
             "_FusedBatchNormEx", "FusedBatchNormGrad", "FusedBatchNormGradV2",
             "FusedBatchNormGradV3"}},
+          {"Conv", {"_FusedConv2D"}},
           {"SORT", {"TopKV2"}},  // XLA version much faster then TF version.
           {"MISC",
            // clang-format off

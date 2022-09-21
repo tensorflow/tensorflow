@@ -190,7 +190,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
-    auto dotNumbers = op.dot_dimension_numbers();
+    auto dotNumbers = op.getDotDimensionNumbers();
     if (!dotNumbers.getLhsBatchingDimensions().empty() ||
         !dotNumbers.getRhsBatchingDimensions().empty()) {
       return failure();
@@ -199,18 +199,18 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     auto lhsContractingDims = dotNumbers.getLhsContractingDimensions();
     auto rhsContractingDims = dotNumbers.getRhsContractingDimensions();
 
-    auto lhs = op.lhs();
-    auto rhs = op.rhs();
+    auto lhs = op.getLhs();
+    auto rhs = op.getRhs();
 
     RankedTensorType lhsTy = lhs.getType().dyn_cast<RankedTensorType>();
     RankedTensorType rhsTy = rhs.getType().dyn_cast<RankedTensorType>();
     if (!lhsTy || !rhsTy) return failure();
 
-    lhs = processDotArg(op.lhs(), op.getLoc(),
+    lhs = processDotArg(op.getLhs(), op.getLoc(),
                         dotNumbers.getLhsContractingDimensions(),
                         /*outerDimsFirst=*/true, rewriter);
 
-    rhs = processDotArg(op.rhs(), op.getLoc(),
+    rhs = processDotArg(op.getRhs(), op.getLoc(),
                         dotNumbers.getRhsContractingDimensions(),
                         /*outerDimsFirst=*/false, rewriter);
 
@@ -220,7 +220,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     if (!lhsShapeType || !rhsShapeType) return failure();
 
     ArrayAttr precisionConfig;
-    if (op.precision_config()) precisionConfig = *op.precision_config();
+    if (op.getPrecisionConfig()) precisionConfig = *op.getPrecisionConfig();
     SmallVector<Type, 1> results;
     LogicalResult res =
         DotOp::inferReturnTypes(rewriter.getContext(), None, {lhs, rhs},
@@ -281,8 +281,8 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
       }
     };
 
-    getDynamicDims(op.lhs(), lhsContractingDims);
-    getDynamicDims(op.rhs(), rhsContractingDims);
+    getDynamicDims(op.getLhs(), lhsContractingDims);
+    getDynamicDims(op.getRhs(), rhsContractingDims);
 
     Value reshapeDimsTensor = rewriter.create<ConcatenateOp>(
         loc,

@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/resource_loader.h"
 #include "tensorflow/tsl/platform/test.h"
@@ -37,7 +37,7 @@ class DenylistTest : public testing::Test {
       existing_xla_flags = absl::StrCat(env, " ");
     }
 
-    tensorflow::setenv(
+    tsl::setenv(
         "XLA_FLAGS",
         absl::StrCat(existing_xla_flags, "--xla_gpu_algorithm_denylist_path=",
                      tsl::GetDataDependencyFilepath(tsl::io::JoinPath(

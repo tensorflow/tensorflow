@@ -20,12 +20,15 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
@@ -56,9 +59,9 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
   LogicalResult matchAndRewrite(
       mhlo::ConcatenateOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    const int64_t concatDim = op.dimension();
+    const int64_t concatDim = op.getDimension();
     const Location loc = op.getLoc();
-    const Value anyOperand = adaptor.val().front();
+    const Value anyOperand = adaptor.getVal().front();
 
     auto resultTy = typeConverter->convertType(op.getResult().getType())
                         .cast<RankedTensorType>();
@@ -87,7 +90,7 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
       // that dimension.
       int64_t staticSum = 0;
       Value dynamicSum;
-      for (const Value operand : adaptor.val()) {
+      for (const Value operand : adaptor.getVal()) {
         auto operandTy = operand.getType().cast<RankedTensorType>();
         if (operandTy.getDimSize(concatDim) == ShapedType::kDynamicSize) {
           const Value dynamicSummand =
@@ -115,7 +118,7 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
     auto init = rewriter.create<linalg::InitTensorOp>(
         loc, dynamicInitSizes, staticInitSizes, resultTy.getElementType());
     rewriter.replaceOpWithNewOp<thlo::ConcatenateOp>(
-        op, resultTy, adaptor.val(), init, concatDim);
+        op, resultTy, adaptor.getVal(), init, concatDim);
     return success();
   }
 };
@@ -128,18 +131,18 @@ struct DynamicBroadcastInDimOpPattern
       mhlo::DynamicBroadcastInDimOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
-    Value outputDimensions = adaptor.output_dimensions();
-    auto operandTy = adaptor.operand().getType().cast<RankedTensorType>();
+    Value outputDimensions = adaptor.getOutputDimensions();
+    auto operandTy = adaptor.getOperand().getType().cast<RankedTensorType>();
     auto resultTy =
         typeConverter->convertType(op.getType()).cast<RankedTensorType>();
 
     // Only  apply to broadcasts that cannot be lowered to linalg, i.e. those
     // for which we do not know their expansion behavior at compile time.
     int64_t countKnownExpansionBehavior = 0;
-    if (auto expandingDims = op.known_expanding_dimensions()) {
+    if (auto expandingDims = op.getKnownExpandingDimensions()) {
       countKnownExpansionBehavior += expandingDims->size();
     }
-    if (auto nonexpandingDims = op.known_nonexpanding_dimensions()) {
+    if (auto nonexpandingDims = op.getKnownNonexpandingDimensions()) {
       countKnownExpansionBehavior += nonexpandingDims->size();
     }
     if (operandTy.getRank() == countKnownExpansionBehavior) return failure();
@@ -157,21 +160,21 @@ struct DynamicBroadcastInDimOpPattern
         loc, dynamicDims, staticShapeInfo, resultTy.getElementType());
 
     auto broadcastDims = rewriter.getDenseI64ArrayAttr(
-        llvm::to_vector(op.broadcast_dimensions().getValues<int64_t>()));
+        llvm::to_vector(op.getBroadcastDimensions().getValues<int64_t>()));
 
     DenseI64ArrayAttr knownExpandingDims;
-    if (op.known_expanding_dimensions().has_value()) {
+    if (op.getKnownExpandingDimensions().has_value()) {
       knownExpandingDims = rewriter.getDenseI64ArrayAttr(llvm::to_vector(
-          op.known_expanding_dimensionsAttr().getValues<int64_t>()));
+          op.getKnownExpandingDimensionsAttr().getValues<int64_t>()));
     }
     DenseI64ArrayAttr knownNonexpandingDims;
-    if (op.known_nonexpanding_dimensions().has_value()) {
+    if (op.getKnownNonexpandingDimensions().has_value()) {
       knownNonexpandingDims = rewriter.getDenseI64ArrayAttr(llvm::to_vector(
-          op.known_nonexpanding_dimensionsAttr().getValues<int64_t>()));
+          op.getKnownNonexpandingDimensionsAttr().getValues<int64_t>()));
     }
 
     rewriter.replaceOpWithNewOp<thlo::DynamicBroadcastInDimOp>(
-        op, resultTy, adaptor.operand(), initTensor, broadcastDims,
+        op, resultTy, adaptor.getOperand(), initTensor, broadcastDims,
         knownExpandingDims, knownNonexpandingDims);
     return success();
   }
@@ -185,29 +188,30 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
       mhlo::GatherOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     auto startIndicesType =
-        adaptor.start_indices().getType().dyn_cast<RankedTensorType>();
-    auto operandType = adaptor.operand().getType().dyn_cast<RankedTensorType>();
+        adaptor.getStartIndices().getType().dyn_cast<RankedTensorType>();
+    auto operandType =
+        adaptor.getOperand().getType().dyn_cast<RankedTensorType>();
 
     if (!startIndicesType || !operandType) return failure();
 
     // index_vector_dim must be the last dimension of start_indices.
-    int indexVectorDim = op.dimension_numbers().getIndexVectorDim();
+    int indexVectorDim = op.getDimensionNumbers().getIndexVectorDim();
     if (startIndicesType.getRank() - 1 != indexVectorDim) return failure();
 
     // All slice_sizes must be 1.
-    if (!llvm::all_of(op.slice_sizes(), [](auto size) { return size == 1; }))
+    if (!llvm::all_of(op.getSliceSizes(), [](auto size) { return size == 1; }))
       return failure();
 
     // offset_dims must be []
-    if (!op.dimension_numbers().getOffsetDims().empty()) return failure();
+    if (!op.getDimensionNumbers().getOffsetDims().empty()) return failure();
 
     // collapsed_slice_dims[] must be range(operand.rank)
-    auto collapsedSliceDims = op.dimension_numbers().getCollapsedSliceDims();
+    auto collapsedSliceDims = op.getDimensionNumbers().getCollapsedSliceDims();
     if (!isIotaArray(collapsedSliceDims, operandType.getRank()))
       return failure();
 
     // start_index_map[] must be range(start_indices.shape[index_vector_dim])
-    auto startIndexMap = op.dimension_numbers().getStartIndexMap();
+    auto startIndexMap = op.getDimensionNumbers().getStartIndexMap();
     if (!isIotaArray(startIndexMap,
                      startIndicesType.getShape()[indexVectorDim]))
       return failure();
@@ -222,7 +226,8 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
         loc, mlir::ValueRange{}, resultType.getShape(),
         resultType.getElementType());
     rewriter.replaceOpWithNewOp<thlo::GatherOp>(
-        op, resultType, adaptor.operand(), adaptor.start_indices(), initTensor);
+        op, resultType, adaptor.getOperand(), adaptor.getStartIndices(),
+        initTensor);
     return success();
   }
 };
@@ -251,7 +256,8 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
       ConversionPatternRewriter& rewriter) const final {
     auto srcRank =
         adaptor.operands()[0].getType().cast<RankedTensorType>().getRank();
-    auto reductionDims = llvm::to_vector(op.dimensions().getValues<int64_t>());
+    auto reductionDims =
+        llvm::to_vector(op.getDimensions().getValues<int64_t>());
     // mhlo.reduce doesn't specify the order of the reduction dimensions.
     std::sort(reductionDims.begin(), reductionDims.end());
 
@@ -267,7 +273,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
 
     Location loc = op.getLoc();
     for (auto [operand, initValue, resultType] :
-         llvm::zip(adaptor.operands(), adaptor.init_values(), resultTypes)) {
+         llvm::zip(adaptor.operands(), adaptor.getInitValues(), resultTypes)) {
       auto initType = toRankedTensor(initValue);
       if (!initType)
         return rewriter.notifyMatchFailure(op,
@@ -294,7 +300,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
         loc, resultTypes, adaptor.operands(), outputs,
         rewriter.getDenseI64ArrayAttr(reductionDims));
     Region& region = thloReduction.combiner();
-    rewriter.inlineRegionBefore(op.body(), region, region.end());
+    rewriter.inlineRegionBefore(op.getBody(), region, region.end());
 
     // Convert the signature of the body. The reduce op 'computation' region
     // apply function has a signature with tensor types, this is converted to a
@@ -327,19 +333,21 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
   }
 };
 
-static bool isInBodyOfThloReduction(Operation* op) {
+bool isInBodyOfThloOp(Operation* op) {
   auto* parentOp = op->getParentRegion()->getParentOp();
-  return isa<thlo::ReductionOp>(*parentOp);
+  return isa<thlo::MapOp>(*parentOp) || isa<thlo::ReductionOp>(*parentOp) ||
+         isa<thlo::ScatterOp>(*parentOp);
 }
 
 // Rewrites a mhlo::ReturnOp inside a thlo::ReductionOp to thlo::YieldOp.
-struct ReduceRegionReturnOpConversion
+struct ThloRegionReturnOpConversion
     : public OpConversionPattern<mhlo::ReturnOp> {
   using OpConversionPattern<mhlo::ReturnOp>::OpConversionPattern;
+
   LogicalResult matchAndRewrite(
       mhlo::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    if (!isInBodyOfThloReduction(op)) return failure();
+    if (!isInBodyOfThloOp(op)) return failure();
     SmallVector<Value, 4> operands(adaptor.getOperands());
     auto loc = op.getLoc();
     for (size_t i = 0; i < operands.size(); ++i) {
@@ -360,15 +368,11 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
       mhlo::ScatterOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     // The variadic case is not supported.
-    if (op.updates().size() != 1) return failure();
+    if (op.getUpdates().size() != 1) return failure();
 
-    // update_computation is sum.
-    if (matchUpdateComputation(op.update_computation()).failed())
-      return failure();
-
-    const auto& dims = op.scatter_dimension_numbers();
+    const auto& dims = op.getScatterDimensionNumbers();
     auto scatterIndicesType =
-        adaptor.scatter_indices().getType().dyn_cast<RankedTensorType>();
+        adaptor.getScatterIndices().getType().dyn_cast<RankedTensorType>();
     if (!scatterIndicesType) return failure();
 
     // Only point updates are supported.
@@ -387,46 +391,176 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
     if (!opType)
       return failure();  // Type is a tensor in the non-variadic case.
 
-    rewriter.replaceOpWithNewOp<thlo::ScatterOp>(
-        op, opType, adaptor.scatter_indices(), adaptor.updates().front(),
+    Location loc = op.getLoc();
+    auto thloScatter = rewriter.create<thlo::ScatterOp>(
+        loc, opType, adaptor.getScatterIndices(), adaptor.updates().front(),
         adaptor.operands().front());
+
+    Region& region = thloScatter.update_computation();
+    rewriter.inlineRegionBefore(op.getRegion(), region, region.end());
+
+    // Convert the signature of the body by inserting
+    // tensor.from_elements/tensor.extract.
+    TypeConverter::SignatureConversion signatureConverter(2);
+    for (const auto& [idx, val] :
+         llvm::enumerate(thloScatter.update_computation().getArgumentTypes())) {
+      signatureConverter.addInputs(
+          idx, typeConverter->convertType(
+                   val.cast<RankedTensorType>().getElementType()));
+    }
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
+
+    rewriter.replaceOp(op, thloScatter.getResults());
+    return success();
+  }
+};
+
+struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
+  using OpConversionPattern<mhlo::MapOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::MapOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto resultTy = typeConverter->convertType(op.getType()).cast<ShapedType>();
+    assert(op.dimensions().size() == resultTy.getRank() &&
+           "Expected a pointwise map");
+
+    Location loc = op.getLoc();
+    Value initTensor =
+        getInitTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
+
+    auto thloMap = rewriter.create<thlo::MapOp>(loc, resultTy,
+                                                adaptor.operands(), initTensor);
+    Region& region = thloMap.mapper();
+    rewriter.inlineRegionBefore(op.computation(), region, region.end());
+
+    TypeConverter::SignatureConversion signatureConverter(
+        thloMap.getNumInputs());
+    for (const auto& [idx, val] : llvm::enumerate(thloMap.getInputs())) {
+      signatureConverter.addInputs(
+          idx,
+          typeConverter->convertType(
+              val.getType().dyn_cast<RankedTensorType>().getElementType()));
+    }
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
+
+    rewriter.replaceOp(op, thloMap.getResult());
+    return success();
+  }
+};
+
+/// Converts a HLO operation to a thlo.map op that contains the corresponding
+/// scalar operations.
+template <typename OpTy>
+class PointwiseToTHLOConverter : public OpConversionPattern<OpTy> {
+ public:
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      OpTy op, typename OpTy::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto getRank = [](Value v) {
+      return v.getType().cast<ShapedType>().getRank();
+    };
+    int64_t maxRank = getRank(adaptor.getOperands().front());
+
+    // Apply only if all operands have the same rank.
+    if (!llvm::all_of(adaptor.getOperands(),
+                      [&](Value v) { return getRank(v) == maxRank; })) {
+      return rewriter.notifyMatchFailure(op,
+                                         "Operands must have the same rank.");
+    }
+
+    // Find result type, if on tensors.
+    Optional<ShapedType> resultTy;
+    resultTy = this->typeConverter->convertType(op->getResultTypes().front())
+                   .template dyn_cast<ShapedType>();
+
+    // Check result type compatibility.
+    if (!resultTy || !resultTy->hasRank() || resultTy->getRank() != maxRank ||
+        !(resultTy->getElementType().isSignlessIntOrFloat() ||
+          resultTy->getElementType().isa<ComplexType>())) {
+      return rewriter.notifyMatchFailure(
+          op, "mismatched operand/result types or iterator count");
+    }
+
+    auto loc = op.getLoc();
+    // Within a thlo.map region, we can immediately de-tensorsize if the
+    // computation is scalar. We do not do this on the top-level, as that would
+    // break the nice invariant that all programs are exclusively on tensors,
+    // which is currently relied on for fusion in some pipelines.
+    if (maxRank == 0 && isInBodyOfTHLOOps(op)) {
+      SmallVector<Value> inputs;
+      for (auto input : adaptor.getOperands()) {
+        inputs.push_back(
+            rewriter.create<tensor::ExtractOp>(loc, input, ValueRange()));
+      }
+      Value scalarResult = mhlo::MhloOpToStdScalarOp::mapOp(
+          op, resultTy->getElementType(), inputs, &rewriter);
+      if (!scalarResult) return failure();
+      rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, *resultTy,
+                                                          scalarResult);
+      return success();
+    }
+
+    // Find input/output values and types.
+    ValueRange inputs = adaptor.getOperands();
+    Value initTensor =
+        getInitTensorFor(rewriter, loc, *resultTy, op, adaptor.getOperands());
+
+    auto mapOp = rewriter.create<thlo::MapOp>(loc, op->getResultTypes().front(),
+                                              inputs, initTensor);
+
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      auto& region = mapOp.getRegion();
+
+      SmallVector<Type, 4> blockArgTypes;
+      SmallVector<Location, 4> blockArgLocs;
+      for (Value v : inputs) {
+        blockArgTypes.push_back(getElementTypeOrSelf(v));
+        blockArgLocs.push_back(v.getLoc());
+      }
+      Block* block = rewriter.createBlock(&region, region.end(), blockArgTypes,
+                                          blockArgLocs);
+
+      Value innerResult =
+          mhlo::MhloOpToStdScalarOp::mapOp(op, getElementTypeOrSelf(initTensor),
+                                           block->getArguments(), &rewriter);
+      rewriter.create<thlo::YieldOp>(loc, innerResult);
+    }
+
+    rewriter.replaceOp(op, mapOp->getResults());
+
     return success();
   }
 
-  LogicalResult matchUpdateComputation(mlir::Region& computation) const {
-    Block& block = computation.front();
-    if (block.getNumArguments() != 2) return failure();
-
-    mhlo::ReturnOp returnOp = dyn_cast<mhlo::ReturnOp>(block.getTerminator());
-    if (!returnOp || returnOp.getNumOperands() != 1) return failure();
-
-    auto* returnOperand = returnOp.getOperand(0).getDefiningOp();
-    auto addOp = dyn_cast<mhlo::AddOp>(returnOperand);
-    if (!addOp || addOp->getNumOperands() != 2) return failure();
-
-    auto lhs = addOp->getOperand(0);
-    auto rhs = addOp->getOperand(1);
-    auto arg0 = block.getArgument(0);
-    auto arg1 = block.getArgument(1);
-
-    return success((lhs == arg0 && rhs == arg1) ||
-                   (lhs == arg1 && rhs == arg0));
+ private:
+  static bool isInBodyOfTHLOOps(Operation* op) {
+    auto* parentOp = op->getParentRegion()->getParentOp();
+    return parentOp->getDialect() ==
+           parentOp->getContext()->getLoadedDialect<thlo::THLODialect>();
   }
 };
 
 class LegalizeMHLOToTHLOPass
     : public impl::LegalizeMHLOToTHLOPassBase<LegalizeMHLOToTHLOPass> {
-  void getDependentDialects(DialectRegistry& registry) const final {
-    registry.insert<thlo::THLODialect, linalg::LinalgDialect,
-                    arith::ArithmeticDialect, tensor::TensorDialect>();
-  }
-
   void runOnOperation() final {
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
     ConversionTarget target(*ctx);
-    target.addLegalDialect<thlo::THLODialect, linalg::LinalgDialect,
-                           arith::ArithmeticDialect, tensor::TensorDialect>();
+    // clang-format off
+    target.addLegalDialect<
+        arith::ArithmeticDialect,
+        complex::ComplexDialect,
+        linalg::LinalgDialect,
+        math::MathDialect,
+        shape::ShapeDialect,
+        tensor::TensorDialect,
+        thlo::THLODialect>();
+    // clang-format on
     target.addLegalOp<UnrealizedConversionCastOp>();
 
     auto typeConverter = std::make_unique<LinalgTypeConverter>();
@@ -437,10 +571,64 @@ class LegalizeMHLOToTHLOPass
         ConcatenateOpPattern,
         DynamicBroadcastInDimOpPattern,
         GatherPattern,
-        ReduceRegionReturnOpConversion,
-        ReductionPattern,
-        ScatterPattern>(*typeConverter, ctx);
+        ScatterPattern,
+        ThloRegionReturnOpConversion>(*typeConverter, ctx);
     // clang-format on
+
+    if (enableExperimental) {
+      // clang-format off
+      patterns.insert<
+          ReductionPattern,
+          MapPattern,
+          PointwiseToTHLOConverter<mhlo::AbsOp>,
+          PointwiseToTHLOConverter<mhlo::AddOp>,
+          PointwiseToTHLOConverter<mhlo::AndOp>,
+          PointwiseToTHLOConverter<mhlo::Atan2Op>,
+          PointwiseToTHLOConverter<mhlo::BitcastConvertOp>,
+          PointwiseToTHLOConverter<mhlo::CbrtOp>,
+          PointwiseToTHLOConverter<mhlo::CeilOp>,
+          PointwiseToTHLOConverter<mhlo::ClampOp>,
+          PointwiseToTHLOConverter<mhlo::ClzOp>,
+          PointwiseToTHLOConverter<mhlo::CompareOp>,
+          PointwiseToTHLOConverter<mhlo::ComplexOp>,
+          PointwiseToTHLOConverter<mhlo::ConvertOp>,
+          PointwiseToTHLOConverter<mhlo::CopyOp>,
+          PointwiseToTHLOConverter<mhlo::CosineOp>,
+          PointwiseToTHLOConverter<mhlo::DivOp>,
+          PointwiseToTHLOConverter<mhlo::ExpOp>,
+          PointwiseToTHLOConverter<mhlo::Expm1Op>,
+          PointwiseToTHLOConverter<mhlo::FloorOp>,
+          PointwiseToTHLOConverter<mhlo::ImagOp>,
+          PointwiseToTHLOConverter<mhlo::IsFiniteOp>,
+          PointwiseToTHLOConverter<mhlo::LogOp>,
+          PointwiseToTHLOConverter<mhlo::LogisticOp>,
+          PointwiseToTHLOConverter<mhlo::Log1pOp>,
+          PointwiseToTHLOConverter<mhlo::MaxOp>,
+          PointwiseToTHLOConverter<mhlo::MinOp>,
+          PointwiseToTHLOConverter<mhlo::MulOp>,
+          PointwiseToTHLOConverter<mhlo::NegOp>,
+          PointwiseToTHLOConverter<mhlo::NotOp>,
+          PointwiseToTHLOConverter<mhlo::OrOp>,
+          PointwiseToTHLOConverter<mhlo::PopulationCountOp>,
+          PointwiseToTHLOConverter<mhlo::PowOp>,
+          PointwiseToTHLOConverter<mhlo::RealOp>,
+          PointwiseToTHLOConverter<mhlo::RemOp>,
+          PointwiseToTHLOConverter<mhlo::RoundNearestEvenOp>,
+          PointwiseToTHLOConverter<mhlo::RoundOp>,
+          PointwiseToTHLOConverter<mhlo::RsqrtOp>,
+          PointwiseToTHLOConverter<mhlo::ShiftLeftOp>,
+          PointwiseToTHLOConverter<mhlo::ShiftRightArithmeticOp>,
+          PointwiseToTHLOConverter<mhlo::ShiftRightLogicalOp>,
+          PointwiseToTHLOConverter<mhlo::SignOp>,
+          PointwiseToTHLOConverter<mhlo::SineOp>,
+          PointwiseToTHLOConverter<mhlo::SqrtOp>,
+          PointwiseToTHLOConverter<mhlo::SubtractOp>,
+          PointwiseToTHLOConverter<mhlo::TanhOp>,
+          PointwiseToTHLOConverter<mhlo::XorOp>,
+          PointwiseToTHLOConverter<mhlo::ReducePrecisionOp>,
+          ThloRegionReturnOpConversion>(*typeConverter, ctx);
+      // clang-format on
+    }
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {

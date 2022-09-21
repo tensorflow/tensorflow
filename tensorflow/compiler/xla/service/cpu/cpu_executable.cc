@@ -44,11 +44,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace cpu {
+
+namespace runtime = ::xla::runtime;
 
 CpuExecutable::CpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
@@ -63,7 +65,8 @@ CpuExecutable::CpuExecutable(
       assignment_(std::move(assignment)),
       module_name_(entry_function_name) {
   if (assignment_) {
-    buffer_assignment_.reset(new BufferAssignmentProto(assignment_->ToProto()));
+    buffer_assignment_ =
+        std::make_shared<BufferAssignmentProto>(assignment_->ToProto());
   }
   if (has_module()) {
     XlaDebugInfoManager::Get()->RegisterModule(
@@ -83,6 +86,26 @@ CpuExecutable::CpuExecutable(
   VLOG(1) << "compute_function_ at address "
           << reinterpret_cast<void*>(compute_function_);
   jit_->DoneCompiling();
+}
+
+CpuExecutable::CpuExecutable(
+    std::unique_ptr<HloModule> hlo_module,
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+    std::unique_ptr<const BufferAssignment> assignment,
+    std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable)
+    : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
+                 std::move(hlo_profile_index_map)),
+      assignment_(std::move(assignment)),
+      xla_runtime_executable_(std::move(xla_runtime_executable)) {
+  if (assignment_) {
+    buffer_assignment_ =
+        std::make_shared<BufferAssignmentProto>(assignment_->ToProto());
+  }
+  if (has_module()) {
+    XlaDebugInfoManager::Get()->RegisterModule(
+        module().unique_id(), shared_module(), buffer_assignment_);
+  }
 }
 
 CpuExecutable::~CpuExecutable() {
@@ -154,7 +177,7 @@ Status CpuExecutable::ExecuteComputeFunction(
     const ExecutableRunOptions* run_options,
     absl::Span<MaybeOwningDeviceMemory const> buffers,
     HloExecutionProfile* hlo_execution_profile) {
-  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   size_t profile_counters_size =
       hlo_execution_profile ? hlo_execution_profile->profile_counters().size()
@@ -192,7 +215,7 @@ Status CpuExecutable::ExecuteComputeFunction(
   compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
                     &status, profile_counters);
 
-  uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_micros = tsl::Env::Default()->NowMicros();
 
   if (run_options->execution_profile()) {
     const double nanoseconds = (end_micros - start_micros) * 1000.0;
@@ -313,6 +336,35 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     }
   }
   return std::move(result);
+}
+
+Status XlaRuntimeCpuExecutable::Execute(
+    const std::vector<runtime::BufferDesc>& buffers) {
+  runtime::Executable::CallFrame call_frame;
+  if (auto status =
+          default_executable_->InitializeCallFrame(buffers, &call_frame);
+      !status.ok()) {
+    return InternalError("Failed to initialize call frame: %s.",
+                         status.message());
+  }
+
+  // No results to return; they are returned via out params.
+  runtime::NoResultConverter converter;
+
+  runtime::Executable::ExecuteOpts opts;
+
+  // We don't expect to see any async tasks in the XLA Runtime executable.
+  opts.async_task_runner =
+      reinterpret_cast<runtime::AsyncTaskRunner*>(0xdeadbeef);
+
+  // Execute with the prepared call frame.
+  default_executable_->Execute(call_frame, opts);
+  if (auto status = default_executable_->ReturnResults(converter, &call_frame);
+      !status.ok()) {
+    return InternalError("Failed to execute XLA Runtime executable: %s.",
+                         status.message());
+  }
+  return Status::OK();
 }
 
 StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(

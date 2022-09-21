@@ -260,8 +260,8 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
   // ROCm uses hsaco hashes to distinguish between modules.
   // Bad things happen if multiple modules with identical code are loaded.
   binary_.resize(binary_.size() + 16);
-  *(uint64_t*)(&binary_[binary_.size() - 16]) = tensorflow::EnvTime::NowNanos();
-  *(uint64_t*)(&binary_[binary_.size() - 8]) = tensorflow::random::New64();
+  *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
+  *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
   // workaround for a bug in ROCm 3.3 hipModuleLoadData
   binary_.reserve(binary_.size() + 256);
 #endif
@@ -339,7 +339,7 @@ Status ExecuteThunks(const std::string& module_name,
   StatusOr<StreamPool::Ptr> async_comms_stream =
       run_options->BorrowStream(executor->device_ordinal());
 
-  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
@@ -382,7 +382,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
   // FinishExecution() blocks until main_stream has completed if profiling is
   // enabled; we therefore do not need to defer profile collection onto a
   // stream.
-  uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_micros = tsl::Env::Default()->NowMicros();
 
   if (run_options->run_options().execution_profile()) {
     ExecutionProfile* profile = run_options->run_options().execution_profile();
@@ -591,7 +591,7 @@ static Status ExecuteJitRt(const std::string& module_name,
                            size_t num_allocations,
                            std::optional<const BufferAllocation*> temp_buffer,
                            bool block_host_until_done) {
-  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },

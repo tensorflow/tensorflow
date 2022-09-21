@@ -178,8 +178,8 @@ TfrtCpuClient::TfrtCpuClient(
       owned_devices_(std::move(devices)),
       host_ctx_(std::move(host_ctx)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
-      eigen_intraop_pool_(new tensorflow::thread::ThreadPool(
-          tensorflow::Env::Default(), "XLAEigen", DefaultThreadPoolSize())),
+      eigen_intraop_pool_(new tsl::thread::ThreadPool(
+          tsl::Env::Default(), "XLAEigen", DefaultThreadPoolSize())),
       eigen_intraop_device_(
           new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
                                       eigen_intraop_pool_->NumThreads())),

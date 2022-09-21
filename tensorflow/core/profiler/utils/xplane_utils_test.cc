@@ -439,26 +439,26 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
                          events {
                            metadata_id: 1
                            duration_ps: 9000
-                           stats { metadata_id: 1 int64_value: 4000 }
                            stats { metadata_id: 2 int64_value: 4000 }
+                           stats { metadata_id: 3 int64_value: 4000 }
                            num_occurrences: 2
                          }
                          events {
                            metadata_id: 3
                            duration_ps: 5000
-                           stats { metadata_id: 1 int64_value: 2000 }
+                           stats { metadata_id: 2 int64_value: 2000 }
                            num_occurrences: 2
                          }
                          events {
                            metadata_id: 2
                            duration_ps: 10000
-                           stats { metadata_id: 1 int64_value: 5000 }
+                           stats { metadata_id: 2 int64_value: 5000 }
                            num_occurrences: 2
                          }
                          events {
                            metadata_id: 4
                            duration_ps: 6000
-                           stats { metadata_id: 2 int64_value: 2000 }
+                           stats { metadata_id: 3 int64_value: 2000 }
                            num_occurrences: 1
                          }
                        }
@@ -480,12 +480,17 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
                        }
                        stat_metadata {
                          key: 1
-                         value { id: 1 name: "min_duration_ps" }
+                         value { id: 1 name: "total_profile_duration_ps" }
                        }
                        stat_metadata {
                          key: 2
-                         value { id: 2 name: "self_duration_ps" }
+                         value { id: 2 name: "min_duration_ps" }
                        }
+                       stat_metadata {
+                         key: 3
+                         value { id: 3 name: "self_duration_ps" }
+                       }
+                       stats { metadata_id: 1 uint64_value: 21000 }
                   )pb")));
 #endif
 }

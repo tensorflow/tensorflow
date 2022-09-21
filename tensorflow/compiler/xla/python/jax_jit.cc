@@ -307,7 +307,7 @@ struct CacheEntry {
   // We need py::object to maintain the objects alive.
   std::vector<py::object> out_avals;
   std::vector<bool> out_weak_types;
-  std::vector<xla::PrimitiveType> out_dtypes;
+  std::vector<py::dtype> out_dtypes;
   std::vector<std::vector<int64_t>> out_shapes;
   std::vector<py::object> out_shardings;
   std::vector<bool> committed;
@@ -794,8 +794,7 @@ void CompiledFunction::PopulateCacheEntry(
     cache_entry->out_avals.push_back(shaped_array);
     cache_entry->out_weak_types.push_back(
         py::cast<bool>(shaped_array.attr("weak_type")));
-    cache_entry->out_dtypes.push_back(
-        xla::DtypeToPrimitiveType(shaped_array.attr("dtype")).ValueOrDie());
+    cache_entry->out_dtypes.push_back(shaped_array.attr("dtype"));
     cache_entry->out_shapes.push_back(
         py::cast<std::vector<int64_t>>(shaped_array.attr("shape")));
   }

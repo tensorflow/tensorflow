@@ -25,7 +25,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -72,7 +71,7 @@ class RemoveOperation : public SequenceTransformation {
 std::unique_ptr<SequenceTransformation> NewRemoveSingleInputConcat() {
   // Using SequenceTransformation implies that CONCAT has a single input.
   auto type = ToString(OperationType::CONCAT);
-  return absl::make_unique<RemoveOperation>(
+  return std::make_unique<RemoveOperation>(
       [type](GraphFloat32* graph, Node* node) {
         return type == node->operation.type;
       });
@@ -81,24 +80,24 @@ std::unique_ptr<SequenceTransformation> NewRemoveSingleInputConcat() {
 std::unique_ptr<SequenceTransformation> NewRemoveSingleInputAdd() {
   // Using SequenceTransformation implies that ADD has a single input.
   auto type = ToString(OperationType::ADD);
-  return absl::make_unique<RemoveOperation>(
-      [type](GraphFloat32* graph, Node* node) {
-        if (node->operation.type != type) {
-          return false;
-        }
-        auto& attr = absl::any_cast<const ElementwiseAttributes&>(
-            node->operation.attributes);
-        return !absl::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(
-                   attr.param) &&
-               !absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
-                   attr.param) &&
-               !absl::holds_alternative<float>(attr.param);
-      });
+  return std::make_unique<RemoveOperation>([type](GraphFloat32* graph,
+                                                  Node* node) {
+    if (node->operation.type != type) {
+      return false;
+    }
+    auto& attr =
+        std::any_cast<const ElementwiseAttributes&>(node->operation.attributes);
+    return !std::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(
+               attr.param) &&
+           !std::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+               attr.param) &&
+           !std::holds_alternative<float>(attr.param);
+  });
 }
 
 std::unique_ptr<SequenceTransformation> NewRemoveDegenerateUpsampling() {
   auto type = ToString(OperationType::RESIZE);
-  return absl::make_unique<RemoveOperation>(
+  return std::make_unique<RemoveOperation>(
       [type](GraphFloat32* graph, Node* node) {
         if (node->operation.type != type) {
           return false;
@@ -118,7 +117,7 @@ class RemoveIdentityReshape : public NodeTransformation {
     }
     auto input_shape = graph->FindInputs(node->id)[0]->tensor.shape;
     const auto& reshape_attr =
-        absl::any_cast<const ReshapeAttributes&>(node->operation.attributes);
+        std::any_cast<const ReshapeAttributes&>(node->operation.attributes);
     if (input_shape != reshape_attr.new_shape) {
       return {TransformStatus::SKIPPED, ""};
     }
@@ -140,7 +139,7 @@ class RemoveIdentityReshape : public NodeTransformation {
 };
 
 std::unique_ptr<NodeTransformation> NewRemoveIdentityReshape() {
-  return absl::make_unique<RemoveIdentityReshape>();
+  return std::make_unique<RemoveIdentityReshape>();
 }
 
 class RemoveIdentityStridedSlice : public NodeTransformation {
@@ -152,7 +151,7 @@ class RemoveIdentityStridedSlice : public NodeTransformation {
     auto input = graph->FindInputs(node->id)[0];
     auto output = graph->FindOutputs(node->id)[0];
     const auto& slice_attr =
-        absl::any_cast<const SliceAttributes&>(node->operation.attributes);
+        std::any_cast<const SliceAttributes&>(node->operation.attributes);
     if (input->tensor.shape != output->tensor.shape) {
       return {TransformStatus::SKIPPED, ""};
     }
@@ -201,7 +200,7 @@ class RemoveIdentityStridedSlice : public NodeTransformation {
 };
 
 std::unique_ptr<NodeTransformation> NewRemoveIdentityStridedSlice() {
-  return absl::make_unique<RemoveIdentityStridedSlice>();
+  return std::make_unique<RemoveIdentityStridedSlice>();
 }
 
 }  // namespace gpu

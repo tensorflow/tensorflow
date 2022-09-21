@@ -62,7 +62,7 @@ namespace wrap {
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
     static void *GetDsoHandle() {                                         \
       auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();           \
-      return s.ValueOrDie();                                              \
+      return s.value();                                              \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
       void *f;                                                            \
@@ -332,7 +332,7 @@ port::Status ROCMFftPlan::UpdateScratchAllocator(
   scratch_allocator_ = scratch_allocator;
   if (scratch_size_bytes_ != 0) {
     auto allocated = scratch_allocator->AllocateBytes(scratch_size_bytes_);
-    if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
+    if (!allocated.ok() || (scratch_ = allocated.value()) == nullptr) {
       LOG(ERROR) << "failed to allocate work area.";
       return allocated.status();
     }
@@ -536,9 +536,9 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
     if (allocator) {
       auto allocated = allocator->AllocateBytes(input.size());
       if (allocated.ok()) {
-        if (stream->ThenMemcpy(&allocated.ValueOrDie(), input, input.size())
+        if (stream->ThenMemcpy(&allocated.value(), input, input.size())
                 .ok()) {
-          input_maybe_copy = DeviceMemory<InputT>(allocated.ValueOrDie());
+          input_maybe_copy = DeviceMemory<InputT>(allocated.value());
         } else {
           LOG(ERROR) << "failed to copy input buffer for rocFFT.";
         }

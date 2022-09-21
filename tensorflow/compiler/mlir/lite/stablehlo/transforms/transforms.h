@@ -26,8 +26,13 @@ namespace odml {
 // and tf.ResizeNearestNeighbor ops.
 // `smuggle_disallowed_ops` enables or disables converting disallowed ops
 // like tf.ResizeBilinear or tf.ResizeNearestNeighbor to mhlo.custom_call ops.
-void AddTFToStableHLOPasses(OpPassManager& pm, bool skip_resize,
+void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
                             bool smuggle_disallowed_ops);
+
+// Adds all the backend-agonstic stableHLO optimization passes
+// this function is a common entry point for all graph optimizations that are
+// not specific to any hardware
+void AddStablehloOptimizationPasses(OpPassManager& pm);
 
 }  // namespace odml
 }  // namespace mlir

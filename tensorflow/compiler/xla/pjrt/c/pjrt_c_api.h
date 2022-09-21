@@ -733,6 +733,15 @@ typedef struct {
   // will not be populated. The caller is responsible for calling
   // PJRT_Event_Destroy on the returned PJRT_Event*s.
   PJRT_Event** device_complete_events;  // in/out
+  // The device to execute on. If nullptr, will execute on the device(s)
+  // specified at compile time. If set, must be an addressable device, and
+  // `num_devices` should be 1 with `argument_lists` only containing arguments
+  // for `execute_device`. Can be set with a multi-device executable to launch
+  // just on this device. In this case, it's the responsibility of the caller to
+  // make sure the executable is launched on all participating devices specified
+  // at compile time. Setting this field may not be supported on all platforms
+  // or executables.
+  PJRT_Device* execute_device;
 } PJRT_Executable_Execute_Args;
 const size_t PJRT_Executable_Execute_Args_STRUCT_SIZE =
     PJRT_STRUCT_SIZE(PJRT_Executable_Execute_Args, device_complete_events);

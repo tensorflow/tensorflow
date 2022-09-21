@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
@@ -63,7 +65,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/Register.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -177,7 +178,7 @@ mlir::RankedTensorType GetBufferType(mlir::Type ty) {
       }
     }
   }
-  return mlir::RankedTensorType::get(dims, ranked_ty.getElementType());
+  return GetTypeFromTFTensorShape(dims, ranked_ty.getElementType());
 }
 
 // Calculates computation output shape and build OutputDescription for each
@@ -720,14 +721,14 @@ static StatusOr<std::vector<int>> RewriteWithArgs(
       llvm::SmallVector<int64_t, 4> resource_subtype_shape(
           resource_shape.begin(), resource_shape.end());
       auto resource_subtype =
-          mlir::RankedTensorType::get(resource_subtype_shape, element_type);
+          GetTypeFromTFTensorShape(resource_subtype_shape, element_type);
       auto resource_type =
           mlir::TF::ResourceType::get({resource_subtype}, builder.getContext());
 
       auto tensor_type = mlir_arg.getType().cast<mlir::TensorType>();
       if (tensor_type.hasRank()) {
         mlir_arg.setType(
-            mlir::RankedTensorType::get(tensor_type.getShape(), resource_type));
+            GetTypeFromTFTensorShape(tensor_type.getShape(), resource_type));
       } else {
         mlir_arg.setType(mlir::UnrankedTensorType::get(resource_type));
       }

@@ -849,15 +849,11 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       ret_nodes, lib_def_,
       options.config_proto.allow_soft_placement() ? default_device : nullptr));
 
-  auto data = std::make_unique<MultiDeviceFunctionData>(
-      function_name, function_key, ret_node_names.size(),
-      std::move(reachable_lib_def), std::move(ret_types));
-
   // The runtime shouldn't depend on duplication between the function library
   // owned by the graph and the one owned by the runtime. To ensure this, for
   // now we ensure that the graph function library is empty and the runtime
   // library receives the query from LookUps on the graph function library.
-  graph->mutable_flib_def()->set_default_registry(&data->lib_def_);
+  graph->mutable_flib_def()->set_default_registry(&reachable_lib_def);
   graph->mutable_flib_def()->Clear();
 
   // Do not run function/graph optimization passes for component functions,
@@ -875,7 +871,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   bool control_rets_updated = false;
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-        *dev_set, options.config_proto, &graph, &data->lib_def_,
+        *dev_set, options.config_proto, &graph, &reachable_lib_def,
         &control_ret_node_names, &control_rets_updated));
   }
 
@@ -899,7 +895,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   session_options.config = options.config_proto;
   optimization_options.session_options = &session_options;
   optimization_options.graph = &graph;
-  optimization_options.flib_def = &data->lib_def_;
+  optimization_options.flib_def = &reachable_lib_def;
   optimization_options.device_set = dev_set.get();
   optimization_options.is_function_graph = true;
   std::vector<CompositeDevice*> composite_devices;
@@ -941,7 +937,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     DumpGraph("Before running graph optimization fn", graph.get());
     Status status = options.optimize_graph_fn(
         std::move(ret_node_names), std::move(control_ret_node_names),
-        &data->lib_def_, *dev_set, cpu_device, &graph);
+        &reachable_lib_def, *dev_set, cpu_device, &graph);
     if (!status.ok()) {
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
                    << status.ToString();
@@ -1027,6 +1023,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
                ? absl::make_optional<string>(it->second)
                : absl::nullopt;
   };
+
+  auto data = std::make_unique<MultiDeviceFunctionData>(
+      function_name, function_key, ret_nodes.size(),
+      std::move(reachable_lib_def), std::move(ret_types));
 
   int i = 0;
   // Generate a random function_name to avoid one function reuse the partition

@@ -450,7 +450,7 @@ SmallVector<Value> sliceMemrefsOrTensors(ImplicitLocOpBuilder& b,
   if (ivs.empty()) return memrefsOrTensors;
 
   SmallVector<Value> outputs;
-  Slicer slicer(b, op.dimension(), sortDimSize, ivs);
+  Slicer slicer(b, op.getDimension(), sortDimSize, ivs);
   // Create subviews/slices.
   for (Value out : memrefsOrTensors) {
     outputs.push_back(slicer.apply(b, out));
@@ -472,9 +472,9 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
 
     Value firstOperand = op.getOperands().front();
     Value sortDimSize = b.createOrFold<tensor::DimOp>(
-        firstOperand, b.create<arith::ConstantIndexOp>(op.dimension()));
+        firstOperand, b.create<arith::ConstantIndexOp>(op.getDimension()));
     int64_t staticSortDimSize =
-        firstOperand.getType().cast<ShapedType>().getShape()[op.dimension()];
+        firstOperand.getType().cast<ShapedType>().getShape()[op.getDimension()];
 
     // Allocate output and scratch memrefs. If the size of the sort dimension is
     // statically known to be <= kInsertionSortSize, `scratchMemrefs` are unused
@@ -500,7 +500,7 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     forOps.reserve(inputRank - 1);
     ivs.reserve(inputRank - 1);
     for (int64_t i = 0; i < inputRank; ++i) {
-      if (i != op.dimension()) {
+      if (i != op.getDimension()) {
         Value dim = b.create<arith::ConstantIndexOp>(i);
         Value ub = b.create<tensor::DimOp>(firstOperand, dim);
         scf::ForOp& forOp = forOps.emplace_back(

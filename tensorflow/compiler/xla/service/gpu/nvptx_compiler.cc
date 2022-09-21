@@ -358,11 +358,11 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
     XLA_SCOPED_LOGGING_TIMER(
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
-    uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+    uint64_t start_usecs = tsl::Env::Default()->NowMicros();
     TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
                                                  module_config, libdevice_dir));
 
-    uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
     // out we have no way of telling how far through the process we got).
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
@@ -413,13 +413,13 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         if (relocatable) {
           ptxas_config.extra_flags.push_back("-c");
         }
-        uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+        uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
         StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
             stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
 
         if (maybe_cubin.ok()) {
-          uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+          uint64_t end_usecs = tsl::Env::Default()->NowMicros();
           // This won't record values for calls that error out (because if they
           // error out we have no way of telling how far through the process we
           // got).

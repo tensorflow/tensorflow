@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -59,7 +60,7 @@ TEST(ConvertTypeToTensorTypeTest, NonFullyDefinedRankedTensorType) {
   mlir::Builder b(&context);
 
   PartialTensorShape output_shape = ConvertTypeToTensorShape(
-      mlir::RankedTensorType::get({-1, 2, 3}, b.getF32Type()));
+      GetTypeFromTFTensorShape({-1, 2, 3}, b.getF32Type()));
   EXPECT_TRUE(output_shape.IsIdenticalTo(PartialTensorShape({-1, 2, 3})));
 }
 

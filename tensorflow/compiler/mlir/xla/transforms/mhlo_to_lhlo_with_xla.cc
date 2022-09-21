@@ -307,7 +307,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
         GetI64DenseElementsAttr(dimensions));
 
     TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-        *instr->called_computations()[0], &reduce_op.body(), &builder_,
+        *instr->called_computations()[0], &reduce_op.getBody(), &builder_,
         /*flatten_region_arg_tuple=*/true));
     op = reduce_op;
   } else {
@@ -487,7 +487,7 @@ Status WalkTuplePostOrder(Value v,
                           const std::function<Status(Value)>& visitor) {
   if (auto* op = v.getDefiningOp()) {
     if (auto tuple = dyn_cast<mhlo::TupleOp>(op)) {
-      for (Value sub_v : tuple.val()) {
+      for (Value sub_v : tuple.getVal()) {
         TF_RETURN_IF_ERROR(WalkTuplePostOrder(sub_v, visitor));
       }
       return ::tensorflow::OkStatus();

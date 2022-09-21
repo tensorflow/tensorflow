@@ -34,7 +34,10 @@ inline llvm::orc::SymbolMap CRunnerUtilsSymbolMap(
         llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
   };
 
+#ifndef _WIN32
+  // TODO(b/246980307): fails to link on windows because it's marked dllimport.
   bind("memrefCopy", &memrefCopy);
+#endif
 
   return symbol_map;
 }

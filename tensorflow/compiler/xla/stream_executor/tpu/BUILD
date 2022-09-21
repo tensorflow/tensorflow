@@ -322,7 +322,7 @@ cc_library(
         ":c_api_decl",
         ":tpu_topology_external",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/core/platform:env",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/synchronization",
     ],

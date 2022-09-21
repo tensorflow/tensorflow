@@ -56,6 +56,7 @@ from tensorflow.python.training import momentum
 from tensorflow.python.training import saver
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 
 
 def _eager_safe_var_handle_op(*args, **kwargs):
@@ -1724,6 +1725,15 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         trainable=True, shape=(), dtype=dtypes.float32, handle=v.handle)
     self.assertIs(v2.handle, v.handle)
     self.assertAllEqual(ops.convert_to_tensor(v2), 1.)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFlattenResourceVariable(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(v.initializer)
+    result = nest.flatten(v, expand_composites=True)
+    # TODO(b/246438937): Update this to dt_resource tensor once we expand
+    # ResourceVariables with expand_composites=True.
+    self.assertIsInstance(result[0], resource_variable_ops.ResourceVariable)
 
 if __name__ == "__main__":
   test.main()

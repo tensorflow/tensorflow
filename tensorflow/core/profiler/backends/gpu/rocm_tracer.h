@@ -266,7 +266,7 @@ class RocmApiCallbackImpl {
   RocmTracerOptions options_;
   RocmTracer* tracer_ = nullptr;
   RocmTraceCollector* collector_ = nullptr;
-  mutex api_call_start_mutex_;
+  tsl::mutex api_call_start_mutex_;
   // TODO(rocm-profiler): replace this with absl hashmap
   // keep a map from the corr. id to enter time for API callbacks.
   std::map<uint32_t, uint64_t> api_call_start_time_

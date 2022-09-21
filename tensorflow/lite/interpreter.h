@@ -21,6 +21,6 @@ limitations under the License.
 /// For documentation, see
 /// third_party/tensorflow/lite/core/impl/interpreter.h.
 
-#include "tensorflow/lite/core/impl/interpreter.h"
+#include "tensorflow/lite/core/impl/interpreter.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_INTERPRETER_H_

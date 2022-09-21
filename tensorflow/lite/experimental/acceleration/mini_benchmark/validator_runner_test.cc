@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 
+#include <fcntl.h>
+
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -92,20 +94,6 @@ class ValidatorRunnerTest : public ::testing::Test {
         g_tflite_acceleration_embedded_mobilenet_validation_model,
         g_tflite_acceleration_embedded_mobilenet_validation_model_len);
     ASSERT_TRUE(!model_path_.empty());
-
-#ifdef __ANDROID__
-    // We extract the test files here as that's the only way to get the right
-    // architecture when building tests for multiple architectures.
-    std::string entry_point_file = MiniBenchmarkTestHelper::DumpToTempFile(
-        "libvalidator_runner_entrypoint.so",
-        g_tflite_acceleration_embedded_validator_runner_entrypoint,
-        g_tflite_acceleration_embedded_validator_runner_entrypoint_len);
-    ASSERT_TRUE(!entry_point_file.empty());
-
-    void* module =
-        dlopen(entry_point_file.c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
-    EXPECT_TRUE(module) << dlerror();
-#endif  // __ANDROID__
   }
 
   void CheckConfigurations(bool use_path = true) {

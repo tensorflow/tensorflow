@@ -367,6 +367,10 @@ TEST(BasicInterpreter, CheckArenaAllocation) {
 
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
+  // The simple memory planner allocates each tensor separately with malloc(),
+  // so when that is enabled, we can't make any guarantees about the order of
+  // tensor addresses.
+#ifndef TFLITE_USE_SIMPLE_MEMORY_PLANNER
   ASSERT_LT(interpreter.tensor(0)->data.raw, interpreter.tensor(1)->data.raw);
   ASSERT_LT(interpreter.tensor(1)->data.raw, interpreter.tensor(3)->data.raw);
   ASSERT_EQ(interpreter.tensor(3)->data.raw, interpreter.tensor(9)->data.raw);
@@ -374,6 +378,7 @@ TEST(BasicInterpreter, CheckArenaAllocation) {
   ASSERT_LT(interpreter.tensor(5)->data.raw, interpreter.tensor(2)->data.raw);
   ASSERT_EQ(interpreter.tensor(2)->data.raw, interpreter.tensor(7)->data.raw);
   ASSERT_LT(interpreter.tensor(2)->data.raw, interpreter.tensor(4)->data.raw);
+#endif
   // #4 is the one with the largest pointer.
   ASSERT_EQ(interpreter.tensor(8)->data.raw, nullptr);
 }
@@ -1380,7 +1385,9 @@ TEST_F(TestExecutionPlan, NullExecutionPlan) {
 TEST(TestDelegateOwnership, ProperlyDisposed) {
   struct TfLiteInterpreterOwnedDelegate : public TfLiteDelegate {
     TfLiteInterpreterOwnedDelegate(bool* destroyed, bool* prepared)
-        : destroyed(destroyed), prepared(prepared) {
+        : TfLiteDelegate(TfLiteDelegateCreate()),
+          destroyed(destroyed),
+          prepared(prepared) {
       flags = kTfLiteDelegateFlagsNone;
       Prepare = [](TfLiteContext*, TfLiteDelegate* delegate) -> TfLiteStatus {
         *static_cast<TfLiteInterpreterOwnedDelegate*>(delegate)->prepared =

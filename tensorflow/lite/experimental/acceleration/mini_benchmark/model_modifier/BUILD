@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 
@@ -88,9 +90,9 @@ cc_library(
     srcs = ["custom_validation_embedder.cc"],
     hdrs = ["custom_validation_embedder.h"],
     deps = [
-        ":constants",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers",
@@ -115,9 +117,4 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],
-)
-
-cc_library(
-    name = "constants",
-    hdrs = ["constants.h"],
 )

@@ -33,8 +33,7 @@ ABSL_CONST_INIT const char kPossibleAutoJitAlternative[] =
     "variable TF_XLA_FLAGS=\"tf_xla_auto_jit=2\" which will attempt to use xla "
     "to compile as much of the graph as the compiler is able to.";
 
-static Status MakeStatus(tensorflow::error::Code code,
-                         const std::string& message) {
+static Status MakeStatus(tsl::error::Code code, const std::string& message) {
   return Status(code, message);
 }
 
@@ -42,25 +41,25 @@ static Status MakeStatus(tensorflow::error::Code code,
 // If log_severity is NUM_SEVERITIES, nothing is logged.
 static void LogError(const Status& status, const char* filename, int line,
                      int log_severity, bool should_log_stack_trace) {
-  if (ABSL_PREDICT_TRUE(log_severity != tensorflow::NUM_SEVERITIES)) {
+  if (ABSL_PREDICT_TRUE(log_severity != tsl::NUM_SEVERITIES)) {
     std::string stack_trace;
     if (should_log_stack_trace) {
       stack_trace = absl::StrCat("\n", tsl::CurrentStackTrace());
     }
     switch (log_severity) {
-      case tensorflow::INFO:
+      case tsl::INFO:
         LOG(INFO) << status << stack_trace;
         break;
-      case tensorflow::WARNING:
+      case tsl::WARNING:
         LOG(WARNING) << status << stack_trace;
         break;
-      case tensorflow::ERROR:
+      case tsl::ERROR:
         LOG(ERROR) << status << stack_trace;
         break;
-      case tensorflow::FATAL:
+      case tsl::FATAL:
         LOG(FATAL) << status << stack_trace;
         break;
-      case tensorflow::NUM_SEVERITIES:
+      case tsl::NUM_SEVERITIES:
         break;
       default:
         LOG(FATAL) << "Unknown LOG severity " << log_severity;
@@ -74,13 +73,12 @@ static void LogError(const Status& status, const char* filename, int line,
 // NUM_SEVERITIES).  If should_log_stack_trace is true, the stack
 // trace is included in the log message (ignored if should_log is
 // false).
-static Status MakeError(const char* filename, int line,
-                        tensorflow::error::Code code,
+static Status MakeError(const char* filename, int line, tsl::error::Code code,
                         const std::string& message, bool should_log,
                         int log_severity, bool should_log_stack_trace) {
-  if (ABSL_PREDICT_FALSE(code == tensorflow::error::OK)) {
+  if (ABSL_PREDICT_FALSE(code == tsl::error::OK)) {
     LOG(ERROR) << "Cannot create error with status OK";
-    code = tensorflow::error::UNKNOWN;
+    code = tsl::error::UNKNOWN;
   }
   const Status status = MakeStatus(code, message);
   if (ABSL_PREDICT_TRUE(should_log)) {
@@ -93,8 +91,7 @@ static Status MakeError(const char* filename, int line,
 // generating a lot of inline code for error cases in all callers.
 void MakeErrorStream::CheckNotDone() const { impl_->CheckNotDone(); }
 
-MakeErrorStream::Impl::Impl(const char* file, int line,
-                            tensorflow::error::Code code,
+MakeErrorStream::Impl::Impl(const char* file, int line, tsl::error::Code code,
                             MakeErrorStream* error_stream,
                             bool is_logged_by_default)
     : file_(file),
@@ -102,7 +99,7 @@ MakeErrorStream::Impl::Impl(const char* file, int line,
       code_(code),
       is_done_(false),
       should_log_(is_logged_by_default),
-      log_severity_(tensorflow::ERROR),
+      log_severity_(tsl::ERROR),
       should_log_stack_trace_(false),
       make_error_stream_with_output_wrapper_(error_stream) {}
 
@@ -113,14 +110,14 @@ MakeErrorStream::Impl::Impl(const Status& status,
     : file_(file),
       line_(line),
       // Make sure we show some error, even if the call is incorrect.
-      code_(!status.ok() ? status.code() : tensorflow::error::UNKNOWN),
+      code_(!status.ok() ? status.code() : tsl::error::UNKNOWN),
       prior_message_handling_(prior_message_handling),
       prior_message_(status.error_message()),
       is_done_(false),
       // Error code type is not visible here, so we can't call
       // IsLoggedByDefault.
       should_log_(true),
-      log_severity_(tensorflow::ERROR),
+      log_severity_(tsl::ERROR),
       should_log_stack_trace_(false),
       make_error_stream_with_output_wrapper_(error_stream) {
   DCHECK(!status.ok()) << "Attempted to append/prepend error text to status OK";
@@ -156,7 +153,7 @@ Status MakeErrorStream::Impl::GetStatus() {
     return MakeError(
         file_, line_, code_,
         absl::StrCat(str, "Error without message at ", file_, ":", line_),
-        true /* should_log */, tensorflow::ERROR /* log_severity */,
+        true /* should_log */, tsl::ERROR /* log_severity */,
         should_log_stack_trace_);
   } else {
     return MakeError(file_, line_, code_, str, should_log_, log_severity_,

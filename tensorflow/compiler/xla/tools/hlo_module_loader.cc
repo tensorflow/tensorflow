@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/regexp.h"
@@ -90,10 +90,10 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
         return InvalidArgument("Failed to parse input as HLO protobuf binary");
       }
     } else if (format == "pbtxt") {
-      if (!tensorflow::protobuf::TextFormat::ParseFromString(data, &proto) &&
-          !tensorflow::protobuf::TextFormat::ParseFromString(
-              data, proto.mutable_hlo()) &&
-          !tensorflow::protobuf::TextFormat::ParseFromString(
+      if (!tsl::protobuf::TextFormat::ParseFromString(data, &proto) &&
+          !tsl::protobuf::TextFormat::ParseFromString(data,
+                                                      proto.mutable_hlo()) &&
+          !tsl::protobuf::TextFormat::ParseFromString(
               data, proto.mutable_hlo()->mutable_hlo_module())) {
         return InvalidArgument("Failed to parse input as HLO protobuf text");
       }
@@ -124,8 +124,7 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));
   }
-  TF_RETURN_IF_ERROR(
-      tensorflow::ReadFileToString(tensorflow::Env::Default(), path, &data));
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadModuleFromData(data, format, ovr_config, config_modifier_hook);
 }
 

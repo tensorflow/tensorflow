@@ -44,11 +44,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/subprocess.h"
 #if defined(PLATFORM_GOOGLE)
 #include "util/readline/readline.h"
 #endif
@@ -435,7 +435,7 @@ void OpenUrl(const Options& opts, absl::string_view url) {
       absl::StartsWithIgnoreCase(url, "file://")) {
     const char* browser_bin = opts.browser.empty() ? "/usr/bin/sensible-browser"
                                                    : opts.browser.c_str();
-    tensorflow::SubProcess p;
+    tsl::SubProcess p;
     p.SetProgram(browser_bin, {browser_bin, std::string(url)});
     p.Start();
   } else {
@@ -467,7 +467,7 @@ void RenderAndDisplayGraph(
     std::cerr << "Trying as HTML..." << std::endl;
   }
 
-  auto* env = tensorflow::Env::Default();
+  auto* env = tsl::Env::Default();
   StatusOr<std::string> html_result = renderer(RenderedGraphFormat::kHtml);
   if (!html_result.ok()) {
     std::cerr << "Failed to render graph as HTML: " << html_result.status()
@@ -490,8 +490,8 @@ void RenderAndDisplayGraph(
   std::string temp_file_path = tsl::io::JoinPath(
       temp_dirs.front(),
       absl::StrFormat("interactive_graphviz.%d.html", env->NowMicros()));
-  auto status = tensorflow::WriteStringToFile(env, temp_file_path,
-                                              std::move(html_result).value());
+  auto status = tsl::WriteStringToFile(env, temp_file_path,
+                                       std::move(html_result).value());
   if (status.ok()) {
     OpenUrl(opts, absl::StrCat("file://", temp_file_path));
     return;
@@ -698,8 +698,8 @@ void RealMain(const Options& opts) {
   std::unique_ptr<HloModule> module;
   if (!opts.hlo_snapshot.empty()) {
     HloSnapshot snapshot;
-    TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                            opts.hlo_snapshot, &snapshot))
+    TF_CHECK_OK(
+        tsl::ReadBinaryProto(tsl::Env::Default(), opts.hlo_snapshot, &snapshot))
         << "Can't open, read, or parse HloSnapshot proto at "
         << opts.hlo_snapshot;
     auto config =

@@ -1861,6 +1861,7 @@ tf_cuda_cc_test(
     srcs = ["conv_ops_test.cc"],
     tags = [
         "no_cuda_asan",  # TODO(b/171342275): re-enable.
+        "requires-gpu-sm70",
     ],
     deps = [
         ":conv_ops",
@@ -3458,7 +3459,7 @@ tf_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
-        "//tensorflow/core/util:determinism_test_util",
+        "//tensorflow/tsl/util:determinism_test_util",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -4133,6 +4134,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }),
     hdrs = [
+        "autotune_conv_impl.h",
         "fill_functor.h",
         "conv_grad_ops.h",
         "conv_grad_input_ops.h",
@@ -4156,6 +4158,7 @@ tf_kernel_library(
         ":conv_grad_shape_utils",
         ":conv_2d",
         ":conv_3d",
+        ":cwise_lib_hdrs",
         ":eigen_contraction_kernel",
         ":fill_functor",
         ":fused_eigen_output_kernels",
@@ -6341,6 +6344,7 @@ filegroup(
         "assign_op.h",
         "bias_op.cc",
         "bias_op.h",
+        "bias_op_gpu.h",
         "cast_op.cc",
         "cast_op.h",
         "cast_op_impl.h",
@@ -6590,6 +6594,7 @@ filegroup(
     srcs = [
         ":portable_extended_ops_headers",
         "argmax_op.cc",
+        "autotune_conv_impl.h",
         "avgpooling_op.cc",
         "batch_norm_op.cc",
         "bcast_ops.cc",
@@ -6614,6 +6619,7 @@ filegroup(
         "conv_ops_fused_half.cc",
         "conv_ops_fused_image_transform.cc",
         "conv_ops_fused_impl.h",
+        "conv_ops_fused_int8.cc",
         "conv_ops_using_gemm.cc",
         "cwise_op_abs.cc",
         "cwise_op_add_1.cc",
@@ -7960,6 +7966,7 @@ tf_cc_shared_library(
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
         "@snappy//:__subpackages__",
+        "@stablehlo//:__subpackages__",
         "//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",

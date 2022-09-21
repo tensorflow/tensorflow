@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_buffer_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -477,6 +478,17 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
                                               tensorflow::wrap(handles.data()),
                                               handles.size(), &status, info_));
     return status.status;
+  }
+
+  tensorflow::StatusOr<bool> ShallPinToThisDevice(
+      const ImmediateExecutionOperation* op) override {
+    TF_Status status;
+    // Let this custom device choose the device to pin this op on if it
+    // implements the pinning function.
+    if (device_.shall_pin_to_this_device != nullptr) {
+      return device_.shall_pin_to_this_device(tensorflow::wrap(op), &status);
+    }
+    return errors::Unimplemented("No custom device pinning implementation.");
   }
 
  private:

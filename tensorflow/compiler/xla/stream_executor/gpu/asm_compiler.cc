@@ -31,12 +31,12 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/tsl/platform/cuda_libdevice_path.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/subprocess.h"
 
 namespace stream_executor {
 
@@ -53,9 +53,9 @@ static port::StatusOr<absl::string_view> GetPtxasVersionString(
     return absl::string_view(it->second);
   }
 
-  tensorflow::SubProcess binary;
+  tsl::SubProcess binary;
   binary.SetProgram(binary_path, {binary_path, "--version"});
-  binary.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
+  binary.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
   if (!binary.Start()) {
     return port::InternalError(
         absl::StrFormat("Couldn't invoke %s --version", binary_path));
@@ -196,7 +196,7 @@ static std::string FindCudaExecutable(const std::string binary_name,
   }
 
   // Search in cuda root candidates.
-  auto env = tensorflow::Env::Default();
+  auto env = tsl::Env::Default();
   std::string binary_path;
   for (const std::string& cuda_root :
        tsl::CandidateCudaRoots(preferred_cuda_dir)) {
@@ -257,16 +257,15 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
 
   // Write ptx into a temporary file.
   std::string ptx_path;
-  auto env = tensorflow::Env::Default();
+  auto env = tsl::Env::Default();
   if (!env->LocalTempFilename(&ptx_path)) {
     return port::InternalError("couldn't get temp PTX file name");
   }
-  TF_RETURN_IF_ERROR(
-      tensorflow::WriteStringToFile(env, ptx_path, ptx_contents));
+  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(env, ptx_path, ptx_contents));
   VLOG(2) << "ptx written to: " << ptx_path;
 
   absl::Cleanup ptx_cleaner = [&ptx_path] {
-    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(ptx_path));
+    TF_CHECK_OK(tsl::Env::Default()->DeleteFile(ptx_path));
   };
 
   // Invoke ptxas and collect its output.
@@ -277,9 +276,9 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
   absl::Cleanup cubin_cleaner = [&cubin_path] {
     // CUBIN file may never be created, so the failure to delete it should not
     // produce TF error.
-    tensorflow::Env::Default()->DeleteFile(cubin_path).IgnoreError();
+    tsl::Env::Default()->DeleteFile(cubin_path).IgnoreError();
   };
-  tensorflow::SubProcess ptxas_info_dumper;
+  tsl::SubProcess ptxas_info_dumper;
   std::vector<std::string> ptxas_args = {
       ptxas_path,
       ptx_path,
@@ -296,8 +295,7 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
   }
 
   ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
-  ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
-                                     tensorflow::ACTION_PIPE);
+  ptxas_info_dumper.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!ptxas_info_dumper.Start()) {
     return port::InternalError("Failed to launch ptxas");
   }
@@ -313,7 +311,7 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
         absl::StrContains(stderr_output,
                           "is not defined for option 'gpu-name'")) {
       LogPtxasTooOld(ptxas_path, cc_major, cc_minor);
-      return tensorflow::errors::Unimplemented(
+      return tsl::errors::Unimplemented(
           ptxas_path, " ptxas too old. Falling back to the driver to compile.");
     }
 
@@ -332,8 +330,8 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
 
   // Read in the result of compilation and return it as a byte vector.
   std::string cubin;
-  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
-                                                  cubin_path, &cubin));
+  TF_RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), cubin_path, &cubin));
   std::vector<uint8_t> cubin_vector(cubin.begin(), cubin.end());
   return cubin_vector;
 }
@@ -345,21 +343,21 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 
   // Write images to temporary files.
   std::vector<std::string> image_paths;
-  auto env = tensorflow::Env::Default();
+  auto env = tsl::Env::Default();
   for (const CubinOrPTXImage& img : images) {
     std::string img_path;
     if (!env->LocalTempFilename(&img_path)) {
       return port::InternalError(
           "Could not get temporary filenames for images.");
     }
-    TF_RETURN_IF_ERROR(tensorflow::WriteStringToFile(
+    TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
         env, img_path, std::string(img.bytes.begin(), img.bytes.end())));
     VLOG(2) << "image written to " << img_path;
     image_paths.push_back(std::move(img_path));
   }
   absl::Cleanup image_files_cleaner = [&image_paths] {
     for (const auto& path : image_paths) {
-      TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(path));
+      TF_CHECK_OK(tsl::Env::Default()->DeleteFile(path));
     }
   };
 
@@ -372,7 +370,7 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   absl::Cleanup result_file_cleaner = [&result_path] {
     // This file may never be created, so the failure to delete it should not
     // propagate to TF.
-    tensorflow::Env::Default()->DeleteFile(result_path).IgnoreError();
+    tsl::Env::Default()->DeleteFile(result_path).IgnoreError();
   };
 
   // Compute the ptxas options that were used to produce the cubins.
@@ -380,7 +378,7 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   AppendArgsFromOptions(options, ptxas_options);
 
   // Invoke fatbinary and collect its output.
-  tensorflow::SubProcess fatbinary;
+  tsl::SubProcess fatbinary;
   std::vector<std::string> fatbinary_args = {
       fatbinary_path, "--64", "--link", "--compress-all",
       absl::StrCat("--create=", result_path)};
@@ -397,7 +395,7 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
     VLOG(3) << absl::StrJoin(fatbinary_args, " ");
   }
   fatbinary.SetProgram(fatbinary_path, fatbinary_args);
-  fatbinary.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
+  fatbinary.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!fatbinary.Start()) {
     return port::InternalError("Failed to launch fatbinary.");
   }
@@ -415,14 +413,14 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 
   // Read in the result and return it as a byte vector.
   std::string result_blob;
-  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
-                                                  result_path, &result_blob));
+  TF_RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), result_path, &result_blob));
   return std::vector<uint8_t>(result_blob.begin(), result_blob.end());
 }
 
 static std::string findRocmExecutable(const std::string& binary_relative_path,
                                       const std::string& rocm_root_dir) {
-  auto env = tensorflow::Env::Default();
+  auto env = tsl::Env::Default();
   std::string binary_path =
       tsl::io::JoinPath(rocm_root_dir, binary_relative_path);
   VLOG(2) << "Looking for " << binary_relative_path << " at " << rocm_root_dir;
@@ -448,14 +446,14 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 
   // Write images to temporary files.
   std::vector<std::string> image_paths;
-  auto env = tensorflow::Env::Default();
+  auto env = tsl::Env::Default();
   for (const HsacoImage& img : images) {
     std::string img_path;
     if (!env->LocalTempFilename(&img_path)) {
       return port::InternalError(
           "Could not get temporary filenames for images.");
     }
-    TF_RETURN_IF_ERROR(tensorflow::WriteStringToFile(
+    TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
         env, img_path, std::string(img.bytes.begin(), img.bytes.end())));
     VLOG(2) << "image written to " << img_path;
     inputs_list << "," << img_path;
@@ -464,7 +462,7 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   }
   absl::Cleanup image_files_cleaner = [&image_paths] {
     for (const auto& path : image_paths) {
-      TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(path));
+      TF_CHECK_OK(tsl::Env::Default()->DeleteFile(path));
     }
   };
 
@@ -477,11 +475,11 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   absl::Cleanup result_file_cleaner = [&result_path] {
     // This file may never be created, so the failure to delete it should not
     // propagate to TF.
-    tensorflow::Env::Default()->DeleteFile(result_path).IgnoreError();
+    tsl::Env::Default()->DeleteFile(result_path).IgnoreError();
   };
 
   // Invoke clang_offload_bundler and collect its output.
-  tensorflow::SubProcess clang_offload_bundler;
+  tsl::SubProcess clang_offload_bundler;
   std::vector<std::string> clang_offload_bundler_args = {
       clang_offload_bundler_path, absl::StrCat("--inputs=", inputs_list.str()),
       absl::StrCat("--targets=", targets_list.str()), "--type=o",
@@ -491,8 +489,7 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   }
   clang_offload_bundler.SetProgram(clang_offload_bundler_path,
                                    clang_offload_bundler_args);
-  clang_offload_bundler.SetChannelAction(tensorflow::CHAN_STDERR,
-                                         tensorflow::ACTION_PIPE);
+  clang_offload_bundler.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!clang_offload_bundler.Start()) {
     return port::InternalError("Failed to launch clang_offload_bundler.");
   }
@@ -510,8 +507,8 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 
   // Read in the result and return it as a byte vector.
   std::string result_blob;
-  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
-                                                  result_path, &result_blob));
+  TF_RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), result_path, &result_blob));
   return std::vector<uint8_t>(result_blob.begin(), result_blob.end());
 }
 
