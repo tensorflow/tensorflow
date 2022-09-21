@@ -49,15 +49,19 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
 
   // HLO -> Loops
   pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
-  SmallVector<SmallVector<int64_t>> tilingSizes = {
-      SmallVector<int64_t>(tileSizes.begin(), tileSizes.end()),
-      SmallVector<int64_t>(unrollFactors.begin(), unrollFactors.end()),
-      // Force the innermost ploop to be a point to avoid temp alloc()s.
-      // TODO(csigg): vectorize instead.
-      SmallVector<int64_t>(tileSizes.size(), 1)};
+  pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+      /*distribute=*/true,
+      SmallVector<int64_t>(tileSizes.begin(), tileSizes.end())));
+  pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+      /*distribute=*/true,
+      SmallVector<int64_t>(unrollFactors.begin(), unrollFactors.end())));
 
-  pm.addNestedPass<FuncOp>(gml_st::createDeprecatedTilingPass(tilingSizes));
-  pm.addNestedPass<FuncOp>(gml_st::createDeprecatedFusionPass());
+  // Force the innermost ploop to be a point to avoid temp alloc()s.
+  // TODO(csigg): vectorize instead.
+  pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+      /*distribute=*/true, SmallVector<int64_t>(tileSizes.size(), 1)));
+  pm.addNestedPass<FuncOp>(createScalarizationPass());
+
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addNestedPass<FuncOp>(gml_st::createComposeSetOpsPass());
@@ -95,6 +99,7 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   pm.addNestedPass<GPUModuleOp>(createGpuKernelToNvvmPass());
 #endif
   pm.addPass(createPropagateStaticShapesToKernelPass());
+  pm.addNestedPass<GPUModuleOp>(createCSEPass());
   // Some instructions crash ptxas down the line if they have debug info
   // attached.
   pm.addNestedPass<GPUModuleOp>(createStripDebugInfoPass());
