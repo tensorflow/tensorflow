@@ -73,6 +73,35 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo, ErrorSpec{1e-3}));
 }
 
+TEST_F(TransposeEmitterTest, MultipleCopiesDifferentTypes) {
+  const char* hlo = R"(
+HloModule module, entry_computation_layout={(f16[16,32]{1,0})->(f32[16,32]{0,1}, f16[16,32]{0,1})}
+
+%fused_computation (param_0.1: f16[16,32]) -> (f32[16,32], f16[16,32]) {
+  %param_0.1 = f16[16,32]{1,0} parameter(0)
+  %s.1 = f32[16,32]{1,0} convert(%param_0.1)
+  %c.1 = f32[16,32]{0,1} copy(%s.1)
+  %c1.1 = f16[16,32]{0,1} copy(%param_0.1)
+  ROOT %tuple = (f32[16,32]{0,1}, f16[16,32]{0,1}) tuple(%c.1, %c1.1)
+}
+
+ENTRY %main (p: f16[16,32]) -> (f32[16,32], f16[16,32]) {
+  %p = f16[16,32]{1,0} parameter(0)
+  %fusion = (f32[16,32]{0,1}, f16[16,32]{0,1}) fusion(%p), kind=kInput, calls=%fused_computation
+  %get-tuple-element = f32[16,32]{0,1} get-tuple-element(%fusion), index=0
+  %get-tuple-element.1 = f16[16,32]{0,1} get-tuple-element(%fusion), index=1
+  ROOT %t = (f32[16,32]{0,1}, f16[16,32]{0,1}) tuple(%get-tuple-element, %get-tuple-element.1)
+}
+  )";
+
+  CompileAndVerifyIr(hlo, MakePlatformSpecificLlvm(R"(
+// CHECK: call void BARRIER()
+  )"),
+                     /*match_optimized_ir=*/true,
+                     /*run_optimization_passes=*/false);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo, ErrorSpec{1e-3}));
+}
+
 TEST_F(TransposeEmitterTest, CopyAndInput) {
   const char* hlo = R"(
 HloModule m

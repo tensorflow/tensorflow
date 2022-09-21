@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
@@ -419,12 +420,12 @@ bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
   if (IsReductionFromOrToContiguousDimensions(*inst)) {
     // Shapes, layouts and dimensions must be the same for all reduces
     // inside of this fusion.
-    // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
-    return ShapeUtil::Equal(first_reduce->shape(), inst->shape()) &&
-           ShapeUtil::Equal(first_reduce->operand(0)->shape(),
-                            inst->operand(0)->shape()) &&
-           ShapeUtil::Equal(first_reduce->operand(1)->shape(),
-                            inst->operand(1)->shape()) &&
+    return ShapeUtil::EqualIgnoringElementType(first_reduce->shape(),
+                                               inst->shape()) &&
+           ShapeUtil::EqualIgnoringElementType(
+               first_reduce->operand(0)->shape(), inst->operand(0)->shape()) &&
+           ShapeUtil::EqualIgnoringElementType(
+               first_reduce->operand(1)->shape(), inst->operand(1)->shape()) &&
            first_reduce->dimensions() == inst->dimensions();
   }
   return ShapeUtil::CompatibleIgnoringElementType(

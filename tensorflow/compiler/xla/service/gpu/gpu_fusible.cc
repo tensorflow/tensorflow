@@ -155,8 +155,11 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
       !AreFusedReductionOutputsConsistent({instr_1, instr_2}, instr_1)) {
     return false;
   } else if (FindTiledTranspose(*instr_1) && FindTiledTranspose(*instr_2) &&
-             (instr_1->shape() != instr_2->shape() ||
-              instr_1->operand(0)->shape() != instr_2->operand(0)->shape())) {
+             (!ShapeUtil::EqualIgnoringElementType(instr_1->shape(),
+                                                   instr_2->shape()) ||
+              !ShapeUtil::EqualIgnoringElementType(
+                  instr_1->operand(0)->shape(),
+                  instr_2->operand(0)->shape()))) {
     return false;
   } else if ((FindTiledTranspose(*instr_1) &&
               IsReductionFromOrToContiguousDimensions(*instr_2)) ||

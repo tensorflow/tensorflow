@@ -4315,7 +4315,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
       tiles[root] =
           AllocateShared(tiling_scheme,
                          llvm_ir::PrimitiveTypeToIrType(
-                             transpose_in_shape.element_type(), module_),
+                             root->operand(0)->shape().element_type(), module_),
                          {tiling_scheme.GetBlockTileSizeFor(kDimY),
                           tiling_scheme.GetBlockTileSizeFor(kDimX) + 1},
                          absl::StrCat("tr_tile_", tile_idx));
