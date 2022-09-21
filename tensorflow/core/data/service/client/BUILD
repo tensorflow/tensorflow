@@ -32,6 +32,7 @@ cc_library(
         ":common",
         ":validate_utils",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/data/service:common",
         "//tensorflow/core/data/service:common_proto_cc",
