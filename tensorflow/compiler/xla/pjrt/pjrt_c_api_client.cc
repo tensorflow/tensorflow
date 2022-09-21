@@ -22,7 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 // TODO(skyewm): remove when everything goes through C API
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -303,10 +303,14 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
-  std::string module_str = tensorflow::SerializeMlirModule(module);
+  std::string module_bytecode;
+  {
+    llvm::raw_string_ostream os(module_bytecode);
+    mlir::writeBytecodeToFile(module, os);
+  }
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
-                                  module_str, format);
+                                  module_bytecode, format);
 }
 
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(

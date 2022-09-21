@@ -343,7 +343,7 @@ typedef struct {
   size_t code_size;
   // Supported formats are:
   // "hlo": code string takes serialized HloModuleProto.
-  // "mlir": code string takes MLIR module string.
+  // "mlir": code string takes MLIR module bytecode (or string).
   // String is owned by the caller and should stay alive for the duration of the
   // compile call.
   const char* format;
