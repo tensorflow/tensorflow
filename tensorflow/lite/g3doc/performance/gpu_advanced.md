@@ -1,6 +1,6 @@
 # TensorFlow Lite on GPU
 
-[TensorFlow Lite](https://www.tensorflow.org/mobile/tflite/) supports several
+[TensorFlow Lite](https://www.tensorflow.org/lite) supports several
 hardware accelerators. This document describes how to use the GPU backend using
 the TensorFlow Lite delegate APIs on Android (requires OpenCL or OpenGL ES 3.1
 and higher) and iOS (requires iOS 8 or later).
@@ -302,7 +302,7 @@ This section explains how the GPU delegate accelerates 8-bit quantized models.
 This includes all flavors of quantization, including:
 
 *   Models trained with
-    [Quantization-aware training](https://www.tensorflow.org/lite/models/convert/quantization)
+    [Quantization-aware training](https://www.tensorflow.org/lite/performance/model_optimization)
 *   [Post-training dynamic-range quantization](https://www.tensorflow.org/lite/performance/post_training_quant)
 *   [Post-training full-integer quantization](https://www.tensorflow.org/lite/performance/post_training_integer_quant)
 
