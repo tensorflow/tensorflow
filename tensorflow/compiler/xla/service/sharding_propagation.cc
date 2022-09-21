@@ -2300,7 +2300,7 @@ bool ShardingPropagation::InferShardingFromOperands(
               GetCustomCallPartitioner(instruction->custom_call_target());
           partitioner && partitioner->IsCustomCallShardable(instruction)) {
         if (auto sharding =
-                sharding_helper_->InferShardingFromOperands(instruction)) {
+                partitioner->InferShardingFromOperands(instruction)) {
           inferred_operand_sharding = *sharding;
         } else {
           return false;
