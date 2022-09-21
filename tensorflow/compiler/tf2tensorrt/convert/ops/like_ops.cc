@@ -73,7 +73,7 @@ class ConvertLikeOps : public OpConverterBase<ConvertLikeOps<V>> {
                          input.GetTrtDims().nbDims, dims);
     ITensorProxyPtr output_tensor = (*layer)->getOutput(0);
     this->AddOutput(TRT_TensorOrWeights(output_tensor));
-    return Status::OK();
+    return OkStatus();
   }
 };
 

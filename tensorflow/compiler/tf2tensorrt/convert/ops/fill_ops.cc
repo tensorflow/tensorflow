@@ -67,7 +67,7 @@ class ConvertFill : public ConvertFillBase<ConvertFill> {
                                      " operation in ", node_def.name(),
                                      " cannot be partial.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -96,7 +96,7 @@ class ConvertFill : public ConvertFillBase<ConvertFill> {
                          is_dims_static, nbDims, trt_dims);
     ITensorProxyPtr output_tensor = (*layer)->getOutput(0);
     this->AddOutput(TRT_TensorOrWeights(output_tensor));
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -205,7 +205,7 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -271,7 +271,7 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
     }
 
     this->AddOutput(TRT_TensorOrWeights(output_tensor));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

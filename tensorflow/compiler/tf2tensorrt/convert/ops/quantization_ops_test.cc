@@ -358,7 +358,7 @@ class QDQExplicitTest : public ::testing::Test,
       }
     }
     TRT_ENSURE(n_trt_ops == 1);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ConvertAndRun(Scope* scope) {
