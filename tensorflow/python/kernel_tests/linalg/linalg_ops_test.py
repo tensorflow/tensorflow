@@ -22,6 +22,7 @@ import scipy.linalg
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -258,6 +259,12 @@ class EyeTest(parameterized.TestCase, test.TestCase):
               batch_shape_placeholder: batch_shape
           })
     self.assertAllEqual(eye_np, eye_tf)
+
+  def testInvalidInput(self):
+    with self.session():
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        op = linalg_ops.eye(2752212975)
+        self.evaluate(op)
 
 
 class _MatrixRankTest(object):
