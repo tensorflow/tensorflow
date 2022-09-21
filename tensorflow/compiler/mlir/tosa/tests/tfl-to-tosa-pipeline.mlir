@@ -2051,3 +2051,37 @@ func.func @test_gelu_qi8(%arg0: tensor<1x4x4x4x!quant.uniform<i8:f32, 0.01568556
   %0 = "tfl.gelu"(%arg0) {approximate = true} : (tensor<1x4x4x4x!quant.uniform<i8:f32, 0.015685562044382095:-1>>) -> tensor<1x4x4x4x!quant.uniform<i8:f32, 0.0083315325900912285:-108>>
   func.return %0 : tensor<1x4x4x4x!quant.uniform<i8:f32, 0.0083315325900912285:-108>>
 }
+
+// -----
+
+// CHECK-LABEL: mirrorpad_reflect
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<4x9xi32>
+// CHECK: %[[VAL_1:.*]] = "tosa.slice"(%[[VAL_0]]) {size = [2, 9], start = [1, 0]} : (tensor<4x9xi32>)
+// CHECK: %[[VAL_2:.*]] = "tosa.reverse"(%[[VAL_1]]) {axis = 0 : i64} : (tensor<2x9xi32>)
+// CHECK: %[[VAL_3:.*]] = "tosa.slice"(%[[VAL_0]]) {size = [1, 9], start = [2, 0]} : (tensor<4x9xi32>)
+// CHECK: %[[VAL_4:.*]] = "tosa.concat"(%[[VAL_2]], %[[VAL_0]], %[[VAL_3]]) {axis = 0 : i64} : (tensor<2x9xi32>, tensor<4x9xi32>, tensor<1x9xi32>)
+// CHECK: %[[VAL_5:.*]] = "tosa.slice"(%[[VAL_4]]) {size = [7, 2], start = [0, 1]} : (tensor<7x9xi32>)
+// CHECK: %[[VAL_6:.*]] = "tosa.reverse"(%[[VAL_5]]) {axis = 1 : i64} : (tensor<7x2xi32>)
+// CHECK: %[[VAL_7:.*]] = "tosa.slice"(%[[VAL_4]]) {size = [7, 1], start = [0, 7]} : (tensor<7x9xi32>)
+// CHECK: %[[VAL_8:.*]] = "tosa.concat"(%[[VAL_6]], %[[VAL_4]], %[[VAL_7]]) {axis = 1 : i64} : (tensor<7x2xi32>, tensor<7x9xi32>, tensor<7x1xi32>)
+func.func @mirrorpad_reflect(%arg0: tensor<4x9xi32>) -> tensor<7x12xi32> {
+  %0 = "tfl.pseudo_const"() {value = dense<[[2, 1], [2, 1]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  %1 = "tfl.mirror_pad"(%arg0, %0) {mode = #tfl<mirror_pad_attr REFLECT>} : (tensor<4x9xi32>, tensor<2x2xi32>) -> tensor<7x12xi32>
+  return %1 : tensor<7x12xi32>
+}
+
+// -----
+
+// CHECK-LABEL: mirrorpad_symmetric
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<15x23x2xf32>
+// CHECK: %[[VAL_1:.*]] = "tosa.slice"(%[[VAL_0]]) {size = [1, 23, 2], start = [0, 0, 0]} : (tensor<15x23x2xf32>)
+// CHECK: %[[VAL_2:.*]] = "tosa.concat"(%[[VAL_1]], %[[VAL_0]]) {axis = 0 : i64} : (tensor<1x23x2xf32>, tensor<15x23x2xf32>)
+// CHECK: %[[VAL_3:.*]] = "tosa.slice"(%[[VAL_2]]) {size = [16, 1, 2], start = [0, 0, 0]} : (tensor<16x23x2xf32>)
+// CHECK: %[[VAL_4:.*]] = "tosa.concat"(%[[VAL_3]], %[[VAL_2]]) {axis = 1 : i64} : (tensor<16x1x2xf32>, tensor<16x23x2xf32>)
+// CHECK: %[[VAL_5:.*]] = "tosa.slice"(%[[VAL_4]]) {size = [16, 24, 1], start = [0, 0, 0]} : (tensor<16x24x2xf32>)
+// CHECK: %[[VAL_6:.*]] = "tosa.concat"(%[[VAL_5]], %[[VAL_4]]) {axis = 2 : i64} : (tensor<16x24x1xf32>, tensor<16x24x2xf32>)
+func.func @mirrorpad_symmetric(%arg0: tensor<15x23x2xf32>) -> tensor<16x24x3xf32> {
+  %0 = "tfl.pseudo_const"() {value = dense<[[1, 0], [1, 0], [1, 0]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  %1 = "tfl.mirror_pad"(%arg0, %0) {mode = #tfl<mirror_pad_attr SYMMETRIC>} : (tensor<15x23x2xf32>, tensor<3x2xi32>) -> tensor<16x24x3xf32>
+  return %1 : tensor<16x24x3xf32>
+}
