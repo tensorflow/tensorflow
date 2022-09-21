@@ -1081,7 +1081,7 @@ class IotaConverter : public OpConversionPattern<OpTy> {
                   unwrappedResultElementType.getIntOrFloatBitWidth()),
               indexOp);
           castOp = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::ConvertOp>(
-              nestedLoc, resultElementType, castOp.getType(), castOp,
+              nestedLoc, resultElementType, castOp.getType(), {castOp},
               &nestedBuilder);
           nestedBuilder.create<linalg::YieldOp>(nestedLoc, castOp);
         },

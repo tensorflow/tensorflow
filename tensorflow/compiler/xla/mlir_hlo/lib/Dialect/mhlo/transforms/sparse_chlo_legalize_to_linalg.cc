@@ -102,12 +102,12 @@ namespace impl {
   template <>                                                                  \
   Value mapMhloOpToStdScalarOp<OpTy>(Location loc, ArrayRef<Type> resultTypes, \
                                      ArrayRef<Type> /*arg_types*/,             \
-                                     ValueRange args, OpBuilder * b) {         \
+                                     OpTy::Adaptor adaptor, OpBuilder * b) {   \
     Type innerResultTy = resultTypes[0];                                       \
     RankedTensorType tensorResultTy =                                          \
         RankedTensorType::get({}, innerResultTy);                              \
-    Value tensorArg =                                                          \
-        b->create<tensor::FromElementsOp>(loc, tensorResultTy, args[0]);       \
+    Value tensorArg = b->create<tensor::FromElementsOp>(                       \
+        loc, tensorResultTy, adaptor.getOperands()[0]);                        \
     Value tensorResult =                                                       \
         b->create<OpTy>(loc, tensorResultTy, ValueRange({tensorArg}));         \
     Value innerResult =                                                        \
