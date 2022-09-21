@@ -48,7 +48,6 @@ tflite_cc_library_with_c_headers_test(
     name = "c_api",
     hdrs = [
         "c_api.h",
-        "c_api_opaque.h",
     ],
     copts = tflite_copts(),
     deps = [
