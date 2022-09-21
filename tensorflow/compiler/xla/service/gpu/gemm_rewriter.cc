@@ -228,11 +228,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       instr = new_add;
     }
 
-    if (Match(instr, m::AddAnyOrder(
-                         m::Op(&existing_gemm)
-                             .WithCustomCallTarget(
-                                 {kGemmCallTarget, kCublasLtMatmulCallTarget}),
-                         m::Op(&bias)))) {
+    if (Match(instr,
+              m::AddAnyOrder(
+                  m::Op(&existing_gemm)
+                      .WithCustomCallTarget(absl::Span<const absl::string_view>{
+                          kGemmCallTarget, kCublasLtMatmulCallTarget}),
+                  m::Op(&bias)))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
