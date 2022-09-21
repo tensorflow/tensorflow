@@ -1822,7 +1822,7 @@ def tf_kernel_library(
             [prefix + "*impl.h"],
             exclude = [prefix + "*test*", prefix + "*.cu.h"],
         )
-    cuda_deps = gpu_deps + [clean_dep("//tensorflow/core:gpu_lib")]
+    cuda_deps = [clean_dep("//tensorflow/core:gpu_lib")]
     if gpu_srcs:
         for gpu_src in gpu_srcs:
             if gpu_src.endswith(".cc") and not gpu_src.endswith(".cu.cc"):
@@ -1831,7 +1831,7 @@ def tf_kernel_library(
         tf_gpu_kernel_library(
             name = name + "_gpu",
             srcs = gpu_srcs,
-            deps = deps,
+            deps = deps + gpu_deps,
             copts = gpu_copts,
             **kwargs
         )
