@@ -90,8 +90,9 @@ def _rocm_version(rocm_install_path):
     version_numbers = version_string.split(".")
   return str(version_numbers[0] + "." + version_numbers[1] + "." + version_numbers[2].split("-")[0])
 
+# Append the ROCM version to the version string
 if project_name.endswith('_rocm'):
-  _VERSION = _VERSION + "+rocm" + str(_rocm_version(_get_rocm_install_path()))
+  _VERSION = _VERSION + "." + str(_rocm_version(_get_rocm_install_path()).replace('.', ''))
 
 
 # All versions of TF need these packages. We indicate the widest possible range
@@ -313,7 +314,7 @@ headers = (
 
 setup(
     name=project_name,
-    version=_VERSION.replace('-', '').replace('+', '.'),
+    version=_VERSION.replace('-', ''),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
     long_description_content_type='text/markdown',
