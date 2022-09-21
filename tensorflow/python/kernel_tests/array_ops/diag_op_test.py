@@ -19,6 +19,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -1064,6 +1065,13 @@ class DiagTest(test.TestCase):
   def testInvalidRank(self):
     with self.assertRaisesRegex(ValueError, "must be at least rank 1"):
       array_ops.diag(0.0)
+
+  def testInvalidInput(self):
+    with self.session():
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        op = array_ops.matrix_diag(
+            k=1070828000000, diagonal=np.ones((2, 2, 2, 2)))
+        self.evaluate(op)
 
 
 class DiagPartOpTest(test.TestCase):
