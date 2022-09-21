@@ -59,6 +59,7 @@ bool TryPruneResultDefiningOp(TF::WhileRegionOp while_op, OpResult result) {
   Value cond_block_argument = cond_block.getArgument(idx);
   // Consider the op that defines the unused result as a candidate for pruning.
   Operation* candidate_op = body_yield_operand.getDefiningOp();
+  if (candidate_op == nullptr) return false;
 
   // Don't prune if candidate op might have side effects.
   if (isa_and_nonnull<TF::TensorFlowDialect>(candidate_op->getDialect())) {
