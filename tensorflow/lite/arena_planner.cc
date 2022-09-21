@@ -362,6 +362,7 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(
     }
   }
 
+  arena_.ResolveDeallocations();
   CreateTensorAllocationVector(tensors_allocated);
   // Vector of ids of already allocated tensors, ordered by offset.
   for (const auto& tensor_index : *tensors_allocated) {
