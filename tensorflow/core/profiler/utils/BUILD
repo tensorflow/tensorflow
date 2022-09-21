@@ -127,25 +127,10 @@ cc_library(
 
 cc_library(
     name = "tf_op_utils",
-    srcs = ["tf_op_utils.cc"],
     hdrs = ["tf_op_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:regexp",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "tf_op_utils_test",
-    size = "small",
-    srcs = ["tf_op_utils_test.cc"],
-    deps = [
-        ":tf_op_utils",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/profiler/utils:tf_op_utils",
     ],
 )
 

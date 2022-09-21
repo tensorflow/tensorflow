@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -211,7 +211,7 @@ TEST(TfOpUtilsTest, OpWithoutTypeTest) {
             "OpName");  // without trailing ':', name scopes and suffix
 }
 
-TEST(TfOpUtilsTest, OpTypeWithUnderscoreTest) {
+TEST(TfOpUtilsTest, OpTypeWithUnderstslTest) {
   const absl::string_view kName = "namescope/OpName_a:";  // with trailing ':'
   TfOp tf_op = ParseTfOpFullname(kName);
   EXPECT_EQ(tf_op.category, Category::kTensorFlow);
@@ -235,4 +235,4 @@ TEST(TfOpUtilsTest, NameScopeTest) {
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

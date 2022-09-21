@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 
 #include <string>
 #include <vector>
@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -179,4 +179,4 @@ std::vector<absl::string_view> ParseTensorShapes(
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
