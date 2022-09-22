@@ -27,6 +27,9 @@ jobs:
   docker:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.docker_build.outputs.digest }}
     strategy:
       matrix:
         python-version: [python3.8, python3.9, python3.10, python3.11]
@@ -84,7 +87,11 @@ jobs:
             Re-apply the `build and push to gcr.io for staging` label to rebuild and push again. This comment will only be posted once.
       -
         name: Print image digest
-        run: echo ${{ steps.docker_build.outputs.digest }}
+        id: image
+        run: |
+          echo ${{ steps.docker_build.outputs.digest }}
+          image_name=${{ github.event.number }}-python3.10
+          echo "::set-output name=image::$image_name"
 
   provenance-gcr:
     needs: [docker]
