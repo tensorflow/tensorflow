@@ -220,6 +220,7 @@ add_mlir_library(HloToLinalgUtils
   MLIRBufferizationDialect
   MLIRComplexDialect
   MLIRIR
+  MLIRLinalgUtils
   MLIRPass
   MLIRRewrite
   MLIRTransformUtils
@@ -267,6 +268,7 @@ add_mlir_library(MhloToLinalg
   MLIRBufferizationDialect
   MLIRComplexDialect
   MLIRIR
+  MLIRLinalgUtils
   MLIRPass
   MLIRRewrite
   MLIRTransformUtils

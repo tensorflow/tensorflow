@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
@@ -86,19 +87,6 @@ Value preSparsify(Operation* op, llvm::SmallVector<Value, 2>& values, Type rtp,
 
 /// Finalizes sparse semi-ring construction.
 Value postSparsify(Operation* op, Value semiring, Value result, OpBuilder* b);
-
-template <typename OpTy>
-SmallVector<NamedAttribute> pruneAttributeList(OpTy op) {
-  auto opAttributes = op.getAttributeNames();
-  llvm::StringSet<> elidedAttrs;
-  elidedAttrs.insert(opAttributes.begin(), opAttributes.end());
-  SmallVector<NamedAttribute> preservedAttrs;
-  for (auto attr : op->getAttrs()) {
-    if (elidedAttrs.count(attr.getName())) continue;
-    preservedAttrs.push_back(attr);
-  }
-  return preservedAttrs;
-}
 
 /// Converts a HLO operation to a linalg.generic op that contains the
 /// corresponding scalar operations.
@@ -194,7 +182,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
             nestedBuilder.create<linalg::YieldOp>(loc, innerResult);
           }
         },
-        pruneAttributeList(op));
+        linalg::getPrunedAttributeList(op));
     if (failed) return failure();
 
     rewriter.replaceOp(op, linalgOp->getResults());
