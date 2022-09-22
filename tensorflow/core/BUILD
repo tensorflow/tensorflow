@@ -327,10 +327,14 @@ cc_library(
 cc_library(
     name = "test",
     testonly = 1,
+    srcs = [
+        "//tensorflow/core/platform:legacy_test_srcs",
+    ],
     hdrs = [
         "//tensorflow/core/lib/core:legacy_lib_core_status_test_util_header",
         "//tensorflow/core/platform:test_hdrs",
         "//tensorflow/core/util:test_hdrs",
+        "//tensorflow/tsl/platform:test_hdrs",
     ],
     copts = tf_copts(),
     linkopts = select({
@@ -346,8 +350,7 @@ cc_library(
         ":protos_all_cc",
         "//tensorflow/tsl/platform/default/build_config:gtest",
         "//tensorflow/core/kernels:required",
-        "//tensorflow/core/platform:test",
-        "//tensorflow/core/platform:test_benchmark",
+        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
     ] + tf_additional_test_deps(),
 )
