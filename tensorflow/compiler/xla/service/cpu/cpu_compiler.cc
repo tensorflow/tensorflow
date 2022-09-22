@@ -619,9 +619,12 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // flattened.
   pipeline.AddPass<FlattenCallGraph>();
   ChannelLayoutConstraints layout_constraints;
-  pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(), target_machine_features,
-      &layout_constraints);
+  // The MLIR pipeline always uses default layouts.
+  if (!is_mlir_compile) {
+    pipeline.AddPass<CpuLayoutAssignment>(
+        module->mutable_entry_computation_layout(), target_machine_features,
+        &layout_constraints);
+  }
 
   return pipeline.Run(module).status();
 }
