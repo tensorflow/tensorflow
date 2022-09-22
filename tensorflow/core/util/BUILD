@@ -85,7 +85,6 @@ filegroup(
         "batch_util.h",
         "bcast.cc",
         "bcast.h",
-        "command_line_flags.cc",
         "command_line_flags.h",
         "determinism.h",
         "device_name_utils.cc",
@@ -217,7 +216,6 @@ filegroup(
         "activation_mode.cc",
         "batch_util.cc",
         "bcast.cc",
-        "command_line_flags.cc",
         "debug_events_writer.cc",
         "device_name_utils.cc",
         "dump_graph.cc",
@@ -293,6 +291,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "reporter.h",
+        "//tensorflow/tsl/util:test_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -321,6 +320,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "reporter.h",
+        "//tensorflow/tsl/util:android_test_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -329,8 +329,8 @@ filegroup(
     name = "android_test_srcs",
     testonly = 1,
     srcs = [
-        "reporter.cc",
         ":android_test_hdrs",
+        "//tensorflow/tsl/util:android_test_srcs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -469,11 +469,9 @@ tf_cc_test(
 
 cc_library(
     name = "reporter",
-    srcs = ["reporter.cc"],
     hdrs = ["reporter.h"],
     visibility = [
         "//tensorflow/core:__subpackages__",
-        "//tensorflow/tsl:__subpackages__",
     ],
     deps = [
         ":test_log_proto_impl_cc",
@@ -484,6 +482,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/util:reporter",
     ],
 )
 
@@ -561,6 +560,9 @@ cc_library(
 cc_library(
     name = "ptr_util",
     hdrs = ["ptr_util.h"],
+    deps = [
+        "//tensorflow/tsl/util:ptr_util",
+    ],
 )
 
 cc_library(
@@ -936,7 +938,10 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     # Not to be used outside of tensorflow/core.
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/tsl/util:__pkg__",
+    ],
 )
 
 tf_proto_library(

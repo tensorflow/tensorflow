@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/reporter.h"
+#include "tensorflow/tsl/util/reporter.h"
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/str_util.h"
 
-namespace tensorflow {
+namespace tsl {
 
 TestReportFile::TestReportFile(const string& fname, const string& test_name)
     : closed_(true), fname_(fname), test_name_(test_name) {}
@@ -61,7 +61,7 @@ TestReporter::TestReporter(const string& fname, const string& test_name)
 Status TestReporter::Close() {
   if (report_file_.IsClosed()) return OkStatus();
 
-  BenchmarkEntries entries;
+  tensorflow::BenchmarkEntries entries;
   *entries.add_entry() = benchmark_entry_;
   TF_RETURN_IF_ERROR(report_file_.Append(entries.SerializeAsString()));
   benchmark_entry_.Clear();
@@ -101,4 +101,4 @@ Status TestReporter::AddMetric(const string& name, double value) {
 
 Status TestReporter::Initialize() { return report_file_.Initialize(); }
 
-}  // namespace tensorflow
+}  // namespace tsl

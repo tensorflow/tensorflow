@@ -13,21 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/tsl/util/command_line_flags.h"
+
 #include <cinttypes>
 #include <cstring>
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/str_util.h"
+#include "tensorflow/tsl/platform/stringpiece.h"
+#include "tensorflow/tsl/platform/stringprintf.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
-bool ParseStringFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
+bool ParseStringFlag(StringPiece arg, StringPiece flag,
                      const std::function<bool(string)>& hook,
                      bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -40,7 +41,7 @@ bool ParseStringFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
   return false;
 }
 
-bool ParseInt32Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
+bool ParseInt32Flag(StringPiece arg, StringPiece flag,
                     const std::function<bool(int32_t)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -61,7 +62,7 @@ bool ParseInt32Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
   return false;
 }
 
-bool ParseInt64Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
+bool ParseInt64Flag(StringPiece arg, StringPiece flag,
                     const std::function<bool(int64_t)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -82,7 +83,7 @@ bool ParseInt64Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
   return false;
 }
 
-bool ParseBoolFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
+bool ParseBoolFlag(StringPiece arg, StringPiece flag,
                    const std::function<bool(bool)>& hook,
                    bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -109,7 +110,7 @@ bool ParseBoolFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
   return false;
 }
 
-bool ParseFloatFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
+bool ParseFloatFlag(StringPiece arg, StringPiece flag,
                     const std::function<bool(float)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -132,7 +133,7 @@ bool ParseFloatFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
 
 }  // namespace
 
-Flag::Flag(const char* name, tensorflow::int32* dst, const string& usage_text,
+Flag::Flag(const char* name, int32_t* dst, const string& usage_text,
            bool* dst_updated)
     : name_(name),
       type_(TYPE_INT32),
@@ -326,4 +327,4 @@ bool Flag::Parse(string arg, bool* value_parsing_ok) const {
   return usage_text;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

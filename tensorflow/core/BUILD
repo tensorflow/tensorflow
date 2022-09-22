@@ -1668,6 +1668,8 @@ tf_cuda_library(
         "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/tsl/platform:stringpiece",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
