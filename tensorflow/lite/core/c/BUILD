@@ -13,7 +13,6 @@ cc_library(
     hdrs = [
         "c_api.h",
     ],
-    aspect_hints = ["//tools/build_defs/swift:auto_module"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -28,7 +27,6 @@ cc_library(
     hdrs = [
         "c_api.h",
     ],
-    aspect_hints = ["//tools/build_defs/swift:auto_module"],
     compatible_with = get_compatible_with_portable(),
     # This is a private target, its visibility is set to public only to be
     # used by "tflite_custom_c_library".
