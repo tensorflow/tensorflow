@@ -209,7 +209,7 @@ class MatchSofplusTanhMul : public RemapperPatternBase {
 
     // The Mul op is commutative and the inputs may be swapped.
     auto CheckTanhOperand = [&](Value tanh_value) {
-      if (tanh_value == nullptr) return false;
+      if (!tanh_value) return false;
       Operation* op = tanh_value.getDefiningOp();
       return op && this->helper_.getDialect()->IsTanh(op);
     };
@@ -226,18 +226,21 @@ class MatchSofplusTanhMul : public RemapperPatternBase {
     Operation* softplus_op = softplus_value.getDefiningOp();
 
     if (!(this->helper_.getDialect()->IsSoftplus(op)) &&
-        !(softplus_op->getOperand(0) == x_value))
-      return failure();
+        !(softplus_op->getOperand(0) == x_value)) {
+          return failure();
+        }
 
     if (!helper_.HasAtMostOneUserOfResult0(tanh_op) ||
-        !helper_.HasAtMostOneUserOfResult0(softplus_op))
-      return failure();
+        !helper_.HasAtMostOneUserOfResult0(softplus_op)) {
+          return failure();
+        }
 
     // TODO(intel-tf): Allow valid control dependencies
     // Not allowing control flow on Tanh or Softplus
     if (helper_.HasControlOperandsOrResultUsers(tanh_op) ||
-        helper_.HasControlOperandsOrResultUsers(softplus_op))
-      return failure();
+        helper_.HasControlOperandsOrResultUsers(softplus_op)) {
+          return failure();
+        }
 
     SmallVector<Value> operands;
     // Set up non-control operand.
