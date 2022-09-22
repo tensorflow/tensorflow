@@ -20,7 +20,10 @@ package(licenses = ["notice"])
             "@llvm-project//mlir:mlir-cpu-runner",
         ],
         # copybara:uncomment driver = "@llvm-project//mlir:run_lit",
-        tags = ["nomsan"],  # b/248097619
+        tags = [
+            "nomsan",  # The execution engine doesn't work with msan, see b/248097619.
+            "nopip",  # Don't run as part of the pip wheel test suite.
+        ],
     )
     for src in glob(["**/*.mlir"])
 ]
