@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
@@ -616,7 +617,12 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
     return;
   }
 
-  op->print(outputFile->os(), mlir::OpPrintingFlags().useLocalScope());
+  mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags().useLocalScope();
+  // Enable debug info so that it is easier to see the corresponding HLO node.
+  if (file_prefix == "lmhlo") {
+    print_flags.enableDebugInfo(/*prettyForm=*/true);
+  }
+  op->print(outputFile->os(), print_flags);
   outputFile->keep();
 }
 
