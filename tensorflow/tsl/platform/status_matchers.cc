@@ -17,9 +17,9 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace tsl {
 namespace testing {
