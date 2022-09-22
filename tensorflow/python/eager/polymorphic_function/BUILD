@@ -14,6 +14,9 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
+        ":function_context",
+        ":function_spec",
+        ":saved_model_utils",
         "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -28,9 +31,6 @@ py_library(
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:forwardprop_util",
-        "//tensorflow/python/eager:function_context",
-        "//tensorflow/python/eager:function_saved_model_utils",
-        "//tensorflow/python/eager:function_spec",
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/ops/numpy_ops:numpy",
@@ -54,6 +54,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":function_spec",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
@@ -64,7 +65,6 @@ py_library(
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python/distribute/parallel_device",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:function_spec",
         "//tensorflow/python/eager:lift_to_graph",
         "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
         "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
@@ -297,5 +297,54 @@ cuda_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "function_context",
+    srcs = ["function_context.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core/function/polymorphism:function_cache",
+        "//tensorflow/core/function/trace_type",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:device",
+        "//tensorflow/python/framework:func_graph",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/saved_model:save_context",
+    ],
+)
+
+py_library(
+    name = "saved_model_utils",
+    srcs = ["saved_model_utils.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/saved_model/registration",
+        "//tensorflow/python/trackable:asset",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:resource",
+    ],
+)
+
+py_library(
+    name = "function_spec",
+    srcs = ["function_spec.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":composite_tensor_utils",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_decorator",
+        "//third_party/py/numpy",
     ],
 )

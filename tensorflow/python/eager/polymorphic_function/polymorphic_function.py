@@ -71,9 +71,9 @@ from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function_spec as function_spec_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
+from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor

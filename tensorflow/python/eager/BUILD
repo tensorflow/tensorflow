@@ -508,24 +508,6 @@ py_library(
 )
 
 py_library(
-    name = "function_spec",
-    srcs = ["function_spec.py"],
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python/eager/polymorphic_function:composite_tensor_utils",
-        "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/util",
-        "//tensorflow/python/util:tf_decorator",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
     name = "function",
     srcs = ["function.py"],
     srcs_version = "PY3",
@@ -534,37 +516,6 @@ py_library(
         "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
         "//tensorflow/python/eager/polymorphic_function:quarantine",
         "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
-    ],
-)
-
-py_library(
-    name = "function_context",
-    srcs = ["function_context.py"],
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":context",
-        "//tensorflow/core/function/polymorphism:function_cache",
-        "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python/framework:device",
-        "//tensorflow/python/framework:func_graph",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/saved_model:save_context",
-    ],
-)
-
-py_library(
-    name = "function_saved_model_utils",
-    srcs = ["function_saved_model_utils.py"],
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python/saved_model/registration",
-        "//tensorflow/python/trackable:asset",
-        "//tensorflow/python/trackable:base",
-        "//tensorflow/python/trackable:resource",
     ],
 )
 

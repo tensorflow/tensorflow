@@ -28,7 +28,7 @@ pytype_strict_library(
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/eager:function_saved_model_utils",
+        "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:ops",
