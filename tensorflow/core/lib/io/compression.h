@@ -16,17 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_COMPRESSION_H_
 #define TENSORFLOW_CORE_LIB_IO_COMPRESSION_H_
 
-#include "tensorflow/tsl/lib/io/compression.h"
-
 namespace tensorflow {
 namespace io {
 namespace compression {
-// NOLINTBEGIN(misc-unused-using-decls)
-using tsl::io::compression::kGzip;
-using tsl::io::compression::kNone;
-using tsl::io::compression::kSnappy;
-using tsl::io::compression::kZlib;
-// NOLINTEND(misc-unused-using-decls)
+
+extern const char kNone[];
+extern const char kGzip[];
+extern const char kSnappy[];
+extern const char kZlib[];
+
 }  // namespace compression
 }  // namespace io
 }  // namespace tensorflow
