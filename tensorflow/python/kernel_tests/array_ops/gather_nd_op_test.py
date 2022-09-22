@@ -383,7 +383,8 @@ class GatherNdTest(test.TestCase):
 
   def testInvalidBatchDims(self):
     with self.session():
-      with self.assertRaises((errors.InvalidArgumentError, ValueError, TypeError)):
+      with self.assertRaises(
+          (errors.InvalidArgumentError, ValueError, TypeError)):
         indices = [[0, 0], [1, 1]]
         params = [[0, 1], [2, 3]]
         gather_nd = array_ops.gather_nd(
