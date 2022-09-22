@@ -112,6 +112,16 @@ TfLiteStatus SimpleMemoryArena::Allocate(
   return kTfLiteOk;
 }
 
+void SimpleMemoryArena::DeallocateAfter(int32_t node) {
+  for (int i = 0; i < ordered_allocs_.size(); ++i) {
+    if (ordered_allocs_[i].first_node > node) {
+      ordered_allocs_[i].tensor = -1;
+      allocs_erased_ = true;
+    }
+  }
+  ResolveDeallocations();
+}
+
 TfLiteStatus SimpleMemoryArena::Deallocate(TfLiteContext* context,
                                            ArenaAllocWithUsageInterval& alloc) {
   if (alloc.size == 0) {
@@ -121,10 +131,10 @@ TfLiteStatus SimpleMemoryArena::Deallocate(TfLiteContext* context,
   for (int i = 0; i < ordered_allocs_.size(); ++i) {
     if (ordered_allocs_[i].tensor == alloc.tensor) {
       ordered_allocs_[i].tensor = -1;
+      allocs_erased_ = true;
       break;
     }
   }
-  allocs_erased_ = true;
   return kTfLiteOk;
 }
 

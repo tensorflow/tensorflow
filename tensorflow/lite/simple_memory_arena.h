@@ -89,6 +89,11 @@ class SimpleMemoryArena {
   TfLiteStatus Deallocate(TfLiteContext* context,
                           ArenaAllocWithUsageInterval& alloc);
 
+  // Deletes all allocs which are allocated by nodes after `node`.
+  // This is equivalent, but much more efficient than calling Deallocate for
+  // each alloc individually.
+  void DeallocateAfter(int32_t node);
+
   inline size_t RequiredBufferSize() {
     // Add in a small amount of padding to reduce the chance of resize events
     // for small allocations.
