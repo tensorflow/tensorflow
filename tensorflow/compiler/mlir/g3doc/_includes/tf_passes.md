@@ -935,6 +935,51 @@ would be transformed into
   }
   ...
   call @x_1(x)
+### `-tf-remove-unused-while-results`: Removes unused results from tf.WhileRegion ops
+Removes unused results from `tf.WhileRegion` ops along with the defining
+ops in the body, if it is safe to do so.
+Currently, the pass detects results with following properties:
+- the result is unused outside of the `tf.WhileRegion` op
+- the defining op of the result in the body can be safely removed
+- the operand corresponding to the result is not used by any other op in
+  the condition or body (in particular, there must not be intermediate
+  pass-through ops like `tf.Identity`)
+
+
+For example, the following pseudo MLIR code (types are left out for
+brevity)
+```mlir
+  func.func @remove_first_result(%arg0, %arg1) {
+    %0:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+    ^bb0(%arg2, %arg3):
+      %1 = "tf.OpA"() {is_stateless = true}
+      "tf.Yield"(%1)
+    }, {
+    ^bb0(%arg2, %arg3):
+      %1 = "tf.OpB"(%arg2) {is_stateless = true}
+      %2 = "tf.OpC"(%arg3) {is_stateless = true}
+      "tf.Yield"(%1, %2)
+    }) {is_stateless = true}
+    return %0#1
+  }
+```
+would be transformed to
+```mlir
+  func.func @remove_first_result(%arg0, %arg1) {
+    %0 = "tf.WhileRegion"(%arg1) ({
+    ^bb0(%arg3):
+      %1 = "tf.OpA"() {is_stateless = true}
+      "tf.Yield"(%1)
+    }, {
+    ^bb0(%arg3):
+      %1 = "tf.OpC"(%arg3) {is_stateless = true}
+      "tf.Yield"(%1)
+    }) {is_stateless = true}
+    return %0
+  }
+```
+(the first result can be removed along with its defining op `tf.OpB`).
+
 ### `-tf-replica-id-to-device-ordinal`: Set device ordinal with replica id
 This pass sets the device ordinal attribute of the ops using the replica id
 attribute. This is run immediately after the replica_to_island pass which
