@@ -2635,6 +2635,11 @@ Status AddFusedContractionNode(
   const NodeDef& bias_add = graph->node(matched.bias_add);
   fused_conv.add_input(bias_add.input(matched.bias_port));  // 2: bias
 
+  // Add OP has two inputs, one is conv+bias pattern matched previously,
+  // the other input to add is fused here.
+  const NodeDef& add = graph->node(matched.add);
+  fused_conv.add_input(add.input(1 - matched.port_id));
+
   if (IsConv2D(contraction)) {
     fused_conv.set_op(kFusedConv2D);
     CopyConv2DAttributes(contraction, &fused_conv);
@@ -2642,11 +2647,6 @@ Status AddFusedContractionNode(
     fused_conv.set_op(kFusedConv3D);
     CopyConv3DAttributes(contraction, &fused_conv);
   }
-
-  // Add OP has two inputs, one is conv+bias pattern matched previously,
-  // the other input to add is fused here.
-  const NodeDef& add = graph->node(matched.add);
-  fused_conv.add_input(add.input(1 - matched.port_id));
 
   SetFusedOpAttributes(&fused_conv, {"BiasAdd", "Add", activation.op()}, 2);
 
