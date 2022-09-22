@@ -1116,9 +1116,9 @@ class ExportMetaGraphTests(test.TestCase):
 class FingerprintingTests(test.TestCase):
 
   def test_toggle_flag(self):
-    self.assertFalse(flags.config().saved_model_fingerprinting.value())
-    flags.config().saved_model_fingerprinting.reset(True)
     self.assertTrue(flags.config().saved_model_fingerprinting.value())
+    flags.config().saved_model_fingerprinting.reset(False)
+    self.assertFalse(flags.config().saved_model_fingerprinting.value())
 
 
 if __name__ == "__main__":
