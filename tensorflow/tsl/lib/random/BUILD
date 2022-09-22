@@ -14,7 +14,7 @@ package(
         # All of the following packages depend on random/simple_philox.h for tests
         "//tensorflow/tsl/lib/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
-        "//tensorflow/core/lib/io:__pkg__",
+        "//tensorflow/tsl/lib/io:__pkg__",
         "//tensorflow/core/lib/strings:__pkg__",
         # tensorflow/core/platform/random aliases this package
         "//tensorflow/core/lib/random:__pkg__",
