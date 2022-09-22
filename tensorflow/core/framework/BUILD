@@ -37,7 +37,7 @@ package(
         "//tensorflow/core:__subpackages__",
         "//tensorflow/security/fuzzing:__subpackages__",
         # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
-        "//tensorflow/tsl/lib/monitoring:__subpackages__",
+        "//tensorflow/tsl/lib:__subpackages__",
     ],
     licenses = ["notice"],
 )

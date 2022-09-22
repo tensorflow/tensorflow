@@ -121,9 +121,9 @@ class Sampler {
 #include <vector>
 
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/tsl/lib/histogram/histogram.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -159,7 +159,7 @@ class SamplerCell {
   HistogramProto value() const;
 
  private:
-  tensorflow::histogram::ThreadSafeHistogram histogram_;
+  histogram::ThreadSafeHistogram histogram_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SamplerCell);
 };

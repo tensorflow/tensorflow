@@ -61,9 +61,9 @@ cc_library(
     hdrs = ["sampler.h"],
     deps = [
         "//tensorflow/core/framework:summary_proto_cc",
-        "//tensorflow/core/lib/histogram",
         "//tensorflow/core/lib/monitoring:collection_registry",
         "//tensorflow/core/lib/monitoring:metric_def",
+        "//tensorflow/tsl/lib/histogram",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",

@@ -13,16 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/histogram/histogram.h"
+#include "tensorflow/tsl/lib/histogram/histogram.h"
+
 #include <float.h>
 #include <math.h>
-#include <vector>
-#include "tensorflow/core/framework/summary.pb.h"
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
-namespace tensorflow {
+#include <vector>
+
+#include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/types.h"
+namespace tsl {
 namespace histogram {
 
 static std::vector<double>* InitDefaultBucketsInner() {
@@ -276,4 +278,4 @@ std::string ThreadSafeHistogram::ToString() const {
 }
 
 }  // namespace histogram
-}  // namespace tensorflow
+}  // namespace tsl
