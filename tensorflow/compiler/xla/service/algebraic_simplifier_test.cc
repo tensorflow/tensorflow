@@ -8732,7 +8732,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveIdenticalNestedReverse) {
   SCOPED_TRACE("Before rewrite\n" + m->ToString());
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  auto g = simplifier.Run(m.get()).ValueOrDie();
+  auto g = simplifier.Run(m.get()).value();
   SCOPED_TRACE("After rewrite\n" + m->ToString());
   ASSERT_TRUE(g);
   auto* root = m->entry_computation()->root_instruction();
@@ -8753,7 +8753,7 @@ TEST_F(AlgebraicSimplifierTest, ShrinkNestedReverse) {
   SCOPED_TRACE("Before rewrite\n" + m->ToString());
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  auto g = simplifier.Run(m.get()).ValueOrDie();
+  auto g = simplifier.Run(m.get()).value();
   SCOPED_TRACE("After rewrite\n" + m->ToString());
   ASSERT_TRUE(g);
   auto* root = m->entry_computation()->root_instruction();
@@ -8776,7 +8776,7 @@ TEST_F(AlgebraicSimplifierTest, SwapConstantEwboWithReverse) {
   SCOPED_TRACE("Before rewrite\n" + m->ToString());
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  auto g = simplifier.Run(m.get()).ValueOrDie();
+  auto g = simplifier.Run(m.get()).value();
   SCOPED_TRACE("After rewrite\n" + m->ToString());
   ASSERT_TRUE(g);
   auto* root = m->entry_computation()->root_instruction();
@@ -8808,7 +8808,7 @@ TEST_F(AlgebraicSimplifierTest,
               GmockMatch(m::Reverse(m::Reshape(m::Parameter(0)))));
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  auto g = simplifier.Run(m.get()).ValueOrDie();
+  auto g = simplifier.Run(m.get()).value();
   ASSERT_TRUE(g);
   SCOPED_TRACE("After rewrite\n" + m->ToString());
   std::vector<int64_t> after_rewrite_dims{0, 1};
@@ -8844,7 +8844,7 @@ TEST_F(AlgebraicSimplifierTest,
               GmockMatch(m::Reverse(m::Reshape(m::Parameter(0)))));
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  auto g = simplifier.Run(m.get()).ValueOrDie();
+  auto g = simplifier.Run(m.get()).value();
   ASSERT_TRUE(g);
   SCOPED_TRACE("After rewrite\n" + m->ToString());
   std::vector<int64_t> after_rewrite_dims{0, 1};

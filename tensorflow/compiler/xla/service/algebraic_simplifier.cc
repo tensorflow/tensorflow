@@ -4638,8 +4638,8 @@ Status AlgebraicSimplifierVisitor::HandleReverse(HloInstruction* reverse) {
       }
       absl::Span<const int64_t> new_dimensions = absl::MakeConstSpan(sym_diff);
       return ReplaceInstruction(
-          reverse, MakeReverseHlo(inner->mutable_operand(0), new_dimensions)
-                       .ValueOrDie());
+          reverse,
+          MakeReverseHlo(inner->mutable_operand(0), new_dimensions).value());
     }
     // reverse(ElementWiseBinOp(x, constant)) ==>
     // ElementWiseBinOp(reverse(x), constant)
@@ -4657,14 +4657,14 @@ Status AlgebraicSimplifierVisitor::HandleReverse(HloInstruction* reverse) {
         return ReplaceWithNewInstruction(
             reverse, HloInstruction::CreateBinary(
                          inner->shape(), inner_opcode, cons,
-                         MakeReverseHlo(hlo, reverse_dims).ValueOrDie()));
+                         MakeReverseHlo(hlo, reverse_dims).value()));
       } else {
         cons = inner->mutable_operand(1);
         hlo = inner->mutable_operand(0);
         return ReplaceWithNewInstruction(
             reverse, HloInstruction::CreateBinary(
                          inner->shape(), inner_opcode,
-                         MakeReverseHlo(hlo, reverse_dims).ValueOrDie(), cons));
+                         MakeReverseHlo(hlo, reverse_dims).value(), cons));
       }
     }
     // reverse(DegenerateDimensionAddingReshape(x)) ==>
@@ -4699,8 +4699,8 @@ Status AlgebraicSimplifierVisitor::HandleReverse(HloInstruction* reverse) {
                 *inner_shape,
                 MakeReverseHlo(reverse->mutable_operand(0)->mutable_operand(0),
                                new_reverse_dims)
-                    .ValueOrDie())
-                .ValueOrDie());
+                    .value())
+                .value());
       }
     }
   }
