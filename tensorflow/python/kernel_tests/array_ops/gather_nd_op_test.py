@@ -22,6 +22,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -382,9 +383,9 @@ class GatherNdTest(test.TestCase):
 
   def testInvalidBatchDims(self):
     with self.session():
-      indices = [[0, 0], [1, 1]]
-      params = [[0, 1], [2, 3]]
-      with self.assertRaisesOpError(r"but is a bool tensor"):
+      with self.assertRaises((errors.InvalidArgumentError, ValueError, TypeError)):
+        indices = [[0, 0], [1, 1]]
+        params = [[0, 1], [2, 3]]
         gather_nd = array_ops.gather_nd(
             indices=[[1], [0], [4], [2], [1]],
             params=array_ops.zeros([5, 7, 3]),
