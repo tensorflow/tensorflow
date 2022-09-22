@@ -16,10 +16,10 @@ limitations under the License.
 
 #include <csignal>
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 TEST(StacktraceHandlerTest, GeneratesStacktrace) {
@@ -28,4 +28,4 @@ TEST(StacktraceHandlerTest, GeneratesStacktrace) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

@@ -1210,21 +1210,6 @@ tf_cc_tests(
 )
 
 tf_cc_test(
-    name = "stacktrace_test",
-    size = "small",
-    srcs = [
-        "stacktrace_test.cc",
-    ],
-    tags = ["no_windows"],
-    deps = [
-        ":logging",
-        ":stacktrace",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "enable_tf2_utils_test",
     size = "small",
     srcs = [
@@ -1235,22 +1220,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/util:env_var",
-    ],
-)
-
-tf_cc_tests(
-    name = "stacktrace_handler_test",
-    size = "small",
-    srcs = [
-        "stacktrace_handler_test.cc",
-    ],
-    tags = ["no_windows"],
-    deps = [
-        ":logging",
-        ":stacktrace",
-        ":stacktrace_handler",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 

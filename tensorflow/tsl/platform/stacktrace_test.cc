@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 // Testing proper operation of the stacktrace handler.
 
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 #include <string>
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 #if defined(TF_HAS_STACKTRACE)
@@ -36,4 +36,4 @@ TEST(StacktraceTest, StacktraceWorks) {
 #endif  // defined(TF_HAS_STACKTRACE)
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

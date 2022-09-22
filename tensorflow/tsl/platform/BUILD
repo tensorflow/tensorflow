@@ -10,6 +10,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
 )
@@ -847,6 +848,22 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_cc_tests(
+    name = "stacktrace_handler_test",
+    size = "small",
+    srcs = [
+        "stacktrace_handler_test.cc",
+    ],
+    tags = ["no_windows"],
+    deps = [
+        ":logging",
+        ":stacktrace",
+        ":stacktrace_handler",
+        ":test",
+        ":test_main",
+    ],
+)
+
 cc_library(
     name = "str_util",
     srcs = ["str_util.cc"],
@@ -1075,6 +1092,21 @@ cc_library(
     deps = [
         ":platform",
     ] + tf_windows_aware_platform_deps("stacktrace"),
+)
+
+tf_cc_test(
+    name = "stacktrace_test",
+    size = "small",
+    srcs = [
+        "stacktrace_test.cc",
+    ],
+    tags = ["no_windows"],
+    deps = [
+        ":logging",
+        ":stacktrace",
+        ":test",
+        ":test_main",
+    ],
 )
 
 cc_library(
