@@ -112,3 +112,20 @@ cc_library(
         "@com_google_absl//absl/types:optional",
     ],
 )
+
+cc_library(
+    name = "xplane_visitor",
+    srcs = ["xplane_visitor.cc"],
+    hdrs = ["xplane_visitor.h"],
+    copts = tf_profiler_copts(),
+    visibility = [":friends"],
+    deps = [
+        ":timespan",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
