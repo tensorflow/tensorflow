@@ -41,6 +41,8 @@ namespace {
 using ::tensorflow::data::testing::RangeDataset;
 using ::tensorflow::testing::IsOkAndHolds;
 using ::tensorflow::testing::StatusIs;
+using ::testing::_;
+using ::testing::AtLeast;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::UnorderedElementsAreArray;
@@ -79,8 +81,12 @@ class TestDataServiceContext : public DataServiceContext {
     return absl::WrapUnique(
         Env::Default()->StartThread({}, name, std::move(fn)));
   }
-  void RecordBufferEnqueue(const std::vector<Tensor>& element) override {}
-  void RecordBufferDequeue(const std::vector<Tensor>& element) override {}
+
+  // NOLINTBEGIN(MOCK_METHOD does not work on Windows build, using deprecated
+  // MOCK_METHOD<N> instead)
+  MOCK_METHOD1(RecordBufferEnqueue, void(const std::vector<Tensor>& element));
+  MOCK_METHOD1(RecordBufferDequeue, void(const std::vector<Tensor>& element));
+  // NOLINTEND
 };
 
 std::unique_ptr<TestDataServiceContext> GetTestDataServiceContext() {
@@ -158,6 +164,29 @@ TEST(DataServiceClientTest, StaticSharding) {
   TF_ASSERT_OK(client.Initialize());
   EXPECT_THAT(GetResults<int64_t>(client),
               IsOkAndHolds(UnorderedElementsAreArray(Range(10))));
+  client.Cancel();
+}
+
+TEST(DataServiceClientTest, RecordBufferEvents) {
+  TestCluster test_cluster(/*num_workers=*/1);
+  TF_ASSERT_OK(test_cluster.Initialize());
+  DatasetClient<int64_t> test_dataset(test_cluster);
+  TF_ASSERT_OK_AND_ASSIGN(std::string dataset_id,
+                          test_dataset.RegisterDataset(RangeDataset(10)));
+
+  DataServiceParams params = GetDataServiceParams(
+      dataset_id, test_cluster.DispatcherAddress(), ProcessingModeDef::OFF);
+  DataServiceClient client(params);
+  TF_ASSERT_OK(client.Initialize());
+
+  auto mock_context = std::make_unique<TestDataServiceContext>();
+  TestDataServiceContext* ctx = mock_context.get();
+  EXPECT_CALL(*ctx, RecordBufferEnqueue(_)).Times(AtLeast(1));
+  EXPECT_CALL(*ctx, RecordBufferDequeue(_)).Times(AtLeast(1));
+
+  TF_ASSERT_OK_AND_ASSIGN(GetNextResult next, client.GetNext([&mock_context]() {
+    return std::move(mock_context);
+  }));
   client.Cancel();
 }
 
