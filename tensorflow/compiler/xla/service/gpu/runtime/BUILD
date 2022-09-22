@@ -37,3 +37,21 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:device_memory",
     ],
 )
+
+cc_library(
+    name = "tracing",
+    srcs = ["tracing.cc"],
+    hdrs = ["tracing.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:tracing",
+        "//tensorflow/compiler/xla/runtime:type_id",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)

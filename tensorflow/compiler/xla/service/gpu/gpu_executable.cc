@@ -659,13 +659,17 @@ static Status ExecuteJitRt(const std::string& module_name,
         buffer_allocations.GetDeviceAddress(temp_buffer.value()->index());
   }
 
+  // An RAII wrapper around emitted scoped annotations.
+  ScopedAnnotationStack scoped_annotations;
+
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data;
   user_data.insert_all(
       run_options, &jitrt_executable->debug_options(), &asm_text, &binary,
       &dm_buffer, &jitrt_executable->kernels_cache(),
       &jitrt_executable->gemm_configs_cache(), &jitrt_executable->collectives(),
-      async_collectives.async_comm_stream() ? &async_collectives : nullptr);
+      async_collectives.async_comm_stream() ? &async_collectives : nullptr,
+      &scoped_annotations);
   opts.custom_call_data = &user_data;
 
   // Collect all emitted diagnostic messages.

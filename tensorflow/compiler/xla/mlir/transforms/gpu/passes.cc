@@ -32,10 +32,13 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
   pm.addPass(createConvertMemrefGetGlobalToArgPass());
   pm.addPass(createSymbolDCEPass());  // Clean up unused global constants.
 
-  // Lower all Gpu operations to the JitRt Gpu runtime intrinsics.
+  // Lower all Gpu operations to the XLA Gpu runtime custom calls.
   pm.addPass(createConvertLmhloGpuToGpuRuntimePass());
   pm.addPass(createConvertLmhloToGpuRuntimePass());
   pm.addPass(createConvertGpuToGpuRuntimePass());
+
+  // Add performance tracing annotations.
+  pm.addPass(createAddHloTraceAnnotationsPass());
 }
 
 }  // namespace gpu

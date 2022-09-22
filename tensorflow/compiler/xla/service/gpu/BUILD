@@ -587,6 +587,7 @@ config_setting(
 #         "//tensorflow/compiler/xla/service:custom_call_target_registry",
 #         "//tensorflow/compiler/xla/service:executable",
 #         "//tensorflow/compiler/xla/service/gpu/runtime:kernel_launch",
+#         "//tensorflow/compiler/xla/service/gpu/runtime:tracing",
 #         "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
 #         "//tensorflow/tsl/platform:human_readable_json",
 #         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",

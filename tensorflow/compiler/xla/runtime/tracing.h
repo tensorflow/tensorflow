@@ -36,6 +36,12 @@ inline void PopulateTraceTypeIdNames(TypeIDNameRegistry& registry) {
   registry.Register<Tagged<HloTrace>>("__type_id_hlo_trace");
 }
 
+// Register XLA runtime custom calls attribute decoding.
+XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
+    HloTrace, AggregateMember<std::string_view>("hlo_op"),
+    AggregateMember<std::string_view>("module"),
+    AggregateMember<int64_t>("program_id"));
+
 }  // namespace runtime
 }  // namespace xla
 
