@@ -325,6 +325,8 @@ def if_registration_v2(if_true, if_false = []):
 def if_portable(if_true, if_false = []):
     return if_true
 
+ADDITIONAL_API_INDEXABLE_SETTINGS = []
+
 # We are never indexing generated code in the OSS build, but still
 # return a select() for consistency.
 def if_indexing_source_code(
