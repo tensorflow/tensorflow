@@ -88,6 +88,9 @@ limitations under the License.
                 " inputs but expected ", (exp_size));                    \
   }
 
+// Max kernel volume copied from TRT's limits.
+#define MAX_KERNEL_DIMS_PRODUCT(x) (int64_t(std::pow(100000.0F, (x)*0.5F)))
+
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
@@ -3033,6 +3036,17 @@ Status ConvertPool3D(const OpConverterParams* params) {
     return errors::Unimplemented(
         "ksize must be 1 for batch and channel dimensions");
   }
+
+  const nvinfer1::Dims3 stride(tf_stride[d_index], tf_stride[h_index],
+                               tf_stride[w_index]);
+  const nvinfer1::Dims3 ksize(tf_kernel[d_index], tf_kernel[h_index],
+                              tf_kernel[w_index]);
+
+  if (!(ksize.nbDims >= 3 &&
+        (ksize.d[0] >= 1 && ksize.d[1] >= 1 && ksize.d[2] >= 1) &&
+        (ksize.d[0] * ksize.d[1] * ksize.d[2] < MAX_KERNEL_DIMS_PRODUCT(3)))) {
+    return errors::InvalidArgument("Window dimensions are not within bounds");
+  }
   if (params->validation_only) return Status::OK();
 
   ITensorProxyPtr tensor = inputs.at(0).tensor();
@@ -3041,11 +3055,6 @@ Status ConvertPool3D(const OpConverterParams* params) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
         tensor, {0, 4, 1, 2, 3}, &tensor, node_def, "to_NCDHW"));
   }
-
-  const nvinfer1::Dims3 stride(tf_stride[d_index], tf_stride[h_index],
-                               tf_stride[w_index]);
-  const nvinfer1::Dims3 ksize(tf_kernel[d_index], tf_kernel[h_index],
-                              tf_kernel[w_index]);
 
   nvinfer1::IPoolingLayer* layer = params->converter->network()->addPoolingNd(
       *tensor->trt_tensor(), type, ksize);
@@ -3241,7 +3250,6 @@ Status ConvertPool(const OpConverterParams* params) {
   if ((padding_type != "SAME") && (padding_type != "VALID")) {
     return errors::Unimplemented("Unsupported padding type: ", padding_type);
   }
-  if (params->validation_only) return Status::OK();
 
   ITensorProxyPtr tensor = inputs.at(0).tensor();
   int h_index = 2;
@@ -3249,12 +3257,22 @@ Status ConvertPool(const OpConverterParams* params) {
   if (data_format == "NHWC") {
     h_index = 1;
     w_index = 2;
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 3, 1, 2}, &tensor, node_def, "to_NCHW"));
   }
 
   const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
   const nvinfer1::DimsHW ksize(tf_kernel[h_index], tf_kernel[w_index]);
+
+  if (!((ksize.h() >= 1 && ksize.w() >= 1) &&
+        (ksize.h() * ksize.w() < MAX_KERNEL_DIMS_PRODUCT(2)))) {
+    return errors::InvalidArgument("Window dimensions are not within bounds");
+  }
+
+  if (params->validation_only) return Status::OK();
+
+  if (data_format == "NHWC") {
+    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
+        tensor, {0, 3, 1, 2}, &tensor, node_def, "to_NCHW"));
+  }
 
   nvinfer1::IPoolingLayer* layer = params->converter->network()->addPooling(
       *tensor->trt_tensor(), type, ksize);

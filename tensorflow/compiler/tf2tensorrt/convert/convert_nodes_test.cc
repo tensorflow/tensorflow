@@ -6816,6 +6816,8 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
     // The expected outputs for the following operations: MaxPool2D, AvgPool2D,
     // MaxPool3D, AvgPool3D
     std::vector<std::vector<float>> expected_outputs;
+    Status status;
+    std::set<int> skip_dims;
   };
 
   // We use common_input as the input to test both 2D and 3D pooling operations,
@@ -6827,7 +6829,64 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
   // The output of 2D ops for the case where the op is equivalent to the
   // identity op.
   const std::vector<float> common_2d_output{-4, 2, 15, 3, 6, -3, 22, 1, 88};
-  std::vector<TestParams> ok_params = {
+  std::vector<TestParams> test_params = {
+      // Validation failure - kernel size too large for TRT
+      TestParams{
+          /*input_dims=*/{1, 1, 3, 3, 3},
+          /*input=*/common_input,
+          /*ksize=*/{1, 1, 1000, 1000, 1000},
+          /*strides=*/{1, 1, 1, 1, 1},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*expected_output_dims=*/{1, 1, 3, 3, 3},
+          /*expected_outputs=*/
+          {common_2d_output, common_2d_output, common_input, common_input},
+          /*status=*/
+          Status(error::INVALID_ARGUMENT,
+                 "Window dimensions are not within bounds")},
+      // Validation failure for 3D ops - negative kernel depth
+      TestParams{
+          /*input_dims=*/{1, 1, 3, 3, 3},
+          /*input=*/common_input,
+          /*ksize=*/{1, 1, -1, 1, 1},
+          /*strides=*/{1, 1, 1, 1, 1},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*expected_output_dims=*/{1, 1, 3, 3, 3},
+          /*expected_outputs=*/
+          {common_2d_output, common_2d_output, common_input, common_input},
+          /*status=*/
+          Status(error::INVALID_ARGUMENT,
+                 "Window dimensions are not within bounds"),
+          /*skip_dims=*/{2}},
+      // Validation failure - negative kernel height
+      TestParams{
+          /*input_dims=*/{1, 1, 3, 3, 3},
+          /*input=*/common_input,
+          /*ksize=*/{1, 1, 1, -1, 1},
+          /*strides=*/{1, 1, 1, 1, 1},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*expected_output_dims=*/{1, 1, 3, 3, 3},
+          /*expected_outputs=*/
+          {common_2d_output, common_2d_output, common_input, common_input},
+          /*status=*/
+          Status(error::INVALID_ARGUMENT,
+                 "Window dimensions are not within bounds")},
+      // Validation failure - negative kernel width
+      TestParams{
+          /*input_dims=*/{1, 1, 3, 3, 3},
+          /*input=*/common_input,
+          /*ksize=*/{1, 1, 1, 1, -1},
+          /*strides=*/{1, 1, 1, 1, 1},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*expected_output_dims=*/{1, 1, 3, 3, 3},
+          /*expected_outputs=*/
+          {common_2d_output, common_2d_output, common_input, common_input},
+          /*status=*/
+          Status(error::INVALID_ARGUMENT,
+                 "Window dimensions are not within bounds")},
       // Basic - just 1x1 max pooling - input = output
       TestParams{
           /*input_dims=*/{1, 1, 3, 3, 3},
@@ -6884,9 +6943,12 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
                   {1, 2, 3, 4, 5, 6, 7, 8}}},
   };
 
-  for (auto p : ok_params) {
+  for (auto p : test_params) {
     int test_counter = 0;
     for (int nDim : test_nDims) {
+      if (p.skip_dims.find(nDim) != p.skip_dims.end()) {
+        continue;
+      }
       auto input = p.input;
       auto input_dims = p.input_dims;
       auto ksize = p.ksize;
@@ -6907,7 +6969,7 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
         NodeDef node = get_pool_nodedef(tf_type_, nDim, ksize, strides,
                                         p.padding, data_format, is_max_pooling);
         AddTestTensor("input", input_dims, input);
-        TestOpConverter(node, expected_output_dims, Status::OK(), Status::OK(),
+        TestOpConverter(node, expected_output_dims, p.status, Status::OK(),
                         ElementsAreArray(p.expected_outputs.at(test_counter)));
         test_counter++;
       }
