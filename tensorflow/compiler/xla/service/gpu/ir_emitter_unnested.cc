@@ -58,9 +58,9 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
+#include "tensorflow/compiler/mlir/xla/location_metadata.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
@@ -433,7 +433,8 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 
 // Returns a sanitized (doesn't need quoting) identifier name from a location.
 std::string GetIrNameFromLoc(mlir::Location loc) {
-  return llvm_ir::SanitizeConstantName(mlir::GetNameFromLoc(loc));
+  return llvm_ir::SanitizeConstantName(
+      mlir::mhlo::GetDebugNameFromLocation(loc));
 }
 
 // For a row reduction, returns the number of rows we can process in parallel
@@ -1874,7 +1875,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
   }
 
   TF_RETURN_IF_ERROR(AssertNonDeterminismIsOkay(
-      mlir::GetNameFromLoc(select_and_scatter_op.getLoc())));
+      mlir::mhlo::GetDebugNameFromLocation(select_and_scatter_op.getLoc())));
 
   std::string name = GetIrNameFromLoc(select_and_scatter_op.getLoc());
 
@@ -4891,7 +4892,8 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
        /*y=*/static_cast<int64_t>(instr_index_groups.size()),
        /*z=*/1},
       {/*x=*/tiling_scheme.GetNumThreadsPerBlockPhysical(), /*y=*/1, /*z=*/1});
-  VLOG(3) << "Launch dimensions of " << mlir::GetNameFromLoc(fusion.getLoc())
+  VLOG(3) << "Launch dimensions of "
+          << mlir::mhlo::GetDebugNameFromLocation(fusion.getLoc())
           << launch_dimensions.ToString();
 
   std::vector<llvm_ir::IrArray> ir_arrays;
@@ -5424,8 +5426,9 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(mlir::Operation* op) {
   }
   Thunk::ThunkInfo thunk_info(op);
   thunk_info.profile_annotation = absl::StrFormat(
-      "Thunk:#hlo_op=%s,hlo_module=%s%s#", mlir::GetNameFromLoc(op->getLoc()),
-      mlir::GetNameFromLoc(module->getLoc()), unique_id_str);
+      "Thunk:#hlo_op=%s,hlo_module=%s%s#",
+      mlir::mhlo::GetDebugNameFromLocation(op->getLoc()),
+      mlir::mhlo::GetDebugNameFromLocation(module->getLoc()), unique_id_str);
   return thunk_info;
 }
 

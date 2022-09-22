@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
+#include "tensorflow/compiler/mlir/xla/location_metadata.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -86,28 +87,6 @@ bool DotIsDefault(const HloInstruction* instruction) {
       instruction->operand(0)->shape().dimensions_size() == 1 ? 0 : 1);
   default_dimension_numbers.add_rhs_contracting_dimensions(0);
   return xla::protobuf_util::ProtobufEquals(dnums, default_dimension_numbers);
-}
-
-// Returns an MLIR Location generated from HLO Instruction. Uses instruction
-// metadata if present or instruction name.
-mlir::Location GenerateInstructionLocation(const HloInstruction* instruction,
-                                           mlir::OpBuilder* func_builder) {
-  const std::string& op_name = instruction->metadata().op_name();
-  if (op_name.empty()) {
-    return mlir::NameLoc::get(func_builder->getStringAttr(instruction->name()));
-  }
-
-  mlir::Location op_name_loc =
-      mlir::NameLoc::get(func_builder->getStringAttr(op_name));
-  const std::string& source_file = instruction->metadata().source_file();
-  if (source_file.empty()) {
-    return op_name_loc;
-  }
-
-  return func_builder->getFusedLoc(
-      {op_name_loc,
-       mlir::FileLineColLoc::get(func_builder->getContext(), source_file,
-                                 instruction->metadata().source_line(), 0)});
 }
 
 // Clean up the GetTupleElementOp, created during the flattening of
@@ -488,7 +467,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                            : instruction_shape;
   TF_ASSIGN_OR_RETURN(auto result_type,
                       ConvertShapeToType<RankedTensorType>(shape, *builder_));
-  mlir::Location loc = GenerateInstructionLocation(instruction, func_builder);
+  mlir::Location loc = mlir::mhlo::GenerateInstructionLocation(
+      instruction, func_builder->getContext());
 
   llvm::SmallVector<NamedAttribute, 10> attributes;
   if (instruction->has_sharding()) {

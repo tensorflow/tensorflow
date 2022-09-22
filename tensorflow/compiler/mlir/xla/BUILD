@@ -509,6 +509,19 @@ cc_library(
 )
 
 cc_library(
+    name = "location_metadata",
+    srcs = ["location_metadata.cc"],
+    hdrs = ["location_metadata.h"],
+    deps = [
+        "//tensorflow/compiler/mlir:name_utils",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "mlir_hlo_to_hlo",
     srcs = [
         "mlir_hlo_to_hlo.cc",
@@ -518,9 +531,9 @@ cc_library(
     deps = [
         ":attribute_exporter",
         ":layout_util",
+        ":location_metadata",
         ":type_to_shape",
         ":xla_passes",
-        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
@@ -580,6 +593,7 @@ cc_library(
     deps = [
         ":attribute_importer",
         ":hlo_utils",
+        ":location_metadata",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:protobuf_util",
