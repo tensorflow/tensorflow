@@ -12,7 +12,6 @@ load(
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
-    "tf_cuda_library",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -1143,27 +1142,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         ":types",
-    ],
-)
-
-cc_library(
-    name = "cuda",
-    hdrs = ["cuda.h"],
-    deps = [
-        ":platform",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
-    ],
-)
-
-tf_cuda_library(
-    name = "stream_executor",
-    srcs = ["stream_executor.h"],
-    hdrs = [
-        "cuda.h",
-    ],
-    features = ["-parse_headers"],
-    deps = [
-        "//tensorflow/tsl/platform/default/build_config:stream_executor",
     ],
 )
 

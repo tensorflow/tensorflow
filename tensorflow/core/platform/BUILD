@@ -212,17 +212,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cuda",
-    hdrs = ["cuda.h"],
-    compatible_with = [],
-    deps = [
-        ":platform",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
-        "//tensorflow/tsl/platform:cuda",
-    ],
-)
-
-cc_library(
     name = "denormal",
     hdrs = ["denormal.h"],
     deps = [
@@ -1054,19 +1043,52 @@ cc_binary(
     ] + if_not_android([":rocm_rocdl_path"]),
 )
 
+cc_library(
+    name = "_empty_lib",
+    visibility = ["//visibility:private"],
+)
+
+alias(
+    name = "_cuda_runtime",
+    actual = select({
+        "//tensorflow:framework_shared_object": ":_empty_lib",
+        "//conditions:default": "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
+    }),
+    visibility = ["//visibility:private"],
+)
+
 tf_cuda_library(
     name = "stream_executor",
     srcs = ["stream_executor.h"],
     hdrs = [
-        "cuda.h",
         "rocm.h",
         "stream_executor.h",
     ],
+    cuda_deps = [
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_activation",
+    ],
     features = ["-parse_headers"],
     deps = [
-        "//tensorflow/tsl/platform:cuda",
-        "//tensorflow/tsl/platform/default/build_config:stream_executor",
-    ],
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
+        "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
+    ] + select({
+        "//tensorflow:macos": ["IOKit"],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:is_cuda_enabled": [":_cuda_runtime"],
+        "//tensorflow:using_rocm_hipcc": [
+            "//tensorflow/compiler/xla/stream_executor/rocm:all_runtime",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 # Like stream_executor library, but compiles without --config=cuda
