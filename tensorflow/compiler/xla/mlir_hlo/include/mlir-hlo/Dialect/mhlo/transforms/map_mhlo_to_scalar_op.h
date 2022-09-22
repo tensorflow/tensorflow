@@ -409,7 +409,43 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
     return b->create<ScalarIOp<mhlo::CompareOp>>(loc, predicate.value(), lhs,
                                                  rhs);
   }
-  if (elementType.isa<FloatType>()) {
+  if (auto floatType = elementType.dyn_cast<FloatType>()) {
+    if (adaptor.getCompareType() &&
+        *adaptor.getCompareType() == mhlo::ComparisonType::TOTALORDER) {
+      // The semantics of totalorder fp compare are
+      // -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN
+      auto intType = b->getIntegerType(floatType.getWidth());
+      auto zero =
+          b->create<arith::ConstantOp>(loc, intType, b->getZeroAttr(intType));
+      auto max = b->create<arith::ConstantOp>(
+          loc, intType,
+          b->getIntegerAttr(intType,
+                            APInt::getSignedMaxValue(floatType.getWidth())));
+      // Switch from a floating point value to a integer value in such a way
+      // that when using the integer value to compare, we get the same result
+      // for normal values, and -NaN is treated as the smallest value, and NaN
+      // is treated as the largest value.
+      // If f is a float, and
+      // x = bit_cast<int32_t>(f);
+      // y = x < 0 ? numeric_limits<int32_t>::max() - x : x;
+      // then y is ordered as an int32_t such that finite values have the
+      // obvious order, -0 is ordered before 0, and -NaN and NaN appear at the
+      // beginning and end of the ordering.
+      auto toIntegral = [&](Value v) {
+        auto x = b->create<arith::BitcastOp>(loc, intType, v);
+        auto cmp =
+            b->create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, x, zero);
+        auto sub = b->create<arith::SubIOp>(loc, max, x);
+        return b->create<arith::SelectOp>(loc, cmp, sub, x);
+      };
+      auto lhsInt = toIntegral(lhs);
+      auto rhsInt = toIntegral(rhs);
+      auto predicate =
+          getCmpPredicate<arith::CmpIPredicate>(comparisonDirection,
+                                                /*is_signed=*/true);
+      assert(predicate.has_value() && "expected valid comparison direction");
+      return b->create<arith::CmpIOp>(loc, *predicate, lhsInt, rhsInt);
+    }
     Optional<arith::CmpFPredicate> predicate =
         getCmpPredicate<arith::CmpFPredicate>(comparisonDirection,
                                               /*is_signed=*/true);
