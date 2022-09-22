@@ -59,9 +59,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/setround.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
-#include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace xla {
@@ -97,11 +94,30 @@ class MarkEventReadyOnExit {
 static const char kCpuPlatformName[] = "cpu";
 static constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 
-static tfrt::AsyncValueRef<CpuEvent> GetOrCreateReadyEvent(
-    tfrt::HostContext* host_context) {
+static tfrt::AsyncValueRef<CpuEvent> GetOrCreateReadyEvent() {
   static const auto* ready_event = new tfrt::AsyncValueRef<CpuEvent>(
       tfrt::MakeAvailableAsyncValueRef<CpuEvent>());
   return ready_event->CopyRef();
+}
+
+static void EnqueueWork(tsl::thread::ThreadPool* pool,
+                        absl::AnyInvocable<void()> callee) {
+  // TSL TheadPool expects std::function that must be copyable, so we are
+  // forced to do a little bit of manual memory management here.
+  pool->Schedule([ptr = new absl::AnyInvocable<void()>(std::move(callee))]() {
+    (*ptr)();
+    delete ptr;
+  });
+}
+
+// Enqueue to PjRtClient pool when all `values` are ready.
+static void EnqueueWorkWhenReady(
+    tsl::thread::ThreadPool* pool,
+    llvm::ArrayRef<tfrt::RCReference<tfrt::AsyncValue>> values,
+    absl::AnyInvocable<void()> callee) {
+  tfrt::RunWhenReady(values, [pool, callee = std::move(callee)]() mutable {
+    EnqueueWork(pool, std::move(callee));
+  });
 }
 
 TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
@@ -147,24 +163,14 @@ static StatusOr<std::vector<std::unique_ptr<TfrtCpuDevice>>> GetTfrtCpuDevices(
 
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous,
                                                        int cpu_device_count) {
-  // TODO(zhangqiaorjc): Allow users set the number of threads.
-  // `num_blocking_threads=16` is picked arbitrarily for now.
   // Need at least CpuDeviceCount threads to launch one collective.
-  int num_threads = std::max(DefaultThreadPoolSize(), cpu_device_count);
-  auto host_context = std::make_unique<tfrt::HostContext>(
-      [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(ERROR) << "Encountered runtime error: " << diag.message() << "\n";
-      },
-      tfrt::CreateMallocAllocator(),
-      tfrt::CreateMultiThreadedWorkQueue(
-          /*num_threads=*/num_threads,
-          /*num_blocking_threads=*/16));
+  size_t num_threads = std::max(DefaultThreadPoolSize(), cpu_device_count);
 
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
                       GetTfrtCpuDevices(asynchronous, cpu_device_count));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtCpuClient>(
-      /*process_index=*/0, std::move(devices), std::move(host_context)));
+      /*process_index=*/0, std::move(devices), num_threads));
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous) {
@@ -173,11 +179,12 @@ StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous) {
 
 TfrtCpuClient::TfrtCpuClient(
     int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-    std::unique_ptr<tfrt::HostContext> host_ctx)
+    size_t num_threads)
     : process_index_(process_index),
       owned_devices_(std::move(devices)),
-      host_ctx_(std::move(host_ctx)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
+      pjrt_client_thread_pool_(new tsl::thread::ThreadPool(
+          tsl::Env::Default(), "XLATfrtCpuClient", num_threads)),
       eigen_intraop_pool_(new tsl::thread::ThreadPool(
           tsl::Env::Default(), "XLAEigen", DefaultThreadPoolSize())),
       eigen_intraop_device_(
@@ -558,21 +565,20 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
         tfrt::AsyncValueRef<CpuEvent> copy_event =
             tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
         definition_events.push_back(copy_event.CopyRef());
-        tfrt::EnqueueWork(
-            host_ctx_.get(),
-            [device_buffer = std::move(device_buffer), dst_data_ptr, data,
-             byte_size, copy_event = std::move(copy_event),
-             on_done_with_host_buffer =
-                 std::move(on_done_with_host_buffer)]() mutable {
-              tensorflow::profiler::TraceMe traceme("H2D Dispatch");
-              std::memcpy(dst_data_ptr, data, byte_size);
-              if (on_done_with_host_buffer) {
-                on_done_with_host_buffer();
-                on_done_with_host_buffer = nullptr;
-              }
-              // Signal copy is complete.
-              copy_event.SetStateConcrete();
-            });
+        EnqueueWork(pjrt_client_thread_pool(),
+                    [device_buffer = std::move(device_buffer), dst_data_ptr,
+                     data, byte_size, copy_event = std::move(copy_event),
+                     on_done_with_host_buffer =
+                         std::move(on_done_with_host_buffer)]() mutable {
+                      tensorflow::profiler::TraceMe traceme("H2D Dispatch");
+                      std::memcpy(dst_data_ptr, data, byte_size);
+                      if (on_done_with_host_buffer) {
+                        on_done_with_host_buffer();
+                        on_done_with_host_buffer = nullptr;
+                      }
+                      // Signal copy is complete.
+                      copy_event.SetStateConcrete();
+                    });
       }
     }
   }
@@ -614,8 +620,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
   if (!shape.IsTuple()) {
     // It is OK to capture `buffer` pointer because the `output_buffer` can't be
     // deleted until all the usage holds have gone away.
-    tfrt::EnqueueWork(GetHostContext(), [literal, av = avs[0].CopyRef(),
-                                         device_buffer, shape]() mutable {
+    EnqueueWork(pjrt_client_thread_pool(), [literal, av = avs[0].CopyRef(),
+                                            device_buffer, shape]() mutable {
       tensorflow::profiler::TraceMe traceme("H2D Dispatch");
       const std::shared_ptr<MaybeOwningCpuMemory>& b =
           device_buffer->Buffers()[0];
@@ -629,8 +635,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
     for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
       // It is OK to capture `buffer` pointer because the `output_buffer` can't
       // be deleted until all the usage holds have gone away.
-      tfrt::EnqueueWork(GetHostContext(), [i, literal, av = avs[i].CopyRef(),
-                                           shape, device_buffer]() mutable {
+      EnqueueWork(pjrt_client_thread_pool(), [i, literal, av = avs[i].CopyRef(),
+                                              shape, device_buffer]() mutable {
         tensorflow::profiler::TraceMe traceme("H2D Dispatch");
         auto slice = LiteralSlice(literal, {i});
         const std::shared_ptr<MaybeOwningCpuMemory>& b =
@@ -800,7 +806,7 @@ StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> TfrtCpuBuffer::Release(
     // defined. Return the first error encountered.
     Status first_error;
     for (const auto& av : events) {
-      client_->GetHostContext()->Await(av.CopyRCRef());
+      tfrt::Await(av.CopyRCRef());
       if (auto* error = av.GetErrorIfPresent()) {
         first_error.Update(
             InternalError("Error Execute: %s", error->message()));
@@ -873,7 +879,7 @@ StatusOr<Shape> TfrtCpuBuffer::logical_on_device_shape() {
 
   // Wait for the definition event.
   const auto& av = device_buffer->definition_event();
-  client_->GetHostContext()->Await(av.CopyRCRef());
+  tfrt::Await(av.CopyRCRef());
   if (auto* error = av.GetErrorIfPresent()) {
     return InternalError("Error Execute: %s", error->message());
   }
@@ -906,16 +912,6 @@ static std::vector<tfrt::RCReference<tfrt::AsyncValue>> CopyAsyncValues(
   return avs;
 }
 
-// Enqueue to TFRT non-blocking work queue when all `values` are ready.
-static void EnqueueWorkWhenReady(
-    tfrt::HostContext* host_ctx,
-    tfrt::ArrayRef<tfrt::RCReference<tfrt::AsyncValue>> values,
-    llvm::unique_function<void()> callee) {
-  tfrt::RunWhenReady(values, [host_ctx, callee = std::move(callee)]() mutable {
-    tfrt::EnqueueWork(host_ctx, std::move(callee));
-  });
-}
-
 PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   tensorflow::profiler::TraceMe traceme("TfrtCpuBuffer::ToLiteral");
   if (IsEmptyTuple()) {
@@ -929,8 +925,6 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
         "CopyToHostAsync() called on deleted or donated buffer"));
   }
   MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
-
-  auto host_ctx = client_->GetHostContext();
 
   std::vector<tfrt::RCReference<tfrt::AsyncValue>> device_buffer_wait_avs = {
       device_buffer->definition_event().CopyRCRef()};
@@ -962,7 +956,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
     // multiple outputs' D2H, they should happen in different threads in
     // parallel.
     EnqueueWorkWhenReady(
-        host_ctx, device_buffer_wait_avs,
+        client()->pjrt_client_thread_pool(), device_buffer_wait_avs,
         [this, device_buffer_wait_avs = std::move(device_buffer_wait_avs_copy),
          literal, ready_event = ready_event.CopyRef(), device_buffer,
          ready_on_exit = std::move(ready_on_exit)]() mutable {
@@ -1092,9 +1086,9 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
     }
   };
 
-  src_definition_event.AndThen([host_ctx = client()->GetHostContext(),
+  src_definition_event.AndThen([pool = client()->pjrt_client_thread_pool(),
                                 copy_task = std::move(copy_task)]() mutable {
-    tfrt::EnqueueWork(host_ctx, std::move(copy_task));
+    EnqueueWork(pool, std::move(copy_task));
   });
 
   return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtCpuBuffer>(
@@ -1308,7 +1302,6 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,
     bool fill_future, TfrtCpuDevice* device) {
   tensorflow::profiler::TraceMe traceme("TfrtCpuExecutable::ExecuteHelper");
-  auto* host_context = client_->GetHostContext();
 
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
@@ -1542,7 +1535,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     std::vector<tfrt::RCReference<tfrt::AsyncValue>> input_deps_avs_copy =
         CopyAsyncValues(input_deps);
     EnqueueWorkWhenReady(
-        host_context, input_deps,
+        client()->pjrt_client_thread_pool(), input_deps,
         [cpu_executable, result_buffer,
          buffer_pointers = std::move(buffer_pointers),
          buffer_table = std::move(buffer_table),
@@ -1709,7 +1702,9 @@ TfrtCpuExecutable::Execute(
     for (int i = 0; i < num_addressable_devices; ++i) {
       const int replica = addressable_device_logical_ids_[i].replica;
       const int partition = addressable_device_logical_ids_[i].partition;
-      tfrt::EnqueueWork(client_->GetHostContext(), [&, replica, partition, i] {
+
+      auto* thread_pool = client()->pjrt_client_thread_pool();
+      EnqueueWork(thread_pool, [&, replica, partition, i] {
         auto statusor =
             ExecuteHelper(argument_handles[i], replica, partition, run_id,
                           options, last_collective_launch_event.CopyRef(),
