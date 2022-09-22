@@ -157,7 +157,7 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
         cast(op.blockSizeX()), cast(op.blockSizeY()), cast(op.blockSizeZ())};
 
     // Add kernel arguments.
-    llvm::copy(op.operands(), std::back_inserter(args));
+    llvm::copy(op.getKernelOperands(), std::back_inserter(args));
 
     // Get or create a custom call function declaration.
     func::FuncOp callee = custom_calls_.GetOrCreate(

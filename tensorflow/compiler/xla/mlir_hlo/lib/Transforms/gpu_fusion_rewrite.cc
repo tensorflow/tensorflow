@@ -295,7 +295,7 @@ void FusionRewritePattern::annotateLaunchFunc(func::FuncOp funcOp,
                                               PatternRewriter& rewriter) {
   funcOp.walk([&](gpu::LaunchFuncOp op) {
     auto writtenOperands = llvm::to_vector(
-        llvm::map_range(op.operands(), [&](Value operand) -> bool {
+        llvm::map_range(op.getKernelOperands(), [&](Value operand) -> bool {
           auto arg = operand.dyn_cast<BlockArgument>();
           if (!arg) return false;
           return funcOp.getArgAttr(arg.getArgNumber(),

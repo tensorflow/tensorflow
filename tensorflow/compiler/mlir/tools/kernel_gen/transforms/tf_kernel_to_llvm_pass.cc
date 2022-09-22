@@ -109,7 +109,7 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
   auto num_kernel_operands = launch_op.getNumKernelOperands();
   auto arguments = getTypeConverter()->promoteOperands(
       loc, launch_op.getOperands().take_back(num_kernel_operands),
-      adaptor.operands().take_back(num_kernel_operands), builder);
+      adaptor.getKernelOperands().take_back(num_kernel_operands), builder);
   auto num_arguments = arguments.size();
   SmallVector<Type, 4> argument_types;
   argument_types.reserve(num_arguments);

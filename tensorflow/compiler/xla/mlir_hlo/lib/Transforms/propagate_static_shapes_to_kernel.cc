@@ -151,9 +151,9 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
       llvm::make_filter_range(llvm::map_range(*symUses, mapper), filter));
   if (launchOps.empty())
     return rewriter.notifyMatchFailure(funcOp, "no gpu.launch_func uses");
-  OperandRange operands = launchOps.begin()->operands();
+  OperandRange operands = launchOps.begin()->getKernelOperands();
   if (llvm::any_of(launchOps, [&](gpu::LaunchFuncOp op) {
-        return op.operands().getTypes() != operands.getTypes();
+        return op.getKernelOperands().getTypes() != operands.getTypes();
       })) {
     return rewriter.notifyMatchFailure(funcOp, "operand types mismatch");
   }

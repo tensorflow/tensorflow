@@ -1562,7 +1562,7 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
   mlir::ArrayRef<mlir::Attribute> written_operands =
       mlir::getWrittenOperandsAttribute(launch_func).getValue();
   for (const auto& [operand, written] :
-       llvm::zip_first(launch_func.operands(),
+       llvm::zip_first(launch_func.getKernelOperands(),
                        written_operands.take_back(num_kernel_operands))) {
     auto& kernel_argument = kernel_arguments.emplace_back();
     kernel_argument.order = i++;
