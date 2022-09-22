@@ -85,3 +85,20 @@ jobs:
       -
         name: Print image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
+
+  provenance-gcr:
+    needs: [docker]
+    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read # for detecting the Github Actions environment.
+      id-token: write # for creating OIDC tokens for signing.
+      packages: write # for uploading attestations.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@main  # TODO(mihaimaruseac): Pin and use signed releases when they exist
+    with:
+      image: ${{ needs.build.outputs.tag }}
+      digest: ${{ needs.build.outputs.digest }}
+      registry-username: _json_key
+      compile-generator: true  # TODO(mihaimaruseac): Remove after stable release
+    secrets:
+      registry-password: ${{ secrets.GCP_CREDS }}
