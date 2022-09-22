@@ -1009,6 +1009,7 @@ void* Subgraph::OpInit(const TfLiteRegistration& op_reg, const char* buffer,
                        size_t length) {
   if (op_reg.registration_external && op_reg.registration_external->init) {
     return op_reg.registration_external->init(
+        op_reg.registration_external->init_data,
         reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer, length);
   }
   if (op_reg.init == nullptr) return nullptr;
@@ -1018,7 +1019,10 @@ void* Subgraph::OpInit(const TfLiteRegistration& op_reg, const char* buffer,
 TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
                                  TfLiteNode* node) {
   if (op_reg.registration_external && op_reg.registration_external->prepare) {
+    // The 'data' field required by the 'prepare' function pointer must be
+    // retrieved from the 'registration_external' object itself.
     return op_reg.registration_external->prepare(
+        op_reg.registration_external->prepare_data,
         reinterpret_cast<TfLiteOpaqueContext*>(&context_),
         reinterpret_cast<TfLiteOpaqueNode*>(node));
   }
@@ -1052,6 +1056,7 @@ TfLiteStatus Subgraph::OpInvoke(const TfLiteRegistration& op_reg,
                                 TfLiteNode* node) {
   if (op_reg.registration_external && op_reg.registration_external->invoke) {
     return op_reg.registration_external->invoke(
+        op_reg.registration_external->invoke_data,
         reinterpret_cast<TfLiteOpaqueContext*>(&context_),
         reinterpret_cast<TfLiteOpaqueNode*>(node));
   }
@@ -1065,6 +1070,7 @@ void Subgraph::OpFree(const TfLiteRegistration& op_reg, void* buffer) {
   if (op_reg.registration_external && op_reg.registration_external->free &&
       buffer) {
     return op_reg.registration_external->free(
+        op_reg.registration_external->free_data,
         reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer);
   }
   if (op_reg.free == nullptr) return;

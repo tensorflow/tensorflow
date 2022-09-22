@@ -54,6 +54,7 @@ tflite_cc_library_with_c_headers_test(
         ":c_api_types",
         ":c_api_without_op_resolver",
         ":common",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/kernels:kernel_util",
@@ -129,11 +130,13 @@ tflite_cc_library_with_c_headers_test(
 
 cc_library(
     name = "c_api_internal",
+    srcs = ["c_api_internal.cc"],
     hdrs = ["c_api_internal.h"],
     copts = tflite_copts(),
     visibility = ["//visibility:private"],
     deps = [
         ":common",
+        ":common_internal",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core/api",
@@ -276,6 +279,7 @@ filegroup(
     srcs = [
         "c_api.cc",
         "c_api_experimental.cc",
+        "c_api_internal.cc",
         "c_api_internal.h",
         "c_api_opaque.cc",
         "common_internal.h",

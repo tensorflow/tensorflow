@@ -358,11 +358,91 @@ TEST(CApiSimple, CustomOpSupport) {
       "tensorflow/lite/testdata/custom_sinh.bin");
   ASSERT_NE(model, nullptr);
 
-  TfLiteRegistrationExternal* reg = TfLiteRegistrationExternalCreate("Sinh", 1);
+  TfLiteRegistrationExternal* reg =
+      TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "Sinh", 1);
+  TfLiteRegistrationExternalSetPrepare(reg, &FlexSinhPrepare);
   TfLiteRegistrationExternalSetInit(reg, &FlexSinhInit);
   TfLiteRegistrationExternalSetFree(reg, &FlexSinhFree);
-  TfLiteRegistrationExternalSetPrepare(reg, &FlexSinhPrepare);
   TfLiteRegistrationExternalSetInvoke(reg, &FlexSinhEval);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddRegistrationExternal(options, reg);
+
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  TfLiteInterpreterOptionsDelete(options);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  TfLiteTensor* input_tensor = TfLiteInterpreterGetInputTensor(interpreter, 0);
+  float input_value = 1.0f;
+  TfLiteTensorCopyFromBuffer(input_tensor, &input_value, sizeof(float));
+
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  const TfLiteTensor* output_tensor =
+      TfLiteInterpreterGetOutputTensor(interpreter, 0);
+  float output_value;
+  TfLiteTensorCopyToBuffer(output_tensor, &output_value, sizeof(float));
+  EXPECT_EQ(output_value, std::sinh(1.0f));
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
+  TfLiteRegistrationExternalDelete(reg);
+}
+
+int g_init_data = 1;
+int g_prepare_data = 2;
+int g_invoke_data = 3;
+int g_free_data = 4;
+
+void* FlexSinhInitExpectingData(void* data, TfLiteOpaqueContext* context,
+                                const char* buffer, size_t length) {
+  EXPECT_EQ(data, &g_init_data);
+  return &g_init_data;
+}
+
+void FlexSinhFreeExpectingData(void* data, TfLiteOpaqueContext* context,
+                               void* buffer) {
+  EXPECT_EQ(data, &g_free_data);
+}
+
+TfLiteStatus FlexSinhPrepareExpectingData(void* data,
+                                          TfLiteOpaqueContext* context,
+                                          TfLiteOpaqueNode* node) {
+  EXPECT_EQ(data, &g_prepare_data);
+  return kTfLiteOk;
+}
+
+TfLiteStatus FlexSinhEvalExpectingData(void* data, TfLiteOpaqueContext* context,
+                                       TfLiteOpaqueNode* node) {
+  EXPECT_EQ((*static_cast<int*>(data)), g_invoke_data);
+
+  const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
+  size_t input_bytes = TfLiteOpaqueTensorByteSize(input);
+  void* data_ptr = TfLiteOpaqueTensorData(input);
+  float input_value;
+  memcpy(&input_value, data_ptr, input_bytes);
+
+  TfLiteOpaqueTensor* output = TfLiteOpaqueNodeGetOutput(context, node, 0);
+  float output_value = std::sinh(input_value);
+  TfLiteOpaqueTensorCopyFromBuffer(output, &output_value, sizeof(output_value));
+  return kTfLiteOk;
+}
+
+TEST(CApiSimple, CustomOpSupport_UsingFunctionsAcceptingDataArgument) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/custom_sinh.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteRegistrationExternal* reg =
+      TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "Sinh", 1);
+  tflite::internal::TfLiteRegistrationExternalSetInitWithData(
+      reg, &g_init_data, &FlexSinhInitExpectingData);
+  tflite::internal::TfLiteRegistrationExternalSetPrepareWithData(
+      reg, &g_prepare_data, &FlexSinhPrepareExpectingData);
+  tflite::internal::TfLiteRegistrationExternalSetInvokeWithData(
+      reg, &g_invoke_data, &FlexSinhEvalExpectingData);
+  tflite::internal::TfLiteRegistrationExternalSetFreeWithData(
+      reg, &g_free_data, &FlexSinhFreeExpectingData);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddRegistrationExternal(options, reg);

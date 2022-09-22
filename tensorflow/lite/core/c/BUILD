@@ -18,6 +18,7 @@ cc_library(
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/c:c_api_types",
     ],
 )
@@ -35,6 +36,7 @@ cc_library(
         "//visibility:public",
     ],
     deps = [
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/c:c_api_types",
     ],
 )

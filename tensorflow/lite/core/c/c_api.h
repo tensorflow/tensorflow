@@ -23,6 +23,7 @@ limitations under the License.
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"  // IWYU pragma: export
 
 // --------------------------------------------------------------------------
@@ -142,7 +143,15 @@ TFL_CAPI_EXPORT extern void TfLiteModelDelete(TfLiteModel* model);
 // the lifetime of the `TfLiteInterpreter`.
 // WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteRegistrationExternal*
-TfLiteRegistrationExternalCreate(const char* custom_name, int version);
+TfLiteRegistrationExternalCreate(TfLiteBuiltinOperator builtin_code,
+                                 const char* custom_name, int version);
+
+// Return the builtin op code of the provided external 'registration'.
+//
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteBuiltinOperator
+TfLiteRegistrationExternalGetBuiltInCode(
+    const TfLiteRegistrationExternal* registration);
 
 // Destroys the TfLiteRegistrationExternal instance.
 // WARNING: This is an experimental API and subject to change.
