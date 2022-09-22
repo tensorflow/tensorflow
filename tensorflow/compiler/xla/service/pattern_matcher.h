@@ -2454,6 +2454,7 @@ auto CustomCall(Arg0&& arg0, Args&&... args) {
                               /*operand_num=*/0, std::forward<Arg0>(arg0),
                               std::forward<Args>(args)...);
 }
+
 template <typename... Args>
 auto CustomCall(absl::string_view custom_call_target, Args&&... args) {
   return CustomCall(std::forward<Args>(args)...)
@@ -2469,11 +2470,20 @@ auto CustomCall(HloInstructionType** matched_inst, Arg0&& arg0,
       CustomCall(matched_inst).WithNumOperands(sizeof...(Args) + 1),
       /*operand_num=*/0, std::forward<Arg0>(arg0), std::forward<Args>(args)...);
 }
+
 template <typename HloInstructionType, typename... Args>
 auto CustomCall(HloInstructionType** matched_inst,
                 absl::string_view custom_call_target, Args&&... args) {
   return CustomCall(matched_inst, std::forward<Args>(args)...)
       .WithCustomCallTarget(custom_call_target);
+}
+
+template <typename HloInstructionType, typename... Args>
+auto CustomCall(HloInstructionType** matched_inst,
+                absl::Span<const absl::string_view> custom_call_targets,
+                Args&&... args) {
+  return CustomCall(matched_inst, std::forward<Args>(args)...)
+      .WithCustomCallTarget(custom_call_targets);
 }
 
 // Helpers for comparison instructions.

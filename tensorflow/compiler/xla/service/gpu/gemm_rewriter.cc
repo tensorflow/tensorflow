@@ -162,7 +162,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *alpha, *existing_gemm;
     if (Match(instr,
               m::MultiplyAnyOrder(
-                  m::Op(&existing_gemm).WithCustomCallTarget(kGemmCallTarget),
+                  m::CustomCall(&existing_gemm,
+                                {kGemmCallTarget, kCublasLtMatmulCallTarget}),
                   m::Broadcast(m::ConstantScalar(&alpha))))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
@@ -245,8 +246,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (Match(
             instr,
             m::Convert(m::AddAnyOrder(
-                           m::Convert(m::Op(&existing_gemm)
-                                          .WithCustomCallTarget(kGemmCallTarget)
+                           m::Convert(m::CustomCall(&existing_gemm,
+                                                    {kGemmCallTarget,
+                                                     kCublasLtMatmulCallTarget})
                                           .WithElementType(BF16)),
                            m::Convert(m::Op(&bias).WithElementType(BF16))))
                 .WithElementType(BF16))) {
@@ -292,7 +294,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm->CloneWithNewOperands(instr->shape(), operands);
 
     TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
-    if (IsCublasGemm(*fused_op)) {
+    if (IsLegacyCublasMatmul(*fused_op)) {
       // Force bias input to alias with output, as GEMM operates in-place.
       xla::Cast<HloCustomCallInstruction>(fused_op.get())
           ->set_output_to_operand_aliasing({{{}, {2, {}}}});
