@@ -406,6 +406,7 @@ filegroup(
         "mem.h",
         "net.h",
         "notification.h",
+        "null_file_system.h",
         "numa.h",
         "path.h",
         "prefetch.h",
@@ -512,6 +513,7 @@ filegroup(
         "ram_file_system.h",
         "raw_coding.h",
         "regexp.h",
+        "refcount.h",
         "resource.h",
         "scanner.cc",
         "scanner.h",
@@ -677,6 +679,7 @@ filegroup(
         "host_info.h",
         "intrusive_ptr.h",
         "platform.h",
+        "refcount.h",
         "setround.h",
         "snappy.h",
         "tracing.h",
@@ -1387,5 +1390,23 @@ cc_library(
     hdrs = ["abi.h"],
     deps = [
         ":types",
+    ],
+)
+
+cc_library(
+    name = "refcount",
+    hdrs = ["refcount.h"],
+    deps = [
+        ":logging",
+        ":mutex",
+        ":thread_annotations",
+    ],
+)
+
+cc_library(
+    name = "null_file_system",
+    hdrs = ["null_file_system.h"],
+    deps = [
+        ":env",
     ],
 )

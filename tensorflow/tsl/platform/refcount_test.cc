@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/tsl/platform/refcount.h"
 
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace core {
 namespace {
 
@@ -235,4 +236,4 @@ TEST(WeakPtr, DestroyedNotifyNotCalled) {
 
 }  // namespace
 }  // namespace core
-}  // namespace tensorflow
+}  // namespace tsl

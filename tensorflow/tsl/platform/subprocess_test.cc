@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/subprocess.h"
+#include "tensorflow/tsl/platform/subprocess.h"
 
 #include <stdlib.h>
 #include <string.h>
 
 #include <algorithm>
 
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/resource_loader.h"
-#include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/resource_loader.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/test.h"
 
 #ifdef PLATFORM_WINDOWS
 #define WIFEXITED(code) ((code) != 3)
@@ -34,7 +34,7 @@ limitations under the License.
 #include <sys/wait.h>
 #endif
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 static string GetDataFilePath(const string& relative_path) {
@@ -48,36 +48,34 @@ static string GetDataFilePath(const string& relative_path) {
 }
 
 string EchoProgram() {
-  return io::JoinPath("tensorflow", "core", "platform", "testdata",
-                      "test_echo");
+  return io::JoinPath("tensorflow", "tsl", "platform", "testdata", "test_echo");
 }
 
 string EchoArgv1Program() {
-  return io::JoinPath("tensorflow", "core", "platform", "testdata",
+  return io::JoinPath("tensorflow", "tsl", "platform", "testdata",
                       "test_echo_argv_1");
 }
 
 string NoopProgram() {
-  return io::JoinPath("tensorflow", "core", "platform", "testdata",
-                      "test_noop");
+  return io::JoinPath("tensorflow", "tsl", "platform", "testdata", "test_noop");
 }
 
 string StdErrProgram() {
-  return io::JoinPath("tensorflow", "core", "platform", "testdata",
+  return io::JoinPath("tensorflow", "tsl", "platform", "testdata",
                       "test_stderr");
 }
 
 class SubProcessTest : public ::testing::Test {};
 
 TEST_F(SubProcessTest, NoOutputNoComm) {
-  tensorflow::SubProcess proc;
+  tsl::SubProcess proc;
   proc.SetProgram(GetDataFilePath(NoopProgram()).c_str(), {NoopProgram()});
   EXPECT_TRUE(proc.Start());
   EXPECT_TRUE(proc.Wait());
 }
 
 TEST_F(SubProcessTest, NoOutput) {
-  tensorflow::SubProcess proc;
+  tsl::SubProcess proc;
   proc.SetProgram(GetDataFilePath(NoopProgram()).c_str(), {NoopProgram()});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
@@ -92,7 +90,7 @@ TEST_F(SubProcessTest, NoOutput) {
 }
 
 TEST_F(SubProcessTest, Stdout) {
-  tensorflow::SubProcess proc;
+  tsl::SubProcess proc;
   const char test_string[] = "hello_world";
   proc.SetProgram(GetDataFilePath(EchoArgv1Program()).c_str(),
                   {EchoArgv1Program(), test_string});
@@ -109,7 +107,7 @@ TEST_F(SubProcessTest, Stdout) {
 }
 
 TEST_F(SubProcessTest, StdoutIgnored) {
-  tensorflow::SubProcess proc;
+  tsl::SubProcess proc;
   const char test_string[] = "hello_world";
   proc.SetProgram(GetDataFilePath(EchoArgv1Program()).c_str(),
                   {EchoArgv1Program(), test_string});
@@ -123,7 +121,7 @@ TEST_F(SubProcessTest, StdoutIgnored) {
 }
 
 TEST_F(SubProcessTest, Stderr) {
-  tensorflow::SubProcess proc;
+  tsl::SubProcess proc;
   const char test_string[] = "muh_failure!";
   proc.SetProgram(GetDataFilePath(StdErrProgram()).c_str(),
                   {StdErrProgram(), test_string});
@@ -140,7 +138,7 @@ TEST_F(SubProcessTest, Stderr) {
 }
 
 TEST_F(SubProcessTest, StderrIgnored) {
-  tensorflow::SubProcess proc;
+  tsl::SubProcess proc;
   const char test_string[] = "muh_failure!";
   proc.SetProgram(GetDataFilePath(StdErrProgram()).c_str(),
                   {StdErrProgram(), test_string});
@@ -154,7 +152,7 @@ TEST_F(SubProcessTest, StderrIgnored) {
 }
 
 TEST_F(SubProcessTest, Stdin) {
-  tensorflow::SubProcess proc;
+  tsl::SubProcess proc;
   proc.SetProgram(GetDataFilePath(EchoProgram()).c_str(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -166,7 +164,7 @@ TEST_F(SubProcessTest, Stdin) {
 }
 
 TEST_F(SubProcessTest, StdinStdout) {
-  tensorflow::SubProcess proc;
+  tsl::SubProcess proc;
   proc.SetProgram(GetDataFilePath(EchoProgram()).c_str(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
@@ -183,7 +181,7 @@ TEST_F(SubProcessTest, StdinStdout) {
 }
 
 TEST_F(SubProcessTest, StdinChildExit) {
-  tensorflow::SubProcess proc;
+  tsl::SubProcess proc;
   proc.SetProgram(GetDataFilePath(NoopProgram()).c_str(), {NoopProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -202,7 +200,7 @@ TEST_F(SubProcessTest, StdinChildExit) {
 }
 
 TEST_F(SubProcessTest, StdinStdoutOverlap) {
-  tensorflow::SubProcess proc;
+  tsl::SubProcess proc;
   proc.SetProgram(GetDataFilePath(EchoProgram()).c_str(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
@@ -226,7 +224,7 @@ TEST_F(SubProcessTest, StdinStdoutOverlap) {
 }
 
 TEST_F(SubProcessTest, KillProc) {
-  tensorflow::SubProcess proc;
+  tsl::SubProcess proc;
   proc.SetProgram(GetDataFilePath(EchoProgram()).c_str(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
@@ -239,4 +237,4 @@ TEST_F(SubProcessTest, KillProc) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 
 TEST(AppendToMessageTest, PayloadsAreCopied) {
   Status status = errors::Aborted("Aborted Error Message");
@@ -77,4 +77,4 @@ TEST(Status, ErrorStatusInsertPayloadsFromErrorStatus) {
   ASSERT_EQ(payloads_error_status.size(), 3);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

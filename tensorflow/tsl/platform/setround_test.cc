@@ -13,16 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/setround.h"
+#include "tensorflow/tsl/platform/setround.h"
 
 #include <cmath>
-#include "tensorflow/core/platform/test.h"
+
+#include "tensorflow/tsl/platform/test.h"
 
 // LLVM does not support <cfenv>. Disable these tests when building with it.
 // See b/35384639 for more information.
 #if !defined(__clang__) || !defined(__OPTIMIZE__)
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 void CheckDownward() {
@@ -97,6 +98,6 @@ TEST(SetScopedSetRound, Scoped) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // !defined(__clang__) || !defined(__OPTIMIZE__)

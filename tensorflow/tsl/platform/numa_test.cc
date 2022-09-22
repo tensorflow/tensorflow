@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/numa.h"
+#include "tensorflow/tsl/platform/numa.h"
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace internal {
 
 TEST(Numa, NumNodes) {
@@ -58,4 +58,4 @@ TEST(Numa, SetNodeAffinity) {
 }
 
 }  // namespace internal
-}  // namespace tensorflow
+}  // namespace tsl
