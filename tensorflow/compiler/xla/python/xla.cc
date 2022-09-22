@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/mlir.h"
 #include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
+#include "tensorflow/compiler/xla/python/pjit.h"
 #include "tensorflow/compiler/xla/python/pmap_lib.h"
 #include "tensorflow/compiler/xla/python/pprof_profile_builder.h"
 #include "tensorflow/compiler/xla/python/profiler.h"
@@ -456,6 +457,7 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildPytreeSubmodule(m);
   jax::BuildJaxjitSubmodule(m);
   jax::BuildPmapSubmodule(m);
+  jax::BuildPjitSubmodule(m);
   jax::BuildTransferGuardSubmodule(m);
   BuildTracebackSubmodule(m);
   BuildMlirSubmodule(m);

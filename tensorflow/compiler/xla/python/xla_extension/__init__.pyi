@@ -610,7 +610,27 @@ class Sharding: ...
 
 class XLACompatibleSharding(Sharding): ...
 
+class MeshPspecSharding(XLACompatibleSharding):
+  def __init__(self, mesh: Any, spec: Any, _parsed_pspec: Any = None): ...
+  mesh: Any
+  spec: Any
+  _parsed_pspec: Any
+
+class SingleDeviceSharding(XLACompatibleSharding):
+  def __init__(self, device: Device): ...
+  _device: Device
+
 class PmapSharding(XLACompatibleSharding):
   def __init__(self, devices: Sequence[Any], sharding_spec: pmap_lib.ShardingSpec): ...
   devices: List[Any]
   sharding_spec: pmap_lib.ShardingSpec
+
+class OpShardingSharding(XLACompatibleSharding):
+  def __init__(self, devices: Sequence[Device], op_sharding: OpSharding): ...
+  _devices: Tuple[Device, ...]
+  _op_sharding: OpSharding
+
+class PjitFunction:
+  def __call__(self, *args, **kwargs) -> Any: ...
+
+def pjit(fun: Callable, cache_miss: Callable, static_argnums: Sequence[int]) -> PjitFunction: ...

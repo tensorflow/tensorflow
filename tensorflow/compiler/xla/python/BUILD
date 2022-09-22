@@ -472,6 +472,27 @@ cc_library(
 )
 
 cc_library(
+    name = "pjit",
+    srcs = ["pjit.cc"],
+    hdrs = ["pjit.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":jax_jit",
+        ":py_client",
+        ":status_casters",
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/synchronization",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "pmap_lib",
     srcs = ["pmap_lib.cc"],
     hdrs = ["pmap_lib.h"],
@@ -789,6 +810,7 @@ pybind_extension(
         ":mlir",
         ":ops",
         ":pmap_lib",
+        ":pjit",
         ":weakref_lru_cache",
         ":pprof_profile_builder",
         ":profiler",

@@ -147,6 +147,7 @@ std::string CallSignature::DebugString() const {
   return absl::StrFormat(
       "static args (positional + keyword): %s\nstatic arg keyword names: %s\n"
       "dynamic arg signatures (positional + keyword): %s\n"
+      "dynamic arg shardings: %s\n"
       "dynamic arg keyword names: %s\ndynamic arg treedefs: %s\n"
       "device: %s\n"
       "jax_enable_x64: %d\n"
@@ -156,6 +157,7 @@ std::string CallSignature::DebugString() const {
       absl::StrJoin(static_args, ",", py_object_formatter),
       absl::StrJoin(static_arg_names, ",", py_object_formatter),
       absl::StrJoin(dynamic_arg_signatures, ", ", signature_formatter),
+      absl::StrJoin(dynamic_arg_shardings, ", ", py_object_formatter),
       absl::StrJoin(dynamic_arg_names, ",", py_object_formatter),
       absl::StrJoin(dynamic_arg_treedefs, "| ", treedef_formatter),  // new line
       device != nullptr ? device->DebugString() : "nullptr", jax_enable_x64,
@@ -164,12 +166,14 @@ std::string CallSignature::DebugString() const {
 }
 
 bool CallSignature::operator==(const CallSignature& other) const {
+  // TODO(chky): Consider implementing hashing and equality for sharding in cpp
+  // instead of hashing and checking sharding's pointer values.
   return std::tie(dynamic_arg_treedefs, dynamic_arg_names,
-                  dynamic_arg_signatures, device, jax_enable_x64, jax_array,
-                  static_arg_names) ==
+                  dynamic_arg_signatures, dynamic_arg_shardings, device,
+                  jax_enable_x64, jax_array, static_arg_names) ==
              std::tie(other.dynamic_arg_treedefs, other.dynamic_arg_names,
-                      other.dynamic_arg_signatures, other.device,
-                      other.jax_enable_x64, other.jax_array,
+                      other.dynamic_arg_signatures, other.dynamic_arg_shardings,
+                      other.device, other.jax_enable_x64, other.jax_array,
                       other.static_arg_names) &&
          // `==` on py:objects is the Python `is`. We need equal.
          std::equal(
