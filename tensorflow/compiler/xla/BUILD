@@ -39,6 +39,14 @@ package_group(
     ],
 )
 
+package_group(
+    name = "runtime",
+    packages = [
+        "//tensorflow/compiler/xla/runtime/...",
+        "//tensorflow/compiler/xla/service/gpu/runtime/...",
+    ],
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",

@@ -285,12 +285,26 @@ cc_library(
     ]),
 )
 
+cc_library(
+    name = "scoped_annotation_stack",
+    hdrs = ["scoped_annotation_stack.h"],
+    visibility = ["//tensorflow/compiler/xla:runtime"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform",
+    ] + if_not_android([
+        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
+    ]),
+)
+
 tf_cc_test(
     name = "scoped_annotation_test",
     size = "small",
     srcs = ["scoped_annotation_test.cc"],
     deps = [
         ":scoped_annotation",
+        ":scoped_annotation_stack",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
