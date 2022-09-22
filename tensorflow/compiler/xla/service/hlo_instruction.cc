@@ -276,6 +276,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                proto.is_host_transfer());
       break;
     case HloOpcode::kSendDone:
+      TF_RET_CHECK(DynCast<HloSendInstruction>(operands(0)) != nullptr)
+          << "SendDone must take the context operand from Send";
       instruction = CreateSendDone(operands(0), proto.is_host_transfer());
       break;
     case HloOpcode::kRecv:
@@ -283,6 +285,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                proto.channel_id(), proto.is_host_transfer());
       break;
     case HloOpcode::kRecvDone:
+      TF_RET_CHECK(DynCast<HloRecvInstruction>(operands(0)) != nullptr)
+          << "RecvDone must take the context operand from Recv";
       instruction = CreateRecvDone(operands(0), proto.is_host_transfer());
       break;
     case HloOpcode::kReverse:
