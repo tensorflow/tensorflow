@@ -28,6 +28,7 @@ cc_library(
     hdrs = [
         "nnapi_delegate_compatibility_checker.h",
     ],
+    copts = ["-DNNAPI_VERBOSE_VALIDATION"],
     deps = [
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:util",
