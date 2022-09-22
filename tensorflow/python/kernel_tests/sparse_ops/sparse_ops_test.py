@@ -1000,7 +1000,7 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
             sparse_ops.sparse_softmax(batched_sp_t)).values.reshape((n, m))
         dense_result = nn_ops.softmax(densified)
 
-        self.assertAllClose(dense_result, sp_result)
+        self.assertAllCloseAccordingToType(dense_result, sp_result)
 
   def testHigherRanks(self):
     # For the first shape:
