@@ -28,8 +28,8 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
-#include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/load_library.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/ram_file_system.h"
 #include "tensorflow/tsl/platform/windows/wide_char.h"
@@ -157,18 +157,17 @@ class WindowsEnv : public Env {
 
   Status LoadDynamicLibrary(const char* library_filename,
                             void** handle) override {
-    return tensorflow::internal::LoadDynamicLibrary(library_filename, handle);
+    return internal::LoadDynamicLibrary(library_filename, handle);
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                               void** symbol) override {
-    return tensorflow::internal::GetSymbolFromLibrary(handle, symbol_name,
-                                                      symbol);
+    return internal::GetSymbolFromLibrary(handle, symbol_name, symbol);
   }
 
   string FormatLibraryFileName(const string& name,
                                const string& version) override {
-    return tensorflow::internal::FormatLibraryFileName(name, version);
+    return internal::FormatLibraryFileName(name, version);
   }
 
   string GetRunfilesDir() override {

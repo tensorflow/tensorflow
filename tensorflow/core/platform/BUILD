@@ -107,9 +107,10 @@ exports_files(["rocm_rocdl_path.h"])
 
 cc_library(
     name = "abi",
-    srcs = ["abi.cc"],
     hdrs = ["abi.h"],
-    deps = [":types"],
+    deps = [
+        "//tensorflow/tsl/platform:abi",
+    ],
 )
 
 cc_library(
@@ -369,7 +370,9 @@ cc_library(
 cc_library(
     name = "load_library",
     textual_hdrs = ["load_library.h"],
-    deps = tf_windows_aware_platform_deps("load_library"),
+    deps = [
+        "//tensorflow/tsl/platform:load_library",
+    ],
 )
 
 cc_library(
@@ -1324,22 +1327,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "abi_test",
-    size = "small",
-    srcs = ["abi_test.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
     name = "numa_test",
     size = "small",
     srcs = ["numa_test.cc"],
@@ -1690,7 +1677,6 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "abi.cc",
         "abi.h",
         "bfloat16.h",
         "blocking_counter.h",

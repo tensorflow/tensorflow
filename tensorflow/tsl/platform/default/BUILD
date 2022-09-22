@@ -102,7 +102,6 @@ cc_library(
         "//tensorflow/core:error_codes_proto_impl_cc",
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/platform:context",
-        "//tensorflow/core/platform:load_library",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:blocking_counter",
         "//tensorflow/tsl/platform:cord",
@@ -110,6 +109,7 @@ cc_library(
         "//tensorflow/tsl/platform:env_time",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:file_statistics",
+        "//tensorflow/tsl/platform:load_library",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
@@ -146,8 +146,8 @@ cc_library(
     ],
     deps = [
         ":env",
-        "//tensorflow/core/platform:load_library",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/platform:load_library",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:strcat",
@@ -186,15 +186,15 @@ cc_library(
 cc_library(
     name = "load_library",
     srcs = ["load_library.cc"],
-    hdrs = ["//tensorflow/core/platform:load_library.h"],
+    hdrs = ["//tensorflow/tsl/platform:load_library.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:status",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 

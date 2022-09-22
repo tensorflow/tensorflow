@@ -13,17 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_ABI_H_
-#define TENSORFLOW_CORE_PLATFORM_ABI_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_ABI_H_
+#define TENSORFLOW_TSL_PLATFORM_ABI_H_
 
-#include "tensorflow/tsl/platform/abi.h"
+#include <string>
 
-namespace tensorflow {
+#include "tensorflow/tsl/platform/types.h"
+
+namespace tsl {
 namespace port {
 
-using ::tsl::port::MaybeAbiDemangle;  // NOLINT(misc-unused-using-decls)
+std::string MaybeAbiDemangle(const char* name);
 
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PLATFORM_ABI_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_ABI_H_

@@ -42,6 +42,7 @@ package(
 exports_files(
     [
         "mutex.h",
+        "load_library.h",
         "stringpiece_test.cc",
     ],
     visibility = [
@@ -386,6 +387,7 @@ filegroup(
 filegroup(
     name = "lib_hdrs",
     srcs = [
+        "abi.h",
         "bfloat16.h",
         "casts.h",
         "coding.h",
@@ -462,6 +464,8 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "abi.h",
+        "abi.cc",
         "base64.cc",
         "base64.h",
         "bfloat16.h",
@@ -491,6 +495,7 @@ filegroup(
         "host_info.h",
         "init_main.h",
         "intrusive_ptr.h",
+        "load_library.h",
         "macros.h",
         "mem.h",
         "numa.h",
@@ -1366,4 +1371,21 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["context.h"],
     deps = tf_platform_deps("context"),
+)
+
+cc_library(
+    name = "load_library",
+    textual_hdrs = ["load_library.h"],
+    deps = [
+        ":status",
+    ] + tf_windows_aware_platform_deps("load_library"),
+)
+
+cc_library(
+    name = "abi",
+    srcs = ["abi.cc"],
+    hdrs = ["abi.h"],
+    deps = [
+        ":types",
+    ],
 )

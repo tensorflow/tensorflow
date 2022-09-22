@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_ABI_H_
-#define TENSORFLOW_CORE_PLATFORM_ABI_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_LOAD_LIBRARY_H_
+#define TENSORFLOW_TSL_PLATFORM_LOAD_LIBRARY_H_
 
-#include "tensorflow/tsl/platform/abi.h"
+#include "tensorflow/tsl/platform/status.h"
 
-namespace tensorflow {
-namespace port {
+namespace tsl {
 
-using ::tsl::port::MaybeAbiDemangle;  // NOLINT(misc-unused-using-decls)
+namespace internal {
 
-}  // namespace port
-}  // namespace tensorflow
+Status LoadDynamicLibrary(const char* library_filename, void** handle);
+Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
+                            void** symbol);
+string FormatLibraryFileName(const string& name, const string& version);
 
-#endif  // TENSORFLOW_CORE_PLATFORM_ABI_H_
+}  // namespace internal
+
+}  // namespace tsl
+
+#endif  // TENSORFLOW_TSL_PLATFORM_LOAD_LIBRARY_H_

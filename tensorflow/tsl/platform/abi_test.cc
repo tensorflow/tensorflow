@@ -13,24 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/abi.h"
+#include "tensorflow/tsl/platform/abi.h"
 
-#include "tensorflow/core/framework/type_index.h"
-#include "tensorflow/core/platform/test.h"
+#include <typeinfo>
 
-namespace tensorflow {
+#include "tensorflow/tsl/platform/test.h"
+
+namespace tsl {
 
 struct MyRandomPODType {};
 
 TEST(AbiTest, AbiDemangleTest) {
-  EXPECT_EQ(port::MaybeAbiDemangle(TypeIndex::Make<int>().name()), "int");
+  EXPECT_EQ(port::MaybeAbiDemangle(typeid(int).name()), "int");
 
 #ifdef PLATFORM_WINDOWS
-  const char pod_type_name[] = "struct tensorflow::MyRandomPODType";
+  const char pod_type_name[] = "struct tsl::MyRandomPODType";
 #else
-  const char pod_type_name[] = "tensorflow::MyRandomPODType";
+  const char pod_type_name[] = "tsl::MyRandomPODType";
 #endif
-  EXPECT_EQ(port::MaybeAbiDemangle(TypeIndex::Make<MyRandomPODType>().name()),
+  EXPECT_EQ(port::MaybeAbiDemangle(typeid(MyRandomPODType).name()),
             pod_type_name);
 
   EXPECT_EQ(
@@ -38,4 +39,4 @@ TEST(AbiTest, AbiDemangleTest) {
       "help! i'm caught in a C++ mangle factoryasdf");
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/abi.h"
+#include "tensorflow/tsl/platform/abi.h"
 
 #if defined(_MSC_VER)
 #include <windows.h>
@@ -34,7 +34,7 @@ extern "C" char* __unDName(char* output_string, const char* name,
 
 #endif  // defined(_MSC_VER)
 
-namespace tensorflow {
+namespace tsl {
 namespace port {
 
 string MaybeAbiDemangle(const char* name) {
@@ -53,4 +53,4 @@ string MaybeAbiDemangle(const char* name) {
 }
 
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl

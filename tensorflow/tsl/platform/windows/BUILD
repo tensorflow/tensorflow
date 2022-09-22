@@ -57,7 +57,7 @@ cc_library(
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
-        "//tensorflow/core/platform:load_library",
+        "//tensorflow/tsl/platform:load_library",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
@@ -136,7 +136,7 @@ cc_library(
 cc_library(
     name = "load_library",
     srcs = ["load_library.cc"],
-    hdrs = ["//tensorflow/core/platform:load_library.h"],
+    hdrs = ["//tensorflow/tsl/platform:load_library.h"],
     tags = [
         "manual",
         "no_oss",
