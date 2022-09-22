@@ -22,7 +22,7 @@ cc_library(
     hdrs = ["histogram.h"],
     deps = [
         "//tensorflow/core/framework:summary_proto_cc",
-        "//tensorflow/core/lib/gtl:array_slice",
+        "//tensorflow/tsl/lib/gtl:array_slice",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",

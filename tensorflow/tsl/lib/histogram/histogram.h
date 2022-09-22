@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/tsl/lib/gtl/array_slice.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/thread_annotations.h"
@@ -30,10 +30,6 @@ class HistogramProto;
 }
 
 namespace tsl {
-namespace gtl {
-// TODO(aminim): remove when migrating array_slice.h
-using tensorflow::gtl::ArraySlice;
-}  // namespace gtl
 using tensorflow::HistogramProto;
 
 namespace histogram {
