@@ -624,17 +624,17 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
   }();
 
   if (arg.get_type() == xla::PyArray::type()) {
-    auto* py_array = arg.cast<xla::PyArray*>();
+    auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
 
-    if (py_array->num_shards() != 1) {
+    if (py_array.num_shards() != 1) {
       return xla::InvalidArgument(
           "Only single-sharded Array is expected in C++ JIT.");
     }
 
-    if (!py_array->committed()) {
+    if (!py_array.committed()) {
       return nullptr;
     }
-    return py_array->GetBuffer(0)->device();
+    return py_array.GetBuffer(0)->device();
   }
 
   // We specically only deal with DeviceArray (not ShardedDeviceArray).
@@ -1038,7 +1038,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
           cache_entry->out_shardings.at(i), cache_entry->executable->client(),
           traceback, std::move(pjrt_buffers),
           /*committed=*/cache_entry->committed.at(i), /*skip_checks=*/true);
-      flat_device_arrays.push_back(py::cast(std::move(array)));
+      flat_device_arrays.push_back(std::move(array));
     }
   } else {
     for (int i = 0; i < output_buffers[0].size(); ++i) {

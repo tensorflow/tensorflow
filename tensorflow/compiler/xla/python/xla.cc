@@ -366,7 +366,7 @@ PYBIND11_MODULE(xla_extension, m) {
 #endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 
   TF_CHECK_OK(PyBuffer::RegisterTypes(m));
-  PyArray::RegisterTypes(m);
+  TF_CHECK_OK(PyArray::RegisterTypes(m));
   jax::RegisterSharding(m);
 
   py::class_<CompiledMemoryStats>(m, "CompiledMemoryStats")

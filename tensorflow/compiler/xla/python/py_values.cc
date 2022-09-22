@@ -230,29 +230,29 @@ StatusOr<DevicePutResult> HandlePyBuffer(py::handle obj, PjRtDevice* to_device,
 
 StatusOr<DevicePutResult> HandlePyArray(py::handle obj, PjRtDevice* to_device,
                                         const DevicePutOptions& options) {
-  const auto* py_array = obj.cast<PyArray*>();
+  auto py_array = py::reinterpret_borrow<PyArray>(obj);
 
   // We only allow single device case for PyArray in device put.
-  if (py_array->num_shards() != 1) {
+  if (py_array.num_shards() != 1) {
     return InvalidArgument(
         "Only single-sharded Array is expected in device_put.");
   }
 
-  if (py_array->sharding().get_type() == jax::PmapSharding::type()) {
+  if (py_array.sharding().get_type() == jax::PmapSharding::type()) {
     // We are only handling single device case for PmapSharding here. For other
     // cases, it fallbacks to python.
     return HandleNumpyArray(obj.attr("_value"), to_device, options);
   }
 
-  PjRtBuffer* buffer = py_array->GetBuffer(0);
+  PjRtBuffer* buffer = py_array.GetBuffer(0);
   if (buffer->device() == to_device) {
     return DevicePutResult(
-        buffer, py_array->weak_type(),
+        buffer, py_array.weak_type(),
         /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
   } else {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> copied_buffer,
                         buffer->CopyToDevice(to_device));
-    return DevicePutResult(std::move(copied_buffer), py_array->weak_type());
+    return DevicePutResult(std::move(copied_buffer), py_array.weak_type());
   }
 }
 
@@ -554,10 +554,10 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
         return p;
       }();
 
-  if (arg.get_type() == xla::PyArray::type()) {
-    auto* array = arg.cast<PyArray*>();
-    auto dtype = array->GetBuffer(0)->on_device_shape().element_type();
-    return PyArgSignature(dtype, array->shape(), array->weak_type());
+  if (arg.get_type() == PyArray::type()) {
+    auto array = py::reinterpret_borrow<PyArray>(arg);
+    auto dtype = array.GetBuffer(0)->on_device_shape().element_type();
+    return PyArgSignature(dtype, array.shape(), array.weak_type());
   }
 
   // Fast-path for the most common case of PyBuffer.
