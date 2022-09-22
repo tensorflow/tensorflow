@@ -300,7 +300,7 @@ LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
   memref =
       b.create<memref::SubViewOp>(loc, memref, tile.getMixedOffsets(),
                                   tile.getMixedSizes(), tile.getMixedStrides());
-  return success();
+  return options.createMemCpy(b, loc, update, memref);
 }
 
 struct MaterializeOpInterface
