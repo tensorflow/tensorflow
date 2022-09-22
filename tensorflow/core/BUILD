@@ -327,9 +327,6 @@ cc_library(
 cc_library(
     name = "test",
     testonly = 1,
-    srcs = [
-        "//tensorflow/core/platform:legacy_test_srcs",
-    ],
     hdrs = [
         "//tensorflow/core/lib/core:legacy_lib_core_status_test_util_header",
         "//tensorflow/core/platform:test_hdrs",
@@ -350,7 +347,8 @@ cc_library(
         ":protos_all_cc",
         "//tensorflow/tsl/platform/default/build_config:gtest",
         "//tensorflow/core/kernels:required",
-        "@com_google_benchmark//:benchmark",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
         "@com_google_googletest//:gtest",
     ] + tf_additional_test_deps(),
 )
