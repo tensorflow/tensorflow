@@ -742,6 +742,17 @@ PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_UnsafePointer_Args",
+      PJRT_Buffer_UnsafePointer_Args_STRUCT_SIZE, args->struct_size));
+
+  PJRT_ASSIGN_OR_RETURN(args->buffer_pointer,
+                        args->buffer->client->client->UnsafeBufferPointer(
+                            args->buffer->buffer.get()));
+  return nullptr;
+}
+
 // -------------------------------- Events -------------------------------------
 
 PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args) {

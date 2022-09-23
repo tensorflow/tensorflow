@@ -922,6 +922,20 @@ const size_t PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE =
 // not transition to an error state after PJRT_Buffer_Delete() is called.
 typedef PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  uintptr_t buffer_pointer;  // out
+} PJRT_Buffer_UnsafePointer_Args;
+const size_t PJRT_Buffer_UnsafePointer_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_UnsafePointer_Args, buffer_pointer);
+
+// Returns platform-dependent address for the given buffer that is often but
+// not guaranteed to be the physical/device address.
+typedef PJRT_Error* PJRT_Buffer_UnsafePointer(
+    PJRT_Buffer_UnsafePointer_Args* args);
+
 // -------------------------------- API access ---------------------------------
 
 #define _PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
@@ -980,10 +994,11 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ToHostBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnsafePointer);
 } PJRT_Api;
 
 const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_ReadyEvent);
+    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_UnsafePointer);
 
 #undef _PJRT_API_STRUCT_FIELD
 
