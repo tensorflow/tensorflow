@@ -36,6 +36,11 @@
     *   Added method `get_metrics_result()` to `tf.keras.models.Model`.
         *   Returns the current metrics values of the model as a dict.
 
+*   `tf.Variable`:
+
+    *   Added `CompositeTensor` as a baseclass to `ResourceVariable`. This
+        allows `tf.Variable`s to be nested in `tf.experimental.ExtensionType`s.
+
 # Bug Fixes and Other Changes
 
 *   `tf.image`
