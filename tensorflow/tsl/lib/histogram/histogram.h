@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/tsl/lib/gtl/array_slice.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/thread_annotations.h"
@@ -46,7 +45,7 @@ class Histogram {
   // specified in "custom_bucket_limits[0..custom_bucket_limits.size()-1]"
   // REQUIRES: custom_bucket_limits[i] values are monotonically increasing.
   // REQUIRES: custom_bucket_limits is not empty()
-  explicit Histogram(gtl::ArraySlice<double> custom_bucket_limits);
+  explicit Histogram(absl::Span<const double> custom_bucket_limits);
 
   // Restore the state of a histogram that was previously encoded
   // via Histogram::EncodeToProto.  Note that only the bucket boundaries
@@ -96,7 +95,7 @@ class Histogram {
   double sum_squares_;
 
   std::vector<double> custom_bucket_limits_;
-  gtl::ArraySlice<double> bucket_limits_;
+  absl::Span<const double> bucket_limits_;
   std::vector<double> buckets_;
 
   double Remap(double x, double x0, double x1, double y0, double y1) const;
@@ -113,7 +112,7 @@ class Histogram {
 class ThreadSafeHistogram {
  public:
   ThreadSafeHistogram() {}
-  explicit ThreadSafeHistogram(gtl::ArraySlice<double> custom_bucket_limits)
+  explicit ThreadSafeHistogram(absl::Span<const double> custom_bucket_limits)
       : histogram_(custom_bucket_limits) {}
   bool DecodeFromProto(const HistogramProto& proto);
 

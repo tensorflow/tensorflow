@@ -47,7 +47,7 @@ static std::vector<double>* InitDefaultBucketsInner() {
   return result;
 }
 
-static gtl::ArraySlice<double> InitDefaultBuckets() {
+static absl::Span<const double> InitDefaultBuckets() {
   static std::vector<double>* default_bucket_limits = InitDefaultBucketsInner();
   return *default_bucket_limits;
 }
@@ -56,7 +56,7 @@ Histogram::Histogram() : bucket_limits_(InitDefaultBuckets()) { Clear(); }
 
 // Create a histogram with a custom set of bucket limits,
 // specified in "custom_buckets[0..custom_buckets.size()-1]"
-Histogram::Histogram(gtl::ArraySlice<double> custom_bucket_limits)
+Histogram::Histogram(absl::Span<const double> custom_bucket_limits)
     : custom_bucket_limits_(custom_bucket_limits.begin(),
                             custom_bucket_limits.end()),
       bucket_limits_(custom_bucket_limits_) {

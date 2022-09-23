@@ -12,14 +12,12 @@ package(
         # tensorflow/core/lib/strings:proto_serialization uses on gtl:inlined_vector
         "//tensorflow/core/lib/strings:__pkg__",
         "//tensorflow/tsl/lib/strings:__pkg__",
-        # tensorflow/core/lib/histogram uses array_slice
-        "//tensorflow/tsl/lib/histogram:__pkg__",
-        # tensorflow/core/framework uses array_slice, map_util, and flatmap
+        # tensorflow/core/framework uses map_util, and flatmap
         "//tensorflow/core/framework:__pkg__",
         "//tensorflow/tsl/framework:__pkg__",
-        # tensorflow/core/util uses array_slice, inlined_vector
+        # tensorflow/core/util uses inlined_vector
         "//tensorflow/core/util:__pkg__",
-        # tensorflow/core/tfrt/utils uses array_slice, inlined_vector
+        # tensorflow/core/tfrt/utils uses inlined_vector
         "//tensorflow/core/tfrt/utils:__pkg__",
         # tensorflow/examples/custom_ops_doc/simple_hash_table uses map_util
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
@@ -31,14 +29,6 @@ package(
 )
 
 # Todo(bmzhao): Remaining targets to add to this BUILD file are: all tests.
-
-cc_library(
-    name = "array_slice",
-    hdrs = ["array_slice.h"],
-    deps = [
-        "@com_google_absl//absl/types:span",
-    ],
-)
 
 cc_library(
     name = "compactptrset",
@@ -102,7 +92,6 @@ cc_library(
 filegroup(
     name = "legacy_lib_gtl_headers",
     srcs = [
-        "array_slice.h",
         "compactptrset.h",
         "flatset.h",
         "inlined_vector.h",
@@ -150,7 +139,6 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "array_slice.h",
         "flatrep.h",
         "inlined_vector.h",
     ],
@@ -179,7 +167,6 @@ filegroup(
 filegroup(
     name = "legacy_lib_gtl_all_headers",
     srcs = [
-        "array_slice.h",
         "compactptrset.h",
         "flatrep.h",
         "flatset.h",
