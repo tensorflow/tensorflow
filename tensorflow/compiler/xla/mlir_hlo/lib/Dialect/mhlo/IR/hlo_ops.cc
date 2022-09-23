@@ -5196,8 +5196,7 @@ OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
 // Returns the result type after reducing operand of the given type across the
 // specified dimensions.
 static TensorType getReduceResultType(Type operandTy,
-                                      DenseIntElementsAttr dimensions,
-                                      Builder* builder) {
+                                      DenseIntElementsAttr dimensions) {
   Type elementTy = getElementTypeOrSelf(operandTy);
 
   auto rankedTy = operandTy.dyn_cast<RankedTensorType>();
@@ -5223,7 +5222,7 @@ void ReduceOp::build(OpBuilder& builder, OperationState& state,
 
   for (Value operand : operands) {
     resultTy.push_back(
-        getReduceResultType(operand.getType(), dimensions, &builder));
+        getReduceResultType(operand.getType(), dimensions));
   }
   build(builder, state, resultTy, operands, initValues, dimensions);
 }
@@ -5784,6 +5783,30 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
 
   return success();
 }
+
+LogicalResult ReduceOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+
+  ReduceOp::Adaptor adaptor(operands, attributes, regions);
+  auto inputs = adaptor.inputs();
+  for (Value input : inputs) {
+    if(input == nullptr){
+      return failure();
+    }
+    auto tensorType = GetReduceResultType(input.getType(), adaptor.dimensions());
+    if(auto ty = tensorType.dyn_cast<RankedTensorType>()){
+      inferredReturnShapes.push_back(ty.cast<ShapedType>());
+    }
+    else{
+      return failure();
+    }
+  }
+   return success();
+ }
+
+
 
 //===----------------------------------------------------------------------===//
 // RngBitGeneratorOp

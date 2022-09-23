@@ -1221,10 +1221,11 @@ def HLO_AllToAllOp : HLO_Op<"all_to_all",
   let results = (outs HLO_Tensor);
 }
 
-def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
+def HLO_ReduceOp: HLO_Op<"reduce", [
       RecursiveSideEffects,
       SameVariadicOperandSize,
-      SingleBlockImplicitTerminator<"ReturnOp">
+      SingleBlockImplicitTerminator<"ReturnOp">,
+      InferTensorTypeWithReify
     ]> {
   let summary = "Reduce operator";
   let description = [{
