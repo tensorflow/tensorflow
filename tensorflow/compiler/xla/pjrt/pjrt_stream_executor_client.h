@@ -796,8 +796,6 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
     return executables_;
   }
 
-  std::vector<std::unique_ptr<AotCompilationResult>> aot_executables_;
-
  protected:
   bool parameter_is_tupled_arguments() const {
     return parameter_is_tupled_arguments_;
