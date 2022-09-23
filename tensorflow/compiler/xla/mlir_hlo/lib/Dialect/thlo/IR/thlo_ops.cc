@@ -1106,18 +1106,11 @@ LogicalResult ReductionOp::verify() {
 }
 
 ArrayAttr ReductionOp::iterator_types() {
-  SmallVector<StringRef> iteratorTypes;
-  ArrayRef<int64_t> dimensionsRef = getDimensions();
   int64_t inputRank = getInputs()[0].getType().cast<ShapedType>().getRank();
-  for (int64_t i = 0, j = 0; i < inputRank; ++i) {
-    bool isReductionDim = j < dimensionsRef.size() && dimensionsRef[j] == i;
-    if (isReductionDim) {
-      iteratorTypes.push_back(getReductionIteratorTypeName());
-      ++j;
-    } else {
-      iteratorTypes.push_back(getParallelIteratorTypeName());
-    }
-  }
+  SmallVector<StringRef> iteratorTypes(inputRank,
+                                       getParallelIteratorTypeName());
+  for (int64_t reductionDim : getDimensions())
+    iteratorTypes[reductionDim] = getReductionIteratorTypeName();
   return Builder(getContext()).getStrArrayAttr(iteratorTypes);
 }
 
