@@ -23,6 +23,7 @@ package_group(
         "//third_party/auroraml/...",
         "//third_party/australis/...",
         "//third_party/iree/...",
+        "//third_party/mira/...",
         "//third_party/mlcompass/...",
         "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
