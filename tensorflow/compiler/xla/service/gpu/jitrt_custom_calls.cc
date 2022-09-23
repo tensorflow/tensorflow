@@ -223,7 +223,7 @@ Status JitRtCollectiveSupport::MaybeBlockAfterFirstRun(int32_t uid,
     absl::MutexLock lock(&mutex_);
     return executed_.try_emplace(Key(uid, device_ordinal), true).second;
   }();
-  return block ? stream->BlockHostUntilDone() : Status::OK();
+  return block ? stream->BlockHostUntilDone() : OkStatus();
 }
 
 FailureOr<se::Event> JitRtAsyncCollectiveSupport::PopEvent(

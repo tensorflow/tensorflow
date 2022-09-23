@@ -1601,7 +1601,7 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
   llvm::BranchInst::Create(&*std::next(prototype_func->begin()), terminator);
   terminator->eraseFromParent();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(timshen): update the comment once the HandleFusion code path deleted.
@@ -5391,7 +5391,7 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   // of inlining the fusion region after lowering. They can safely be skipped
   // because constants have no side effects.
   if (mlir::isa<mlir::arith::ConstantOp>(op)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   return InternalError("Unrecognized op: %s", MlirToString(op));

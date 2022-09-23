@@ -103,7 +103,7 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
@@ -120,7 +120,7 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 AMDGPUCompiler::AMDGPUCompiler()
