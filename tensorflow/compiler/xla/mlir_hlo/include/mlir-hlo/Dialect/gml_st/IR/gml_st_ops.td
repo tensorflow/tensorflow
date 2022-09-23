@@ -307,32 +307,9 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
 
     unsigned getNumUpdates() { return getSrcs().size(); }
 
-    // Methods for `srcs` arguments.
-    OpOperand* getSrcOperand(unsigned i) {
-      return &getOperation()->getOpOperand(3 * i);
-    }
-
-    SmallVector<OpOperand*> getSrcOperands() {
-      SmallVector<OpOperand*> operands;
-      for (unsigned i = 0, e = getNumOperands(); i < e; i += 3)
-        operands.push_back(&getOperation()->getOpOperand(i));
-      return operands;
-    }
-
-    bool isSrcOperand(OpOperand& operand) {
-      return operand.getOperandNumber() % 3 == 0;
-    }
-
     // Methods for `dst` arguments.
     OpOperand* getDstOperand(unsigned i) {
-      return &getOperation()->getOpOperand(3 * i + 1);
-    }
-
-    SmallVector<OpOperand*> getDstOperands() {
-      SmallVector<OpOperand*> operands;
-      for (unsigned i = 1, e = getNumOperands(); i < e; i += 3)
-        operands.push_back(&getOperation()->getOpOperand(i));
-      return operands;
+      return &getOperation()->getOpOperand(getNumUpdates() + i);
     }
 
     FailureOr<OpResult> getTiedOpResult(OpOperand &opOperand) {
@@ -340,29 +317,15 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
 
       auto parent = getOperation()->getBlock()->getParentOp();
       if (isa<ParallelOp>(parent) || isa<ForOp>(parent)) {
-        return parent->getResult(0);
+        return parent->getResult(opOperand.getOperandNumber() -
+                                 getNumUpdates());
       }
       return failure();
     }
 
     bool isDstOperand(OpOperand& operand) {
-      return operand.getOperandNumber() % 3 == 1;
-    }
-
-    // Methods for `set` arguments.
-    OpOperand* getSetOperand(unsigned i) {
-      return &getOperation()->getOpOperand(3 * i + 2);
-    }
-
-    SmallVector<OpOperand*> getSetOperands() {
-      SmallVector<OpOperand*> operands;
-      for (unsigned i = 2, e = getNumOperands(); i < e; i += 3)
-        operands.push_back(&getOperation()->getOpOperand(i));
-      return operands;
-    }
-
-    bool isSetOperand(OpOperand& operand) {
-      return operand.getOperandNumber() % 3 == 2;
+      return operand.getOperandNumber() >= getNumUpdates() &&
+             operand.getOperandNumber() < getNumUpdates() * 2;
     }
   }];
 }
