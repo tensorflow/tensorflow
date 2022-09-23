@@ -617,3 +617,76 @@ func.func @add_bounds_unranked(
   %1 = "mhlo_test.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
 }
+
+// -----
+
+// CHECK-LABEL: @reduce
+func.func @reduce(%arg0: tensor<?x4x12xf32>, %arg1: tensor<?x4x12xi32>) -> tensor<?xindex>{
+  %0 = mhlo.constant dense<-0.000000e+00> : tensor<f32>
+  %1 = mhlo.constant dense<1> : tensor<i32>
+  %2:2 = "mhlo.reduce"(%arg0, %arg1, %0, %1) ({
+  ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
+    %4 = mhlo.add %arg4, %arg6 : tensor<f32>
+    %5 = mhlo.add %arg5, %arg7 : tensor<i32>
+    "mhlo.return"(%4, %5) : (tensor<f32>, tensor<i32>) -> ()
+  }) {dimensions = dense<[1, 2]> : tensor<2xi64>}
+    : (tensor<?x4x12xf32>, tensor<?x4x12xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>)
+  %3 = "mhlo_test.get_return_type_components"(%2#0)
+      : (tensor<?xf32>) -> tensor<?xindex>
+// CHECK: %3 = "mhlo_test.return_type_components"(%2#0) {dims0 = [-1], dims1 = [-1], element_type0 = f32, element_type1 = i32} : (tensor<?xf32>) -> tensor<?xindex>
+  func.return %3: tensor<?xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @reduce
+func.func @reduce(%arg0: tensor<?x4x12xf32>, %arg1: tensor<?x4x12xi32>) -> tensor<?xindex>{
+  %0 = mhlo.constant dense<-0.000000e+00> : tensor<f32>
+  %1 = mhlo.constant dense<1> : tensor<i32>
+  %2:2 = "mhlo.reduce"(%arg0, %arg1, %0, %1) ({
+  ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
+    %4 = mhlo.add %arg4, %arg6 : tensor<f32>
+    %5 = mhlo.add %arg5, %arg7 : tensor<i32>
+    "mhlo.return"(%4, %5) : (tensor<f32>, tensor<i32>) -> ()
+  }) {dimensions = dense<[2]> : tensor<1xi64>}
+    : (tensor<?x4x12xf32>, tensor<?x4x12xi32>, tensor<f32>, tensor<i32>) -> (tensor<?x4xf32>, tensor<?x4xi32>)
+  %3 = "mhlo_test.get_return_type_components"(%2#0)
+      : (tensor<?x4xf32>) -> tensor<?xindex>
+// CHECK: %3 = "mhlo_test.return_type_components"(%2#0) {dims0 = [-1, 4], dims1 = [-1, 4], element_type0 = f32, element_type1 = i32} : (tensor<?x4xf32>) -> tensor<?xindex>
+  func.return %3: tensor<?xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @reduce
+func.func @reduce(%arg0: tensor<?x4x12xf32>, %arg1: tensor<?x4x12xi32>) -> (tensor<1xindex>, tensor<1xindex>) {
+  // CHECK: %[[CONST:.*]] = arith.constant 0 : index
+  // CHECK: %[[INDEX_ARG1:.*]] = tensor.dim %arg0, %[[CONST]] : tensor<?x4x12xf32>
+  // CHECK: %[[SHAPE1:.*]] = tensor.from_elements %[[INDEX_ARG1]] : tensor<1xindex>
+  // CHECK: return %[[SHAPE1]], %[[SHAPE1]] : tensor<1xindex>, tensor<1xindex>
+  %0 = mhlo.constant dense<-0.000000e+00> : tensor<f32>
+  %1 = mhlo.constant dense<1> : tensor<i32>
+  %2:2 = mhlo.reduce(%arg0 init: %0), (%arg1 init: %1) across dimensions = [1, 2] : (tensor<?x4x12xf32>, tensor<?x4x12xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>)
+   reducer(%arg2: tensor<f32>, %arg4: tensor<f32>) (%arg3: tensor<i32>, %arg5: tensor<i32>)  {
+    %4 = mhlo.add %arg2, %arg4 : tensor<f32>
+    %5 = mhlo.add %arg3, %arg5 : tensor<i32>
+    mhlo.return %4, %5 : tensor<f32>, tensor<i32>
+  }
+  %3:2 = "mhlo_test.reify_return_type_shapes"(%2#0) : (tensor<?xf32>) -> (tensor<1xindex>, tensor<1xindex>)
+  func.return %3#0, %3#1 : tensor<1xindex>, tensor<1xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @reduce
+func.func @reduce(%arg0: tensor<?x4xf32>) -> tensor<1xindex> {
+  // CHECK: %[[CONST:.*]] = arith.constant 0 : index
+  // CHECK: %[[INDEX_ARG:.*]] = tensor.dim %arg0, %[[CONST]] : tensor<?x4xf32>
+  // CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[INDEX_ARG]] : tensor<1xindex>
+  // CHECK: return %[[SHAPE]] : tensor<1xindex>
+  %0 = mhlo.constant dense<-0.000000e+00> : tensor<f32>
+  %1 = mhlo.reduce(%arg0 init: %0) applies mhlo.add across dimensions = [1] : (tensor<?x4xf32>, tensor<f32>) -> tensor<?xf32>
+  %2 = "mhlo_test.reify_return_type_shapes"(%1)
+      : (tensor<?xf32>) -> tensor<1xindex>
+  func.return %2 : tensor<1xindex>
+}

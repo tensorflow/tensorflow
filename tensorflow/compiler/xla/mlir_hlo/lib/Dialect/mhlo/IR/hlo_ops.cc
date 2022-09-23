@@ -4644,8 +4644,7 @@ OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
 // Returns the result type after reducing operand of the given type across the
 // specified dimensions.
 static TensorType getReduceResultType(Type operandTy,
-                                      DenseIntElementsAttr dimensions,
-                                      Builder* builder) {
+                                      DenseIntElementsAttr dimensions) {
   Type elementTy = getElementTypeOrSelf(operandTy);
 
   auto rankedTy = operandTy.dyn_cast<RankedTensorType>();
@@ -4671,7 +4670,7 @@ void ReduceOp::build(OpBuilder& builder, OperationState& state,
 
   for (Value operand : operands) {
     resultTy.push_back(
-        getReduceResultType(operand.getType(), dimensions, &builder));
+        getReduceResultType(operand.getType(), dimensions));
   }
   build(builder, state, resultTy, operands, initValues, dimensions);
 }
