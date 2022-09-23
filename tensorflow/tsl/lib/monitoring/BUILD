@@ -26,8 +26,8 @@ cc_library(
     name = "counter",
     hdrs = ["counter.h"],
     deps = [
-        "//tensorflow/core/lib/monitoring:collection_registry",
-        "//tensorflow/core/lib/monitoring:metric_def",
+        ":collection_registry",
+        ":metric_def",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
@@ -44,8 +44,8 @@ cc_library(
         "gauge.h",
     ],
     deps = [
-        "//tensorflow/core/lib/monitoring:collection_registry",
-        "//tensorflow/core/lib/monitoring:metric_def",
+        ":collection_registry",
+        ":metric_def",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
@@ -60,9 +60,9 @@ cc_library(
     srcs = ["sampler.cc"],
     hdrs = ["sampler.h"],
     deps = [
+        ":collection_registry",
+        ":metric_def",
         "//tensorflow/core/framework:summary_proto_cc",
-        "//tensorflow/core/lib/monitoring:collection_registry",
-        "//tensorflow/core/lib/monitoring:metric_def",
         "//tensorflow/tsl/lib/histogram",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:macros",
@@ -73,13 +73,64 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "types",
+    hdrs = [
+        "types.h",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "metric_def",
+    hdrs = ["metric_def.h"],
+    visibility = [
+        "//learning/brain/google/monitoring:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+    ],
+    deps = [
+        ":types",
+        "//tensorflow/core/framework:summary_proto_cc",
+        "//tensorflow/tsl/platform:stringpiece",
+        "//tensorflow/tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "collection_registry",
+    srcs = ["collection_registry.cc"],
+    hdrs = ["collection_registry.h"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+    ],
+    deps = [
+        ":metric_def",
+        ":types",
+        "//tensorflow/core/framework:summary_proto_cc",
+        "//tensorflow/core/lib/monitoring:collected_metrics",
+        "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:stringpiece",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "//tensorflow/tsl/platform:types",
+    ],
+)
+
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "collection_registry.h",
         "counter.h",
         "gauge.h",
+        "metric_def.h",
         "sampler.h",
+        "types.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -90,9 +141,12 @@ filegroup(
 filegroup(
     name = "legacy_lib_monitoring_lib_headers",
     srcs = [
+        "collection_registry.h",
         "counter.h",
         "gauge.h",
+        "metric_def.h",
         "sampler.h",
+        "types.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -103,9 +157,12 @@ filegroup(
 filegroup(
     name = "legacy_lib_monitoring_all_headers",
     srcs = [
+        "collection_registry.h",
         "counter.h",
         "gauge.h",
+        "metric_def.h",
         "sampler.h",
+        "types.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",

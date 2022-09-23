@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/monitoring/collection_registry.h"
+#include "tensorflow/tsl/lib/monitoring/collection_registry.h"
 
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #ifndef IS_MOBILE_PLATFORM
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace monitoring {
 namespace internal {
 
@@ -111,6 +111,6 @@ std::unique_ptr<CollectedMetrics> CollectionRegistry::CollectMetrics(
 }
 
 }  // namespace monitoring
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // IS_MOBILE_PLATFORM

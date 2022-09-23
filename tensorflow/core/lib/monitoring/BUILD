@@ -29,6 +29,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/monitoring:types",
     ],
 )
 
@@ -89,7 +90,6 @@ cc_library(
 
 cc_library(
     name = "collection_registry",
-    srcs = ["collection_registry.cc"],
     hdrs = ["collection_registry.h"],
     visibility = [
         "//learning/brain/google/monitoring:__subpackages__",
@@ -109,6 +109,7 @@ cc_library(
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/monitoring:collection_registry",
     ],
 )
 
@@ -153,6 +154,7 @@ cc_library(
         "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/monitoring:metric_def",
     ],
 )
 
