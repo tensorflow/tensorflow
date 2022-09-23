@@ -2918,6 +2918,7 @@ def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather",
   let results = (outs HLO_Tensor);
 
   let hasCustomHLOConverter = 1;
+  let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
