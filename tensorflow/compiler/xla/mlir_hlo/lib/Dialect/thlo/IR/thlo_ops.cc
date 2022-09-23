@@ -1193,6 +1193,23 @@ LogicalResult MapOp::verify() {
   return verifyDestinationStyleOp(getOperation());
 }
 
+ArrayAttr MapOp::iterator_types() {
+  int64_t rank = getInit().getType().getRank();
+  return Builder(getContext())
+      .getStrArrayAttr(
+          SmallVector<StringRef>(rank, getParallelIteratorTypeName()));
+}
+
+ArrayAttr MapOp::getIndexingMaps() {
+  Builder builder(getContext());
+  int64_t rank = getInit().getType().getRank();
+  int64_t numIndexingMaps = getOperands().size();
+  return builder.getAffineMapArrayAttr(SmallVector<AffineMap>(
+      numIndexingMaps, builder.getMultiDimIdentityMap(rank)));
+}
+
+bool MapOp::hasIndexSemantics() { return false; }
+
 //===----------------------------------------------------------------------===//
 // YieldOp
 //===----------------------------------------------------------------------===//
