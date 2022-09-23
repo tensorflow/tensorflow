@@ -692,8 +692,8 @@ gpu_kernel_library(
     name = "gpu_atanh_kernels_experimental",
     jit_i64_indexed_for_large_tensors_types = ["f16"],
     op = "atanh",
-    tags = [
-        "noasan",  # TODO(b/248071004): Re-enable when fixed.
+    test_tags = [
+        "noasan",  # TODO(b/248071004): JIT-compiled code will not be instrumented.
     ],
     tile_size = "256",
     types = [
