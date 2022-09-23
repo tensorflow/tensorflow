@@ -73,6 +73,7 @@ tflite_cc_library_with_c_headers_test(
     ],
 )
 
+# Same as ":c_api", but doesn't link in the default CreateOpResolver implementation.
 tflite_cc_library_with_c_headers_test(
     name = "c_api_without_op_resolver",
     srcs = ["c_api.cc"],
@@ -114,6 +115,32 @@ tflite_cc_library_with_c_headers_test(
         ":c_api_types",
         ":common",
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/kernels:kernel_util",
+    ],
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
+)
+
+# Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation.
+tflite_cc_library_with_c_headers_test(
+    name = "c_api_experimental_without_op_resolver",
+    srcs = [
+        "c_api_experimental.cc",
+        "c_api_opaque.cc",
+    ],
+    hdrs = [
+        "c_api_experimental.h",
+        "c_api_opaque.h",
+    ],
+    aspect_hints = ["//tools/build_defs/swift:auto_module"],
+    copts = tflite_copts(),
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    deps = [
+        ":c_api_internal",
+        ":c_api_types",
+        ":c_api_without_op_resolver",
+        ":common",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/kernels:kernel_util",
@@ -175,6 +202,7 @@ cc_test(
 tflite_custom_c_library(
     name = "selectively_built_c_api_test_lib",
     testonly = 1,
+    experimental = True,
     models = [":c_api_test_builtin_op_models"],
     visibility = ["//visibility:private"],
 )

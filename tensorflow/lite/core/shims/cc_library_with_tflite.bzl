@@ -237,6 +237,7 @@ def jni_binary_with_tflite(
 def custom_c_library_with_tflite(
         name,
         models = [],
+        experimental = False,
         **kwargs):
     """Generates a tflite c library, stripping off unused operators.
 
@@ -247,16 +248,29 @@ def custom_c_library_with_tflite(
         models: List of models. This TFLite build will only include
             operators used in these models. If the list is empty, all builtin
             operators are included.
+        experimental: Whether to include experimental APIs or not.
        **kwargs: kwargs to cc_library_with_tflite.
     """
     tflite_custom_c_library(
         name = "%s_c_api" % name,
         models = models,
+        experimental = experimental,
     )
+
+    if experimental:
+        hdrs = [
+            "//tensorflow/lite/core/shims:c/c_api.h",
+            "//tensorflow/lite/core/shims:c/c_api_experimental.h",
+            "//tensorflow/lite/core/shims:c/c_api_opaque.h",
+        ]
+    else:
+        hdrs = [
+            "//tensorflow/lite/core/shims:c/c_api.h",
+        ]
 
     cc_library_with_tflite(
         name = name,
-        hdrs = ["//tensorflow/lite/core/shims:c/c_api.h"],
+        hdrs = hdrs,
         copts = tflite_copts_warnings(),
         deps = [
             ":%s_c_api" % name,

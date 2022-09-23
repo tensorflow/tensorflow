@@ -438,6 +438,7 @@ def tflite_custom_cc_library(
         srcs = [],
         deps = [],
         visibility = ["//visibility:private"],
+        experimental = False,
         **kwargs):
     """Generates a tflite cc library, stripping off unused operators.
 
@@ -452,6 +453,7 @@ def tflite_custom_cc_library(
         srcs: List of files implementing custom operators if any.
         deps: Additional dependencies to build all the custom operators.
         visibility: Visibility setting for the generated target. Default to private.
+        experimental: Whether to include experimental APIs or not.
         **kwargs: Additional arguments for native.cc_library.
     """
     real_srcs = []
@@ -471,6 +473,10 @@ def tflite_custom_cc_library(
         # Support all operators if `models` not specified.
         real_deps.append("//tensorflow/lite:create_op_resolver_with_builtin_ops")
 
+    if experimental:
+        framework = "//tensorflow/lite:framework_experimental"
+    else:
+        framework = "//tensorflow/lite:framework_stable"
     native.cc_library(
         name = name,
         srcs = real_srcs,
@@ -483,7 +489,7 @@ def tflite_custom_cc_library(
             "//conditions:default": ["-lm", "-ldl"],
         }),
         deps = depset([
-            "//tensorflow/lite:framework",
+            framework,
             "//tensorflow/lite/kernels:builtin_ops",
         ] + real_deps),
         visibility = visibility,
@@ -498,7 +504,8 @@ def tflite_custom_android_library(
         custom_package = "org.tensorflow.lite",
         visibility = ["//visibility:private"],
         include_xnnpack_delegate = True,
-        include_nnapi_delegate = True):
+        include_nnapi_delegate = True,
+        experimental = False):
     """Generates a tflite Android library, stripping off unused operators.
 
     Note that due to a limitation in the JNI Java wrapper, the compiled TfLite shared binary
@@ -517,6 +524,7 @@ def tflite_custom_android_library(
         visibility: Visibility setting for the generated target. Default to private.
         include_xnnpack_delegate: Whether to include the XNNPACK delegate or not.
         include_nnapi_delegate: Whether to include the NNAPI delegate or not.
+        experimental: Whether to include experimental APIs or not.
     """
     tflite_custom_cc_library(name = "%s_cc" % name, models = models, srcs = srcs, deps = deps, visibility = visibility)
 
@@ -526,13 +534,18 @@ def tflite_custom_android_library(
     if include_xnnpack_delegate:
         delegate_deps.append("//tensorflow/lite/delegates/xnnpack:xnnpack_delegate")
 
+    if experimental:
+        native_framework_only = "//tensorflow/lite/java/src/main/native:native_experimental_framework_only"
+    else:
+        native_framework_only = "//tensorflow/lite/java/src/main/native:native_stable_framework_only"
+
     # JNI wrapper expects a binary file called `libtensorflowlite_jni.so` in java path.
     tflite_jni_binary(
         name = "libtensorflowlite_jni.so",
         linkscript = "//tensorflow/lite/java:tflite_version_script.lds",
         # Do not sort: "native_framework_only" must come before custom tflite library.
         deps = [
-            "//tensorflow/lite/java/src/main/native:native_framework_only",
+            native_framework_only,
             ":%s_cc" % name,
         ] + delegate_deps,
     )
@@ -543,10 +556,15 @@ def tflite_custom_android_library(
         visibility = visibility,
     )
 
+    if experimental:
+        java_srcs = "//tensorflow/lite/java:java_srcs"
+    else:
+        java_srcs = "//tensorflow/lite/java:java_stable_srcs"
+
     android_library(
         name = name,
         manifest = "//tensorflow/lite/java:AndroidManifest.xml",
-        srcs = ["//tensorflow/lite/java:java_srcs"],
+        srcs = [java_srcs],
         deps = [
             ":%s_jni" % name,
             "@org_checkerframework_qual",
@@ -563,8 +581,9 @@ def tflite_custom_android_library(
 def tflite_custom_c_library(
         name,
         models = [],
+        experimental = False,
         **kwargs):
-    """Generates a tflite cc library, stripping off unused operators.
+    """Generates a tflite C library, stripping off unused operators.
 
     This library includes the C API and the op kernels used in the given models.
 
@@ -573,6 +592,7 @@ def tflite_custom_c_library(
         models: List of models. This TFLite build will only include
             operators used in these models. If the list is empty, all builtin
             operators are included.
+        experimental: Whether to include experimental APIs or not.
        **kwargs: custom c_api cc_library kwargs.
     """
     op_resolver_deps = "//tensorflow/lite:create_op_resolver_with_builtin_ops"
@@ -582,6 +602,11 @@ def tflite_custom_c_library(
             model = models,
             testonly = kwargs.get("testonly", default = False),
         )
+
+        if experimental:
+            framework = "//tensorflow/lite:framework_experimental"
+        else:
+            framework = "//tensorflow/lite:framework_stable"
 
         native.cc_library(
             name = "%s_create_op_resolver" % name,
@@ -593,7 +618,7 @@ def tflite_custom_c_library(
             deps = [
                 "//tensorflow/lite:create_op_resolver_with_selected_ops",
                 "//tensorflow/lite:op_resolver",
-                "//tensorflow/lite:framework",
+                framework,
                 "//tensorflow/lite/kernels:builtin_ops",
             ],
             # Using alwayslink here is needed, I believe, to avoid warnings about

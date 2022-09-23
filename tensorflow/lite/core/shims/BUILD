@@ -13,7 +13,11 @@ package(
 )
 
 exports_files(
-    srcs = ["c/c_api.h"],
+    srcs = [
+        "c/c_api.h",
+        "c/c_api_experimental.h",
+        "c/c_api_opaque.h",
+    ],
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe/tasks:__subpackages__",
