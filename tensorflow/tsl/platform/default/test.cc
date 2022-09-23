@@ -53,9 +53,7 @@ int RandomSeed() {
   return 301;
 }
 
-int PickUnusedPortOrDie() {
-  return tensorflow::internal::PickUnusedPortOrDie();
-}
+int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }
 
 string TensorFlowSrcRoot() {
   // 'bazel test' sets TEST_SRCDIR, and also TEST_WORKSPACE if a new

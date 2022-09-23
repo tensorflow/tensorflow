@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/tsl/platform/scanner.h"
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace strings {
 
 class ScannerTest : public ::testing::Test {
@@ -323,4 +323,4 @@ TEST_F(ScannerTest, Peek) {
 }
 
 }  // namespace strings
-}  // namespace tensorflow
+}  // namespace tsl

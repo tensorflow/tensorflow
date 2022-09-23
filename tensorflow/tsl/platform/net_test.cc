@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/net.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/net.h"
 
-namespace tensorflow {
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
+
+namespace tsl {
 namespace internal {
 
 TEST(Net, PickUnusedPortOrDie) {
@@ -31,4 +32,4 @@ TEST(Net, PickUnusedPortOrDie) {
 }
 
 }  // namespace internal
-}  // namespace tensorflow
+}  // namespace tsl

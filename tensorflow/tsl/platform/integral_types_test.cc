@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
 
-#include "tensorflow/core/platform/test.h"
-
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 TEST(IntegralTypes, Basic) {
@@ -45,4 +44,4 @@ TEST(IntegralTypes, MinAndMaxConstants) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

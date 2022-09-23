@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/mutex.h"
 
-namespace tensorflow {
+#include "tensorflow/tsl/platform/test.h"
+
+namespace tsl {
 namespace {
 
 // Check that mutex_lock and shared_mutex_lock are movable and that their
@@ -36,4 +37,4 @@ struct SharedMutexLockTest {
 };
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

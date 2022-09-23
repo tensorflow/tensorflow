@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/tsl/platform/stringprintf.h"
 
 #include <string>
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace strings {
 namespace {
 
@@ -125,4 +125,4 @@ TEST(PrintfTest, LargeBuf) {
 }  // namespace
 
 }  // namespace strings
-}  // namespace tensorflow
+}  // namespace tsl

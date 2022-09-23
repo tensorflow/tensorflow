@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 #include <sstream>
 #include <vector>
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 
 TEST(Logging, Log) {
   LOG(INFO) << "Hello";
@@ -129,4 +129,4 @@ TEST(LogSinkTest, testLogSinks) {
   EXPECT_EQ(TFGetLogSinks().size(), sinks_initial_size);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

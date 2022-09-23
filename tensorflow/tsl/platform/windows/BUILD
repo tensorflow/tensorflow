@@ -153,7 +153,6 @@ cc_library(
     name = "net",
     srcs = ["net.cc"],
     hdrs = [
-        "//tensorflow/core/platform:net.h",
         "//tensorflow/tsl/platform:net.h",
     ],
     linkopts = ["-DEFAULTLIB:ws2_32.lib"],

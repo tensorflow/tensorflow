@@ -254,7 +254,6 @@ cc_library(
     name = "net",
     srcs = ["net.cc"],
     hdrs = [
-        "//tensorflow/core/platform:net.h",
         "//tensorflow/tsl/platform:net.h",
     ],
     tags = [
@@ -263,8 +262,8 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:strcat",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:strcat",
     ],
     alwayslink = True,
 )

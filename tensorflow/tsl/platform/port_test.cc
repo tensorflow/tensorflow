@@ -15,14 +15,14 @@ limitations under the License.
 
 #include <condition_variable>
 
-#include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/env_time.h"
+#include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace port {
 
 TEST(Port, AlignedMalloc) {
@@ -188,4 +188,4 @@ TEST(TestCPUFeature, TestFeature) {
 }
 
 }  // namespace port
-}  // namespace tensorflow
+}  // namespace tsl

@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/tsl/platform/str_util.h"
 
 #include <vector>
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 
 TEST(CEscape, Basic) {
   EXPECT_EQ(str_util::CEscape("hello"), "hello");
@@ -376,4 +376,4 @@ TEST(Strnlen, Basic) {
   EXPECT_EQ(4, str_util::Strnlen("a \t\n", 10));
 }
 
-}  // namespace tensorflow
+}  // namespace tsl
