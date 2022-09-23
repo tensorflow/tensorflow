@@ -155,26 +155,6 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
     self.assertFunctionMatchesEager(for_with_local_var, l)
 
   @parameterized.parameters(*itertools.product(
-      ([], [1], [1, 2], [(1,2),(3,4)]),
-      (list, list),
-  ))
-  def test_for_with_lambda_iter(self, l, type_):
-    l = type_(l)
-    self.assertFunctionMatchesEager(for_with_lambda_iter, l)
-
-  def test_for_with_lambda_object(self):
-    self.assertFunctionMatchesEager(for_with_lambda_object)
-
-  @parameterized.parameters(*itertools.product(
-      ([], [1], [1, 2], [(1,2),(3,4)]),
-      (list, list),
-  ))
-
-  def test_for_with_lambda_iter_local_var(self, l, type_):
-    l = type_(l)
-    self.assertFunctionMatchesEager(for_with_lambda_iter_local_var, l)
-
-  @parameterized.parameters(*itertools.product(
       (0, 1, 2),
       (int, _int_tensor),
   ))
@@ -305,6 +285,29 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
   def test_for_alters_iterate_range(self, n, fn):
     self.assertFunctionMatchesEager(for_alters_iterate, n, fn)
 
+class LoopLambdaScopingTest(reference_test_base.TestCase, 
+                            parameterized.TestCase):
+  @parameterized.parameters(*itertools.product(
+      ([], [1], [1, 2], [(1,2),(3,4)]),
+      (list, list),
+  ))
+  def test_for_with_lambda_iter(self, l, type_):
+    self.skipTest("https://github.com/tensorflow/tensorflow/issues/56089")
+    l = type_(l)
+    self.assertFunctionMatchesEager(for_with_lambda_iter, l)
+  
+  def test_for_with_lambda_object(self):
+    self.skipTest("https://github.com/tensorflow/tensorflow/issues/56089")
+    self.assertFunctionMatchesEager(for_with_lambda_object)
+  
+  @parameterized.parameters(*itertools.product(
+      ([], [1], [1, 2], [(1,2),(3,4)]),
+      (list, list),
+  ))
+  def test_for_with_lambda_iter_local_var(self, l, type_):
+    self.skipTest("https://github.com/tensorflow/tensorflow/issues/56089")
+    l = type_(l)
+    self.assertFunctionMatchesEager(for_with_lambda_iter_local_var, l)
 
 if __name__ == '__main__':
   tf.test.main()
