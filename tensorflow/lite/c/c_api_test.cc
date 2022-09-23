@@ -340,12 +340,14 @@ TfLiteStatus FlexSinhEval(TfLiteOpaqueContext* context,
                           TfLiteOpaqueNode* node) {
   auto sinh_params =
       static_cast<SinhParams*>(TfLiteOpaqueNodeGetUserData(node));
+  EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfInputs(node));
   const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
   size_t input_bytes = TfLiteOpaqueTensorByteSize(input);
   void* data_ptr = TfLiteOpaqueTensorData(input);
   float input_value;
   memcpy(&input_value, data_ptr, input_bytes);
 
+  EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfOutputs(node));
   TfLiteOpaqueTensor* output = TfLiteOpaqueNodeGetOutput(context, node, 0);
   float output_value = sinh_params->use_cosh_instead ? std::cosh(input_value)
                                                      : std::sinh(input_value);
