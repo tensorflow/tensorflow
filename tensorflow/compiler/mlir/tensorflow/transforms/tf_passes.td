@@ -2390,10 +2390,11 @@ def RemoveUnusedArgumentsPass : Pass<"tf-remove-unused-arguments", "ModuleOp"> {
   let summary = "Removes unused args from private functions & their callers.";
   let description = [{
       Removes arguments from functions that aren't used in the function
-      body. Also adjusts the callers of said functions.
+      body, outside of returns. Also adjusts the callers of said functions.
 
       For example, the code
         func.func @f(%arg0, %arg1) {
+          SomeOpThatUsesArg0(%arg0)
           return %arg0
         }
         ...
@@ -2405,6 +2406,9 @@ def RemoveUnusedArgumentsPass : Pass<"tf-remove-unused-arguments", "ModuleOp"> {
         }
         ...
         call @x_1(x)
+
+      Note that, in the above example, both args would be removed if there
+      wasn't the "SomeOpThatUsesArg0(%arg0)" line.
   }];
   let constructor = "TF::CreateRemoveUnusedArgumentsPass()";
 }
