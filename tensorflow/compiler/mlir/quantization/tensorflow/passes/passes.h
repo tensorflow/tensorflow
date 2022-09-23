@@ -109,8 +109,10 @@ CreateReplaceCastHacksWithTFXLAOpsPass();
 
 // Creates a pass that moves & merges initializer function's ops into the @main
 // function. This pass should be run on a valid tf_executor dialect. The control
-// outputs from the initializer functions will be merged into the main
-// function's FetchOp. The initializer functions will be removed.
+// output of the initializer function for non-variable resource initialization
+// will be passed on as a dependency to a new `tf.NoOp`, whose control output
+// will be merged into the main function's FetchOp. The initializer functions
+// will be removed.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMergeInitializerFunctionOpsToMainPass();
 

@@ -14,14 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include <iterator>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -37,9 +43,14 @@ namespace {
 
 using ::tensorflow::kImportModelDefaultGraphFuncName;
 
-// This pass moves all ops from initializer functions to the main function. The
-// main function's tf_executor::GraphOp fetches all the control outputs from the
-// initializer functions.
+// There can only be max 2 init funcs; one for variable initialization and one
+// for initializing resources other than variables (e.g. tables).
+constexpr int kMaxNumInitializerFunctions = 2;
+
+// This pass moves all ops from initializer functions to the main function. A
+// new `tf.NoOp` that has control dependency to the initializer function for
+// non-variable resources will be created. The control output of the new
+// `tf.NoOp` will be merged into the main function's `FetchOp`.
 class MergeInitializerFunctionOpsToMainPass
     : public PassWrapper<MergeInitializerFunctionOpsToMainPass,
                          OperationPass<ModuleOp>> {
@@ -55,9 +66,10 @@ class MergeInitializerFunctionOpsToMainPass
 
   StringRef getDescription() const override {
     return "Moves all ops from the initializer functions to the main function. "
-           "The main function's FetchOp will output all the control outputs "
-           "from the initializer functions. The initializer functions will be "
-           "removed after this pass.";
+           "A new `tf.NoOp` that has a control dependency to the initializer "
+           "function for non-variable resources will be created. Its control "
+           "output will be merged into the main function's `FetchOp`. The "
+           "initializer functions will be removed after this pass.";
   }
 
   void runOnOperation() override;
@@ -84,12 +96,15 @@ func::FuncOp GetMainFunction(ModuleOp module_op) {
   return *main_func_itr;
 }
 
+// Returns true iff func_op has either no Region or the body has no Blocks.
+bool IsFuncOpEmpty(func::FuncOp func_op) {
+  return func_op->getNumRegions() == 0 || func_op.getBody().empty();
+}
+
 // Gets the GraphOp from the function op. Returns an empty op iff it doesn't
 // exist.
 tf_executor::GraphOp GetGraphOpFromFuncOp(func::FuncOp func_op) {
-  if (func_op->getNumRegions() == 0 || func_op.getBody().empty()) {
-    return {};
-  }
+  if (IsFuncOpEmpty(func_op)) return {};
 
   auto graph_op_range = func_op.front().without_terminator();
   if (llvm::hasSingleElement(graph_op_range)) {
@@ -101,44 +116,79 @@ tf_executor::GraphOp GetGraphOpFromFuncOp(func::FuncOp func_op) {
   return {};
 }
 
-// All arguments in the initializer function should not have zero uses.
-LogicalResult ValidateInitFuncArguments(func::FuncOp init_func_op) {
+// Gets the string representation of the type name.
+std::string GetTypeName(const Type type) {
+  // Gets the string representation of the type name.
+  std::string type_name{};
+  auto os = llvm::raw_string_ostream{type_name};
+  os << type;
+  return type_name;
+}
+
+// An initializer function should satisfy the follwing conditions:
+// 1. The arguments should not be used.
+// 2. Its GraphOp should only have control outputs.
+LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
   for (BlockArgument arg : init_func_op.getArguments()) {
     if (!arg.use_empty()) {
       const int arg_idx = arg.getArgNumber();
       const int num_uses = absl::c_distance(arg.getUses());
-      init_func_op.emitError(
-          absl::StrCat("Validation failed for the initializer function: ",
-                       init_func_op.getName().str(),
-                       ". The initializer function's arguments should have no "
-                       "usages. Instead, argument index: ",
-                       arg_idx, " has number of usages: ", num_uses, "."));
+      init_func_op.emitError(absl::StrFormat(
+          "Validation failed for the initializer function: %s. "
+          "The initializer function's arguments should have no "
+          "usages. Instead, argument index: %d has number of usages: %d.",
+          init_func_op.getName().str(), arg_idx, num_uses));
       return failure();
     }
   }
+
+  tf_executor::GraphOp graph_op = GetGraphOpFromFuncOp(init_func_op);
+  if (!graph_op) return success();  // Consider empty FuncOp valid.
+
+  tf_executor::FetchOp fetch_op = graph_op.GetFetch();
+  for (const Value fetch : fetch_op.fetches()) {
+    if (!fetch.getType().isa<tf_executor::ControlType>()) {
+      fetch_op.emitError(absl::StrFormat(
+          "Validation failed for the initializer function: %s. "
+          "All initializer function's fetches should be "
+          "tf_executor::ControlType. Got: %s.",
+          init_func_op.getName().str(), GetTypeName(fetch.getType())));
+      return failure();
+    }
+  }
+
   return success();
 }
 
 // Retrieves the initializer functions. The initializer functions are validated
 // for whether it can be moved to the main function. Returns failure() iff
-// validation fails.
-FailureOr<llvm::SmallVector<func::FuncOp>> GetInitFuncOps(
-    tf_saved_model::SessionInitializerOp session_init_op,
-    SymbolTable symbol_table) {
+// validation fails. If successful, it will return at most
+// `kMaxNumInitializerFunctions` init functions.
+FailureOr<llvm::SmallVector<func::FuncOp, kMaxNumInitializerFunctions>>
+GetInitFuncOps(tf_saved_model::SessionInitializerOp session_init_op,
+               SymbolTable symbol_table) {
   const auto initializer_symbol_refs =
       session_init_op.initializersAttr().getAsValueRange<FlatSymbolRefAttr>();
+  if (absl::c_distance(initializer_symbol_refs) > kMaxNumInitializerFunctions) {
+    session_init_op->emitError(
+        absl::StrFormat("SessionInitializerOp cannot have more than %d "
+                        "initializer functions. Got: %d.",
+                        kMaxNumInitializerFunctions,
+                        absl::c_distance(initializer_symbol_refs)));
+    return failure();
+  }
 
   const auto lookup_func_op =
       [symbol_table](const auto initializer_symbol_ref) {
         return symbol_table.lookup<func::FuncOp>(initializer_symbol_ref);
       };
 
-  llvm::SmallVector<func::FuncOp> init_func_ops{};
+  llvm::SmallVector<func::FuncOp, kMaxNumInitializerFunctions> init_func_ops{};
   absl::c_transform(initializer_symbol_refs, std::back_inserter(init_func_ops),
                     lookup_func_op);
 
   for (auto init_func_op : init_func_ops) {
-    if (failed(ValidateInitFuncArguments(init_func_op))) {
+    if (failed(ValidateInitFunc(init_func_op))) {
       return failure();
     }
   }
@@ -146,12 +196,12 @@ FailureOr<llvm::SmallVector<func::FuncOp>> GetInitFuncOps(
   return init_func_ops;
 }
 
-// Copies ops from `src_func_op` to `main_body` and returns the cloned FetchOp
-// that corresponds to `src_func_op`'s FetchOp. If `src_func_op` is empty, it
-// returns an empty op. The `main_body` after running this function contains two
-// `FetchOp`s, which are the original fetch op and the cloned fetch op.
-tf_executor::FetchOp CopyOpsToMainFunctionBody(func::FuncOp src_func_op,
-                                               Block& main_body) {
+// Copies ops from `src_func_op` to `main_body` except for the FetchOps. Returns
+// the fetch values in the main GraphOp corresponding to the original fetch
+// values from `src_func_op`. Returns an empty vector when `src_func_op` is
+// empty.
+llvm::SmallVector<Value> CopyOpsToMainFunction(
+    func::FuncOp src_func_op, tf_executor::GraphOp main_graph_op) {
   tf_executor::GraphOp src_graph_op = GetGraphOpFromFuncOp(src_func_op);
   if (!src_graph_op) {
     VLOG(1) << "Function " << src_func_op.getName().str()
@@ -159,6 +209,9 @@ tf_executor::FetchOp CopyOpsToMainFunctionBody(func::FuncOp src_func_op,
                "the main function.";
     return {};
   }
+
+  tf_executor::FetchOp main_fetch_op = main_graph_op.GetFetch();
+  Block& main_body = main_graph_op.GetBody();
 
   // Clones each op from src to main_body.
   Block& src_body = src_graph_op.GetBody();
@@ -168,53 +221,77 @@ tf_executor::FetchOp CopyOpsToMainFunctionBody(func::FuncOp src_func_op,
     main_body.push_back(op.clone(mapper));
   }
 
-  // Copies the fetch op into the body.
-  auto cloned_fetch_op = src_body.getTerminator()->clone(mapper);
-  main_body.push_back(cloned_fetch_op);
+  // Relocate the main function's FetchOp at the last.
+  main_body.push_back(main_fetch_op->clone(mapper));
+  main_fetch_op.erase();
 
-  return cast<tf_executor::FetchOp>(cloned_fetch_op);
+  // Clone the source's FetchOp, but do not push to the main function's body.
+  // The clone is only needed to identify the fetch operands.
+  auto cloned_fetch_op =
+      cast<tf_executor::FetchOp>(src_graph_op.GetFetch()->clone(mapper));
+  const auto fetch_operands = llvm::to_vector(cloned_fetch_op.fetches());
+  cloned_fetch_op.erase();
+
+  return fetch_operands;
 }
 
-// Combines the fetches from multiple fetch ops and builds a new fetch op. The
-// original fetch ops will be erased.
-// TODO(b/244253788): Merge the control outputs from multiple initializer
-// functions to a single NoOp with control dependencies.
-void MergeFetchOps(const Location loc, OpBuilder builder,
-                   const ArrayRef<tf_executor::FetchOp> fetch_ops) {
+// An overload where it accepts multiple source FuncOps. Returns all the fetches
+// from the source FuncOps.
+llvm::SmallVector<Value> CopyOpsToMainFunction(
+    const ArrayRef<func::FuncOp> src_func_ops,
+    tf_executor::GraphOp main_graph_op) {
   llvm::SmallVector<Value> fetches{};
-  absl::c_for_each(fetch_ops, [&fetches](auto fetch_op) {
-    fetches.append(fetch_op.fetches().begin(), fetch_op.fetches().end());
+  absl::c_for_each(src_func_ops, [main_graph_op, &fetches](auto src_func_op) {
+    const auto fetch_operands =
+        CopyOpsToMainFunction(src_func_op, main_graph_op);
+    fetches.append(fetch_operands);
   });
 
-  builder.create<tf_executor::FetchOp>(loc, fetches);
-
-  // Erase the fetch ops once the merged FetchOp is created.
-  absl::c_for_each(fetch_ops, [](auto fetch_op) { fetch_op.erase(); });
-}
-
-// Moves `src_func_op`'s ops into the main function's graph op, essentially
-// merging the two `GraphOp`s. The resulting GraphOp returns all of the original
-// main function's return values and the source function's return values.
-void MoveOpsToMainFunction(func::FuncOp src_func_op,
-                           tf_executor::GraphOp main_graph_op) {
-  // Existing fetch op. Will be replaced by the updated FetchOp.
-  Block& main_body = main_graph_op.GetBody();
-  auto main_fetch_op = cast<tf_executor::FetchOp>(main_body.getTerminator());
-
-  tf_executor::FetchOp src_fetch_op =
-      CopyOpsToMainFunctionBody(src_func_op, main_body);
-  if (!src_fetch_op) return;
-
-  auto builder = OpBuilder::atBlockEnd(&main_body);
-  // TODO(b/245448931): Prepend a suffix to the location and add tests.
-  MergeFetchOps(main_graph_op.getLoc(), builder,
-                /*fetch_ops=*/{main_fetch_op, src_fetch_op});
+  return fetches;
 }
 
 void ClearInitializersAttr(tf_saved_model::SessionInitializerOp session_init_op,
                            MLIRContext* ctx) {
   session_init_op.initializersAttr(
       ArrayAttr::get(ctx, llvm::ArrayRef<Attribute>{}));
+}
+
+// Creates a new `IslandOp` that wraps a `TF::NoOp`. The `IslandOp` has control
+// dependencies to the values provided.
+tf_executor::IslandOp CreateNoOpWithControlDependencies(
+    tf_executor::GraphOp main_graph_op,
+    const ArrayRef<Value> control_dependencies) {
+  auto builder = OpBuilder::atBlockTerminator(&main_graph_op.GetBody());
+
+  auto wrapper_island_op = builder.create<tf_executor::IslandOp>(
+      main_graph_op.getLoc(), /*outputs=*/TypeRange{},
+      /*control=*/tf_executor::ControlType::get(builder.getContext()),
+      /*controlInputs=*/control_dependencies);
+  wrapper_island_op.body().emplaceBlock();
+
+  // Create a NoOp inside the IslandOp.
+  auto guard = OpBuilder::InsertionGuard(builder);
+  builder.setInsertionPointToStart(&wrapper_island_op.GetBody());
+
+  builder.create<TF::NoOp>(main_graph_op.getLoc());
+  builder.create<tf_executor::YieldOp>(main_graph_op.getLoc());
+
+  return wrapper_island_op;
+}
+
+// Adds a new fetch operand for the main function's GraphOp.
+void AddFetchOperandToMain(tf_executor::GraphOp main_graph_op,
+                           const Value fetch_operand) {
+  tf_executor::FetchOp old_fetch = main_graph_op.GetFetch();
+
+  auto fetches = llvm::to_vector(old_fetch.fetches());
+  fetches.emplace_back(fetch_operand);
+
+  auto builder = OpBuilder::atBlockTerminator(&main_graph_op.GetBody());
+  builder.create<tf_executor::FetchOp>(main_graph_op.getLoc(),
+                                       std::move(fetches));
+
+  old_fetch.erase();  // Removes the old fetch op.
 }
 
 void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
@@ -231,18 +308,31 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
       tf_saved_model::GetSessionInitializerOp(module_op);
   if (!session_init_op) return;
 
-  const FailureOr<llvm::SmallVector<func::FuncOp>> init_func_ops =
-      GetInitFuncOps(session_init_op, SymbolTable{module_op});
+  const FailureOr<llvm::SmallVector<func::FuncOp, kMaxNumInitializerFunctions>>
+      init_func_ops = GetInitFuncOps(session_init_op, SymbolTable{module_op});
   if (failed(init_func_ops)) {
     module_op->emitError("Validation on initializer functions failed.");
     return signalPassFailure();
+  } else if (init_func_ops->empty()) {
+    VLOG(1) << "No initializer functions found.";
+    return;
   }
 
   if (tf_executor::GraphOp main_graph_op = GetGraphOpFromFuncOp(main_func_op);
       main_graph_op) {
-    absl::c_for_each(*init_func_ops, [main_graph_op](auto init_func_op) {
-      MoveOpsToMainFunction(init_func_op, main_graph_op);
-    });
+    const llvm::SmallVector<Value> init_op_fetches =
+        CopyOpsToMainFunction(*init_func_ops, main_graph_op);
+
+    // Creates a NoOp that has control dependency to the initializer function
+    // for non-variables.
+    // TODO(b/245448931): Prepend a suffix to the Location and add tests.
+    tf_executor::IslandOp noop_wrapper_island_op =
+        CreateNoOpWithControlDependencies(
+            main_graph_op,
+            /*control_dependencies=*/ArrayRef<Value>{init_op_fetches.back()});
+
+    AddFetchOperandToMain(main_graph_op,
+                          /*fetch_operand=*/noop_wrapper_island_op.control());
   }
 
   // Erase the initializer function once all ops are moved to the main function.

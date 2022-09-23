@@ -63,8 +63,10 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK-SAME: value = dense<1>
 // CHECK-NEXT: %[[OUT_2:.*]], %[[CTL_2:.*]] = tf_executor.island wraps "tf.HashTableV2"()
 // CHECK-NEXT: %[[CTL_3:.*]] = tf_executor.island wraps "tf.LookupTableImportV2"(%[[OUT_2]], %[[OUT_0]], %[[OUT_1]])
-// Checks that the control output for the initializer function is fetched.
-// CHECK-NEXT: tf_executor.fetch %[[OUT]], %[[CTL_3]] : tensor<*xi64>, !tf_executor.control
+// Checks that the NoOp with control dependency to the control output for the
+// initializer function is created & fetched.
+// CHECK-NEXT: %[[CTL_4:.*]] = tf_executor.island(%[[CTL_3]]) wraps "tf.NoOp"()
+// CHECK-NEXT: tf_executor.fetch %[[OUT]], %[[CTL_4]] : tensor<*xi64>, !tf_executor.control
 // CHECK-NEXT: }
 // CHECK-NEXT: return %[[GRAPH_OUT]] : tensor<*xi64>
 }
@@ -114,7 +116,64 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK-NEXT: %[[OUT_2:.*]], %[[CTL_2:.*]] = tf_executor.island wraps "tf.HashTableV2"()
 // CHECK-NEXT: %[[CTL_3:.*]] = tf_executor.island wraps "tf.LookupTableImportV2"(%[[OUT_2]], %[[OUT_0]], %[[OUT_1]])
 // Checks that the control output for the initializer function is fetched.
-// CHECK-NEXT: tf_executor.fetch %[[CTL_3]] : !tf_executor.control
+// CHECK-NEXT: %[[CTL_4:.*]] = tf_executor.island(%[[CTL_3]]) wraps "tf.NoOp"()
+// CHECK-NEXT: tf_executor.fetch %[[CTL_4]] : !tf_executor.control
+// CHECK-NEXT: }
+// CHECK-NEXT: return
+}
+
+// -----
+
+// Test the case where there are 2 initializer functions.
+// CHECK-LABEL: module attributes
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1228 : i32}, tf_saved_model.semantics} {
+  "tf_saved_model.session_initializer"() {initializers = [@NoOp_0, @NoOp_1]} : () -> ()
+// Check that the initializers list is empty.
+// CHECK: "tf_saved_model.session_initializer"()
+// CHECK-SAME: initializers = []
+
+  func.func @NoOp_0() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp_0"]} {
+    tf_executor.graph {
+      %out, %ctl = tf_executor.island wraps "tf.Const"() {device = "", value = dense<["dummy_op"]> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+      tf_executor.fetch %ctl : !tf_executor.control
+    }
+    return
+  }
+// The session initializer function is removed.
+// CHECK-NOT: @NoOp_0()
+
+  func.func @NoOp_1() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp_1"]} {
+    tf_executor.graph {
+      %out, %ctl = tf_executor.island wraps "tf.Const"() {device = "", value = dense<[1]> : tensor<1xi32>} : () -> tensor<1xi32>
+      tf_executor.fetch %ctl : !tf_executor.control
+    }
+    return
+  }
+// The session initializer function is removed.
+// CHECK-NOT: @NoOp_1()
+
+  func.func @main() attributes {tf.entry_function = {inputs = "", outputs = ""}, tf_saved_model.exported_names = ["main"]} {
+    tf_executor.graph {
+      tf_executor.fetch
+    }
+    return
+  }
+// Sanity check: The main function's signature & attributes have not changed.
+// CHECK: func.func @main()
+// CHECK-SAME: tf_saved_model.exported_names = ["main"]
+
+// CHECK: tf_executor.graph
+// Checks that the contents of @NoOp_0 are copied here.
+// CHECK-NEXT: %[[OUT_0:.*]], %[[CTL_0:.*]] = tf_executor.island wraps "tf.Const"()
+// CHECK-SAME: value = dense<"dummy_op">
+// Checks that the contents of @NoOp_1 are copied here.
+// CHECK-NEXT: %[[OUT_1:.*]], %[[CTL_1:.*]] = tf_executor.island wraps "tf.Const"()
+// CHECK-SAME: value = dense<1>
+// Checks that the NoOp is only dependent on the last initializer function.
+// This is because the control dependency node is only required for the
+// initializer function for resources other than variables.
+// CHECK-NEXT: %[[CTL_2:.*]] = tf_executor.island(%[[CTL_1]]) wraps "tf.NoOp"()
+// CHECK-NEXT: tf_executor.fetch %[[CTL_2]] : !tf_executor.control
 // CHECK-NEXT: }
 // CHECK-NEXT: return
 }
@@ -130,9 +189,15 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK-SAME: initializers = []
 
   func.func @main() attributes {tf_saved_model.exported_names = ["main"]} {
+    tf_executor.graph {
+      tf_executor.fetch
+    }
     return
   }
 // CHECK: func.func @main()
+// CHECK-NEXT: tf_executor.graph {
+// CHECK-NEXT: tf_executor.fetch
+// CHECK-NEXT: }
 // CHECK-NEXT: return
 }
 
