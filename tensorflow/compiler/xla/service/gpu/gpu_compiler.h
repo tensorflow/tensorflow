@@ -121,6 +121,9 @@ class GpuCompiler : public LLVMCompiler {
     return JitRtAotCompilationResult::FromString(serialized_aot_result);
   }
 
+  StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+      Executable* executable) const override;
+
  protected:
   virtual Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,

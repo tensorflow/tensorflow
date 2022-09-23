@@ -205,6 +205,13 @@ class GpuExecutable : public Executable {
 
   const std::vector<ConstantInfo>& constants() const { return constants_; }
 
+  xla::EntryFunctionAttributes entry_func_attrs() const {
+    return entry_func_attrs_;
+  }
+
+  StatusOr<std::string> GetObjFile() const;
+  StatusOr<std::string> GetMlirModule() const;
+
  private:
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(Params params);

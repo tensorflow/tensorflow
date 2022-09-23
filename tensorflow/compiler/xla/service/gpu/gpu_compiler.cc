@@ -1575,6 +1575,24 @@ HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
   };
 }
 
+StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
+    Executable* executable) const {
+  auto* gpu_executable = tensorflow::down_cast<GpuExecutable*>(executable);
+  if (!gpu_executable) return Internal("GpuExecutable is null");
+  HloModuleProto module_proto = gpu_executable->module().ToProto();
+  TF_ASSIGN_OR_RETURN(std::string obj_file, gpu_executable->GetObjFile());
+  TF_ASSIGN_OR_RETURN(std::string mlir_module, gpu_executable->GetMlirModule());
+  xla::EntryFunctionAttributes entry_func_attrs =
+      gpu_executable->entry_func_attrs();
+  auto text = gpu_executable->text();
+  auto binary = gpu_executable->binary();
+
+  std::unique_ptr<AotCompilationResult> result =
+      std::make_unique<gpu::JitRtAotCompilationResult>(
+          module_proto, obj_file, mlir_module, entry_func_attrs, text, binary);
+  return result;
+}
+
 StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,

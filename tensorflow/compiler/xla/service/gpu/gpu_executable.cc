@@ -178,6 +178,29 @@ class GpuExecutable::JitRtExecutable {
 
   const DebugOptions& debug_options() const { return debug_options_; }
 
+  StatusOr<std::string> GetObjFile() const {
+    if (!jit_executable_) {
+      return InternalError("JitExecutable is null");
+    }
+
+    std::unique_ptr<llvm::MemoryBuffer> obj_file =
+        jit_executable_->DefaultExecutable()->obj_file();
+    if (!obj_file)
+      return InternalError("xla_runtime_executable didn't save the obj file");
+
+    std::string data(obj_file->getBuffer().data(),
+                     obj_file->getBuffer().size());
+    return data;
+  }
+
+  StatusOr<std::string> GetMlirModule() const {
+    if (!jit_executable_) {
+      return InternalError("JitExecutable is null");
+    }
+
+    return jit_executable_->mlir_module();
+  }
+
  private:
   JitRtExecutable(std::vector<int64_t> buffer_sizes,
                   std::unique_ptr<runtime::JitExecutable> jit_executable,
@@ -1149,5 +1172,24 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
 #endif  // XLA_ENABLE_XLIR
 }
+
+StatusOr<std::string> GpuExecutable::GetObjFile() const {
+#if XLA_ENABLE_XLIR
+  if (!jitrt_executable_) return Internal("xla_runtime_executable is null");
+  return jitrt_executable_->GetObjFile();
+#else   // XLA_ENABLE_XLIR
+  return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
+#endif  // XLA_ENABLE_XLIR
+}
+
+StatusOr<std::string> GpuExecutable::GetMlirModule() const {
+#if XLA_ENABLE_XLIR
+  if (!jitrt_executable_) return Internal("xla_runtime_executable is null");
+  return jitrt_executable_->GetMlirModule();
+#else   // XLA_ENABLE_XLIR
+  return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
+#endif  // XLA_ENABLE_XLIR
+}
+
 }  // namespace gpu
 }  // namespace xla
