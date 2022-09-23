@@ -2706,6 +2706,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":gml_st",
+        ":thlo",
         ":tiling_interface",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",

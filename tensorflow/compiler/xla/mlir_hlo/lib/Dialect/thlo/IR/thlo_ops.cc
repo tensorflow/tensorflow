@@ -1105,6 +1105,48 @@ LogicalResult ReductionOp::verify() {
   return verifyDestinationStyleOp(getOperation());
 }
 
+ArrayAttr ReductionOp::iterator_types() {
+  SmallVector<StringRef> iteratorTypes;
+  ArrayRef<int64_t> dimensionsRef = getDimensions();
+  int64_t inputRank = getInputs()[0].getType().cast<ShapedType>().getRank();
+  for (int64_t i = 0, j = 0; i < inputRank; ++i) {
+    bool isReductionDim = j < dimensionsRef.size() && dimensionsRef[j] == i;
+    if (isReductionDim) {
+      iteratorTypes.push_back(getReductionIteratorTypeName());
+      ++j;
+    } else {
+      iteratorTypes.push_back(getParallelIteratorTypeName());
+    }
+  }
+  return Builder(getContext()).getStrArrayAttr(iteratorTypes);
+}
+
+ArrayAttr ReductionOp::getIndexingMaps() {
+  SmallVector<AffineMap> affineMaps;
+  int64_t inputRank = getInputs()[0].getType().cast<ShapedType>().getRank();
+  for (int64_t i = 0, e = getNumInputs(); i < e; ++i) {
+    affineMaps.push_back(
+        AffineMap::getMultiDimIdentityMap(inputRank, getContext()));
+  }
+  SmallVector<AffineExpr, 4> exprs;
+  ArrayRef<int64_t> dimensionsRef = getDimensions();
+  for (int64_t i = 0, j = 0; i < inputRank; ++i) {
+    bool isReductionDim = j < dimensionsRef.size() && dimensionsRef[j] == i;
+    if (isReductionDim) {
+      ++j;
+    } else {
+      exprs.push_back(getAffineDimExpr(i, getContext()));
+    }
+  }
+  for (int64_t i = 0, e = getNumOutputs(); i < e; ++i) {
+    affineMaps.push_back(
+        AffineMap::get(inputRank, /*symbolCount=*/0, exprs, getContext()));
+  }
+  return Builder(getContext()).getAffineMapArrayAttr(affineMaps);
+}
+
+bool ReductionOp::hasIndexSemantics() { return false; }
+
 //===----------------------------------------------------------------------===//
 // MapOp
 //===----------------------------------------------------------------------===//

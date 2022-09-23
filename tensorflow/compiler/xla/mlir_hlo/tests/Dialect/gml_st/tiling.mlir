@@ -245,6 +245,36 @@ func.func @reduce_row(%lhs: tensor<?x?xf32>,
 
 // -----
 
+func.func @thlo_reduction(
+  %arg0: tensor<256x512xf32>, %arg1: tensor<256xf32>) -> tensor<256xf32> {
+  %result = thlo.reduction ins(%arg0 : tensor<256x512xf32>)
+      outs(%arg1 : tensor<256xf32>) dimensions = [1] { op_label = "tile-2d" }
+      (%arg2: f32, %arg3: f32) {
+    %add = arith.addf %arg3, %arg2 : f32
+    thlo.yield %add : f32
+  }
+  return %result : tensor<256xf32>
+}
+
+// CHECK-FOR-LABEL: @thlo_reduction
+// CHECK-FOR-SAME: %[[OPERAND:.*]]: tensor<256x512xf32>
+// CHECK-FOR-SAME: %[[INIT:.*]]: tensor<256xf32>
+// CHECK-FOR:      %[[RESULT:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) =
+// CHECK-FOR:      outs (%[[OUT:.*]] = %[[INIT]]: tensor<256xf32>)
+// CHECK-FOR:      %[[TILE:.*]] = gml_st.tile {{.*}} [%[[I]], %[[J]]]
+// CHECK-FOR-SAME: [256, 512] [1, 1]
+// CHECK-FOR:      %[[OP_SLICE:.*]] = gml_st.materialize %[[OPERAND]][%[[TILE]]]
+// CHECK-FOR:      %[[TILE2:.*]] = gml_st.tile {{.*}} [%[[I]]] [256] [1]
+// CHECK-FOR:      %[[INIT_SLICE:.*]] = gml_st.materialize %[[OUT]][%[[TILE2]]]
+// CHECK-FOR:      %[[REDUCTION:.*]] = thlo.reduction ins(%[[OP_SLICE]] : tensor<256x512xf32>) outs(%[[INIT_SLICE]] : tensor<256xf32>)
+// CHECK-FOR:      gml_st.set_yield %[[REDUCTION]] into %[[OUT]][%[[TILE2]]]
+// CHECK-FOR:      return %[[RESULT:.*]] : tensor<256xf32>
+
+// CHECK-PARALLEL-LABEL: @thlo_reduction
+// CHECK-PARALLEL: gml_st.parallel
+
+// -----
+
 func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
     %arg : tensor<?x?xf32>) -> tensor<?x?x?xf32> {
   %bcast = thlo.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
