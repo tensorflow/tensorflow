@@ -22,9 +22,8 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "llvm/ADT/STLExtras.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
-#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace mlir {
 namespace runtime {
@@ -223,15 +222,18 @@ class HostContextAsyncTaskRunner : public AsyncTaskRunner {
   tfrt::HostContext* host_;
 };
 
-// Runs async tasks by enqueing them into the concurrent work queue.
-class ConcurrentWorkQueueAsyncTaskRunner : public AsyncTaskRunner {
+//===-----------------------------------------------------------------------===/
+// AsyncTaskRunner implementation on top of the default ThreadPool.
+//===-----------------------------------------------------------------------===/
+
+class ThreadPoolAsyncTaskRunner : public AsyncTaskRunner {
  public:
-  explicit ConcurrentWorkQueueAsyncTaskRunner(tfrt::ConcurrentWorkQueue* queue)
-      : queue_(queue) {}
-  void Schedule(Task task) override { queue_->AddTask(std::move(task)); }
+  explicit ThreadPoolAsyncTaskRunner(tsl::thread::ThreadPool* thread_pool)
+      : thread_pool_(thread_pool) {}
+  void Schedule(Task task) final { thread_pool_->Schedule(std::move(task)); }
 
  private:
-  tfrt::ConcurrentWorkQueue* queue_;
+  tsl::thread::ThreadPool* thread_pool_;
 };
 
 }  // namespace runtime
