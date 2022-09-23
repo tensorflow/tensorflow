@@ -219,8 +219,10 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     // the bug. b/195583695 describes the motivation of this change.
     // See b/216355804 how to reproduce the bug regarding tf.RandomUniform Op
     // See b/216353817 how to reproduce the bug regarding tf.StridedSlice Op
+    // See b/245615401 how to reproduce the bug regarding tf.SliceOp
     TypeID::get<TF::RandomUniformOp>(),
     TypeID::get<TF::StridedSliceOp>(),
+    TypeID::get<TF::SliceOp>(),
   };
   // clang-format on
   return *ops;
