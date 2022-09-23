@@ -15,16 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 
-#include <memory>
 #include <optional>
-#include <utility>
 
-#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -70,10 +66,8 @@ class SpmdPartitioningTest : public HloTestBase {
     // might create reshape/transposes around it.
     collective_ops_creator.create_cross_partition_all_gather = nullptr;
 
-    HloModuleConfig config = GetModuleConfigForTest();
-    config.set_use_spmd_partitioning(true);
-    TF_ASSIGN_OR_RETURN(auto module,
-                        ParseAndReturnVerifiedModule(hlo_module, config));
+    TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
+                                         hlo_module, GetModuleConfigForTest()));
     HloPassPipeline pass("spmd-partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
@@ -82,25 +76,7 @@ class SpmdPartitioningTest : public HloTestBase {
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
-
-    VerifyNoShardingOnCollectives(module.get());
     return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
-  }
-
-  void VerifyNoShardingOnCollectives(HloModule* module) {
-    for (const HloComputation* c : module->computations()) {
-      for (const HloInstruction* inst : c->instructions()) {
-        if (!absl::c_linear_search(
-                std::vector<HloOpcode>{
-                    HloOpcode::kAllToAll, HloOpcode::kAllReduce,
-                    HloOpcode::kAllGather, HloOpcode::kCollectivePermute,
-                    HloOpcode::kReduceScatter},
-                inst->opcode())) {
-          continue;
-        }
-        EXPECT_FALSE(inst->has_sharding());
-      }
-    }
   }
 };
 
