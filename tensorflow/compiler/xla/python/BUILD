@@ -841,7 +841,6 @@ pybind_extension(
         "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/compiler/xla/pjrt/distributed:service",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
         # Do NOT remove this dependency. The XLA Python extension must not
@@ -868,5 +867,5 @@ pybind_extension(
             "//tensorflow/compiler/xla/pjrt:pjrt_plugin_device_client",
         ],
         "//conditions:default": [],
-    }),
+    }) + if_cuda(["//tensorflow/compiler/xla/stream_executor:cuda_platform"]),
 )
