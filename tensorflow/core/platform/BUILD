@@ -1036,10 +1036,28 @@ tf_cuda_library(
         "rocm.h",
         "stream_executor.h",
     ],
+    cuda_deps =
+        if_google(
+            ["//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform"],
+            [
+                "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation",
+                "//tensorflow/compiler/xla/stream_executor/rocm:rocm_activation",
+            ],
+        ),
     features = ["-parse_headers"],
     deps = [
-        "//tensorflow/tsl/platform:cuda",
-        "//tensorflow/tsl/platform/default/build_config:stream_executor",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
+        "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
+        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform",
     ],
 )
 
@@ -1053,7 +1071,16 @@ cc_library(
     ],
     features = ["-parse_headers"],
     deps = [
-        "//tensorflow/tsl/platform/default/build_config:stream_executor_no_cuda",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
+        "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
     ],
 )
 
