@@ -48,7 +48,7 @@ class Analyzer(cfg.GraphVisitor):
   instructions=("Lambda fuctions will be no more assumed to be used in the" \
                "statement where they are used, or at least in the same block." \
                "https://github.com/tensorflow/tensorflow/issues/56089")
-  @deprecation.deprecated(date, instructions, warn_once=False)
+  @deprecation.deprecated(date, instructions, warn_once=True)
   def lamba_check(self, fn_ast_node):
     if isinstance(fn_ast_node, gast.Lambda):
       # Exception: lambda functions are assumed to be used only in the
