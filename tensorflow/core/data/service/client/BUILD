@@ -21,6 +21,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data/service:common_proto_cc",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -52,6 +53,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -61,6 +63,7 @@ tf_cc_test(
     deps = [
         ":common",
         ":data_service_client",
+        "@com_google_absl//absl/time",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

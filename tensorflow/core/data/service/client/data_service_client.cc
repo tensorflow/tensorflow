@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/substitute.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/client/common.h"
 #include "tensorflow/core/data/service/client/validate_utils.h"
 #include "tensorflow/core/data/service/common.h"
@@ -271,8 +272,8 @@ void DataServiceClient::TaskThreadManager() TF_LOCKS_EXCLUDED(mu_) {
     Heartbeat();
     UpdateBufferSize();
     UpdateWorkerThreads();
-    next_check =
-        Env::Default()->NowMicros() + params_.task_refresh_interval_ms * 1000;
+    next_check = Env::Default()->NowMicros() +
+                 absl::ToInt64Microseconds(params_.task_refresh_interval);
   }
 }
 

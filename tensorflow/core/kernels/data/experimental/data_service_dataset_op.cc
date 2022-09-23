@@ -230,13 +230,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     return std::make_unique<Iterator>(
         Iterator::Params{this,
                          name_utils::IteratorPrefix(kDatasetType, prefix)},
-        DataServiceParams{dataset_id_, processing_mode_, address_, protocol_,
-                          data_transfer_protocol_, job_name_,
-                          /*repetition=*/iteration_counter_->GetAndIncrement(),
-                          num_consumers_, consumer_index_,
-                          max_outstanding_requests_, task_refresh_interval_ms_,
-                          target_workers_, metadata_,
-                          cross_trainer_cache_options_});
+        DataServiceParams{
+            dataset_id_, processing_mode_, address_, protocol_,
+            data_transfer_protocol_, job_name_,
+            /*repetition=*/iteration_counter_->GetAndIncrement(),
+            num_consumers_, consumer_index_, max_outstanding_requests_,
+            absl::Milliseconds(task_refresh_interval_ms_), target_workers_,
+            metadata_, cross_trainer_cache_options_});
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }

@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/client/common.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
@@ -59,7 +60,7 @@ DataServiceParams GetDataServiceParams(
   params.job_name = "test_job";
   params.repetition = 0;
   params.max_outstanding_requests = 100;
-  params.task_refresh_interval_ms = 100;
+  params.task_refresh_interval = absl::Milliseconds(100);
   return params;
 }
 

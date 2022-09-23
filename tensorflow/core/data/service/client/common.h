@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
@@ -39,7 +40,7 @@ struct DataServiceParams final {
   std::optional<int64_t> num_consumers;
   std::optional<int64_t> consumer_index;
   int64_t max_outstanding_requests = 0;
-  int64_t task_refresh_interval_ms = 0;
+  absl::Duration task_refresh_interval;
   TargetWorkers target_workers = TargetWorkers::TARGET_WORKERS_UNSPECIFIED;
   DataServiceMetadata metadata;
   std::optional<CrossTrainerCacheOptions> cross_trainer_cache_options;
