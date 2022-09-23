@@ -45,13 +45,8 @@ cc_library(
     name = "stream_executor_cuda",
     deps = [
         ":stream_executor_no_cuda",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudart_stub",
     ] + select({
-        "//tensorflow:oss": ["//tensorflow/compiler/xla/stream_executor/cuda:cudart_stub"],
-        "//conditions:default": [
-            "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
-            ":cuda",
-        ],
-    }) + select({
         "//tensorflow:macos": ["IOKit"],
         "//conditions:default": [],
     }),
