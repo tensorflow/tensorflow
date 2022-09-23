@@ -18,27 +18,11 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace gpu {
-
-// Tracing pushes scoped annotations to the stack that is automatically
-// destructed when executable returns control flow to the caller. We do not have
-// the luxury of RAII in compiled executables, so we rely on this stack
-// indirection to guarantee that all annotations will be popped from the
-// profiler stack when the entry point function returns control to the caller.
-//
-// TODO(ezhulenev): This is a temporary solution to work around the fact that
-// `ScopedAnnotation` is not copyable or movable. We need a lightweight scoped
-// annotation stack implementation inside the profiling library.
-struct ScopedAnnotationStack {
-  using ScopedAnnotation = tensorflow::profiler::ScopedAnnotation;
-  absl::InlinedVector<std::unique_ptr<ScopedAnnotation>, 4> stack;
-};
 
 void RegisterTracingTypeIdNames(runtime::TypeIDNameRegistry& registry);
 

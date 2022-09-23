@@ -17,56 +17,54 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/tracing.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation_stack.h"
 
 namespace xla {
 namespace gpu {
 
-using ::tensorflow::profiler::ScopedAnnotation;
 using ::xla::runtime::CustomCall;
 using ::xla::runtime::Executable;
 using ::xla::runtime::HloTrace;
 
-static absl::Status PushAnnotation(ScopedAnnotationStack* stack,
-                                   runtime::HloTrace annotation) {
-  stack->stack.push_back(std::make_unique<ScopedAnnotation>([&] {
+using ::tensorflow::profiler::ScopedAnnotationStack;
+
+static absl::StatusOr<int64_t> ActivityStart(runtime::HloTrace annotation) {
+  return ScopedAnnotationStack::ActivityStart([&] {
     // We use the same tracing annotation scheme as the ThunkSequence (see
     // implementation of `GetThunkInfo` in `ir_emitter_unnested.cc`).
     return absl::StrFormat("Thunk:#hlo_op=%s,hlo_module=%s,program_id=%d#",
                            annotation.hlo_op, annotation.module,
                            annotation.program_id);
-  }));
-  return absl::OkStatus();
+  });
 }
 
-static absl::Status PopAnnotation(ScopedAnnotationStack* stack) {
-  stack->stack.pop_back();
+static absl::Status ActivityEnd(int64_t activity_id) {
   return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
 
-static bool Push(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                 void** rets) {
-  static auto* handler = CustomCall::Bind("xla.trace.push")
-                             .UserData<ScopedAnnotationStack*>()
+static bool Start(runtime::ExecutionContext* ctx, void** args, void** attrs,
+                  void** rets) {
+  static auto* handler = CustomCall::Bind("xla.trace.activity_start")
                              .Attr<HloTrace>("annotation")
-                             .To<checks>(PushAnnotation)
+                             .Ret<int64_t>()
+                             .To<checks>(ActivityStart)
                              .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
-static bool Pop(runtime::ExecutionContext* ctx, void** args, void** attrs,
+static bool End(runtime::ExecutionContext* ctx, void** args, void** attrs,
                 void** rets) {
-  static auto* handler = CustomCall::Bind("xla.trace.pop")
-                             .UserData<ScopedAnnotationStack*>()
-                             .To<checks>(PopAnnotation)
+  static auto* handler = CustomCall::Bind("xla.trace.activity_end")
+                             .Arg<int64_t>()
+                             .To<checks>(ActivityEnd)
                              .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
@@ -79,8 +77,8 @@ void RegisterTracingTypeIdNames(runtime::TypeIDNameRegistry& registry) {
 }
 
 void RegisterTracingCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.trace.push", Push);
-  registry.Register("xla.trace.pop", Pop);
+  registry.Register("xla.trace.activity_start", Start);
+  registry.Register("xla.trace.activity_end", End);
 }
 
 }  // namespace gpu

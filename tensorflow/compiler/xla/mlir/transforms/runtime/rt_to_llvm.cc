@@ -540,7 +540,7 @@ class SetErrorOpLowering : public OpConversionPattern<SetErrorOp> {
 };
 
 //===----------------------------------------------------------------------===//
-// Convert rt.trace to a pair of custom calls (push and pop trace annotation).
+// Convert rt.trace to a pair of custom calls (start and end trace activity).
 //===----------------------------------------------------------------------===//
 
 class TraceOpLowering : public OpConversionPattern<TraceOp> {
@@ -552,19 +552,20 @@ class TraceOpLowering : public OpConversionPattern<TraceOp> {
       ConversionPatternRewriter &rewriter) const override {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
-    // Custom call always return a status.
-    llvm::SmallVector<Type> status = {StatusType::get(getContext())};
+    Type status = StatusType::get(getContext());
+    Type activity_id = rewriter.getI64Type();
 
-    // Push the trace annotation into the traces stack.
+    // Start the trace activity with the given annotation.
     b.setInsertionPoint(op);
-    auto push = b.create<CustomCallOp>(status, op.getCtx(), "xla.trace.push",
-                                       /*dynamic=*/false, ValueRange());
-    push->setAttr("annotation", op.getAnnotation());
+    auto start = b.create<CustomCallOp>(TypeRange({status, activity_id}),
+                                        op.getCtx(), "xla.trace.activity_start",
+                                        /*dynamic=*/false, ValueRange());
+    start->setAttr("annotation", op.getAnnotation());
 
-    // Pop it after executing the attached region.
+    // End activity after executing the attached region.
     b.setInsertionPointAfter(op);
-    b.create<CustomCallOp>(status, op.getCtx(), "xla.trace.pop",
-                           /*dynamic=*/false, ValueRange());
+    b.create<CustomCallOp>(status, op.getCtx(), "xla.trace.activity_end",
+                           /*dynamic=*/false, start.getResults());
 
     // Replace trace operation with inlined region.
     b.setInsertionPointAfter(op);

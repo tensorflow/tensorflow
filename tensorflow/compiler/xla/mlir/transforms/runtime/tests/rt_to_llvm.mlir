@@ -501,9 +501,9 @@ func.func private @compute() -> tensor<?xf32>
 
 // CHECK: func @trace
 func.func @trace(%ctx: !rt.execution_context) -> tensor<?xf32> {
-  // CHECK: call @xla.trace.push
+  // CHECK: call @xla.trace.activity_start
   // CHECK: call @compute
-  // CHECK: call @xla.trace.pop
+  // CHECK: call @xla.trace.activity_end
   %0 = rt.trace #rt.hlo_trace<"foo", "bar", 0>, %ctx -> tensor<?xf32> {
     %1 = func.call @compute(): () -> tensor<?xf32>
     yield %1 : tensor<?xf32>
