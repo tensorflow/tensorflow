@@ -404,7 +404,7 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
                           const OpConverterParams* params) -> Status {
     if (should_fail) return errors::InvalidArgument("");
     if (!params->validation_only) start_conversion = true;
-    return Status::OK();
+    return OkStatus();
   };
 
   // Validator not registered.
@@ -583,7 +583,7 @@ TEST_F(ConverterTest, ConvertNode) {
       output_tensors[i]->setDimensions(dims);
       params->outputs->push_back(TRT_TensorOrWeights(output_tensors[i]));
     }
-    return Status::OK();
+    return OkStatus();
   };
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {"my_input"});
 
@@ -669,7 +669,7 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
     }
     TRT_ShapedWeights output_weights(nvinfer1::DataType::kFLOAT);
     params->outputs->emplace_back(output_weights);
-    return Status::OK();
+    return OkStatus();
   };
   GetOpConverterRegistry()->Register("MyOp", kDefaultConverterPriority,
                                      op_converter);
@@ -1091,7 +1091,7 @@ Status GetShapeFromDataVec(DataVec input_data,
   std::transform(input_data.begin(), input_data.end(),
                  std::back_inserter(*shape_vec),
                  [](InputOutputData x) { return x.tensor.shape(); });
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
@@ -1336,7 +1336,7 @@ class OpConverterTest : public ::testing::Test {
                                   converter_->use_implicit_batch(),
                                   batch_size));
     cudaStreamSynchronize(stream_);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds ITensor for both validation and conversion, assuming explicit batch
@@ -1344,7 +1344,7 @@ class OpConverterTest : public ::testing::Test {
   void AddTestTensorWithTFDims(
       const string& name, const std::vector<int32>& dims,
       nvinfer1::DataType trt_type = nvinfer1::DataType::kFLOAT,
-      Status add_input_status = Status::OK()) {
+      Status add_input_status = OkStatus()) {
     DataType tf_type;
     TF_ASSERT_OK(TrtTypeToTfType(trt_type, &tf_type));
     ops::Placeholder::Attrs attrs;
@@ -1812,7 +1812,7 @@ class ParameterizedOpConverterTestBase
   void AddTestTensor(const string& name, const std::vector<int32>& dims,
                      DataType tf_type, const std::vector<T>& values_inp,
                      const std::vector<int32>& partial_input_shape_dims = {},
-                     Status add_input_status = Status::OK(),
+                     Status add_input_status = OkStatus(),
                      bool fix_values = true) {
     std::vector<T> values(values_inp);
     VLOG(2) << "**** AddTestTensor for " << name
@@ -1991,7 +1991,7 @@ class OpConverter_UnaryTest : public ParameterizedOpConverterTestBase {
       const NodeDef& node = op_map[op_name].first(tf_type);
       runExpectedToFailTest(node, input_name, input_values, op_name);
 
-      Status conv_status = Status::OK();
+      Status conv_status = OkStatus();
       if (trt_mode_ == TrtTestMode::kImplicitBatch &&
           (op_name == "Sign" || op_name == "Round" ||
            op_name == "LogicalNot")) {
@@ -2010,7 +2010,7 @@ class OpConverter_UnaryTest : public ParameterizedOpConverterTestBase {
       std::transform(input_values.begin(), input_values.end(),
                      std::back_inserter(output), op_map[op_name].second);
 
-      TestOpConverter(node, p.expected_output_dims, conv_status, Status::OK(),
+      TestOpConverter(node, p.expected_output_dims, conv_status, OkStatus(),
                       ArrayFloatNear(output, max_abs_error, nan_sensitive),
                       {output_tf_type});
     }
@@ -2083,7 +2083,7 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
           }
 
           const bool logical_op = comb_op || find_name(op_name, logical_ops);
-          auto conv_status = Status::OK();
+          auto conv_status = OkStatus();
           if (tf_type == DT_BOOL || logical_op) {
             if (trt_mode_ == TrtTestMode::kImplicitBatch) {
               conv_status =
@@ -2107,7 +2107,7 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
             AddTestWeights("input2", {2, 1}, data[3], tf_type);
           }
 
-          TestOpConverter(node_def, {2, 2, 2}, conv_status, Status::OK(),
+          TestOpConverter(node_def, {2, 2, 2}, conv_status, OkStatus(),
                           ElementsAreArray(op_test_info[op_name].second),
                           logical_op ? bool_types : default_types);
         }
@@ -2236,10 +2236,10 @@ void TestConvertVariableV2(VariableOpConverterTest* test) {
   };
 
   std::vector<TestParam> test_param = {
-      {"", "var0", {}, 0.001, Status::OK()},
-      {"", "var0", {64}, 0.001, Status::OK()},
-      {"", "var0", {8, 16}, 0.001, Status::OK()},
-      {"box", "var", {8, 16}, 0.001, Status::OK()}};
+      {"", "var0", {}, 0.001, OkStatus()},
+      {"", "var0", {64}, 0.001, OkStatus()},
+      {"", "var0", {8, 16}, 0.001, OkStatus()},
+      {"box", "var", {8, 16}, 0.001, OkStatus()}};
   for (auto p : test_param) {
     // Create node definition.
     NodeDef node_def;
@@ -2314,10 +2314,10 @@ void TestConvertReadVariableOp(VariableOpConverterTest* test) {
   };
 
   std::vector<TestParam> test_param = {
-      {"", "var0", {}, 0.001, Status::OK()},
-      {"", "var0", {64}, 0.001, Status::OK()},
-      {"", "var0", {8, 16}, 0.001, Status::OK()},
-      {"box", "var", {8, 16}, 0.001, Status::OK()}};
+      {"", "var0", {}, 0.001, OkStatus()},
+      {"", "var0", {64}, 0.001, OkStatus()},
+      {"", "var0", {8, 16}, 0.001, OkStatus()},
+      {"box", "var", {8, 16}, 0.001, OkStatus()}};
   for (auto p : test_param) {
     // Create node definition.
     NodeDefBuilder::NodeOut rvo_input =
@@ -2639,7 +2639,7 @@ TEST_P(OpConverter_FP32_Test, ConvertFusedBatchNorm) {
                         batch_size_error(node_input[i].name,
                                          "Provided batch size does not match "
                                          "converter batch size: 3 vs 2"))
-                  : Status::OK();
+                  : OkStatus();
           std::vector<int> partial_input_shape;
           if (i == 0 && trt_mode_ == TrtTestMode::kDynamicShape &&
               !p.keep_channel_unknown) {
@@ -2658,7 +2658,7 @@ TEST_P(OpConverter_FP32_Test, ConvertFusedBatchNorm) {
         }
       }
       TestOpConverter(node_def, node_input[0].dims, p.conversion_status,
-                      Status::OK(), ArrayFloatNear(expected_output));
+                      OkStatus(), ArrayFloatNear(expected_output));
     }
   }
 }
@@ -2697,7 +2697,7 @@ TEST_P(OpConverter_FP32_Test, ConvertTranspose) {
           (trt_mode_ == TrtTestMode::kImplicitBatch)
               ? Status(error::UNIMPLEMENTED,
                        "Transpose at batch dimension is not supported")
-              : Status::OK()},
+              : OkStatus()},
       TestParamBase{{1, 1, 2, 3}, {}, {1, 3, 1, 2}, {0, 3, 1, 2}},
   };
   if (trt_mode_ == TrtTestMode::kDynamicShape) {
@@ -2819,7 +2819,7 @@ TEST_P(OpConverter_FP32_Test, ConvertTile) {
 
             if (trt_mode_ == TrtTestMode::kDynamicShape) {
               partial_input_dims = num_mults;
-              p.status = Status::OK();
+              p.status = OkStatus();
             }
 
             if (p.test_ID == 2) {
@@ -2852,8 +2852,8 @@ TEST_P(OpConverter_FP32_Test, ConvertTile) {
           AddTestWeights<int32>("weights", num_mults, p.multiplier);
         }
 
-        TestOpConverter(node_def, p.expected_output_dims, p.status,
-                        Status::OK(), ElementsAreArray(p.expected_results));
+        TestOpConverter(node_def, p.expected_output_dims, p.status, OkStatus(),
+                        ElementsAreArray(p.expected_results));
       }
     }
   }
@@ -2894,20 +2894,20 @@ TEST_P(OpConverter_FP32_Test, ConvertReshape) {
                 "Failed to convert at least one input to a TRT_TensorOrWeights:"
                 " Scalar input tensor is not supported since the first "
                 "dimension is treated as batch dimension by TRT")
-          : Status::OK();
+          : OkStatus();
   Status add_scalar_tensor_status =
       trt_mode_ == TrtTestMode::kImplicitBatch
           ? errors::InvalidArgument(
                 "removing first dim requires explicit batch dimension")
-          : Status::OK();
+          : OkStatus();
   Status reshape_to_scalar_status =
       trt_mode_ == TrtTestMode::kImplicitBatch
           ? errors::Unimplemented("Reshape to shape=[] is not supported")
-          : Status::OK();
+          : OkStatus();
   Status reshape_batch_status =
       trt_mode_ == TrtTestMode::kImplicitBatch
           ? errors::Unimplemented("Reshape on batch dimension is not supported")
-          : Status::OK();
+          : OkStatus();
 
   struct TestParams {
     std::vector<int> tensor_dims;
@@ -3020,7 +3020,7 @@ TEST_P(OpConverter_FP32_Test, ConvertShape) {
       (trt_mode_ == TrtTestMode::kImplicitBatch)
           ? errors::Unimplemented(
                 "Shape is only supported for explicit batch mode.")
-          : Status::OK();
+          : OkStatus();
   std::vector<TestParamBase> test_params = {
 // TODO(b/166274212): Enable the test parameter for TensorRT 7.1.3.
 #if !IS_TRT_VERSION_GE(7, 1, 3, 0)
@@ -3147,7 +3147,7 @@ void TestMatMulHelper(
                                  test->get_tf_type());
           }
 
-          Status conversion_status = Status::OK();
+          Status conversion_status = OkStatus();
           if (test->get_trt_mode() == TrtTestMode::kImplicitBatch) {
             // Implicit batch mode has several restriction. We change conversion
             // status accordingly.
@@ -3181,7 +3181,7 @@ void TestMatMulHelper(
           }
 
           test->TestOpConverter(node_def, p.expected_shape, conversion_status,
-                                Status::OK(),
+                                OkStatus(),
                                 ElementsAreArray(p.expected_output));
           if (!conversion_status.ok()) {
             VLOG(2) << "Converted with status " << conversion_status;
@@ -3396,7 +3396,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
     AddTestTensor("input_a", {2, 3});
     AddTestTensor("input_b", {2, 3});
     const auto& err = convert_not_supported_implicit(node.op(), node.name());
-    TestOpConverter(node, {2, 2}, errors::Unimplemented(err), Status::OK(),
+    TestOpConverter(node, {2, 2}, errors::Unimplemented(err), OkStatus(),
                     ElementsAreArray({13, 16, 40, 52}));
     // No further tests.
     return;
@@ -3416,9 +3416,9 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
   Status unimplemented_eq = errors::Unimplemented("");
   Status internal_err = errors::Internal("");
   Status internal_err_before_TRT82 =
-      IS_TRT_VERSION_GE(8, 2, 0, 0) ? Status::OK() : internal_err;
+      IS_TRT_VERSION_GE(8, 2, 0, 0) ? OkStatus() : internal_err;
   Status unimplemented_before_TRT82 =
-      IS_TRT_VERSION_GE(8, 2, 0, 0) ? Status::OK() : unimplemented_eq;
+      IS_TRT_VERSION_GE(8, 2, 0, 0) ? OkStatus() : unimplemented_eq;
 
   Status diagonal_error = unimplemented_eq;
   // The old converter only accepts 2 inputs, and the validator returns
@@ -3608,7 +3608,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
             AddTestWeights("input_b", p.shape_b, p.values_b, tf_type_);
           }
         }
-        TestOpConverter(node_def, p.expected_shape, p.conv_status, Status::OK(),
+        TestOpConverter(node_def, p.expected_shape, p.conv_status, OkStatus(),
                         ElementsAreArray(p.expected_output));
       }
     }
@@ -3674,7 +3674,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertBiasAdd) {
           output_data = {1, 1, 1, 2, 2, 2};
         }
       }
-      TestOpConverter(node_def, dims_array, Status::OK(), Status::OK(),
+      TestOpConverter(node_def, dims_array, OkStatus(), OkStatus(),
                       ElementsAreArray(output_data));
     }
   }
@@ -3805,57 +3805,57 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertAddN) {
        /*input_names=*/{"inp1", "inp2", "inp3"},
        /*dimensions=*/{1, 1, 2, 1, 1},
        /*expected_output=*/{6, 9},
-       /*status=*/Status::OK()},
+       /*status=*/OkStatus()},
       {/*input_values=*/common_input,
        /*input_names=*/{"inp1", "inp2"},
        /*dimensions=*/{1, 1, 3, 1, 1},
        /*expected_output=*/{3, 5, 7},
-       /*status=*/Status::OK()},
+       /*status=*/OkStatus()},
       {/*input_values=*/common_input,
        /*input_names=*/{"inp1", "inp2", "inp3"},
        /*dimensions=*/{1, 2, 1, 1},
        /*expected_output=*/{6, 9},
-       /*status=*/Status::OK()},
+       /*status=*/OkStatus()},
       {/*input_values=*/common_input,
        /*input_names=*/{"inp1", "inp2"},
        /*dimensions=*/{1, 1, 3, 1},
        /*expected_output=*/{3, 5, 7},
-       /*status=*/Status::OK()},
+       /*status=*/OkStatus()},
       {/*input_values=*/common_input,
        /*input_names=*/{"inp1", "inp2", "inp3"},
        /*dimensions=*/{1, 2, 1},
        /*expected_output=*/{6, 9},
-       /*status=*/Status::OK()},
+       /*status=*/OkStatus()},
       {/*input_values=*/common_input,
        /*input_names=*/{"inp1", "inp2"},
        /*dimensions=*/{1, 1, 3},
        /*expected_output=*/{3, 5, 7},
-       /*status=*/Status::OK()},
+       /*status=*/OkStatus()},
       {/*input_value=*/common_input,
        /*input_names=*/{"inp1", "inp2", "inp3"},
        /*dimensions=*/{2, 1},
        /*expected_output=*/{6, 9},
-       /*status=*/Status::OK()},
+       /*status=*/OkStatus()},
       {/*input_values=*/common_input,
        /*input_names=*/{"inp1", "inp2"},
        /*dimensions=*/{1, 3},
        /*expected_output=*/{3, 5, 7},
-       /*status=*/Status::OK()},
+       /*status=*/OkStatus()},
       {/*input_values=*/common_input,
        /*input_names=*/{"inp1", "inp2", "inp3"},
        /*dimensions=*/{2},
        /*expected_output=*/{6, 9},
-       /*status=*/Status::OK()},
+       /*status=*/OkStatus()},
       {/*input_values=*/common_input,
        /*input_names=*/{"inp1", "inp2"},
        /*dimensions=*/{3},
        /*expected_output=*/{3, 5, 7},
-       /*status=*/Status::OK()},
+       /*status=*/OkStatus()},
       {/*input_values=*/common_input,
        /*input_names=*/{"inp1", "inp2", "inp3", "inp4", "inp5", "inp6"},
        /*dimensions=*/{1},
        /*expected_output=*/{15},
-       /*status=*/Status::OK()},
+       /*status=*/OkStatus()},
   };
 
   for (auto p : params) {
@@ -4006,7 +4006,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
   }
   AddTestTensor("input", {1, 1, 20}, tf_type_, inputs);
 
-  TestOpConverter(node_def, {1, 1, 20}, Status::OK(), Status::OK(),
+  TestOpConverter(node_def, {1, 1, 20}, OkStatus(), OkStatus(),
                   ArrayFloatNear(expected_outputs, 0));
 }
 
@@ -4047,7 +4047,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
   std::vector<std::vector<int>> value_dims_params = {{}, {1}};
 
   float val = 42.0;
-  Status status = Status::OK();
+  Status status = OkStatus();
   for (bool dims_is_tensor : {true, false}) {
     for (bool value_is_tensor : {true, false}) {
       for (auto output_dims : output_dims_params) {
@@ -4242,7 +4242,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
   } while (nextTensorWeightConfiguration(config));
 
   // The tests that pass all checks in ConvertRange::Validate().
-  const Status status = Status::OK();
+  const Status status = OkStatus();
   const std::vector<DataType> int_type{DT_INT32};
   int partial_shape_idx = -1;
   all_weights = true;
@@ -4326,7 +4326,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertLikeOps) {
         {8}, {8, 2, 4}, {32, 32, 3200}};
 
     float val = 42.0;
-    Status status = Status::OK();
+    Status status = OkStatus();
     for (bool input_is_tensor : {true, false}) {
       for (auto output_dims : output_dims_params) {
         Reset();
@@ -4404,7 +4404,7 @@ TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
       trt_mode_ == TrtTestMode::kImplicitBatch
           ? errors::Unimplemented(convert_not_supported_implicit(
                 "CombinedNonMaxSuppression", "my_nms"))
-          : Status::OK();
+          : OkStatus();
 
   std::vector<TestParams> params = {
       TestParams{"Test 1: clip boxes",
@@ -4529,7 +4529,7 @@ TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
       trt_mode_ == TrtTestMode::kDynamicShape
           ? errors::Unimplemented(
                 "TensorRT BatchedNMS Plugin requires input with static shape")
-          : Status::OK();
+          : OkStatus();
 
   std::vector<TestParams> params = {
       // TODO(aaroey): there is a bug in TRT's CombinedNonMaxSuppression
@@ -4780,7 +4780,7 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
                         ? Status(error::UNIMPLEMENTED,
                                  "TensorRT does not allow manipulation of the "
                                  "batch dimension")
-                        : Status::OK()},
+                        : OkStatus()},
       TestParamBase{{1, 1, 2, 3},
                     {},
                     {1, 1, 1, 2, 3},
@@ -4789,7 +4789,7 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
                         ? Status(error::UNIMPLEMENTED,
                                  "TensorRT does not allow manipulation of the "
                                  "batch dimension")
-                        : Status::OK()},
+                        : OkStatus()},
       TestParamBase{{1, 1, 2, 3},
                     {},
                     {},
@@ -4846,7 +4846,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSoftmax) {
   for (auto p : test_params) {
     Reset();
     AddTestTensor("logits", p.input_dims, input_values);
-    TestOpConverter(node_def, p.input_dims, Status::OK(), Status::OK(),
+    TestOpConverter(node_def, p.input_dims, OkStatus(), OkStatus(),
                     ArrayFloatNear(p.expected_values, 1e-3));
   }
 }
@@ -4876,7 +4876,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertLogSoftmax) {
   for (auto p : test_params) {
     Reset();
     AddTestTensor("logits", p.input_dims, input_values);
-    TestOpConverter(node_def, p.input_dims, Status::OK(), Status::OK(),
+    TestOpConverter(node_def, p.input_dims, OkStatus(), OkStatus(),
                     ArrayFloatNear(p.expected_values, 1e-3));
   }
 }
@@ -4906,7 +4906,7 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
           {2, 3},        // expected output dims
           {},            // axis
           trt_mode_ == TrtTestMode::kExplicitBatch
-              ? Status::OK()
+              ? OkStatus()
               : Status{error::UNIMPLEMENTED,
                        "Squeeze is not implemented for empty squeeze_dims"}},
       TestParamBase{{1, 2, 1, 3},
@@ -4917,7 +4917,7 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
                         ? Status{error::UNIMPLEMENTED,
                                  "TensorRT does not allow manipulation of the "
                                  "batch dimension"}
-                        : Status::OK()},
+                        : OkStatus()},
       TestParamBase{{1, 2, 1, 3},
                     {},
                     {2, 1, 3},
@@ -4926,7 +4926,7 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
                         ? Status{error::UNIMPLEMENTED,
                                  "TensorRT does not allow manipulation of the "
                                  "batch dimension"}
-                        : Status::OK()},
+                        : OkStatus()},
       TestParamBase{
           {1, 1, 2, 3},
           {},
@@ -4965,7 +4965,7 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
   if (trt_mode_ == TrtTestMode::kDynamicShape) {
     // In this test we try to squeeze axis=2 which has size > 1. In dynamic
     // shape mode the converter sees only -1, so it cannot catch this error.
-    squeeze_non_singleton.status = Status::OK();  // conversion status
+    squeeze_non_singleton.status = OkStatus();  // conversion status
     squeeze_non_singleton.runtime_status =
         errors::InvalidArgument("Negative number of dimensions -1");
     // Dynamic shape tests with partially known input shape
@@ -5065,7 +5065,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           ? errors::Unimplemented(
                 "TensorRT does not allow modifications to "
                 "the batch dimension")
-          : Status::OK();
+          : OkStatus();
   std::vector<TestParams> params = {
       // Modify batch dim, should fail in implicit batch mode.
       TestParams{/*input_dims=*/{2, 1, 1, 3},
@@ -5080,7 +5080,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*expected_output_dims=*/{1, 1, 1, 2},
                  /*expected_output=*/{1, 2},
                  /*conversion_status=*/modified_batch_dim_status,
-                 /*runtime_status=*/Status::OK(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{}},
       // Unknown batch size without end_mask.
       TestParams{
@@ -5096,7 +5096,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{1, 2},
           modified_batch_dim_status,
-          Status::OK(),
+          OkStatus(),
           /*partial_input_dims=*/{-1, 1, 1, 3},
       },
       // Test Case 2: Unknown batch size with end_mask.
@@ -5112,8 +5112,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*shrink_axis_mask=*/0,
           /*expected_output_dims=*/{2, 1, 1, 2},
           /*expected_output=*/{1, 2, 4, 5},
-          Status::OK(),
-          Status::OK(),
+          OkStatus(),
+          OkStatus(),
           /*partial_input_dims=*/{-1, 1, 1, 3},
       },
       // Invalid parameters: end[2] < begin[2]
@@ -5130,7 +5130,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*expected_output=*/{},
                  errors::InvalidArgument("\"size\" cannot be negative for "
                                          "StridedSlice"),
-                 Status::OK(),
+                 OkStatus(),
                  /*partial_input_dims=*/{}},
       // Slice on the last two dimensions. All dimensions are static.
       TestParams{
@@ -5160,8 +5160,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*shrink_axis_mask=*/0,
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{1, 2},
-          Status::OK(),
-          Status::OK(),
+          OkStatus(),
+          OkStatus(),
           /*partial_input_dims=*/{1, 1, -1, -1},
       },
       // End mask is provided on all dimensions. This should override the fact
@@ -5179,8 +5179,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*shrink_axis_mask=*/0,
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{5, 6},
-          Status::OK(),
-          Status::OK(),
+          OkStatus(),
+          OkStatus(),
           /*partial_input_dims=*/{1, 1, -1, -1},
       },
       // End mask is provided for the batch dimension to overwrite the end value
@@ -5211,8 +5211,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 1, 1, 2},
                  /*expected_output=*/{6, 5},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{1, 1, -1, -1}},
       // Test slice on two dimensions with negative stride, with end_mask set on
       // crop dimensions. In dynamic shape mode, this tests the runtime size
@@ -5228,8 +5228,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 1, 2, 2},
                  /*expected_output=*/{5, 4, 2, 1},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{1, 1, -1, -1}},
       // Test slice on two dimensions with negative stride, with begin_mask set
       // on the crop dimensions. In dynamic shape mode, this tests the runtime
@@ -5245,8 +5245,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 1, 1, 2},
                  /*expected_output=*/{6, 5},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{1, 1, -1, -1}},
       // Test the reversal of all non-batch dimensions by providing the begin
       // masks, end masks, and -1 as strides.
@@ -5261,8 +5261,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 1, 2, 3},
                  /*expected_output=*/{6, 5, 4, 3, 2, 1},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{1, -1, -1, -1}},
       // Slice on dimensions 1 and 2.
       TestParams{
@@ -5347,8 +5347,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 1, 2},
                  /*expected_output=*/{5, 6},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1, -1}},
       // Slice on 3D tensor using end_mask. For dynamic shape, all
       // dimensions are dynamic.
@@ -5363,8 +5363,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 1, 2, 2},
                  /*expected_output=*/{1, 2, 4, 5},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1, -1, -1}},
       TestParams{
           /*input_dims=*/{1, 1, 2, 3},
@@ -5391,8 +5391,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 1, 3, 1},
                  /*expected_output=*/{1, 2, 3},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1, -1, -1}},
       TestParams{
           /*input_dims=*/{1, 2, 3, 1},
@@ -5419,8 +5419,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 3},
                  /*expected_output=*/{1, 2, 3},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1}},
       TestParams{
           /*input_dims=*/{1, 1, 6},
@@ -5501,8 +5501,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 3},
                  /*expected_output=*/{1, 3, 5},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1}},
       TestParams{/*input_dims=*/{1, 6},
                  /*begin=*/{0, 0},
@@ -5515,8 +5515,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 3},
                  /*expected_output=*/{1, 3, 5},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1}},
       TestParams{/*input_dims=*/{1, 6},
                  /*begin=*/{0, 1},
@@ -5529,8 +5529,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 3},
                  /*expected_output=*/{2, 4, 6},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1}},
       TestParams{/*input_dims=*/{1, 6},
                  /*begin=*/{0, 2},
@@ -5543,8 +5543,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 2},
                  /*expected_output=*/{3, 6},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1}},
       // Stride values <= -2.
       TestParams{/*input_dims=*/{1, 6},
@@ -5558,8 +5558,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 3},
                  /*expected_output=*/{6, 4, 2},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1}},
       TestParams{/*input_dims=*/{1, 6},
                  /*begin=*/{0, 5},
@@ -5572,8 +5572,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 3},
                  /*expected_output=*/{6, 4, 2},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1}},
       TestParams{/*input_dims=*/{1, 6},
                  /*begin=*/{0, 5},
@@ -5586,8 +5586,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 2},
                  /*expected_output=*/{6, 3},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1}},
       // Ellipsis_mask causes leading dimensions to be ignored. Begin, end,
       // stride, and mask values of size 2 should be interpreted as applying to
@@ -5604,8 +5604,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 1, 2, 1},
                  /*expected_output=*/{2, 5},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1, -1, -1}},
       // Ellipsis_mask on single inner dimension.
       TestParams{
@@ -5633,8 +5633,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 1, 2, 1},
                  /*expected_output=*/{2, 5},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1, -1, -1}},
       // Ellipsis_mask on single inner dimension overrides that dimensions'
       // begin/end values.
@@ -5649,8 +5649,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 1, 2, 1},
                  /*expected_output=*/{2, 5},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1, -1, -1}},
       // Ellipsis mask on single leading dimension should throw out extra
       // leading values of begin/end vectors so that only the last N-1 values of
@@ -5666,8 +5666,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/0,
                  /*expected_output_dims=*/{1, 1, 2, 1},
                  /*expected_output=*/{2, 5},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1, -1, -1}},
       // Shrink-axis mask set for the final dimension of final size 1 should
       // remove that dimension from the final shape.
@@ -5682,8 +5682,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/get_mask({0, 0, 0, 1}),
                  /*expected_output_dims=*/{1, 1, 2},
                  /*expected_output=*/{2, 5},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{1, 1, 2, -1}},
       // Shrink-axis mask set for multiple dimensions that have a final size of
       // 1 should remove those dimensions from the final shape.
@@ -5698,8 +5698,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/get_mask({0, 1, 0, 1}),
                  /*expected_output_dims=*/{1, 2},
                  /*expected_output=*/{2, 5},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{1, 1, 2, -1}},
       // Shrink-axis mask set for multiple sequential dimensions of final size 1
       // should
@@ -5715,8 +5715,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*shrink_axis_mask=*/get_mask({0, 1, 1}),
                  /*expected_output_dims=*/{6},
                  /*expected_output=*/{1, 2, 3, 4, 5, 6},
-                 /*conversion_status=*/Status::OK(),
-                 /*runtime_status=*/Status::OK(),
+                 /*conversion_status=*/OkStatus(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{-1, -1, -1}},
       // The new_axis_mask parameter is not supported.
       TestParams{/*input_dims=*/{1, 6},
@@ -5734,7 +5734,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*conversion_status=*/
                  errors::Unimplemented(
                      "new_axis_mask is not supported for StridedSlice"),
-                 /*runtime_status=*/Status::OK(),
+                 /*runtime_status=*/OkStatus(),
                  /*partial_input_dims=*/{1, 6}},
   };
 
@@ -5828,7 +5828,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
                      ? errors::Unimplemented(
                            "TensorRT does not allow modifications to the batch "
                            "dimension in implicit batch mode")
-                     : Status::OK()},
+                     : OkStatus()},
       // Dynamic batch size but using size[0] of -1, ok.
       TestParams{{1, 1, 2, 3},
                  /*partial_input_dims=*/{-1, -1, -1, -1},
@@ -5836,14 +5836,14 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
                  {-1, 1, 2, 2},
                  {1, 1, 2, 2},
                  {1, 2, 4, 5},
-                 Status::OK()},
+                 OkStatus()},
       TestParams{{1, 1, 2, 3},
                  /*partial_input_dims=*/{-1, -1, -1, -1},
                  {0, 0, 0, 0},
                  {-1, -1, -1, -1},
                  {1, 1, 2, 3},
                  {1, 2, 3, 4, 5, 6},
-                 Status::OK()},
+                 OkStatus()},
       TestParams{{1, 1, 2, 3},
                  /*partial_input_dims=*/{-1, -1, -1, -1},
                  {0, 0, 0, 0},
@@ -5856,7 +5856,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
                  /*size=*/{1, -1, 2, 2},
                  /*expected_output_dims=*/{1, 1, 2, 2},
                  /*expected_output=*/{1, 2, 4, 5},
-                 Status::OK()},
+                 OkStatus()},
       TestParams{/*input_dims=*/{1, 6},
                  /*partial_input_dims=*/{-1, -1},
                  /*being=*/{0, 1},
@@ -5868,7 +5868,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
                  /*begin=*/{0, 1},
                  /*size=*/{-1, 3},
                  /*expected_output_dims=*/{1, 3},
-                 /*expected_output=*/{2, 3, 4}, Status::OK()},
+                 /*expected_output=*/{2, 3, 4}, OkStatus()},
       // In dynamic shape mode we do not know the input shape during
       // conversion, therfore we cannot check out of bound access.
       TestParams{
@@ -5879,7 +5879,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
           {},
           {},
           trt_mode_ == TrtTestMode::kDynamicShape
-              ? Status::OK()
+              ? OkStatus()
               : errors::InvalidArgument("\"begin\" + \"size\" for dimension "
                                         "2 in Slice is out of range"),
           errors::Internal("Internal: Failed to build TensorRT engine")},
@@ -5900,7 +5900,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
           /*expected_output_dims=*/{},
           /*expected_output=*/{},
           /*conversion_status=*/trt_mode_ == TrtTestMode::kDynamicShape
-              ? Status::OK()
+              ? OkStatus()
               : errors::InvalidArgument("\"begin\" + \"size\" for dimension "
                                         "2 in Slice is out of range"),
           errors::Internal("Internal: Failed to build TensorRT engine")},
@@ -6167,9 +6167,8 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", ok_params[i].filter_dims,
                           ok_params[i].filter);
 
-    TestOpConverter(node_def, ok_params[i].expected_output_dims, Status::OK(),
-                    Status::OK(),
-                    ElementsAreArray(ok_params[i].expected_output));
+    TestOpConverter(node_def, ok_params[i].expected_output_dims, OkStatus(),
+                    OkStatus(), ElementsAreArray(ok_params[i].expected_output));
   }
 }
 
@@ -6305,7 +6304,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
                    { 0, 0, -1, 1, -2, 2, -3, 3,
                     -3, 3, -2, 2, -1, 1, 0, 0},
                    // clang-format on
-                   /*conversion_status=*/Status::OK(),
+                   /*conversion_status=*/OkStatus(),
                    /*partial input dims=*/{-1, 1, 2, 2}});
 
     // Test dynamic height and width.
@@ -6372,7 +6371,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
       }
 
       TestOpConverter(node_def, p.expected_output_dims, p.conversion_status,
-                      Status::OK(), ElementsAreArray(p.expected_output));
+                      OkStatus(), ElementsAreArray(p.expected_output));
     }
   }
 }
@@ -6447,7 +6446,7 @@ void TestConv3D(ParameterizedOpConverterTestBase* test, Conv3DTestParams& p) {
 
   test->TestOpConverter(node_def, p.expected_output_dims,
                         /*expected_conversion_status=*/p.validation_status,
-                        /*expected_runtime_status=*/Status::OK(),
+                        /*expected_runtime_status=*/OkStatus(),
                         /*matcher=*/ElementsAreArray(p.expected_output),
                         /*out_tf_types=*/{test->get_tf_type()});
 }
@@ -6588,7 +6587,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
                             56, 36, 1,  1, 105, 1,  16, -28, 1,
                             42, 9,  3,  1, 7,   1,  11, 61,  5},
        /*allow_dynamic_channel_dim=*/false,
-       /*validation_status=*/Status::OK()},
+       /*validation_status=*/OkStatus()},
       // Basic - 2x1 filter
       {/*input_dims=*/{1, 1, 3, 3, 3},  // CDHW
        /*input=*/{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -6604,7 +6603,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
        /*expected_output=*/
        {2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 7},
        /*allow_dynamic_channel_dim=*/false,
-       /*validation_status=*/Status::OK()},
+       /*validation_status=*/OkStatus()},
       // SAME padding (Asymmetric)
       {/*input_dims=*/{1, 1, 2, 3, 2},  // CDHW
        /*input=*/{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
@@ -6619,7 +6618,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
        // Diff in first 2 depths is const 6.
        /*expected_output=*/{6, 6, 6, 6, 6, 6, -6, -7, -8, -9, -10, -11},
        /*allow_dynamic_channel_dim=*/false,
-       /*validation_status=*/Status::OK()},
+       /*validation_status=*/OkStatus()},
       // SAME padding (Symmetric)
       {/*input_dims=*/{1, 1, 2, 3, 2},  // CDHW
        /*input=*/{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
@@ -6634,7 +6633,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
        // Swaps front two depths, negates
        /*expected_output=*/{6, 7, 8, 9, 10, 11, 0, -1, -2, -3, -4, -5},
        /*allow_dynamic_channel_dim=*/false,
-       /*validation_status=*/Status::OK()
+       /*validation_status=*/OkStatus()
 
       },
       // NDHWC (multi-channel)
@@ -6651,7 +6650,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
        /*expected_output_dims=*/{1, 1, 3, 2, 1},
        /*expected_output=*/{0, 0, 0, 0, 0, 0},  // Filters oppose each-other
        /*allow_dynamic_channel_dim=*/false,
-       /*validation_status=*/Status::OK()},
+       /*validation_status=*/OkStatus()},
       // Dilated
       {/*input_dims=*/{1, 1, 3, 3, 3},  // CDHW
        /*input=*/{1,   1,   1,   1,   1, 1, 1, 1, 1, -10, -10, -10, -10, -10,
@@ -6667,7 +6666,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
        // Only front depth is valid, skips neg values
        /*expected_output=*/{8, 8, 8, 8, 8, 8, 8, 8, 8},
        /*allow_dynamic_channel_dim=*/false,
-       /*validation_status=*/Status::OK()},
+       /*validation_status=*/OkStatus()},
       // Strided
       {/*input_dims=*/{1, 1, 3, 3, 3},
        /*input=*/{1, 0, 2, 0, 0, 0, 3, 0, 4, 0, 0, 0, 0, 0,
@@ -6683,7 +6682,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
        // Should only pick up the corners
        /*expected_output=*/{1, 2, 3, 4, 5, 6, 7, 8},
        /*allow_dynamic_channel_dim=*/false,
-       /*validation_status=*/Status::OK()},
+       /*validation_status=*/OkStatus()},
       // Transpose Strided
       {/*input_dims=*/{1, 1, 2, 2, 2},  // CDHW
        /*input=*/{1, 2, 3, 4, 5, 6, 7, 8},
@@ -6699,7 +6698,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
                             0, 0, 0, 0, 0, 0, 0, 0, 0,   // fills center
                             5, 0, 6, 0, 0, 0, 7, 0, 8},  // with zeroes
        /*allow_dynamic_channel_dim=*/false,
-       /*validation_status=*/Status::OK()},
+       /*validation_status=*/OkStatus()},
   };
 
   if (trt_mode_ == TrtTestMode::kDynamicShape) {
@@ -6969,7 +6968,7 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
         NodeDef node = get_pool_nodedef(tf_type_, nDim, ksize, strides,
                                         p.padding, data_format, is_max_pooling);
         AddTestTensor("input", input_dims, input);
-        TestOpConverter(node, expected_output_dims, p.status, Status::OK(),
+        TestOpConverter(node, expected_output_dims, p.status, OkStatus(),
                         ElementsAreArray(p.expected_outputs.at(test_counter)));
         test_counter++;
       }
@@ -6999,8 +6998,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertTopK) {
     AddTestWeights<int32>("weights", {1}, {2});
     std::vector<std::vector<int>> expected_output_dims{{1, 1, 2, 2},
                                                        {1, 1, 2, 2}};
-    TestOpConverterMultiOut(node_def, expected_output_dims, Status::OK(),
-                            Status::OK(),
+    TestOpConverterMultiOut(node_def, expected_output_dims, OkStatus(),
+                            OkStatus(),
                             {ElementsAre(6, 5, 7, 1), ElementsAre(4, 2, 1, 2)},
                             {tf_type_, DT_INT32});
   }
@@ -7033,7 +7032,7 @@ TEST_P(OpConverter_INT32_Test, ConvertDataFormatVecPermute) {
       string("DataFormatVecPermute"), string("my_dfvp"));
   const Status implicit_error = Status{error::UNIMPLEMENTED, error};
   const auto conversion_status =
-      trt_mode_ == TrtTestMode::kImplicitBatch ? implicit_error : Status::OK();
+      trt_mode_ == TrtTestMode::kImplicitBatch ? implicit_error : OkStatus();
   std::vector<DataFormatVecPermuteTestParams> test_params = {
       // 1D case with tensor.
       DataFormatVecPermuteTestParams{/*dst_format=*/"NCHW",
@@ -7159,7 +7158,7 @@ TEST_P(OpConverter_INT32_Test, ConvertDataFormatVecPermute) {
       AddTestWeights("x", p.x_shape, p.x, DT_INT32);
     }
 
-    TestOpConverter(node_def, p.x_shape, p.conversion_status, Status::OK(),
+    TestOpConverter(node_def, p.x_shape, p.conversion_status, OkStatus(),
                     ElementsAreArray(p.expected_output));
   }
 }
@@ -7227,7 +7226,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                      ? Status{error::UNIMPLEMENTED,
                               "TensorRT does not allow "
                               "manipulation of the batch dimension"}
-                     : Status::OK()},
+                     : OkStatus()},
       // Batch size of indices is not 1 when params and indices are tensors.
       TestParams{/*params_shape=*/{2, 1, 3},
                  /*indices_shape=*/{2, 1},
@@ -7243,7 +7242,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                               " batch size of 1 when params and indices are "
                               "both tensors or both"
                               " constants."}
-                     : Status::OK()},
+                     : OkStatus()},
       // Batch size of indices is not 1 when params is tensor and indices are
       // constant.
       TestParams{/*params_shape=*/{2, 1, 3},
@@ -7254,7 +7253,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                  /*expected_output=*/{3, 1, 6, 4},
                  /*params_is_tensor=*/true,
                  /*indices_is_tensor=*/false,
-                 /*conversion_status=*/Status::OK()},
+                 /*conversion_status=*/OkStatus()},
       // Axis is not zero when params is a weight, should fail in implicit batch
       // mode.
       TestParams{/*params_shape=*/{2, 1, 3},
@@ -7269,7 +7268,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                      ? Status{error::UNIMPLEMENTED,
                               "The input axis must be zero when "
                               "params is a weight."}
-                     : Status::OK()},
+                     : OkStatus()},
       // Params with only batch dimension.
       TestParams{
           /*params_shape=*/{6},
@@ -7284,14 +7283,14 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
               ? Status{error::UNIMPLEMENTED,
                        "TensorRT does not allow "
                        "manipulation of the batch dimension"}
-              : Status::OK(),
-          /*runtime_status=*/Status::OK(),
+              : OkStatus(),
+          /*runtime_status=*/OkStatus(),
           /*add_index_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
               ? Status{error::INVALID_ARGUMENT,
                        batch_size_error("indices",
                                         "Provided batch size does not match "
                                         "converter batch size: 2 vs 6")}
-              : Status::OK()},
+              : OkStatus()},
       // Vector indices, and output rank is rank(params).
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
@@ -7431,7 +7430,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                               " batch size of 1 when params and indices are "
                               "both tensors or both"
                               " constants."}
-                     : Status::OK()},
+                     : OkStatus()},
       TestParams{/*params_shape=*/{3, 2},
                  /*indices_shape=*/{2, 2},
                  /*indices=*/{0, 2, 1, 0},
@@ -7446,7 +7445,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                               " batch size of 1 when params and indices are "
                               "both tensors or both"
                               " constants."}
-                     : Status::OK()},
+                     : OkStatus()},
   };
 
   for (auto p : test_params) {
@@ -7615,7 +7614,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertReduce) {
         }
 
         TestOpConverter(node_def, expected_output_dims, p.conversion_status,
-                        Status::OK(), ArrayFloatNear(expected_values));
+                        OkStatus(), ArrayFloatNear(expected_values));
       }
     }
   }
@@ -7799,8 +7798,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
               ? errors::Unimplemented(
                     "The input \"values_1\" for ConcatV2 must be a tensor")
-              : Status::OK(),
-          /*run_status=*/Status::OK(),
+              : OkStatus(),
+          /*run_status=*/OkStatus(),
       },
       {
           // An input is a weight
@@ -7813,8 +7812,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
               ? errors::Unimplemented(
                     "The input \"values_0\" for ConcatV2 must be a tensor")
-              : Status::OK(),
-          /*run_status=*/Status::OK(),
+              : OkStatus(),
+          /*run_status=*/OkStatus(),
       },
       {
           // Axis is batch dimension, should fail in implicit batch mode.
@@ -7828,7 +7827,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
               ? errors::Unimplemented(
                     "TensorRT does not allow manipulation of the "
                     "batch dimension")
-              : Status::OK(),
+              : OkStatus(),
       },
       {
           // Inconsistent input shape, runtime error in dynamic shape mode.
@@ -7841,7 +7840,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           trt_mode_ != TrtTestMode::kDynamicShape
               ? errors::InvalidArgument(
                     "Received inputs with inconsistent shape")
-              : Status::OK(),
+              : OkStatus(),
           errors::InvalidArgument(""),
       }};
 
@@ -8147,7 +8146,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
           trt_mode_ == TrtTestMode::kImplicitBatch
               ? errors::InvalidArgument(
                     "removing first dim requires explicit batch dimension")
-              : Status::OK());
+              : OkStatus());
       if (trt_mode_ == TrtTestMode::kImplicitBatch) {
         RunValidationAndConversion(
             node_def, error::INTERNAL,
@@ -8169,7 +8168,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
           ? errors::InvalidArgument(
                 "The argument `strided_slice_spec` is "
                 "`std::nullopt` with `dynamic_input_size_indices` non empty.")
-          : Status::OK();
+          : OkStatus();
 
   std::vector<UnpackTestParams> params = {
       {/*input_shape=*/{1, 1, 2, 1, 3, 1},
@@ -8256,8 +8255,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
        trt_mode_ == TrtTestMode::kImplicitBatch
            ? Status{error::UNIMPLEMENTED,
                     "The input \"values_1\" for Pack must be a tensor"}
-           : Status::OK(),
-       /*runtime_status*/ Status::OK(),
+           : OkStatus(),
+       /*runtime_status*/ OkStatus(),
        /*weight_input*/ true},
       // Axis is out of bounds, should fail.
       {
@@ -8282,7 +8281,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
            ? Status{error::UNIMPLEMENTED,
                     "TensorRT does not allow manipulation of the batch "
                     "dimension"}
-           : Status::OK()},
+           : OkStatus()},
       // Inconsistent rank, should fail.
       {
           /*input_shapes=*/{{1, 2, 3}, {1, 6}},
@@ -8433,7 +8432,7 @@ void TestConvertArgMinMax(ParameterizedOpConverterTestBase* test,
 
   test->TestOpConverter(node_def, p.expected_output_dims,
                         /*expected_conversion_status=*/p.status,
-                        /*expected_runtime_status=*/Status::OK(),
+                        /*expected_runtime_status=*/OkStatus(),
                         /*matcher=*/ElementsAreArray(expected_out), {DT_INT32});
 }
 
@@ -8473,7 +8472,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertArgMinMax) {
        trt_mode_ == TrtTestMode::kImplicitBatch
            ? errors::Unimplemented("TensorRT does not allow manipulation of "
                                    "the batch dimension")
-           : Status::OK()},
+           : OkStatus()},
       {
           /*input_shape=*/{1, 6},
           /*input_value=*/common_input,
@@ -8533,7 +8532,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertArgMinMax) {
        errors::Unimplemented("op is not able to support tensors with 4+"
                              " dimensions (excluding batch size)")
 #else
-       Status::OK()
+       OkStatus()
 #endif
       },
       {/*input_shape=*/{1, 2, 1, 1, 3},
@@ -8546,7 +8545,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertArgMinMax) {
        errors::Unimplemented("op is not able to support tensors with 4+"
                              " dimensions (excluding batch size)")
 #else
-       Status::OK()
+       OkStatus()
 #endif
       },
   };
@@ -8581,7 +8580,7 @@ template <typename OpType>
 void TestConvertDepthSpaceShuffle(
     ParameterizedOpConverterTestBase* test,
     const std::vector<DepthSpaceShuffleTestParams>& params) {
-  Status status = Status::OK();
+  Status status = OkStatus();
 
   {
     // Input is a weight, should fail.
@@ -8655,7 +8654,7 @@ void TestConvertDepthSpaceShuffle(
     const NodeDef node = GetDepthSpaceShuffleNodeDef<OpType>(
         test->get_tf_type(), p.block_size, p.data_format);
     test->AddTestTensor("input", p.input_dims, p.input_value);
-    test->TestOpConverter(node, p.expected_output_dims, status, Status::OK(),
+    test->TestOpConverter(node, p.expected_output_dims, status, OkStatus(),
                           ElementsAreArray(p.expected_output));
   }
 }
@@ -8851,8 +8850,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
     AddTestWeights("clip_value_max", {1}, {p.clip_value_max}, tf_type_);
 
     TestOpConverter(node_def, p.dims,
-                    /*expected_conversion_status=*/Status::OK(),
-                    /*expected_runtime_status=*/Status::OK(),
+                    /*expected_conversion_status=*/OkStatus(),
+                    /*expected_runtime_status=*/OkStatus(),
                     /*matcher=*/ElementsAreArray(p.expected_output));
   }
 }
@@ -8899,7 +8898,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquaredDifference) {
        /*expected_output_dims=*/{1, 1, 2, 3},
        /*expected_output=*/common_input,
        trt_mode_ == TrtTestMode::kDynamicShape
-           ? Status::OK()
+           ? OkStatus()
            : errors::InvalidArgument("Infeasible broadcast scheme"),
        errors::Internal(
            "Binding index out of range. This can happen if profile is not set, "
@@ -9016,7 +9015,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertResize) {
        {2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f},
        /*expected_bilinear_output_values=*/
        {2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f},
-       /*status=*/Status::OK()},
+       /*status=*/OkStatus()},
       {/*input_dims=*/{1, 1, 2, 1},    // N, H, W, C
        /*output_resize_dims=*/{2, 3},  // H_out, W_out
        /*input_values=*/{2.0f, -1.0f},
@@ -9027,7 +9026,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertResize) {
        {2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f},
        /*expected_bilinear_output_values=*/
        {2.0f, 0.5f, -1.0f, 2.0f, 0.5f, -1.0f},
-       /*status=*/Status::OK()}};
+       /*status=*/OkStatus()}};
 
   if (trt_mode_ != TrtTestMode::kImplicitBatch) {
     // Size as a tensor is not supported in implicit batch mode.
@@ -9041,7 +9040,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertResize) {
                       {2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f},
                       /*expected_bilinear_output_values=*/
                       {2.0f, 0.5f, -1.0f, 2.0f, 0.5f, -1.0f},
-                      /*status=*/Status::OK()});
+                      /*status=*/OkStatus()});
   }
 
   for (auto p : params) {
@@ -9192,7 +9191,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPad) {
           trt_mode_ == TrtTestMode::kImplicitBatch
               ? errors::InvalidArgument("Padding layer does not support "
                                         "padding on batch dimension")
-              : Status::OK()},
+              : OkStatus()},
       PadTestParams{
           /*input_dims=*/{1, 1, 2, 1},  // N, H, W, C
           /*pad_dims=*/{4, 2},          // #dims, {pad_before, pad_after}
@@ -9357,7 +9356,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
   auto run_test = [&](const NodeDef& node, const std::vector<int>& exp_dims) {
     for (int n = 0; n < 2; n++) {
       set_parameters();
-      TestOpConverter(node, exp_dims, Status::OK(), Status::OK(),
+      TestOpConverter(node, exp_dims, OkStatus(), OkStatus(),
                       ElementsAreArray(expected_output));
       if (!n) {
         // Changing the condition and expected_output.
@@ -9422,7 +9421,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
   } while (nextTensorWeightConfiguration(config));
 
   std::string err_msg = bool_weight_error_msg(node);
-  const auto status = Status::OK();
+  const auto status = OkStatus();
 
   std::vector<int> dims_const = {1};
   par_dims = {&dims_const, &dims_const, &dims_const};

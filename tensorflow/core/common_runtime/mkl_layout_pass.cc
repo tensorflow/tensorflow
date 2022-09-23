@@ -1059,7 +1059,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // after the call to function may result in undefined behaviors.
   //
   // @input g - input graph, m - graph node, n - graph node to be merged with m
-  // @return Status::OK(), if merging is successful and supported.
+  // @return OkStatus(), if merging is successful and supported.
   //         Returns appropriate Status error code otherwise.
   //         Graph is updated in case nodes are merged. Otherwise, it is
   //         not updated.
@@ -1825,7 +1825,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   //
   // @input  g - input graph, n - Node to be rewritten,
   //         ri - matching rewriteinfo
-  // @return Status::OK(), if the input node is rewritten;
+  // @return OkStatus(), if the input node is rewritten;
   //         Returns appropriate Status error code otherwise.
   //         Graph is updated in case the input node is rewritten.
   //         Otherwise, it is not updated.
@@ -1846,7 +1846,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // @input  g - input graph, orig_node - Node to be rewritten,
   //         ri - matching rewriteinfo
   // @output new_node - points to newly created node
-  // @return Status::OK(), if the input node is rewritten;
+  // @return OkStatus(), if the input node is rewritten;
   //         Returns appropriate Status error code otherwise.
   //         Graph is only updated when the input node is rewritten.
   Status RewriteNodeForJustOpNameChange(std::unique_ptr<Graph>* g,
@@ -1860,7 +1860,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // @input  g - input graph, orig_node - Node to be rewritten,
   //         ri - matching rewriteinfo
   // @output new_node - points to newly created node
-  // @return Status::OK(), if the input node is rewritten;
+  // @return OkStatus(), if the input node is rewritten;
   //         Returns appropriate Status error code otherwise.
   //         Graph is updated in case the input node is rewritten.
   //         Otherwise, it is not updated.
@@ -1936,7 +1936,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // For details, refer to 'Ordering of inputs after rewriting' section in the
   // documentation above.
   //
-  // Returns Status::OK() if setting up inputs is successful, otherwise
+  // Returns OkStatus() if setting up inputs is successful, otherwise
   // returns appropriate status code.
   int SetUpContiguousInputs(
       std::unique_ptr<Graph>* g,
@@ -1951,7 +1951,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // For details, refer to 'Ordering of Tensorflow tensors and Mkl tensors'
   // section in the documentation above.
   //
-  // Returns Status::OK() if setting up inputs is successful, otherwise
+  // Returns OkStatus() if setting up inputs is successful, otherwise
   // returns appropriate status code.
   Status SetUpInputs(std::unique_ptr<Graph>* g,
                      const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs,
@@ -1962,7 +1962,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // used in the context of rewrite for just operator name change in which
   // inputs of old operator and new operator are same.
   //
-  // Returns Status::OK() if setting up inputs is successful, otherwise
+  // Returns OkStatus() if setting up inputs is successful, otherwise
   // returns appropriate status code.
   Status CopyInputs(const Node* orig_node,
                     const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs,
@@ -2431,7 +2431,7 @@ Status MklLayoutRewritePass::SetUpInputs(
     CHECK_EQ(new_node_input_slots, old_node_input_slots * 2 + 2);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MklLayoutRewritePass::CopyInputs(
@@ -2475,7 +2475,7 @@ Status MklLayoutRewritePass::CopyInputs(
       iidx++;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -3191,7 +3191,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   (*g)->RemoveNode(succ);
   (*g)->RemoveNode(pred);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
@@ -3371,7 +3371,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   (*g)->RemoveNode(succ);
   (*g)->RemoveNode(pred);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
@@ -3505,7 +3505,7 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
   (*g)->RemoveNode(badd);
   (*g)->RemoveNode(fltr);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* m,
@@ -3565,7 +3565,7 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
   nb.Device(orig_node->def().device());
   // Set up new inputs to the rewritten node.
   Status s = SetUpInputs(g, inputs, &nb, orig_node);
-  if (s != Status::OK()) {
+  if (s != OkStatus()) {
     return s;
   }
 
@@ -3581,7 +3581,7 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
   }
   // Finalize graph and get new node.
   s = nb.Finalize(&**g, new_node);
-  if (s != Status::OK()) {
+  if (s != OkStatus()) {
     return s;
   }
 
@@ -3624,7 +3624,7 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
       DCHECK(new_edge);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
@@ -3648,7 +3648,7 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
   nb.Device(orig_node->def().device());
 
   Status s = CopyInputs(orig_node, inputs, &nb);
-  if (s != Status::OK()) {
+  if (s != OkStatus()) {
     return s;
   }
 
@@ -3678,7 +3678,7 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
 
   // Finalize graph and get new node.
   s = nb.Finalize(&**g, new_node);
-  if (s != Status::OK()) {
+  if (s != OkStatus()) {
     return s;
   }
 
@@ -3714,7 +3714,7 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
@@ -3725,7 +3725,7 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
 
   VLOG(1) << "MklLayoutRewritePass: Original node:" << orig_node->DebugString();
 
-  Status ret_status = Status::OK();
+  Status ret_status = OkStatus();
   Node* new_node = nullptr;
   if (ri->rewrite_cause == kRewriteForLayoutPropagation) {
     ret_status = RewriteNodeForLayoutPropagation(g, orig_node, &new_node, ri);
@@ -3925,7 +3925,7 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   (*g)->RemoveNode(mklop);
   (*g)->RemoveNode(transpose_to_nchw);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MklLayoutRewritePass::FuseNode(
@@ -4102,7 +4102,7 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
       VLOG(1) << "MklLayoutRewritePass: Scheduled nodes " << n1_name << " and "
               << n2_name << " for merging";
 
-      if (MergeNode(g, n, m) == Status::OK()) {
+      if (MergeNode(g, n, m) == OkStatus()) {
         VLOG(1) << "MklLayoutRewritePass: Merged nodes " << n1_name << " and "
                 << n2_name;
         result = true;
@@ -4127,7 +4127,7 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
 
     // if "found_pattern" is true, we can do the fusion.
     if (found_pattern) {
-      if (FuseNode(g, nodes, fi) == Status::OK()) {
+      if (FuseNode(g, nodes, fi) == OkStatus()) {
         result = true;
       }
     }
@@ -4152,7 +4152,7 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
               << " with op " << op_name << " for rewrite using"
               << " layout optimization.";
 
-      if (RewriteNode(g, n, ri) == Status::OK()) {
+      if (RewriteNode(g, n, ri) == OkStatus()) {
         VLOG(1) << "MklLayoutRewritePass: rewrote node " << node_name
                 << " with op " << op_name << " for Mkl layout optimization.";
         result = true;
@@ -4192,11 +4192,11 @@ bool RunMklLayoutRewritePass(std::unique_ptr<Graph>* g) {
 
 Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
   if (options.graph == nullptr && options.partition_graphs == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
   if (!IsMKLEnabled()) {
     VLOG(2) << "TF-MKL: MKL is not enabled";
-    return Status::OK();
+    return OkStatus();
   }
 
   auto process_graph = [&](std::unique_ptr<Graph>* g) {
@@ -4219,7 +4219,7 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow
