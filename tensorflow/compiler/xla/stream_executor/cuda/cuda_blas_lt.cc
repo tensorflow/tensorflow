@@ -125,7 +125,7 @@ port::Status BlasLt::Init() {
   SE_CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&blas_lt));
   absl::MutexLock lock(&mu_);
   blas_lt_.reset(blas_lt);
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 /*static*/ blas::DataType BlasLt::GetScaleType(
@@ -300,7 +300,7 @@ port::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
     profile_result->set_is_valid(true);
     profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
   }
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 BlasLt* GetBlasLt(Stream* stream) {

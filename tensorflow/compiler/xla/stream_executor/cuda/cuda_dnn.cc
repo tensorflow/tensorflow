@@ -2025,7 +2025,7 @@ port::Status CudnnSupport::DoRnnForwardImpl(
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
     }
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 #endif
   TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> workspace,
@@ -2258,7 +2258,7 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
     }
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 #endif
   TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> workspace,
@@ -4663,7 +4663,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
               << timer->GetElapsedMilliseconds() << "ms";
     }
 
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 
   static port::StatusOr<CudnnExecutionPlanRunner> Create(
@@ -4857,7 +4857,7 @@ port::Status CreateOpRunners(
 
   VLOG(4) << "\nReturned execution plans size: " << out_runners->size();
 
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 }  // namespace

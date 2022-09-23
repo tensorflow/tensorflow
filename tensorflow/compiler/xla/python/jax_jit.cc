@@ -675,7 +675,7 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
 
 // Compute signature for arguments.
 //
-// Returns `Status::OK()` on success. Returning an error should lead to
+// Returns `OkStatus()` on success. Returning an error should lead to
 // calling the Python fallback.
 xla::Status ComputeSignature(bool jax_enable_x64,
                              xla::PjRtDevice* default_device, bool is_committed,
@@ -727,7 +727,7 @@ xla::Status ComputeSignature(bool jax_enable_x64,
 }
 
 // Copy buffers to device, skipping pruned arguments.
-// Returns `Status::OK()` on success. Returning an error should lead to
+// Returns `OkStatus()` on success. Returning an error should lead to
 // calling the Python fallback.
 xla::Status CopyBuffersToDevice(
     bool jax_enable_x64, const std::optional<std::vector<bool>>& kept_args,

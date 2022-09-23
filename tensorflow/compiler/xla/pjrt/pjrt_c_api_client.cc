@@ -637,7 +637,7 @@ static xla::PjRtFuture<Status> ConvertCEventToCppFuture(PJRT_Event* c_future,
           promise.Set(s);
           ::pjrt::MakeErrorDeleter(c_api)(error);
         } else {
-          promise.Set(Status::OK());
+          promise.Set(tsl::OkStatus());
         }
         ::pjrt::MakeEventDeleter(c_api)(c_future);
       });

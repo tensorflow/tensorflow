@@ -223,7 +223,7 @@ py::object PyArray::arrays() const {
 Status PyArray::set_arrays(py::object obj) {
   if (obj.is_none()) {
     pjrt_buffers().clear();
-    return Status::OK();
+    return OkStatus();
   }
 
   if (!py::isinstance<py::list>(obj)) {
@@ -233,7 +233,7 @@ Status PyArray::set_arrays(py::object obj) {
 
   py::list list = obj;
 
-  if (list.empty()) return Status::OK();
+  if (list.empty()) return OkStatus();
 
   pjrt_buffers().clear();
   pjrt_buffers().reserve(list.size());
@@ -249,7 +249,7 @@ Status PyArray::set_arrays(py::object obj) {
     DCHECK_EQ(py_buffer->client(), py_client());
     pjrt_buffers().push_back(py_buffer->shared_ptr_buffer());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PyArray::SetUpType() {

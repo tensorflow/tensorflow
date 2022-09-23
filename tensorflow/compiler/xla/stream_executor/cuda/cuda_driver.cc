@@ -952,7 +952,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
         "Failed to set read/write access on memory mapped at %d: %s", va,
         ToString(res)));
   }
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 /* static */ void GpuDriver::UnmapMemory(GpuContext* context, CUdeviceptr va,
