@@ -702,10 +702,6 @@ tf_cc_binary(
 tf_cc_binary(
     name = "lhlo-tfrt-opt",
     srcs = ["lhlo-tfrt-opt.cc"],
-    local_defines = select({
-        "//tensorflow/compiler/xla/service/gpu:is_xlir_enabled": ["XLA_ENABLE_XLIR=1"],
-        "//conditions:default": [],
-    }),
     tags = [
         "gpu",
         "no_oss",
