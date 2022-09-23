@@ -350,6 +350,18 @@ FusionDecision FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
                                 << instruction->name() << "|";
       }
     }
+    // Check if the produer is costly. The threshold wasn't tuned.
+    // One use cases has 250 instructions, so a threshold of 250 would
+    // work. I'm using 100 as it looks a better threshold. 100 is
+    // already much higher then the number of instructions needed per
+    // IO to be compute bound.
+    const int nb_instructions_for_expensive_fusion = 100;
+    if (fusion->fused_instruction_count() >
+	nb_instructions_for_expensive_fusion) {
+      return FusionDecision{} << "fusion is big and at least one user will "
+                              << "duplicate computation |"
+                              << fusion->name() << "|";
+    }
   }
 
   // Skip 'fusion' instruction if merging it into at least one of the users

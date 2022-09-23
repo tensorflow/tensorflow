@@ -689,6 +689,80 @@ ENTRY main {
   EXPECT_FALSE(FusionMerger().Run(module.get()).value());
 }
 
+// Tests that threshold for big fusion do not block fusion when there
+// isn't recomputation.
+TEST_F(FusionMergerTest, BigFusionThresholdExceededNoRecompute) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder b(TestName());
+  Shape shape1d = ShapeUtil::MakeShape(F32, {10});
+  Shape shape2d = ShapeUtil::MakeShape(F32, {10,10});
+  HloInstruction* graph_param = b.AddInstruction(
+      HloInstruction::CreateParameter(0, shape1d, "gentry"));
+  auto make_fusion = [&](HloInstruction* entry, int nb_instruction) {
+    // Build a fusion computation for calculating the sum of all parameters.
+    HloComputation::Builder sub_builder("subcomp");
+    auto sub_entry = sub_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, shape1d, "sub_entry"));
+    HloInstruction* sum = sub_entry;
+    for (int64_t i = 0; i <nb_instruction; ++i) {
+      sum = sub_builder.AddInstruction(
+          HloInstruction::CreateBinary(shape1d, HloOpcode::kAdd, sum, sub_entry));
+    }
+    HloComputation* subcomp =
+        module->AddEmbeddedComputation(sub_builder.Build());
+    return HloInstruction::CreateFusion(
+        shape1d, HloInstruction::FusionKind::kLoop, {entry}, subcomp);
+  };
+  auto fusion = b.AddInstruction(make_fusion(graph_param, 100));
+  b.AddInstruction(make_fusion(fusion, 100));
+  module->AddEntryComputation(b.Build());
+
+  // Run fusion merger pass, which should detect that the big fusion
+  // do not duplicate computation, so it can be merged.
+  EXPECT_TRUE(FusionMerger().Run(module.get()).value());
+}
+
+// Tests that threshold for big fusion block fusion when there is
+// recomputation.
+TEST_F(FusionMergerTest, BigFusionThresholdExceededRecompute) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder b(TestName());
+  Shape shape1d = ShapeUtil::MakeShape(F32, {10});
+  Shape shape2d = ShapeUtil::MakeShape(F32, {10,10});
+  HloInstruction* graph_param = b.AddInstruction(
+      HloInstruction::CreateParameter(0, shape1d, "gentry"));
+  auto make_fusion = [&](HloInstruction* entry, int nb_instruction, bool broadcast) {
+    // Build a fusion computation for calculating the sum of all parameters.
+    HloComputation::Builder sub_builder("subcomp");
+    auto sub_entry = sub_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, shape1d, "sub_entry"));
+    HloInstruction* sum = sub_entry;
+    for (int64_t i = 0; i <nb_instruction; ++i) {
+      sum = sub_builder.AddInstruction(
+          HloInstruction::CreateBinary(shape1d, HloOpcode::kAdd, sum, sub_entry));
+    }
+    Shape out_shape = shape1d;
+    if(broadcast) {
+      auto b1 = sub_builder.AddInstruction(HloInstruction::CreateBroadcast(shape2d, sum, {0}));
+      auto b2 = sub_builder.AddInstruction(HloInstruction::CreateBroadcast(shape2d, sub_entry, {0}));
+      sum = sub_builder.AddInstruction(
+          HloInstruction::CreateBinary(shape2d, HloOpcode::kAdd, b1, b2));
+      out_shape = shape2d;
+    }
+    HloComputation* subcomp =
+        module->AddEmbeddedComputation(sub_builder.Build());
+    return HloInstruction::CreateFusion(
+        out_shape, HloInstruction::FusionKind::kLoop, {entry}, subcomp);
+  };
+  auto fusion = b.AddInstruction(make_fusion(graph_param, 100, false));
+  b.AddInstruction(make_fusion(fusion, 100, true));
+  module->AddEntryComputation(b.Build());
+
+  // Run fusion merger pass, which should detect that the big fusion
+  // duplicate computation, so it should'nt be merged.
+  EXPECT_FALSE(FusionMerger().Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
