@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/lib/monitoring/test_utils.h"
+#include "tensorflow/tsl/lib/monitoring/test_utils.h"
 
 #include <cmath>
 #include <cstdint>
@@ -20,11 +20,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/lib/monitoring/types.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/lib/monitoring/types.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace monitoring {
 namespace testing {
 
@@ -84,7 +84,7 @@ double Percentiles::sum() const {
 }
 
 Percentiles Percentiles::Subtract(const Percentiles& other) const {
-  tensorflow::monitoring::Percentiles delta;
+  tsl::monitoring::Percentiles delta;
   delta.unit_of_measure = percentiles_.unit_of_measure;
   delta.total_samples = num() - other.num();
   delta.accumulator = sum() - other.sum();
@@ -93,4 +93,4 @@ Percentiles Percentiles::Subtract(const Percentiles& other) const {
 
 }  // namespace testing
 }  // namespace monitoring
-}  // namespace tensorflow
+}  // namespace tsl

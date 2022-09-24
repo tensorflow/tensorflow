@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/lib/monitoring/cell_reader-inl.h"
+#include "tensorflow/tsl/lib/monitoring/cell_reader-inl.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -21,15 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/lib/monitoring/collected_metrics.h"
-#include "tensorflow/core/lib/monitoring/collection_registry.h"
-#include "tensorflow/core/lib/monitoring/metric_def.h"
-#include "tensorflow/core/lib/monitoring/test_utils.h"
-#include "tensorflow/core/lib/monitoring/types.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/lib/monitoring/collected_metrics.h"
+#include "tensorflow/tsl/lib/monitoring/collection_registry.h"
+#include "tensorflow/tsl/lib/monitoring/metric_def.h"
+#include "tensorflow/tsl/lib/monitoring/test_utils.h"
+#include "tensorflow/tsl/lib/monitoring/types.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace monitoring {
 namespace testing {
 namespace internal {
@@ -179,4 +179,4 @@ bool GetDelta(const bool& a, const bool& b) {
 }  // namespace internal
 }  // namespace testing
 }  // namespace monitoring
-}  // namespace tensorflow
+}  // namespace tsl
