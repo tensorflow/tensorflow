@@ -920,10 +920,11 @@ will be transformed into this functional operation
 ```
 ### `-tf-remove-unused-arguments`: Removes unused args from private functions & their callers.
 Removes arguments from functions that aren't used in the function
-body. Also adjusts the callers of said functions.
+body, outside of returns. Also adjusts the callers of said functions.
 
 For example, the code
   func.func @f(%arg0, %arg1) {
+    SomeOpThatUsesArg0(%arg0)
     return %arg0
   }
   ...
@@ -935,6 +936,9 @@ would be transformed into
   }
   ...
   call @x_1(x)
+
+Note that, in the above example, both args would be removed if there
+wasn't the "SomeOpThatUsesArg0(%arg0)" line.
 ### `-tf-remove-unused-while-results`: Removes unused results from tf.WhileRegion ops
 Removes unused results from `tf.WhileRegion` ops along with the defining
 ops in the body, if it is safe to do so.
