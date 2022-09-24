@@ -3,7 +3,6 @@
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(default_visibility = ["//tensorflow:internal"])
 
@@ -39,45 +38,6 @@ alias(
         "//conditions:default": "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
     }),
     visibility = ["//visibility:private"],
-)
-
-cc_library(
-    name = "stream_executor_cuda",
-    deps = [
-        ":stream_executor_no_cuda",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cudart_stub",
-    ] + select({
-        "//tensorflow:macos": ["IOKit"],
-        "//conditions:default": [],
-    }),
-)
-
-cc_library(
-    name = "stream_executor_rocm",
-    deps = [
-        ":stream_executor_no_cuda",
-        ":rocm",
-    ] + if_static(
-        ["//tensorflow/compiler/xla/stream_executor/rocm:all_runtime"],
-    ) + select({
-        "//conditions:default": [],
-    }),
-)
-
-cc_library(
-    name = "stream_executor_no_cuda",
-    deps = [
-        "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor:dnn",
-        "//tensorflow/compiler/xla/stream_executor:event",
-        "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
-        "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
-        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
-        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
-        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
-        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
-    ],
 )
 
 # Dummy stream executor cuda plugins.
@@ -186,15 +146,4 @@ cc_library(
     deps = [
         "@local_config_cuda//cuda:cudart",
     ],
-)
-
-cc_library(
-    name = "rocm",
-    data = [],
-    linkopts = select({
-        "//conditions:default": [
-            "-Wl,-rpath,../local_config_rocm/rocm/rocm/lib",
-        ],
-    }),
-    deps = [],
 )

@@ -1292,10 +1292,10 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
     ]) + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler",
-        "//tensorflow/tsl/platform/default/build_config:stream_executor_cuda",
+        "//tensorflow/compiler/xla/stream_executor/cuda:stream_executor_cuda",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler",
-        "//tensorflow/tsl/platform/default/build_config:stream_executor_rocm",
+        "//tensorflow/compiler/xla/stream_executor/rocm:stream_executor_rocm",
     ]) + internal_cuda_deps(),
 )
 

@@ -77,7 +77,7 @@ cc_library(
 cc_library(
     name = "rocm",
     deps = [
-        "//tensorflow/tsl/platform/default/build_config:rocm",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_rpath",
     ],
 )
 

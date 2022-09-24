@@ -723,10 +723,10 @@ cc_library(
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/tsl/platform/default/build_config:cudnn_plugin",
         "//tensorflow/tsl/platform/default/build_config:cufft_plugin",
-        "//tensorflow/tsl/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
+        "//tensorflow/compiler/xla/stream_executor/cuda:stream_executor_cuda",
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
-        "//tensorflow/tsl/platform/default/build_config:stream_executor_rocm",
+        "//tensorflow/compiler/xla/stream_executor/rocm:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
     ]) + select({
         ":is_xlir_enabled": [
@@ -2291,7 +2291,7 @@ tf_cc_test(
         "//tensorflow/core:test",
     ] + if_cuda_is_configured([
         ":buffer_comparator",
-        "//tensorflow/tsl/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
+        "//tensorflow/compiler/xla/stream_executor/cuda:stream_executor_cuda",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
     ]),
 )
