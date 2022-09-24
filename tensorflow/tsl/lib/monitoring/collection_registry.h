@@ -107,7 +107,7 @@ class CollectionRegistry {
 #include <utility>
 
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/tsl/lib/monitoring/collected_metrics.h"
+#include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/tsl/lib/monitoring/metric_def.h"
 #include "tensorflow/tsl/lib/monitoring/types.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -120,6 +120,12 @@ class CollectionRegistry {
 
 namespace tsl {
 namespace monitoring {
+// NOLINTBEGIN(misc-unused-using-decls)
+using tensorflow::monitoring::CollectedMetrics;
+using tensorflow::monitoring::MetricDescriptor;
+using tensorflow::monitoring::Point;
+using tensorflow::monitoring::PointSet;
+// NOLINTEND(misc-unused-using-decls)
 
 namespace internal {
 class Collector;

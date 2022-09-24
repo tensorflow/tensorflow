@@ -106,10 +106,10 @@ cc_library(
         "//tensorflow/core:__subpackages__",
     ],
     deps = [
-        ":collected_metrics",
         ":metric_def",
         ":types",
         "//tensorflow/core/framework:summary_proto_cc",
+        "//tensorflow/core/lib/monitoring:collected_metrics",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
@@ -121,105 +121,15 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "collected_metrics",
-    hdrs = [
-        "collected_metrics.h",
-    ],
-    deps = [
-        ":metric_def",
-        ":types",
-        "//tensorflow/core/framework:summary_proto_cc",
-    ],
-)
-
-cc_library(
-    name = "cell_reader",
-    testonly = 1,
-    hdrs = ["cell_reader.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":cell_reader-inl",
-        ":collected_metrics",
-        ":metric_def",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-cc_library(
-    name = "cell_reader-inl",
-    testonly = 1,
-    srcs = ["cell_reader-inl.cc"],
-    hdrs = ["cell_reader-inl.h"],
-    #visibility = ["//visibility:private"],
-    deps = [
-        ":collected_metrics",
-        ":collection_registry",
-        ":metric_def",
-        ":types",
-        "//tensorflow/tsl/lib/monitoring:test_utils",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:statusor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "percentile_sampler",
-    srcs = ["percentile_sampler.cc"],
-    hdrs = ["percentile_sampler.h"],
-    deps = [
-        ":collection_registry",
-        ":metric_def",
-        ":types",
-        "//tensorflow/tsl/platform",
-        "//tensorflow/tsl/platform:macros",
-        "//tensorflow/tsl/platform:mutex",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:thread_annotations",
-    ],
-)
-
-cc_library(
-    name = "test_utils",
-    testonly = 1,
-    srcs = ["test_utils.cc"],
-    hdrs = ["test_utils.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":types",
-        "//tensorflow/core/framework:summary_proto_cc",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "timed",
-    hdrs = [
-        "timed.h",
-    ],
-    deps = [
-        "//tensorflow/tsl/platform:env_time",
-        "//tensorflow/tsl/platform:types",
-    ],
-)
-
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "cell_reader.h",
         "collection_registry.h",
         "counter.h",
         "gauge.h",
         "metric_def.h",
-        "percentile_sampler.h",
         "sampler.h",
-        "timed.h",
         "types.h",
     ],
     visibility = [
@@ -231,16 +141,11 @@ filegroup(
 filegroup(
     name = "legacy_lib_monitoring_lib_headers",
     srcs = [
-        "cell_reader.h",
-        "collected_metrics.h",
         "collection_registry.h",
         "counter.h",
         "gauge.h",
         "metric_def.h",
-        "percentile_sampler.h",
         "sampler.h",
-        "test_utils.h",
-        "timed.h",
         "types.h",
     ],
     visibility = [
@@ -252,15 +157,11 @@ filegroup(
 filegroup(
     name = "legacy_lib_monitoring_all_headers",
     srcs = [
-        "cell_reader.h",
-        "collected_metrics.h",
         "collection_registry.h",
         "counter.h",
         "gauge.h",
         "metric_def.h",
-        "percentile_sampler.h",
         "sampler.h",
-        "test_utils.h",
         "types.h",
     ],
     visibility = [

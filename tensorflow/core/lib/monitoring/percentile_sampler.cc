@@ -13,11 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tsl/lib/monitoring/percentile_sampler.h"
+#include "tensorflow/core/lib/monitoring/percentile_sampler.h"
 
 #include <algorithm>
-#include <cmath>
-#include <vector>
 
 // We replace this implementation with a null implementation for mobile
 // platforms.
@@ -25,7 +23,7 @@ limitations under the License.
 // Do nothing.
 #else
 
-namespace tsl {
+namespace tensorflow {
 namespace monitoring {
 
 void PercentileSamplerCell::Add(double sample) {
@@ -98,6 +96,6 @@ std::vector<PercentileSamplerCell::Sample> PercentileSamplerCell::GetSamples(
 }
 
 }  // namespace monitoring
-}  // namespace tsl
+}  // namespace tensorflow
 
 #endif  // IS_MOBILE_PLATFORM

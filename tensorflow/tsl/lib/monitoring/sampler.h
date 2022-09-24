@@ -28,7 +28,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/tsl/lib/monitoring/metric_def.h"
+#include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/types.h"
@@ -36,6 +36,8 @@ limitations under the License.
 namespace tsl {
 namespace monitoring {
 using tensorflow::HistogramProto;
+using tensorflow::monitoring::MetricDef;
+using tensorflow::monitoring::MetricKind;
 // SamplerCell which has a null implementation.
 class SamplerCell {
  public:
