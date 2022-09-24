@@ -106,7 +106,6 @@ class Gauge {
 
 namespace tsl {
 namespace monitoring {
-using tensorflow::monitoring::MetricKind;
 // GaugeCell stores each value of a gauge.
 //
 // A cell can be passed off to a module which may repeatedly update it without

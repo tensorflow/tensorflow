@@ -41,6 +41,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/monitoring:timed",
     ],
 )
 
@@ -53,6 +54,7 @@ cc_library(
         ":cell_reader-inl",
         ":collected_metrics",
         ":metric_def",
+        "//tensorflow/tsl/lib/monitoring:cell_reader",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -60,7 +62,6 @@ cc_library(
 cc_library(
     name = "cell_reader-inl",
     testonly = 1,
-    srcs = ["cell_reader-inl.cc"],
     hdrs = ["cell_reader-inl.h"],
     visibility = ["//visibility:private"],
     deps = [
@@ -72,6 +73,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/lib/monitoring:cell_reader-inl",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -85,6 +87,7 @@ cc_library(
         ":metric_def",
         ":types",
         "//tensorflow/core/framework:summary_proto_cc",
+        "//tensorflow/tsl/lib/monitoring:collected_metrics",
     ],
 )
 
@@ -178,7 +181,6 @@ cc_library(
 
 cc_library(
     name = "percentile_sampler",
-    srcs = ["percentile_sampler.cc"],
     hdrs = ["percentile_sampler.h"],
     deps = [
         ":collection_registry",
@@ -189,13 +191,13 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/tsl/lib/monitoring:percentile_sampler",
     ],
 )
 
 cc_library(
     name = "test_utils",
     testonly = 1,
-    srcs = ["test_utils.cc"],
     hdrs = ["test_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -203,6 +205,7 @@ cc_library(
         "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/lib/monitoring:test_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],
