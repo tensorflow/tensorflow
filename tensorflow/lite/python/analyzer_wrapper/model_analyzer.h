@@ -16,8 +16,6 @@ limitations under the License.
 #define TENSORFLOW_LITE_PYTHON_ANALYZER_WRAPPER_MODEL_ANALYZER_H_
 
 #include <string>
-#include <unordered_map>
-#include <vector>
 
 namespace tflite {
 
@@ -26,13 +24,6 @@ namespace tflite {
 std::string model_analyzer(const std::string& model_file_or_buffer,
                            bool input_is_filepath,
                            bool check_gpu_compatibility);
-
-// Returns a brief dump of the given TFLite file or model for each delegate
-// specified in checked_delegates.
-std::string model_analyzer(
-    const std::vector<std::string>& checked_delegates,
-    const std::unordered_map<std::string, std::string>& delegate_configs,
-    const std::string& model_file_or_buffer, bool input_is_filepath);
 
 }  // namespace tflite
 
