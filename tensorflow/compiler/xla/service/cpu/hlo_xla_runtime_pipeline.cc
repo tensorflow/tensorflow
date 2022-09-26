@@ -66,10 +66,9 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
   return options;
 }
 
-void AddBufferizationPasses(OpPassManager& pm) {
-  // Rewrite init_tensor ops to alloc_tensor ops.
+void AddSparsificationPasses(OpPassManager& pm) {
+  pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
   pm.addNestedPass<FuncOp>(mlir::createLinalgInitTensorToAllocTensorPass());
-  // Run One-Shot Bufferize.
   pm.addPass(mlir::bufferization::createTensorCopyInsertionPass(
       GetBufferizationOptions()));
   pm.addPass(mlir::createSparsificationPass());
@@ -150,7 +149,8 @@ void CreateDefaultHloXlaRuntimePipeline(OpPassManager& pm) {
   // anything.
   pm.addPass(mlir::createCanonicalizerPass());
 
-  AddBufferizationPasses(pm);
+  // Convert sparse tensors.
+  AddSparsificationPasses(pm);
 
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
