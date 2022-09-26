@@ -659,7 +659,7 @@ std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation) {
   return out;
 }
 
-std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr) {
+static std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kCopy) {
     return std::nullopt;
   }
@@ -674,10 +674,38 @@ std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr) {
   return std::nullopt;
 }
 
+// Find 021 transpose in logical + physical transposition.
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kTranspose) {
+    return std::nullopt;
+  }
+
+  // TODO(cheshire): avoid code duplication.
+  if (std::optional<Vector3> tr = ShapeUtil::FindLogicalTranspose021(
+          instr.operand(0)->shape(), instr.shape(), instr.dimensions())) {
+    if (tr->at(1) >= kMinDimensionToTransposeTiled &&
+        tr->at(2) >= kMinDimensionToTransposeTiled) {
+      return tr;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr) {
+  if (std::optional<Vector3> d1 = FindTiledTranspose(instr)) {
+    return d1;
+  }
+  if (std::optional<Vector3> d2 = FindTiledLogicalTranspose(instr)) {
+    return d2;
+  }
+  return std::nullopt;
+}
+
 bool HasAnyTiledTransposeRoot(HloComputation* computation) {
-  return absl::c_any_of(
-      GetFusionRoots(computation),
-      [&](const HloInstruction* instr) { return FindTiledTranspose(*instr); });
+  return absl::c_any_of(GetFusionRoots(computation),
+                        [&](const HloInstruction* instr) {
+                          return FindAnyTiledTranspose(*instr);
+                        });
 }
 
 bool HasAnyUnnestedReductionRoot(HloComputation* computation) {

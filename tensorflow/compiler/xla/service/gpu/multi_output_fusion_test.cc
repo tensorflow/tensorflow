@@ -1352,6 +1352,57 @@ ENTRY main {
 )");
 }
 
+TEST_F(TransposeMultiOutputFusionTest, MultipleTransposes) {
+  const char* hlo = R"(
+HloModule module
+
+fused_computation {
+  param_0.1 = f32[16,32]{1,0} parameter(0)
+  s.1 = f32[16,32]{1,0} sqrt(param_0.1)
+  ROOT c.1 = f32[32,16]{1,0} transpose(s.1), dimensions={1,0}
+}
+
+ENTRY main {
+  p = f32[16,32]{1,0} parameter(0)
+  fusion = f32[32,16]{1,0} fusion(p), kind=kInput, calls=fused_computation
+  c1 = f32[32,16]{1,0} transpose(p), dimensions={1,0}
+  ROOT t = (f32[32,16]{1,0}, f32[32,16]{1,0}) tuple(fusion, c1)
+}
+  )";
+
+  CheckGpuMultiOutputFusion(hlo, R"(
+// CHECK: %fused_computation (param_0.1: f32[16,32]) -> (f32[32,16], f32[32,16]) {
+// CHECK-NEXT:   %param_0.1 = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
+// CHECK-NEXT:   %c.1 = f32[32,16]{1,0} transpose(%s.1), dimensions={1,0}
+// CHECK-NEXT:   %c1.1 = f32[32,16]{1,0} transpose(%param_0.1), dimensions={1,0}
+// CHECK-NEXT:   ROOT %tuple = (f32[32,16]{1,0}, f32[32,16]{1,0}) tuple(%c.1, %c1.1)
+// CHECK-NEXT: }
+// CHECK: %fusion = (f32[32,16]{1,0}, f32[32,16]{1,0}) fusion(%p), kind=kInput, calls=%fused_computation
+)");
+}
+
+TEST_F(TransposeMultiOutputFusionTest, CopyAndTranspose) {
+  const char* hlo = R"(
+HloModule module
+
+fused_computation {
+  param_0.1 = f32[16,32]{1,0} parameter(0)
+  s.1 = f32[16,32]{1,0} sqrt(param_0.1)
+  ROOT c.1 = f32[16,32]{0,1} copy(s.1)
+}
+
+ENTRY main {
+  p = f32[16,32]{1,0} parameter(0)
+  fusion = f32[16,32]{0,1} fusion(p), kind=kInput, calls=fused_computation
+  c1 = f32[32,16]{1,0} transpose(p), dimensions={1,0}
+  ROOT t = (f32[16,32]{0,1}, f32[32,16]{1,0}) tuple(fusion, c1)
+}
+  )";
+
+  CheckGpuMultiOutputFusion(hlo, std::nullopt);
+}
+
 TEST_F(TransposeMultiOutputFusionTest, MultipleCopiesDifferentTypes) {
   const char* hlo = R"(
 HloModule module

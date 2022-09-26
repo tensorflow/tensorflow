@@ -1715,11 +1715,12 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
 Status IrEmitterUnnested::EmitUnnestedTranspose(
     mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation) {
   std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fused_computation);
-  HloInstruction* first_transpose = *absl::c_find_if(
-      hlo_roots,
-      [](HloInstruction* instr) { return FindTiledTranspose(*instr); });
 
-  std::optional<Vector3> dims = FindTiledTranspose(*first_transpose);
+  // TODO(cheshire): avoid duplication of FindTiledTranspose function, is it
+  // possible?
+  std::optional<Vector3> dims = FindAnyTiledTranspose(**absl::c_find_if(
+      hlo_roots,
+      [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
 
   // TODO(cheshire): have a more robust way of checking this.
   CHECK(dims.has_value());
@@ -4202,14 +4203,11 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
     absl::Span<const llvm_ir::IrArray> output_arrays,
     const TilingScheme& tiling_scheme,
     const LaunchDimensions& launch_dimensions) {
-  std::string name = GetIrNameFromLoc(fusion.getLoc());
-  llvm::Type* index_type = GetIndexTypeForKernel(
-      fusion.getOperation(), launch_dimensions.launch_bound(), &b_);
 
   std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion_hlo);
   HloInstruction* first_transpose = *absl::c_find_if(
       hlo_roots,
-      [](HloInstruction* instr) { return FindTiledTranspose(*instr); });
+      [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); });
   const Shape& out_shape = first_transpose->shape();
   const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
 
@@ -4218,7 +4216,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
   //  -> EITHER it's a kCopy: S{L} -> S{L'}
   //  -> OR it's an elementwise op of shape S{L}
   for (HloInstruction* root : hlo_roots) {
-    if (FindTiledTranspose(*root)) {
+    if (FindAnyTiledTranspose(*root)) {
       CHECK(ShapeUtil::EqualIgnoringElementType(transpose_in_shape,
                                                 root->operand(0)->shape()));
       CHECK(ShapeUtil::EqualIgnoringElementType(out_shape, root->shape()));
@@ -4244,7 +4242,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
 
   absl::flat_hash_map<HloInstruction*, llvm::GlobalVariable*> tiles;
   for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
-    if (FindTiledTranspose(*root)) {
+    if (FindAnyTiledTranspose(*root)) {
       tiles[root] =
           AllocateShared(tiling_scheme,
                          llvm_ir::PrimitiveTypeToIrType(
@@ -4275,7 +4273,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
           for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
             IrArray::Index input_index = GetUnnormalizedIndex(
                 index, transpose_in_shape, &b_, tiling_scheme.GetDimsInElems());
-            if (FindTiledTranspose(*root)) {
+            if (FindAnyTiledTranspose(*root)) {
               llvm_ir::ElementGenerator input_gen =
                   *fused_emitter.GetGenerator(*root->operand(0));
               llvm::Value* value = *input_gen(input_index);
@@ -4311,7 +4309,7 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
             const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
             llvm::Value* x_loc, llvm::Value* /*x_iter_num*/) {
           for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
-            if (FindTiledTranspose(*root)) {
+            if (FindAnyTiledTranspose(*root)) {
               IrArray::Index untiled_index = GetUnnormalizedIndex(
                   index, root->shape(), &b_,
                   Permute(tiling_scheme.GetDimsInElems(), permutation));
@@ -4328,6 +4326,8 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
         });
   };
 
+  llvm::Type* index_type = GetIndexTypeForKernel(
+      fusion.getOperation(), launch_dimensions.launch_bound(), &b_);
   return EmitTilingKernel(tiling_scheme, index_type, tile_generator).status();
 }
 
