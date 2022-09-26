@@ -1108,6 +1108,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (all_gather_start->channel_id().has_value())
         attributes.push_back(
             ConvertChannelHandle(all_gather_start->channel_id().value()));
+      if (all_gather_start->use_global_device_ids())
+        attributes.push_back(ConvertUseGlobalDeviceIds());
 
       return ImportOldStyleAsyncStart<mlir::mhlo::AllGatherOp>(
           attributes, operands, loc, result_type, func_builder, "all_gather_",

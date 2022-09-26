@@ -22,6 +22,7 @@ HloModule foobar
   // CHECK-SAME: all_gather_dim = 1 : i64
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  // CHECK: use_global_device_ids
 
 // CHECK:  func @main(%arg0: tensor<f32>) -> tensor<f32> {
 ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
@@ -34,7 +35,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   input = f32[128,32] parameter(0)
   // CHECK-NEXT:  [[AG_START:%.*]] = "mhlo.async_start"([[INPUT]])
   // CHECK-SAME: called_computation = [[AG_GENSYM]], execution_thread = "main"
-  ag-start = (f32[128,32], f32[128,128]) all-gather-start(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}
+  ag-start = (f32[128,32], f32[128,128]) all-gather-start(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}, use_global_device_ids=true
   // CHECK-NEXT:  "mhlo.async_done"([[AG_START]])
   // CHECK-SAME: called_computation = [[AG_GENSYM]], execution_thread = "main"
   ROOT ag-done = f32[128,128] all-gather-done(ag-start)
