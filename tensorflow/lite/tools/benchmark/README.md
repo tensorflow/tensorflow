@@ -32,7 +32,7 @@ and the following optional parameters:
     The number of warmup runs to do before starting the benchmark.
 *   `num_runs`: `int` (default=50) \
     The number of runs. Increase this to reduce variance.
-*   `max_secs` : float (default=150) \
+*   `max_secs` : float (default=150.0) \
     The maximum number of seconds the benchmark will run before being 
     terminated.
 *   `run_delay`: `float` (default=-1.0) \
