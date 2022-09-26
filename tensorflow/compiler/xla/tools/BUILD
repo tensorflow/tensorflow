@@ -431,3 +431,13 @@ cc_library(
     tags = ["nofixdeps"],
     deps = [],
 )
+
+tf_cc_binary(
+    name = "compute_cost",
+    srcs = ["compute_cost.cc"],
+    deps = [
+        ":hlo_module_loader",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/tsl/platform:platform_port",
+    ],
+)
