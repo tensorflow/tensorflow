@@ -1145,6 +1145,10 @@ class TrtGraphConverterV2(object):
       raise ValueError(
           ("profile_strategy '{}' is not supported. It should be one of {}"
           ).format(strategy, supported_profile_strategies()))
+    if strategy is "ImplicitBatchModeCompatible":
+      logging.warn("ImplicitBatchModeCompatible strategy is deprecated, and"
+          " using it may result in errors during engine building. Please"
+          " consider using a different profile strategy.")
 
   @deprecation.deprecated_args(None,
                                "Use individual converter parameters instead",
