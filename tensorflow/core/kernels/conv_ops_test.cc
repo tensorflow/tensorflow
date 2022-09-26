@@ -798,10 +798,25 @@ class FusedConv2DOpTest : public OpsTestBase {
 
     Tensor side_input(dtype);
     if (has_extra_parameters) {
-      // Create side_input.
-      // TODO(b/249085985): side_input should use the output height/width.
+      auto calculate_convolve_output_dim =
+          [](int input_dim, int filter_dim, int stride,
+             const std::string& padding) -> int {
+        if (padding == "VALID") {
+          return (input_dim - filter_dim + stride) / stride;
+        } else if (padding == "SAME") {
+          return (input_dim + stride - 1) / stride;
+        } else {
+          return -1;  // Not supported
+        }
+      };
+
+      // Create side_input
+      int oh = calculate_convolve_output_dim(h, kh, stride, padding);
+      ASSERT_NE(oh, -1);
+      int ow = calculate_convolve_output_dim(w, kw, stride, padding);
+      ASSERT_NE(ow, -1);
       side_input =
-          Tensor(dtype, ShapeFromFormat(FORMAT_NCHW_VECT_C, n, h, w, oc));
+          Tensor(dtype, ShapeFromFormat(FORMAT_NCHW_VECT_C, n, oh, ow, oc));
       side_input.flat<T>() = side_input.flat<T>().setConstant(0);
     }
 
