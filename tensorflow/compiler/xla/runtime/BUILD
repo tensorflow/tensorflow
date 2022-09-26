@@ -291,6 +291,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "results_test",
+    srcs = ["results_test.cc"],
+    deps = [
+        ":logical_result",
+        ":results",
+        ":types",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "runtime",
     hdrs = ["runtime.h"],
