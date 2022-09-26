@@ -93,43 +93,45 @@ void CustomValidationEmbedder::CreateTensorsFrom(
 }
 
 MinibenchmarkStatus CustomValidationEmbedder::BuildModel(
-    flatbuffers::FlatBufferBuilder& fbb) {
-  if (main_model_obj_.subgraphs[0]->inputs.size() != custom_input_.size()) {
+    const Model& main_model, flatbuffers::FlatBufferBuilder& fbb) {
+  ModelT main_model_obj;
+  main_model.UnPackTo(&main_model_obj);
+  if (main_model_obj.subgraphs[0]->inputs.size() != custom_input_.size()) {
     TF_LITE_REPORT_ERROR(
         error_reporter_,
         "Unexpected custom_input size. Expected: %d. Actual: %d.",
-        main_model_obj_.subgraphs[0]->inputs.size(), custom_input_.size());
+        main_model_obj.subgraphs[0]->inputs.size(), custom_input_.size());
     return kMinibenchmarkValidationSubgraphBuildFailed;
   }
 
   // Copy all the data from main_model.
   std::vector<flatbuffers::Offset<Metadata>> metadata;
-  metadata.reserve(main_model_obj_.metadata.size());
-  for (auto& iter : main_model_obj_.metadata) {
+  metadata.reserve(main_model_obj.metadata.size());
+  for (auto& iter : main_model_obj.metadata) {
     metadata.push_back(CreateMetadata(fbb, iter.get()));
   }
 
   std::vector<flatbuffers::Offset<SignatureDef>> signature_defs;
-  signature_defs.reserve(main_model_obj_.signature_defs.size());
-  for (auto& iter : main_model_obj_.signature_defs) {
+  signature_defs.reserve(main_model_obj.signature_defs.size());
+  for (auto& iter : main_model_obj.signature_defs) {
     signature_defs.push_back(CreateSignatureDef(fbb, iter.get()));
   }
 
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs;
-  subgraphs.reserve(main_model_obj_.subgraphs.size());
-  for (auto& iter : main_model_obj_.subgraphs) {
+  subgraphs.reserve(main_model_obj.subgraphs.size());
+  for (auto& iter : main_model_obj.subgraphs) {
     subgraphs.push_back(CreateSubGraph(fbb, iter.get()));
   }
 
   std::vector<flatbuffers::Offset<Buffer>> buffers;
-  buffers.reserve(main_model_obj_.buffers.size());
-  for (auto& iter : main_model_obj_.buffers) {
+  buffers.reserve(main_model_obj.buffers.size());
+  for (auto& iter : main_model_obj.buffers) {
     buffers.push_back(CreateBuffer(fbb, iter.get()));
   }
 
   std::vector<flatbuffers::Offset<OperatorCode>> operator_codes;
-  operator_codes.reserve(main_model_obj_.operator_codes.size());
-  for (auto& iter : main_model_obj_.operator_codes) {
+  operator_codes.reserve(main_model_obj.operator_codes.size());
+  for (auto& iter : main_model_obj.operator_codes) {
     operator_codes.push_back(CreateOperatorCode(fbb, iter.get()));
   }
 
@@ -141,13 +143,13 @@ MinibenchmarkStatus CustomValidationEmbedder::BuildModel(
   // Input and output tensors.
   std::vector<flatbuffers::Offset<Tensor>> tensors;
   std::vector<int32_t> input;
-  CreateTensorsFrom(*main_model_.subgraphs()->Get(0),
-                    main_model_obj_.subgraphs[0]->inputs, &custom_input_, fbb,
+  CreateTensorsFrom(*main_model.subgraphs()->Get(0),
+                    main_model_obj.subgraphs[0]->inputs, &custom_input_, fbb,
                     input, buffers, tensors);
 
   std::vector<int32_t> output;
-  CreateTensorsFrom(*main_model_.subgraphs()->Get(0),
-                    main_model_obj_.subgraphs[0]->outputs, nullptr, fbb, output,
+  CreateTensorsFrom(*main_model.subgraphs()->Get(0),
+                    main_model_obj.subgraphs[0]->outputs, nullptr, fbb, output,
                     buffers, tensors);
   auto input_offset = fbb.CreateVector(input);
   auto output_offset = fbb.CreateVector(output);
@@ -163,7 +165,7 @@ MinibenchmarkStatus CustomValidationEmbedder::BuildModel(
   fbb.Finish(
       CreateModel(fbb, kModelSchemaVersion, fbb.CreateVector(operator_codes),
                   fbb.CreateVector(subgraphs),
-                  fbb.CreateString(main_model_obj_.description),
+                  fbb.CreateString(main_model_obj.description),
                   fbb.CreateVector(buffers),
                   /* metadata_buffer */ 0, fbb.CreateVector(metadata),
                   fbb.CreateVector(signature_defs)),

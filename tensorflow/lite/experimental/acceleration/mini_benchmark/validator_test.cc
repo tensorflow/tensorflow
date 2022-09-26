@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration.pb.h"
@@ -110,9 +109,11 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithCustomValidation) {
   // Create model with input.
   FlatBufferBuilder model_with_input;
   CustomValidationEmbedder embedder(
-      *plain_model_loader_->GetModel()->GetModel(), batch_size,
+      batch_size,
       {std::vector<uint8_t>(batch_size * model_input_byte_size, 1)});
-  EXPECT_EQ(embedder.BuildModel(model_with_input), kMinibenchmarkSuccess);
+  EXPECT_EQ(embedder.BuildModel(*plain_model_loader_->GetModel()->GetModel(),
+                                model_with_input),
+            kMinibenchmarkSuccess);
   // Dump the model with input to temp.
   std::string model_path = MiniBenchmarkTestHelper::DumpToTempFile(
       "mobilenet_quant_with_input.tflite", model_with_input.GetBufferPointer(),
@@ -154,9 +155,10 @@ TEST_F(ValidatorTest, NoValidationSubgraph) {
 TEST_F(ValidatorTest, NoValidationInputData) {
   ASSERT_EQ(plain_model_loader_->Init(), kMinibenchmarkSuccess);
   FlatBufferBuilder model_with_input;
-  CustomValidationEmbedder embedder(
-      *plain_model_loader_->GetModel()->GetModel(), 1, {{}});
-  EXPECT_EQ(embedder.BuildModel(model_with_input), kMinibenchmarkSuccess);
+  CustomValidationEmbedder embedder(1, {{}});
+  EXPECT_EQ(embedder.BuildModel(*plain_model_loader_->GetModel()->GetModel(),
+                                model_with_input),
+            kMinibenchmarkSuccess);
   std::string model_path = MiniBenchmarkTestHelper::DumpToTempFile(
       "mobilenet_quant_with_input.tflite", model_with_input.GetBufferPointer(),
       model_with_input.GetSize());

@@ -35,8 +35,23 @@ limitations under the License.
 
 namespace tflite {
 namespace acceleration {
-
+namespace {
 using ::flatbuffers::FlatBufferBuilder;
+
+std::unique_ptr<FlatBufferBuilder> CopyModel(
+    const flatbuffers::FlatBufferBuilder* input) {
+  if (!input) {
+    return nullptr;
+  }
+  ModelT model_obj;
+  GetModel(input->GetBufferPointer())->UnPackTo(&model_obj);
+  auto copy = std::make_unique<FlatBufferBuilder>();
+  copy->Finish(CreateModel(*copy, &model_obj));
+
+  return copy;
+}
+
+}  // namespace
 
 MinibenchmarkStatus ValidatorRunnerImpl::Init() {
   std::unique_ptr<ModelLoader> model_loader =
@@ -52,6 +67,18 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
     TF_LITE_REPORT_ERROR(error_reporter_, "Could not load model: %d",
                          static_cast<int>(status));
     return status;
+  }
+
+  if (custom_validation_embedder_) {
+    model_with_custom_input_ = std::make_unique<FlatBufferBuilder>();
+    status = custom_validation_embedder_->BuildModel(
+        *model_loader->GetModel()->GetModel(), *model_with_custom_input_);
+    if (status != kMinibenchmarkSuccess) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Failed to embed golden input to model: %d",
+                           static_cast<int>(status));
+      return status;
+    }
   }
 
   status = nnapi_helper_.Load();
@@ -95,8 +122,10 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
                                validation_entrypoint =
                                    validation_entrypoint_helper_
                                        .LoadEntrypoint(),
-                               nnapi_sl_path =
-                                   nnapi_helper_.nnapi_sl_path()]() {
+                               nnapi_sl_path = nnapi_helper_.nnapi_sl_path(),
+                               model_with_custom_input =
+                                   CopyModel(model_with_custom_input_.get()),
+                               timeout_ms = timeout_ms_]() {
     FileLock lock(storage_path + ".parent_lock");
     if (!lock.TryLock()) {
       return;
@@ -109,7 +138,7 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
       TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Run validation with entry point '%s'",
                       validation_entrypoint_name);
       ProcessRunner runner(data_directory_path, validation_entrypoint_name,
-                           validation_entrypoint);
+                           validation_entrypoint, timeout_ms);
       int exitcode = 0;
       int signal = 0;
       MinibenchmarkStatus status = runner.Init();
@@ -122,8 +151,12 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
                 BenchmarkEventType_START, /* result */ 0, /* error */ 0,
                 Validator::BootTimeMicros(), Validator::WallTimeMicros()));
         if (status == kMinibenchmarkSuccess) {
-          std::vector<std::string> args{model_path, storage_path,
-                                        data_directory_path};
+          std::vector<std::string> args;
+          if (!model_with_custom_input) {
+            args.push_back(model_path);
+          }
+          args.push_back(storage_path);
+          args.push_back(data_directory_path);
           if (!nnapi_sl_path.empty() &&
               tflite_settings_obj.delegate == tflite::Delegate_NNAPI) {
             TFLITE_LOG_PROD(
@@ -133,7 +166,8 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
             args.push_back(nnapi_sl_path);
           }
           std::string output;
-          status = runner.Run(nullptr, args, &output, &exitcode, &signal);
+          status = runner.Run(model_with_custom_input.get(), args, &output,
+                              &exitcode, &signal);
         }
       }
       if (status != kMinibenchmarkSuccess) {

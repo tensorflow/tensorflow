@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -53,20 +52,17 @@ namespace acceleration {
 // custom_input[i] will be mapped to main_model.input[i].
 class CustomValidationEmbedder {
  public:
-  CustomValidationEmbedder(const Model& main_model, int batch_size,
+  CustomValidationEmbedder(int batch_size,
                            std::vector<std::vector<uint8_t>> custom_input)
-      : main_model_(main_model),
-        batch_size_(batch_size),
-        custom_input_(std::move(custom_input)) {
-    main_model.UnPackTo(&main_model_obj_);
-  }
+      : batch_size_(batch_size), custom_input_(std::move(custom_input)) {}
 
   // Move only.
   CustomValidationEmbedder(CustomValidationEmbedder&&) = default;
   CustomValidationEmbedder& operator=(CustomValidationEmbedder&&) = default;
 
   // Build the final model with main_model and validation subgraph.
-  MinibenchmarkStatus BuildModel(flatbuffers::FlatBufferBuilder& fbb);
+  MinibenchmarkStatus BuildModel(const Model& main_model,
+                                 flatbuffers::FlatBufferBuilder& fbb);
 
  private:
   // Helper function to create tensors in validation graph based on primary
@@ -83,9 +79,6 @@ class CustomValidationEmbedder {
                          std::vector<flatbuffers::Offset<Buffer>>& buffers,
                          std::vector<flatbuffers::Offset<Tensor>>& tensors);
 
-  const Model& main_model_;
-  // Same as main_model_ with objective API.
-  ModelT main_model_obj_;
   int batch_size_;
   std::vector<std::vector<uint8_t>> custom_input_;
   ErrorReporter* error_reporter_ = tflite::DefaultErrorReporter();
