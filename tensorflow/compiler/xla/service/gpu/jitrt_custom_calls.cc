@@ -52,13 +52,12 @@
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/tsl/platform/human_readable_json.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
@@ -110,6 +109,7 @@ void PopulateLmhloToXlaAttrEncoding(CustomCallAttrEncodingSet& encoding) {
             return ConvertConvActivationMode(value).value();
           });
 
+#if GOOGLE_CUDA
   encoding.Add<EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
                                 lmhlo_gpu::CublasLtMatmulEpilogue,
                                 se::cuda::BlasLt::Epilogue>>(
@@ -117,6 +117,7 @@ void PopulateLmhloToXlaAttrEncoding(CustomCallAttrEncodingSet& encoding) {
           -> se::cuda::BlasLt::Epilogue {
         return cublas_lt::AsBlasLtEpilogue(value).value();
       });
+#endif  // GOOGLE_CUDA
 
   encoding
       .Add<EnumAttrEncoding<mhlo::FftTypeAttr, mhlo::FftType, se::fft::Type>>(
@@ -412,9 +413,9 @@ static bool Gemm(runtime::ExecutionContext* ctx, void** args, void** attrs,
 }
 
 // -------------------------------------------------------------------------- //
+#if GOOGLE_CUDA
 
 // TODO(ezhulenev): Cache matmul plans similar to GemmConfig for Gemm.
-
 namespace {
 struct CublasLtMatmul {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
@@ -524,6 +525,7 @@ static bool CublasLtMatmulBias(runtime::ExecutionContext* ctx, void** args,
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
+#endif  // GOOGLE_CUDA
 // -------------------------------------------------------------------------- //
 
 // TODO(ezhulenev): We need to find a better way to pass structured attributes
@@ -1228,7 +1230,7 @@ absl::Status Cholesky::operator()(
 
   return absl::OkStatus();
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return failure();
+  return absl::InternalError("Not implemented without Gpu");
 #endif
 }
 
@@ -1372,7 +1374,7 @@ absl::Status TriangularSolve::operator()(
 
   return absl::OkStatus();
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return failure();
+  return absl::InternalError("Not implemented without Gpu");
 #endif
 }
 
@@ -1382,6 +1384,8 @@ absl::Status TriangularSolve::operator()(
 // Longer term all Xla custom calls probably should be directly implemented as
 // JitRt custom calls. However for smooth migration from Thunks to JitRt we have
 // to seamlessly support all current XLA users.
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace {
 struct XlaCustomCall {
   using Stream = se::gpu::GpuStreamHandle;
@@ -1482,6 +1486,8 @@ static bool CustomCall(runtime::ExecutionContext* ctx, void** args,
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // ------------------------------------------------------------------------- //
 
@@ -2071,10 +2077,13 @@ static bool PartitionId(runtime::ExecutionContext* ctx, void** args,
 
 // Populate mapping from XLA (SE) enums/structs type id to symbol names.
 void PopulateXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
-  registry.Register<Tagged<se::dnn::ActivationMode>>(
-      "__type_id_se_dnn_activation");
+#if GOOGLE_CUDA
   registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
       "__type_id_se_cublas_lt_epilogue");
+#endif  // GOOGLE_CUDA
+
+  registry.Register<Tagged<se::dnn::ActivationMode>>(
+      "__type_id_se_dnn_activation");
   registry.Register<Tagged<se::fft::Type>>("__type_id_se_fft_type");
 
   registry.Register<Tagged<DotDimensionNumbers>>(
@@ -2094,9 +2103,16 @@ void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);
   registry.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
   registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);
+
+#if GOOGLE_CUDA
   registry.Register("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
   registry.Register("xla.gpu.cublas.lt.matmul.bias",
                     &xla::gpu::CublasLtMatmulBias);
+#endif  // GOOGLE_CUDA
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  registry.Register("xla.gpu.custom_call", &xla::gpu::CustomCall);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
   registry.Register(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
@@ -2118,7 +2134,6 @@ void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.memset", &MemsetFn);
   registry.Register("xla.gpu.infeed", &xla::gpu::Infeed);
   registry.Register("xla.gpu.outfeed", &xla::gpu::Outfeed);
-  registry.Register("xla.gpu.custom_call", &xla::gpu::CustomCall);
 
   // Collective operations.
   registry.Register("xla.gpu.all_gather", &xla::gpu::AllGather);

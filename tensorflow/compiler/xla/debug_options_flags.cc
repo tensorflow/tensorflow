@@ -724,7 +724,7 @@ static void AllocateFlags() {
       "xla_gpu_enable_xla_runtime_executable",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
       flag_values->xla_gpu_enable_xla_runtime_executable(),
-      "Whether to enable XLIR to compile gpu programs to XLA Runtime."));
+      "Whether to enable XLA runtime for XLA:GPU backend"));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_nccl_termination_timeout_seconds",
       int64_setter_for(
