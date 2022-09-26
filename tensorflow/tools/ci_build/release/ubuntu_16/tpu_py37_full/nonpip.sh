@@ -41,21 +41,32 @@ TPU_NAME="kokoro-tpu-2vm-${RANDOM}"
 TPU_PROJECT="tensorflow-testing-tpu"
 TPU_ZONES="us-central1-b:v2-8 us-central1-c:v2-8 us-central1-b:v3-8 us-central1-a:v3-8"
 
-for TPU_ZONE_WITH_TYPE in $TPU_ZONES; do
-  TPU_ZONE="$(echo "${TPU_ZONE_WITH_TYPE}" | cut -d : -f 1)"
-  TPU_TYPE="$(echo "${TPU_ZONE_WITH_TYPE}" | cut -d : -f 2)"
-  if gcloud compute tpus create "$TPU_NAME" \
-    --zone="${TPU_ZONE}" \
-    --accelerator-type="${TPU_TYPE}" \
-    --version=nightly; then
-    TPU_CREATED="true"
-    break
+RETRY_COUNTER=0
+RETRY_LIMIT=60 # minutes
+while [[ ! "${TPU_CREATED}" == "true" ]]; do
+  for TPU_ZONE_WITH_TYPE in $TPU_ZONES; do
+    TPU_ZONE="$(echo "${TPU_ZONE_WITH_TYPE}" | cut -d : -f 1)"
+    TPU_TYPE="$(echo "${TPU_ZONE_WITH_TYPE}" | cut -d : -f 2)"
+    if gcloud compute tpus create "$TPU_NAME" \
+      --zone="${TPU_ZONE}" \
+      --accelerator-type="${TPU_TYPE}" \
+      --version=nightly; then
+      TPU_CREATED="true"
+      break
+    fi
+  done
+
+  # retry for $RETRY_LIMIT minutes if resources are not available
+  if [[ ! "${TPU_CREATED}" == "true" ]]; then
+    ((RETRY_COUNTER++))
+    if [[ "$RETRY_COUNTER" -eq "$RETRY_LIMIT" ]]; then
+      exit 1
+    fi
+    sleep 1m
   fi
 done
-
-if [[ ! "${TPU_CREATED}" == "true" ]]; then
-  exit 1
-fi
+# TODO(juanantoniomc): Delete this log once we know the optimal sleep time.
+echo "Total retry time: $RETRY_COUNTER minutes."
 
 # Clean up script uses these files.
 echo "${TPU_NAME}" > "${KOKORO_ARTIFACTS_DIR}/tpu_name"
