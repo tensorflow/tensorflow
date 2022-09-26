@@ -842,7 +842,6 @@ pybind_extension(
         "//tensorflow/compiler/xla/pjrt/distributed:service",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
         # Do NOT remove this dependency. The XLA Python extension must not
         # depend on any part of TensorFlow at runtime, **including**
         # libtensorflow_framework.so. The XLA module is deployed self-contained
@@ -860,7 +859,10 @@ pybind_extension(
         ":link_gpu_plugin": ["//tensorflow/compiler/xla/service:gpu_plugin"],
         "//conditions:default": [],
     }) + select({
-        ":tpu_enabled": ["//tensorflow/compiler/xla/pjrt:tpu_client"],
+        ":tpu_enabled": [
+            "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
+            "//tensorflow/compiler/xla/pjrt:tpu_client",
+        ],
         "//conditions:default": [],
     }) + select({
         ":plugin_device_enabled": [
