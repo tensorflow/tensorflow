@@ -96,7 +96,7 @@ class InitializeTRTResource : public OpKernel {
                  [this, ctx](TRTEngineCacheResource** resource) -> Status {
                    *resource = new TRTEngineCacheResource(
                        ctx, this->max_cached_engines_);
-                   return Status::OK();
+                   return OkStatus();
                  }));
 
     auto allocator = resource->allocator_.get();

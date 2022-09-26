@@ -248,7 +248,7 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
                                                 TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM)
-  status->status = tensorflow::Status::OK();
+  status->status = tensorflow::OkStatus();
 #else   // !defined(IS_MOBILE_PLATFORM)
   status->status = tensorflow::unwrap(ctx)->AsyncWait();
 #endif  // !IS_MOBILE_PLATFORM
