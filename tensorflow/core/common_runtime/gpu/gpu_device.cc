@@ -108,13 +108,8 @@ using se::rocm::ScopedActivateExecutorContext;
 // during OpKernel::Compute().  The recommended way of allocating such
 // memory is via OpKernelContext::allocate_temp().  However, Eigen Ops
 // don't have access to OpKernelContext, instead they get access to
-// memory directly through the device allocator.  As an Open Source
-// project, Eigen assumes allocator semantics similar to those of the
-// CUDA or ROCm memory allocator, and may not work correctly due to race
-// conditions if used with some other allocator.  For safety, we need
-// to delay deallocation calls out of Eigen until all events on the
-// corresponding stream have completed.  The following two classes
-// serve this purpose in two different compilation environments.
+// memory directly through the device allocator. The following class
+// wraps the device allocator for use by Eigen.
 
 class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
  public:
@@ -173,12 +168,13 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
     AsyncFreeData* afData =
         new AsyncFreeData(allocator_, buffer, operation_, step_id_);
 #if GOOGLE_CUDA
-    cudaError_t err = cudaStreamAddCallback(*stream_, asyncFree, afData, 0);
+    cudaError_t err = cudaStreamAddCallback(*stream_, asyncLogFree, afData, 0);
     CHECK_EQ(err, cudaSuccess);
 #elif TENSORFLOW_USE_ROCM
-    hipError_t err = hipStreamAddCallback(*stream_, asyncFree, afData, 0);
+    hipError_t err = hipStreamAddCallback(*stream_, asyncLogFree, afData, 0);
     CHECK_EQ(err, hipSuccess);
 #endif
+    allocator_->DeallocateRaw(buffer);
   }
 
   // Return a pointer to a per stream scratchpad of 1024 bytes residing
@@ -205,10 +201,11 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
   };
 
 #if GOOGLE_CUDA
-  static void CUDART_CB asyncFree(gpuStream_t stream, cudaError_t status,
-                                  void* userData)
+  static void CUDART_CB asyncLogFree(gpuStream_t stream, cudaError_t status,
+                                     void* userData)
 #elif TENSORFLOW_USE_ROCM
-  static void asyncFree(gpuStream_t stream, hipError_t status, void* userData)
+  static void asyncLogFree(gpuStream_t stream, hipError_t status,
+                           void* userData)
 #endif
   {
     AsyncFreeData* data = static_cast<AsyncFreeData*>(userData);
@@ -216,7 +213,6 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
       LogMemory::RecordRawDeallocation(data->operation_, data->step_id_,
                                        data->address_, data->allocator_, false);
     }
-    data->allocator_->DeallocateRaw(data->address_);
     delete data;
   }
 
