@@ -397,11 +397,20 @@ bool SetOpAttrList(TFE_Context* ctx, TFE_Op* op, const char* key,
   const int num_values = PySequence_Size(py_list);
   if (attr_list_sizes != nullptr) (*attr_list_sizes)[key] = num_values;
 
-#define PARSE_LIST(c_type, parse_fn)                                      \
-  std::unique_ptr<c_type[]> values(new c_type[num_values]);               \
-  for (int i = 0; i < num_values; ++i) {                                  \
-    tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));   \
-    if (!parse_fn(key, py_value.get(), status, &values[i])) return false; \
+#define PARSE_LIST(c_type, parse_fn)                                       \
+  std::unique_ptr<c_type[]> values(new c_type[num_values]);                \
+  for (int i = 0; i < num_values; ++i) {                                   \
+    tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));    \
+    if (py_value == nullptr) {                                             \
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,                            \
+                   tensorflow::strings::StrCat(                            \
+                       "Expecting sequence of " #c_type " for attr ", key, \
+                       ", got ", py_list->ob_type->tp_name)                \
+                       .c_str());                                          \
+      return false;                                                        \
+    } else if (!parse_fn(key, py_value.get(), status, &values[i])) {       \
+      return false;                                                        \
+    }                                                                      \
   }
 
   if (type == TF_ATTR_STRING) {
