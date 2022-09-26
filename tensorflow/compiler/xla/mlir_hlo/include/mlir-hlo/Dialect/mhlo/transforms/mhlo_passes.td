@@ -31,8 +31,14 @@ def ChloLegalizeToLinalgPass : Pass<"sparse-chlo-legalize-to-linalg", "func::Fun
   let constructor = "createLegalizeSparseChloToLinalgPass()";
 }
 
+def HloCanonicalizeScatterPass : Pass<"hlo-canonicalize-scatter", "func::FuncOp"> {
+  let summary = "Rewrites scatter into transposes, reshapes and a simple scatter.";
+  let constructor = "createHloCanonicalizeScatterPass()";
+  let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
+}
+
 def HloCanonicalizeReductionPass : Pass<"hlo-canonicalize-reduction", "func::FuncOp"> {
-  let summary = "canonicalize reduction ops to be suitable for codegen.";
+  let summary = "Canonicalize reduction ops to be suitable for codegen.";
   let constructor = "createHloCanonicalizeReductionPass()";
 }
 

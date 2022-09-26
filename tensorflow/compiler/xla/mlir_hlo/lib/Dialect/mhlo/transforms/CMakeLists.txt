@@ -30,6 +30,19 @@ mlir_tablegen(generated_chlo_legalize_to_hlo.inc -gen-rewriters)
 add_public_tablegen_target(MLIRChloLegalizeToHloIncGen)
 
 
+add_mlir_library(MhloScatterUtils
+  mhlo_scatter_utils.cc
+
+  DEPENDS
+  MLIRhlo_opsIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MhloDialect
+)
+
 add_mlir_library(MhloPasses
   broadcast_propagation.cc
   collapse_elementwise_map.cc
@@ -48,6 +61,7 @@ add_mlir_library(MhloPasses
   materialize_broadcasts_pass.cc
   merge_assuming_ops.cc
   mhlo_canonicalize_reduction.cc
+  mhlo_canonicalize_scatter.cc
   mhlo_flatten_tuple.cc
   optimize_mhlo.cc
   optimize_mhlo_pass.cc
@@ -71,6 +85,7 @@ add_mlir_library(MhloPasses
   LINK_LIBS PUBLIC
   ChloOps
   MhloDialect
+  MhloScatterUtils
   MhloTypeConversion
   MLIRIR
   MLIRMhloUtils

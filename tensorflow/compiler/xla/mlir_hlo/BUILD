@@ -1118,6 +1118,33 @@ cc_library(
 )
 
 cc_library(
+    name = "mhlo_scatter_utils",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_scatter_utils.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/mhlo_scatter_utils.h"],
+    deps = [
+        ":mlir_hlo",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "mhlo_canonicalize_scatter",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_canonicalize_scatter.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":MhloPassIncGen",
+        ":mhlo_scatter_utils",
+        ":mlir_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "hlo_legalize_to_lhlo",
     srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_to_lhlo.cc"],
     hdrs = [
@@ -1741,6 +1768,7 @@ cc_library(
         ":lower_index_cast",
         ":merge_assuming_ops",
         ":mhlo_canonicalize_reduction",
+        ":mhlo_canonicalize_scatter",
         ":mhlo_flatten_tuple",
         ":mhlo_to_mhlo_lowering_patterns",
         ":propagate_static_shapes_to_kernel",
