@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/tsl/framework/cancellation.h"
 
 #include <forward_list>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
-namespace tensorflow {
+namespace tsl {
 
 const CancellationToken CancellationManager::kInvalidToken = -1;
 
@@ -103,7 +103,7 @@ bool CancellationManager::RegisterCallback(CancellationToken token,
 
 bool CancellationManager::RegisterCallbackWithErrorLogging(
     CancellationToken token, CancelCallback callback,
-    tensorflow::StringPiece callback_name) {
+    tsl::StringPiece callback_name) {
   return RegisterCallbackConfig(
       token, CallbackConfiguration{callback, std::string(callback_name), true});
 }
@@ -252,4 +252,4 @@ Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
   return OkStatus();
 }
 
-}  // end namespace tensorflow
+}  // end namespace tsl

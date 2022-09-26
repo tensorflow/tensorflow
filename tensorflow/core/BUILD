@@ -436,6 +436,7 @@ tf_cuda_library(
         "//tensorflow/core/public:version.h",
         "//tensorflow/lite/kernels/shim:tf_headers",
         "//tensorflow/tsl/framework:allocator_hdrs",
+        "//tensorflow/tsl/framework:cancellation_hdrs",
     ] + if_mkl([
         "//tensorflow/core/util:mkl_util_hdrs",
     ]),
@@ -888,6 +889,7 @@ filegroup(
         "//tensorflow/core/lib/strings:mobile_srcs_only_runtime",
         "//tensorflow/core/platform:mobile_srcs_only_runtime",
         "//tensorflow/tsl/platform:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/framework:mobile_srcs_only_runtime",
 
         # Wav io files
         "//tensorflow/core/lib/wav:wav_io.h",
@@ -1681,6 +1683,7 @@ tf_cuda_library(
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/core/util:tensor_format",
         "//tensorflow/compiler/jit:common",
+        "//tensorflow/tsl/framework:cancellation",
         "@com_google_absl//absl/container:btree",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",

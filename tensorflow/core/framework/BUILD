@@ -47,7 +47,6 @@ package(
 exports_files(
     srcs = [
         "allocator_registry.h",
-        "cancellation.h",
         "collective.h",
         "control_flow.h",
         "dataset.h",
@@ -262,7 +261,6 @@ filegroup(
 filegroup(
     name = "framework_internal_impl_srcs",
     srcs = [
-        "cancellation.cc",
         "collective.cc",
         "dataset.cc",
         "device.cc",
@@ -346,7 +344,6 @@ filegroup(
     srcs = [
         "attr_value_util.cc",
         "attr_value_util.h",
-        "cancellation.cc",
         "cancellation.h",
         "collective.cc",
         "collective.h",
@@ -1094,6 +1091,7 @@ exports_files(
         "allocator.h",
         "bfloat16.h",
         "bounds_check.h",
+        "cancellation.h",
         "fake_input.h",
         "function_testlib.h",
         "log_memory.h",
@@ -1272,7 +1270,6 @@ tf_cc_tests(
         "attr_value_util_test.cc",
         "batch_util_test.cc",
         "bfloat16_test.cc",
-        "cancellation_test.cc",
         "common_shape_fns_test.cc",
         "dataset_test.cc",
         "device_base_test.cc",

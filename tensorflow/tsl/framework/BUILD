@@ -6,6 +6,7 @@
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 
 # buildifier: disable=same-origin-load
 load(
@@ -30,6 +31,7 @@ filegroup(
     srcs = [
         "allocator.h",
         "allocator_registry.h",
+        "cancellation.h",
         "numeric_types.h",
         "tracking_allocator.h",
         "type_traits.h",
@@ -49,6 +51,15 @@ filegroup(
         "tracking_allocator.cc",
         "tracking_allocator.h",
         "type_traits.h",
+    ],
+)
+
+# Files needed for core:mobile_srcs_only_runtime.
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "cancellation.cc",
+        "cancellation.h",
     ],
 )
 
@@ -175,6 +186,53 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "cancellation_hdrs",
+    srcs = [
+        "cancellation.h",
+    ],
+    visibility = ["//tensorflow/core:__subpackages__"],
+)
+
+cc_library(
+    name = "cancellation",
+    srcs = [
+        "cancellation.cc",
+    ],
+    hdrs = [
+        "cancellation.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/tsl/lib/gtl:flatmap",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:hash",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:notification",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:stringpiece",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_tests(
+    name = "cancellation_test",
+    size = "small",
+    srcs = ["cancellation_test.cc"],
+    deps = [
+        ":cancellation",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:env_impl",
+        "//tensorflow/tsl/platform:notification",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
 # Export all header files for which we do not yet provide a dedicated build
 # rule. This avoids breaking all the rules in tensorflow/core/BUILD.
 exports_files(
@@ -195,6 +253,7 @@ exports_files(
 exports_files(
     srcs = [
         "allocator.h",
+        "cancellation.h",
         "numeric_types.h",
         "type_traits.h",
     ],
