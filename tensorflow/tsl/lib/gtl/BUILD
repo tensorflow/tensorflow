@@ -37,6 +37,17 @@ cc_library(
 )
 
 cc_library(
+    name = "flatmap",
+    hdrs = ["flatmap.h"],
+    deps = [
+        ":flatrep",
+        "//tensorflow/tsl/platform:hash",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:types",
+    ],
+)
+
+cc_library(
     name = "flatrep",
     hdrs = ["flatrep.h"],
     deps = [
@@ -93,6 +104,7 @@ filegroup(
     name = "legacy_lib_gtl_headers",
     srcs = [
         "compactptrset.h",
+        "flatmap.h",
         "flatset.h",
         "inlined_vector.h",
         "iterator_range.h",
@@ -139,6 +151,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "flatmap.h",
         "flatrep.h",
         "inlined_vector.h",
     ],
@@ -168,6 +181,7 @@ filegroup(
     name = "legacy_lib_gtl_all_headers",
     srcs = [
         "compactptrset.h",
+        "flatmap.h",
         "flatrep.h",
         "flatset.h",
         "inlined_vector.h",
@@ -186,6 +200,7 @@ tf_cc_tests(
     name = "tsl_lib_gtl_tests",
     srcs = [
         "compactptrset_test.cc",
+        "flatmap_test.cc",
         "flatset_test.cc",
         "int_type_test.cc",
         "iterator_range_test.cc",
@@ -193,6 +208,7 @@ tf_cc_tests(
     ],
     deps = [
         ":compactptrset",
+        ":flatmap",
         ":flatset",
         ":int_type",
         ":iterator_range",

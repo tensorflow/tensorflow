@@ -13,17 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/tsl/lib/gtl/flatmap.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
+#include "tensorflow/tsl/platform/hash.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
+
+namespace tsl {
 namespace gtl {
 namespace {
 
@@ -144,7 +147,7 @@ TEST(FlatMapTest, Emplace) {
 
 TEST(FlatMapTest, EmplaceUniquePtr) {
   FlatMap<int64_t, std::unique_ptr<string>> smap;
-  smap.emplace(1, std::unique_ptr<string>(new string("hello")));
+  smap.emplace(1, std::make_unique<string>("hello"));
 }
 
 TEST(FlatMapTest, Size) {
@@ -632,7 +635,7 @@ TEST(FlatMap, CustomCmp) {
 
 // Test unique_ptr handling.
 typedef std::unique_ptr<int> UniqInt;
-static UniqInt MakeUniq(int i) { return UniqInt(new int(i)); }
+static UniqInt MakeUniq(int i) { return std::make_unique<int>(i); }
 
 struct HashUniq {
   size_t operator()(const UniqInt& p) const { return *p; }
@@ -704,4 +707,4 @@ TEST(FlatMap, UniqueMapIter) {
 
 }  // namespace
 }  // namespace gtl
-}  // namespace tensorflow
+}  // namespace tsl
