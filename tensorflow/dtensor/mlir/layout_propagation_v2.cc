@@ -50,7 +50,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -60,6 +59,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
+namespace {
+#define GEN_PASS_DEF_DTENSORLAYOUTPROPAGATIONV2
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // This value dictates how many times during layout propagation we allow
 // fixing of oscillatory behaviors.
@@ -1390,7 +1393,7 @@ Status CompareMergedLayouts(const llvm::DenseMap<mlir::Value, Layout>& merged_a,
 
 // MLIR pass that propagates layout for all ops the module.
 struct DLayoutPropagationPassV2
-    : public DTensorLayoutPropagationV2Base<DLayoutPropagationPassV2> {
+    : public impl::DTensorLayoutPropagationV2Base<DLayoutPropagationPassV2> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
   }
@@ -1579,6 +1582,8 @@ struct DLayoutPropagationPassV2
       return signalPassFailure();
   };
 };
+
+}  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorLayoutPropagationPassV2() {

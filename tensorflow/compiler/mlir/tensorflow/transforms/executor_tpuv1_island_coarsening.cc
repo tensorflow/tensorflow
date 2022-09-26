@@ -114,7 +114,7 @@ bool HasControlDependencyWithUnscheduledOp(
   if (!island_op) {
     return false;
   }
-  for (Value input : island_op.controlInputs()) {
+  for (Value input : island_op.getControlInputs()) {
     Operation* defining_op = input.getDefiningOp();
     if (!defining_op) continue;
     Operation* producer_in_block = block->findAncestorOpInBlock(*defining_op);
@@ -215,7 +215,7 @@ IslandOp CreateMergedIsland(IslandOp island, SmallVector<IslandOp, 16>& islands,
   // i.e. a value that escapes.
   llvm::SmallVector<Type, 4> result_types;
   for (IslandOp new_op : islands) {
-    for (Value result : new_op.outputs()) {
+    for (Value result : new_op.getOutputs()) {
       if (llvm::any_of(result.getUsers(), [&](OpOperand user) {
             return !wrapped_ops.count(user.getOwner());
           }))
@@ -227,7 +227,7 @@ IslandOp CreateMergedIsland(IslandOp island, SmallVector<IslandOp, 16>& islands,
       island.getLoc(), result_types,
       /*control=*/ControlType::get(island.getContext()),
       /*controlInputs=*/island.getOperands());
-  new_island.body().push_back(new Block);
+  new_island.getBody().push_back(new Block);
 
   // Move the operations in the new island, gather the results of the new yield.
   Block& island_body = new_island.GetBody();
@@ -238,7 +238,8 @@ IslandOp CreateMergedIsland(IslandOp island, SmallVector<IslandOp, 16>& islands,
 
     // For every result of the wrapped_op, it needs to get passed to the yield
     // operation, only if it escapes the island.
-    for (auto result : llvm::zip(island.outputs(), wrapped_op.getResults())) {
+    for (auto result :
+         llvm::zip(island.getOutputs(), wrapped_op.getResults())) {
       if (llvm::any_of(std::get<0>(result).getUsers(), [&](OpOperand user) {
             return !wrapped_ops.count(user.getOwner());
           }))
@@ -250,10 +251,10 @@ IslandOp CreateMergedIsland(IslandOp island, SmallVector<IslandOp, 16>& islands,
 
   // remap results of the new islands to the user outside of the island.
   int current_result = 0;
-  Value control = new_island.control();
+  Value control = new_island.getControl();
   for (IslandOp island : islands) {
     YieldOp yield_op = island.GetYield();
-    for (const auto& idx_result : llvm::enumerate(island.outputs())) {
+    for (const auto& idx_result : llvm::enumerate(island.getOutputs())) {
       Value result = idx_result.value();
 
       bool has_external_use = false;
@@ -268,7 +269,7 @@ IslandOp CreateMergedIsland(IslandOp island, SmallVector<IslandOp, 16>& islands,
         ++current_result;
       }
     }
-    island.control().replaceAllUsesWith(control);
+    island.getControl().replaceAllUsesWith(control);
     island.erase();
   }
   return new_island;
@@ -531,7 +532,7 @@ bool ExcludeIdentityOp(llvm::SmallDenseSet<Operation*>& tpu_ops,
   for (auto iter = tpu_ops.begin(); iter != tpu_ops.end(); iter++) {
     auto island_op = llvm::dyn_cast<IslandOp>(*iter);
     if (llvm::dyn_cast_or_null<TF::IdentityOp>(island_op.GetBody().front())) {
-      if (island_op.outputs().use_empty()) {
+      if (island_op.getOutputs().use_empty()) {
         tpu_ops.erase(iter);
         return true;
       }

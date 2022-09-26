@@ -31,7 +31,7 @@ using mlir::func::FuncOp;
 using llvm::ArrayRef;
 using llvm::StringRef;
 
-static constexpr const char kDirectCustomCall[] = "rt.direct_custom_call";
+static constexpr const char kCustomCall[] = "rt.custom_call";
 
 CustomCallDeclarations::CustomCallDeclarations(SymbolTable sym_table)
     : sym_table_(sym_table) {}
@@ -49,8 +49,7 @@ FuncOp CustomCallDeclarations::GetOrCreate(ImplicitLocOpBuilder& b,
   OpBuilder builder(b.getContext(), b.getListener());
 
   // Create a custom call declaration.
-  NamedAttribute attr(b.getStringAttr(kDirectCustomCall),
-                      b.getStringAttr(target));
+  NamedAttribute attr(b.getStringAttr(kCustomCall), b.getStringAttr(target));
   auto declaration = builder.create<FuncOp>(b.getLoc(), target, type,
                                             ArrayRef<NamedAttribute>(attr));
   declaration.setPrivate();

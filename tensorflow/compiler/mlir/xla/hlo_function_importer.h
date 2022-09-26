@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_FUNCTION_IMPORTER_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_HLO_FUNCTION_IMPORTER_H_
 
+#include <string>
 #include <unordered_map>
 
 #include "absl/types/optional.h"
@@ -232,12 +233,37 @@ class HloFunctionImporter {
   // Converts channel handle to attribute
   mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);
 
+  // ============
+  // Imports an old-style async start op. E.g. an HLO all-gather-start
+  // instruction is imported as an async-start associated with an all-gather
+  // computation.
+  //
+  // Eventually, old-style async ops (e.g. all-gather-start) and new-style async
+  // ops (i.e. async-start, async-update and async-done) will converge on the
+  // HLO side, so we decided to not introduce new MHLO ops for all-gather-start
+  // and friends.
+  //
+  // In the end, there may be new ops added in the old-style because they're not
+  // compatible with the new-style async semantics, but those should be handled
+  // on their own, rather than this function which "upgrades" ops to the
+  // new-style async API.
+  // ============
+  template <typename SyncOp>
+  StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
+      llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
+      const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
+      mlir::Type result_type, mlir::OpBuilder* func_builder,
+      std::string func_name, std::function<Status(SyncOp)> mutate_op);
+
+  // Imports an old-style async done op
+  StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
+      llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
+      const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
+      mlir::Type result_type, mlir::OpBuilder* func_builder);
+
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;
   mlir::Builder* builder_;
-
-  // Fresh variable supply
-  int64_t fresh_ = 0;
 
   // Mapping from HloComputation to the created MLIR function.
   std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>*

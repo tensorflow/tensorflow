@@ -34,10 +34,13 @@ package(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "command_line_flags.cc",
+        "command_line_flags.h",
         "determinism.cc",
         "determinism.h",
         "env_var.cc",
         "env_var.h",
+        "ptr_util.h",
         "use_cudnn.cc",
         "use_cudnn.h",
     ],
@@ -58,7 +61,9 @@ filegroup(
 filegroup(
     name = "framework_internal_private_hdrs",
     srcs = [
+        "command_line_flags.h",
         "env_var.h",
+        "ptr_util.h",
         "use_cudnn.h",
     ],
 )
@@ -66,6 +71,7 @@ filegroup(
 filegroup(
     name = "framework_internal_impl_srcs",
     srcs = [
+        "command_line_flags.cc",
         "use_cudnn.cc",
     ],
 )
@@ -73,6 +79,7 @@ filegroup(
 filegroup(
     name = "lib_internal_public_hdrs",
     srcs = [
+        "command_line_flags.h",
         "env_var.h",
         "use_cudnn.h",
     ],
@@ -97,6 +104,7 @@ filegroup(
 filegroup(
     name = "framework_srcs",
     srcs = [
+        "ptr_util.h",
         "use_cudnn.h",
     ],
 )
@@ -176,5 +184,64 @@ cc_library(
         "//tensorflow/tsl/platform:strcat",
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "ptr_util",
+    hdrs = ["ptr_util.h"],
+)
+
+cc_library(
+    name = "reporter",
+    srcs = ["reporter.cc"],
+    hdrs = ["reporter.h"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/tsl:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/core/util:test_log_proto_impl_cc",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:env_impl",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:str_util",
+        "//tensorflow/tsl/platform:types",
+    ],
+)
+
+filegroup(
+    name = "test_hdrs",
+    testonly = 1,
+    srcs = [
+        "reporter.h",
+    ],
+    visibility = ["//tensorflow/core/util:__pkg__"],
+)
+
+filegroup(
+    name = "android_test_hdrs",
+    testonly = 1,
+    srcs = [
+        "reporter.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/util:__pkg__",
+    ],
+)
+
+filegroup(
+    name = "android_test_srcs",
+    testonly = 1,
+    srcs = [
+        "reporter.cc",
+        ":android_test_hdrs",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/util:__pkg__",
     ],
 )

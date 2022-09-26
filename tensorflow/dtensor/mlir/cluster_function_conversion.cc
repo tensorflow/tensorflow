@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -42,7 +41,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORCLUSTERFUNCTIONCONVERSION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Attach layouts for all the returned values so that custom device could get
 // layouts for the handles.
@@ -156,7 +158,7 @@ mlir::LogicalResult ReplaceClusterWithPartitionCallOp(
 // MLIR pass that converts tf_device.cluster_func to TF partitioned call
 // op with device mesh config added to `config` attribute.
 struct DTensorClusterFunctionConversion
-    : public DTensorClusterFunctionConversionBase<
+    : public impl::DTensorClusterFunctionConversionBase<
           DTensorClusterFunctionConversion> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();

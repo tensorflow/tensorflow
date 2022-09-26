@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
@@ -95,7 +97,8 @@ class CoordinationServiceAgent {
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in DISCONNECTED state.
   //   - InvalidArgument: Unexpected task registration
-  //   - Aborted: Duplicate task registration
+  //   - Aborted: Duplicate task registration (agent will retry connecting until
+  //              the configured timeout)
   virtual Status Connect() = 0;
 
   // Wait for all tasks to be up and registered. The call blocks until all tasks

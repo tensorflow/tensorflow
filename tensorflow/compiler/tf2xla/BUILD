@@ -302,6 +302,7 @@ cc_library(
 #     allowed_match_regexp = "|".join([
 #         ":xla_compiled_cpu_runtime_standalone",
 #         "//tensorflow/core/framework:numeric_types",
+#         "//tensorflow/tsl/framework:numeric_types",
 #         "//tensorflow/tsl/platform:bfloat16",
 #         "//tensorflow/tsl/platform:blocking_counter",
 #         "//tensorflow/tsl/platform:byte_order",

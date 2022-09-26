@@ -100,21 +100,6 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 
 // -------------------------------------------------------------------------- //
 
-// Populate mapping from XLA (SE) enums/structs type id to symbol names.
-void PopulateXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
-  registry.Register<Tagged<se::dnn::ActivationMode>>(
-      "__type_id_se_dnn_activation");
-  registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
-      "__type_id_se_cublas_lt_epilogue");
-  registry.Register<Tagged<se::fft::Type>>("__type_id_se_fft_type");
-
-  registry.Register<Tagged<DotDimensionNumbers>>(
-      "__type_id_dot_dimension_numbers");
-  registry.Register<Tagged<ConvDimensionNumbers>>(
-      "__type_id_conv_dimension_numbers");
-  registry.Register<Tagged<ConvBackendConfig>>("__type_id_conv_backend_config");
-}
-
 // Add custom call arguments and attributes encoding for custom HLO enums and
 // structs, so that we can pass them to custom calls.
 void PopulateLmhloToXlaAttrEncoding(CustomCallAttrEncodingSet& encoding) {
@@ -238,7 +223,7 @@ Status JitRtCollectiveSupport::MaybeBlockAfterFirstRun(int32_t uid,
     absl::MutexLock lock(&mutex_);
     return executed_.try_emplace(Key(uid, device_ordinal), true).second;
   }();
-  return block ? stream->BlockHostUntilDone() : Status::OK();
+  return block ? stream->BlockHostUntilDone() : OkStatus();
 }
 
 FailureOr<se::Event> JitRtAsyncCollectiveSupport::PopEvent(
@@ -2084,8 +2069,26 @@ static bool PartitionId(runtime::ExecutionContext* ctx, void** args,
 
 // -------------------------------------------------------------------------- //
 
+// Populate mapping from XLA (SE) enums/structs type id to symbol names.
+void PopulateXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
+  registry.Register<Tagged<se::dnn::ActivationMode>>(
+      "__type_id_se_dnn_activation");
+  registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
+      "__type_id_se_cublas_lt_epilogue");
+  registry.Register<Tagged<se::fft::Type>>("__type_id_se_fft_type");
+
+  registry.Register<Tagged<DotDimensionNumbers>>(
+      "__type_id_dot_dimension_numbers");
+  registry.Register<Tagged<ConvDimensionNumbers>>(
+      "__type_id_conv_dimension_numbers");
+  registry.Register<Tagged<ConvBackendConfig>>("__type_id_conv_backend_config");
+
+  RegisterTracingTypeIdNames(registry);
+}
+
 void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   RegisterKernelLaunchCustomCalls(registry);
+  RegisterTracingCustomCalls(registry);
 
   registry.Register("xla.gpu.fft", &xla::gpu::Fft);
   registry.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);

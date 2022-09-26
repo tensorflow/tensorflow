@@ -44,8 +44,8 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
     auto func = op->getParentOfType<func::FuncOp>();
     Block *error_reporting_block =
         rewriter.createBlock(&func.getRegion(), {}, {});
-    rewriter.create<ReportErrorOp>(loc, adaptor.ctx(), adaptor.error_code(),
-                                   adaptor.msg());
+    rewriter.create<ReportErrorOp>(loc, adaptor.getCtx(),
+                                   adaptor.getErrorCode(), adaptor.getMsg());
 
     SmallVector<Value, 2> null_memrefs;
     for (auto type : func.getFunctionType().getResults()) {
@@ -55,7 +55,7 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
 
     rewriter.restoreInsertionPoint(ip);
     rewriter.replaceOpWithNewOp<cf::CondBranchOp>(
-        op, adaptor.arg(), split_block, llvm::None, error_reporting_block,
+        op, adaptor.getArg(), split_block, llvm::None, error_reporting_block,
         llvm::None);
     return success();
   }

@@ -107,9 +107,10 @@ exports_files(["rocm_rocdl_path.h"])
 
 cc_library(
     name = "abi",
-    srcs = ["abi.cc"],
     hdrs = ["abi.h"],
-    deps = [":types"],
+    deps = [
+        "//tensorflow/tsl/platform:abi",
+    ],
 )
 
 cc_library(
@@ -164,7 +165,9 @@ cc_library(
 cc_library(
     name = "context",
     textual_hdrs = ["context.h"],
-    deps = tf_platform_deps("context"),
+    deps = [
+        "//tensorflow/tsl/platform:context",
+    ],
 )
 
 cc_library(
@@ -367,7 +370,9 @@ cc_library(
 cc_library(
     name = "load_library",
     textual_hdrs = ["load_library.h"],
-    deps = tf_windows_aware_platform_deps("load_library"),
+    deps = [
+        "//tensorflow/tsl/platform:load_library",
+    ],
 )
 
 cc_library(
@@ -444,14 +449,15 @@ cc_library(
     hdrs = ["notification.h"],
     deps = [
         ":platform",
-    ] + tf_platform_deps("notification"),
+        "//tensorflow/tsl/platform:notification",
+    ],
 )
 
 cc_library(
     name = "null_file_system",
     hdrs = ["null_file_system.h"],
     deps = [
-        ":env",
+        "//tensorflow/tsl/platform:null_file_system",
     ],
 )
 
@@ -530,7 +536,7 @@ cc_library(
     hdrs = ["png.h"],
     deps = [
         ":platform",
-        "@png",
+        "//tensorflow/tsl/platform:png",
     ],
 )
 
@@ -585,23 +591,8 @@ cc_library(
     name = "refcount",
     hdrs = ["refcount.h"],
     deps = [
-        ":logging",
         ":mutex",
-        ":thread_annotations",
-    ],
-)
-
-tf_cc_test(
-    name = "refcount_test",
-    size = "small",
-    srcs = [
-        "refcount_test.cc",
-    ],
-    deps = [
-        ":env",
-        ":refcount",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:refcount",
     ],
 )
 
@@ -609,20 +600,6 @@ cc_library(
     name = "intrusive_ptr",
     hdrs = ["intrusive_ptr.h"],
     deps = ["//tensorflow/tsl/platform:intrusive_ptr"],
-)
-
-tf_cc_test(
-    name = "intrusive_ptr_test",
-    size = "small",
-    srcs = [
-        "intrusive_ptr_test.cc",
-    ],
-    deps = [
-        ":intrusive_ptr",
-        ":refcount",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
 )
 
 cc_library(
@@ -699,6 +676,7 @@ filegroup(
     name = "stacktrace_handler_hdrs",
     srcs = [
         "stacktrace_handler.h",
+        "//tensorflow/tsl/platform:stacktrace_handler_hdrs",
     ],
 )
 
@@ -882,6 +860,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":threadpool_interface",
+        "//tensorflow/tsl/platform:threadpool_options",
     ],
 )
 
@@ -935,7 +914,8 @@ cc_library(
     hdrs = ["unbounded_work_queue.h"],
     deps = [
         ":platform",
-    ] + tf_platform_deps("unbounded_work_queue"),
+        "//tensorflow/tsl/platform:unbounded_work_queue",
+    ],
 )
 
 cc_library(
@@ -989,33 +969,6 @@ tf_cc_test(
         ":str_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "status_test",
-    size = "small",
-    srcs = ["status_test.cc"],
-    deps = [
-        ":status",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:cord",
-        "@com_google_absl//absl/strings:str_format",
-    ],
-)
-
-tf_cc_test(
-    name = "statusor_test",
-    size = "small",
-    srcs = ["statusor_test.cc"],
-    deps = [
-        ":statusor",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -1083,10 +1036,28 @@ tf_cuda_library(
         "rocm.h",
         "stream_executor.h",
     ],
+    cuda_deps =
+        if_google(
+            ["//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform"],
+            [
+                "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation",
+                "//tensorflow/compiler/xla/stream_executor/rocm:rocm_activation",
+            ],
+        ),
     features = ["-parse_headers"],
     deps = [
-        "//tensorflow/tsl/platform:cuda",
-        "//tensorflow/tsl/platform/default/build_config:stream_executor",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
+        "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
+        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform",
     ],
 )
 
@@ -1100,27 +1071,25 @@ cc_library(
     ],
     features = ["-parse_headers"],
     deps = [
-        "//tensorflow/tsl/platform/default/build_config:stream_executor_no_cuda",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
+        "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
     ],
 )
 
 cc_library(
     name = "test_main",
     testonly = 1,
-    srcs = ["test_main.cc"],
-    copts = tf_copts(),
-    linkopts = select({
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-lm"],
-    }),
     deps = [
-        ":platform",
-        ":stacktrace_handler",
-        ":test",
-        ":test_benchmark",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:test_main",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1205,54 +1174,18 @@ tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
     srcs = [
-        "integral_types_test.cc",
-        "logging_test.cc",
-        "mutex_test.cc",
-        "net_test.cc",
-        "port_test.cc",
-        "scanner_test.cc",
-        "str_util_test.cc",
-        "strcat_test.cc",
-        "stringprintf_test.cc",
         "vmodule_benchmark_test.cc",
-        "//tensorflow/tsl/platform:stringpiece_test.cc",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils_test.cc",
     ],
     create_named_test_suite = True,
     deps = [
-        ":scanner",
-        ":str_util",
-        ":strcat",
-        ":stringpiece",
-        ":stringprintf",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:logging",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@zlib",
-    ],
-)
-
-tf_cc_test(
-    name = "stacktrace_test",
-    size = "small",
-    srcs = [
-        "stacktrace_test.cc",
-    ],
-    tags = ["no_windows"],
-    deps = [
-        ":logging",
-        ":stacktrace",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1267,42 +1200,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/util:env_var",
-    ],
-)
-
-tf_cc_tests(
-    name = "stacktrace_handler_test",
-    size = "small",
-    srcs = [
-        "stacktrace_handler_test.cc",
-    ],
-    tags = ["no_windows"],
-    deps = [
-        ":logging",
-        ":stacktrace",
-        ":stacktrace_handler",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "subprocess_test",
-    size = "small",
-    srcs = ["subprocess_test.cc"],
-    data = [
-        "//tensorflow/core/platform/testdata:test_echo",
-        "//tensorflow/core/platform/testdata:test_echo_argv_1",
-        "//tensorflow/core/platform/testdata:test_noop",
-        "//tensorflow/core/platform/testdata:test_stderr",
-    ],
-    deps = [
-        ":path",
-        ":resource_loader",
-        ":strcat",
-        ":subprocess",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1324,21 +1221,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "status_matchers_test",
-    size = "small",
-    srcs = ["status_matchers_test.cc"],
-    deps = [
-        ":status_matchers",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
-    ],
-)
-
-tf_cc_test(
     name = "platform_strings_test",
     size = "small",
     srcs = ["platform_strings_test.cc"],
@@ -1346,36 +1228,6 @@ tf_cc_test(
     deps = [
         ":platform_strings",
         "//tensorflow/core:lib",
-    ],
-)
-
-tf_cc_test(
-    name = "env_test",
-    size = "small",
-    srcs = ["env_test.cc"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "errors_test",
-    size = "small",
-    srcs = ["errors_test.cc"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//third_party/eigen3",
     ],
 )
 
@@ -1402,63 +1254,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "abi_test",
-    size = "small",
-    srcs = ["abi_test.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "numa_test",
-    size = "small",
-    srcs = ["numa_test.cc"],
-    tags = [
-        # This test will not pass unless it has access to all NUMA nodes
-        # on the executing machine.
-        "manual",
-        "notap",
-    ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "setround_test",
-    size = "small",
-    srcs = ["setround_test.cc"],
-    tags = [
-        "noasan",
-        "noclang",
-        "nomsan",
-        "notsan",
-    ],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "file_system_test",
     size = "small",
     srcs = ["file_system_test.cc"],
@@ -1469,21 +1264,6 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "unbounded_work_queue_test",
-    srcs = ["unbounded_work_queue_test.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:env",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1783,7 +1563,6 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "abi.cc",
         "abi.h",
         "bfloat16.h",
         "blocking_counter.h",

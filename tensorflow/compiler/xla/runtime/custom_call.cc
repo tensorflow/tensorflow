@@ -19,7 +19,6 @@ limitations under the License.
 #include <string_view>
 
 #include "llvm/Support/raw_ostream.h"
-#include "tensorflow/compiler/xla/runtime/type_id.h"
 
 namespace xla {
 namespace runtime {

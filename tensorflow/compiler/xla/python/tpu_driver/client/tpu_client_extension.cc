@@ -194,7 +194,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            })
       .def("copy_to_host_async", &PyTpuBuffer::CopyToHostAsync,
            py::call_guard<py::gil_scoped_release>())
-      .def("to_py",
+      .def("__array__",
            [](PyTpuBuffer* buffer) -> StatusOr<py::object> {
              GlobalPyRefManager()->CollectGarbage();
              std::shared_ptr<Literal> literal;

@@ -51,7 +51,7 @@ void FuncToGraphPass::runOnOperation() {
 
   GraphFuncOp lifted_graph_func;
   for (auto func : module.getOps<GraphFuncOp>()) {
-    if (func.sym_name() == lifted_graph_func_name) {
+    if (func.getSymName() == lifted_graph_func_name) {
       lifted_graph_func = func;
       break;
     }

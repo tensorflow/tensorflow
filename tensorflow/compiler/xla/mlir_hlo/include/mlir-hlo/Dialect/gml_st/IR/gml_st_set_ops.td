@@ -95,7 +95,7 @@ def GMLST_PointOp : GMLST_Op<"point", [
                    CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
   ];
   let extraClassDeclaration = [{
-    unsigned getRank() { return static_indices().size(); }
+    unsigned getRank() { return getStaticIndices().size(); }
   }];
   let hasVerifier = 1;
 }
@@ -133,7 +133,7 @@ def GMLST_TileOp : GMLST_Op<"tile", [
     /// Return the expected rank of each of the`static_offsets`, `static_sizes`
     /// and `static_strides` attributes.
     std::array<unsigned, 3> getArrayAttrMaxRanks() {
-      unsigned rank = superset().getType().cast<TileType>().getRank();
+      unsigned rank = getSuperset().getType().cast<TileType>().getRank();
       return {rank, rank, rank};
     }
     /// Return the number of leading operands before the `offsets`, `sizes` and

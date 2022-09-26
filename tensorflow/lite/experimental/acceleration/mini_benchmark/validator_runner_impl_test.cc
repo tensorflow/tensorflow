@@ -25,10 +25,12 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_nnapi_sl_fake_impl.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/custom_validation_embedder.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/nnapi_sl_fake_impl.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
@@ -46,6 +48,7 @@ namespace {
 class ValidatorRunnerImplTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    (void)unlink(storage_path_.c_str());
     MiniBenchmarkTestHelper helper;
     should_perform_test_ = helper.should_perform_test();
     model_path_ = helper.DumpToTempFile(
@@ -54,19 +57,47 @@ class ValidatorRunnerImplTest : public ::testing::Test {
         g_tflite_acceleration_embedded_mobilenet_validation_model_len);
     ASSERT_TRUE(!model_path_.empty());
 
+    plain_model_path_ = MiniBenchmarkTestHelper::DumpToTempFile(
+        "mobilenet_quant.tflite",
+        g_tflite_acceleration_embedded_mobilenet_model,
+        g_tflite_acceleration_embedded_mobilenet_model_len);
+    ASSERT_TRUE(!plain_model_path_.empty());
+
     nnapi_sl_dump_path_ = helper.DumpToTempFile(
         "libnnapi_fake.so", g_nnapi_sl_fake_impl, g_nnapi_sl_fake_impl_len);
   }
 
   ValidatorRunnerImpl CreateValidator() {
     return ValidatorRunnerImpl(model_path_, storage_path_, data_directory_path_,
+                               0, std::move(custom_validation_embedder_),
                                error_reporter_, nnapi_sl_, entrypoint_name_);
+  }
+
+  std::vector<const BenchmarkEvent*> WaitUntilNTestCompleted(
+      FlatbufferStorage<BenchmarkEvent>& storage, int num_tests) {
+    std::vector<const BenchmarkEvent*> results;
+    while (results.size() != num_tests) {
+      results.clear();
+      storage.Read();
+      for (int i = 0; i < storage.Count(); i++) {
+        const BenchmarkEvent* event = storage.Get(i);
+        if (event->event_type() == BenchmarkEventType_ERROR ||
+            (event->event_type() == BenchmarkEventType_END &&
+             event->result())) {
+          results.push_back(event);
+        }
+      }
+    }
+    return results;
   }
 
   bool should_perform_test_;
   std::string data_directory_path_ = ::testing::TempDir();
   std::string storage_path_ = ::testing::TempDir() + "/storage_path.fb";
   std::string model_path_;
+  std::string plain_model_path_;
+  std::unique_ptr<CustomValidationEmbedder> custom_validation_embedder_ =
+      nullptr;
   std::string nnapi_sl_dump_path_;
   const NnApiSLDriverImplFL5* nnapi_sl_ = nullptr;
   std::string entrypoint_name_ =
@@ -106,25 +137,47 @@ TEST_F(ValidatorRunnerImplTest, SucceedWithNnApiSl) {
           std::move(tflite_settings)));
 
   // Validate.
+  // Note: lifetime of storage need to outlast results, as results are pointers
+  // to data within storage.
   FlatbufferStorage<BenchmarkEvent> storage(storage_path_, error_reporter_);
-  std::vector<const BenchmarkEvent*> results;
-  while (results.size() != 1) {
-    results.clear();
-    storage.Read();
-    for (int i = 0; i < storage.Count(); i++) {
-      const BenchmarkEvent* event = storage.Get(i);
-      if (event->event_type() == BenchmarkEventType_ERROR ||
-          (event->event_type() == BenchmarkEventType_END && event->result())) {
-        results.push_back(event);
-      }
-    }
-  }
+  std::vector<const BenchmarkEvent*> results =
+      WaitUntilNTestCompleted(storage, 1);
   for (auto result : results) {
     EXPECT_THAT(result, testing::Property(&BenchmarkEvent::event_type,
                                           testing::Eq(BenchmarkEventType_END)));
   }
-
   EXPECT_TRUE(WasNnApiSlInvoked());
+}
+
+TEST_F(ValidatorRunnerImplTest, SucceedWithEmbeddedValidation) {
+  // Setup.
+  if (!should_perform_test_) {
+    std::cerr << "Skipping test";
+    return;
+  }
+  custom_validation_embedder_ = std::make_unique<CustomValidationEmbedder>(
+      3, std::vector<std::vector<uint8_t>>{
+             std::vector<uint8_t>(3 * 224 * 224 * 3, 1)});
+  model_path_ = plain_model_path_;
+  ValidatorRunnerImpl validator = CreateValidator();
+  ASSERT_EQ(validator.Init(), kMinibenchmarkSuccess);
+
+  std::vector<flatbuffers::FlatBufferBuilder> tflite_settings(1);
+  tflite_settings[0].Finish(CreateTFLiteSettings(tflite_settings[0]));
+
+  // Run.
+  validator.TriggerValidationAsync(
+      std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>(
+          std::move(tflite_settings)));
+
+  // Validate.
+  FlatbufferStorage<BenchmarkEvent> storage(storage_path_, error_reporter_);
+  std::vector<const BenchmarkEvent*> results =
+      WaitUntilNTestCompleted(storage, 1);
+  for (auto result : results) {
+    EXPECT_THAT(result, testing::Property(&BenchmarkEvent::event_type,
+                                          testing::Eq(BenchmarkEventType_END)));
+  }
 }
 
 TEST_F(ValidatorRunnerImplTest, FailIfItCannotFindNnApiSlPath) {
@@ -150,6 +203,14 @@ TEST_F(ValidatorRunnerImplTest, FailWithInvalidEntrypoint) {
 TEST_F(ValidatorRunnerImplTest, FailIfCannotLoadModel) {
   model_path_ = "invalid/path";
   EXPECT_EQ(CreateValidator().Init(), kMinibenchmarkModelBuildFailed);
+}
+
+TEST_F(ValidatorRunnerImplTest, FailIfCannotEmbedInputData) {
+  model_path_ = plain_model_path_;
+  custom_validation_embedder_ = std::make_unique<CustomValidationEmbedder>(
+      1, std::vector<std::vector<uint8_t>>(2));
+  EXPECT_EQ(CreateValidator().Init(),
+            kMinibenchmarkValidationSubgraphBuildFailed);
 }
 
 }  // namespace

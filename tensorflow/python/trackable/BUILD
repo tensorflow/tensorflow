@@ -70,7 +70,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":data_structures",
-        "//tensorflow/python/eager:function_saved_model_utils",
+        "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
     ],
 )
 

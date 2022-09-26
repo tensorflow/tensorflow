@@ -21,4 +21,4 @@ func.func @compute(%arg0: memref<3x5x16x5xcomplex<f32>>,
 
 // CHECK: func private @[[FFT]](memref<3x5x16x5xcomplex<f32>>,
 // CHECK-SAME:                  memref<3x5x16x8xf32>)
-// CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.fft"}
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.fft"}

@@ -12,27 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/platform/stacktrace_handler.h"
+#include "tensorflow/tsl/platform/stacktrace_handler.h"
 
 // clang-format off
 #include <windows.h>  // Windows.h must be declared above dgbhelp.
 #include <dbghelp.h>
 // clang-format on
 
-#include <io.h>
 #include <errno.h>
+#include <io.h>
 #include <signal.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <string>
 
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stacktrace.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
-
+namespace tsl {
 
 // This mutex allows us to unblock an alarm thread.
 static mutex alarm_mu(LINKER_INITIALIZED);
@@ -181,4 +180,4 @@ void InstallStacktraceHandler() {
 }
 
 }  // namespace testing
-}  // namespace tensorflow
+}  // namespace tsl

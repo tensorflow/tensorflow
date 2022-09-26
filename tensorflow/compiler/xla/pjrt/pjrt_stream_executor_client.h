@@ -52,8 +52,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -541,7 +541,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     const Type type_;
 
     // There is an invariant that if ok() then
-    // buffer_.ValueOrDie() != nullptr.
+    // buffer_.value() != nullptr.
     State state_;
     Status status_;
     std::shared_ptr<TrackedDeviceBuffer> buffer_;
@@ -795,8 +795,6 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;
   }
-
-  std::vector<std::unique_ptr<AotCompilationResult>> aot_executables_;
 
  protected:
   bool parameter_is_tupled_arguments() const {

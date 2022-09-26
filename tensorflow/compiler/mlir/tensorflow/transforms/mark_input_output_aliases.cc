@@ -132,7 +132,7 @@ void MarkInputOutputAliasesPass::runOnOperation() {
       return;
     }
 
-    FlatSymbolRefAttr func_attr = cluster_func.funcAttr();
+    FlatSymbolRefAttr func_attr = cluster_func.getFuncAttr();
     func::FuncOp device_func =
         module.lookupSymbol<func::FuncOp>(func_attr.getValue());
     AddAliasingAttributeToDeviceFunc(device_func, resource_alias_info_map);

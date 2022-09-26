@@ -27,6 +27,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "add_hlo_trace_annotations.cc",
         "gpu_to_gpu_runtime.cc",
         "lmhlo_gpu_to_gpu_runtime.cc",
         "lmhlo_to_gpu_launch.cc",
@@ -40,7 +41,8 @@ cc_library(
     compatible_with = [],
     deps = [
         ":passes_inc_gen",
-        "//tensorflow/compiler/xla/mlir/ir/runtime:rt_ops",
+        "//tensorflow/compiler/mlir:name_utils",
+        "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
         "//tensorflow/compiler/xla/mlir/utils/runtime:custom_calls",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",

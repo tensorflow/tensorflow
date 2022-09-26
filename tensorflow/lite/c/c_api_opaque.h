@@ -79,6 +79,14 @@ TFL_CAPI_EXPORT extern TfLiteOpaqueTensor* TfLiteOpaqueNodeGetOutput(
     TfLiteOpaqueContext* opaque_context, const TfLiteOpaqueNode* opaque_node,
     int index);
 
+// Gets the number of input tensors of the provided 'opaque_node'.
+TFL_CAPI_EXPORT int TfLiteOpaqueNodeNumberOfInputs(
+    const TfLiteOpaqueNode* opaque_node);
+
+// Gets the number of output tensors of the provided 'opaque_node'.
+TFL_CAPI_EXPORT int TfLiteOpaqueNodeNumberOfOutputs(
+    const TfLiteOpaqueNode* opaque_node);
+
 // Returns opaque data provided by the node implementer. The value returned
 // from this function is the value that was returned from the `init` callback
 // that was passed to `TfLiteRegistrationExternalSetInit`.

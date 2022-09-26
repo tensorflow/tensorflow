@@ -469,9 +469,9 @@ struct AggregateAttrDef {
   template <typename T, typename Attr = mlir::Attribute>
   using Encode = Attr (mlir::Builder::*)(T);
 
-  template <typename T, typename Attr = mlir::Attribute>
+  template <typename T, typename U, typename Attr = mlir::Attribute>
   AggregateAttrDef &Add(std::string name, Extract<T> extract,
-                        Encode<T, Attr> encode) {
+                        Encode<U, Attr> encode) {
     bindings.emplace_back([=](AttrType attr, mlir::Builder &b) {
       auto encoded = std::invoke(encode, b, std::invoke(extract, attr));
       return mlir::NamedAttribute(b.getStringAttr(name), encoded);
@@ -485,6 +485,10 @@ struct AggregateAttrDef {
 
   AggregateAttrDef &Add(std::string name, Extract<int64_t> extract) {
     return Add(name, extract, &mlir::Builder::getI64IntegerAttr);
+  }
+
+  AggregateAttrDef &Add(std::string name, Extract<llvm::StringRef> extract) {
+    return Add(name, extract, &mlir::Builder::getStringAttr);
   }
 
   AggregateAttrDef &Add(std::string name,
@@ -635,6 +639,8 @@ class MemrefRetEncoding : public CustomCallRetEncoding {
 //===----------------------------------------------------------------------===//
 // Default encodings for arguments, attributes and results.
 //===----------------------------------------------------------------------===//
+
+// TODO(ezhulenev): Use `Populate...` functions for adding default encodings.
 
 CustomCallArgEncodingSet DefaultArgEncodings();
 CustomCallAttrEncodingSet DefaultAttrEncodings();

@@ -321,7 +321,8 @@ StatusOr<mlir::Operation*> EmitAllReduce(
   mlir::Location loc = DT_LOC2(input->getLoc(), "DTensorAllReduceOp");
   auto all_reduce = builder.create<mlir::TF::DTensorAllReduceOp>(
       loc, input->getResultTypes()[0], input->getOpResult(0),
-      builder.create<mlir::TF::ConstOp>(loc, group_assignment),
+      builder.create<mlir::TF::ConstOp>(DT_LOC2(loc, "group_assignment"),
+                                        group_assignment),
       builder.getStringAttr(std::string(reduce_op)),
       builder.getStringAttr(device_type));
   SetSingleLayoutOnOp(all_reduce, output_layout);

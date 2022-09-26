@@ -124,7 +124,7 @@ LogicalResult PartitionResourceReadsWrites(
   // resource handle results is an indicator for a partitioned resource
   // variable. These `tf.TPUPartitionedInput` will be removed when rewriting
   // the operands.
-  for (Value result : parallel_execute.execute_outputs()) {
+  for (Value result : parallel_execute.getExecuteOutputs()) {
     if (!result.hasOneUse()) continue;
     auto assign_var =
         llvm::dyn_cast<TF::AssignVariableOp>(*result.getUsers().begin());

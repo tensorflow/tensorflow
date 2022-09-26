@@ -137,7 +137,7 @@ StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
     // The filename in the asset is a relative path. So we prefix it with the
     // directory path.
     return CreateScalarStringTensor(
-        tensorflow::io::JoinPath(saved_model_dir, asset.filename().str()));
+        tensorflow::io::JoinPath(saved_model_dir, asset.getFilename().str()));
   }
 
   return tensorflow::errors::Internal(

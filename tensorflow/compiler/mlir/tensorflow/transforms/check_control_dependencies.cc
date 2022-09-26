@@ -128,7 +128,7 @@ bool FindPathBfs(IslandOp source_op, IslandOp target_op,
 
     if (curr_op == target_op) break;
 
-    for (Operation* user : curr_op.control().getUsers()) {
+    for (Operation* user : curr_op.getControl().getUsers()) {
       auto user_island = dyn_cast<IslandOp>(user);
       if (!user_island) continue;
       // We have labeled `user_island` before so it also must have been added to
@@ -203,7 +203,7 @@ void CheckControlDependenciesForFunc(
 
   // Traverse islands in topological order.
   func.walk([&](IslandOp source_island) {
-    for (Operation* user : source_island.control().getUsers()) {
+    for (Operation* user : source_island.getControl().getUsers()) {
       auto target_island = dyn_cast<IslandOp>(user);
       if (!target_island) continue;
 

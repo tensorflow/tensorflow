@@ -354,7 +354,8 @@ ParseResult ReplicateOp::parse(OpAsmParser& parser, OperationState& result) {
   if (!result.attributes.get(kOperandSegmentSizesAttr)) {
     int32_t num_replicated_inputs = replicated_inputs.size() * n;
     int32_t num_packed_inputs = packed_inputs.size();
-    auto attr = parser.getBuilder().getDenseI32ArrayAttr({num_replicated_inputs, num_packed_inputs});
+    auto attr = parser.getBuilder().getDenseI32ArrayAttr(
+        {num_replicated_inputs, num_packed_inputs});
     result.addAttribute(kOperandSegmentSizesAttr, attr);
   }
 
@@ -384,24 +385,23 @@ void ReplicateOp::print(OpAsmPrinter& p) {
   //     [%a, ...] as %block_arg0: type
   //   packed_input
   //     %b as %block_arg1: type
-  const int32_t n = this->n();
-  const int32_t num_replicated_inputs =
-      operand_segment_sizes()[0];
+  const int32_t n = this->getN();
+  const int32_t num_replicated_inputs = getOperandSegmentSizes()[0];
   const int32_t num_replicated_block_args = num_replicated_inputs / n;
 
   if (getNumOperands()) {
     p << '(';
-    Block& block = body().front();
+    Block& block = getBody().front();
     interleaveComma(block.getArguments(), p, [&](BlockArgument arg) {
       const int block_arg_num = arg.getArgNumber();
       if (block_arg_num < num_replicated_block_args) {
         p << '[';
         p.printOperands(
-            std::next(replicated_inputs().begin(), block_arg_num * n),
-            std::next(replicated_inputs().begin(), (block_arg_num + 1) * n));
+            std::next(getReplicatedInputs().begin(), block_arg_num * n),
+            std::next(getReplicatedInputs().begin(), (block_arg_num + 1) * n));
         p << "]";
       } else {
-        p.printOperand(*std::next(packed_inputs().begin(),
+        p.printOperand(*std::next(getPackedInputs().begin(),
                                   block_arg_num - num_replicated_block_args));
       }
       p << " as " << arg << ": " << arg.getType();
@@ -416,7 +416,7 @@ void ReplicateOp::print(OpAsmPrinter& p) {
       getOperation()->getAttrs(),
       /*elidedAttrs=*/ArrayRef<StringRef>{kOperandSegmentSizesAttr});
   p << ' ';
-  p.printRegion(body(), /*printEntryBlockArgs=*/false);
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
 }
 
 namespace {
@@ -475,11 +475,11 @@ void BuildReplicateOp(
 
 LogicalResult ReplicateOp::verify() {
   ReplicateOp op = *this;
-  int32_t n = op.n();
+  int32_t n = op.getN();
 
   // Check number of devices, if set, matches `n`.
-  if (op.devices().has_value()) {
-    for (auto device_attr : op.devices().getValue().getValue()) {
+  if (op.getDevices().has_value()) {
+    for (auto device_attr : op.getDevices().getValue().getValue()) {
       auto device_list = device_attr.getValue().dyn_cast_or_null<ArrayAttr>();
       if (!device_list)
         return op.emitError()
@@ -499,13 +499,11 @@ LogicalResult ReplicateOp::verify() {
     }
   }
 
-  Block& block = op.body().front();
+  Block& block = op.getBody().front();
 
-  auto operand_segment_sizes = op.operand_segment_sizes();
-  const int32_t num_replicated_inputs =
-      operand_segment_sizes[0];
-  const int32_t num_packed_inputs =
-      operand_segment_sizes[1];
+  auto operand_segment_sizes = op.getOperandSegmentSizes();
+  const int32_t num_replicated_inputs = operand_segment_sizes[0];
+  const int32_t num_packed_inputs = operand_segment_sizes[1];
 
   if (num_replicated_inputs % n != 0)
     return op.emitOpError()
@@ -600,7 +598,7 @@ void ReplicateOp::build(
 
 // Returns the number of packed block arguments.
 unsigned ReplicateOp::GetNumPackedBlockArguments() {
-  return packed_inputs().size();
+  return getPackedInputs().size();
 }
 
 // Returns the number of replicated block arguments.
@@ -664,7 +662,7 @@ MutableArrayRef<OpOperand> ReplicateOp::GetOperandsForBlockArgument(
 
   unsigned arg_number = block_arg.getArgNumber();
   unsigned num_replicated_args = GetNumReplicatedBlockArguments();
-  int32_t num_replicas = nAttr().getInt();
+  int32_t num_replicas = getNAttr().getInt();
   MutableArrayRef<OpOperand> operands = getOperation()->getOpOperands();
 
   // All replicated arguments are before packed arguments so return replicated

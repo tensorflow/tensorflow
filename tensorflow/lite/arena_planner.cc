@@ -74,12 +74,12 @@ TfLiteStatus ArenaPlanner::ResetAllocationsAfter(int node) {
     if (allocs_[i].first_node > node && allocs_[i].size > 0) {
       TfLiteTensor& tensor = tensors[i];
       if (tensor.allocation_type == kTfLiteArenaRw) {
-        TF_LITE_ENSURE_STATUS(arena_.Deallocate(context_, allocs_[i]));
         allocs_[i].reset();
         tensor.data.raw = nullptr;
       }
     }
   }
+  arena_.DeallocateAfter(node);
 
   return kTfLiteOk;
 }
@@ -362,6 +362,7 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(
     }
   }
 
+  arena_.ResolveDeallocations();
   CreateTensorAllocationVector(tensors_allocated);
   // Vector of ids of already allocated tensors, ordered by offset.
   for (const auto& tensor_index : *tensors_allocated) {

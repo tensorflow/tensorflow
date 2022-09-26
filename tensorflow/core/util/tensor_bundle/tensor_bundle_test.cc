@@ -69,6 +69,11 @@ Tensor Constant_2x3(T v) {
   return Constant(v, TensorShape({2, 3}));
 }
 
+template <typename T>
+Tensor Constant_100x100(T v) {
+  return Constant(v, TensorShape({100, 100}));
+}
+
 Tensor ByteSwap(Tensor t) {
   Tensor ret = tensor::DeepCopy(t);
   TF_EXPECT_OK(ByteSwapTensor(&ret));
@@ -1117,6 +1122,29 @@ TEST(TensorBundleTest, VersionTest) {
         strings::StrCat(
             "Checkpoint disallows consumer version ", kTensorBundleVersion,
             ".  Please upgrade TensorFlow: this version is likely buggy."));
+  }
+}
+
+TEST(TensorBundleTest, LargeVariableLoadingTest) {
+  {
+    BundleWriter writer(Env::Default(), Prefix("foo"));
+    TF_EXPECT_OK(writer.Add("foo_003", Constant_100x100<float>(3)));
+    TF_EXPECT_OK(writer.Add("foo_000", Constant_100x100<float>(0)));
+    TF_EXPECT_OK(writer.Add("foo_002", Constant_100x100<float>(2)));
+    TF_EXPECT_OK(writer.Add("foo_001", Constant_100x100<float>(1)));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"),
+                        /* enable_multi_threading_for_testing = */ true);
+    TF_ASSERT_OK(reader.status());
+    EXPECT_EQ(
+        AllTensorKeys(&reader),
+        std::vector<string>({"foo_000", "foo_001", "foo_002", "foo_003"}));
+    Expect<float>(&reader, "foo_000", Constant_100x100<float>(0));
+    Expect<float>(&reader, "foo_001", Constant_100x100<float>(1));
+    Expect<float>(&reader, "foo_002", Constant_100x100<float>(2));
+    Expect<float>(&reader, "foo_003", Constant_100x100<float>(3));
   }
 }
 

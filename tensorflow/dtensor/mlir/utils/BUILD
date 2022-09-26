@@ -25,10 +25,8 @@ cc_library(
     textual_hdrs = [] + if_google(["collective_lowering_google.inc"]),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/dtensor/cc:constants",
@@ -39,6 +37,7 @@ cc_library(
         "//tensorflow/dtensor/mlir:create_dtensor_mlir_passes",
         "//tensorflow/dtensor/mlir:device_utils",
         "//tensorflow/dtensor/mlir:dtensor_location",
+        "//tensorflow/dtensor/mlir:dtensor_passes_inc_gen",
         "//tensorflow/dtensor/mlir:group_assignment",
         "//tensorflow/dtensor/mlir:layout_parsing",
         "//tensorflow/dtensor/mlir:op_utils",

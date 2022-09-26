@@ -264,7 +264,7 @@ XLA_TEST_F(ParamsTest,
     target += i;
     Literal literal = LiteralUtil::CreateR0<float>(i);
     param_data_owner.push_back(
-        std::move(client_->TransferToServer(literal)).ValueOrDie());
+        std::move(client_->TransferToServer(literal)).value());
     XlaOp param = Parameter(&builder, i, literal.shape(), "param");
     sum_handle = Add(sum_handle, param);
   }
@@ -298,7 +298,7 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
     target += i;
     Literal literal = LiteralUtil::CreateR1<int32_t>({i, i});
     param_data_owner.push_back(
-        std::move(client_->TransferToServer(literal)).ValueOrDie());
+        std::move(client_->TransferToServer(literal)).value());
     XlaOp param = Parameter(&builder, i, literal.shape(), "param");
     params.push_back(param);
     sum_handle = Add(sum_handle, param);
@@ -360,7 +360,7 @@ XLA_TEST_F(ParamsTest,
   for (int i = 0; i < kParamCount; ++i) {
     Literal literal = LiteralUtil::CreateR1<int32_t>({i, i});
     param_data_owner.push_back(
-        std::move(client_->TransferToServer(literal)).ValueOrDie());
+        std::move(client_->TransferToServer(literal)).value());
     XlaOp param = Parameter(&builder, i, literal.shape(), "param");
     params.push_back(param);
     parameter_shapes.push_back(literal.shape());
@@ -370,7 +370,7 @@ XLA_TEST_F(ParamsTest,
   // constant because DCE may eliminate the while-body otherwise.
   Literal bool_literal = LiteralUtil::CreateR0<bool>(false);
   param_data_owner.push_back(
-      std::move(client_->TransferToServer(bool_literal)).ValueOrDie());
+      std::move(client_->TransferToServer(bool_literal)).value());
   XlaOp bool_param =
       Parameter(&builder, kParamCount, bool_literal.shape(), "bool_param");
   params.push_back(bool_param);

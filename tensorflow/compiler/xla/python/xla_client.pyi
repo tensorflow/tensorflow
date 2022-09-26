@@ -45,7 +45,10 @@ from .xla_extension import XlaComputation as XlaComputation
 from .xla_extension import XlaOp as XlaOp
 from .xla_extension import Sharding as Sharding
 from .xla_extension import XLACompatibleSharding as XLACompatibleSharding
+from .xla_extension import MeshPspecSharding as MeshPspecSharding
+from .xla_extension import SingleDeviceSharding as SingleDeviceSharding
 from .xla_extension import PmapSharding as PmapSharding
+from .xla_extension import OpShardingSharding as OpShardingSharding
 
 _version: int
 

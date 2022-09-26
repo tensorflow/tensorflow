@@ -25,20 +25,30 @@ namespace tensorflow {
 namespace quantization {
 namespace internal {
 
-absl::StatusOr<GraphDef> QuantizeQatModel(
+// Represents an exported TensorFlow model. It consists of a GraphDef and extra
+// metadata required for building a SavedModel.
+struct ExportedModel {
+  GraphDef graph_def = {};
+
+  // Name of the initialization node used for initializing resources like
+  // hash tables upon loading.
+  std::string init_node_name = "";
+};
+
+absl::StatusOr<ExportedModel> QuantizeQatModel(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags, absl::string_view quant_opts_serialized);
 
 // Apply post-training dynamic range quantization to the model.
-absl::StatusOr<GraphDef> QuantizePtqDynamicRange(
+absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags, absl::string_view quant_opts_serialized);
 
-absl::StatusOr<GraphDef> QuantizePtqModelPreCalibration(
+absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags);
 
-absl::StatusOr<GraphDef> QuantizePtqModelPostCalibration(
+absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags, absl::string_view quant_opts_serialized);
 

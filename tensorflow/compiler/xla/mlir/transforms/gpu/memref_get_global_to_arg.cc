@@ -26,13 +26,13 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_CONVERTMEMREFGETGLOBALTOARGPASS
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
 
 using namespace mlir;  // NOLINT
 
 class ConvertMemrefGetGlobalToArgPass
-    : public ConvertMemrefGetGlobalToArgPassBase<
+    : public impl::ConvertMemrefGetGlobalToArgPassBase<
           ConvertMemrefGetGlobalToArgPass> {
  public:
   ConvertMemrefGetGlobalToArgPass() = default;

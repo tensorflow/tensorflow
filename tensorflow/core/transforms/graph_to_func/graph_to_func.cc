@@ -35,12 +35,6 @@ using tensorflow::errors::InvalidArgument;
 namespace mlir {
 namespace tfg {
 
-// TODO(jpienaar): Move to helper header/this shouldn't be needed once we
-// upgrade to C++17.
-static inline absl::string_view ToStringView(llvm::StringRef ref) {
-  return {ref.data(), ref.size()};
-}
-
 static std::string OpResultToSlotName(OpResult value) {
   return (TFOp(*value.getDefiningOp()).name() + "_" +
           Twine(value.getResultNumber()))
@@ -74,7 +68,7 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
   auto loc = graph.getLoc();
   auto func_op = builder.create<GraphFuncOp>(loc, func_name, func_type,
                                              /*generic=*/false);
-  func_op->setAttr("tfg.lifted_graph_version", graph.version());
+  func_op->setAttr("tfg.lifted_graph_version", graph.getVersion());
   func_op.getRegion().takeBody(graph.getRegion());
 
   // Create the returnOp first so that if there are nodes in both feeds and

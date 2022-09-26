@@ -15,7 +15,6 @@
 """Distribution Strategy-related dataset transformations."""
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import rebatch_op
 from tensorflow.python.data.ops.options import ExternalStatePolicy
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
@@ -26,12 +25,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util.tf_export import tf_export
-
-# TODO(b/246022798): Migrate all intenral uses of `_RebatchDataset` to
-# `tf.data.Dataset.rebatch` and remove the below symbol forward declaration.
-# Symbols forwarded for legacy access through distribute.py. These forwarded
-# symbols can be removed once all internal uses are updated.
-_RebatchDataset = rebatch_op.RebatchDataset
 
 SHARD_HINT = -1
 tf_export("data.experimental.SHARD_HINT").export_constant(

@@ -69,7 +69,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
     // This pass assumes that all global tensors as immutable (e.g. by a
     // previous optimize global tensors pass). If not, this pass has to fail
     // since it cannot perform one of its goals.
-    if (global_tensor.is_mutable()) {
+    if (global_tensor.getIsMutable()) {
       if (allow_mutable_tensors) continue;
       global_tensor.emitError()
           << "is not immutable, try removing mutable variables in your model "
@@ -100,7 +100,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       if (!globalTensor)
         continue;  // happens if the name is e.g. in a VarHandleOp.
 
-      if (globalTensor.is_mutable()) {
+      if (globalTensor.getIsMutable()) {
         freezeable[val] = false;
         continue;
       }
@@ -157,7 +157,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       // Replace the arg with a tf.Const op in the function body.
       builder.setInsertionPointToStart(&func.getBody().front());
       auto const_op = builder.create<TF::ConstOp>(global_tensor.getLoc(),
-                                                  global_tensor.value());
+                                                  global_tensor.getValue());
       args_to_erase.set(val.getArgNumber());
       for (auto read_op : read_variable_ops_to_erase) {
         read_op.getResult().replaceAllUsesWith(const_op.getResult());

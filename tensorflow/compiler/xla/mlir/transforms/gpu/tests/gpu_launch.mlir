@@ -52,9 +52,9 @@ func.func @func(%arg0: memref<4x4xf32>, %arg1: memref<4x4xf32>) {
 
 // CHECK: func private @[[LAUNCH]](i32, i32, i32, i32, i32, i32,
 // CHECK-SAME: memref<4x4xf32>, memref<4x4xf32>)
-// CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.func.launch"}
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.func.launch"}
 
 // Check that we have a single custom call declaration in the module.
-// CHECK-NOT: rt.direct_custom_call
+// CHECK-NOT: rt.custom_call
 
 }

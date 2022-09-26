@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/net.h"
+#include "tensorflow/tsl/platform/net.h"
 
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -26,14 +26,14 @@ limitations under the License.
 #include <random>
 #include <unordered_set>
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/strcat.h"
 
 // https://en.wikipedia.org/wiki/Ephemeral_port
 #define MAX_EPHEMERAL_PORT 60999
 #define MIN_EPHEMERAL_PORT 32768
 
-namespace tensorflow {
+namespace tsl {
 namespace internal {
 
 namespace {
@@ -146,4 +146,4 @@ int PickUnusedPortOrDie() {
 }
 
 }  // namespace internal
-}  // namespace tensorflow
+}  // namespace tsl

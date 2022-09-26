@@ -97,7 +97,7 @@ Status ConvertStridedSliceHelper(
     }
   }
 
-  if (params->validation_only) return Status::OK();
+  if (params->validation_only) return OkStatus();
 
   StatusOr<TRTNetworkBuilder> builder = TRTNetworkBuilder::Create(
       params->converter->network(), params->weight_store);
@@ -137,7 +137,7 @@ Status ConvertStridedSliceHelper(
         /*validation_only=*/false, &tensor, node_def, op_instance));
   }
   params->outputs->push_back(TRT_TensorOrWeights(tensor));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HandleDynamicStridedSliceInput(
@@ -241,7 +241,7 @@ Status HandleDynamicStridedSliceInput(
   slice_layer->setInput(2, *size_tensor);
   slice_layer->setInput(3, *(*stride_const)->getOutput(0));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace convert

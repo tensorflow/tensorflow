@@ -23,7 +23,12 @@ load(
     "if_mkl_ml",
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "ADDITIONAL_API_INDEXABLE_SETTINGS")
 
 # copybara:uncomment_begin
 # load("//tools/build_defs/license:license.bzl", "license")
@@ -924,8 +929,13 @@ config_setting(
 # )
 #
 # config_setting(
-#     name = "api_indexable",
+#     name = "api_indexable_flag",
 #     flag_values = {":enable_api_indexable": "True"},
+# )
+#
+# selects.config_setting_group(
+#     name = "api_indexable",
+#     match_any = [":api_indexable_flag"] + ADDITIONAL_API_INDEXABLE_SETTINGS,
 #     visibility = ["//visibility:public"],
 # )
 # copybara:uncomment_end

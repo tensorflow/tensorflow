@@ -43,6 +43,10 @@ cc_library(
     deps = [
         ":error_windows",
         ":wide_char",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
+        "//third_party/eigen3",
+        # TODO(ddunleavy) move to TSL
         "//tensorflow/core/lib/core:error_codes_proto_cc",
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/platform",
@@ -53,7 +57,7 @@ cc_library(
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
-        "//tensorflow/core/platform:load_library",
+        "//tensorflow/tsl/platform:load_library",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
@@ -71,9 +75,6 @@ cc_library(
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/platform:tracing",
         "//tensorflow/core/platform:types",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -135,7 +136,7 @@ cc_library(
 cc_library(
     name = "load_library",
     srcs = ["load_library.cc"],
-    hdrs = ["//tensorflow/core/platform:load_library.h"],
+    hdrs = ["//tensorflow/tsl/platform:load_library.h"],
     tags = [
         "manual",
         "no_oss",
@@ -152,7 +153,6 @@ cc_library(
     name = "net",
     srcs = ["net.cc"],
     hdrs = [
-        "//tensorflow/core/platform:net.h",
         "//tensorflow/tsl/platform:net.h",
     ],
     linkopts = ["-DEFAULTLIB:ws2_32.lib"],
@@ -217,16 +217,16 @@ cc_library(
 cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
-    hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
+    hdrs = ["//tensorflow/tsl/platform:stacktrace_handler.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:stacktrace",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:stacktrace",
+        "//tensorflow/tsl/platform:types",
     ],
 )
 

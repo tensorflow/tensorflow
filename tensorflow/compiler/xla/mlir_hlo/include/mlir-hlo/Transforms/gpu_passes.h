@@ -46,10 +46,12 @@ createGpuKernelToRocdlPass();
 
 /// Creates a pipeline that converts operations in HLO dialect to GPU kernels
 /// written in a combination of LLVM and NVVM dialects, and appends the pipeline
-/// to `pm`. `tileSizes` and `unrollFactors` are used to control loop tiling
-/// in `createTileLoopsPass`.
-void createHloToGpuPipeline(OpPassManager& pm, ArrayRef<int64_t> tileSizes,
-                            ArrayRef<int64_t> unrollFactors);
+/// to `pm`. `blockTileDim`, `warpTileDim` and `threadTileDim` indicate the
+/// size of the subproblem that will be operated on by the block, warp, and
+/// thread level, respectively.
+void createHloToGpuPipeline(OpPassManager& pm, ArrayRef<int64_t> blockTileDim,
+                            ArrayRef<int64_t> warpTileDim,
+                            ArrayRef<int64_t> threadTileDim);
 
 }  // namespace mlir
 

@@ -290,3 +290,15 @@ def CollapseElementwiseMapPass
   let summary = "Collapse the mhlo.map if the map only has elementwise ops.";
   let constructor = "createCollapseElementwiseMapPass()";
 }
+
+def HloLegalizeToStablehloPass : Pass<"hlo-legalize-to-stablehlo", "ModuleOp"> {
+  let summary = "Legalize HLO to StableHLO.";
+  let constructor = "createHloLegalizeToStablehloPass()";
+  let dependentDialects = ["stablehlo::StablehloDialect"];
+}
+
+def StablehloLegalizeToHloPass : Pass<"stablehlo-legalize-to-hlo", "ModuleOp"> {
+  let summary = "Legalize StableHLO to HLO.";
+  let constructor = "createStablehloLegalizeToHloPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}

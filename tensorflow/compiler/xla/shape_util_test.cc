@@ -852,6 +852,15 @@ TEST(Transpose021Test, Batched) {
             ShapeUtil::FindTranspose021(shape, transposed));
 }
 
+TEST(Transpose021Test, BatchedLogical) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {32, 3, 64}, {2, 1, 0});
+  Shape transposed =
+      ShapeUtil::MakeShapeWithLayout(F32, {64, 32, 3}, {2, 1, 0});
+  std::vector<int64_t> dimensions = {2, 0, 1};
+  EXPECT_EQ(std::make_optional(Vector3{1, 64, 96}),
+            ShapeUtil::FindLogicalTranspose021(shape, transposed, dimensions));
+}
+
 TEST(Transpose021Test, Large) {
   Shape shape =
       ShapeUtil::MakeShapeWithLayout(F32, {8, 31, 31, 65}, {3, 2, 1, 0});

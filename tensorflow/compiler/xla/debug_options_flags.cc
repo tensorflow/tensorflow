@@ -95,6 +95,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_mlir_lowering(false);
   opts.set_xla_gpu_enable_mlir_lowering(true);
   opts.set_xla_gpu_normalize_layouts(false);
+  opts.set_xla_gpu_simplify_all_fp_conversions(true);
   return opts;
 }
 

@@ -142,6 +142,49 @@ ENTRY main {
 )");
 }
 
+TEST_F(TransposeFusionTest, ElementaryLogical) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f32[16,32]{1,0} parameter(0)
+  s = sqrt(p)
+  ROOT c = f32[32,16]{1,0} transpose(s), dimensions={1,0}
+}
+  )";
+
+  CheckGpuFusion(hlo, R"(
+// CHECK: %fused_computation (param_0.1: f32[16,32]) -> f32[32,16] {
+// CHECK-NEXT:   %param_0.1 = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
+// CHECK-NEXT:   ROOT %c.1 = f32[32,16]{1,0} transpose(%s.1), dimensions={1,0}
+// CHECK: ROOT %fusion = f32[32,16]{1,0} fusion(%p), kind=kInput, calls=%fused_computation
+)");
+}
+
+TEST_F(TransposeFusionTest, ReshapeSimpleFusionLogical) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f32[256,16]{1,0} parameter(0)
+  r = f32[16,16,16]{2,1,0} reshape(p)
+  s = sqrt(r)
+  ROOT c = f32[16,16,16]{2,1,0} transpose(s), dimensions={1,0,2}
+}
+  )";
+
+  CheckGpuFusion(hlo, R"(
+// CHECK: %fused_computation (param_0.2: f32[256,16]) -> f32[16,16,16] {
+// CHECK:   %param_0.2 = f32[256,16]{1,0} parameter(0)
+// CHECK:   %r.1 = f32[16,16,16]{2,1,0} reshape(%param_0.2)
+// CHECK:   %s.1 = f32[16,16,16]{2,1,0} sqrt(%r.1)
+// CHECK:   ROOT %c.1 = f32[16,16,16]{2,1,0} transpose(%s.1), dimensions={1,0,2}
+// CHECK: }
+// CHECK:   ROOT %fusion = f32[16,16,16]{2,1,0} fusion(%p), kind=kLoop, calls=%fused_computation
+)");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

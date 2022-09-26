@@ -58,11 +58,12 @@ class CustomValidationEmbedderTest : public ::testing::Test {
 TEST_F(CustomValidationEmbedderTest, BuildValidationModelSucceed) {
   int batch_size = 5;
   std::vector<uint8_t> input_buffer(batch_size * kMobileNetModelInputByteSize);
-  CustomValidationEmbedder embedder(
-      *plain_model_loader_->GetModel()->GetModel(), batch_size, {input_buffer});
+  CustomValidationEmbedder embedder(batch_size, {input_buffer});
 
   FlatBufferBuilder fbb;
-  EXPECT_EQ(embedder.BuildModel(fbb), kMinibenchmarkSuccess);
+  EXPECT_EQ(
+      embedder.BuildModel(*plain_model_loader_->GetModel()->GetModel(), fbb),
+      kMinibenchmarkSuccess);
 
   // Verify validation graph can be invoked.
   auto model =
@@ -84,12 +85,12 @@ TEST_F(CustomValidationEmbedderTest, BuildValidationModelSucceed) {
 
 TEST_F(CustomValidationEmbedderTest, BuildValidationModelTooManyInput) {
   int batch_size = 5;
-  CustomValidationEmbedder embedder(
-      *plain_model_loader_->GetModel()->GetModel(), batch_size, {{}, {}});
+  CustomValidationEmbedder embedder(batch_size, {{}, {}});
 
   FlatBufferBuilder fbb;
-  EXPECT_EQ(embedder.BuildModel(fbb),
-            kMinibenchmarkValidationSubgraphBuildFailed);
+  EXPECT_EQ(
+      embedder.BuildModel(*plain_model_loader_->GetModel()->GetModel(), fbb),
+      kMinibenchmarkValidationSubgraphBuildFailed);
 }
 
 }  // namespace

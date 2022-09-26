@@ -56,11 +56,25 @@ class ValidatorRunner {
     int model_fd = -1;
     size_t model_offset = 0;
     size_t model_size = 0;
+
+    // Optional: Custom validation info.
+    // Number of sample input.
+    int custom_input_batch_size = 1;
+    // The sample input data.
+    // Suppose the model has N input tensors, and each tensor is of size M, then
+    // custom_input_data.size() == N, and each custom_input_data[i] .size() ==
+    // M*N. The input data from different batches are concatenated so that the
+    // j-th input data maps to custom_input_data[i][j * M to(j + 1) * M].
+    std::vector<std::vector<uint8_t>> custom_input_data;
+
     // Required: The 'storage_path' must be model-specific.
     std::string storage_path;
     // Required: 'data_directory_path' must be suitable for extracting an
     // executable file to.
     std::string data_directory_path;
+    // Optional: The timeout for each acceleration config test. By default
+    // timeout is not enabled.
+    int per_test_timeout_ms = 0;
     // The nnapi_sl pointer can be used to configure the runner to use
     // the NNAPI implementation coming from the Support Library instead of
     // the NNAPI platform drivers.

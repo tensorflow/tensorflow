@@ -203,10 +203,10 @@ bool ProcessRunner::KillProcessWhenTimedOut(FILE* fstream) {
 }
 #endif  // _WIN32
 
-MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
-                                       const std::vector<std::string>& args,
-                                       std::string* output, int* exitcode,
-                                       int* signal) {
+MinibenchmarkStatus ProcessRunner::Run(
+    const flatbuffers::FlatBufferBuilder* model,
+    const std::vector<std::string>& args, std::string* output, int* exitcode,
+    int* signal) {
 #ifdef _WIN32
   return kMinibenchmarkUnsupportedPlatform;
 #else  // !_WIN32
@@ -310,8 +310,9 @@ MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
 #define __W_EXITCODE(ret, sig) ((ret) << 8 | (sig))
 #endif
 
-int ProcessRunner::RunInprocess(flatbuffers::FlatBufferBuilder* model,
+int ProcessRunner::RunInprocess(const flatbuffers::FlatBufferBuilder* model,
                                 const std::vector<std::string>& user_args) {
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Running Validator in-process.");
   std::vector<std::string> args_string;
   args_string.push_back("inprocess");
   args_string.push_back("inprocess");

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -129,6 +130,19 @@ class GraphExecutor {
       absl::Span<const std::string> target_tensor_names,
       std::vector<tensorflow::Tensor>* outputs);
 
+  // Runs the graph identified by `graph_name` using the input `inputs` and
+  // stores the output of the execution in `outputs`. It is the client's
+  // responsibility to ensure `graph_name` corresponds to logically different
+  // graphs, since this name is used to lookup compiled graphs in the cache. The
+  // graph is run synchronously with the TFRT interpreter.
+  tensorflow::Status RunWithSyncInterpreter(
+      const std::string& graph_name, absl::Span<tfrt::Value*> input_values,
+      absl::Span<const std::string> input_names,
+      absl::Span<const tensorflow::DataType> input_dtypes,
+      absl::Span<const std::string> output_tensor_names,
+      absl::Span<const std::string> target_tensor_names,
+      absl::Span<tfrt::Value*> outputs);
+
   // Extends the current graph by `graph`.
   tensorflow::Status Extend(const GraphDef& graph);
 
@@ -168,7 +182,8 @@ class GraphExecutor {
       absl::Span<const tensorflow::DataType> input_tensor_dtypes,
       absl::Span<const std::string> output_tensor_names,
       absl::Span<const std::string> target_tensor_names,
-      tensorflow::tfrt_stub::WorkQueueInterface* work_queue)
+      tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
+      std::optional<const std::string> graph_name = std::nullopt)
       TF_LOCKS_EXCLUDED(loaded_client_graphs_mu_);
 
   Options options_;

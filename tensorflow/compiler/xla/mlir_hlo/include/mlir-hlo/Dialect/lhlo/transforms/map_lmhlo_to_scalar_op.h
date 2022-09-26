@@ -40,10 +40,9 @@ struct LhloOpToStdScalarOp {
                                    LhloOpTy, lmhlo::CompareOp>::value>>
   static Value map(lmhlo::CompareOp op, ArrayRef<Type> resultTypes,
                    ValueRange args, OpBuilder* b) {
-    auto comparisonDirection = op.getComparisonDirection();
-    return mlir::mhlo::impl::mapCompareOpToStdScalarOp(
-        op.getLoc(), comparisonDirection, resultTypes,
-        llvm::to_vector<4>(op->getOperandTypes()), args, b);
+    return mlir::mhlo::impl::mapMhloOpToStdScalarOp<mhlo::CompareOp>(
+        op.getLoc(), resultTypes, llvm::to_vector<4>(op->getOperandTypes()),
+        mhlo::CompareOp::Adaptor(args, op->getAttrDictionary()), b);
   }
 
   // Implementation for LHLO ops except lmhlo::CompareOp.

@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 
@@ -43,6 +42,8 @@ namespace tensorflow {
 namespace dtensor {
 
 namespace {
+#define GEN_PASS_DEF_DTENSOROPTODEVICECLUSTER
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Extracts mesh config from the Op.
 // We currently hard extract mesh information from all the args and assume they
@@ -87,7 +88,7 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
 
   op->replaceAllUsesWith(cluster);
 
-  cluster.body().push_back(new mlir::Block);
+  cluster.getBody().push_back(new mlir::Block);
 
   builder->setInsertionPointToEnd(&cluster.GetBody());
   builder->create<mlir::tf_device::ReturnOp>(op->getLoc(), op->getResults());
@@ -100,7 +101,7 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
 
 // MLIR pass that wraps tf_device.cluster op to every TF op.
 struct DTensorOpToDeviceClusterPass
-    : public DTensorOpToDeviceClusterBase<DTensorOpToDeviceClusterPass> {
+    : public impl::DTensorOpToDeviceClusterBase<DTensorOpToDeviceClusterPass> {
   void getDependentDialects(mlir::DialectRegistry &registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
     registry.insert<mlir::tf_device::TensorFlowDeviceDialect>();

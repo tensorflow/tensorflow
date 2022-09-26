@@ -42,6 +42,8 @@ namespace mhlo {
 #define GEN_PASS_DECL_GROUPREDUCTIONDIMENSIONSPASS
 #define GEN_PASS_DECL_LEGALIZEMHLOTOTHLOPASS
 #define GEN_PASS_DECL_RANKSPECIALIZATIONTOSCFPASS
+#define GEN_PASS_DECL_HLOLEGALIZETOSTABLEHLOPASS
+#define GEN_PASS_DECL_STABLEHLOLEGALIZETOHLOPASS
 #include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 
 /// Lowers HLO control flow ops to SCF.
@@ -156,6 +158,12 @@ std::unique_ptr<OperationPass<ModuleOp>> createConvertToSignlessPass();
 
 /// Creates pass for rewriting sparse mhlo ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createSparseRewritingPass();
+
+// Legalizes from the MHLO dialect to the StableHLO dialect.
+std::unique_ptr<OperationPass<ModuleOp>> createHloLegalizeToStablehloPass();
+
+// Legalizes from the StableHLO dialect to the MHLO dialect.
+std::unique_ptr<OperationPass<ModuleOp>> createStablehloLegalizeToHloPass();
 
 }  // namespace mhlo
 }  // namespace mlir

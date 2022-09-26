@@ -117,11 +117,11 @@ xla::StatusOr<ShardArgResult> ShardArg(
     const InputSpec& input_spec, py::handle py_devices,
     const py::function& python_fallback) {
   if (arg.get_type() == xla::PyArray::type()) {
-    auto* py_array = py::cast<xla::PyArray*>(arg);
+    auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
 
-    if (py_array->sharding().get_type() ==
+    if (py_array.sharding().get_type() ==
         input_spec.array_sharding.get_type()) {
-      auto* pmap_sharding = py_array->sharding().cast<jax::PmapSharding*>();
+      auto* pmap_sharding = py_array.sharding().cast<jax::PmapSharding*>();
       auto* cached_pmap_sharding =
           input_spec.array_sharding.cast<jax::PmapSharding*>();
 
@@ -132,10 +132,10 @@ xla::StatusOr<ShardArgResult> ShardArg(
         auto& per_device_buffers = result.per_device_buffers;
         per_device_buffers.reserve(devices.size());
 
-        DCHECK_EQ(py_array->num_shards(), devices.size());
+        DCHECK_EQ(py_array.num_shards(), devices.size());
 
         for (int i = 0; i < devices.size(); ++i) {
-          auto* pjrt_buffer = py_array->GetBuffer(i);
+          auto* pjrt_buffer = py_array.GetBuffer(i);
           if (devices[i] == pjrt_buffer->device()) {
             per_device_buffers.push_back(pjrt_buffer);
           } else {
@@ -631,7 +631,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
           cache_entry.out_array_shardings[i], client, traceback,
           std::move(outputs), cache_entry.out_committed[i]);
 
-      flat_sharded_device_arrays.push_back(py::cast(std::move(py_array)));
+      flat_sharded_device_arrays.push_back(std::move(py_array));
     }
   } else {
     std::vector<std::vector<xla::PyBuffer::object>> outputs;

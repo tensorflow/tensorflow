@@ -37,7 +37,7 @@ void EncapsulatePartitionedCall(TF::StatefulPartitionedCallOp call_op) {
 
   call_op.replaceAllUsesWith(cluster.getResults());
 
-  cluster.body().push_back(new mlir::Block);
+  cluster.getBody().push_back(new mlir::Block);
 
   call_op.getOperation()->moveBefore(&cluster.GetBody(),
                                      cluster.GetBody().end());

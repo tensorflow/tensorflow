@@ -589,19 +589,6 @@ class IrEmitterUnnested : public IrEmitter {
       const ThreadIdInfo& thread_id_info, ValueVector2 tile_dimensions,
       const IrEmitterUnnested::EmitElementFunction& emit_elem_function);
 
-  // Emits code to process a tensor element in a tile for the given kLoop
-  // fusion HLO containing parameters that are 0-2-1 transpose of its outputs.
-  //
-  // y_loc: The y coordinate within a tile.
-  // x_loc: The x coordinate within a tile.
-  void EmitTileElementForTranspose(
-      const ThreadIdInfo& thread_id_info, mlir::lmhlo::FusionOp fusion,
-      absl::Span<const llvm_ir::IrArray> operand_arrays,
-      absl::Span<const llvm_ir::IrArray> output_arrays,
-      const llvm_ir::IrArray::Index& index, const TilingScheme& tiling_scheme,
-      llvm::Value* y_loc, llvm::Value* x_loc,
-      absl::Span<llvm::Value* const> param_shmem_buffers);
-
   // Creates accumulator alloca's, populates them with initial values, generates
   // __shared__ caches and returns the populated object.
   ReductionCodegenState GenerateReductionCodegenState(

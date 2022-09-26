@@ -74,13 +74,13 @@ void SyncExecuteOp::print(OpAsmPrinter &p) {
   p << " " << (*this)->getAttr("op_name") << '(' << operands() << ')';
 
   fallback_common::PrintExecuteOpCommon(p, *this);
-  if (!results().empty()) p << " : " << results().size();
+  if (!getResults().empty()) p << " : " << getResults().size();
 }
 
 void SyncExecuteOp::getOpAttrs(
     SmallVectorImpl<std::pair<StringRef, Attribute>> *op_attrs) {
   fallback_common::GetExecuteOpAttrsCommon(
-      this->getContext(), this->op_attrs().getValue(), op_attrs);
+      this->getContext(), this->getOpAttrs().getValue(), op_attrs);
 }
 
 }  // namespace fallback_sync

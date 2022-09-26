@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/dtensor/mlir/create_dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 
 namespace tensorflow {
 namespace dtensor {
-namespace {
 
-struct DTensorEmbeddingV2 : public DTensorEmbeddingV2Base<DTensorEmbeddingV2> {
+namespace {
+#define GEN_PASS_DEF_DTENSOREMBEDDINGCHECKPOINT
+#define GEN_PASS_DEF_DTENSOREMBEDDINGV2
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
+
+struct DTensorEmbeddingV2
+    : public impl::DTensorEmbeddingV2Base<DTensorEmbeddingV2> {
   void runOnOperation() override {}
 };
 
@@ -32,7 +36,7 @@ CreateDTensorEmbeddingPassV2() {
 }
 
 struct DTensorEmbeddingCheckpoint
-    : public DTensorEmbeddingCheckpointBase<DTensorEmbeddingCheckpoint> {
+    : public impl::DTensorEmbeddingCheckpointBase<DTensorEmbeddingCheckpoint> {
   void runOnOperation() override {}
 };
 

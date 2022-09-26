@@ -28,15 +28,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace mhlo {
 namespace {
 
+#define GEN_PASS_DEF_LEGALIZETFNOFALLBACK
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
 class LegalizeTFNoFallback
-    : public LegalizeTFNoFallbackBase<LegalizeTFNoFallback> {
+    : public impl::LegalizeTFNoFallbackBase<LegalizeTFNoFallback> {
  public:
   explicit LegalizeTFNoFallback(bool allow_partial_conversion) {
     allow_partial_conversion_ = allow_partial_conversion;

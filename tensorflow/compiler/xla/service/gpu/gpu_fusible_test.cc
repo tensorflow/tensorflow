@@ -962,69 +962,6 @@ TEST_F(GpuFusibleTest, NonscalarConstantsNotFused) {
       static_cast<bool>(IsProducerConsumerFusible(*producer2, *consumer2)));
 }
 
-TEST_F(GpuFusibleTest, TransposingCopyNotFused) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule test_module
-
-    add {
-      lhs = f32[] parameter(0)
-      rhs = f32[] parameter(1)
-      ROOT add = f32[] add(lhs, rhs)
-    }
-
-    fused_producer {
-      p = f16[32,64,128]{2,1,0} parameter(0)
-      c = f32[32, 64, 128]{2,1,0} convert(p)
-      copy = f32[32, 64, 128]{0,2,1} copy(c)
-      ROOT bitcast = f32[32, 64, 128]{2,1,0} bitcast(copy)
-    }
-
-    fused_consumer {
-      p = f32[32, 64, 128]{2,1,0} parameter(0)
-      zero = f32[] constant(0)
-      ROOT out = f32[32, 64]{1,0} reduce(p, zero), dimensions={2}, to_apply=add
-    }
-
-    ENTRY BroadcastIntoReduce {
-      p = f16[32,64,128]{2,1,0} parameter(0)
-      producer = f32[32, 64, 128]{2,1,0} fusion(p), kind=kLoop, calls=fused_producer
-      ROOT consumer = f32[32, 64]{1,0} fusion(producer), kind=kInput, calls=fused_consumer
-    })")
-                    .value();
-  // Check that the transposing copy is not fusible into a reduction.
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-  const HloInstruction* consumer =
-      module->entry_computation()->root_instruction();
-  const HloInstruction* producer = root->operand(0);
-  EXPECT_FALSE(
-      static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
-}
-
-TEST_F(GpuFusibleTest, DoNotFuseLayoutChangingOpWithReduce) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule test_module
-
-    add {
-      lhs = f32[] parameter(0)
-      rhs = f32[] parameter(1)
-      ROOT add = f32[] add(lhs, rhs)
-    }
-
-    ENTRY entry {
-      p0 = f32[16,16,16,16]{3,2,1,0} parameter(0)
-      copy = f32[16,16,16,16]{0,1,2,3} copy(p0)
-      constant.1 = f32[] constant(0)
-      ROOT reduce = f32[16] reduce(copy, constant.1), dimensions={0,1,2}, to_apply=add
-    })")
-                    .value();
-
-  const HloInstruction* consumer =
-      module->entry_computation()->root_instruction();
-  const HloInstruction* producer = consumer->operand(0);
-  EXPECT_FALSE(
-      static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
-}
-
 TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module

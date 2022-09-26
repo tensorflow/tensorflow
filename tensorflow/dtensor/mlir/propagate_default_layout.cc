@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
@@ -39,7 +38,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORPROPAGATEDEFAULTLAYOUT
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Creates tf.DTensorLayout op that forwards `input` value.
 void CreateDTensorLayoutOp(const Layout& layout, mlir::Value input,
@@ -153,7 +155,8 @@ mlir::LogicalResult PropagateFunctionDefaultLayoutAttrToLayoutOp(
 
 // MLIR pass that removes trivially unused operations in graph.
 struct DTensorPropagateDefaultLayout
-    : public DTensorPropagateDefaultLayoutBase<DTensorPropagateDefaultLayout> {
+    : public impl::DTensorPropagateDefaultLayoutBase<
+          DTensorPropagateDefaultLayout> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
   }

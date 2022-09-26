@@ -114,7 +114,6 @@ using ::tfrt::jitrt::StaticRemainingResultsConverter;
 using ::xla::runtime::ArgumentConstraint;
 using ::xla::runtime::ArgumentsRef;
 using ::xla::runtime::AsyncValuesCache;
-using ::xla::runtime::EigenThreadPoolAsyncTaskRunner;
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::MemrefDesc;
@@ -164,6 +163,21 @@ class CompilationThreadPool : public SharedContext {
 
  private:
   std::unique_ptr<ThreadPool> thread_pool_;
+};
+
+// -------------------------------------------------------------------------- //
+// Runs async tasks by scheduling them into the Eigen thread pool.
+// -------------------------------------------------------------------------- //
+
+class EigenThreadPoolAsyncTaskRunner : public xla::runtime::AsyncTaskRunner {
+ public:
+  explicit EigenThreadPoolAsyncTaskRunner(
+      Eigen::ThreadPoolInterface* thread_pool)
+      : thread_pool_(thread_pool) {}
+  void Schedule(Task task) override { thread_pool_->Schedule(std::move(task)); }
+
+ private:
+  Eigen::ThreadPoolInterface* thread_pool_;
 };
 
 // -------------------------------------------------------------------------- //

@@ -38,4 +38,4 @@ func.func @compute(%lhs: memref<4x4xf32>, %rhs: memref<4x4xf32>,
 
 // CHECK: func private @[[GEMM:[_a-z.]+]](memref<4x4xf32>, memref<4x4xf32>,
 // CHECK-SAME: memref<4x4xf32>)
-// CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.gemm"}
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.gemm"}

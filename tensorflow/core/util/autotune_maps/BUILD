@@ -92,7 +92,9 @@ tf_cuda_library(
     name = "autotune_maps_utils",
     srcs = ["autotune_maps_utils.cc"],
     hdrs = ["autotune_maps_utils.h"],
-    visibility = ["//tensorflow/core/utils:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/core/platform:protobuf",

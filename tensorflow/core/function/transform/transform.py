@@ -21,7 +21,7 @@ from tensorflow.core.framework import function_pb2
 from tensorflow.core.function import runtime_client
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
-from tensorflow.python.eager import function_saved_model_utils
+from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import ops
@@ -156,7 +156,7 @@ def transform_function(
   # pylint: disable=protected-access
   updated_cf._arg_keywords = cf._arg_keywords
   updated_cf._num_positional_args = cf._num_positional_args
-  function_saved_model_utils.restore_captures(updated_cf, cf.captured_inputs)
+  saved_model_utils.restore_captures(updated_cf, cf.captured_inputs)
   # pylint: enable=protected-access
 
   # Register the ConcreteFunction with the python Graph.
@@ -213,7 +213,7 @@ def _replicate_gradient_functions(
 
       remapped_captures.append(
           replicated_graph.get_tensor_by_name(outer_capture.name))
-    function_saved_model_utils.restore_captures(grad_fn, remapped_captures)
+    saved_model_utils.restore_captures(grad_fn, remapped_captures)
     new_gradient_op_type = custom_gradient_lib.generate_name()
     op._set_attr(  # pylint: disable=protected-access
         "_gradient_op_type",

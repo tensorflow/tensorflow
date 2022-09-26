@@ -424,3 +424,24 @@ cc_library(
     ]),
     alwayslink = 1,
 )
+
+cc_library(
+    name = "rocm_rpath",
+    data = [],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-rpath,../local_config_rocm/rocm/rocm/lib",
+        ],
+    }),
+    deps = [],
+)
+
+cc_library(
+    name = "stream_executor_rocm",
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_bundle",
+        ":rocm_rpath",
+    ] + if_static(
+        [":all_runtime"],
+    ),
+)

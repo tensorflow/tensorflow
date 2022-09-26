@@ -23,6 +23,8 @@ package(
         # tensorflow/examples/custom_ops_doc/simple_hash_table uses map_util
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        # TODO(aminim): remove when array_slice migrates to TSL
+        "//tensorflow/tsl:__subpackages__",
     ],
     licenses = ["notice"],
 )

@@ -144,6 +144,7 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "//tensorflow/core/profiler/lib:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/profiler/lib:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

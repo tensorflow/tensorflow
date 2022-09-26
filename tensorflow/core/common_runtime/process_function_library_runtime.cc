@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 
 #include <algorithm>
+#include <functional>
 #include <iterator>
+#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -55,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
@@ -752,38 +755,11 @@ Status GetGraphAndArgRets(
   return OkStatus();
 }
 
-Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
+StatusOr<ProcessFunctionLibraryRuntime::OptimizedFunctionGraphInfo>
+ProcessFunctionLibraryRuntime::OptimizeFunctionGraph(
     const string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
-    FunctionLibraryRuntime::Handle* handle) {
-  // Check if this function has already been instantiated.
-  const string& function_key = Canonicalize(function_name, attrs, options);
-
-  {
-    mutex_lock l(mu_);
-    const auto& it = table_.find(function_key);
-    if (it != table_.end()) {
-      *handle = it->second;
-      ++mdevice_data_[*handle]->instantiation_counter_;
-      return OkStatus();
-    }
-  }
-
-  VLOG(1) << "Instantiating MultiDevice function \"" << function_name
-          << "\" on default device \"" << options.target << "\"";
-  if (VLOG_IS_ON(3)) {
-    int index = 0;
-    VLOG(3) << "Requested input devices:";
-    for (const string& device : options.input_devices) {
-      VLOG(3) << "    [input " << index++ << "] " << device;
-    }
-    index = 0;
-    VLOG(3) << "Requested output devices:";
-    for (const string& device : options.output_devices) {
-      VLOG(3) << "    [output " << index++ << "] " << device;
-    }
-  }
-
+    const std::shared_ptr<DeviceSet>& dev_set) {
   const FunctionLibraryDefinition* lib_def =
       options.lib_def == nullptr ? lib_def_ : options.lib_def;
 
@@ -840,8 +816,6 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
 
-  const std::shared_ptr<DeviceSet> dev_set = device_set();
-
   TF_RETURN_IF_ERROR(
       SetArgShape(options.input_resource_dtypes_and_shapes, arg_nodes));
   TF_RETURN_IF_ERROR(PinArgsAndRets(
@@ -887,7 +861,6 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
 
-  const uint64 optimization_start_time_usecs = Env::Default()->NowMicros();
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
   SessionOptions session_options;
@@ -951,6 +924,55 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
         OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
   }
 
+  graph->mutable_flib_def()->set_default_registry(nullptr);
+  graph->mutable_flib_def()->Clear();
+  return OptimizedFunctionGraphInfo{
+      std::move(graph), std::move(reachable_lib_def), node_name_to_control_ret,
+      std::move(ret_types), ret_nodes.size()};
+}
+
+Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
+    const string& function_name, AttrSlice attrs,
+    const FunctionLibraryRuntime::InstantiateOptions& options,
+    FunctionLibraryRuntime::Handle* handle) {
+  // Check if this function has already been instantiated.
+  const string& function_key = Canonicalize(function_name, attrs, options);
+
+  {
+    mutex_lock l(mu_);
+    const auto& it = table_.find(function_key);
+    if (it != table_.end()) {
+      *handle = it->second;
+      ++mdevice_data_[*handle]->instantiation_counter_;
+      return OkStatus();
+    }
+  }
+
+  VLOG(1) << "Instantiating MultiDevice function \"" << function_name
+          << "\" on default device \"" << options.target << "\"";
+  if (VLOG_IS_ON(3)) {
+    int index = 0;
+    VLOG(3) << "Requested input devices:";
+    for (const string& device : options.input_devices) {
+      VLOG(3) << "    [input " << index++ << "] " << device;
+    }
+    index = 0;
+    VLOG(3) << "Requested output devices:";
+    for (const string& device : options.output_devices) {
+      VLOG(3) << "    [output " << index++ << "] " << device;
+    }
+  }
+
+  const std::shared_ptr<DeviceSet> dev_set = device_set();
+  const uint64 optimization_start_time_usecs = Env::Default()->NowMicros();
+  TF_ASSIGN_OR_RETURN(
+      auto optimized_graph_info,
+      OptimizeFunctionGraph(function_name, attrs, options, dev_set));
+
+  auto& graph = optimized_graph_info.graph;
+  graph->mutable_flib_def()->set_default_registry(
+      &(optimized_graph_info.lib_def));
+
   // Expand the nodes assigned to a CompositeDevice before graph partition to
   // avoid generating a subgraph on a virtual device for execution.
   // This transformation should happen as late as possible, in order to run as
@@ -959,6 +981,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(ReplicatePerReplicaNodesInFunctionGraph(
       options.composite_devices, graph.get()));
 
+  const FunctionLibraryDefinition* lib_def =
+      options.lib_def == nullptr ? lib_def_ : options.lib_def;
   if (options.graph_collector != nullptr) {
     GraphDef def;
     graph->ToGraphDef(&def);
@@ -978,16 +1002,22 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
                               pair.first, ")"),
               pair.second.get());
   }
+
+  GraphOptimizationPassOptions optimization_options;
+  optimization_options.flib_def = &(optimized_graph_info.lib_def);
+  optimization_options.is_function_graph = true;
   optimization_options.graph = nullptr;
   optimization_options.device_set = nullptr;
   optimization_options.partition_graphs = &subgraphs;
   // Normally POST_PARTITIONING passes are run by distributed workers.
   // Distributed workers are currently not supported in this code path, so we
   // run the passes here.
+  const bool should_run_optimization_passes = !options.is_component_function;
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
   }
+
   for (const auto& pair : subgraphs) {
     const auto* optimized_subgraph = pair.second.get();
     DumpGraph(
@@ -1014,6 +1044,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
 
+  const auto& node_name_to_control_ret =
+      optimized_graph_info.node_name_to_control_ret;
   // We must preserve control returns in each of the function components,
   // otherwise after function inlining we might prune side-effectful nodes.
   const auto control_ret =
@@ -1025,8 +1057,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   };
 
   auto data = std::make_unique<MultiDeviceFunctionData>(
-      function_name, function_key, ret_nodes.size(),
-      std::move(reachable_lib_def), std::move(ret_types));
+      function_name, function_key, optimized_graph_info.num_return_nodes,
+      std::move(optimized_graph_info.lib_def),
+      std::move(optimized_graph_info.ret_types));
 
   int i = 0;
   // Generate a random function_name to avoid one function reuse the partition

@@ -61,7 +61,7 @@ bool IsImmutable(GlobalTensorOp global_tensor,
                  ArrayRef<GlobalTensorUse> global_tensor_uses,
                  const TF::ResourceAnalyzer& resource_analyzer) {
   // Global tensor is already known to be immutable.
-  if (!global_tensor.is_mutable()) {
+  if (!global_tensor.getIsMutable()) {
     return false;
   }
   // An exported global tensor that is not already known to be immutable might

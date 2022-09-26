@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -31,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
+#include "tensorflow/dtensor/mlir/dtensor_location.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/group_assignment.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -41,6 +42,8 @@ namespace tensorflow {
 namespace dtensor {
 
 namespace {
+#define GEN_PASS_DEF_DTENSORALLREDUCECOMBINEOPTIMIZATION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 namespace ops_util = ::mlir::TF::collection_ops_util;
 
@@ -192,7 +195,7 @@ mlir::LogicalResult MergeAllReduceGroup(
   int offset_num_elements = 0;
   std::vector<mlir::Type> flattened_types;
   flattened_types.reserve(num_all_reduces);
-  mlir::TF::XlaDynamicUpdateSliceOp updated;
+  mlir::Value updated;
   for (int i = 0; i < all_reduce_group.size(); ++i) {
     mlir::TF::DTensorAllReduceOp& all_reduce = all_reduce_group[i];
     mlir::Location loc = all_reduce.getLoc();
@@ -206,14 +209,26 @@ mlir::LogicalResult MergeAllReduceGroup(
 
     int num_elements = all_reduce_ranked_type.getNumElements();
     auto flattened = builder.create<mlir::TF::ReshapeOp>(
-        loc, all_reduce.input(),
+        DT_LOC2(loc, "CombinedReduceFlatten"), all_reduce.input(),
         ops_util::GetR1Const({num_elements}, builder, loc));
     flattened_types.push_back(flattened.getType());
     auto indices = ops_util::GetR1Const({offset_num_elements}, builder, loc);
-    updated = builder.create<mlir::TF::XlaDynamicUpdateSliceOp>(
-        loc, merged.getType(),
-        /*input=*/i == 0 ? merged.getResult() : updated.getResult(),
-        /*update=*/flattened, indices);
+
+    if (all_reduce.device_type().contains("TPU")) {
+      updated = builder.create<mlir::TF::XlaDynamicUpdateSliceOp>(
+          DT_LOC2(loc, "CombinedReduceUpdateSlice"), merged.getType(),
+          /*input=*/i == 0 ? merged.getResult() : updated,
+          /*update=*/flattened, indices);
+    } else {
+      auto end = ops_util::GetR1Const({offset_num_elements + num_elements},
+                                      builder, loc);
+      auto strides = ops_util::GetR1Const({1}, builder, loc);
+      updated = builder.create<mlir::TF::TensorStridedSliceUpdateOp>(
+          DT_LOC2(loc, "CombinedReduceUpdateSlice"), merged.getType(),
+          /*input=*/i == 0 ? merged.getResult() : updated, indices, end,
+          strides,
+          /*value=*/flattened);
+    }
     offset_num_elements += num_elements;
   }
 
@@ -242,11 +257,12 @@ mlir::LogicalResult MergeAllReduceGroup(
     }
     int num_elements = all_reduce_ranked_type.getNumElements();
     auto slice = builder.create<mlir::TF::SliceOp>(
-        loc, flattened_types[i], /*input=*/merged_all_reduce,
+        DT_LOC2(loc, "PostCombinedReduceSlice"), flattened_types[i],
+        /*input=*/merged_all_reduce,
         /*begin=*/ops_util::GetR1Const({offset_num_elements}, builder, loc),
         /*size=*/ops_util::GetR1Const({num_elements}, builder, loc));
     auto replacement = builder.create<mlir::TF::ReshapeOp>(
-        loc, slice.getResult(),
+        DT_LOC2(loc, "PostCombinedReduceReshape"), slice.getResult(),
         ops_util::GetR1Const(all_reduce_shapes[i], builder, loc));
     replacements.push_back(replacement);
     offset_num_elements += num_elements;
@@ -362,6 +378,7 @@ mlir::LogicalResult CombineAllReduceOpsOfSameTypeAndGroupAssignment(
       return all_reduce.emitOpError("group_assignment should be a constant");
     }
     // LINT.IfChange
+    // TODO(ishark): Confirm the right check for GPUs.
     int num_slices = NumClients();
     int slice_size = kTpuDonutSize;
     if (group_assignment_attr.getNumElements() < kTpuDonutSize) {
@@ -372,7 +389,7 @@ mlir::LogicalResult CombineAllReduceOpsOfSameTypeAndGroupAssignment(
         group_assignment_attr,
         GroupAssignment::ReplicaToDeviceMap::DefaultReplicaToDeviceMap(
             num_slices, slice_size));
-    // LINT.ThenChange(//tensorflow/dtensor/mlir/utils/collective_lowering.cc)
+    // LINT.ThenChange(//tensorflow/dtensor/mlir/utils/collective_lowering_google.inc)
     if (!group_assignment.ok()) {
       return all_reduce.emitOpError(
           llvm::formatv("Failed to create a GroupAssignment due to {0}",
@@ -541,7 +558,7 @@ mlir::LogicalResult CombineAllReduceOpsOfSameType(
 }
 
 struct DTensorAllReduceCombineOptimization
-    : public DTensorAllReduceCombineOptimizationBase<
+    : public impl::DTensorAllReduceCombineOptimizationBase<
           DTensorAllReduceCombineOptimization> {
   void runOnOperation() override {
     mlir::func::FuncOp function = getOperation();
@@ -562,9 +579,22 @@ struct DTensorAllReduceCombineOptimization
 
       // Combine all-reduces of the same element type in first-appearance order.
       for (mlir::Type elem_type : elem_types) {
-        if (mlir::failed(CombineAllReduceOpsOfSameType(
-                cluster, all_reduces_by_elem_type[elem_type]))) {
-          return signalPassFailure();
+        // Combine all-reduces for the same attribute reduce_op for the element
+        // type.
+        auto& all_reduces_for_elem_type = all_reduces_by_elem_type[elem_type];
+        llvm::DenseMap<llvm::StringRef,
+                       std::vector<mlir::TF::DTensorAllReduceOp>>
+            all_reduces_by_attr_reduce_op;
+        for (mlir::TF::DTensorAllReduceOp all_reduce :
+             all_reduces_for_elem_type) {
+          llvm::StringRef attr_reduce_op = all_reduce.reduce_op();
+          all_reduces_by_attr_reduce_op[attr_reduce_op].push_back(all_reduce);
+        }
+        for (auto& all_reduces_to_merge : all_reduces_by_attr_reduce_op) {
+          if (mlir::failed(CombineAllReduceOpsOfSameType(
+                  cluster, all_reduces_to_merge.second))) {
+            return signalPassFailure();
+          }
         }
       }
     });

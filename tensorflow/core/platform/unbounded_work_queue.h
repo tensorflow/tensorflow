@@ -17,19 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_UNBOUNDED_WORK_QUEUE_H_
 
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/tsl/platform/unbounded_work_queue.h"
 
 // An `UnboundedWorkQueue` feeds potentially-blocking work into a thread-pool
 // whose size automatically increases with demand.
-
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/tsl/platform/google/unbounded_work_queue.h"  // IWYU pragma: export
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
-#include "tensorflow/tsl/platform/default/unbounded_work_queue.h"  // IWYU pragma: export
-#else
-#error Define the appropriate PLATFORM_<foo> macro for this platform
-#endif
 
 namespace tensorflow {
 using tsl::UnboundedWorkQueue;  // NOLINT(misc-unused-using-decls)

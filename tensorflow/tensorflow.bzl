@@ -325,6 +325,8 @@ def if_registration_v2(if_true, if_false = []):
 def if_portable(if_true, if_false = []):
     return if_true
 
+ADDITIONAL_API_INDEXABLE_SETTINGS = []
+
 # We are never indexing generated code in the OSS build, but still
 # return a select() for consistency.
 def if_indexing_source_code(
@@ -1755,6 +1757,7 @@ def tf_kernel_library(
         gpu_srcs = None,
         hdrs = None,
         deps = None,
+        gpu_deps = None,
         alwayslink = 1,
         copts = None,
         gpu_copts = None,
@@ -1788,6 +1791,8 @@ def tf_kernel_library(
         hdrs = []
     if not deps:
         deps = []
+    if not gpu_deps:
+        gpu_deps = []
     if not copts:
         copts = []
     if not gpu_copts:
@@ -1828,7 +1833,7 @@ def tf_kernel_library(
         tf_gpu_kernel_library(
             name = name + "_gpu",
             srcs = gpu_srcs,
-            deps = deps,
+            deps = deps + gpu_deps,
             copts = gpu_copts,
             **kwargs
         )

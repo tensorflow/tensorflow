@@ -53,7 +53,7 @@ void HoistOpsAndAnnotateWithOutsideCompilation(tf_device::LaunchOp launch) {
   launch.replaceAllUsesWith(launch.GetBody().getTerminator()->getOperands());
 
   // For all inner ops, assign the launch device as a `device` attribute.
-  MarkOutsideCompiledInRegion(launch.body());
+  MarkOutsideCompiledInRegion(launch.getBody());
 
   // Move all inner ops of the launch to the block containing the launch.
   auto body = launch.GetBody().without_terminator();

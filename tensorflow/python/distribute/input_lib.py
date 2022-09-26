@@ -1182,13 +1182,13 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
 
     def rebatch_fn(dataset, worker_index):
       try:
-        # pylint: disable=protected-access
+
         def apply_rebatch():
           batch_sizes = distribute.batch_sizes_for_worker(
               batch_size, num_workers, num_replicas_per_worker, worker_index)
-          return distribute._RebatchDataset(
-              dataset, batch_sizes).prefetch(num_replicas_per_worker)
+          return dataset.rebatch(batch_sizes).prefetch(num_replicas_per_worker)
 
+        # pylint: disable=protected-access
         def apply_legacy_rebatch():
           return distribute._LegacyRebatchDataset(
               dataset, num_replicas_in_sync).prefetch(num_replicas_per_worker)

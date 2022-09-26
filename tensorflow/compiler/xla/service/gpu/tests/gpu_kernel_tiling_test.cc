@@ -409,6 +409,39 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
 }
 
+TEST_F(GpuKernelTilingTest, MofReduceDifferentType) {
+  const char *const kHloString = R"(
+HloModule module, entry_computation_layout={(f32[128,1024]{1,0})->(f16[128]{0}, f32[128]{0})}
+
+scalar_add_computation_f16 {
+  scalar_lhs.0 = f16[] parameter(0)
+  scalar_rhs.0 = f16[] parameter(1)
+  ROOT add.0 = f16[] add(scalar_lhs.0, scalar_rhs.0)
+}
+
+scalar_add_computation {
+  scalar_lhs.1 = f32[] parameter(0)
+  scalar_rhs.1 = f32[] parameter(1)
+  ROOT add.1 = f32[] add(scalar_lhs.1, scalar_rhs.1)
+}
+
+fused_computation {
+  param_0.2 = f32[128,1024]{1,0} parameter(0)
+  p16.1 = f16[128,1024]{1,0} convert(param_0.2)
+  c16_1 = f16[] constant(0)
+  r0.1 = f16[128]{0} reduce(p16.1, c16_1), dimensions={1}, to_apply=scalar_add_computation_f16
+  c32_1 = f32[] constant(0)
+  r1.1 = f32[128]{0} reduce(param_0.2, c32_1), dimensions={1}, to_apply=scalar_add_computation
+  ROOT tuple = (f16[128]{0}, f32[128]{0}) tuple(r0.1, r1.1)
+}
+
+ENTRY entry {
+  p = f32[128,1024]{1,0} parameter(0)
+  ROOT fusion = (f16[128]{0}, f32[128]{0}) fusion(p), kind=kInput, calls=fused_computation
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1.0e-3, 1.0e-3}));
+}
+
 TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
   const char *const kHloString = R"(
     HloModule reduce_with_layout_change

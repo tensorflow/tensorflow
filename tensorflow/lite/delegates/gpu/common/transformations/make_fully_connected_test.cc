@@ -102,7 +102,7 @@ TEST(MakeFullyConnected, Smoke) {
             graph.nodes()[1]->operation.type);
   ASSERT_EQ(ToString(OperationType::FULLY_CONNECTED),
             graph.nodes()[2]->operation.type);
-  auto fc_attr = std::any_cast<FullyConnectedAttributes>(
+  auto fc_attr = absl::any_cast<FullyConnectedAttributes>(
       graph.nodes()[2]->operation.attributes);
   EXPECT_EQ(OHWI(32, 1, 1, 16), fc_attr.weights.shape);
   EXPECT_EQ(Linear(32), fc_attr.bias.shape);

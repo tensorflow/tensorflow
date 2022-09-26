@@ -120,8 +120,7 @@ class CoordinationServiceAgentTest : public ::testing::Test {
   }
 
   // Should be called after mocking service responses, before testing the agent.
-  void InitializeAgent() {
-    CoordinationServiceConfig config;
+  void InitializeAgent(CoordinationServiceConfig config = {}) {
     config.set_service_leader("test_leader");
     TF_ASSERT_OK(agent_->Initialize(
         Env::Default(), /*job_name=*/"test_job",
@@ -435,6 +434,34 @@ TEST_F(CoordinationServiceAgentTest, GetEnv_SucceedsAfterInit) {
 
   TF_ASSERT_OK(result.status());
   EXPECT_EQ(*result, Env::Default());
+}
+
+TEST_F(CoordinationServiceAgentTest, Connect_AbortedErrorShouldBeRetried) {
+  // Mock connection failing for the first two times.
+  EXPECT_CALL(*GetClient(), RegisterTaskAsync(_, _, _, _))
+      .WillOnce(InvokeArgument<3>(errors::Aborted("DuplicateTaskRegistration")))
+      .WillOnce(InvokeArgument<3>(errors::Aborted("DuplicateTaskRegistration")))
+      .WillOnce(InvokeArgument<3>(OkStatus()));
+  InitializeAgent();
+
+  TF_EXPECT_OK(agent_->Connect());
+}
+
+TEST_F(CoordinationServiceAgentTest, Connect_AbortedErrorShouldFailEventually) {
+  // Mock connection failing - old incarnation of coordination service never
+  // restarts.
+  EXPECT_CALL(*GetClient(), RegisterTaskAsync(_, _, _, _))
+      .WillRepeatedly(
+          InvokeArgument<3>(errors::Aborted("DuplicateTaskRegistration")));
+  CoordinationServiceConfig config;
+  // Connect should only be retried for 3 seconds.
+  config.set_cluster_register_timeout_in_ms(
+      absl::ToInt64Milliseconds(absl::Seconds(3)));
+  InitializeAgent(config);
+
+  Status s = agent_->Connect();
+
+  EXPECT_TRUE(errors::IsAborted(s));
 }
 
 }  // namespace

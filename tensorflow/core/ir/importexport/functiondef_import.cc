@@ -401,7 +401,7 @@ Status ImportGenericFunction(
 
   values_map.clear();
   Block* body = new Block();
-  func_op.body().push_back(body);
+  func_op.getBody().push_back(body);
   Type control_ty = ControlType::get(context);
   // Create the block arguments and populate the `values_map` with the matching
   // input names.

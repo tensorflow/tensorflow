@@ -299,7 +299,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
     auto thloReduction = rewriter.create<thlo::ReductionOp>(
         loc, resultTypes, adaptor.operands(), outputs,
         rewriter.getDenseI64ArrayAttr(reductionDims));
-    Region& region = thloReduction.combiner();
+    Region& region = thloReduction.getCombiner();
     rewriter.inlineRegionBefore(op.getBody(), region, region.end());
 
     // Convert the signature of the body. The reduce op 'computation' region
@@ -393,25 +393,47 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
 
     Location loc = op.getLoc();
     auto thloScatter = rewriter.create<thlo::ScatterOp>(
-        loc, opType, adaptor.getScatterIndices(), adaptor.updates().front(),
+        loc, opType, adaptor.getScatterIndices(), adaptor.getUpdates().front(),
         adaptor.operands().front());
 
-    Region& region = thloScatter.update_computation();
+    Region& region = thloScatter.getUpdateComputation();
     rewriter.inlineRegionBefore(op.getRegion(), region, region.end());
 
     // Convert the signature of the body by inserting
     // tensor.from_elements/tensor.extract.
     TypeConverter::SignatureConversion signatureConverter(2);
-    for (const auto& [idx, val] :
-         llvm::enumerate(thloScatter.update_computation().getArgumentTypes())) {
+    for (const auto& [idx, val] : llvm::enumerate(
+             thloScatter.getUpdateComputation().getArgumentTypes())) {
       signatureConverter.addInputs(
-          idx, typeConverter->convertType(
-                   val.cast<RankedTensorType>().getElementType()));
+          1 - idx, typeConverter->convertType(
+                       val.cast<RankedTensorType>().getElementType()));
     }
     rewriter.applySignatureConversion(&region, signatureConverter,
                                       getTypeConverter());
 
     rewriter.replaceOp(op, thloScatter.getResults());
+    return success();
+  }
+};
+
+struct TransposePattern : public OpConversionPattern<mhlo::TransposeOp> {
+  using OpConversionPattern<mhlo::TransposeOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::TransposeOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    auto resultTy = typeConverter->convertType(op.getType()).cast<ShapedType>();
+
+    auto loc = op.getLoc();
+    Value initTensor =
+        getInitTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
+
+    auto permutation = rewriter.getDenseI64ArrayAttr(
+        llvm::to_vector(op.permutation().getValues<int64_t>()));
+
+    rewriter.replaceOpWithNewOp<thlo::TransposeOp>(
+        op, op.getType(), op.operand(), initTensor, permutation);
+
     return success();
   }
 };
@@ -432,7 +454,7 @@ struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
 
     auto thloMap = rewriter.create<thlo::MapOp>(loc, resultTy,
                                                 adaptor.operands(), initTensor);
-    Region& region = thloMap.mapper();
+    Region& region = thloMap.getMapper();
     rewriter.inlineRegionBefore(op.computation(), region, region.end());
 
     TypeConverter::SignatureConversion signatureConverter(
@@ -445,6 +467,68 @@ struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
     }
     rewriter.applySignatureConversion(&region, signatureConverter,
                                       getTypeConverter());
+
+    rewriter.replaceOp(op, thloMap.getResult());
+    return success();
+  }
+};
+
+struct SelectPattern : public OpConversionPattern<mhlo::SelectOp> {
+  using OpConversionPattern<mhlo::SelectOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::SelectOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    Location loc = op.getLoc();
+    auto resultTy = typeConverter->convertType(op.getType()).cast<ShapedType>();
+
+    // Predicate in mhlo.select can be a shaped type with the same size as other
+    // operands, or a scalar.
+    const bool isScalarPred =
+        op.getPred().getType().cast<ShapedType>().getRank() == 0;
+
+    Value predValue;
+    ValueRange mappedInputs = adaptor.getOperands();
+    // If predicate is a scalar, do not pass it as an argument to thlo.map,
+    // because thlo.map does not support broadcasting scalar values. Instead,
+    // extract the value and use it in the map block directly.
+    if (isScalarPred) {
+      predValue = rewriter.create<tensor::ExtractOp>(loc, adaptor.getPred());
+      mappedInputs = mappedInputs.drop_front();
+    }
+
+    auto initTensor =
+        getInitTensorFor(rewriter, loc, resultTy, op, op.getOperands());
+
+    auto thloMap =
+        rewriter.create<thlo::MapOp>(loc, resultTy, mappedInputs, initTensor);
+
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      Region& region = thloMap.getMapper();
+
+      SmallVector<Type, 4> blockArgTypes;
+      SmallVector<Location, 4> blockArgLocs;
+      for (Value v : mappedInputs) {
+        blockArgTypes.push_back(getElementTypeOrSelf(v));
+        blockArgLocs.push_back(v.getLoc());
+      }
+
+      Block* block = rewriter.createBlock(&region, region.end(), blockArgTypes,
+                                          blockArgLocs);
+
+      // If predicate is scalar, the block has two arguments (on_true, on_false)
+      // and the predicate value is extracted outside of the block.
+      // If predicate is shaped, the block has three arguments (pred, on_true,
+      // on_false).
+      Value innerResult = rewriter.create<arith::SelectOp>(
+          loc, getElementTypeOrSelf(initTensor),
+          isScalarPred ? ValueRange{predValue, block->getArgument(0),
+                                    block->getArgument(1)}
+                       : block->getArguments());
+
+      rewriter.create<thlo::YieldOp>(loc, innerResult);
+    }
 
     rewriter.replaceOp(op, thloMap.getResult());
     return success();
@@ -578,7 +662,6 @@ class LegalizeMHLOToTHLOPass
     if (enableExperimental) {
       // clang-format off
       patterns.insert<
-          ReductionPattern,
           MapPattern,
           PointwiseToTHLOConverter<mhlo::AbsOp>,
           PointwiseToTHLOConverter<mhlo::AddOp>,
@@ -600,9 +683,9 @@ class LegalizeMHLOToTHLOPass
           PointwiseToTHLOConverter<mhlo::FloorOp>,
           PointwiseToTHLOConverter<mhlo::ImagOp>,
           PointwiseToTHLOConverter<mhlo::IsFiniteOp>,
+          PointwiseToTHLOConverter<mhlo::Log1pOp>,
           PointwiseToTHLOConverter<mhlo::LogOp>,
           PointwiseToTHLOConverter<mhlo::LogisticOp>,
-          PointwiseToTHLOConverter<mhlo::Log1pOp>,
           PointwiseToTHLOConverter<mhlo::MaxOp>,
           PointwiseToTHLOConverter<mhlo::MinOp>,
           PointwiseToTHLOConverter<mhlo::MulOp>,
@@ -612,6 +695,7 @@ class LegalizeMHLOToTHLOPass
           PointwiseToTHLOConverter<mhlo::PopulationCountOp>,
           PointwiseToTHLOConverter<mhlo::PowOp>,
           PointwiseToTHLOConverter<mhlo::RealOp>,
+          PointwiseToTHLOConverter<mhlo::ReducePrecisionOp>,
           PointwiseToTHLOConverter<mhlo::RemOp>,
           PointwiseToTHLOConverter<mhlo::RoundNearestEvenOp>,
           PointwiseToTHLOConverter<mhlo::RoundOp>,
@@ -625,8 +709,10 @@ class LegalizeMHLOToTHLOPass
           PointwiseToTHLOConverter<mhlo::SubtractOp>,
           PointwiseToTHLOConverter<mhlo::TanhOp>,
           PointwiseToTHLOConverter<mhlo::XorOp>,
-          PointwiseToTHLOConverter<mhlo::ReducePrecisionOp>,
-          ThloRegionReturnOpConversion>(*typeConverter, ctx);
+          ReductionPattern,
+          SelectPattern,
+          ThloRegionReturnOpConversion,
+          TransposePattern>(*typeConverter, ctx);
       // clang-format on
     }
 

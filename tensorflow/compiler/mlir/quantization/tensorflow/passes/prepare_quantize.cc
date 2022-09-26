@@ -311,6 +311,40 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(func::FuncOp func) {
   });
 }
 
+// Merges consecutive QuantizeCast ops. For example, the following case:
+// %1 = tf.QuantizeCastOp(%0) : f32 -> qtype1
+// %2 = tf.QuantizeCastOp(%1) : qtype1 -> qtype2
+// %3 = tf.QuantizedOp1(%1)
+// %4 = tf.QuantizedOp2(%2)
+// will be tranformed to:
+// %1 = tf.QuantizeCastOp(%0) : f32 -> qtype1
+// %2 = tf.QuantizeCastOp(%0) : f32 -> qtype2
+// %3 = tf.QuantizedOp1(%1)
+// %4 = tf.QuantizedOp2(%2)
+// Converting from f32 -> qtype1 -> qtype2 will add unexpected quantization
+// lost for %2. This pattern avoids that by converting from f32 -> qtype2
+// directly.
+class MergeConsecutiveQuantizeCast
+    : public mlir::OpRewritePattern<quantfork::QuantizeCastOp> {
+ public:
+  explicit MergeConsecutiveQuantizeCast(MLIRContext* context)
+      : OpRewritePattern<quantfork::QuantizeCastOp>(context) {}
+
+ private:
+  LogicalResult matchAndRewrite(quantfork::QuantizeCastOp q_op,
+                                PatternRewriter& rewriter) const override {
+    auto preceding_qcast =
+        q_op.getArg().getDefiningOp<quantfork::QuantizeCastOp>();
+    if (!preceding_qcast) return failure();
+
+    auto new_qcast = rewriter.create<quantfork::QuantizeCastOp>(
+        q_op.getLoc(), q_op.getType(), preceding_qcast.getArg());
+    new_qcast->setAttr(kVolatileOpAttrName, rewriter.getUnitAttr());
+    q_op->replaceAllUsesWith(new_qcast);
+    return success();
+  }
+};
+
 bool PrepareQuantizePass::ContainsQuantizeOps(func::FuncOp func) {
   for (const auto& op : func.getOps()) {
     if (llvm::isa<quantfork::DequantizeCastOp>(op)) return true;
@@ -372,6 +406,10 @@ void PrepareQuantizePass::runOnOperation() {
       func, is_signed, disable_per_channel_ || quant_specs_.disable_per_channel,
       GetTFOpQuantSpec, GetTfQuantScaleSpec, infer_tensor_range,
       quant_specs_.legacy_float_scale);
+
+  RewritePatternSet patterns2(ctx);
+  patterns2.add<MergeConsecutiveQuantizeCast>(ctx);
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns2));
 }
 
 }  // namespace

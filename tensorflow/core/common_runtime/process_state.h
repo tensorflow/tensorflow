@@ -30,7 +30,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class Allocator;
 class PoolAllocator;
 
 // Singleton that manages per-process state, e.g. allocation of

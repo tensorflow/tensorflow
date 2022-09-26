@@ -105,7 +105,7 @@ class ProcessRunner {
   // To be considered successful, the function must return
   // kMinibenchmarkSuccess. This is because some GPU drivers call exit(0) as a
   // bailout and we don't want to confuse that with a successful run.
-  MinibenchmarkStatus Run(flatbuffers::FlatBufferBuilder* model,
+  MinibenchmarkStatus Run(const flatbuffers::FlatBufferBuilder* model,
                           const std::vector<std::string>& args,
                           std::string* output, int* exitcode, int* signal);
 
@@ -114,7 +114,7 @@ class ProcessRunner {
 
  private:
 #ifndef __ANDROID__
-  int RunInprocess(flatbuffers::FlatBufferBuilder* model,
+  int RunInprocess(const flatbuffers::FlatBufferBuilder* model,
                    const std::vector<std::string>& args);
 #endif  // !__ANDROID__
 

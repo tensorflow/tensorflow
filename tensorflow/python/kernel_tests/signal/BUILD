@@ -26,8 +26,12 @@ cuda_py_test(
     shard_count = 16,
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/ops/signal",
+        "//tensorflow/python/platform",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
