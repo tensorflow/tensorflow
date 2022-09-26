@@ -36,7 +36,7 @@ namespace {
 //               could not be obtained directly from tensor data.
 //               If num_of_elem is -1, this function will calculate
 //               the number of data based on size and dtype.
-// Returns: Status::OK() on success, -1 otherwise
+// Returns: OkStatus() on success, -1 otherwise
 Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
                       int num_of_elem) {
   int array_len = num_of_elem;
