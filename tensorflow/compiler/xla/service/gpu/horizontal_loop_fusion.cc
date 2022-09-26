@@ -24,7 +24,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -495,6 +498,9 @@ Status HorizontalLoopFusionImpl::Fuse(
         computation_->ReplaceInstruction(fused_instr, bitcast_or_tuple));
     TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(old_computation));
   }
+
+  TF_RETURN_IF_ERROR(Cast<HloFusionInstruction>(hori_fusion_instr)
+                         ->DeduplicateFusionOperands());
 
   VLOG(1) << "Fused " << fused_fusion_instrs.size()
           << " instructions into: " << hori_fusion_instr->ToString();
