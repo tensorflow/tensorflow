@@ -35,6 +35,7 @@
 
     *   Added method `get_metrics_result()` to `tf.keras.models.Model`.
         *   Returns the current metrics values of the model as a dict.
+    *   Added group normalization layer `tf.keras.layers.GroupNormalization`.
 
 *   `tf.Variable`:
 
