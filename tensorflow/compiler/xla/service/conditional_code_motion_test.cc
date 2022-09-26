@@ -1855,9 +1855,9 @@ ENTRY %xla_computation_unknown.45 (parameter.3: u8[], parameter.4: u8[], paramet
 }
 
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  pass.Run(&*module).ValueOrDie();
+  pass.Run(&*module).value();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
   // We do not move reduce operations due to potential memory considerations.
@@ -1922,9 +1922,9 @@ ENTRY %xla_computation  {
 }
 
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  pass.Run(&*module).ValueOrDie();
+  pass.Run(&*module).value();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
   EXPECT_EQ(root->branch_computation(0)->instruction_count(), 7);
@@ -1981,9 +1981,9 @@ ENTRY %xla_computation  {
 }
 
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  pass.Run(&*module).ValueOrDie();
+  pass.Run(&*module).value();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
   EXPECT_EQ(root->branch_computation(0)->instruction_count(), 6);
@@ -2039,9 +2039,9 @@ ENTRY %xla_computation  {
 }
 
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  pass.Run(&*module).ValueOrDie();
+  pass.Run(&*module).value();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
   EXPECT_EQ(root->branch_computation(0)->instruction_count(), 7);
@@ -2094,9 +2094,9 @@ ENTRY %xla_computation  {
 }
 
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  pass.Run(&*module).ValueOrDie();
+  pass.Run(&*module).value();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
   EXPECT_EQ(root->branch_computation(0)->instruction_count(), 6);
@@ -2152,9 +2152,9 @@ ENTRY %xla_computation  {
 }
 
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  pass.Run(&*module).ValueOrDie();
+  pass.Run(&*module).value();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
   EXPECT_EQ(root->branch_computation(0)->instruction_count(), 6);
@@ -2199,9 +2199,9 @@ ENTRY %xla_computation  {
 }
 
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  ASSERT_FALSE(pass.Run(&*module).value());
 }
 
 // Move partially used operands inside empty conditional branches.
@@ -2233,9 +2233,9 @@ ENTRY %xla_computation  {
 }
 
 )";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  pass.Run(&*module).ValueOrDie();
+  pass.Run(&*module).value();
   VLOG(2) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
