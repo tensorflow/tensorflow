@@ -43,7 +43,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 95
+_version = 96
 
 # Version number for MLIR:Python components.
 mlir_api_version = 34
@@ -416,7 +416,7 @@ FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
 ShardedBuffer = _xla.ShardedBuffer
-Array = _xla.Array
+ArrayImpl = _xla.ArrayImpl
 DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
 OpSharding = _xla.OpSharding

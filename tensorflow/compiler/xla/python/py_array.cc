@@ -296,7 +296,7 @@ Status PyArray::SetUpType() {
 Status PyArray::RegisterTypes(py::module& m) {
   TF_RETURN_IF_ERROR(PyArray::SetUpType());
   auto type = py::reinterpret_borrow<py::object>(type_);
-  m.attr("Array") = type;
+  m.attr("ArrayImpl") = type;
 
   type.attr("__init__") = py::cpp_function(
       [](py::object self, py::object aval, py::object sharding, py::list arrays,
