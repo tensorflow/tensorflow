@@ -32,6 +32,9 @@ and the following optional parameters:
     The number of warmup runs to do before starting the benchmark.
 *   `num_runs`: `int` (default=50) \
     The number of runs. Increase this to reduce variance.
+*   `max_secs` : float (default=150) \
+    The maximum number of seconds the benchmark will run before being 
+    terminated.
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
@@ -95,6 +98,12 @@ and the following optional parameters:
 *  `optimize_memory_for_large_tensors`: `int` (default=0) \
     Whether to optimize memory usage for large tensors with sacrificing latency.
     When the feature is enabled, `release_dynamic_tensors` is also enabled.
+
+This list of parameters is not exhaustive. See 
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/benchmark_model.cc)
+and 
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/benchmark_tflite_model.cc)
+for all parameters that the binary takes. 
 
 ### Model input parameters
 By default, the tool will use randomized data for model inputs. The following
