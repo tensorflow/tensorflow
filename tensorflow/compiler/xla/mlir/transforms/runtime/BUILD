@@ -258,3 +258,16 @@ cc_library(
         "@llvm-project//mlir:Support",
     ],
 )
+
+tf_cc_test(
+    name = "type_converter_test",
+    srcs = ["type_converter_test.cc"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":type_converter",
+        "//tensorflow/compiler/xla/runtime:types",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//mlir:IR",
+    ],
+)

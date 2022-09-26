@@ -57,6 +57,12 @@ static std::unique_ptr<Type> ConvertCanonicalType(
       return std::make_unique<AsyncValueType>(std::move(*value_type));
   }
 
+  // mlir::{IntegerType, FloatType} -> xla::runtime::ScalarType
+  if (type.isa<mlir::IntegerType, mlir::FloatType>()) {
+    if (auto dtype = TypeConverter::ConvertElementType(type); dtype.ok())
+      return std::make_unique<ScalarType>(*dtype);
+  }
+
   // mlir::RankedTensorType -> xla::runtime::RankedTensorType
   if (auto tensor = type.dyn_cast<mlir::RankedTensorType>()) {
     if (auto dtype = TypeConverter::ConvertElementType(tensor.getElementType());
