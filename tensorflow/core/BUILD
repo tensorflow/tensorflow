@@ -1849,7 +1849,6 @@ tf_cc_tests(
         "//tensorflow/core/lib/strings:legacy_low_level_library_tests",
         "//tensorflow/core/lib/wav:wav_io_test.cc",
         "//tensorflow/tsl/lib/core:legacy_lib_core_all_tests",
-        "//tensorflow/tsl/lib/math:math_util_test.cc",
     ],
     deps = [
         ":lib",
