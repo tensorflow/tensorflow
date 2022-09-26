@@ -1555,3 +1555,16 @@ tf_cc_tests(
         "@zlib",
     ],
 )
+
+tf_cc_test(
+    name = "numbers_test",
+    size = "small",
+    srcs = [
+        "numbers_test.cc",
+    ],
+    deps = [
+        ":numbers",
+        ":test",
+        ":test_main",
+    ],
+)
