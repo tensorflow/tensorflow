@@ -56,12 +56,6 @@ cc_library(
     srcs = [],
 )
 
-# OSX framework for device driver access
-cc_library(
-    name = "IOKit",
-    linkopts = ["-framework IOKit"],
-)
-
 # Minimal lib so that tools used for mobile compilation
 # don't have to depend on platformlib.
 cc_library(

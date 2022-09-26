@@ -704,6 +704,12 @@ cc_library(
     alwayslink = 1,
 )
 
+# OSX framework for device driver access
+cc_library(
+    name = "IOKit",
+    linkopts = ["-framework IOKit"],
+)
+
 cc_library(
     name = "stream_executor_cuda",
     deps = if_google(
