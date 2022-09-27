@@ -732,8 +732,13 @@ class Function(core.GenericFunction, trackable.Trackable):
     created_variables = []
     lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
 
-    def variable_capturing_scope(unused_next_creator, **kwds):
+    def variable_capturing_scope(next_creator, **kwds):
       """Creates UnliftedInitializerVariables and saves references to them."""
+      enable_variable_lifting = kwds.get("experimental_enable_variable_lifting")
+      if enable_variable_lifting is None:
+        enable_variable_lifting = True
+      if not enable_variable_lifting:
+        return next_creator(**kwds)
       v = UnliftedInitializerVariable(
           add_initializers_to=add_initializers_to,
           lifted_initializer_graph=lifted_initializer_graph, **kwds)

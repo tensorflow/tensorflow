@@ -41,6 +41,14 @@
 
     *   Added `CompositeTensor` as a baseclass to `ResourceVariable`. This
         allows `tf.Variable`s to be nested in `tf.experimental.ExtensionType`s.
+    *   Added a new constructor argument `experimental_enable_variable_lifting`
+        to `tf.Variable`, defaulting to True. When it's `False`, the variable
+        won't be lifted out of `tf.function`, thus it can be used as a
+        `tf.function`-local variable: during each execution of the
+        `tf.function`, the variable will be created and then disposed, similar
+        to a local (i.e. stack-allocated) variable in C/C++. Currently
+        `experimental_enable_variable_lifting=False` only works on non-XLA
+        devices (e.g. under `@tf.function(jit_compile=False)`).
 
 # Bug Fixes and Other Changes
 
