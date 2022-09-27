@@ -110,5 +110,23 @@ TEST(ExecutableTest, ReturnScalar) {
   EXPECT_EQ(result, 42);
 }
 
+TEST(ExecutableTest, ScalarArgs) {
+  absl::string_view module = R"(
+    func.func @test(%arg0: i32, %arg1: i32) -> i32 {
+      %0 = arith.addi %arg0, %arg1 : i32
+      return %0 : i32
+    }
+  )";
+
+  int32_t result = 0;
+  ResultConverterSet converter(AssertNoError, ReturnI32{&result});
+
+  ScalarArg arg0(static_cast<int32_t>(20));
+  ScalarArg arg1(static_cast<int32_t>(22));
+
+  ASSERT_TRUE(CompileAndExecute(module, {arg0, arg1}, converter).ok());
+  EXPECT_EQ(result, 42);
+}
+
 }  // namespace runtime
 }  // namespace xla

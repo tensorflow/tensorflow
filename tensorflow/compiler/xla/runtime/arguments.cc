@@ -63,6 +63,25 @@ std::string OpaqueArg::ToString() const {
 }
 
 //===----------------------------------------------------------------------===//
+// ScalarArg.
+//===----------------------------------------------------------------------===//
+
+Status ScalarArg::Verify(const Type& type) const {
+  auto* scalar = dyn_cast<ScalarType>(&type);
+  if (scalar && scalar->type() == type_) return absl::OkStatus();
+  return InvalidArgumentError(
+      StrCat("unsupported scalar argument type: ", type.ToString()));
+}
+
+void ScalarArg::Pack(absl::Span<void*> args) const {
+  args[0] = const_cast<void*>(reinterpret_cast<const void*>(&value_));
+}
+
+std::string ScalarArg::ToString() const {
+  return primitive_util::LowercasePrimitiveTypeName(type_);
+}
+
+//===----------------------------------------------------------------------===//
 // MemrefDesc.
 //===----------------------------------------------------------------------===//
 
