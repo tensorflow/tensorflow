@@ -355,6 +355,43 @@ ENTRY AddDotsFunc {
 )");
 }
 
+TEST_F(GemmRewriteTest, LargeBatch) {
+  const char* hlo_text = R"(
+HloModule BatchedArgRowColTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[20000,4,3,2] parameter(0)
+  y = f32[20000,4,3,4] parameter(1)
+  ROOT dot_a = f32[20000,4,2,4] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_batch_dims={0,1}, rhs_batch_dims={0,1}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[20000,4,3,2], y: f32[20000,4,3,4]) -> f32[20000,4,2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[20000,4,3,2]{3,2,1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[20000,4,3,4]{3,2,1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[20000,4,2,4]{3,2,1,0} custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$gemm",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"2\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"2\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[\"0\",\"1\"]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\",\"1\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK:           }"
+)");
+}
+
 TEST_F(GemmRewriteTest, InstrTransposeFoldCheck) {
   const char* hlo_text = R"(
 HloModule InstrTransposeFoldGemm
@@ -1318,7 +1355,15 @@ ENTRY test {
 
 #endif  // GOOGLE_CUDA
 
-using GemmRewriteHloTest = HloTestBase;
+class GemmRewriteHloTest : public HloTestBase {
+ protected:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+};
 
 TEST_F(GemmRewriteHloTest, MergeBitcastAndAdd) {
   const char* hlo_text = R"(
@@ -1334,7 +1379,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass;
+  GemmRewriter pass(GetCudaComputeCapability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1375,7 +1420,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass;
+  GemmRewriter pass(GetCudaComputeCapability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_TRUE(changed);
