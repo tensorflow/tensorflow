@@ -2228,6 +2228,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "XlaConv",
       "XlaConvV2",
       "XlaCustomCall",
+      "XlaCustomCallV2",
       "XlaDequantize",
       "XlaDot",
       "XlaDotV2",

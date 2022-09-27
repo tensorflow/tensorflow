@@ -20357,6 +20357,35 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
   let hasVerifier = 1;
 }
 
+def TF_XlaCustomCallV2Op : TF_Op<"XlaCustomCallV2", [NoSideEffect]> {
+  let summary = "Emits an HLO `CustomCall` operation with multiple outputs.";
+
+  let description = [{
+As opposed to `XlaCustomCall`, this operation supports multiple outputs.
+
+See `CustomCall` specification at
+  https://tensorflow.org/xla/operation_semantics#customcall,
+and `mhlo.custom_call` specification at
+  https://tensorflow.org/mlir/hlo_ops#mhlocustom_call_mlirmhlocustomcallop.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A sequence of tensors with possibly different types.}]>:$operands,
+
+    StrAttr:$call_target_name,
+    StrAttr:$backend_config,
+    BoolAttr:$has_side_effect,
+    TF_ShapeAttrArray:$result_shapes
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandTypeListAttr operand_dtypes = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr result_dtypes = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_XlaDotOp : TF_Op<"XlaDot", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA DotGeneral operator, documented at";
 
