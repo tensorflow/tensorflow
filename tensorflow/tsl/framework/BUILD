@@ -162,6 +162,39 @@ cc_library(
 )
 
 cc_library(
+    name = "bfc_allocator",
+    srcs = [
+        "allocator_retry.cc",
+        "allocator_retry.h",
+        "bfc_allocator.cc",
+    ],
+    hdrs = ["bfc_allocator.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":allocator",
+        ":shared_counter",
+        "//tensorflow/core:framework",  # core/framework/metrics.h
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/core:bits",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:numbers",
+        "//tensorflow/tsl/platform:str_util",
+        "//tensorflow/tsl/platform:strcat",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
     visibility = [
@@ -171,6 +204,16 @@ cc_library(
     deps = [
         "//tensorflow/tsl/platform:types",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "shared_counter",
+    hdrs = ["shared_counter.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/tsl/platform:types",
     ],
 )
 
@@ -238,11 +281,18 @@ tf_cc_tests(
 exports_files(
     srcs = [
         "allocator_registry.h",
+        "allocator_retry.cc",
+        "allocator_retry.h",
+        "bfc_allocator.cc",
+        "bfc_allocator.h",
+        "shared_counter.h",
         "tracking_allocator.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime:__pkg__",
+        "//tensorflow/core/common_runtime/gpu:__pkg__",
+        "//tensorflow/core/framework:__pkg__",
     ],
 )
 

@@ -42,6 +42,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
+using tsl::profiler::kThreadIdOverhead;
 
 namespace {
 // Set the all XLines of specified XPlane to starting walltime.

@@ -34,7 +34,6 @@ namespace tensorflow {
 
 class GPUBFCAllocator;
 class PoolAllocator;
-class SharedCounter;
 
 // Singleton that manages per-process state when GPUs are present.
 class GPUProcessState {

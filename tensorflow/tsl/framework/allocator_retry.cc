@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/allocator_retry.h"
+#include "tensorflow/tsl/framework/allocator_retry.h"
 
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/metrics.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 
 namespace {
 class ScopedTimeTracker {
@@ -36,7 +36,7 @@ class ScopedTimeTracker {
   ~ScopedTimeTracker() {
     if (start_us_) {
       uint64 end_us = env_->NowMicros();
-      metrics::UpdateBfcAllocatorDelayTime(end_us - *start_us_);
+      tensorflow::metrics::UpdateBfcAllocatorDelayTime(end_us - *start_us_);
     }
   }
 
@@ -81,4 +81,4 @@ void* AllocatorRetry::AllocateRaw(
   return ptr;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

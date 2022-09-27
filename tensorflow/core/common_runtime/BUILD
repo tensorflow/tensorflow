@@ -164,6 +164,11 @@ cc_library(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "//tensorflow/tsl/framework:allocator_retry.h",
+        "//tensorflow/tsl/framework:allocator_retry.cc",
+        "//tensorflow/tsl/framework:bfc_allocator.h",
+        "//tensorflow/tsl/framework:bfc_allocator.cc",
+        "//tensorflow/tsl/framework:shared_counter.h",
     ] + glob(
         [
             "**/*.cc",
@@ -303,6 +308,8 @@ filegroup(
         "process_state.h",
         "pool_allocator.h",
         "permuter.h",
+        "//tensorflow/tsl/framework:allocator_retry.h",
+        "//tensorflow/tsl/framework:shared_counter.h",
     ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
 )
 
@@ -1923,9 +1930,7 @@ tf_cuda_library(
 cc_library(
     name = "bfc_allocator",
     srcs = [
-        "allocator_retry.cc",
         "allocator_retry.h",
-        "bfc_allocator.cc",
     ],
     hdrs = ["bfc_allocator.h"],
     features = ["parse_headers"],
@@ -1939,6 +1944,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/framework:bfc_allocator",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -1952,6 +1958,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/framework:shared_counter",
     ],
 )
 

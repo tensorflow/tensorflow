@@ -13,30 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/bfc_allocator.h"
+#include "tensorflow/tsl/framework/bfc_allocator.h"
 
 #include <algorithm>
 #include <atomic>
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/framework/allocator_retry.h"
+#include "tensorflow/tsl/platform/file_system.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/str_util.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/types.h"
 #ifdef TENSORFLOW_MEM_DEBUG
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/tsl/stacktrace.h"
 #endif
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 
 constexpr BFCAllocator::ChunkHandle BFCAllocator::kInvalidChunkHandle;
 
@@ -481,8 +481,9 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
         << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
         << " (rounded to " << rounded_bytes << ")"
         << "requested by op "
-        << profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation()
-               .pending_op_name
+        << tensorflow::profiler::ScopedMemoryDebugAnnotation::
+               CurrentAnnotation()
+                   .pending_op_name
         << "\nIf the cause is memory fragmentation maybe the environment "
         << "variable 'TF_GPU_ALLOCATOR=cuda_malloc_async' will "
         << "improve the situation. \nCurrent allocation summary follows."
@@ -522,8 +523,8 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
           TF_NO_THREAD_SAFETY_ANALYSIS {
             int64_t bytes_available =
                 memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
-            const auto& annotation =
-                profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
+            const auto& annotation = tensorflow::profiler::
+                ScopedMemoryDebugAnnotation::CurrentAnnotation();
             const auto op_name = annotation.pending_op_name
                                      ? annotation.pending_op_name
                                      : "(null)";
@@ -546,7 +547,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                                {"data_type", annotation.pending_data_type},
                                {"shape", annotation.pending_shape_func()}});
           },
-      /*level=*/profiler::TraceMeLevel::kInfo);
+      /*level=*/tensorflow::profiler::TraceMeLevel::kInfo);
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
@@ -1139,7 +1140,7 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
   md.set_allocator_name(Name());
 
   // Record the general stats
-  MemAllocatorStats* mas = md.mutable_stats();
+  tensorflow::MemAllocatorStats* mas = md.mutable_stats();
   mas->set_num_allocs(stats_.num_allocs);
   mas->set_bytes_in_use(stats_.bytes_in_use);
   mas->set_peak_bytes_in_use(stats_.peak_bytes_in_use);
@@ -1152,7 +1153,7 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
     const BinDebugInfo& bin_info = bin_infos[bin_num];
     DCHECK_EQ(b->free_chunks.size(),
               bin_info.total_chunks_in_bin - bin_info.total_chunks_in_use);
-    BinSummary* bs = md.add_bin_summary();
+    tensorflow::BinSummary* bs = md.add_bin_summary();
     bs->set_bin(bin_num);
     bs->set_total_bytes_in_use(bin_info.total_bytes_in_use);
     bs->set_total_bytes_in_bin(bin_info.total_bytes_in_bin);
@@ -1165,7 +1166,7 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
     ChunkHandle h = region_manager_.get_handle(region.ptr());
     while (h != kInvalidChunkHandle) {
       const Chunk* c = ChunkFromHandle(h);
-      MemChunk* mc = md.add_chunk();
+      tensorflow::MemChunk* mc = md.add_chunk();
       mc->set_in_use(c->in_use());
       mc->set_address(reinterpret_cast<uint64>(c->ptr));
       mc->set_size(c->size);
@@ -1243,4 +1244,4 @@ AllocatorMemoryType BFCAllocator::GetMemoryType() const {
   return sub_allocator_->GetMemoryType();
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

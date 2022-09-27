@@ -148,6 +148,7 @@ filegroup(
         "gpu_virtual_mem_allocator.h",
         "//tensorflow/core/common_runtime:gpu_runtime_headers",
         "//tensorflow/core/common_runtime/device:device_runtime_headers",
+        "//tensorflow/tsl/framework:bfc_allocator.h",
     ],
     visibility = ["//visibility:private"],
 )
