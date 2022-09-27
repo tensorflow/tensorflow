@@ -29,6 +29,7 @@ filegroup(
         "lookup_ops.cc",
         "take_while_dataset_op.cc",
         "threadpool_dataset_op.cc",
+        "unbatch_dataset_op.cc",
         ":portable_all_op_kernels_headers",
     ],
     visibility = ["//tensorflow:__subpackages__"],
