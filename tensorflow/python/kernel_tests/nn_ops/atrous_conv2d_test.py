@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -156,6 +157,17 @@ class AtrousConv2DTest(test.TestCase):
         print("atrous_conv2d gradient err = %g " % err)
         err_tolerance = 4e-3 if test_util.is_xla_enabled() else 1e-3
         self.assertLess(err, err_tolerance)
+
+  @test_util.run_deprecated_v1
+  def testAtrousConv2DInvalid(self):
+    with self.session():
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        op = nn_ops.atrous_conv2d(
+            value=np.ones((1, 1, 1, 5)),
+            filters=np.ones((1, 1, 5, 1)),
+            rate=2147483647,
+            padding='SAME')
+        self.evaluate(op)
 
 
 class AtrousConv2DTransposeTest(test.TestCase):
