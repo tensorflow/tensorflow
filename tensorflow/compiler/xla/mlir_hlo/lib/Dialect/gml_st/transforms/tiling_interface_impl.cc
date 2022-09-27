@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 
 namespace mlir {
 namespace gml_st {
@@ -38,11 +39,13 @@ struct ExternalLinalgOpTilingInterface
   }
 
   /// Return the loop iterator type.
-  SmallVector<StringRef> getLoopIteratorTypes(Operation *op) const {
+  SmallVector<utils::IteratorType> getLoopIteratorTypes(Operation *op) const {
     auto linalgOp = cast<linalg::LinalgOp>(op);
     return llvm::to_vector(
         llvm::map_range(linalgOp.iterator_types(), [](Attribute strAttr) {
-          return strAttr.cast<StringAttr>().getValue();
+          return utils::symbolizeIteratorType(
+                     strAttr.cast<StringAttr>().getValue())
+              .value();
         }));
   }
 

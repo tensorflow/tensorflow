@@ -147,8 +147,9 @@ bool dimensionsMatch(int64_t d1, int64_t d2) {
   return ShapedType::isDynamic(d1) || ShapedType::isDynamic(d2) || d1 == d2;
 }
 
-SmallVector<StringRef> getParallelIteratorTypes(int64_t dimCount) {
-  return SmallVector<StringRef>(dimCount, getParallelIteratorTypeName());
+SmallVector<utils::IteratorType> getParallelIteratorTypes(int64_t dimCount) {
+  return SmallVector<utils::IteratorType>(dimCount,
+                                          utils::IteratorType::parallel);
 }
 
 SmallVector<Range> getIterationDomainForTensor(OpBuilder &b, Location loc,
@@ -212,7 +213,7 @@ gml_st::TileOp createTileOp(OpBuilder &b, Location loc, Value tensor,
 
 }  // namespace
 
-SmallVector<StringRef> ConcatenateOp::getLoopIteratorTypes() {
+SmallVector<utils::IteratorType> ConcatenateOp::getLoopIteratorTypes() {
   return getParallelIteratorTypes(getInit().getType().getRank());
 }
 
@@ -484,7 +485,8 @@ LogicalResult DynamicBroadcastInDimOp::verify() {
   return verifyDestinationStyleOp(getOperation());
 }
 
-SmallVector<StringRef> DynamicBroadcastInDimOp::getLoopIteratorTypes() {
+SmallVector<utils::IteratorType>
+DynamicBroadcastInDimOp::getLoopIteratorTypes() {
   return getParallelIteratorTypes(getInit().getType().getRank());
 }
 
@@ -774,9 +776,10 @@ LogicalResult ScatterOp::verify() {
   return success();
 }
 
-SmallVector<StringRef> ScatterOp::getLoopIteratorTypes() {
+SmallVector<utils::IteratorType> ScatterOp::getLoopIteratorTypes() {
   auto indicesRank = getIndices().getType().getRank();
-  return SmallVector<StringRef>(indicesRank - 1, getParallelIteratorTypeName());
+  return SmallVector<utils::IteratorType>(indicesRank - 1,
+                                          utils::IteratorType::parallel);
 }
 
 SmallVector<Value> ScatterOp::getDestinationOperands(OpBuilder &) {
@@ -848,7 +851,7 @@ LogicalResult GatherOp::verify() {
   return verifyDestinationStyleOp(getOperation());
 }
 
-SmallVector<StringRef> GatherOp::getLoopIteratorTypes() {
+SmallVector<utils::IteratorType> GatherOp::getLoopIteratorTypes() {
   // Currently, `offset_dims` is empty, so the iteration domain is just the
   // entire output.
   return getParallelIteratorTypes(getInit().getType().getRank());
