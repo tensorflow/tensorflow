@@ -157,7 +157,7 @@ cc_library(
     srcs = ["profiler_pywrap_impl.cc"],
     hdrs = ["profiler_pywrap_impl.h"],
     visibility = [
-        "//tensorflow/compiler/xla:__subpackages__",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         "//tensorflow/core:lib",
