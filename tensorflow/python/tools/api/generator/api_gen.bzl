@@ -13,6 +13,7 @@ TENSORFLOW_API_GEN_PACKAGES = [
     "tensorflow.dtensor.python.input_util",
     "tensorflow.dtensor.python.layout",
     "tensorflow.dtensor.python.mesh_util",
+    "tensorflow.dtensor.python.tpu_util",
     "tensorflow.dtensor.python.save_restore",
     "tensorflow.lite.python.analyzer",
     "tensorflow.lite.python.lite",

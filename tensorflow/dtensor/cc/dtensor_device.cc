@@ -167,7 +167,7 @@ class DTensorDevice {
       }
     }
     // Setting the default mesh under an empty name repeatedly is fine, which
-    // happens when dtensor_initialize_tpu_system is called multiple times
+    // happens when initialize_tpu_system is called multiple times
     // especially in tests. All the set mappings should be the same anyway.
     if (!mesh_name.empty() && Mesh::tpu_core_ids().count(mesh_name) > 0) {
       return errors::AlreadyExists("Mesh name already in use: ", mesh_name);

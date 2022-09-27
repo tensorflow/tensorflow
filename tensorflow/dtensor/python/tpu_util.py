@@ -36,6 +36,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import topology
+from tensorflow.python.util.tf_export import tf_export
 
 
 _MESH_DIM_X = "x"
@@ -563,6 +564,7 @@ def _build_orthogonal_rings(
   return untransposed
 
 
+@tf_export("experimental.dtensor.create_tpu_mesh", v1=[])
 def create_tpu_mesh(mesh_dim_names: List[str],
                     mesh_shape: List[int],
                     mesh_name: str,
@@ -572,12 +574,15 @@ def create_tpu_mesh(mesh_dim_names: List[str],
                     can_split_host_across_rings: bool = True,
                     build_ring_across_rings: bool = False,
                     rotate_ring_across_rings: bool = False) -> layout_lib.Mesh:
-  """Returns a TPU mesh optimized for AllReduce ring reductions.
+  """Returns a distributed TPU mesh optimized for AllReduce ring reductions.
 
   Only as many as leading axes specified by `ring_axes` as necessary will be
   used to build rings, as long as the subslice formed by these axes have enough
   cores to contain a ring of the required size. The leftover axes in `ring_axes`
   won't affect results.
+
+  This function always uses all TPU devices, and offers more customization than
+  `tf.experimental.dtensor.create_distributed_mesh`.
 
   Args:
     mesh_dim_names: List of mesh dimension names.
