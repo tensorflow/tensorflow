@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -704,7 +705,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:     [[BIAS_COPY:%[^ ]+]] = f32[2,2]{1,0} copy([[BIAS]])
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[X]], [[Y]], [[BIAS_COPY]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}}
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":3
 ; CHECK-DAG:         \"alpha_imag\":0
@@ -1159,8 +1160,70 @@ ENTRY test {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2,4]{1,0} parameter(2)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
+; CHECK-NEXT:    ROOT [[GEMM:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":1
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
+; CHECK:           }"
+)");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, MatrixBiasWhereBiasIsNotAParameter) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  w = f32[2,3] parameter(0)
+  x = f32[3,4] parameter(1)
+  first_dot = f32[2,4] dot(w, x), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  y = f32[2,3] parameter(2)
+  z = f32[3,4] parameter(3)
+  second_dot = f32[2,4] dot(y, z), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT out = f32[2,4] add(second_dot, first_dot)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %test (w: f32[2,3], x: f32[3,4], y: f32[2,3], z: f32[3,4]) -> f32[2,4] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-DAG:     [[P2:%[^ ]+]] = f32[2,3]{1,0} parameter(2)
+; CHECK-DAG:     [[P3:%[^ ]+]] = f32[3,4]{1,0} parameter(3)
+; CHECK-NEXT:    [[FIRST_GEMM:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
+; CHECK:           }"
+; CHECK-NEXT:    ROOT [[SECOND_GEMM:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P2]], [[P3]], [[FIRST_GEMM]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
 ; CHECK-DAG:         \"alpha_imag\":0
@@ -1246,6 +1309,7 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2_BCAST:%[^ ]+]] = f32[2,4]{1,0} broadcast([[P2]]), dimensions={0}
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2_BCAST]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
 ; CHECK-DAG:         \"alpha_imag\":0

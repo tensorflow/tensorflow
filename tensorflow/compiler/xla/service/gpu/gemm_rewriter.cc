@@ -274,7 +274,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // BLAS GeMM overwrites bias matrix, so fusion is only possible if the GeMM
     // is the only user. cublasLt matmul can operate out-of-place.
-    bool can_fuse_bias = (bias->user_count() == 1) || IsCublasLtMatmul(*gemm);
+    bool have_other_bias_users = bias->user_count() > 1;
+    bool can_fuse_bias = !have_other_bias_users || IsCublasLtMatmul(*gemm);
 
     auto config = gemm->backend_config<GemmBackendConfig>().value();
 
@@ -299,8 +300,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm->CloneWithNewOperands(instr->shape(), operands);
 
     TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
-    if (IsLegacyCublasMatmul(*fused_op)) {
-      // Force bias input to alias with output, as GEMM operates in-place.
+    if (IsLegacyCublasMatmul(*fused_op) ||
+        (bias->opcode() != HloOpcode::kParameter && !have_other_bias_users)) {
+      // Force bias input to alias with output. Legacy cublas GEMMs must operate
+      // in-place. CublasLt GEMMS can choose to operate in-place. For cublasLt,
+      // if the bias is a parameter of the computation or if there are other
+      // users of the bias, then we will not overwrite the bias buffer.
       xla::Cast<HloCustomCallInstruction>(fused_op.get())
           ->set_output_to_operand_aliasing({{{}, {2, {}}}});
     }
