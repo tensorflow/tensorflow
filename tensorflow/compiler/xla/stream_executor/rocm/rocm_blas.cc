@@ -761,22 +761,8 @@ port::Status ReorganizeMemory(Stream* stream,
     }
     i++;
   }
-<<<<<<< HEAD
   fflush(stdout);
-  return port::Status::OK();
-=======
-
-  DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
-  DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
-  bool a_status =
-      gather ? stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok()
-             : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
-  if (!a_status)
-    return port::Status(
-        port::error::INTERNAL,
-        "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
   return tsl::OkStatus();
->>>>>>> upstream/master
 }
 
 template <typename T>
