@@ -40,36 +40,39 @@ In other words, for an `1-D` tensor `x` with `axis = None:
 
 For example:
 
-```
-# tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
-y, idx = unique(x)
-y ==> [1, 2, 4, 7, 8]
-idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
-```
+>>> x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
+>>> y, idx = tf.raw_ops.UniqueV2(x=x, axis=[0])
+>>> print(y)
+>>> print(idx)
+<tf.Tensor([1 2 4 7 8], shape=(5,), dtype=int32)>
+<tf.Tensor([0 0 1 2 2 2 3 4 4], shape=(9,), dtype=int32)>
 
 For an `2-D` tensor `x` with `axis = 0`:
 
-```
-# tensor 'x' is [[1, 0, 0],
-#                [1, 0, 0],
-#                [2, 0, 0]]
-y, idx = unique(x, axis=0)
-y ==> [[1, 0, 0],
-       [2, 0, 0]]
-idx ==> [0, 0, 1]
-```
+>>> x = tf.constant([[1, 0, 0],
+...                 [1, 0, 0],
+...                 [2, 0, 0]])
+>>> y, idx = tf.raw_ops.UniqueV2(x=x, axis=[0])
+>>> print(y)
+>>> print(idx)
+<tf.Tensor(
+[[1 0 0]
+ [2 0 0]], shape=(2, 3), dtype=int32)>
+<tf.Tensor([0 0 1], shape=(3,), dtype=int32)>
 
 For an `2-D` tensor `x` with `axis = 1`:
 
-```
-# tensor 'x' is [[1, 0, 0],
-#                [1, 0, 0],
-#                [2, 0, 0]]
-y, idx = unique(x, axis=1)
-y ==> [[1, 0],
-       [1, 0],
-       [2, 0]]
-idx ==> [0, 1, 1]
-```
+>>> x = tf.constant([[1, 0, 0],
+...                [1, 0, 0],
+...                [2, 0, 0]])
+>>> y, idx = tf.raw_ops.UniqueV2(x=x, axis=[1])
+>>> print(y)
+>>> print(idx)
+<tf.Tensor(
+[[1 0]
+ [1 0]
+ [2 0]], shape=(3, 2), dtype=int32)>
+<tf.Tensor([0 1 1], shape=(3,), dtype=int32)>
+
 END
 }
