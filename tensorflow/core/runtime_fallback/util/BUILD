@@ -127,9 +127,10 @@ tf_cuda_library(
     compatible_with = [],
     # Only build this library with --config=cuda.
     tags = [
+        "manual",
         "no_oss",
         "requires_cuda",
-    ] + if_oss(["manual"]),
+    ],
     deps = [
         "@tf_runtime//backends/gpu:gpu_device",
         "@tf_runtime//backends/gpu:gpu_config",
