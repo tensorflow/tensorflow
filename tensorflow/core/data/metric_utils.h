@@ -47,8 +47,7 @@ class IteratorMetricsCollector {
   // We only collect metrics for CPU devices. This is a heuristic to avoid
   // collecting metrics for device-side iterators created by the multi-device
   // iterator mechanism.
-  explicit IteratorMetricsCollector(const std::string& device_type,
-                                    const Env& env);
+  IteratorMetricsCollector(const std::string& device_type, const Env& env);
 
   // Starts the timer for the next `GetNext` call. Returns the start time.
   absl::Time RecordStart();

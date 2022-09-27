@@ -108,10 +108,13 @@ absl::string_view BatchDotSimplification::name() const {
   return "batch-dot-simplification";
 }
 
-StatusOr<bool> BatchDotSimplification::Run(HloModule* module) {
+StatusOr<bool> BatchDotSimplification::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   std::vector<HloInstruction*> dot_instrs;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     absl::c_copy_if(computation->instructions(), std::back_inserter(dot_instrs),
                     [](HloInstruction* instr) {
                       return instr->opcode() == HloOpcode::kDot;

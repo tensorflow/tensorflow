@@ -161,7 +161,8 @@ def ConvGeneralDilated(
     feature_group_count: int = ...,
     batch_group_count: int = ...,
     precision_config: Optional[PrecisionConfig_Precision] = ...,
-    preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
+    preferred_element_type: Optional[PrimitiveType] = ...,
+    window_reversal: Optional[Sequence[bool]] = ...) -> XlaOp: ...
 def ConvertElementType(
     operand: XlaOp,
     new_element_type: PrimitiveType) -> XlaOp: ...

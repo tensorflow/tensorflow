@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif
 
 namespace xla {
@@ -59,7 +59,7 @@ Status RunAllReduce(ReductionKind reduction_kind,
     TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
                         ToNcclDataTypeAndCountMultiplier(buffer.element_type));
     ncclDataType_t dtype = dtype_and_multiplier.first;
-    int element_count = buffer.element_count * dtype_and_multiplier.second;
+    int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
     VLOG(3) << absl::StreamFormat(
         "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
@@ -139,27 +139,27 @@ namespace impl {
 
 template <typename OpT>
 bool CanImplement(OpT op) {
-  return absl::c_all_of(op.operands(), IsValidOperand) &&
-         NcclAllReduceThunkBase::MatchAllReduceComputation(op.computation())
+  return absl::c_all_of(op.getInputs(), IsValidOperand) &&
+         NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation())
              .has_value();
 }
 
 template <typename OpT>
 NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
-  absl::optional<ReductionKind> reduction_kind =
-      NcclAllReduceThunkBase::MatchAllReduceComputation(op.computation());
+  std::optional<ReductionKind> reduction_kind =
+      NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation());
   CHECK(reduction_kind.has_value());
 
   NcclAllReduceConfig config;
   config.config =
-      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
+      GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds());
   config.reduction_kind = *reduction_kind;
   return config;
 }
 
 template <typename OpT>
 bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
-  return GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids())
+  return GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds())
       .IsDegenerate(replica_count, partition_count);
 }
 
@@ -170,32 +170,32 @@ CollectiveOpGroupMode GetGroupMode(OpT op) {
 
 }  // namespace impl
 
-absl::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
+std::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
     mlir::Region& computation) {
   mlir::Block& block = computation.front();
   StatusOr<mlir::Operation*> reduction_op = FindReductionOp(block);
-  if (!reduction_op.ok()) return absl::nullopt;
+  if (!reduction_op.ok()) return std::nullopt;
   StatusOr<HloOpcode> opcode = MhloToHloOpcode(*reduction_op);
-  if (!opcode.ok()) return absl::nullopt;
+  if (!opcode.ok()) return std::nullopt;
   // Match the operation to a reduction kind. We can represent and/or of pred as
   // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
   PrimitiveType type =
       TypeToShape(block.getArgument(0).getType()).element_type();
   if (type == PRED) {
-    switch (opcode.ValueOrDie()) {
+    switch (opcode.value()) {
       case HloOpcode::kAnd:
         return ReductionKind::MIN;
       case HloOpcode::kOr:
         return ReductionKind::MAX;
       default:
-        return absl::nullopt;
+        return std::nullopt;
     }
   } else if (primitive_util::IsComplexType(type)) {
     // Only addition is supported for complex types.
     if (*opcode == HloOpcode::kAdd) {
       return ReductionKind::SUM;
     } else {
-      return absl::nullopt;
+      return std::nullopt;
     }
   } else {
     switch (*opcode) {
@@ -208,7 +208,7 @@ absl::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
       case HloOpcode::kMinimum:
         return ReductionKind::MIN;
       default:
-        return absl::nullopt;
+        return std::nullopt;
     }
   }
 }
@@ -256,7 +256,7 @@ Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams& params,
 
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Done performing all-reduce for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(
@@ -308,7 +308,7 @@ Status NcclAllReduceStartThunk::RunNcclCollective(const ExecuteParams& params,
   }
 
   VLOG(3) << "Done performing all-reduce-start for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<se::Event> NcclAllReduceStartThunk::TakeDoneEvent(int device_ordinal) {
@@ -330,7 +330,7 @@ Status NcclAllReduceDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(se::Event done_event,
                       start_thunk_.TakeDoneEvent(device_ordinal));
   params.stream->ThenWaitFor(&done_event);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 NcclReduceScatterThunk::NcclReduceScatterThunk(
@@ -412,7 +412,7 @@ Status RunReduceScatter(ReductionKind reduction_kind,
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing reduce-scatter for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

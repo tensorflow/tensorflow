@@ -28,11 +28,12 @@ message Update {
   reserved 13;
 }
 
-// Next tag: 4
+// Next tag: 5
 message RegisterDatasetUpdate {
-  int64 dataset_id = 1;
+  string dataset_id = 1;
   uint64 fingerprint = 2;
   DataServiceMetadata metadata = 3;
+  bool dedupe_by_dataset_id = 4;
 }
 
 // Next tag: 5
@@ -47,7 +48,7 @@ message RegisterWorkerUpdate {
 message CreateJobUpdate {
   int64 job_id = 1;
   string job_name = 2;
-  int64 dataset_id = 3;
+  string dataset_id = 3;
   ProcessingModeDef processing_mode_def = 4;
   // Optional number of consumers. If set, the iteration's tasks will provide
   // their elements to consumers round-robin.

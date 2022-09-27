@@ -22,7 +22,7 @@ namespace profiler {
 
 CuptiInterface* GetCuptiInterface() {
   static CuptiInterface* cupti_interface =
-      new CuptiErrorManager(absl::make_unique<CuptiWrapper>());
+      new CuptiErrorManager(std::make_unique<CuptiWrapper>());
   return cupti_interface;
 }
 

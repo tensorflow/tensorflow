@@ -115,7 +115,7 @@ DispatchGrpcDataServer::~DispatchGrpcDataServer() { delete service_; }
 
 void DispatchGrpcDataServer::AddDataServiceToBuilder(
     ::grpc::ServerBuilder& builder) {
-  service_ = absl::make_unique<GrpcDispatcherImpl>(config_, builder).release();
+  service_ = std::make_unique<GrpcDispatcherImpl>(config_, builder).release();
 }
 
 Status DispatchGrpcDataServer::StartServiceInternal() {
@@ -156,7 +156,7 @@ WorkerGrpcDataServer::~WorkerGrpcDataServer() { delete service_; }
 
 void WorkerGrpcDataServer::AddDataServiceToBuilder(
     ::grpc::ServerBuilder& builder) {
-  service_ = absl::make_unique<GrpcWorkerImpl>(config_, builder).release();
+  service_ = std::make_unique<GrpcWorkerImpl>(config_, builder).release();
 }
 
 Status WorkerGrpcDataServer::StartServiceInternal() {
@@ -206,13 +206,13 @@ ServerStateExport WorkerGrpcDataServer::ExportState() const {
 
 Status NewDispatchServer(const experimental::DispatcherConfig& config,
                          std::unique_ptr<DispatchGrpcDataServer>& out_server) {
-  out_server = absl::make_unique<DispatchGrpcDataServer>(config);
+  out_server = std::make_unique<DispatchGrpcDataServer>(config);
   return OkStatus();
 }
 
 Status NewWorkerServer(const experimental::WorkerConfig& config,
                        std::unique_ptr<WorkerGrpcDataServer>& out_server) {
-  out_server = absl::make_unique<WorkerGrpcDataServer>(config);
+  out_server = std::make_unique<WorkerGrpcDataServer>(config);
   return OkStatus();
 }
 

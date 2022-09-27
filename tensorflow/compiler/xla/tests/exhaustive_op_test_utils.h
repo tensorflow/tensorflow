@@ -255,7 +255,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
                         return client_
                             ->LiteralToShapedBuffer(*input_literal,
                                                     /*device_ordinal=*/0)
-                            .ConsumeValueOrDie();
+                            .value();
                       });
     std::vector<const Shape*> input_shapes;
     absl::c_transform(input_buffers, std::back_inserter(input_shapes),

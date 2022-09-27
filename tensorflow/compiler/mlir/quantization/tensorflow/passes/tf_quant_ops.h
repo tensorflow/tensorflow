@@ -40,4 +40,13 @@ limitations under the License.
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h.inc"
 
+namespace mlir {
+namespace quant {
+
+// Function to register TensorFlow Uniform Quantized ops.
+void RegisterOps();
+
+}  // namespace quant
+}  // namespace mlir
+
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_TF_QUANT_OPS_H_

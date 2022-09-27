@@ -90,7 +90,7 @@ An n-way switch statement, implementing the following:
     I32Tensor:$branch_index,
     Variadic<TF_Tensor>:$input,
 
-    Confined<SymbolRefArrayAttr, [ArrayMinCount<1>]>:$branches,
+    ConfinedAttr<SymbolRefArrayAttr, [ArrayMinCount<1>]>:$branches,
 
     // Used to map StatelessCase and Case op defined in TensorFlow to a common
     // op.
@@ -394,7 +394,7 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
     Variadic<TF_Tensor>:$args,
 
     FlatSymbolRefAttr:$f,
-    DefaultValuedAttr<BoolAttr, "false">:$_disable_call_shape_inference
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$_disable_call_shape_inference
   );
 
   let results = (outs
@@ -437,8 +437,8 @@ def TF_ParseExampleOp : TF_Op<"ParseExample",
     Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
     TF_ShapeAttrArray:$dense_shapes,
-    I32ElementsAttr:$result_segment_sizes,
-    I32ElementsAttr:$operand_segment_sizes
+    DenseI32ArrayAttr:$result_segment_sizes,
+    DenseI32ArrayAttr:$operand_segment_sizes
   );
 
   let results = (outs
@@ -471,9 +471,9 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
     TF_StrTensor:$ragged_keys,
     Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
-    Confined<I64Attr, [IntMinValue<0>]>:$num_sparse,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_sparse,
     TF_ShapeAttrArray:$dense_shapes,
-    I32ElementsAttr:$result_segment_sizes
+    DenseI32ArrayAttr:$result_segment_sizes
   );
 
   let results = (outs
@@ -536,7 +536,7 @@ def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]
 }
 
 def TF_StatefulPartitionedCallOp : TF_Op<"StatefulPartitionedCall",
-                                         [CallOpInterface]> {
+                                         [CallOpInterface, SymbolUserOpInterface]> {
   let summary =
     "returns `f(inputs)`, where `f`'s body is placed and partitioned.";
 
@@ -579,9 +579,10 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
-  }];
 
-  let hasVerifier = 1;
+    // SymbolUserOpInterface verifier.
+    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
+  }];
 }
 
 def TF_WhileOp : TF_Op<"While", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
@@ -611,7 +612,7 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
-    Confined<DefaultValuedAttr<I64Attr, "10">, [IntMinValue<1>]>:$parallel_iterations,
+    ConfinedAttr<DefaultValuedOptionalAttr<I64Attr, "10">, [IntMinValue<1>]>:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
@@ -699,7 +700,7 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
   let arguments = (ins
     Variadic<AnyTensor>:$input,
 
-    Confined<DefaultValuedAttr<I64Attr, "10">, [IntMinValue<1>]>:$parallel_iterations,
+    ConfinedAttr<DefaultValuedOptionalAttr<I64Attr, "10">, [IntMinValue<1>]>:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
@@ -772,7 +773,7 @@ Example:
   DerivedAttr shape = DerivedAttr<
       "ShapedType",
       "return resource_subtype().cast<ShapedType>();",
-      [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
+      [{ mlir::TF::ShapeAttr::get($_ctxt, $_self) }]>;
 
   let extraClassDeclaration = [{
     TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }
@@ -830,10 +831,10 @@ Feeds multiple Tensor values into the computation as an XLA tuple.
   let arguments = (ins
     Arg<Variadic<TF_Tensor>, [{A list of tensors that will be provided using the infeed mechanism.}]>:$inputs,
 
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$dtypes,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$dtypes,
     TF_ShapeAttrArray:$shapes,
-    DefaultValuedAttr<I64ArrayAttr, "{}">:$layouts,
-    DefaultValuedAttr<I64Attr, "-1">:$device_ordinal
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$layouts,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$device_ordinal
   );
 
   let results = (outs);
@@ -853,7 +854,7 @@ Formats a string template using a list of tensors, pretty-printing tensor summar
 
     DefaultValuedStrAttr<StrAttr, "%s">:$strtemplate,
     DefaultValuedStrAttr<StrAttr, "%s">:$placeholder,
-    DefaultValuedAttr<I64Attr, "3">:$summarize
+    DefaultValuedOptionalAttr<I64Attr, "3">:$summarize
   );
 
   let results = (outs
@@ -878,11 +879,11 @@ def TF_ReduceDatasetOp : TF_Op<"ReduceDataset", [SameVariadicOperandSize]> {
     Variadic<TF_Tensor>:$other_arguments,
 
     SymbolRefAttr:$f,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$Tstate,
-    Confined<TypeArrayAttr, [ArrayMinCount<0>]>:$Targuments,
-    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
-    DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$Tstate,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<0>]>:$Targuments,
+    ConfinedAttr<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$use_inter_op_parallelism
   );
 
   let results = (outs
@@ -929,7 +930,7 @@ as true/false for a branch condition.
   }];
 }
 
-def TF_BesselI0eOp : TF_Op<"BesselI0e", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_BesselI0eOp : TF_Op<"BesselI0e", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the Bessel i0e function of `x` element-wise.";
 
   let description = [{
@@ -948,9 +949,15 @@ This function is faster and numerically stabler than `bessel_i0(x)`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
-def TF_BesselI1eOp : TF_Op<"BesselI1e", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_BesselI1eOp : TF_Op<"BesselI1e", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the Bessel i1e function of `x` element-wise.";
 
   let description = [{
@@ -969,9 +976,15 @@ This function is faster and numerically stabler than `bessel_i1(x)`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
-def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
+def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface, SymbolUserOpInterface]> {
   let summary = "Calls a function placed on a specified TPU device.";
 
   let arguments = (ins
@@ -979,7 +992,7 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
     TF_Int32Tensor:$device_ordinal,
 
     SymbolRefAttr:$f,
-    DefaultValuedAttr<I64Attr, "0">:$autotuner_thresh
+    DefaultValuedOptionalAttr<I64Attr, "0">:$autotuner_thresh
   );
 
   let results = (outs
@@ -1006,9 +1019,10 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
-  }];
 
-  let hasVerifier = 1;
+    // SymbolUserOpInterface verifier.
+    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
+  }];
 }
 
 def TF_StatefulUniformFullIntOp : TF_Op<"StatefulUniformFullInt", []> {
@@ -1222,7 +1236,7 @@ max_outputs: Max number of batch elements to generate audio for.
     TF_Float32Tensor:$tensor,
     TF_Float32Tensor:$sample_rate,
 
-    Confined<DefaultValuedAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_outputs
+    ConfinedAttr<DefaultValuedOptionalAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_outputs
   );
 
   let results = (outs);
@@ -1328,7 +1342,7 @@ bad_color: Color to use for pixels with non-finite values.
     TensorOf<[TF_Float16, TF_Float32, TF_Uint8]>:$tensor,
     TF_Uint8Tensor:$bad_color,
 
-    Confined<DefaultValuedAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_images
+    ConfinedAttr<DefaultValuedOptionalAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_images
   );
 
   let results = (outs);
@@ -1431,7 +1445,7 @@ An op that groups a list of partitioned inputs together. This op
   let arguments = (ins
     Variadic<TF_Tensor>:$inputs,
 
-    DefaultValuedAttr<I64Attr, "0">:$partition_dim,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$partition_dim,
     OptionalAttr<StrAttr>:$_XlaSharding
   );
 
@@ -1455,7 +1469,7 @@ outputs outside the XLA computation.
   let arguments = (ins
     TF_Tensor:$inputs,
 
-    DefaultValuedAttr<I64Attr, "0">:$partition_dim,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$partition_dim,
     OptionalAttr<StrAttr>:$_XlaSharding
   );
 
@@ -1484,8 +1498,8 @@ A pseudo-op to represent host-side computation in an XLA program.
     StrAttr:$key,
     DefaultValuedStrAttr<StrAttr, "">:$send_key,
     DefaultValuedStrAttr<StrAttr, "">:$recv_key,
-    DefaultValuedAttr<I64Attr, "1000000">:$cost_estimate_ns,
-    DefaultValuedAttr<I64Attr, "0">:$tpu_core
+    DefaultValuedOptionalAttr<I64Attr, "1000000">:$cost_estimate_ns,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$tpu_core
   );
 
   let results = (outs
@@ -1611,7 +1625,7 @@ topology.
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
-    Variadic<TF_I32OrI64Tensor>:$static_shapes,
+    Variadic<TF_Int64Tensor>:$static_shapes,
     OptionalAttr<I32ArrayAttr>:$operands_with_static_shape,
     DefaultValuedStrAttr<StrAttr, "">:$mlir_module,
     StrAttr:$metadata,

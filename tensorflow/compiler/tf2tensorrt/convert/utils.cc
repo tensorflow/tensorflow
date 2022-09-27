@@ -147,7 +147,7 @@ Status GetNetworkInputShapes(const nvinfer1::INetworkDefinition* network,
     TF_RETURN_IF_ERROR(DimsAdapter(input->getDimensions())
                            .PartialTensorShape(&input_shapes->at(i)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
@@ -170,7 +170,7 @@ Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
       return errors::InvalidArgument("Unsupported tensorflow data type ",
                                      DataTypeString(tf_type));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
@@ -192,7 +192,7 @@ Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
     default:
       return errors::InvalidArgument("Invalid TRT data type");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
@@ -217,43 +217,36 @@ absl::string_view GetDeviceName(const Node* node) {
   return node->requested_device();
 }
 
-absl::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
+std::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
     const Node* node) {
   absl::string_view device_name = GetDeviceName(node);
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return parsed_name;
 }
 
-absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a,
     const DeviceNameUtils::ParsedName& b) {
   DeviceNameUtils::ParsedName merged_name = a;
   if (!DeviceNameUtils::MergeDevNames(&merged_name, b,
                                       /*allow_soft_placement=*/false)
            .ok()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return merged_name;
 }
 
-absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, absl::string_view b) {
   DeviceNameUtils::ParsedName b_parsed_name;
   if (!DeviceNameUtils::ParseFullName(b, &b_parsed_name)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   return MergeIfCompatible(a, b_parsed_name);
-}
-
-bool isExperimentalFeatureActivated(string feature_name) {
-  string envvar_str;
-  TF_CHECK_OK(
-      ReadStringFromEnvVar("TF_TRT_EXPERIMENTAL_FEATURES", "", &envvar_str));
-  return envvar_str.find(feature_name) != string::npos;
 }
 
 }  // namespace tensorrt

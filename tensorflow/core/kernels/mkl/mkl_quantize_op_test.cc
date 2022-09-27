@@ -74,7 +74,7 @@ TEST_F(MklQuantizeV2OpTest, small_int8) {
   Tensor expected(allocator(), DT_QINT8, TensorShape({8}));
   Tensor expected_min(allocator(), DT_FLOAT, TensorShape({}));
   Tensor expected_max(allocator(), DT_FLOAT, TensorShape({}));
-  test::FillValues<qint8>(&expected, {0, -1, 1, -2, -24, -128, -80, 127});
+  test::FillValues<qint8>(&expected, {0, -1, 1, -2, -25, -128, -81, 127});
   test::ExpectTensorEqual<qint8>(expected, *GetOutput(0));
   test::FillValues<float>(&expected_min, {-127.0});
   test::FillValues<float>(&expected_max, {127.0});

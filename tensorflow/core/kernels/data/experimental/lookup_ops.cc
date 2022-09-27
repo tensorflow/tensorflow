@@ -55,13 +55,13 @@ class DatasetIterator
 
   Status Init(OpKernelContext* ctx) {
     data::IteratorContext::Params params(ctx);
-    function_handle_cache_ = absl::make_unique<FunctionHandleCache>(params.flr);
+    function_handle_cache_ = std::make_unique<FunctionHandleCache>(params.flr);
     params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
     cancellation_manager_ =
-        absl::make_unique<CancellationManager>(ctx->cancellation_manager());
+        std::make_unique<CancellationManager>(ctx->cancellation_manager());
     params.cancellation_manager = cancellation_manager_.get();
-    iterator_ctx_ = absl::make_unique<data::IteratorContext>(std::move(params));
+    iterator_ctx_ = std::make_unique<data::IteratorContext>(std::move(params));
 
     DatasetBase* finalized_dataset;
     TF_RETURN_IF_ERROR(
@@ -113,7 +113,7 @@ std::unique_ptr<InitializerSerializer> MakeDatasetInitializerSerializer(
     OpKernelContext* ctx, data::DatasetBase* dataset) {
   dataset->Ref();
   auto unref_dataset = [dataset] { dataset->Unref(); };
-  return absl::make_unique<InitializerSerializer>(
+  return std::make_unique<InitializerSerializer>(
       [dataset, resource_manager = ctx->resource_manager(),
        device_name = ctx->device()->attributes().name()](
           GraphDefBuilder* builder, Node* table, Node** out) {

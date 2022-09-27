@@ -709,11 +709,11 @@ class SignatureTest : public SigBaseTest {
 
 TEST_F(SignatureTest, PrepareNodes) {
   NodeDef node1 = MakeNodeConst("node1");
-  sig_.map["node1"] = absl::make_unique<SigNode>(&node1);
+  sig_.map["node1"] = std::make_unique<SigNode>(&node1);
   NodeDef node2 = MakeNodeConst("node2");
-  sig_.map["node2"] = absl::make_unique<SigNode>(&node2);
+  sig_.map["node2"] = std::make_unique<SigNode>(&node2);
   NodeDef node3 = MakeNodeConst("node3");
-  sig_.map["node3"] = absl::make_unique<SigNode>(&node3);
+  sig_.map["node3"] = std::make_unique<SigNode>(&node3);
 
   PrepareNodes(&sig_);
 

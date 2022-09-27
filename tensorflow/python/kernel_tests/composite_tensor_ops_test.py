@@ -18,11 +18,14 @@ from absl.testing import parameterized
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import composite_tensor_ops
+from tensorflow.python.ops import gen_composite_tensor_ops
+from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
@@ -82,6 +85,30 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testEncodingErrors(self, value, spec, message):
     with self.assertRaisesRegex(ValueError, message):
       composite_tensor_ops.composite_tensor_to_variants(value(), spec)
+
+  def testDecodingEmptyNonScalarTensorError(self):
+    if not context.executing_eagerly():
+      # Creating a variant tensor of an empty list is not allowed in eager mode.
+      return
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'must not be an empty variant tensor'):
+      gen_composite_tensor_ops.CompositeTensorVariantToComponents(
+          encoded=constant_op.constant([], dtype=dtypes.variant),
+          metadata='',
+          Tcomponents=[dtypes.int32])
+
+  def testDecodingInvalidEncodedInputError(self):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'not a valid CompositeTensorVariant tensor'):
+      self.evaluate(
+          gen_composite_tensor_ops.CompositeTensorVariantToComponents(
+              encoded=gen_list_ops.EmptyTensorList(
+                  element_dtype=dtypes.int32,
+                  element_shape=[1, 2],
+                  max_num_elements=2),
+              metadata='',
+              Tcomponents=[dtypes.int32]))
 
   def testRoundTripThroughTensorProto(self):
     value = ragged_factory_ops.constant([[1, 2], [3], [4, 5, 6]])

@@ -172,7 +172,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     BlockArgument arg, unsigned index, llvm::StringRef name) {
   auto func = arg.getParentRegion()->getParentOfType<FuncOp>();
 
-  auto node_def = absl::make_unique<NodeDef>();
+  auto node_def = std::make_unique<NodeDef>();
   if (!name.empty())
     node_def->set_name(std::string(ParseTensorName(name.str()).node()));
   else
@@ -232,7 +232,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     FuncOp function, Value operand, unsigned index, llvm::StringRef name) {
-  auto node_def = absl::make_unique<NodeDef>();
+  auto node_def = std::make_unique<NodeDef>();
   if (!name.empty())
     node_def->set_name(std::string(ParseTensorName(name.str()).node()));
   else
@@ -317,8 +317,9 @@ Status Exporter::AddEdge(Operation* inst) {
           llvm::dyn_cast<mlir::tf_executor::NextIterationSinkOp>(inst)) {
     auto* dst_node = nodes_[inst];
     TF_RETURN_IF_ERROR(
-        AddEdgeBetweenNodes(next_iter_sink.input(), dst_node, 0));
-    for (auto control_and_idx : llvm::enumerate(next_iter_sink.controlInputs()))
+        AddEdgeBetweenNodes(next_iter_sink.getInput(), dst_node, 0));
+    for (auto control_and_idx :
+         llvm::enumerate(next_iter_sink.getControlInputs()))
       TF_RETURN_IF_ERROR(AddEdgeBetweenNodes(control_and_idx.value(), dst_node,
                                              control_and_idx.index() + 1));
 
@@ -444,7 +445,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         output_names, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
   }
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
 
   // Extract version info.
   VersionDef versions;
@@ -556,7 +557,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         // definition library
         // TODO(prakalps): If two functions have cyclic dependence, this will
         // introduce an infinite loop.
-        TF_RETURN_IF_ERROR(convert_called_function(op_name.ValueOrDie().str()));
+        TF_RETURN_IF_ERROR(convert_called_function(op_name.value().str()));
       }
 
       if (IsLegacyCallInstruction(&inner_op)) {
@@ -601,10 +602,9 @@ Status Exporter::ConvertLibFunction(
       auto sub_graph,
       Exporter::Convert(configs, tf_dialect, symbol_table, function, flib,
                         visited_functions, &control_ret_nodes));
-  const auto control_ret = [&](const Node* n) -> absl::optional<string> {
-    return control_ret_nodes.contains(n)
-               ? absl::make_optional<string>(n->name())
-               : absl::nullopt;
+  const auto control_ret = [&](const Node* n) -> std::optional<string> {
+    return control_ret_nodes.contains(n) ? std::make_optional<string>(n->name())
+                                         : std::nullopt;
   };
   FunctionDef func_def;
   TF_RETURN_IF_ERROR(
@@ -669,7 +669,7 @@ Status Exporter::Convert(mlir::ModuleOp module,
                          absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::StringAttr entry_func_id =
       mlir::StringAttr::get(module.getContext(), "main");
-  absl::optional<FuncOp> entry_func;
+  std::optional<FuncOp> entry_func;
   FunctionDefLibrary flib;
   llvm::SmallDenseSet<FuncOp> visited_functions;
   auto tf_dialect = module.getContext()->getLoadedDialect("tf");
@@ -753,7 +753,7 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
     TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(flib));
   }
 
-  auto graphdef = absl::make_unique<GraphDef>();
+  auto graphdef = std::make_unique<GraphDef>();
   graph->ToGraphDef(graphdef.get());
   if (!configs.export_library) graphdef->clear_library();
   if (!configs.export_shapes) {

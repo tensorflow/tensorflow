@@ -17,6 +17,7 @@ py_library(
         ":autotrackable",
         ":base",
         ":base_delegate",
+        ":constants",
         ":converter",
         ":data_structures",
         ":layer_utils",
@@ -38,19 +39,13 @@ py_library(
     srcs = ["base.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
+        ":constants",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:io_ops_gen",
-        "//tensorflow/python:platform",
         "//tensorflow/python:util",
-        "//tensorflow/python/checkpoint:checkpoint_util",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/training/saving:saveable_object",
-        "@six_archive//:six",
     ],
 )
 
@@ -64,12 +59,18 @@ tf_py_test(
 )
 
 py_library(
+    name = "constants",
+    srcs = ["constants.py"],
+    srcs_version = "PY3",
+)
+
+py_library(
     name = "converter",
     srcs = ["converter.py"],
     srcs_version = "PY3",
     deps = [
         ":data_structures",
-        "//tensorflow/python/eager:function_saved_model_utils",
+        "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
     ],
 )
 
@@ -148,6 +149,7 @@ py_library(
     name = "resource",
     srcs = ["resource.py"],
     srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":base",
     ],
@@ -204,6 +206,10 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -211,7 +217,7 @@ tf_py_test(
     name = "python_state_test",
     srcs = ["python_state_test.py"],
     deps = [
-        ":base",
+        ":python_state",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/checkpoint",

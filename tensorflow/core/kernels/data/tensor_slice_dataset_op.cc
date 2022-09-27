@@ -63,14 +63,14 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                 split_providers) const override {
     split_providers->push_back(
-        absl::make_unique<IndexSplitProvider>(tensors_[0].dim_size(0)));
+        std::make_unique<IndexSplitProvider>(tensors_[0].dim_size(0)));
     return OkStatus();
   }
 

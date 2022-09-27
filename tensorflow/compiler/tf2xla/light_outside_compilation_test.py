@@ -20,6 +20,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
@@ -34,7 +35,8 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
 
   def assertFilecheck(self, actual, expected):
     """Assert that FileCheck runs successfully."""
-    self.assertTrue(fw.check(actual, expected))
+    if not fw.check(actual, expected):
+      self.fail(f'Got output:\n{actual}\nExpected:\n{expected}')
 
   def test_static_tf_op(self):
     """Test operations with static shapes."""
@@ -48,7 +50,7 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
 
       self.assertFilecheck(
           compiled_f.experimental_get_compiler_ir(z)('hlo'), r"""
-          CHECK: f32[2,2]{1,0} custom-call(f32[2,2]{1,0} [[v:.*]]), custom_call_target="GenericTfCallbackGPU", api_version=API_VERSION_STATUS_RETURNING
+          CHECK: f32[2,2]{1,0} custom-call(f32[2,2]{1,0} [[v:.*]]), custom_call_target="GenericTfCallbackGPU"
           CHECK: TestStaticTf
           """)
 
@@ -138,7 +140,7 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
 
       self.assertFilecheck(
           hlo, r"""
-          CHECK: custom_call_target="GenericTfCallbackGPU", api_version=API_VERSION_STATUS_RETURNING
+          CHECK: custom_call_target="GenericTfCallbackGPU"
           CHECK: TestStaticMultipleOutputTf
           """)
       self.assertAllClose(compiled_f(z)[0], z)
@@ -165,6 +167,45 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
 
       expected_output = [j + 5 for j in z]
       self.assertAllClose(compiled_f(z, 5), expected_output)
+
+  def testTighterProvidedBounds(self):
+    """Dynamic bounds are tighter than those deduced by shape inference."""
+
+    @def_function.function(jit_compile=True)
+    def compiled_f(x):
+      return test_ops_for_light_outside_compilation.test_dynamic_tf_with_bound(
+          x, max_size=5)
+
+    with context.device('/gpu:0'):
+      z = random_ops.random_normal([10])
+      hlo = compiled_f.experimental_get_compiler_ir(z)()
+      self.assertFilecheck(
+          hlo, r"""
+          CHECK: f32[5]{0} custom-call(f32[10]{0} [[v:.*]]), custom_call_target="GenericTfCallbackGPU"
+          """)
+
+  def testFixedLayout(self):
+    """Test correct operand layout is fixed by the lowering."""
+
+    @def_function.function(jit_compile=True)
+    def compiled_f(conv_input):
+      filters = random_ops.random_uniform([2, 3, 3, 2])
+      conv = nn_ops.conv2d(
+          conv_input,
+          filters,
+          strides=[1, 1, 2, 1],
+          dilations=[1, 1, 1, 1],
+          padding='SAME',
+          data_format='NHWC')
+      return test_ops_for_light_outside_compilation.test_static_tf(conv)
+
+    with context.device('/gpu:0'):
+      hlo = compiled_f.experimental_get_compiler_ir(
+          random_ops.random_uniform([1, 3, 4, 3]))()
+      self.assertFilecheck(
+          hlo, r"""
+          CHECK: operand_layout_constraints={f32[1,3,2,2]{3,2,1,0}}
+          """)
 
 
 if __name__ == '__main__':

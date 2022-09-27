@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/util/stats_calculator.h"

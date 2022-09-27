@@ -180,9 +180,9 @@ class ShapeRefiner {
   //
   // On success:
   // - outer_context will contain output shapes inferred from input shapes
-  Status InferShapesForFunction(const FunctionDef* function_def,
-                                AttrSlice attributes,
-                                ExtendedInferenceContext* outer_context);
+  Status InferShapesForFunction(
+      const FunctionDef* function_def, AttrSlice attributes,
+      shape_inference::InferenceContext* outer_context);
 
   // Performs shape inference for a node inside a function.
   //

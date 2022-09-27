@@ -165,7 +165,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(
+    return std::make_unique<Iterator>(
         Iterator::Params{this, name_utils::IteratorPrefix(op_type(), prefix)},
         seed_generator_.get());
   }
@@ -196,7 +196,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           seed_generator_(seed_generator),
           parent_generator_(seed_generator->seed(), seed_generator->seed2()),
           generator_(&parent_generator_) {
-      buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>(
+      buffer_ = std::make_unique<std::vector<std::vector<Tensor>>>(
           params.dataset->buffer_size_);
     }
 
@@ -330,7 +330,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             reader->ReadScalar(this->full_name(kSlicesSize), &temp));
         slices_size = static_cast<size_t>(temp);
       }
-      buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>();
+      buffer_ = std::make_unique<std::vector<std::vector<Tensor>>>();
       TF_RETURN_IF_ERROR(
           ReadElementsFromCheckpoint(ctx, reader, prefix(), buffer_.get()));
       for (const auto& element : *buffer_) {
@@ -348,7 +348,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             this->full_name(absl::StrJoin(std::make_tuple(kSlicesEnd, i), "_")),
             &end));
-        slices_.push_back(absl::make_unique<Slice>(start, end));
+        slices_.push_back(std::make_unique<Slice>(start, end));
       }
       data_produced_ = reader->Contains(this->full_name(kDataProduced));
 
@@ -436,10 +436,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     Status PrepareNextEpoch(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (epoch_ == 0) {
-        slices_.push_back(absl::make_unique<Slice>(0, 0));
+        slices_.push_back(std::make_unique<Slice>(0, 0));
       } else {
         int64_t n = slices_.back()->end;
-        slices_.push_back(absl::make_unique<Slice>(n, n));
+        slices_.push_back(std::make_unique<Slice>(n, n));
         for (const auto& provider : ctx->split_providers()) {
           TF_RETURN_IF_ERROR(provider->Reset());
         }

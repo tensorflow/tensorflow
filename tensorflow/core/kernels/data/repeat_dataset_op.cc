@@ -52,13 +52,13 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     if (count_ < 0) {
-      return absl::make_unique<ForeverIterator>(ForeverIterator::Params{
+      return std::make_unique<ForeverIterator>(ForeverIterator::Params{
           this, name_utils::IteratorPrefix(kForeverRepeat, prefix)});
     } else if (count_ == 0) {
-      return absl::make_unique<EmptyIterator>(EmptyIterator::Params{
+      return std::make_unique<EmptyIterator>(EmptyIterator::Params{
           this, name_utils::IteratorPrefix(kEmptyRepeat, prefix)});
     } else {
-      return absl::make_unique<FiniteIterator>(FiniteIterator::Params{
+      return std::make_unique<FiniteIterator>(FiniteIterator::Params{
           this, name_utils::IteratorPrefix(kFiniteRepeat, prefix)});
     }
   }

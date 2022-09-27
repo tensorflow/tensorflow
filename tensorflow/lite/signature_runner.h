@@ -12,12 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_CORE_SIGNATURE_RUNNER_H_
-#define TENSORFLOW_LITE_CORE_SIGNATURE_RUNNER_H_
+#ifndef TENSORFLOW_LITE_SIGNATURE_RUNNER_H_
+#define TENSORFLOW_LITE_SIGNATURE_RUNNER_H_
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
@@ -27,6 +28,7 @@ namespace tflite {
 class Interpreter;  // Class for friend declarations.
 class SignatureRunnerJNIHelper;  // Class for friend declarations.
 class TensorHandle;              // Class for friend declarations.
+class SignatureRunnerHelper;     // Class for friend declarations.
 
 /// WARNING: Experimental interface, subject to change
 ///
@@ -143,6 +145,7 @@ class SignatureRunner {
   friend class Interpreter;
   friend class SignatureRunnerJNIHelper;
   friend class TensorHandle;
+  friend class SignatureRunnerHelper;
 
   // The SignatureDef object is owned by the interpreter.
   const internal::SignatureDef* signature_def_;
@@ -156,4 +159,4 @@ class SignatureRunner {
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_CORE_SIGNATURE_RUNNER_H_
+#endif  // TENSORFLOW_LITE_SIGNATURE_RUNNER_H_

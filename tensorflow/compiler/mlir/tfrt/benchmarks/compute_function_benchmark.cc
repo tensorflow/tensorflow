@@ -162,7 +162,7 @@ static const char* const mlir_fresh2 = R"(
   func.func @compute(%arg0: tensor<?x?xf32>,
                 %arg1: tensor<?x128xf32>,
                 %arg2: tensor<?x?xf32>,
-                %arg3: tensor<*xf32> {jitrt.constraint = "rank"})
+                %arg3: tensor<*xf32> {rt.constraint = "rank"})
        -> tensor<?x128xf32> {
     %cst = "tf.Const"()
          {value = dense<1.000000e+00> : tensor<f32>,

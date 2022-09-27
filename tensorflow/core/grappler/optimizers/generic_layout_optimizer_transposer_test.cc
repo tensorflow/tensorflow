@@ -357,7 +357,7 @@ class TransposerTest : public ::testing::Test {
 
     if (gpu_available) {
       virtual_cluster_ =
-          absl::make_unique<SingleMachine>(/*timeout_s=*/10, 1, 1);
+          std::make_unique<SingleMachine>(/*timeout_s=*/10, 1, 1);
     } else {
       DeviceProperties gpu_device;
       gpu_device.set_type(kGPU);

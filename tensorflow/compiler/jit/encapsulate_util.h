@@ -20,8 +20,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_ENCAPSULATE_UTIL_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 

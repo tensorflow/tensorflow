@@ -25,6 +25,7 @@ limitations under the License.
 #include <fstream>
 #include <iostream>
 #include <streambuf>
+#include <string>
 #include <utility>
 #include <vector>
 

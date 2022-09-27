@@ -37,7 +37,6 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
 
 namespace mlir {
 namespace mhlo {
@@ -65,7 +64,7 @@ struct XLABufferToMemOpConversion
         typeConverter->convertType(mem_ref_type.getElementType()),
         mem_ref_type.getMemorySpaceAsInt());
     Value ptr =
-        rewriter.create<LLVM::BitcastOp>(loc, ptr_type, adaptor.buffer());
+        rewriter.create<LLVM::BitcastOp>(loc, ptr_type, adaptor.getBuffer());
 
     Value result = this->createMemRefDescriptor(loc, mem_ref_type, ptr, ptr,
                                                 sizes, strides, rewriter);
@@ -217,8 +216,12 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
   }
 };
 
+#define GEN_PASS_DEF_LEGALIZEXLAFRAMEWORKTOLLVM
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"
+
 class LegalizeXLAFrameworkToLLVMPass
-    : public LegalizeXLAFrameworkToLLVMBase<LegalizeXLAFrameworkToLLVMPass> {
+    : public impl::LegalizeXLAFrameworkToLLVMBase<
+          LegalizeXLAFrameworkToLLVMPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect, LLVM::LLVMDialect,
                     xla_framework::XLAFrameworkDialect>();

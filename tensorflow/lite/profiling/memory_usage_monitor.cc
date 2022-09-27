@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/profiling/memory_usage_monitor.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/synchronization/notification.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/profiling/memory_info.h"
@@ -44,8 +47,8 @@ void MemoryUsageMonitor::Start() {
     return;
   }
 
-  stop_signal_.reset(new absl::Notification());
-  check_memory_thd_.reset(new std::thread(([this]() {
+  stop_signal_ = std::make_unique<absl::Notification>();
+  check_memory_thd_ = std::make_unique<std::thread>(([this]() {
     // Note we retrieve the memory usage at the very beginning of the thread.
     while (true) {
       const auto mem_info = sampler_->GetMemoryUsage();
@@ -55,7 +58,7 @@ void MemoryUsageMonitor::Start() {
       if (stop_signal_->HasBeenNotified()) break;
       sampler_->SleepFor(sampling_interval_);
     }
-  })));
+  }));
 }
 
 void MemoryUsageMonitor::Stop() {

@@ -75,7 +75,7 @@ class WrapperDataset : public DatasetBase {
     // error only at iterator initialization time.
     bool error = iterator_created_;
     iterator_created_ = true;
-    return absl::make_unique<WrapperIterator>(
+    return std::make_unique<WrapperIterator>(
         WrapperIterator::Params{this, strings::StrCat(prefix, "::Wrapper")},
         error);
   }
@@ -222,7 +222,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<ChooseFastestIterator>(
+      return std::make_unique<ChooseFastestIterator>(
           ChooseFastestIterator::Params{
               this, strings::StrCat(prefix, "::ChooseFastestBranch")});
     }
@@ -504,7 +504,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
         // `StoreDatasetInVariantTensor` transfers ownership of the dataset
         // to the tensor, so the tensor must persist between iterations.
         wrapper_dataset_tensor_ =
-            absl::make_unique<Tensor>(DT_VARIANT, TensorShape({}));
+            std::make_unique<Tensor>(DT_VARIANT, TensorShape({}));
 
         DatasetContext::Params params;
         params.type_string = "ChooseFastestBranch_Wrapper";

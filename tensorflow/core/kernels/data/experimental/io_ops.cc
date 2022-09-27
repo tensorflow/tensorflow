@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -107,7 +108,7 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
                                 uint64* num_elements) {
   IteratorContext::Params params(ctx);
   auto function_handle_cache =
-      absl::make_unique<FunctionHandleCache>(params.flr);
+      std::make_unique<FunctionHandleCache>(params.flr);
   params.function_handle_cache = function_handle_cache.get();
   ResourceMgr resource_mgr;
   params.resource_mgr = &resource_mgr;
@@ -228,7 +229,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -567,7 +568,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -677,9 +678,8 @@ class LoadDatasetOp::Dataset : public DatasetBase {
    private:
     Status InitializeInput(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      auto run_dir = snapshot_util::RunDirectory(dataset()->path_,
-                                                 dataset()->metadata_.run_id());
-
+      auto run_dir = snapshot_util::RunDirectory(
+          TranslateFileName(dataset()->path_), dataset()->metadata_.run_id());
       std::vector<std::string> snapshot_shard_dirs;
       TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
           io::JoinPath(run_dir,

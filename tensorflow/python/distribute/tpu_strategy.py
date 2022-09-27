@@ -929,7 +929,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._use_spmd_for_xla_partitioning = use_spmd_for_xla_partitioning
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    distribute_utils. validate_colocate(colocate_with_variable, self)
+    distribute_utils.validate_colocate(colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
@@ -1568,6 +1568,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     def tpu_function(args, kwargs):
       """TF Function used to replicate the user computation."""
+      logging.vlog(1,
+                   "`TPUStrategy.run` is called with [args: %s] [kwargs: %s]",
+                   args, kwargs)
+
       if kwargs is None:
         kwargs = {}
 

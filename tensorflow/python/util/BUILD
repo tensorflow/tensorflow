@@ -476,17 +476,6 @@ py_library(
     ],
 )
 
-py_strict_library(
-    name = "traceback_utils",
-    srcs = ["traceback_utils.py"],
-    compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        ":tf_decorator",
-    ],
-)
-
 tf_py_test(
     name = "traceback_utils_test",
     size = "small",
@@ -710,5 +699,20 @@ tf_py_test(
         ":util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
+    ],
+)
+
+tf_py_test(
+    name = "variable_utils_test",
+    srcs = ["variable_utils_test.py"],
+    deps = [
+        ":util",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:test",
     ],
 )

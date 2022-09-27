@@ -160,7 +160,7 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
   auto indices = context->Input(1);
   auto indices_shape = context->InputShape(1);
 
-  absl::optional<int64_t> axis;
+  std::optional<int64_t> axis;
   if (context->num_inputs() == 3) {
     const TensorShape axis_shape = context->InputShape(2);
     if (!TensorShapeUtils::IsScalar(axis_shape)) {

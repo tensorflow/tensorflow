@@ -127,6 +127,22 @@ class XlaCompilationCache : public ResourceBase {
       const XlaCompiler::CompilationResult** out_compilation_result,
       xla::LocalExecutable** out_executable);
 
+  struct CompilationResultAndExecutable {
+    const XlaCompiler::CompilationResult* compilation_result;
+    xla::LocalExecutable* executable;
+  };
+
+  // Returns CompilationResultAndExecutable with non-null compilation_result and
+  // executable if the signature is already compiled.
+  // If the signature has not been compiled yet, this function returns a
+  // CompilationResultAndExecutable instance with only nullptrs in it.
+  // Non-ok status means something other than the 2 circumstances above
+  // happened.
+  StatusOr<CompilationResultAndExecutable>
+  GetCompilationResultIfAlreadyCompiled(
+      const NameAttrList& function,
+      absl::Span<const XlaCompiler::Argument> args);
+
   xla::LocalClient* client() const { return client_; }
   const DeviceType& device_type() const { return device_type_; }
 
@@ -256,9 +272,9 @@ class XlaCompilationCache : public ResourceBase {
   Status SaveSerializedEntry(const XlaSerializedCacheEntry& entry);
 
   // Tries to load a cache entry given a `key` by searching the file directory
-  // supplied during the construction of this class. Returns absl::nullopt if no
+  // supplied during the construction of this class. Returns std::nullopt if no
   // cache entry is found.
-  StatusOr<absl::optional<XlaSerializedCacheEntry>> TryLoadSerializedEntry(
+  StatusOr<std::optional<XlaSerializedCacheEntry>> TryLoadSerializedEntry(
       const XlaSerializedCacheKey& key);
 
   mutex compile_cache_mu_;
@@ -304,7 +320,7 @@ class XlaCompilationCache : public ResourceBase {
     std::unique_ptr<thread::ThreadPool> compiler_threads;
 
     AsyncCompilationState() {
-      compiler_threads = absl::make_unique<tensorflow::thread::ThreadPool>(
+      compiler_threads = std::make_unique<tensorflow::thread::ThreadPool>(
           tensorflow::Env::Default(), "async_compiler_threads",
           kNumCompilerThreads);
     }

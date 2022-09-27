@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for SavedModelCLI tool."""
 import contextlib
+import io
 import os
 import pickle
 import platform
@@ -22,7 +23,6 @@ import sys
 
 from absl.testing import parameterized
 import numpy as np
-from six import StringIO
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
@@ -38,14 +38,14 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import save
 from tensorflow.python.tools import saved_model_cli
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 SAVED_MODEL_PATH = ('cc/saved_model/testdata/half_plus_two/00000123')
 
 
 @contextlib.contextmanager
 def captured_output():
-  new_out, new_err = StringIO(), StringIO()
+  new_out, new_err = io.StringIO(), io.StringIO()
   old_out, old_err = sys.stdout, sys.stderr
   try:
     sys.stdout, sys.stderr = new_out, new_err
@@ -155,7 +155,7 @@ signature_def['serving_default']:
 
   def testShowAllWithFunctions(self):
 
-    class DummyModel(tracking.AutoTrackable):
+    class DummyModel(autotrackable.AutoTrackable):
       """Model with callable polymorphic functions specified."""
 
       @def_function.function
@@ -243,7 +243,7 @@ Concrete Functions:
 
   def testShowAllWithPureConcreteFunction(self):
 
-    class DummyModel(tracking.AutoTrackable):
+    class DummyModel(autotrackable.AutoTrackable):
       """Model with a callable concrete function."""
 
       def __init__(self):
@@ -748,7 +748,7 @@ Concrete Functions:
     with self.assertRaisesRegex(ValueError, 'Unable to find signature_def'):
       saved_model_cli.aot_compile_cpu(args)
 
-  class AOTCompileDummyModel(tracking.AutoTrackable):
+  class AOTCompileDummyModel(autotrackable.AutoTrackable):
     """Model compatible with XLA compilation."""
 
     def __init__(self):

@@ -30,9 +30,9 @@ namespace {
 
 class TestProfiler : public ProfilerInterface {
  public:
-  Status Start() override { return Status::OK(); }
-  Status Stop() override { return Status::OK(); }
-  Status CollectData(XSpace*) override { return Status::OK(); }
+  Status Start() override { return OkStatus(); }
+  Status Stop() override { return OkStatus(); }
+  Status CollectData(XSpace*) override { return OkStatus(); }
 };
 
 std::unique_ptr<ProfilerInterface> TestFactoryFunction(

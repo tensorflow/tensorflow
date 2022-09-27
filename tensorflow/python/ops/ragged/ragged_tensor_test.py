@@ -1468,6 +1468,21 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         for i in range(3):
           self.assertAllEqual(sess.run(rt[i]), out)
 
+  def testToVariantInvalidParams(self):
+    self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                           r'be rank 1 but is rank 0',
+                           gen_ragged_conversion_ops.ragged_tensor_to_variant,
+                           rt_nested_splits=[0, 1, 2],
+                           rt_dense_values=[0, 1, 2],
+                           batched_input=True)
+
+    self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                           r'be rank 1 but is rank 2',
+                           gen_ragged_conversion_ops.ragged_tensor_to_variant,
+                           rt_nested_splits=[[[0]], [[1]], [[2]]],
+                           rt_dense_values=[0, 1, 2],
+                           batched_input=True)
+
   def testFromVariantInvalidParams(self):
     rt = ragged_factory_ops.constant([[0], [1], [2], [3]])
     batched_variant = rt._to_variant(batched_input=True)

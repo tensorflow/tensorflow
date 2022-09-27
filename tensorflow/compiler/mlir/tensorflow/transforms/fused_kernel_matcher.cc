@@ -193,6 +193,32 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     attrs.push_back(
         NamedAttribute(StringAttr::get(context, "epsilon"), epsilon));
 
+    if (std::is_same<FusedOpT, _FusedConv2DOp>::value) {
+      SmallVector<Attribute, 4> targs_values;
+      // Here TArgs types do not include types of the first two parameters,
+      // i.e. the convolution input and the filter. TArgs are parameters for
+      // the extras like the bias etc.
+      for (int i = 0; i < operands.size() - 2; ++i) {
+        targs_values.push_back(TypeAttr::get(contraction.T()));
+      }
+      ArrayAttr targs_attr = ArrayAttr::get(context, targs_values);
+      attrs.push_back(
+          NamedAttribute(StringAttr::get(context, "TArgs"), targs_attr));
+
+      auto num_args_attr = IntegerAttr::get(IntegerType::get(context, 64), 1);
+      attrs.push_back(
+          NamedAttribute(StringAttr::get(context, "num_args"), num_args_attr));
+
+      // Fused conv operands are input, filter, args and host args. Here, bias
+      // input of the BiasAdd op. Host args corresponds to conv_input_scale and
+      // side_input_scale and not relevant in this case.
+      auto sizes = mlir::DenseI32ArrayAttr::get(context, {1, 1, 1, 0});
+      auto attr_name =
+          StringAttr::get(context, mlir::OpTrait::AttrSizedOperandSegments<
+                                       void>::getOperandSegmentSizeAttr());
+      attrs.push_back(NamedAttribute(attr_name, sizes));
+    }
+
     // Insert fused operation right before the BiasAdd operation to guarantee
     // that bias value dominates the fused operation. We already verified that
     // original operation has a single use, so this is safe to do.

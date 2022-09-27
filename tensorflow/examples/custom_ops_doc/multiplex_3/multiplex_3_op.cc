@@ -52,7 +52,7 @@ REGISTER_OP("Examples>MultiplexSparse")
       c->set_output(0, c->Matrix(num_rows, dense_rank));
       c->set_output(1, c->Vector(num_rows));
       c->set_output(2, c->Vector(dense_rank));
-      return tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     })
     .Doc(R"doc(
 Return elements chosen from `a` or `b` depending on `cond`.

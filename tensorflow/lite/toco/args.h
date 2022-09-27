@@ -19,11 +19,13 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOCO_ARGS_H_
 
 #include <functional>
+#include <string>
 #include <unordered_map>
 #include <vector>
-#include "tensorflow/lite/toco/toco_port.h"
+
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/lite/toco/toco_types.h"
 
 namespace toco {

@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -32,9 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -101,7 +100,7 @@ int64_t TestAllocator::deallocation_count(int device_ordinal) const {
 
   if (allocator_ == nullptr) {
     allocator_ = new TestAllocator(
-        platform == nullptr ? PlatformUtil::GetDefaultPlatform().ValueOrDie()
+        platform == nullptr ? PlatformUtil::GetDefaultPlatform().value()
                             : platform);
   }
   return allocator_;
@@ -111,25 +110,24 @@ int64_t TestAllocator::deallocation_count(int device_ordinal) const {
 // these types in the header.
 struct LocalClientTestBase::EigenThreadPoolWrapper {
   explicit EigenThreadPoolWrapper()
-      : pool(new tensorflow::thread::ThreadPool(
-            tensorflow::Env::Default(), "XLAEigenTest", /*num_threads=*/2)),
+      : pool(new tsl::thread::ThreadPool(tsl::Env::Default(), "XLAEigenTest",
+                                         /*num_threads=*/2)),
         device(new Eigen::ThreadPoolDevice(pool->AsEigenThreadPool(),
                                            pool->NumThreads())) {}
 
-  std::unique_ptr<tensorflow::thread::ThreadPool> pool;
+  std::unique_ptr<tsl::thread::ThreadPool> pool;
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
 
 LocalClientTestBase::LocalClientTestBase(se::Platform* platform)
-    : local_client_(
-          ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie()),
+    : local_client_(ClientLibrary::GetOrCreateLocalClient(platform).value()),
       thread_pool_wrapper_(new EigenThreadPoolWrapper()) {
   // Take the first executor, since it's the default one.
   stream_executor_ = PlatformUtil::GetStreamExecutors(local_client_->platform())
-                         .ValueOrDie()
+                         .value()
                          .front();
   transfer_manager_ =
-      TransferManager::GetForPlatform(local_client_->platform()).ValueOrDie();
+      TransferManager::GetForPlatform(local_client_->platform()).value();
 }
 
 LocalClientTestBase::~LocalClientTestBase() {}
@@ -138,13 +136,12 @@ ScopedShapedBuffer LocalClientTestBase::LiteralToShapedBuffer(
     const Literal& literal) {
   return local_client_
       ->LiteralToShapedBuffer(literal, local_client_->default_device_ordinal())
-      .ConsumeValueOrDie();
+      .value();
 }
 
 Literal LocalClientTestBase::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
-  return local_client_->ShapedBufferToLiteral(shaped_buffer)
-      .ConsumeValueOrDie();
+  return local_client_->ShapedBufferToLiteral(shaped_buffer).value();
 }
 
 ExecutableBuildOptions LocalClientTestBase::DefaultExecutableBuildOptions()
@@ -164,7 +161,7 @@ ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
     absl::Span<const ShapedBuffer* const> arguments) {
   return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
                         DefaultExecutableRunOptions())
-      .ConsumeValueOrDie();
+      .value();
 }
 
 ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
@@ -173,7 +170,7 @@ ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
     const ExecutableBuildOptions& build_options,
     const ExecutableRunOptions& run_options) {
   return ExecuteLocally(computation, arguments, build_options, run_options)
-      .ConsumeValueOrDie();
+      .value();
 }
 
 StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
@@ -204,7 +201,7 @@ StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
   if (!stream) {
     stream = local_client_->mutable_backend()
                  ->BorrowStream(device_ordinal)
-                 .ValueOrDie()
+                 .value()
                  .get();
   }
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
@@ -219,7 +216,7 @@ LocalClientTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text) {
 StatusOr<std::unique_ptr<VerifiedHloModule>>
 LocalClientTestBase::ParseAndReturnVerifiedModule(
     absl::string_view hlo_text, const HloModuleConfig& config) {
-  auto module = absl::make_unique<VerifiedHloModule>(
+  auto module = std::make_unique<VerifiedHloModule>(
       TestName(), config, /*verifier_layout_sensitive=*/false,
       /*allow_mixed_precision_in_hlo_verifier=*/true,
       local_client_->backend().compiler()->ShapeSizeBytesFunction());

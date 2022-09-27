@@ -321,10 +321,14 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   _check_health_timeout = 10
 
   def __init__(self, container_strategy, cluster_resolver,
-               communication_options):
+               communication_options, devices=None):
     if not isinstance(communication_options, collective_util.Options):
       raise ValueError("communication_options must be an instance of "
                        "tf.distribute.experimental.CommunicationOptions")
+    if cluster_resolver and devices:
+      raise ValueError(
+          "cluster_resolver and devices cannot be set at the same time")
+
     self._cluster_resolver = cluster_resolver or TFConfigClusterResolver()
     if not isinstance(self._cluster_resolver, ClusterResolver):
       raise ValueError("cluster_resolver must be an instance of "
@@ -332,7 +336,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     distribute_lib.StrategyExtendedV1.__init__(self, container_strategy)
     self._communication_options = communication_options
     self._collective_key_base = container_strategy._collective_key_base  # pylint: disable=protected-access
-    self._initialize_strategy(self._cluster_resolver)
+    self._initialize_strategy(self._cluster_resolver, devices=devices)
     self._cfer_fn_cache = weakref.WeakKeyDictionary()
     self.experimental_enable_get_next_as_optional = True
     assert isinstance(self._cross_device_ops,
@@ -345,11 +349,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         ops.get_default_graph()) or not all(
             [_is_gpu_device(d) for d in self._devices])
 
-  def _initialize_strategy(self, cluster_resolver):
-    if cluster_resolver.cluster_spec().as_dict():
-      self._initialize_multi_worker(cluster_resolver)
+  def _initialize_strategy(self, cluster_resolver, devices):
+    # If devices are provided or cluster_spec is not specified, initialize
+    # single worker. Otherwise initialize multi workers.
+    if devices or not cluster_resolver.cluster_spec().as_dict():
+      self._initialize_local(cluster_resolver, devices=devices)
     else:
-      self._initialize_local(cluster_resolver)
+      self._initialize_multi_worker(cluster_resolver)
 
   def _initialize_local_devices(self, cluster_resolver, worker_device):
     # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in

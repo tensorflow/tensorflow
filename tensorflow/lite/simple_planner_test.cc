@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/simple_planner.h"
 
+#include <algorithm>
 #include <cstdarg>
 #include <initializer_list>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -135,6 +137,7 @@ class TestGraphInfo : public GraphInfo {
   TfLiteTensor* tensor(size_t index) override {
     return &graph_->tensors()->at(index);
   }
+  TfLiteTensor* tensors() override { return graph_->tensors()->data(); }
   size_t num_execution_nodes() const override { return graph_->nodes().size(); }
   size_t num_total_nodes() const override { return graph_->nodes().size(); }
   const TfLiteNode& node(size_t index) const override {
@@ -168,8 +171,8 @@ class SimplePlannerTest : public ::testing::Test {
   void SetGraph(TestGraph* graph, bool preserve_all_tensors = false) {
     graph_ = graph;
     context_.ReportError = ReportError;
-    planner_.reset(new SimplePlanner(
-        &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph))));
+    planner_ = std::make_unique<SimplePlanner>(
+        &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)));
     CHECK(planner_->ResetAllocations() == kTfLiteOk);
     CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }

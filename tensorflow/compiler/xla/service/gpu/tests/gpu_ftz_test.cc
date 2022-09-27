@@ -94,23 +94,20 @@ TEST_F(GpuFtzDisabledTest, MultiplyFtz) {
 // In NVPTX, exp(float) is implemented in libdevice, and consults __nvvm_reflect
 // to determine whether or not ftz is enabled.
 // The implementation in CUDA 11 uses one ex2.approx.ftz, irrespective of ftz
-// being enabled or not. In previous CUDA versions, there is a leading
-// ex2.approx that does obey the ftz setting.
-// Instead of pattern matching implementation details, it might be better to
-// value-test the actual result instead. TODO(csigg): change to value-test.
+// being enabled or not. The ftz flag is reflected in the Newton iteration.
 TEST_F(GpuFtzEnabledTest, ExpFtz) {
   CompileAndOptionallyVerifyPtx(CreateUnaryOpModule(HloOpcode::kExp), R"(
-    CHECK-NOT: ex2.approx.f32
-    CHECK:     ex2.approx.ftz.f32
-    CHECK-NOT: ex2.approx.f32
+    CHECK:      ex2.approx.ftz.f32
+    CHECK-NEXT: mul.rn.ftz.f32
+    CHECK-NOT:  ex2.approx.f32
   )");
 }
 
 TEST_F(GpuFtzDisabledTest, ExpFtz) {
   CompileAndOptionallyVerifyPtx(CreateUnaryOpModule(HloOpcode::kExp), R"(
-    CHECK:     ex2.approx.ftz.f32
-    CHECK-NOT: ex2.approx.f32
-    CHECK-NOT: ex2.approx.ftz.f32
+    CHECK:      ex2.approx.ftz.f32
+    CHECK-NEXT: mul.rn.f32
+    CHECK-NOT:  ex2.approx.f32
   )");
 }
 

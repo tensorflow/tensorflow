@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
 #include <cmath>
+#include <memory>
 
 #include "absl/base/casts.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -723,21 +723,19 @@ StatusOr<Literal> MakeConstrainedArgument(const HloDataflowAnalysis& dataflow,
 
 StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
                                   bool use_large_range) {
-  auto engine =
-      pseudo_random ? absl::make_unique<std::minstd_rand0>() : nullptr;
+  auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeLiteralInternal(shape, engine.get(), /*no_duplicates=*/false,
                                  use_large_range);
 }
 
-StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
+StatusOr<std::vector<Literal>> MakeFakeArguments(const HloModule* module,
                                                  bool pseudo_random,
                                                  bool use_large_range) {
-  auto engine =
-      pseudo_random ? absl::make_unique<std::minstd_rand0>() : nullptr;
+  auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeArguments(module, engine.get(), use_large_range);
 }
 
-StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
+StatusOr<std::vector<Literal>> MakeFakeArguments(const HloModule* module,
                                                  std::minstd_rand0* engine,
                                                  bool use_large_range) {
   TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
@@ -782,7 +780,7 @@ std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
   dot_dimension_numbers.add_lhs_contracting_dimensions(
       lhs->shape().rank() > 1 ? 1 : 0);
   dot_dimension_numbers.add_rhs_contracting_dimensions(0);
-  return absl::make_unique<HloDotInstruction>(
+  return std::make_unique<HloDotInstruction>(
       shape, lhs, rhs, dot_dimension_numbers, precision_config);
 }
 }  // namespace xla

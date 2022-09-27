@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for tf.ragged.RowPartition."""
 
+import copy
 from absl.testing import parameterized
 import numpy as np
 
@@ -964,6 +965,17 @@ class RowPartitionSpecTest(test_util.TensorFlowTestCase,
                             error=None):
     with self.assertRaisesRegex(ValueError, error):
       RowPartitionSpec(nrows, nvals, uniform_row_length, dtype)
+
+  @parameterized.parameters([
+      RowPartitionSpec(),
+      RowPartitionSpec(dtype=dtypes.int64),
+      RowPartitionSpec(uniform_row_length=3)
+  ])  # pyformat: disable
+
+  def testDeepcopy(self, spec):
+    spec = RowPartitionSpec()
+    spec_b = copy.deepcopy(spec)
+    self.assertEqual(repr(spec), repr(spec_b))
 
   def testValueType(self):
     spec = RowPartitionSpec()

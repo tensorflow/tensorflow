@@ -56,7 +56,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -77,7 +77,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -100,7 +100,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -123,7 +123,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -146,7 +146,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -167,7 +167,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -190,7 +190,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -211,7 +211,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -232,7 +232,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);

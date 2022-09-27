@@ -922,7 +922,7 @@ Status ScopedAllocatorOptimizer::Optimize(Cluster* /*cluster*/,
       assume_valid_feeds, /*aggressive_shape_inference=*/false,
       /*include_tensor_values=*/false));
   *optimized_graph = item.graph;
-  node_map_ = absl::make_unique<NodeMap>(optimized_graph);
+  node_map_ = std::make_unique<NodeMap>(optimized_graph);
 
   LOG_WARNING_AND_RETURN_IF_ERROR(ScopedAllocatorOptimizer::ProcessGraphDef(
       optimized_graph, graph_properties));

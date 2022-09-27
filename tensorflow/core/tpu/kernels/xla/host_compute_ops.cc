@@ -64,7 +64,7 @@ Status MakeXlaShapes(gtl::ArraySlice<TensorShape> shapes,
   // Remove the dummy output from the vector that will be used to copy real
   // outputs from host to device.
   xla_shapes->pop_back();
-  return Status::OK();
+  return OkStatus();
 }
 
 // This TensorFlow pseudo-op is used to record host-side computation.
@@ -152,7 +152,7 @@ class HostComputeOp : public XlaOpKernel {
     for (auto& token_input_node : token_input_nodes_) {
       auto token_or = compiler->GetNodeToken(token_input_node);
       OP_REQUIRES_OK(ctx, token_or.status());
-      input_tokens.push_back(token_or.ValueOrDie());
+      input_tokens.push_back(token_or.value());
     }
     xla::XlaOp token = xla::AfterAll(b, input_tokens);
 
@@ -296,7 +296,7 @@ class HostComputeOp : public XlaOpKernel {
       }
     } while (modified);
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status InferOutputShapes(XlaOpKernelContext* ctx,
@@ -384,7 +384,7 @@ class HostComputeOp : public XlaOpKernel {
           "Shape inference for HostCompute ", ctx->op_kernel().name(),
           " failed: inference graph has no send from host node");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   DataTypeVector input_dtypes_;
@@ -433,7 +433,7 @@ class SendToHostOp : public XlaOpKernel {
     for (auto& token_input_node : token_input_nodes_) {
       auto token_or = compiler->GetNodeToken(token_input_node);
       OP_REQUIRES_OK(ctx, token_or.status());
-      input_tokens.push_back(token_or.ValueOrDie());
+      input_tokens.push_back(token_or.value());
     }
     xla::XlaOp token = xla::AfterAll(b, input_tokens);
     xla::Shape xla_shape;
@@ -491,7 +491,7 @@ class RecvFromHostOp : public XlaOpKernel {
     for (auto& token_input_node : token_input_nodes_) {
       auto token_or = compiler->GetNodeToken(token_input_node);
       OP_REQUIRES_OK(ctx, token_or.status());
-      input_tokens.push_back(token_or.ValueOrDie());
+      input_tokens.push_back(token_or.value());
     }
     xla::XlaOp token = xla::AfterAll(b, input_tokens);
     xla::Shape xla_shape;

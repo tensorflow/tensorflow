@@ -311,7 +311,7 @@ void PickSubgraphsPass::BuildSubgraphs(
   fn.walk([&](func::CallOp call_op) {
     auto interface_name = GetInterFaceName(call_op);
     // we only need to care about the call ops those have interface_name.
-    if (!interface_name.hasValue()) return;
+    if (!interface_name.has_value()) return;
 
     unprocessed_subgraphs->insert(call_op);
 
@@ -327,7 +327,7 @@ void PickSubgraphsPass::BuildSubgraphs(
 
     for (auto impl : impl_iter->second) {
       auto inference_device_type = GetInferenceDeviceTypeForOp(impl);
-      if (!inference_device_type.hasValue()) {
+      if (!inference_device_type.has_value()) {
         impl.emitError("we cannot find inference device type for this func");
         signalPassFailure();
       }
@@ -351,7 +351,7 @@ PickSubgraphsPass::CollectSubgraphFuncs(ModuleOp module) {
   std::unordered_map<std::string, std::vector<func::FuncOp>> func_impls;
   for (auto func : module.getOps<func::FuncOp>()) {
     auto interface_name = GetInterFaceName(func);
-    if (interface_name.hasValue()) {
+    if (interface_name.has_value()) {
       auto impls_iter = func_impls.find(interface_name.getValue());
       if (impls_iter == func_impls.end())
         impls_iter =

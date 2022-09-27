@@ -157,7 +157,7 @@ bool DequantizeArray(const std::string& array_name,
   new_array.data_type = ArrayDataType::kFloat;
   new_array.copy_shape(array->shape());
   new_array.GetOrCreateMinMax() = array->GetMinMax();
-  fakequant_op->minmax.reset(new MinMax);
+  fakequant_op->minmax = std::make_unique<MinMax>();
   *fakequant_op->minmax = array->GetMinMax();
   fakequant_op->narrow_range = array->narrow_range;
   if (must_insert_fakequant_before) {
@@ -210,6 +210,7 @@ bool DequantizeArray(const std::string& array_name,
   }
 
   std::vector<std::string> arrays;
+  arrays.reserve(op->inputs.size());
   for (const std::string& input : op->inputs) {
     arrays.push_back(input);
   }

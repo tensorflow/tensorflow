@@ -69,7 +69,7 @@ class ToTFRecordOp : public AsyncOpKernel {
                                                     &compression_type));
     std::unique_ptr<WritableFile> file;
     TF_RETURN_IF_ERROR(ctx->env()->NewWritableFile(filename, &file));
-    auto writer = absl::make_unique<io::RecordWriter>(
+    auto writer = std::make_unique<io::RecordWriter>(
         file.get(),
         io::RecordWriterOptions::CreateRecordWriterOptions(compression_type));
 

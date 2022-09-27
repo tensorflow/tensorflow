@@ -96,7 +96,7 @@ namespace tensorflow {
 //  bytes_per_elem: Number of bytes in each element of the array
 //  array_len: Number of elements in the array
 //
-// Returns: Status::OK() on success, -1 otherwise
+// Returns: OkStatus() on success, -1 otherwise
 //
 Status ByteSwapArray(char *array, size_t bytes_per_elem, int array_len);
 
@@ -105,7 +105,7 @@ Status ByteSwapArray(char *array, size_t bytes_per_elem, int array_len);
 // Args:
 //  t: Tensor to be modified IN PLACE. Any tensors that share a backing
 //     buffer with this one will also end up byte-swapped.
-// Returns: Status::OK() on success, -1 otherwise
+// Returns: OkStatus() on success, -1 otherwise
 // TODO(frreiss): Should this be a member of the Tensor class?
 Status ByteSwapTensor(Tensor *t);
 

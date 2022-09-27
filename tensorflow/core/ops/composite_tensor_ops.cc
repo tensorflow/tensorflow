@@ -34,7 +34,7 @@ REGISTER_OP("CompositeTensorVariantToComponents")
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->UnknownShape());
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

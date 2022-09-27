@@ -74,10 +74,10 @@ func.func @multiple_dialect_ops(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-LABEL: binary_op_broadcast
 func.func @binary_op_broadcast(%arg0: tensor<4x1xf32>, %arg1: tensor<4x1x4xf32>) -> tensor<4x4x4xf32> {
   // CHECK: %[[BROADCAST0:.*]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<4x1xf32>) -> tensor<4x4x1xf32>
-  // CHECK: %[[RESHAPE0:.*]] = "mhlo.reshape"(%[[BROADCAST0]]) : (tensor<4x4x1xf32>) -> tensor<4x4xf32>
+  // CHECK: %[[RESHAPE0:.*]] = mhlo.reshape %[[BROADCAST0]] : (tensor<4x4x1xf32>) -> tensor<4x4xf32>
   // CHECK: %[[UPDATED_ARG0:.*]] = "mhlo.broadcast_in_dim"(%[[RESHAPE0]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x4xf32>) -> tensor<4x4x4xf32>
 
-  // CHECK: %[[RESHAPE1:.*]] = "mhlo.reshape"(%arg1) : (tensor<4x1x4xf32>) -> tensor<4x4xf32>
+  // CHECK: %[[RESHAPE1:.*]] = mhlo.reshape %arg1 : (tensor<4x1x4xf32>) -> tensor<4x4xf32>
   // CHECK: %[[UPDATED_ARG1:.*]] = "mhlo.broadcast_in_dim"(%[[RESHAPE1]]) {broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<4x4xf32>) -> tensor<4x4x4xf32>
 
   // CHECK: %[[RESULT:.*]] = mhlo.atan2 %[[UPDATED_ARG0]], %[[UPDATED_ARG1]] : tensor<4x4x4xf32>
@@ -113,7 +113,7 @@ func.func @constant(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: func @greater
 func.func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<"comparison_type SIGNED">, comparison_direction = #mhlo<"comparison_direction GT">}
+  // CHECK-NEXT:  mhlo.compare GT, %arg0, %arg1, SIGNED
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   func.return %0: tensor<2xi1>
 }
@@ -166,16 +166,16 @@ func.func @dynamic_update_slice(%arg0: tensor<3x4xi32>, %arg1: tensor<2x2xi32>, 
   // CHECK-DAG-SAME: limit_indices = dense<1> : tensor<1xi64>
   // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>
   // CHECK-SAME: (tensor<2xi32>) -> tensor<1xi32>
-  // CHECK: %[[DIM0:.*]] = "mhlo.reshape"(%[[SLICE0]]) : (tensor<1xi32>) -> tensor<i32>
+  // CHECK: %[[DIM0:.*]] = mhlo.reshape %[[SLICE0]] : (tensor<1xi32>) -> tensor<i32>
 
   // CHECK: %[[SLICE1:.*]] = "mhlo.slice"(%[[ARG2]])
   // CHECK-DAG-SAME: start_indices = dense<1> : tensor<1xi64>
   // CHECK-DAG-SAME: limit_indices = dense<2> : tensor<1xi64>
   // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>
   // CHECK-SAME: (tensor<2xi32>) -> tensor<1xi32>
-  // CHECK: %[[DIM1:.*]] = "mhlo.reshape"(%[[SLICE1]]) : (tensor<1xi32>) -> tensor<i32>
+  // CHECK: %[[DIM1:.*]] = mhlo.reshape %[[SLICE1]] : (tensor<1xi32>) -> tensor<i32>
 
-  // CHECK: "mhlo.dynamic-update-slice"(%[[ARG0]], %[[ARG1]], %[[DIM0]], %[[DIM1]])
+  // CHECK: mhlo.dynamic_update_slice %[[ARG0]], %[[ARG1]], %[[DIM0]], %[[DIM1]]
 
   %0 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %arg2) : (tensor<3x4xi32>, tensor<2x2xi32>, tensor<2xi32>) -> tensor<3x4xi32>
   func.return %0: tensor<3x4xi32>
@@ -189,7 +189,7 @@ func.func @sparse_to_dense(%arg0: tensor<3x2xi32>, %arg1: tensor<3xf32>, %arg2: 
 
 // CHECK:      %[[RESULT:.*]] = "mhlo.scatter"(%[[DEFAULT]], %[[ARG0]], %[[ARG1]]) ({
 // CHECK:      ^bb0(%[[ARG3:.*]]: tensor<f32>, %[[ARG4:.*]]: tensor<f32>):
-// CHECK:        "mhlo.return"(%[[ARG4]]) : (tensor<f32>) -> ()
+// CHECK:        mhlo.return %[[ARG4]] : tensor<f32>
 // CHECK:      })
 // CHECK-SAME: indices_are_sorted = false
 // CHECK-SAME: scatter_dimension_numbers
@@ -285,14 +285,20 @@ func.func @multinomial(%arg0: tensor<2x4xf32>, %seed: tensor<i32>, %seed2: tenso
   func.return %1 : tensor<2x10xi32>
 }
 
-// TOOD(b/168036682): Support dynamic shaped types.
-// DISABLED-CHECK-LABEL: @set_dynamic_dimension_size
+// CHECK-LABEL: @set_dynamic_dimension_size
 func.func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf32> {
   %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
-  // DISABLED-CHECK: mhlo.set_dimension_size
-  // CHECK: tf.XlaSetDynamicDimensionSize
+  // CHECK: mhlo.set_dimension_size
+  // CHECK-SAME: {dimension = 0 : i64} : (tensor<4xf32>, tensor<i32>) -> tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>
   %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: unique
+func.func @unique(%arg0: tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi32>) {
+  // CHECK-NOT: tf.Unique
+  %0, %1 = "tf.Unique"(%arg0) : (tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi32>)
+  func.return %0, %1 : tensor<?xf32> , tensor<?xi32>
 }
 
 // CHECK-LABEL: @erfinv

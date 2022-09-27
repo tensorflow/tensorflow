@@ -60,7 +60,7 @@ llvm::Optional<std::string> GetDeviceName(mlir::Operation* op) {
 
   // The model may contain quant stats op which is unrelevant to the
   // execution.
-  if (llvm::isa<mlir::func::ReturnOp, mlir::quant::StatisticsOp>(op))
+  if (llvm::isa<mlir::func::ReturnOp, mlir::quantfork::StatisticsOp>(op))
     return llvm::None;
 
   if (!HasValidHardwareTarget(op)) return llvm::None;
@@ -82,7 +82,7 @@ llvm::Optional<std::vector<float>> GetPerDeviceCosts(
 
   for (const auto& kv : hardware_map) {
     auto cost_attr = device_costs_attr.getNamed(kv.first);
-    if (!cost_attr.hasValue()) return llvm::None;
+    if (!cost_attr.has_value()) return llvm::None;
     float cost = cost_attr->getValue()
                      .dyn_cast_or_null<mlir::FloatAttr>()
                      .getValueAsDouble();
@@ -103,19 +103,19 @@ flatbuffers::Offset<SubgraphMetadata> CreateSubgraphMetadata(
 
     // The model may contain quant stats op which is unrelevant to the
     // execution.
-    if (llvm::isa<mlir::func::ReturnOp, mlir::quant::StatisticsOp>(&inst))
+    if (llvm::isa<mlir::func::ReturnOp, mlir::quantfork::StatisticsOp>(&inst))
       continue;
 
     // If an op doesn't implement any of the hardware interface we skip it.
     // This can happen in cases like Flex when we have non TFLite ops.
     auto device_name = GetDeviceName(&inst);
 
-    if (device_name.hasValue()) {
+    if (device_name.has_value()) {
       // Add per device costs if present.
       auto per_device_cost = GetPerDeviceCosts(hardware_map, &inst);
       flatbuffers::Offset<flatbuffers::Vector<float>> per_device_cost_offset;
 
-      if (per_device_cost.hasValue()) {
+      if (per_device_cost.has_value()) {
         per_device_cost_offset =
             builder->CreateVector(per_device_cost.getValue());
       }
@@ -125,7 +125,7 @@ flatbuffers::Offset<SubgraphMetadata> CreateSubgraphMetadata(
       uint8_t hardware = hardware_map.at(device_name.getValue());
       op_builder.add_hardware(hardware);
 
-      if (per_device_cost.hasValue()) {
+      if (per_device_cost.has_value()) {
         op_builder.add_op_costs(per_device_cost_offset);
       }
 
@@ -145,7 +145,7 @@ CreateHardwareMetadataAndPopulateLookupTable(
   for (auto& func : *funcs) {
     func.walk([&hardware_names, &index](mlir::Operation* op) {
       auto device_name = GetDeviceName(op);
-      if (!device_name.hasValue()) return;
+      if (!device_name.has_value()) return;
 
       auto iter = hardware_names->find(device_name.getValue());
       if (iter == hardware_names->end()) {

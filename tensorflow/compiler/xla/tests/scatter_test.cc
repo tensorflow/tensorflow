@@ -34,7 +34,7 @@ class ScatterTest : public HloTestBase {
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
-    EXPECT_TRUE(RunAndCompare(std::move(module), args, absl::nullopt));
+    EXPECT_TRUE(RunAndCompare(std::move(module), args, std::nullopt));
   }
 };
 

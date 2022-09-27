@@ -51,8 +51,7 @@ class MemoryUsageMonitor {
   static constexpr float kInvalidMemUsageMB = -1.0f;
 
   explicit MemoryUsageMonitor(int sampling_interval_ms = 50)
-      : MemoryUsageMonitor(sampling_interval_ms,
-                           std::unique_ptr<Sampler>(new Sampler())) {}
+      : MemoryUsageMonitor(sampling_interval_ms, std::make_unique<Sampler>()) {}
   MemoryUsageMonitor(int sampling_interval_ms,
                      std::unique_ptr<Sampler> sampler);
   ~MemoryUsageMonitor() { StopInternal(); }

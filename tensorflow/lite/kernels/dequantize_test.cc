@@ -54,7 +54,7 @@ class DequantizeOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_DEQUANTIZE, BuiltinOptions_DequantizeOptions,
                  CreateDequantizeOptions(builder_).Union());
 
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_DEQUANTIZE, ops::builtin::Register_DEQUANTIZE(),
         version);
 
@@ -134,7 +134,7 @@ class DequantizePerChannelOpModel : public DequantizeOpModel {
     SetBuiltinOp(BuiltinOperator_DEQUANTIZE, BuiltinOptions_DequantizeOptions,
                  CreateDequantizeOptions(builder_).Union());
 
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_DEQUANTIZE, ops::builtin::Register_DEQUANTIZE(),
         version);
 

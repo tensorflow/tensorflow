@@ -15,8 +15,6 @@
 """Generates a Python module containing information about the build."""
 import argparse
 
-import six
-
 # cuda.cuda is only valid in OSS
 try:
   from cuda.cuda import cuda_config  # pylint: disable=g-import-not-at-top
@@ -48,7 +46,7 @@ def write_build_info(filename, key_value_list):
     build_info.update(tensorrt_config.config)
 
   for arg in key_value_list:
-    key, value = six.ensure_str(arg).split("=")
+    key, value = arg.split("=")
     if value.lower() == "true":
       build_info[key] = True
     elif value.lower() == "false":

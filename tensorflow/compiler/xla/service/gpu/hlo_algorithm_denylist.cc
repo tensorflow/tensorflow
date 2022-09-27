@@ -64,10 +64,9 @@ absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
     std::string file_path =
         GetDebugOptionsFromFlags().xla_gpu_algorithm_denylist_path();
     if (!file_path.empty()) {
-      TF_CHECK_OK(tensorflow::ReadTextProto(tensorflow::Env::Default(),
-                                            file_path, &proto));
+      TF_CHECK_OK(tsl::ReadTextProto(tsl::Env::Default(), file_path, &proto));
     } else {
-      CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
+      CHECK(tsl::protobuf::TextFormat::ParseFromString(
           std::string(kDefaultDenylist), &proto));
     }
     for (const auto& entry : proto.entries()) {
@@ -77,7 +76,7 @@ absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
                     entry.cc().minor(), entry.cudnn_version().major(),
                     entry.cudnn_version().minor(),
                     entry.cudnn_version().patch(), entry.blas_version())]
-            .push_back({algo.id(), algo.tensor_ops(), absl::nullopt});
+            .push_back({algo.id(), algo.tensor_ops(), std::nullopt});
       }
     }
     return list;

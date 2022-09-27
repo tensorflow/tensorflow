@@ -16,17 +16,18 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
 
 #include <functional>
+#include <memory>
+#include <optional>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
-#include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 namespace eager {
@@ -43,7 +44,7 @@ void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
 Status CreateUncachedKernelAndDeviceOp(
     EagerOperation* op, core::RefCountPtr<KernelAndDevice>* kernel) {
   EagerContext& ctx = op->EagerContext();
-  Device* device = absl::get<Device*>(op->Device());
+  Device* device = std::get<Device*>(op->Device());
 
   FunctionLibraryRuntime* flr = ctx.func_lib(device);
   if (flr == nullptr) {
@@ -105,7 +106,7 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
   EagerKernelArgs args(1);
-  Device* d = ctx_->CanonicalDevice(absl::get<Device*>(op->Device()));
+  Device* d = ctx_->CanonicalDevice(std::get<Device*>(op->Device()));
   TF_RETURN_IF_ERROR(src_->TensorValue(d, args.MutableInput(0)));
   CoordinationServiceAgent* coord_agent = nullptr;
   if (ctx_->GetDistributedManager() != nullptr)
@@ -113,15 +114,15 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
 
   return kernel->Run(/*step_container=*/nullptr, args, /*outputs=*/nullptr,
                      /*cancellation_manager=*/nullptr,
-                     /*remote_func_params=*/absl::nullopt,
-                     /*stack_trace=*/absl::nullopt, coord_agent);
+                     /*eager_func_params=*/std::nullopt,
+                     /*stack_trace=*/std::nullopt, coord_agent);
 }
 
 void RemoteCopyNode::StartSend() {
   // TODO(gjn): We should consider just using the low-level SendOp::Compute()
   // functionality here instead of constructing an Op.
   EagerOperation op(ctx_);
-  Status status = op.Reset("_Send", /*raw_device_name=*/nullptr,
+  Status status = op.Reset("_Send", /*device_name=*/nullptr,
                            /*remote=*/false, /*executor=*/nullptr);
   if (!status.ok()) {
     captured_state_->SetSendStatus(status);
@@ -203,12 +204,12 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
     coord_agent = ctx_->GetDistributedManager()->GetCoordinationServiceAgent();
   TF_RETURN_IF_ERROR(kernel->Run(/*step_container*/ nullptr, args, &rets,
                                  captured_state_->recv_cancellation(),
-                                 /*remote_func_params=*/absl::nullopt,
-                                 /*stack_trace=*/absl::nullopt, coord_agent));
+                                 /*eager_func_params=*/std::nullopt,
+                                 /*stack_trace=*/std::nullopt, coord_agent));
   outputs->clear();
   for (const auto& ret : rets) {
     if (ret.index() == 0) {
-      outputs->push_back(absl::get<Tensor>(ret));
+      outputs->push_back(std::get<Tensor>(ret));
     } else {
       return errors::Internal(
           "Expect to receive a Tensor but got a TensorShape.");
@@ -277,7 +278,7 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
   // TODO(gjn): We should consider just using the low-level RecvOp::Compute()
   // functionality here instead of constructing an Op.
   EagerOperation op(ctx_);
-  Status status = op.Reset("_Recv", /*raw_device_name=*/nullptr,
+  Status status = op.Reset("_Recv", /*device_name=*/nullptr,
                            /*remote=*/false, /*executor=*/nullptr);
   Device* recv_device = ctx_->CanonicalDevice(recv_device_);
   if (!status.ok()) {

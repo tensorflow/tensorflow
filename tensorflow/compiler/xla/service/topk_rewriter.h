@@ -33,14 +33,19 @@ class TopkRewriter : public HloModulePass {
 
   absl::string_view name() const override { return "topk-rewriter"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
   // Check if the sort instruction is in TopK.
-  absl::optional<int64_t> SortIsInTopK(HloInstruction* inst);
+  std::optional<int64_t> SortIsInTopK(HloInstruction* inst);
 
   // Transform to CustomCall.
-  StatusOr<bool> TransformToCustomCall(HloModule* module);
+  StatusOr<bool> TransformToCustomCall(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
  private:
   // Predicate that returns true if a sort instruction is profitable to be

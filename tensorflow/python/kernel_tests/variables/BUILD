@@ -5,10 +5,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 cuda_py_test(
     name = "dense_update_ops_no_tsan_test",
@@ -102,7 +99,7 @@ cuda_py_test(
 
 tf_py_test(
     name = "variable_scope_test",
-    size = "small",
+    size = "medium",
     srcs = ["variable_scope_test.py"],
     tags = ["no_windows"],
     deps = [

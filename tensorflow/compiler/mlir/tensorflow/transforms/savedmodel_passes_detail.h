@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_SAVEDMODEL_PASS_DETAIL_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_SAVEDMODEL_PASS_DETAIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_SAVEDMODEL_PASSES_DETAIL_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_SAVEDMODEL_PASSES_DETAIL_H_
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/Pass/Pass.h"
@@ -28,4 +28,4 @@ namespace tf_saved_model {
 }  // namespace tf_saved_model
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_SAVEDMODEL_PASS_DETAIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_SAVEDMODEL_PASSES_DETAIL_H_

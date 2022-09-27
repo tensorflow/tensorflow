@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -35,7 +35,7 @@ Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
         input_dimensions.size(), window_dimensions.size(),
         window_strides.size());
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 std::vector<std::pair<int64_t, int64_t>> MakePadding(

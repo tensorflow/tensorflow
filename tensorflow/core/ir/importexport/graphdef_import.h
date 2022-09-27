@@ -34,10 +34,10 @@ tensorflow::StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(
     const tensorflow::GraphDef &graph_def);
 
 // Converts a graph and function library to a TFG module.
-tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphAndFunctionsToMlir(
-    MLIRContext* context, const tensorflow::Graph& graph,
-    const tensorflow::GraphDebugInfo& debug_info,
-    const tensorflow::FunctionLibraryDefinition& flib_def);
+tensorflow::StatusOr<OwningOpRef<ModuleOp>> ImportGraphAndFunctionsToMlir(
+    MLIRContext *context, const tensorflow::GraphDebugInfo &debug_info,
+    const tensorflow::Graph &graph,
+    const tensorflow::FunctionLibraryDefinition &flib_def);
 
 }  // namespace tfg
 }  // namespace mlir

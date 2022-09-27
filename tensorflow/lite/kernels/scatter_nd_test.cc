@@ -308,6 +308,20 @@ TEST(ScatterNdOpTest, Int32IndicesInt64Updates) {
                                 /*1, 2*/ 16, 17, 18, 19, 20}));
 }
 
+TEST(ScatterNdOpTest, Int32IndicesBoolUpdates) {
+  ScatterNdOpModel m({TensorType_INT32, {4, 1}}, {TensorType_BOOL, {4}},
+                     {TensorType_INT32, {1}});
+  m.SetIndices<int32_t>({4, 3, 1, 7});
+  m.SetUpdates<bool>({true, false, true, false});
+  m.SetShape<int32_t>({8});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({8}));
+  EXPECT_THAT(
+      m.GetOutput<bool>(),
+      ElementsAreArray({false, true, false, false, true, false, false, false}));
+}
+
 TEST(ScatterNdOpTest, DynamicShape) {
   ScatterNdOpModel m({TensorType_INT32, {4, 2}}, {TensorType_INT64, {4, 5}},
                      {TensorType_INT32, {3}});
@@ -345,6 +359,35 @@ TEST(ScatterNdOpTest, DynamicShape) {
                                 /*2, 1*/ 0,  0,  0,  0,  0,
                                 /*2, 2*/ 0,  0,  0,  0,  0,
                                 /*2, 3*/ 1,  2,  3,  4,  5}));
+}
+
+TEST(ScatterNdOpTest, ReadAndWriteArrayLimits) {
+  ScatterNdOpModel m({TensorType_INT32, {5, 1}}, {TensorType_INT32, {5}},
+                     {TensorType_INT32, {1}});
+  m.SetIndices<int32_t>({4, 3, 1, 0, 2});
+  m.SetUpdates<int32_t>({1, 2, 3, 7, 9});
+  m.SetShape<int32_t>({5});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({5}));
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({7, 3, 9, 2, 1}));
+}
+
+TEST(ScatterNdOpTest, OOBRead) {
+  ScatterNdOpModel m({TensorType_INT32, {1, 1}}, {TensorType_INT32, {1}},
+                     {TensorType_INT32, {1}});
+  m.SetIndices<int32_t>({4});
+  m.SetUpdates<int32_t>({1});
+  m.SetShape<int32_t>({1});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(ScatterNdOpTest, OOBWrites) {
+  ScatterNdOpModel m({TensorType_INT32, {5, 1}}, {TensorType_INT32, {5}},
+                     {TensorType_INT32, {1}});
+  m.SetIndices<int32_t>({4, 3, 1, -0x38, 0x38});
+  m.SetUpdates<int32_t>({1, 2, 3, 0x44444444, 0x55555555});
+  m.SetShape<int32_t>({1});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
 }
 
 }  // namespace

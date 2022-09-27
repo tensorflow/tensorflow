@@ -22,11 +22,15 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
+namespace tsl {
+class Env;
+}  // namespace tsl
 namespace tensorflow {
+using Env = tsl::Env;
 class DeviceAttributes;
 class Device;
-class Env;
 class WorkerCacheInterface;
 
 // This callback should have the same definition as DeviceMgr::LookupDevice

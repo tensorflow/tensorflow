@@ -30,7 +30,7 @@ func.func @while_with_implicit_arg_capture(%arg0: tensor<i64>) -> tensor<i64> {
   ^bb0(%arg1: tensor<i64>):
     // CHECK: mhlo.compare
     // CHECK-SAME: %[[ARG2]], %[[ARG1]]
-    %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+    %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i64>, tensor<i64>) -> tensor<i1>
     "mhlo.return"(%1) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<i64>):
@@ -76,7 +76,7 @@ func.func @while_with_multiple_capture(%arg0: tensor<i64>) -> tensor<i64> {
   ^bb0(%arg1: tensor<i64>):
     // CHECK: mhlo.compare
     // CHECK-SAME: %[[ARG2]], %[[ARG1]]
-    %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+    %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i64>, tensor<i64>) -> tensor<i1>
     "mhlo.return"(%1) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<i64>):

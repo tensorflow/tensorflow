@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_CORE_REFCOUNT_H_
-#define TENSORFLOW_LIB_CORE_REFCOUNT_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_REFCOUNT_H_
+#define TENSORFLOW_CORE_LIB_CORE_REFCOUNT_H_
 
-#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/refcount.h"  // IWYU pragma: export
 
-#endif  // TENSORFLOW_LIB_CORE_REFCOUNT_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_REFCOUNT_H_

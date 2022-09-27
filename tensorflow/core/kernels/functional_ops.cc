@@ -511,7 +511,7 @@ class WhileOp : public AsyncOpKernel {
       SetRunOptions(ctx_, &opts_, false /* always_collect_stats */);
       GetArgsFromContext(ctx, &args_, &loop_var_types_);
       body_frame_ =
-          absl::make_unique<BodyFuncCallFrame>(&args_, &rets_, loop_var_types_);
+          std::make_unique<BodyFuncCallFrame>(&args_, &rets_, loop_var_types_);
     }
 
     ~State() {}

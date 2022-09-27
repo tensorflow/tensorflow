@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
-#include "absl/memory/memory.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
@@ -112,15 +111,15 @@ class PyTreeDef {
   // objects in the case of custom pytype handlers.
   static std::pair<std::vector<pybind11::object>, std::unique_ptr<PyTreeDef>>
   Flatten(pybind11::handle x,
-          absl::optional<pybind11::function> leaf_predicate = absl::nullopt);
+          std::optional<pybind11::function> leaf_predicate = std::nullopt);
 
   // Recursive helper used to implement Flatten().
   void FlattenInto(
       pybind11::handle handle, std::vector<pybind11::object>& leaves,
-      absl::optional<pybind11::function> leaf_predicate = absl::nullopt);
+      std::optional<pybind11::function> leaf_predicate = std::nullopt);
   void FlattenInto(
       pybind11::handle handle, absl::InlinedVector<pybind11::object, 2>& leaves,
-      absl::optional<pybind11::function> leaf_predicate = absl::nullopt);
+      std::optional<pybind11::function> leaf_predicate = std::nullopt);
 
   // Tests whether the given list is a flat list of leaves.
   static bool AllLeaves(const pybind11::iterable& x);
@@ -145,8 +144,7 @@ class PyTreeDef {
   std::vector<std::unique_ptr<PyTreeDef>> Children() const;
 
   // Maps a function over a PyTree structure, applying f_leaf to each leaf, and
-  // f_node to each container node.
-  // TODO(phawkins): use flattening everywhere instead and delete this method.
+  // f_node(node, node_data) to each container node.
   pybind11::object Walk(const pybind11::function& f_node,
                         pybind11::handle f_leaf,
                         pybind11::iterable leaves) const;
@@ -171,6 +169,14 @@ class PyTreeDef {
   bool operator!=(const PyTreeDef& other) const { return !(*this == other); }
 
   std::string ToString() const;
+
+  // Transforms the PyTreeDef into a pickleable object. Used to implement
+  // `PyTreeDef.__getstate__`.
+  pybind11::object ToPickleable() const;
+
+  // Transforms the object returned by `ToPickleable()` back to PyTreeDef. Used
+  // to implement `PyTreeDef.__setstate__`.
+  static PyTreeDef FromPickleable(pybind11::object pickleable);
 
  private:
   struct Node {
@@ -214,9 +220,8 @@ class PyTreeDef {
                             PyTreeTypeRegistry::Registration const** custom);
 
   template <typename T>
-  void FlattenIntoImpl(
-      pybind11::handle handle, T& leaves,
-      const absl::optional<pybind11::function>& leaf_predicate);
+  void FlattenIntoImpl(pybind11::handle handle, T& leaves,
+                       const std::optional<pybind11::function>& leaf_predicate);
 
   template <typename T>
   pybind11::object UnflattenImpl(T leaves) const;

@@ -54,7 +54,7 @@ class ClusterConstantSinkingPass
       // a sunk clone of it. This allows for reusing a sunk constant with
       // multiple uses in the region.
       llvm::DenseMap<Value, TF::ConstOp> sunk_constant;
-      Region &body = cluster.body();
+      Region &body = cluster.getBody();
       visitUsedValuesDefinedAbove(body, [&](OpOperand *use) {
         Value constant = use->get();
         auto const_op = dyn_cast_or_null<TF::ConstOp>(constant.getDefiningOp());

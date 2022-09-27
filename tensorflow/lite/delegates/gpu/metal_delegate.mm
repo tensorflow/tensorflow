@@ -404,10 +404,11 @@ class Delegate {
       id<MTLBuffer> bphwc4_buffer =
           [metal_device_ newBufferWithLength:bphwc4_length options:MTLResourceStorageModeShared];
       MetalSpatialTensor metal_tensor;
-      RETURN_IF_ERROR(CreateSharedBufferTensor(bphwc4_buffer, input_tensor.shape,
-                                               create_info.external_mutable_tensors[input],
-                                               &metal_tensor));
-      in_out_tensors_[input] = absl::make_unique<MetalSpatialTensor>(std::move(metal_tensor));
+      TensorDescriptor descriptor_with_shape = create_info.external_mutable_tensors[input];
+      descriptor_with_shape.SetBHWCShape(input_tensor.shape);
+      RETURN_IF_ERROR(
+          CreateTensorSharedBuffer(bphwc4_buffer, descriptor_with_shape, &metal_tensor));
+      in_out_tensors_[input] = std::make_unique<MetalSpatialTensor>(std::move(metal_tensor));
     }
 
     std::vector<::tflite::gpu::ValueId> output_ids;
@@ -435,10 +436,11 @@ class Delegate {
       id<MTLBuffer> bphwc4_buffer =
           [metal_device_ newBufferWithLength:bphwc4_length options:MTLResourceStorageModeShared];
       MetalSpatialTensor metal_tensor;
-      RETURN_IF_ERROR(CreateSharedBufferTensor(bphwc4_buffer, output_tensor.shape,
-                                               create_info.external_mutable_tensors[output],
-                                               &metal_tensor));
-      in_out_tensors_[output] = absl::make_unique<MetalSpatialTensor>(std::move(metal_tensor));
+      TensorDescriptor descriptor_with_shape = create_info.external_mutable_tensors[output];
+      descriptor_with_shape.SetBHWCShape(output_tensor.shape);
+      RETURN_IF_ERROR(
+          CreateTensorSharedBuffer(bphwc4_buffer, descriptor_with_shape, &metal_tensor));
+      in_out_tensors_[output] = std::make_unique<MetalSpatialTensor>(std::move(metal_tensor));
     }
 
     // allocate converter bhwc->bphwc4

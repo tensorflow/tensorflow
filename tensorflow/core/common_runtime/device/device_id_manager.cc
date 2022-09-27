@@ -56,7 +56,7 @@ class TfToPlatformDeviceIdMap {
           "the same process. This is not currently supported, see ",
           "https://github.com/tensorflow/tensorflow/issues/19083");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   bool Find(const DeviceType& type, TfDeviceId tf_device_id,
@@ -106,7 +106,7 @@ Status DeviceIdManager::TfToPlatformDeviceId(
     PlatformDeviceId* platform_device_id) {
   if (TfToPlatformDeviceIdMap::singleton()->Find(type, tf_device_id,
                                                  platform_device_id)) {
-    return Status::OK();
+    return OkStatus();
   }
   return errors::NotFound("TensorFlow device ", type, ":", tf_device_id.value(),
                           " was not registered");

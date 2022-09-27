@@ -17,9 +17,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_SERIALIZATION_WRITER_LIB_H_
 #define TENSORFLOW_LITE_TOOLS_SERIALIZATION_WRITER_LIB_H_
 #include <iostream>
+#include <string>
 #include <unordered_map>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
@@ -97,7 +97,7 @@ class ModelWriter {
   std::vector<std::pair<const uint8_t*, size_t>> buffers_;
   // List of used opcodes
   std::vector<OpCode> opcodes_;
-  absl::flat_hash_map<int, int> builtin_op_to_opcode_;
+  std::unordered_map<int, int> builtin_op_to_opcode_;
 };
 
 // Handles writing TensorFlow Lite running subgraph to a serialized TF lite
@@ -149,7 +149,7 @@ class SubgraphWriter {
       Subgraph* subgraph,
       std::vector<std::pair<const uint8_t*, size_t>>* external_buffers,
       std::vector<OpCode>* external_opcodes,
-      absl::flat_hash_map<int, int>* external_builtin_op_to_opcode)
+      std::unordered_map<int, int>* external_builtin_op_to_opcode)
       : subgraph_(subgraph),
         inputs_(subgraph->inputs()),
         outputs_(subgraph->outputs()),
@@ -232,13 +232,13 @@ class SubgraphWriter {
   std::vector<std::pair<const uint8_t*, size_t>>* buffers_;
   // List of used opcodes
   std::vector<OpCode>* opcodes_;
-  absl::flat_hash_map<int, int>* builtin_op_to_opcode_;
+  std::unordered_map<int, int>* builtin_op_to_opcode_;
 
   // These are used if SubgraphWriter is being used directly.
   std::vector<std::pair<const uint8_t*, size_t>> buffers_data_;
   // List of used opcodes
   std::vector<OpCode> opcodes_data_;
-  absl::flat_hash_map<int, int> builtin_op_to_opcode_data_;
+  std::unordered_map<int, int> builtin_op_to_opcode_data_;
 };
 
 }  // namespace tflite

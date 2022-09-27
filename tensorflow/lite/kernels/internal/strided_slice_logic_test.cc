@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 
+#include <initializer_list>
+
 #include <gtest/gtest.h>
 
 namespace tflite {

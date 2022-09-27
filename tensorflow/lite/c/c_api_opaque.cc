@@ -78,3 +78,15 @@ TfLiteOpaqueTensor* TfLiteOpaqueNodeGetOutput(
       reinterpret_cast<const TfLiteNode*>(opaque_node), index);
   return reinterpret_cast<TfLiteOpaqueTensor*>(tensor);
 }
+
+int TfLiteOpaqueNodeNumberOfInputs(const TfLiteOpaqueNode* opaque_node) {
+  return reinterpret_cast<const TfLiteNode*>(opaque_node)->inputs->size;
+}
+
+int TfLiteOpaqueNodeNumberOfOutputs(const TfLiteOpaqueNode* opaque_node) {
+  return reinterpret_cast<const TfLiteNode*>(opaque_node)->outputs->size;
+}
+
+void* TfLiteOpaqueNodeGetUserData(const TfLiteOpaqueNode* opaque_node) {
+  return reinterpret_cast<const TfLiteNode*>(opaque_node)->user_data;
+}

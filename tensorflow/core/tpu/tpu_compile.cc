@@ -377,7 +377,7 @@ Status CompileTFFunctionToHlo(
     xla::CompileOnlyClient* client,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    XlaCompiler::CompilationResult* compilation_result) {
+    bool use_tuple_args, XlaCompiler::CompilationResult* compilation_result) {
   XlaCompiler::Options compiler_options;
   FunctionLibraryDefinition flib_definition(flib_def);
   compiler_options.device_type = DeviceType(DEVICE_TPU_XLA_JIT);
@@ -387,7 +387,7 @@ Status CompileTFFunctionToHlo(
   compiler_options.graph_def_version = graph_def_version;
   compiler_options.shape_determination_fns = shape_determination_fns;
 
-  auto compiler = absl::make_unique<XlaCompiler>(compiler_options);
+  auto compiler = std::make_unique<XlaCompiler>(compiler_options);
 
   std::vector<XlaCompiler::Argument> args;
   TF_RETURN_IF_ERROR(BuildComputationArgumentDescriptions(
@@ -441,7 +441,7 @@ Status CompileTFFunctionToHlo(
   VLOG(1) << "Compiling TensorFlow graph to HLO";
   XlaCompiler::CompileOptions compile_options;
   compile_options.return_updated_values_for_all_resources = false;
-  compile_options.use_tuple_arg = true;
+  compile_options.use_tuple_arg = use_tuple_args;
   compile_options.is_entry_computation = true;
   compile_options.alias_resource_update = true;
   return compiler->CompileGraph(compile_options, function_id, std::move(graph),

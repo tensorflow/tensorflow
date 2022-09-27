@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFR_PASSES_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_TFR_PASSES_PASSES_H_
 
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
@@ -48,4 +48,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseToTFOpsPass(
 }  // namespace TFR
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFR_PASSES_PASSES_H_

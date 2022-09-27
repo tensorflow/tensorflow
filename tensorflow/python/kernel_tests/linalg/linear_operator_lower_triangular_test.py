@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -115,7 +116,16 @@ class LinearOperatorLowerTriangularTest(
         tril, is_non_singular=True)
     self.check_tape_safe(operator)
 
+  def test_convert_variables_to_tensors(self):
+    tril = variables_module.Variable([[1., 0.], [0., 1.]])
+    operator = linalg_lib.LinearOperatorLowerTriangular(
+        tril, is_non_singular=True)
+    with self.cached_session() as sess:
+      sess.run([tril.initializer])
+      self.check_convert_variables_to_tensors(operator)
+
 
 if __name__ == "__main__":
+  config.enable_tensor_float_32_execution(False)
   linear_operator_test_util.add_tests(LinearOperatorLowerTriangularTest)
   test.main()

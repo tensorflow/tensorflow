@@ -40,8 +40,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.trackable import resource
 from tensorflow.python.training import training_util
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
@@ -360,19 +360,19 @@ class _ResourceSummaryWriter(SummaryWriter):
 
 
 class _MultiMetaclass(
-    type(_ResourceSummaryWriter), type(tracking.TrackableResource)):
+    type(_ResourceSummaryWriter), type(resource.TrackableResource)):
   pass
 
 
 class _TrackableResourceSummaryWriter(
     _ResourceSummaryWriter,
-    tracking.TrackableResource,
+    resource.TrackableResource,
     metaclass=_MultiMetaclass):
   """A `_ResourceSummaryWriter` subclass that implements `TrackableResource`."""
 
   def __init__(self, create_fn, init_op_fn):
     # Resolve multiple inheritance via explicit calls to __init__() on parents.
-    tracking.TrackableResource.__init__(self, device="/CPU:0")
+    resource.TrackableResource.__init__(self, device="/CPU:0")
     self._create_fn = create_fn
     self._init_op_fn = init_op_fn
     # Pass .resource_handle into _ResourceSummaryWriter parent class rather than

@@ -18,7 +18,7 @@ RUN yum -y check-update || true && \
 COPY install/install_bazel.sh /install/
 RUN /install/install_bazel.sh
 
-ARG py_major_minor_version
+ARG py_major_minor_version='3.10'
 
 ENV TF_PYTHON_VERSION=python${py_major_minor_version}
 ENV PYTHON_BIN_PATH=/usr/local/bin/${TF_PYTHON_VERSION}
@@ -37,6 +37,8 @@ RUN export PYTHON_VERSION=$(python -c 'import platform; print(platform.python_ve
 
 RUN pip3 install packaging
 
+ARG is_nightly=0
 ARG tf_project_name='tf_ci_cpu' # PyPI project name passed by CD GitHub workflow
 
+ENV IS_NIGHTLY=${is_nightly}
 ENV TF_PROJECT_NAME=${tf_project_name}

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 
+#include <utility>
+
 #include "absl/strings/match.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -46,7 +48,7 @@ Status ConvertFunctionToBef(
         "Failed to convert function to mlir for function ", function_name.str(),
         ". Error: ", expected_module.status().error_message());
 
-  auto module = expected_module.ConsumeValueOrDie();
+  auto module = std::move(expected_module).value();
 
   // Attach devices to the MLIR module.
   if (!devices.empty()) {

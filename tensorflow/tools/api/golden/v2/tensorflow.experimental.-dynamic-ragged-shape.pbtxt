@@ -1,6 +1,7 @@
 path: "tensorflow.experimental.DynamicRaggedShape"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.ragged.dynamic_ragged_shape.DynamicRaggedShape\'>"
+  is_instance: "<class \'tensorflow.python.framework.extension_type.BatchableExtensionType\'>"
   is_instance: "<class \'tensorflow.python.framework.extension_type.ExtensionType\'>"
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"

@@ -98,7 +98,7 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     return retval;
   } else {
     *status = errors::InvalidArgument(
-        "Resolve() is not supoorted on packed TensorHandles.");
+        "Resolve() is not supported on packed TensorHandles.");
     return nullptr;
   }
 }

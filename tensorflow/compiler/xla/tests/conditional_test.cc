@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <random>
+#include <utility>
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -32,7 +33,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     ConstantR0<float>(&builder, value);
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
-    return build_status.ConsumeValueOrDie();
+    return std::move(build_status).value();
   }
 
   XlaComputation CreateR0IdentityComputation() {
@@ -40,7 +41,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     Parameter(&builder, 0, r0f32_, "x");
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
-    return build_status.ConsumeValueOrDie();
+    return std::move(build_status).value();
   }
 
   XlaComputation CreateCeilComputation(const Shape& shape) {
@@ -49,7 +50,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     Ceil(param);
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
-    return build_status.ConsumeValueOrDie();
+    return std::move(build_status).value();
   }
 
   XlaComputation CreateR0CeilComputation() {
@@ -66,7 +67,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     Floor(param);
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
-    return build_status.ConsumeValueOrDie();
+    return std::move(build_status).value();
   }
 
   XlaComputation CreateR0FloorComputation() {
@@ -88,7 +89,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     Tuple(&builder, {x_ceil, y_ceil});
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
-    return build_status.ConsumeValueOrDie();
+    return std::move(build_status).value();
   }
 
   XlaComputation CreateR0TupleCeilComputation() {
@@ -110,7 +111,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     Tuple(&builder, {x_floor, y_floor});
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
-    return build_status.ConsumeValueOrDie();
+    return std::move(build_status).value();
   }
 
   XlaComputation CreateR0TupleFloorComputation() {
@@ -130,7 +131,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     Add(x, y);
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
-    return build_status.ConsumeValueOrDie();
+    return std::move(build_status).value();
   }
 
   XlaComputation CreateR0TupleAddComputation() {
@@ -150,7 +151,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     Sub(x, y);
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
-    return build_status.ConsumeValueOrDie();
+    return std::move(build_status).value();
   }
 
   XlaComputation CreateR0TupleSubComputation() {
@@ -348,15 +349,14 @@ XLA_TEST_F(ConditionalOpTest, ConditionalWithCall) {
   auto false_operand = Parameter(&inner_builder, 2, r0f32_, "param2");
   Conditional(pred_cond, true_operand, CreateR0CeilComputation(), false_operand,
               CreateR0FloorComputation());
-  auto inner_builder_result = inner_builder.Build();
+  auto inner_builder_result = inner_builder.Build().value();
 
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(false, 0, "pred", &builder, &pred);
   auto operand1 = ConstantR0<float>(&builder, 56.4f);
   auto operand2 = ConstantR0<float>(&builder, 12.6f);
-  Call(&builder, inner_builder_result.ConsumeValueOrDie(),
-       {pred, operand1, operand2});
+  Call(&builder, inner_builder_result, {pred, operand1, operand2});
 
   ComputeAndCompareR0<float>(&builder, 12.0f, {pred_arg.get()}, error_spec_);
 }
@@ -527,8 +527,8 @@ XLA_TEST_F(ConditionalOpTest, ReturnTupleofPredicateScalarArray) {
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(true, 0, "pred", &builder, &pred);
   auto operands = Tuple(&builder, {});
-  Conditional(pred, operands, true_builder_result.ConsumeValueOrDie(), operands,
-              false_builder_result.ConsumeValueOrDie());
+  Conditional(pred, operands, std::move(true_builder_result).value(), operands,
+              std::move(false_builder_result).value());
 
   ComputeAndCompareTuple(&builder,
                          LiteralUtil::MakeTupleFromSlices(
@@ -572,8 +572,8 @@ XLA_TEST_F(ConditionalOpTest, ReturnNestedTuple) {
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(false, 0, "pred", &builder, &pred);
   auto operands = Tuple(&builder, {});
-  Conditional(pred, operands, true_builder_result.ConsumeValueOrDie(), operands,
-              false_builder_result.ConsumeValueOrDie());
+  Conditional(pred, operands, std::move(true_builder_result).value(), operands,
+              std::move(false_builder_result).value());
 
   ComputeAndCompareTuple(
       &builder,
@@ -652,7 +652,7 @@ XLA_TEST_F(ConditionalOpTest, NestedConditionals) {
   auto operand2 = ConstantR0<float>(&builder, 12.2f);
   auto operand3 = ConstantR0<float>(&builder, 43.3f);
   auto tuple_operand = Tuple(&builder, {pred2, operand1, operand2});
-  Conditional(pred1, tuple_operand, inner_builder_result.ConsumeValueOrDie(),
+  Conditional(pred1, tuple_operand, std::move(inner_builder_result).value(),
               operand3, CreateR0IdentityComputation());
 
   ComputeAndCompareR0<float>(&builder, 12.0f,
@@ -680,7 +680,7 @@ XLA_TEST_F(ConditionalOpTest, ConditionalInNestedComputation) {
   auto operand1 = ConstantR0<float>(&builder, 1.1f);
   auto operand2 = ConstantR0<float>(&builder, 12.2f);
   auto tuple_operand = Tuple(&builder, {pred, operand1, operand2});
-  Call(&builder, inner_builder_result.ConsumeValueOrDie(), {tuple_operand});
+  Call(&builder, std::move(inner_builder_result).value(), {tuple_operand});
 
   ComputeAndCompareR0<float>(&builder, 12.0f, {pred_arg.get()}, error_spec_);
 }
@@ -711,7 +711,7 @@ XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
     auto x = GetTupleElement(param0, 0);
     auto y = GetTupleElement(param0, 1);
     Tuple(&builder, {y, x});
-    swapper = builder.Build().ConsumeValueOrDie();
+    swapper = builder.Build().value();
   }
   XlaComputation forwarder;
   {
@@ -720,7 +720,7 @@ XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
     auto x = GetTupleElement(param0, 0);
     auto y = GetTupleElement(param0, 1);
     Tuple(&builder, {x, y});
-    forwarder = builder.Build().ConsumeValueOrDie();
+    forwarder = builder.Build().value();
   }
   XlaComputation main;
   {
@@ -732,7 +732,7 @@ XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
     auto res = Conditional(lt_pred, param0, forwarder, param0, swapper);
     auto ge_pred = Ge(x, y);
     Conditional(ge_pred, res, swapper, res, forwarder);
-    main = builder.Build().ConsumeValueOrDie();
+    main = builder.Build().value();
   }
 
   auto test_swap = [&](float a, float b) {
@@ -766,7 +766,7 @@ XLA_TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
     auto e0 = GetTupleElement(p, 0);
     auto e1 = GetTupleElement(p, 1);
     Tuple(&builder, {e0, e1, e0});
-    then_comp = builder.Build().ConsumeValueOrDie();
+    then_comp = builder.Build().value();
   }
   XlaComputation else_comp;
   {
@@ -775,7 +775,7 @@ XLA_TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
     auto e0 = GetTupleElement(p, 0);
     auto e1 = GetTupleElement(p, 1);
     Tuple(&builder, {e0, e1, e1});
-    else_comp = builder.Build().ConsumeValueOrDie();
+    else_comp = builder.Build().value();
   }
 
   {

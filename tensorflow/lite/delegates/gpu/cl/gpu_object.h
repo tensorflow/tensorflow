@@ -19,6 +19,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
@@ -32,14 +33,21 @@ namespace gpu {
 namespace cl {
 
 struct GPUResourcesWithValue {
-  std::vector<std::pair<std::string, int>> ints;
-  std::vector<std::pair<std::string, float>> floats;
+  GenericGPUResourcesWithValue generic;
+
   std::vector<std::pair<std::string, cl_mem>> buffers;
   std::vector<std::pair<std::string, cl_mem>> images2d;
   std::vector<std::pair<std::string, cl_mem>> image2d_arrays;
   std::vector<std::pair<std::string, cl_mem>> images3d;
   std::vector<std::pair<std::string, cl_mem>> image_buffers;
   std::vector<std::pair<std::string, cl_mem>> custom_memories;
+
+  void AddFloat(const std::string& name, float value) {
+    generic.AddFloat(name, value);
+  }
+  void AddInt(const std::string& name, int value) {
+    generic.AddInt(name, value);
+  }
 };
 
 class GPUObject {

@@ -36,6 +36,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/casts.h"
@@ -44,13 +51,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_op_executable.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
 
@@ -306,8 +306,12 @@ void TPUCancelExecution(Env* env, int device_ordinal) {
     // continue running callbacks. The new thread will call quick_exit,
     // so we discard the returned Thread pointer because we won't have
     // an opportunity to delete it.
-    (void)env->StartThread(ThreadOptions(), "tpu_execute_exit_countdown",
-                           [env]() { ExitCountdown(env); });
+    auto res = env->StartThread(ThreadOptions(), "tpu_execute_exit_countdown",
+                                [env]() { ExitCountdown(env); });
+    // workaround "ignoring return value of function declared with attribute
+    // warn_unused_result" since (void) no longer works on open source bazel
+    // build
+    ((void)(res));
   } else if (tpu_cancellation_closes_chips) {
     LOG(INFO) << "TPUCancelExecution CloseTPUHost on device " << device_ordinal;
     Status status = TpuNodeContext::CloseTpuHost();
@@ -460,7 +464,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
       computation_layout.add_parameter_layout(xla::ShapeLayout(shape));
       input_shapes.push_back(std::move(shape));
     }
-    module = absl::make_unique<xla::HloModule>(
+    module = std::make_unique<xla::HloModule>(
         "TpuExecutableModule",
         xla::HloModuleConfig(std::move(computation_layout)));
   }
@@ -482,7 +486,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),
                                          &arguments, input_shapes));
 
-  auto tpu_executable = absl::make_unique<TpuOpExecutable>(
+  auto tpu_executable = std::make_unique<TpuOpExecutable>(
       tpu_program, std::move(module), /*host_command_handler=*/handler);
 
   const int32_t device_ordinal = node_context->device_ordinal();

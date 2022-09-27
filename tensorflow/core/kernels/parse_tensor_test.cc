@@ -56,7 +56,7 @@ class SerializeTensorOpTest : public OpsTestBase {
     TF_EXPECT_OK(status);
     OpKernelContext::Params params;
     params.device = device.get();
-    params.inputs = &inputs;
+    params.inputs = inputs;
     params.frame_iter = FrameAndIter(0, 0);
     params.op_kernel = op.get();
     std::vector<AllocatorAttributes> attrs;

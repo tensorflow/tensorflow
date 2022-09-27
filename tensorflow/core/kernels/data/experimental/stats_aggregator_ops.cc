@@ -121,8 +121,7 @@ class StatsAggregatorHandleOp
  private:
   Status CreateResource(StatsAggregatorResource** ret) override
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    *ret =
-        new StatsAggregatorResource(absl::make_unique<StatsAggregatorImpl>());
+    *ret = new StatsAggregatorResource(std::make_unique<StatsAggregatorImpl>());
     return OkStatus();
   }
 };
@@ -247,7 +246,7 @@ class StatsAggregatorHandleOpV2
   Status CreateResource(StatsAggregatorResource** ret) override
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     *ret =
-        new StatsAggregatorResource(absl::make_unique<StatsAggregatorImplV2>());
+        new StatsAggregatorResource(std::make_unique<StatsAggregatorImplV2>());
     return OkStatus();
   }
 };

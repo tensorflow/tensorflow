@@ -94,8 +94,8 @@ void TPUIdentityPruning::runOnOperation() {
       [&](tf_device::ClusterOp cluster) { clusters.push_back(cluster); });
 
   for (tf_device::ClusterOp cluster : clusters) {
-    RemoveIdentityFromRegion(cluster.body());
-    auto reachable_funcs = CollectReachableFunctions(cluster.body());
+    RemoveIdentityFromRegion(cluster.getBody());
+    auto reachable_funcs = CollectReachableFunctions(cluster.getBody());
     for (func::FuncOp reachable_func : reachable_funcs)
       RemoveIdentityFromRegion(*reachable_func.getCallableRegion());
   }

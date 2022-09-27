@@ -751,9 +751,13 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
   const OpDef& sig = fdef.signature();
   TF_RETURN_IF_ERROR(ValidateSignatureWithAttrs(sig, attr_values));
 
+  const AttrValue* attr_values_ints_on_device =
+      attr_values.Find(FunctionLibraryDefinition::kIntsOnDeviceAttr);
   bool ints_on_device =
-      fdef.attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&
-      fdef.attr().at(FunctionLibraryDefinition::kIntsOnDeviceAttr).b();
+      (fdef.attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&
+       fdef.attr().at(FunctionLibraryDefinition::kIntsOnDeviceAttr).b()) ||
+      (attr_values_ints_on_device != nullptr &&
+       attr_values_ints_on_device->b());
 
   FunctionInstantiationHelper helper(get_function, result);
   Status s;

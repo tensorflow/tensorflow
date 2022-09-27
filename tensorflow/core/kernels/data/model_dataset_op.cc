@@ -75,7 +75,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(
+    return std::make_unique<Iterator>(
         Iterator::Params{this, strings::StrCat(prefix, "::Model")});
   }
 
@@ -131,7 +131,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
           ram_budget_(dataset()->ram_budget_ == 0
                           ? kRamBudgetShare * port::AvailableRam()
                           : dataset()->ram_budget_) {
-      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      cancellation_manager_ = std::make_unique<CancellationManager>();
       model_ = std::make_shared<model::Model>();
     }
 

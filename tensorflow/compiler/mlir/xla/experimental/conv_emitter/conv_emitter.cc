@@ -65,10 +65,9 @@ struct ShapeInfo {
   mlir::Type element_type;
 };
 
-ShapeInfo GetShapeInfo(
-    const Shape& shape, int64_t n_dim, int64_t c_dim,
-    absl::Span<const tensorflow::protobuf_int64> spatial_dims,
-    mlir::Builder builder) {
+ShapeInfo GetShapeInfo(const Shape& shape, int64_t n_dim, int64_t c_dim,
+                       absl::Span<const tsl::protobuf_int64> spatial_dims,
+                       mlir::Builder builder) {
   ShapeInfo shape_info;
 
   std::vector<int64_t> physical_to_logical(
@@ -220,7 +219,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     for (int i = 0; i < ancestors.size(); i++) {
       replaceAllUsesInRegionWith(ancestors[i].getInductionVar(),
                                  new_loops[i].getInductionVar(),
-                                 new_loops.back().region());
+                                 new_loops.back().getRegion());
     }
     return new_loops.front();
   }

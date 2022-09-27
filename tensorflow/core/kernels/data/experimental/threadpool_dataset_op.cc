@@ -181,7 +181,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
+      return std::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::ThreadPool")});
     }
 
@@ -303,7 +303,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, strings::StrCat(prefix, "::MaxIntraOpParallelism")});
   }
 
@@ -435,7 +435,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
         traceme_metadata_(
             {{"num_threads",
               strings::Printf("%lld", static_cast<long long>(num_threads_))}}) {
-    thread_pool_ = absl::make_unique<thread::ThreadPool>(
+    thread_pool_ = std::make_unique<thread::ThreadPool>(
         ctx->env(), ThreadOptions{}, "data_private_threadpool", num_threads_);
     input_->Ref();
   }
@@ -444,7 +444,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(
+    return std::make_unique<Iterator>(
         Iterator::Params{this, strings::StrCat(prefix, "::PrivateThreadPool")});
   }
 

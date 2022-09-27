@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -162,7 +162,7 @@ XLA_TEST_F(ScalarComputationsTest, CastS64ToF32) {
   int64_t value = 3LL << 35;
   Literal a_literal = LiteralUtil::CreateR0<int64_t>(value);
   std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(a_literal).ConsumeValueOrDie();
+      client_->TransferToServer(a_literal).value();
   ComputeAndCompareR0<float>(&builder, static_cast<float>(value),
                              {a_data.get()});
 }
@@ -239,11 +239,11 @@ XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsF32Params) {
   Literal c_literal = LiteralUtil::CreateR0<float>(0.5f);
 
   std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(a_literal).ConsumeValueOrDie();
+      client_->TransferToServer(a_literal).value();
   std::unique_ptr<GlobalData> b_data =
-      client_->TransferToServer(b_literal).ConsumeValueOrDie();
+      client_->TransferToServer(b_literal).value();
   std::unique_ptr<GlobalData> c_data =
-      client_->TransferToServer(c_literal).ConsumeValueOrDie();
+      client_->TransferToServer(c_literal).value();
 
   XlaOp a = Parameter(&builder, 0, a_literal.shape(), "a");
   XlaOp b = Parameter(&builder, 1, b_literal.shape(), "b");
@@ -394,7 +394,7 @@ XLA_TEST_F(ScalarComputationsTest, DivU32s) {
                 ->ExecuteAndTransfer(div_computation,
                                      {dividend_data.get(), divisor_data.get()},
                                      &execution_options_)
-                .ConsumeValueOrDie();
+                .value();
         auto expected_literal =
             LiteralUtil::CreateR0<uint32_t>(dividend / divisor);
         EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, actual_literal));
@@ -436,7 +436,7 @@ XLA_TEST_F(ScalarComputationsTest, RemU32s) {
                 ->ExecuteAndTransfer(rem_computation,
                                      {dividend_data.get(), divisor_data.get()},
                                      &execution_options_)
-                .ConsumeValueOrDie();
+                .value();
         auto expected_literal =
             LiteralUtil::CreateR0<uint32_t>(dividend % divisor);
         EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, actual_literal));

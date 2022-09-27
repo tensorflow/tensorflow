@@ -18,7 +18,7 @@ cc_library(
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir:shape_inference_utils",
         "//tensorflow/core/ir/types:Dialect",
-        "//tensorflow/core/transforms:PassDetail",
+        "//tensorflow/core/transforms:PassIncGen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",

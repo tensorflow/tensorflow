@@ -508,6 +508,26 @@ func.func @testAddV2IdentityTensor(%arg0: tensor<f32>, %arg1: tensor<4xf32>) -> 
   func.return %1, %2, %3, %4: tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>
 }
 
+// CHECK-LABEL: testAddV2IdentityBroadcastTensor
+func.func @testAddV2IdentityBroadcastTensor(%arg0: tensor<4x1xf32>, %arg1: tensor<4x2xf32>) -> (tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>) {
+  %0 = "tf.Const"() {value = dense<0.0> : tensor<1x2xf32>} : () -> tensor<1x2xf32>
+
+  // Operand and identity shapes are broadcastable. However, we cannot fold
+  // because the operand does not match the result shape.
+  %1 = "tf.AddV2"(%arg0, %0) : (tensor<4x1xf32>, tensor<1x2xf32>) -> tensor<4x2xf32>
+  %2 = "tf.AddV2"(%0, %arg0) : (tensor<1x2xf32>, tensor<4x1xf32>) -> tensor<4x2xf32>
+
+  // If operand has the same shape as a result, we can fold it.
+  %3 = "tf.AddV2"(%arg1, %0) : (tensor<4x2xf32>, tensor<1x2xf32>) -> tensor<4x2xf32>
+  %4 = "tf.AddV2"(%0, %arg1) : (tensor<1x2xf32>, tensor<4x2xf32>) -> tensor<4x2xf32>
+
+  // CHECK: %[[CONST:.*]] = "tf.Const"()
+  // CHECK-DAG: %[[ADD1:.*]] = "tf.AddV2"(%arg0, %[[CONST]])
+  // CHECK-DAG: %[[ADD2:.*]] = "tf.AddV2"(%arg0, %[[CONST]])
+  // CHECK: return %[[ADD1]], %[[ADD2]], %arg1, %arg1
+  func.return %1, %2, %3, %4: tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>
+}
+
 // CHECK-LABEL: testDoubleConj
 func.func @testDoubleConj(%arg0: tensor<8x16x32x64xcomplex<f32>>) -> tensor<8x16x32x64xcomplex<f32>> {
   %0 = "tf.Conj"(%arg0) : (tensor<8x16x32x64xcomplex<f32>>) -> tensor<8x16x32x64xcomplex<f32>>
@@ -1978,9 +1998,22 @@ func.func @testComplexDivNoNanOpWithNonConstantY(%arg0: tensor<2xcomplex<f32>>, 
   func.return %res1, %res2, %res3 : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>
 }
 
-// CHECK-LABEL: testXlaReduceToXlaVariadicReduceToV2
-func.func @testXlaReduceToXlaVariadicReduceToV2(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
-  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+// CHECK-LABEL: testXlaConvToV2
+func.func @testXlaConvToV2(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<8x4x14x14x16xf32>) {
+  %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
+  %padding = "tf.Const"() {value = dense<0> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  %strides = "tf.Const"() {value = dense<[3, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // CHECK: "tf.XlaConvV2"(%arg0, %arg1, %cst_3, %cst_2, %cst_0, %cst_1, %cst) {batch_group_count = 1 : i64, dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", precision_config = ""} : (tensor<8x4x16x16x16xf32>, tensor<4x3x3x16x16xf32>, tensor<3xi32>, tensor<3x2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<8x4x14x14x16xf32>
+  %0 = "tf.XlaConv"(%lhs, %rhs, %strides, %padding, %lhs_dilation, %rhs_dilation, %feature_group_count) {dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", precision_config = ""} : (tensor<8x4x16x16x16xf32>, tensor<4x3x3x16x16xf32>, tensor<3xi32>, tensor<3x2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<8x4x14x14x16xf32>
+  func.return %0 : tensor<8x4x14x14x16xf32>
+}
+
+
+// CHECK-LABEL: testXlaReduceToXlaVariadicReduceV2
+func.func @testXlaReduceToXlaVariadicReduceV2(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
+  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = array<i32: 1, 1>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   %0 = "tf.XlaReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   func.return %0 : tensor<*xbf16>
 }
@@ -1992,7 +2025,7 @@ func.func private @sum1(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<
 
 // CHECK-LABEL: testXlaVariadicReduceToV2
 func.func @testXlaVariadicReduceToV2(%arg0: tensor<3x4xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> {
-  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = array<i32: 1, 1>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
   %0 = "tf.XlaVariadicReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }
@@ -2017,6 +2050,34 @@ func.func @testMaximumOfZeroToReluInt(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   %cst_0 = arith.constant dense<0> : tensor<i32>
   %0 = "tf.Maximum"(%arg0, %cst_0) : (tensor<4xi32>, tensor<i32>) -> tensor<4xi32>
   func.return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: testMaximumOfZeroToReluInt32OnGpu
+func.func @testMaximumOfZeroToReluInt32OnGpu(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  // CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<i32>
+  // CHECK: %[[RESULT:.*]] = "tf.Maximum"(%arg0, %[[CST]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0", dtype = i32} : (tensor<4xi32>, tensor<i32>) -> tensor<4xi32>
+  // CHECK: return %[[RESULT]]
+  %cst_0 = arith.constant dense<0> : tensor<i32>
+  %0 = "tf.Maximum"(%arg0, %cst_0) {device = "/job:localhost/replica:0/task:0/device:GPU:0", dtype = i32} : (tensor<4xi32>, tensor<i32>) -> tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: testMaximumOfZeroToReluInt32OnCpu
+func.func @testMaximumOfZeroToReluInt32OnCpu(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  // CHECK: %[[RESULT:.*]] = "tf.Relu"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: return %[[RESULT]]
+  %cst_0 = arith.constant dense<0> : tensor<i32>
+  %0 = "tf.Maximum"(%arg0, %cst_0) {device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = i32} : (tensor<4xi32>, tensor<i32>) -> tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: testMaximumOfZeroToReluInt64OnGpu
+func.func @testMaximumOfZeroToReluInt64OnGpu(%arg0: tensor<4xi64>) -> tensor<4xi64> {
+  // CHECK: %[[RESULT:.*]] = "tf.Relu"(%arg0) : (tensor<4xi64>) -> tensor<4xi64>
+  // CHECK: return %[[RESULT]]
+  %cst_0 = arith.constant dense<0> : tensor<i64>
+  %0 = "tf.Maximum"(%arg0, %cst_0) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<4xi64>, tensor<i64>) -> tensor<4xi64>
+  func.return %0 : tensor<4xi64>
 }
 
 // CHECK-LABEL: testReluOfMinimum6ToRelu6Float
@@ -2059,4 +2120,21 @@ func.func @testTensorListGetItemMultipleUsers(%arg0: tensor<1600x1x32xf32>, %arg
   // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[RES0:.*]] = "tf.GatherV2"(%arg0, %arg2, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
   // CHECK: %[[RES1:.*]] = "tf.GatherV2"(%arg0, %arg3, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
+}
+
+// CHECK-LABEL: testUnaryIdempotent
+func.func @testUnaryIdempotent(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {
+  // CHECK: tf.Abs
+  // CHECK-NOT: tf.Abs
+  %0 = "tf.Abs"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
+  %1 = "tf.Abs"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: testInvolution
+func.func @testInvolution(%arg0: tensor<4xi32>) -> (tensor<4xi32>) {
+  // CHECK-NOT: tf.Invert
+  %0 = "tf.Invert"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tf.Invert"(%0) : (tensor<4xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
 }

@@ -66,7 +66,7 @@ static auto Shuffle(std::array<int32_t, size> perm) {
     auto in0 = inputs[0].tensor<float, size>();
     auto out0 = output.tensor<float, size>();
 
-    if (device.hasValue()) {
+    if (device.has_value()) {
       out0.device(*device) = in0.shuffle(perm);
     } else {
       out0 = in0.shuffle(perm);

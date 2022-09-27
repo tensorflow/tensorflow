@@ -39,7 +39,7 @@ static RuntimeFallbackTensor ConvertKernelFallbackToRuntimeFallbackTensor(
       exec_ctx.resource_context()
           ->GetResource<tensorflow::tfd::EagerContextResource>(
               tensorflow::tfd::kEagerContextResourceName);
-  assert(optional_eager_resource.hasValue());
+  assert(optional_eager_resource.has_value());
   auto expected_eager_context =
       optional_eager_resource.getValue()->GetTFEagerContext();
   assert(expected_eager_context);

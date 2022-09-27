@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -69,21 +70,21 @@ struct Handler : public DeserializationHandler {
 
 struct ParameterComparator {
   bool operator()(int32_t value) const {
-    return value == absl::get<int32_t>(a.value);
+    return value == std::get<int32_t>(a.value);
   }
 
   bool operator()(const int2& value) const {
-    auto v = absl::get<int2>(a.value);
+    auto v = std::get<int2>(a.value);
     return value.x == v.x && value.y == v.y;
   }
 
   bool operator()(const int4& value) const {
-    auto v = absl::get<int4>(a.value);
+    auto v = std::get<int4>(a.value);
     return value.x == v.x && value.y == v.y && value.z == v.z && value.w == v.w;
   }
 
   bool operator()(const std::vector<int2>& value) const {
-    auto v = absl::get<std::vector<int2>>(a.value);
+    auto v = std::get<std::vector<int2>>(a.value);
     if (v.size() != value.size()) {
       return false;
     }
@@ -96,30 +97,30 @@ struct ParameterComparator {
   }
 
   bool operator()(uint32_t value) const {
-    return value == absl::get<uint32_t>(a.value);
+    return value == std::get<uint32_t>(a.value);
   }
 
   bool operator()(const uint4& value) const {
-    auto v = absl::get<uint4>(a.value);
+    auto v = std::get<uint4>(a.value);
     return value.x == v.x && value.y == v.y && value.z == v.z && value.w == v.w;
   }
 
   bool operator()(float value) const {
-    return value == absl::get<float>(a.value);
+    return value == std::get<float>(a.value);
   }
 
   bool operator()(float2 value) const {
-    auto v = absl::get<float2>(a.value);
+    auto v = std::get<float2>(a.value);
     return value.x == v.x && value.y == v.y;
   }
 
   bool operator()(const float4& value) const {
-    auto v = absl::get<float4>(a.value);
+    auto v = std::get<float4>(a.value);
     return value.x == v.x && value.y == v.y && value.z == v.z && value.w == v.w;
   }
 
   bool operator()(const std::vector<float4>& value) const {
-    auto v = absl::get<std::vector<float4>>(a.value);
+    auto v = std::get<std::vector<float4>>(a.value);
     if (v.size() != value.size()) {
       return false;
     }
@@ -135,15 +136,15 @@ struct ParameterComparator {
 };
 
 bool Eq(const Variable& a, const Variable& b) {
-  return a.name == b.name && absl::visit(ParameterComparator{a}, b.value);
+  return a.name == b.name && std::visit(ParameterComparator{a}, b.value);
 }
 
 struct ObjectComparator {
   bool operator()(const ObjectData& data) const {
-    return absl::get<ObjectData>(a.object) == data;
+    return std::get<ObjectData>(a.object) == data;
   }
   bool operator()(const ObjectRef& ref) const {
-    return absl::get<ObjectRef>(a.object) == ref;
+    return std::get<ObjectRef>(a.object) == ref;
   }
 
   Object a;
@@ -151,7 +152,7 @@ struct ObjectComparator {
 
 bool Eq(const Object& a, const Object& b) {
   return a.access == b.access && a.binding == b.binding &&
-         absl::visit(ObjectComparator{a}, b.object);
+         std::visit(ObjectComparator{a}, b.object);
 }
 
 TEST(Smoke, Read) {

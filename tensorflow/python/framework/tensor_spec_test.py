@@ -102,17 +102,14 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testRepr(self):
     desc1 = tensor_spec.TensorSpec([1], dtypes.float32, name="beep")
     self.assertEqual(
-        repr(desc1),
-        "TensorSpec(shape=(1,), dtype=tf.float32, name='beep')")
+        repr(desc1), "TensorSpec(shape=(1,), dtype=tf.float32, name='beep')")
     desc2 = tensor_spec.TensorSpec([1, None], dtypes.int32)
     if desc2.shape._v2_behavior:
       self.assertEqual(
-          repr(desc2),
-          "TensorSpec(shape=(1, None), dtype=tf.int32, name=None)")
+          repr(desc2), "TensorSpec(shape=(1, None), dtype=tf.int32, name=None)")
     else:
       self.assertEqual(
-          repr(desc2),
-          "TensorSpec(shape=(1, ?), dtype=tf.int32, name=None)")
+          repr(desc2), "TensorSpec(shape=(1, ?), dtype=tf.int32, name=None)")
 
   def testFromTensorSpec(self):
     spec_1 = tensor_spec.TensorSpec((1, 2), dtypes.int32)
@@ -132,9 +129,8 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # This test needs a placeholder which means we need to construct a graph.
     with ops.Graph().as_default():
       unknown = array_ops.placeholder(dtypes.int64, name="unknown")
-      partial = array_ops.placeholder(dtypes.float32,
-                                      shape=[None, 1],
-                                      name="partial")
+      partial = array_ops.placeholder(
+          dtypes.float32, shape=[None, 1], name="partial")
 
       spec_1 = tensor_spec.TensorSpec.from_tensor(unknown)
       self.assertEqual(spec_1.dtype, dtypes.int64)
@@ -152,7 +148,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(bounded_spec.dtype, spec.dtype)
     self.assertEqual(bounded_spec.name, spec.name)
 
-  def testSerialization(self):
+  def testPickleSerialization(self):
     desc = tensor_spec.TensorSpec([1, 5], dtypes.float32, "test")
     self.assertEqual(pickle.loads(pickle.dumps(desc)), desc)
 
@@ -233,6 +229,13 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(len(spec._flat_tensor_specs), len(full_type_list))
     self.assertEqual(expect, full_type_list)
 
+  def testSerialization(self):
+    nameless = tensor_spec.TensorSpec([1], np.float32)
+    named = tensor_spec.TensorSpec([1, 2, 3], np.float32, name="some_name")
+    self.assertEqual(nameless,
+                     trace_type.deserialize(trace_type.serialize(nameless)))
+    self.assertEqual(named, trace_type.deserialize(trace_type.serialize(named)))
+
 
 class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
 
@@ -245,31 +248,35 @@ class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
       tensor_spec.BoundedTensorSpec((3, 5), dtypes.uint8, 0, (1, 1, 1))
 
   def testMinimumMaximumAttributes(self):
-    spec = tensor_spec.BoundedTensorSpec(
-        (1, 2, 3), dtypes.float32, 0, (5, 5, 5))
+    spec = tensor_spec.BoundedTensorSpec((1, 2, 3), dtypes.float32, 0,
+                                         (5, 5, 5))
     self.assertEqual(type(spec.minimum), np.ndarray)
     self.assertEqual(type(spec.maximum), np.ndarray)
     self.assertAllEqual(spec.minimum, np.array(0, dtype=np.float32))
     self.assertAllEqual(spec.maximum, np.array([5, 5, 5], dtype=np.float32))
 
   def testNotWriteableNP(self):
-    spec = tensor_spec.BoundedTensorSpec(
-        (1, 2, 3), dtypes.float32, 0, (5, 5, 5))
+    spec = tensor_spec.BoundedTensorSpec((1, 2, 3), dtypes.float32, 0,
+                                         (5, 5, 5))
     with self.assertRaisesRegex(ValueError, "read-only"):
       spec.minimum[0] = -1
     with self.assertRaisesRegex(ValueError, "read-only"):
       spec.maximum[0] = 100
 
   def testReuseSpec(self):
-    spec_1 = tensor_spec.BoundedTensorSpec((1, 2), dtypes.int32,
-                                           minimum=0, maximum=1)
-    spec_2 = tensor_spec.BoundedTensorSpec(
-        spec_1.shape, spec_1.dtype, spec_1.minimum, spec_1.maximum)
+    spec_1 = tensor_spec.BoundedTensorSpec((1, 2),
+                                           dtypes.int32,
+                                           minimum=0,
+                                           maximum=1)
+    spec_2 = tensor_spec.BoundedTensorSpec(spec_1.shape, spec_1.dtype,
+                                           spec_1.minimum, spec_1.maximum)
     self.assertEqual(spec_1, spec_2)
 
   def testScalarBounds(self):
-    spec = tensor_spec.BoundedTensorSpec(
-        (), dtypes.float32, minimum=0.0, maximum=1.0)
+    spec = tensor_spec.BoundedTensorSpec((),
+                                         dtypes.float32,
+                                         minimum=0.0,
+                                         maximum=1.0)
 
     self.assertIsInstance(spec.minimum, np.ndarray)
     self.assertIsInstance(spec.maximum, np.ndarray)
@@ -279,23 +286,24 @@ class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
     self.assertEqual(1.0, spec.maximum)
 
     # Check that the spec doesn't fail its own input validation.
-    _ = tensor_spec.BoundedTensorSpec(
-        spec.shape, spec.dtype, spec.minimum, spec.maximum)
+    _ = tensor_spec.BoundedTensorSpec(spec.shape, spec.dtype, spec.minimum,
+                                      spec.maximum)
 
   def testFromBoundedTensorSpec(self):
-    spec_1 = tensor_spec.BoundedTensorSpec((1, 2), dtypes.int32,
-                                           minimum=0, maximum=1)
+    spec_1 = tensor_spec.BoundedTensorSpec((1, 2),
+                                           dtypes.int32,
+                                           minimum=0,
+                                           maximum=1)
     spec_2 = tensor_spec.BoundedTensorSpec.from_spec(spec_1)
     self.assertEqual(spec_1, spec_2)
 
   def testEquality(self):
-    spec_1_1 = tensor_spec.BoundedTensorSpec((1, 2, 3), dtypes.float32,
-                                             0, (5, 5, 5))
-    spec_1_2 = tensor_spec.BoundedTensorSpec((1, 2, 3), dtypes.float32,
-                                             0.00000001,
-                                             (5, 5, 5.00000000000000001))
-    spec_2_1 = tensor_spec.BoundedTensorSpec((1, 2, 3), dtypes.float32,
-                                             1, (5, 5, 5))
+    spec_1_1 = tensor_spec.BoundedTensorSpec((1, 2, 3), dtypes.float32, 0,
+                                             (5, 5, 5))
+    spec_1_2 = tensor_spec.BoundedTensorSpec(
+        (1, 2, 3), dtypes.float32, 0.00000001, (5, 5, 5.00000000000000001))
+    spec_2_1 = tensor_spec.BoundedTensorSpec((1, 2, 3), dtypes.float32, 1,
+                                             (5, 5, 5))
     spec_2_2 = tensor_spec.BoundedTensorSpec((1, 2, 3), dtypes.float32,
                                              (1, 1, 1), (5, 5, 5))
     spec_2_3 = tensor_spec.BoundedTensorSpec((1, 2, 3), dtypes.float32,
@@ -328,9 +336,20 @@ class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
     self.assertEqual(spec.dtype.max, bounded_spec.maximum)
     self.assertEqual(spec.name, bounded_spec.name)
 
-  def testSerialization(self):
+  def testPickleSerialization(self):
     desc = tensor_spec.BoundedTensorSpec([1, 5], dtypes.float32, -1, 1, "test")
     self.assertEqual(pickle.loads(pickle.dumps(desc)), desc)
+
+  def testSerialization(self):
+    nameless = tensor_spec.BoundedTensorSpec([1], np.float32, 0, 1)
+    named = tensor_spec.BoundedTensorSpec([1, 2, 3],
+                                          np.float32,
+                                          0,
+                                          1,
+                                          name="some_name")
+    self.assertEqual(nameless,
+                     trace_type.deserialize(trace_type.serialize(nameless)))
+    self.assertEqual(named, trace_type.deserialize(trace_type.serialize(named)))
 
 
 if __name__ == "__main__":

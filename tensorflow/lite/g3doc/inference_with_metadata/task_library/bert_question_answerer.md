@@ -111,10 +111,10 @@ for more details.
 ```c++
 // Initialization
 BertQuestionAnswererOptions options;
-options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_path);
 std::unique_ptr<BertQuestionAnswerer> answerer = BertQuestionAnswerer::CreateFromOptions(options).value();
 
-// Run inference
+// Run inference with your inputs, `context_of_question` and `question_to_ask`.
 std::vector<QaAnswer> positive_results = answerer->Answer(context_of_question, question_to_ask);
 ```
 

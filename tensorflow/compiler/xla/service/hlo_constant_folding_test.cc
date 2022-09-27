@@ -241,7 +241,7 @@ TEST_F(HloConstantFoldingTest, ConstantFoldReduce) {
 TEST_F(HloConstantFoldingTest, ConstantFoldReduceNoLayout) {
   TF_ASSERT_OK_AND_ASSIGN(auto m,
                           ParseAndReturnVerifiedModule(kConstantFoldReduce));
-  HloInstruction* add = m->computations().begin()->root_instruction();
+  HloInstruction* add = (*m->computations().begin())->root_instruction();
   LayoutUtil::ClearLayout(add->mutable_shape());
   HloConstantFolding const_folder;
   TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(m.get()));

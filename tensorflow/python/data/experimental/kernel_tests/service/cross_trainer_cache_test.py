@@ -14,8 +14,9 @@
 # ==============================================================================
 """Tests for sharing datasets across training jobs."""
 
-from absl.testing import parameterized
+import multiprocessing
 
+from absl.testing import parameterized
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.kernel_tests import test_base
@@ -29,11 +30,10 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
                             parameterized.TestCase):
   """Tests for sharing datasets across jobs using a cross-trainer cache."""
 
-  # V2-only because in the V1 API, `map` does not preserve cardinality.
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testEnableCrossTrainerCache(self):
+    """Tests cross-trainer cache with `distribute`."""
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
     dataset1 = self.make_distributed_dataset(
@@ -55,6 +55,36 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations()))
+  def testFromDatasetId(self):
+    """Tests cross-trainer cache with `register_dataset`/`from_dataset_id`."""
+    cluster = self._create_cluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10000000).repeat()
+    dataset_id1 = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset, dataset_id="dataset_id")
+    dataset1 = data_service_ops.from_dataset_id(
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        dataset_id=dataset_id1,
+        element_spec=dataset.element_spec,
+        job_name="job",
+        cross_trainer_cache=data_service_ops.CrossTrainerCache(
+            trainer_id="Trainer 1"))
+    self.assertDatasetProduces(dataset1.take(10), list(range(10)))
+
+    dataset_id2 = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset, dataset_id="dataset_id")
+    dataset2 = data_service_ops.from_dataset_id(
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        dataset_id=dataset_id2,
+        element_spec=dataset.element_spec,
+        job_name="job",
+        cross_trainer_cache=data_service_ops.CrossTrainerCache(
+            trainer_id="Trainer 2"))
+    self.assertDatasetProduces(dataset2.take(10), list(range(10)))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
   def testDisableCrossTrainerCacheByDefault(self):
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
@@ -68,11 +98,20 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     self.assertGreaterEqual(output[0], 10)
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testConcurrentReaders(self):
+    # Fetching an element from the dataset will trigger prefetches of more
+    # elements, one per CPU core which will be placed in the cache.
+    # However if the number of prefetches exceeds the space available in
+    # the cache then the sliding window will be moved forward away from
+    # the element just read thus negating the use of the cache as other
+    # trainers will not get the correct element.
+    # Hence the need to calculate the size of the cache based on the
+    # number of CPU cores and the element size of 363. The extra 8
+    # entries are simply a bit of margin.
+    num_cpus = multiprocessing.cpu_count()
     cluster = self._create_cluster(
-        num_workers=1, cross_trainer_cache_size_bytes=18000)
+        num_workers=1, cross_trainer_cache_size_bytes=(num_cpus + 8) * 363)
     num_readers = 20
     num_elements = 50
     dataset = dataset_ops.Dataset.range(10000000).repeat()
@@ -97,8 +136,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
         self.assertEqual(self.evaluate(iterators[j]()), i)
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testSlowClientSkipsData(self):
     cluster = self._create_cluster(
         num_workers=1, cross_trainer_cache_size_bytes=500)
@@ -120,14 +158,13 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     dataset2 = dataset2.take(200)
     output = self.getDatasetOutput(dataset2)
     # When the cache is small, the second trainer couldn't read the beginning of
-    # the dataset. It can still read 100 elements from the dataset, because the
+    # the dataset. It can still read 200 elements from the dataset, because the
     # dataset is infinite.
     self.assertGreater(output[0], 0)
-    self.assertEqual(self.evaluate(dataset2.cardinality()), 200)
+    self.assertLen(output, 200)
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testSmallCache(self):
     cluster = self._create_cluster(
         num_workers=1, cross_trainer_cache_size_bytes=500)
@@ -148,8 +185,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
       self.assertLen(output, 200)
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testShuffleDataset(self):
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat().shuffle(
@@ -172,8 +208,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     self.assertEqual(output1, output2)
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testSameTrainerID(self):
     # Jobs from the same training cluster do not reuse data from the cache.
     cluster = self._create_cluster(num_workers=1)
@@ -196,10 +231,8 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     self.assertGreaterEqual(output[0], 10)
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testDifferentJobNames(self):
-    # TODO(b/221104308): Disallow this use case because it increases RAM usage.
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
     dataset1 = self.make_distributed_dataset(
@@ -219,15 +252,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(dataset2.take(10), list(range(10)))
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
-  def testCrossTrainerCacheMemoryLimit(self):
-    # TODO(b/221104308): Add a validation to check enough RAM is available.
-    pass
-
-  @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testDynamicSharding(self):
     cluster = self._create_cluster(num_workers=2)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
@@ -253,8 +278,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     self.assertTrue(set(output1) & set(output2))
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testNoCompression(self):
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
@@ -277,8 +301,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(dataset2.take(10), list(range(10)))
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testCompressionMismatch(self):
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
@@ -318,23 +341,25 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
       self.getDatasetOutput(dataset)
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations()))
-  def testDisallowFiniteDataset(self):
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(range_=[0, 10])))
+  def testRequiresInfiniteDataset(self, range_):
     cluster = self._create_cluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(range_).map(lambda x: x + 1)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         "Cross-trainer caching requires the input dataset to be infinite."):
-      dataset = self.make_distributed_range_dataset(
-          10,
-          cluster,
-          job_name="job",
-          cross_trainer_cache=data_service_ops.CrossTrainerCache(
-              trainer_id="Trainer 1"))
+      dataset = dataset.apply(
+          data_service_ops.distribute(
+              processing_mode=data_service_ops.ShardingPolicy.OFF,
+              service=cluster.dispatcher.target,
+              job_name="job_name",
+              cross_trainer_cache=data_service_ops.CrossTrainerCache(
+                  trainer_id="Trainer ID")))
       self.getDatasetOutput(dataset)
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager"])))
+      combinations.times(test_base.eager_only_combinations()))
   def testMultipleIterationsForOneDatasetEagerMode(self):
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
@@ -355,8 +380,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
       self.getDatasetOutput(dataset1.take(10))
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["graph"])))
+      combinations.times(test_base.graph_only_combinations()))
   def testMultipleIterationsForOneDatasetGraphMode(self):
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
@@ -387,8 +411,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     self.assertTrue(set(output1) & set(output2))
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testDisallowCoordinatedRead(self):
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
@@ -406,8 +429,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
       self.getDatasetOutput(dataset)
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testNamedJobMismatch(self):
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
@@ -427,8 +449,7 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
       self.getDatasetOutput(dataset2)
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testRequiresNonEmptyTrainerID(self):
     cluster = self._create_cluster(num_workers=2)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
