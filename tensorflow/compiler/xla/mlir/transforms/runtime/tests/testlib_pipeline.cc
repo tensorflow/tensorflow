@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Conversion/AsyncToLLVM/AsyncToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Async/IR/Async.h"  // from @llvm-project
+#include "mlir/Dialect/Async/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -32,8 +35,9 @@ namespace runtime {
 
 void RegisterXlaRuntimeTestlibDialects(mlir::DialectRegistry& registry) {
   // Register MLIR dialects supported by the Xla runtime tests.
-  registry.insert<mlir::arith::ArithmeticDialect, mlir::scf::SCFDialect,
-                  mlir::func::FuncDialect, RuntimeDialect>();
+  registry
+      .insert<mlir::arith::ArithmeticDialect, mlir::async::AsyncDialect,
+              mlir::scf::SCFDialect, mlir::func::FuncDialect, RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
   registerLLVMDialectTranslation(registry);
@@ -45,9 +49,18 @@ void CreateXlaRuntimeTestlibPipeline(mlir::OpPassManager& pm) {
   // Convert entry function to the XLA entrypoint.
   pm.addPass(CreateConvertToEntrypoint());
 
+  // Lower from high level async operations to async runtime.
+  pm.addPass(mlir::createAsyncToAsyncRuntimePass());
+
+  // Add async.runtime reference counting operations.
+  pm.addPass(mlir::createAsyncRuntimePolicyBasedRefCountingPass());
+
   // Convert runtime operations and custom calls to LLVM dialect.
   ConvertRuntimeToLLvmOpts rt_to_llvm_opts;
   pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
+
+  // Convert async runtime operations to LLVM dialect.
+  pm.addPass(mlir::createConvertAsyncToLLVMPass());
 
   // Convert everything else to LLVM dialect.
   pm.addPass(mlir::createConvertFuncToLLVMPass());

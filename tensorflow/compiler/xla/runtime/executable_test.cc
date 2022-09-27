@@ -42,9 +42,13 @@ using absl::StatusOr;
 // Results are returned to the caller via the user-provided result converter.
 //===----------------------------------------------------------------------===//
 
-static absl::Status CompileAndExecute(std::string_view module,
-                                      ArgumentsRef args,
-                                      ResultConverter& results) {
+static AsyncTaskRunner* NoAsyncTaskRunner() {
+  return reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
+}
+
+static absl::Status CompileAndExecute(
+    std::string_view module, ArgumentsRef args, ResultConverter& results,
+    AsyncTaskRunner* async_task_runner = NoAsyncTaskRunner()) {
   JitExecutable::Options opts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects = RegisterXlaRuntimeTestlibDialects;
@@ -63,8 +67,7 @@ static absl::Status CompileAndExecute(std::string_view module,
   if (!initialized.ok()) return initialized;
 
   Executable::ExecuteOpts execute_opts;
-  execute_opts.async_task_runner =
-      reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
+  execute_opts.async_task_runner = async_task_runner;
 
   executable->Execute(call_frame, execute_opts);
   if (call_frame.is_error) return absl::InternalError(call_frame.error);
@@ -91,6 +94,16 @@ struct ReturnI32 {
   }
 
   int32_t* ptr = nullptr;
+};
+
+// Execute all tasks in the caller thread immediately.
+class InlineAsyncTaskRunner : public AsyncTaskRunner {
+ public:
+  void Schedule(Task task) final { (task(), num_executed_++); }
+  size_t num_executed() const { return num_executed_; }
+
+ private:
+  size_t num_executed_ = 0;
 };
 
 //===----------------------------------------------------------------------===//
@@ -125,6 +138,31 @@ TEST(ExecutableTest, ScalarArgs) {
   ScalarArg arg1(static_cast<int32_t>(22));
 
   ASSERT_TRUE(CompileAndExecute(module, {arg0, arg1}, converter).ok());
+  EXPECT_EQ(result, 42);
+}
+
+TEST(ExecutableTest, AsyncExecuteAndAwait) {
+  absl::string_view module = R"(
+    func.func @test(%arg0: i32, %arg1: i32) -> i32 {
+      %token, %result = async.execute -> !async.value<i32> {
+        %0 = arith.addi %arg0, %arg1 : i32
+        async.yield %0 : i32
+      }
+      %1 = async.await %result : !async.value<i32>
+      return %1 : i32
+    }
+  )";
+
+  int32_t result = 0;
+  ResultConverterSet converter(AssertNoError, ReturnI32{&result});
+
+  ScalarArg arg0(static_cast<int32_t>(20));
+  ScalarArg arg1(static_cast<int32_t>(22));
+
+  InlineAsyncTaskRunner runner;
+
+  ASSERT_TRUE(CompileAndExecute(module, {arg0, arg1}, converter, &runner).ok());
+  EXPECT_EQ(runner.num_executed(), 1);
   EXPECT_EQ(result, 42);
 }
 
