@@ -984,6 +984,7 @@ cc_library(
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:numbers",
         "//tensorflow/core:lib_internal",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
@@ -2822,6 +2823,7 @@ cc_library(
     hdrs = ["metrics.h"],
     deps = [
         "//tensorflow/core/lib/monitoring:sampler",
+        "//tensorflow/tsl/lib/monitoring:sampler",
     ],
 )
 

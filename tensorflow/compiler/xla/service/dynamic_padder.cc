@@ -46,14 +46,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/tsl/lib/monitoring/gauge.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
 namespace {
 
-auto* dynamic_padding_gauge = tensorflow::monitoring::Gauge<bool, 0>::New(
+auto* dynamic_padding_gauge = tsl::monitoring::Gauge<bool, 0>::New(
     "/tensorflow/core/use_dynamic_padding_gauge",
     "Tracks if dynamic padder is used.");
 

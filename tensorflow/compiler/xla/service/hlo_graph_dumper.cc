@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/base64.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/numbers.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/platform/status.h"
