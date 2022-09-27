@@ -30,6 +30,10 @@ load(
     "if_mkl",
     "mkl_deps",
 )
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
@@ -2538,6 +2542,8 @@ tf_kernel_library(
         ":conv_ops_gpu_hdrs",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
+    ])+ if_rocm_is_configured([
+	"//tensorflow/core/platform:stream_executor",
     ]),
 )
 

@@ -1058,7 +1058,10 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform",
-    ],
+    ] + if_rocm_is_configured([
+        "//tensorflow/compiler/xla/stream_executor/rocm:miopen_plugin",
+    ]),
+
 )
 
 # Like stream_executor library, but compiles without --config=cuda
