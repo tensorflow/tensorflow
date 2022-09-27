@@ -288,12 +288,11 @@ class HloComputation {
     return H::combine(std::move(h), instructions.size());
   }
 
-  using InstructionSequence = tensorflow::gtl::iterator_range<
+  using InstructionSequence = tsl::gtl::iterator_range<
       UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>;
 
-  using ConstInstructionSequence =
-      tensorflow::gtl::iterator_range<UnwrappingIterator<
-          std::list<std::unique_ptr<HloInstruction>>::const_iterator>>;
+  using ConstInstructionSequence = tsl::gtl::iterator_range<UnwrappingIterator<
+      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>;
 
   // Gets the instructions in this computation.
   //

@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
 
 namespace xla {
 
@@ -1092,8 +1092,7 @@ Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
         const Properties branch_computation_properties,
         ProcessSubcomputation(conditional->branch_computation(j)));
     for (const auto& property : branch_computation_properties) {
-      if (!tensorflow::gtl::InsertIfNotPresent(&current_properties_,
-                                               property)) {
+      if (!tsl::gtl::InsertIfNotPresent(&current_properties_, property)) {
         auto& current_property = current_properties_[property.first];
         current_property = std::max(current_property, property.second);
       }

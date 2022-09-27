@@ -158,7 +158,7 @@ class HloReachabilityMap {
 
  private:
   // A bit-vector implementation specialized for this use case which provides a
-  // fast bitwise OR operation not available in tensorflow::gtl::BitMap.
+  // fast bitwise OR operation not available in tsl::gtl::BitMap.
   class BitVector {
    public:
     BitVector() = default;

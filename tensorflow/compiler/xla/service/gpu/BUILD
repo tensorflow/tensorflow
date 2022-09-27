@@ -405,6 +405,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/lib/gtl:map_util",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -681,6 +682,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/lib/gtl:map_util",
     ] + if_gpu_is_configured([
         ":cholesky_thunk",
         ":precompiled_kernels",

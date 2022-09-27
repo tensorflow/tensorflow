@@ -276,6 +276,7 @@ cc_library(
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/lib/gtl:iterator_range",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:numbers",
         "@com_google_absl//absl/algorithm:container",
