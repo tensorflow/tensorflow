@@ -292,6 +292,7 @@ cc_library(
         "//tensorflow/core/lib/strings:legacy_lib_string_headers",
         "//tensorflow/core/platform:lib_hdrs",
         "//tensorflow/core/util:lib_hdrs",
+        "//tensorflow/tsl/lib/io:legacy_lib_io_headers",
         "//tensorflow/tsl/platform:lib_hdrs",
     ],
     visibility = ["//visibility:public"],
@@ -869,6 +870,7 @@ filegroup(
         "//tensorflow/core/graph:mobile_srcs_only_runtime",
         "//tensorflow/core/kernels:mobile_srcs",
         "//tensorflow/core/lib/io:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/lib/io:mobile_srcs_only_runtime",
         "//tensorflow/core/nccl:mobile_srcs",
         "//tensorflow/core/profiler:mobile_srcs_only_runtime",
         "//tensorflow/core/public:mobile_srcs_only_runtime",
@@ -1214,6 +1216,7 @@ filegroup(
         "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/lib/math:math_util.h",
+        "//tensorflow/tsl/lib/io:legacy_lib_io_all_headers",
         "//tensorflow/tsl/lib/math:math_util.h",
         "//tensorflow/tsl/platform:legacy_lib_internal_headers",
         "//tensorflow/tsl/platform:lib_internal_private_hdrs",
@@ -1245,6 +1248,7 @@ filegroup(
         "//tensorflow/core/platform:legacy_platform_lib_hdrs",
         "//tensorflow/core/platform:lib_internal_public_hdrs",
         "//tensorflow/core/util:lib_internal_public_hdrs",
+        "//tensorflow/tsl/lib/io:legacy_lib_internal_public_headers",
         "//tensorflow/tsl/platform:lib_internal_public_hdrs",
     ],
     visibility = ["//visibility:private"],
@@ -1819,6 +1823,7 @@ cc_library(
     hdrs = [
         "//tensorflow/core/lib/gtl:legacy_lib_test_internal_headers",
         "//tensorflow/core/lib/io:legacy_lib_test_internal_headers",
+        "//tensorflow/tsl/lib/io:legacy_lib_test_internal_headers",
     ],
     deps = [
         ":lib",
@@ -1839,7 +1844,6 @@ tf_cc_tests(
     srcs = [
         "//tensorflow/core/lib/core:legacy_lib_core_all_tests",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
-        "//tensorflow/core/lib/io:legacy_lib_io_all_tests",
         "//tensorflow/core/lib/monitoring:collection_registry_test.cc",
         "//tensorflow/core/lib/monitoring:counter_test.cc",
         "//tensorflow/core/lib/monitoring:gauge_test.cc",

@@ -1215,6 +1215,17 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "path_test",
+    size = "small",
+    srcs = ["path_test.cc"],
+    deps = [
+        ":path",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
     name = "random_test",
     srcs = ["random_test.cc"],
     deps = [

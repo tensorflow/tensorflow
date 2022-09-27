@@ -79,7 +79,7 @@ cc_library(
 
 cc_library(
     name = "status_test_util",
-    testonly = True,
+    testonly = 1,
     hdrs = ["status_test_util.h"],
     deps = [
         "//tensorflow/tsl/platform:status",
