@@ -95,7 +95,6 @@ cc_library(
         ":macros",
         ":platform",
         ":platform_port",
-        "//tensorflow/core/platform:platform_port",
     ],
 )
 
@@ -949,11 +948,9 @@ cc_library(
     hdrs = ["threadpool_interface.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":mutex",
+        ":types",
         "//third_party/eigen3",
-        # TODO(ddunleavy) these can't be moved because internal Eigen
-        # actually depends on these. Need to update Eigen to depend on TSL
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
     ],
 )
 

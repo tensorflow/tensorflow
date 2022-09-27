@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/scanner.h"
 #include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace tsl {
 namespace io {
