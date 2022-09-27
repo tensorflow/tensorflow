@@ -2271,15 +2271,6 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   pm.addPass(
       tfrt_compiler::CreateDeduplicateFunctionsInovkedByBatchFunctionPass());
 
-  // RemoveUnusedWhileResultsPass operates on the region-based control flow, so
-  // the functional control flow is first converted to region-based control
-  // flow, which is converted back after the optimization passes are performed.
-  pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
-  pm.addPass(mlir::createInlinerPass());
-  pm.addNestedPass<func::FuncOp>(
-      mlir::TF::CreateRemoveUnusedWhileResultsPass());
-  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
-
   // Apply standard optimization after optimizing control flow ops.
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
