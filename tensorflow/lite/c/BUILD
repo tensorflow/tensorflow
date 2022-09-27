@@ -89,6 +89,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:create_op_resolver_header",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
@@ -117,6 +118,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/kernels:kernel_util",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
@@ -166,6 +168,7 @@ cc_library(
         ":common_internal",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
     ],
 )

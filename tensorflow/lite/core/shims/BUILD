@@ -133,6 +133,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",

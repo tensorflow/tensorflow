@@ -645,6 +645,7 @@ def tflite_custom_c_library(
             "//tensorflow/lite/c:common",
             "//tensorflow/lite/core/c:private_c_api",
             "//tensorflow/lite/c:c_api_types",
+            "//tensorflow/lite/core:private_headers",
             "//tensorflow/lite/kernels:kernel_util",
             "//tensorflow/lite:builtin_ops",
             "//tensorflow/lite:framework",

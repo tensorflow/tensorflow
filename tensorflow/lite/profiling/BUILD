@@ -210,6 +210,7 @@ cc_library(
         ":profile_summary_formatter",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

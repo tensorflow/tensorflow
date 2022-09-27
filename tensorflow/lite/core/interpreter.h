@@ -18,8 +18,8 @@ limitations under the License.
 /// instead include third_party/tensorflow/lite/interpreter.h
 /// See third_party/tensorflow/lite/c/common.h for the API for defining
 /// operations (TfLiteRegistration).
-#ifndef TENSORFLOW_LITE_CORE_IMPL_INTERPRETER_H_
-#define TENSORFLOW_LITE_CORE_IMPL_INTERPRETER_H_
+#ifndef TENSORFLOW_LITE_CORE_INTERPRETER_H_
+#define TENSORFLOW_LITE_CORE_INTERPRETER_H_
 
 // IWYU pragma: private, include "third_party/tensorflow/lite/interpreter.h"
 // IWYU pragma: friend third_party/tensorflow/lite/interpreter.h
@@ -911,4 +911,4 @@ class Interpreter {
 };
 
 }  // namespace tflite
-#endif  // TENSORFLOW_LITE_CORE_IMPL_INTERPRETER_H_
+#endif  // TENSORFLOW_LITE_CORE_INTERPRETER_H_
