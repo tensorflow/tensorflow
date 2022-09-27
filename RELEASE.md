@@ -61,6 +61,8 @@
 
     *   `tf.custom_gradient` can now be applied to functions that accept
         "composite" tensors, such as `tf.RaggedTensor`, as inputs.
+    *   Fix device placement issues related to datasets with ragged tensors of
+        strings (i.e. variant encoded data with types not supported on GPU).
 
 # Thanks to our Contributors
 
