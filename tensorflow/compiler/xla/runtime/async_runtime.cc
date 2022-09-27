@@ -27,7 +27,6 @@ limitations under the License.
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
-#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 
 // -------------------------------------------------------------------------- //
 // Define AsyncToken and AsyncGroup in the mlir::runtime namespace to implement
@@ -168,7 +167,6 @@ namespace xla {
 namespace runtime {
 
 using tfrt::AsyncValue;
-using tfrt::DecodedDiagnostic;
 
 namespace {
 // Always keep the current active async runtime in a thread local variable.
@@ -216,7 +214,7 @@ static_assert(sizeof(AsyncRuntime) == 1 * sizeof(void*),
   return group->GetCompletionAsyncValue();
 }
 
-void AsyncRuntime::Await(AsyncValue* awaitable) {
+/*static*/ void AsyncRuntime::Await(AsyncValue* awaitable) {
   // Short circuit the trivial case.
   if (awaitable->IsAvailable()) return;
   tfrt::Await({awaitable});
@@ -247,7 +245,7 @@ void AsyncRuntime::Await(AsyncValue* awaitable) {
   return static_cast<AsyncRuntimeObject*>(group);
 }
 
-AsyncRuntime::Token* AsyncRuntime::CreateToken() {
+/*static*/ AsyncRuntime::Token* AsyncRuntime::CreateToken() {
   // AsyncRuntime::Token created with a reference count of 2 because it will be
   // returned to the `async.execute` caller and also will be later on emplaced
   // by the asynchronously executed task. If the caller immediately will drop
@@ -256,14 +254,14 @@ AsyncRuntime::Token* AsyncRuntime::CreateToken() {
   return new AsyncRuntime::Token(/*ref_count=*/2);
 }
 
-void AsyncRuntime::SetAvailable(AsyncRuntime::Token* token) {
+/*static*/ void AsyncRuntime::SetAvailable(AsyncRuntime::Token* token) {
   token->GetAsyncValue()->SetStateConcrete();
   // Async tokens created with a ref count `2` to keep token alive until the
   // async task completes. Drop extra reference explicitly when token emplaced.
   DropRef(token);
 }
 
-void AsyncRuntime::SetError(AsyncRuntime::Token* token) {
+/*static*/ void AsyncRuntime::SetError(AsyncRuntime::Token* token) {
   // TODO(ezhulenev): Construct a better diagnostincs when async runtime API
   // will support passing custom error messages.
   token->GetAsyncValue()->SetError(
@@ -273,15 +271,16 @@ void AsyncRuntime::SetError(AsyncRuntime::Token* token) {
   DropRef(token);
 }
 
-bool AsyncRuntime::IsError(AsyncRuntime::Token* token) {
+/*static*/ bool AsyncRuntime::IsError(AsyncRuntime::Token* token) {
   return token->GetAsyncValue()->IsError();
 }
 
-void AsyncRuntime::AwaitToken(AsyncRuntime::Token* token) {
+/*static*/ void AsyncRuntime::AwaitToken(AsyncRuntime::Token* token) {
   Await(token->GetAsyncValue());
 }
 
-AsyncRuntime::Value* AsyncRuntime::CreateValue(size_t size, size_t alignment) {
+/*static*/ AsyncRuntime::Value* AsyncRuntime::CreateValue(size_t size,
+                                                          size_t alignment) {
   // AsyncRuntime::Value created with a reference count of 2 because it will be
   // returned to the `async.execute` caller and also will be later on emplaced
   // by the asynchronously executed task. If the caller immediately will drop
@@ -290,14 +289,14 @@ AsyncRuntime::Value* AsyncRuntime::CreateValue(size_t size, size_t alignment) {
   return new AsyncRuntime::Value(size, alignment, /*ref_count=*/2);
 }
 
-void AsyncRuntime::SetAvailable(AsyncRuntime::Value* value) {
+/*static*/ void AsyncRuntime::SetAvailable(AsyncRuntime::Value* value) {
   value->GetAsyncValue()->SetStateConcrete();
   // Async values created with a ref count `2` to keep token alive until the
   // async task completes. Drop extra reference explicitly when token emplaced.
   DropRef(value);
 }
 
-void AsyncRuntime::SetError(AsyncRuntime::Value* value) {
+/*static*/ void AsyncRuntime::SetError(AsyncRuntime::Value* value) {
   // TODO(ezhulenev): Construct a better diagnostincs when async runtime API
   // will support passing custom error messages.
   value->GetAsyncValue()->SetError(
@@ -307,28 +306,28 @@ void AsyncRuntime::SetError(AsyncRuntime::Value* value) {
   DropRef(value);
 }
 
-bool AsyncRuntime::IsError(AsyncRuntime::Value* value) {
+/*static*/ bool AsyncRuntime::IsError(AsyncRuntime::Value* value) {
   return value->GetAsyncValue()->IsError();
 }
 
-void AsyncRuntime::AwaitValue(AsyncRuntime::Value* value) {
+/*static*/ void AsyncRuntime::AwaitValue(AsyncRuntime::Value* value) {
   Await(value->GetAsyncValue());
 }
 
-AsyncRuntime::Group* AsyncRuntime::CreateGroup(int64_t size) {
+/*static*/ AsyncRuntime::Group* AsyncRuntime::CreateGroup(int64_t size) {
   return new AsyncRuntime::Group(size);
 }
 
-size_t AsyncRuntime::AddTokenToGroup(AsyncRuntime::Group* group,
-                                     AsyncRuntime::Token* token) {
+/*static*/ size_t AsyncRuntime::AddTokenToGroup(AsyncRuntime::Group* group,
+                                                AsyncRuntime::Token* token) {
   return group->AddToken(token);
 }
 
-bool AsyncRuntime::IsError(AsyncRuntime::Group* group) {
+/*static*/ bool AsyncRuntime::IsError(AsyncRuntime::Group* group) {
   return group->IsError();
 }
 
-void AsyncRuntime::AwaitGroup(AsyncRuntime::Group* group) {
+/*static*/ void AsyncRuntime::AwaitGroup(AsyncRuntime::Group* group) {
   Await(group->GetCompletionAsyncValue());
 }
 
