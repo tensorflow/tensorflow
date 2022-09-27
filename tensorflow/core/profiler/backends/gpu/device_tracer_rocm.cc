@@ -849,7 +849,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         *line_id = event.thread_id;
         return true;
       } else {
-        *line_id = kThreadIdOverhead;
+        *line_id = tsl::profiler::kThreadIdOverhead;
         return false;
       }
     }
