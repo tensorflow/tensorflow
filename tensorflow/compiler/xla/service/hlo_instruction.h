@@ -1225,6 +1225,11 @@ class HloInstruction {
   // Precondition: target must be an operand (or a fatal error will occur).
   int64_t operand_index(const HloInstruction* target) const;
 
+  // Returns the index of the first operand with HloOpcode 'target' in the
+  // operands sequence. Precondition: target must be the HloOpcode of one of the
+  // operands.
+  int64_t operand_index(HloOpcode target) const;
+
   // Returns the number of users of this instruction.
   int64_t user_count() const { return users_.size(); }
 

@@ -1903,13 +1903,13 @@ TEST_F(CublasLtMatmulRewriteTest, VectorBiasSliced) {
 HloModule test
 
 ENTRY test {
-  x = f32[2,3] parameter(0)
+  x = f32[4,3] parameter(0)
   y = f32[3,4] parameter(1)
-  z = f32[2] parameter(2)
-  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  slice_a = f32[2,2] slice(dot_a), slice={[0:2], [0:2]}
-  z_bcast = f32[2,2] broadcast(z), dimensions={1}
-  ROOT out = f32[2,2] add(slice_a, z_bcast)
+  z = f32[3] parameter(2)
+  dot_a = f32[4,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  slice_a = f32[2,3] slice(dot_a), slice={[0:2], [0:3]}
+  z_bcast = f32[2,3] broadcast(z), dimensions={1}
+  ROOT out = f32[2,3] add(slice_a, z_bcast)
 }
 
 )";
@@ -1918,18 +1918,18 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2]) -> f32[2,2] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-LABEL: ENTRY %test (x: f32[4,3], y: f32[3,4], z: f32[3]) -> f32[2,3] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[4,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2]{0} parameter(2)
-; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[3]{0} parameter(2)
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[4,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]), custom_call_target="__cublas$lt$matmul", backend_config="{
 ; CHECK-DAG:       \"alpha_real\":1
 ; CHECK-DAG:       \"alpha_imag\":0
 ; CHECK-DAG:       \"beta\":0
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"BIAS\"
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} slice([[MATMUL]]), slice={[0:2], [0:2]}
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3]{1,0} slice([[MATMUL]]), slice={[0:2], [0:3]}
       )");
 }
 
@@ -2115,6 +2115,40 @@ ENTRY test {
 ; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
 ; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
 ; CHECK-DAG:       \"epilogue\":\"RELU\"
+      )");
+}
+
+TEST_F(CublasLtMatmulRewriteTest, ReluActivationSliced) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c = f32[] constant(0)
+  c_bcast = f32[2,2] broadcast(c), dimensions={}
+  slice_a = f32[2,2] slice(dot_a), slice={[0:2], [0:2]}
+  ROOT out = f32[2,2] maximum(slice_a, c_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4]) -> f32[2,2] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$lt$matmul", backend_config="{
+; CHECK-DAG:       \"alpha_real\":1
+; CHECK-DAG:       \"alpha_imag\":0
+; CHECK-DAG:       \"beta\":0
+; CHECK-DAG:       \"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]}
+; CHECK-DAG:       \"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}
+; CHECK-DAG:       \"epilogue\":\"RELU\"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} slice([[MATMUL]]), slice={[0:2], [0:2]}
       )");
 }
 
