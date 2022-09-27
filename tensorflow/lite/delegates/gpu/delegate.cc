@@ -15,29 +15,25 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <thread>  // NOLINT(build/c++11)
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
-#include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
-#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
+#include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/serialization.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
 
@@ -101,7 +97,7 @@ class Delegate {
       SerializationParams params;
       params.model_token = options_.model_token;
       params.cache_dir = options_.serialization_dir;
-      serialization_.reset(new Serialization(params));
+      serialization_ = std::make_unique<Serialization>(params);
     }
   }
 
@@ -183,15 +179,19 @@ class DelegateKernel {
     for (uint32_t tensor_index : input_refs) {
       const int64_t object_index = input_indices_.size();
       input_indices_.push_back(tensor_index);
-      RETURN_IF_ERROR(
-          builder->SetInputObjectDef(object_index, GetObjectDef(tensor_index)));
+      const TfLiteTensor& tflite_tensor = context->tensors[tensor_index];
+      const DataType data_type = ToDataType(tflite_tensor.type);
+      RETURN_IF_ERROR(builder->SetInputObjectDef(
+          object_index, GetObjectDef(tensor_index, data_type)));
     }
     output_indices_.reserve(output_refs.size());
     for (uint32_t tensor_index : output_refs) {
       const int64_t object_index = output_indices_.size();
       output_indices_.push_back(tensor_index);
-      RETURN_IF_ERROR(builder->SetOutputObjectDef(object_index,
-                                                  GetObjectDef(tensor_index)));
+      const TfLiteTensor& tflite_tensor = context->tensors[tensor_index];
+      const DataType data_type = ToDataType(tflite_tensor.type);
+      RETURN_IF_ERROR(builder->SetOutputObjectDef(
+          object_index, GetObjectDef(tensor_index, data_type)));
     }
 
     return builder->Build(&runner_);
@@ -259,9 +259,10 @@ class DelegateKernel {
     return absl::OkStatus();
   }
 
-  ObjectDef GetObjectDef(int index) const {
+  ObjectDef GetObjectDef(int index,
+                         DataType data_type = DataType::FLOAT32) const {
     ObjectDef default_object_def;
-    default_object_def.data_type = DataType::FLOAT32;
+    default_object_def.data_type = data_type;
     default_object_def.data_layout = DataLayout::BHWC;
     default_object_def.object_type = ObjectType::CPU_MEMORY;
     default_object_def.user_provided = true;
@@ -324,8 +325,10 @@ class DelegateKernel {
     }
     const std::vector<Value*> outputs = graph->outputs();
     output_refs->clear();
-    output_refs->reserve(delegate_params->output_tensors->size);
-    for (int i = 0; i < delegate_params->output_tensors->size; ++i) {
+    const int output_size = std::min(static_cast<int>(graph->outputs().size()),
+                                     delegate_params->output_tensors->size);
+    output_refs->reserve(output_size);
+    for (int i = 0; i < output_size; ++i) {
       output_refs->push_back(outputs[i]->tensor.ref);
     }
 
@@ -511,7 +514,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         // Everything below should happen in prepare function call, but TFLite
         // for whatever reason forbids that.
         auto gpu_delegate_kernel =
-            absl::make_unique<DelegateKernel>(gpu_delegate);
+            std::make_unique<DelegateKernel>(gpu_delegate);
         const auto status = gpu_delegate_kernel->Prepare(context, params);
         if (!status.ok()) {
           TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate Init: %s",
@@ -581,22 +584,6 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }  // namespace
 }  // namespace gpu
 }  // namespace tflite
-
-TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default() {
-  TfLiteGpuDelegateOptionsV2 options;
-  // set it to -1 to detect whether it was later adjusted.
-  options.is_precision_loss_allowed = -1;
-  options.inference_preference =
-      TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
-  options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
-  options.inference_priority2 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO;
-  options.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO;
-  options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
-  options.max_delegated_partitions = 1;
-  options.model_token = nullptr;
-  options.serialization_dir = nullptr;
-  return options;
-}
 
 TfLiteDelegate* TfLiteGpuDelegateV2Create(
     const TfLiteGpuDelegateOptionsV2* options) {

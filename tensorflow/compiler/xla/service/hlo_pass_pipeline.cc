@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -61,7 +61,7 @@ Status AttemptRecordPassEndMetadata(HloModule& module,
   TF_RETURN_IF_ERROR(
       module.metadata()->set_current_pass_module_changed(module_changed));
   TF_RETURN_IF_ERROR(module.metadata()->RecordPassEnd());
-  return Status::OK();
+  return OkStatus();
 }
 
 void RecordPassEndMetadata(HloModule& module, const std::string& pass_name,
@@ -85,7 +85,7 @@ Status AttemptRecordPassEndMetadata(HloModuleGroup& module_group,
     TF_RETURN_IF_ERROR(
         AttemptRecordPassEndMetadata(*module, pass_name, module_changed));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void RecordPassEndMetadata(HloModuleGroup& module_group,
@@ -124,28 +124,31 @@ void SetInstructionMetadata(HloModuleGroup& module_group) {
 
 template <typename HloT>
 Status HloPassPipeline::RunInvariantCheckers(
-    HloT* hlo, absl::string_view after_pass_name) {
+    HloT* hlo, absl::string_view after_pass_name,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (auto& invariant_checker : invariant_checkers_) {
     VLOG(1) << "    Invariant checker " << invariant_checker->name();
-    StatusOr<bool> changed_status = RunHelper(invariant_checker.get(), hlo);
+    StatusOr<bool> changed_status =
+        RunHelper(invariant_checker.get(), hlo, execution_threads);
     VLOG(1) << "    Invariant checker done " << invariant_checker->name();
     if (!changed_status.ok()) {
       VLOG(2) << "Failed invariant check:";
       XLA_VLOG_LINES(2, hlo->ToString());
-      return tensorflow::errors::CreateWithUpdatedMessage(
+      return tsl::errors::CreateWithUpdatedMessage(
           changed_status.status(),
           absl::StrCat(changed_status.status().error_message(),
                        "\n\nFailed after ", after_pass_name));
     }
-    TF_RET_CHECK(!changed_status.ValueOrDie())
+    TF_RET_CHECK(!changed_status.value())
         << "invariant checkers must not change the graph";
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename HloT>
 StatusOr<bool> HloPassPipeline::RunPassesInternal(
-    HloT* hlo, const DebugOptions& debug_options) {
+    HloT* hlo, const DebugOptions& debug_options,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto passes = GetEnabledPasses(debug_options);
   // Copy string by value since debug options could get clobbered in an hlo
   // module group pass.
@@ -177,7 +180,8 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
       compilation_stats_->StartPass(pass_name);
     }
     RecordPassStartMetadata(*hlo, pass_name, pipeline_name);
-    TF_ASSIGN_OR_RETURN(bool pass_changed, RunHelper(pass, hlo));
+    TF_ASSIGN_OR_RETURN(bool pass_changed,
+                        RunHelper(pass, hlo, execution_threads));
     SetInstructionMetadata(*hlo);
     if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
       MaybeDumpHloAndSaveFilenames(*hlo,
@@ -263,16 +267,21 @@ void HloPassPipeline::MaybeDumpHloAndSaveFilenames(
   }
 }
 
-StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
+StatusOr<bool> HloPassPipeline::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;
 
   VLOG(1) << "Running HLO pass pipeline on module " << module->name() << ": "
           << name();
 
-  return RunPassesInternal(module, module->config().debug_options());
+  return RunPassesInternal(module, module->config().debug_options(),
+                           execution_threads);
 }
 
-StatusOr<bool> HloPassPipeline::RunOnModuleGroup(HloModuleGroup* module_group) {
+StatusOr<bool> HloPassPipeline::RunOnModuleGroup(
+    HloModuleGroup* module_group,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;
 
   VLOG(1) << "Running HLO pass pipeline on module group "
@@ -284,7 +293,8 @@ StatusOr<bool> HloPassPipeline::RunOnModuleGroup(HloModuleGroup* module_group) {
   }
 
   return RunPassesInternal(module_group,
-                           module_group->module(0).config().debug_options());
+                           module_group->module(0).config().debug_options(),
+                           execution_threads);
 }
 
 }  // namespace xla

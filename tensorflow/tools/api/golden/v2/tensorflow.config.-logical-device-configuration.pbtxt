@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.eager.context.LogicalDeviceConfiguration\'>"
   is_instance: "<type \'tuple\'>"
   member {
+    name: "experimental_device_ordinal"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "experimental_priority"
     mtype: "<type \'property\'>"
   }

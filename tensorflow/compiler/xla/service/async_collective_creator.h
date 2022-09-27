@@ -26,18 +26,17 @@ namespace xla {
 // all-reduce-done.
 class AsyncCollectiveCreator : public HloModulePass {
  public:
-  using CreatorConfigQuery = std::function<bool(const HloInstruction*)>;
   struct CollectiveCreatorConfig {
-    CreatorConfigQuery convert_all_reduce = [](const HloInstruction*) {
+    HloPredicate convert_all_reduce = [](const HloInstruction*) {
       return false;
     };
-    CreatorConfigQuery convert_all_gather = [](const HloInstruction*) {
+    HloPredicate convert_all_gather = [](const HloInstruction*) {
       return false;
     };
-    CreatorConfigQuery convert_collective_permute = [](const HloInstruction*) {
+    HloPredicate convert_collective_permute = [](const HloInstruction*) {
       return false;
     };
-    CreatorConfigQuery convert_all_to_all = [](const HloInstruction*) {
+    HloPredicate convert_all_to_all = [](const HloInstruction*) {
       return false;
     };
   };
@@ -48,13 +47,16 @@ class AsyncCollectiveCreator : public HloModulePass {
         convert_all_to_all_(creator_config.convert_all_to_all) {}
   absl::string_view name() const override { return "async-collective-creator"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  CreatorConfigQuery convert_all_reduce_;
-  CreatorConfigQuery convert_all_gather_;
-  CreatorConfigQuery convert_collective_permute_;
-  CreatorConfigQuery convert_all_to_all_;
+  HloPredicate convert_all_reduce_;
+  HloPredicate convert_all_gather_;
+  HloPredicate convert_collective_permute_;
+  HloPredicate convert_all_to_all_;
 };
 
 }  // namespace xla

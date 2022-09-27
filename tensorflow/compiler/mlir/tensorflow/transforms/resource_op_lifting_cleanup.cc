@@ -120,7 +120,7 @@ void EliminateUnusedResults(
 func::FuncOp CloneFunctionIfNeeded(func::FuncOp func) {
   ModuleOp module = func->getParentOfType<ModuleOp>();
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
-  if (func_uses.hasValue() && llvm::hasSingleElement(func_uses.getValue()))
+  if (func_uses.has_value() && llvm::hasSingleElement(func_uses.getValue()))
     return func;
   func::FuncOp cloned = func.clone();
   cloned.setPrivate();
@@ -268,7 +268,7 @@ LogicalResult ForwardCommonArgToOutput(Operation *op,
                << result_idx << " not tied to function argument for branch @"
                << func.getName();
       }
-      if (!common_arg_index.hasValue()) {
+      if (!common_arg_index.has_value()) {
         common_arg_index = block_arg.getArgNumber();
       } else if (common_arg_index.getValue() != block_arg.getArgNumber()) {
         return op->emitError("result #")

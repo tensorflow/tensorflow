@@ -30,7 +30,6 @@ REGISTER_OP("_XlaHostComputeMlir")
     .Attr("Toutputs: list(type) >= 0")
     .Attr("send_key: string")
     .Attr("recv_key: string")
-    .Attr("tpu_core: int = 0")
     .Attr("host_mlir_module: string=\"\"")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       return ::tensorflow::shape_inference::UnknownShape(c);
@@ -45,7 +44,6 @@ Tinputs: The element types of each element in `inputs`.
 Toutputs: The element types of each element in `outputs`.
 send_key: A unique identifier for this region used to match up host recv.
 recv_key: A unique identifier for this region used to match up host send.
-tpu_core: Default core to use for host to device transfers.
 host_mlir_module: MLIR module with the host computation used for shape inference. Should be set to empty string if output shapes are static.
 If non-empty, should contain a serialized mlir module with a function named `host_func` with the same number of inputs and outputs as this op
 as it will be used to refine output shapes.

@@ -18,7 +18,8 @@ func.func @main(tensor<3x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x!quant.unifor
   // CHECK-NEXT:      quantization: {
   // CHECK-NEXT:        scale: [ 0.1 ],
   // CHECK-NEXT:        zero_point: [ 0 ]
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 3 ],
   // CHECK-NEXT:      type: INT8,
@@ -27,7 +28,8 @@ func.func @main(tensor<3x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x!quant.unifor
   // CHECK-NEXT:      quantization: {
   // CHECK-NEXT:        scale: [ 0.1 ],
   // CHECK-NEXT:        zero_point: [ 0 ]
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 3 ],
   // CHECK-NEXT:      type: INT8,
@@ -36,7 +38,8 @@ func.func @main(tensor<3x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x!quant.unifor
   // CHECK-NEXT:      quantization: {
   // CHECK-NEXT:        scale: [ 0.1 ],
   // CHECK-NEXT:        zero_point: [ 0 ]
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:    } ],
   // CHECK-NEXT:    inputs: [ 0 ],
   // CHECK-NEXT:    outputs: [ 2 ],

@@ -100,8 +100,8 @@ enum class AdrenoGpu {
 
 struct AMDInfo {
   AMDInfo() = default;
-  int shader_engines;
-  int compute_units_per_shader_engine;
+  int shader_engines = 0;
+  int compute_units_per_shader_engine = 0;
   int GetComputeUnitsCount() const {
     return shader_engines * compute_units_per_shader_engine;
   }
@@ -168,9 +168,12 @@ enum class AppleGpu {
   kA13,
   kA14,
   kA15,
+  kA16,
   kM1,
   kM1Pro,
   kM1Max,
+  kM1Ultra,
+  kM2,
 };
 
 struct AppleInfo {
@@ -250,6 +253,9 @@ struct MaliInfo {
   bool IsValhallGen2() const;
   bool IsValhallGen3() const;
   bool IsValhall() const;
+
+  // returns approximate compute units count using GPU name
+  int GetApproximateComputeUnitsCount() const;
 };
 
 struct OpenGlInfo {
@@ -389,6 +395,8 @@ enum class MetalLanguageVersion {
   kMetal2_1,
   kMetal2_2,
   kMetal2_3,
+  kMetal2_4,
+  kMetal3_0,
   kUnknown,
 };
 
@@ -407,6 +415,10 @@ struct MetalInfo {
   uint64_t image3d_max_width;
   uint64_t image3d_max_height;
   uint64_t image3d_max_depth;
+
+  bool IsSIMDMatMulSupported() const;
+  // MSL is Metal shading language
+  bool IsMslVersionEqualOrHigher(int major, int minor = 0) const;
 };
 
 struct GpuInfo {

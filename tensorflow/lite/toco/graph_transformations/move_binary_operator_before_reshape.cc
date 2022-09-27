@@ -13,6 +13,7 @@
  limitations under the License.
  ==============================================================================*/
 #include <algorithm>
+#include <string>
 
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"

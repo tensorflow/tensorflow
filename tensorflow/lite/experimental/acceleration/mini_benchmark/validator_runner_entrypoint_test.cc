@@ -15,12 +15,13 @@ limitations under the License.
 #include <sys/types.h>
 
 #include <fstream>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
@@ -132,6 +133,50 @@ TEST_F(ValidatorRunnerEntryPointTest, CannotSetCpuAffinity) {
   EXPECT_EQ(BenchmarkEventType_RECOVERED_ERROR, event->event_type());
   EXPECT_EQ(kMinibenchmarkUnableToSetCpuAffinity, event->error()->exit_code());
   EXPECT_EQ(10, event->error()->mini_benchmark_error_code());
+}
+
+TEST_F(ValidatorRunnerEntryPointTest, CannotLoadNnapi) {
+  // Write TFLiteSettings to storage_.
+  flatbuffers::FlatBufferBuilder fbb;
+  TFLiteSettingsT tflite_settings;
+  NNAPISettingsT nnapi_settings;
+  ASSERT_EQ(
+      storage_.Append(
+          &fbb,
+          CreateBenchmarkEvent(
+              fbb,
+              CreateTFLiteSettings(fbb, Delegate_NNAPI,
+                                   CreateNNAPISettings(fbb, &nnapi_settings)),
+              BenchmarkEventType_START, /* result */ 0, /* error */ 0,
+              Validator::BootTimeMicros(), Validator::WallTimeMicros())),
+      kMinibenchmarkSuccess);
+  // Prep argv.
+  std::vector<std::string> args = {
+      "test",
+      "binary_name",
+      "Java_org_tensorflow_lite_acceleration_validation_entrypoint",
+      "model_path",
+      storage_path_,
+      "data_directory_path",
+      "nnapi_path"};
+  std::vector<std::vector<char>> mutable_args(args.size());
+  std::vector<char*> argv(args.size());
+  for (int i = 0; i < mutable_args.size(); i++) {
+    mutable_args[i] = {args[i].data(), args[i].data() + args[i].size()};
+    mutable_args[i].push_back('\0');
+    argv[i] = mutable_args[i].data();
+  }
+  EXPECT_EQ(kMinibenchmarkSuccess,
+            Java_org_tensorflow_lite_acceleration_validation_entrypoint(
+                7, argv.data()));
+
+  // Verify.
+  std::vector<const tflite::BenchmarkEvent*> events = GetEvents();
+  ASSERT_THAT(events, testing::SizeIs(2));
+  const tflite::BenchmarkEvent* event = events[1];
+  EXPECT_EQ(BenchmarkEventType_ERROR, event->event_type());
+  EXPECT_EQ(kMiniBenchmarkCannotLoadSupportLibrary,
+            event->error()->exit_code());
 }
 
 }  // namespace

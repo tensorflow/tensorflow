@@ -234,7 +234,7 @@ Status CreateFunctionLibraryDefinition(
     return errors::FailedPrecondition(strings::StrCat(
         "Could not find required function definition ", func_name));
   }
-  *result = absl::make_unique<FunctionLibraryDefinition>(
+  *result = std::make_unique<FunctionLibraryDefinition>(
       lib_def->ReachableDefinitions(*fdef));
   return (*result)->CopyFunctionDefFrom(func_name, *lib_def);
 }
@@ -964,7 +964,7 @@ void InstantiatedCapturedFunction::RunAsync(
   f_opts.runner = ctx->runner();
   f_opts.create_rendezvous = ShouldCreateRendezvous();
   auto cancellation_manager =
-      absl::make_unique<CancellationManager>(ctx->cancellation_manager());
+      std::make_unique<CancellationManager>(ctx->cancellation_manager());
   f_opts.cancellation_manager = cancellation_manager.get();
   f_opts.collective_executor = ctx->collective_executor();
 

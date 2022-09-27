@@ -58,8 +58,11 @@ class BufferMap {
   void SetFromTensorFlow(int tensor_index, tensorflow::Tensor tensor);
 
   // Same as above but creates a new tensorflow::Tensor with a copy of the
-  // given TfLiteTensor's data.
-  void SetFromTfLite(int tensor_index, const TfLiteTensor* tensor);
+  // given TfLiteTensor's data. If `allow_reusing=false`, then we explicitly
+  // disallow reusing the TF Lite tensor buffer when constructing the new
+  // tensorflow Tensor.
+  void SetFromTfLite(int tensor_index, const TfLiteTensor* tensor,
+                     bool allow_reusing = true);
 
  private:
   // Mapping from TL Lite tensor ID to TensorFlow's Tensor. All tensors that

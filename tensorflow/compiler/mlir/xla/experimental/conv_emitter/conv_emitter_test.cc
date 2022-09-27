@@ -58,7 +58,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 
   mlir::func::FuncOp function =
-      EmitConvolutionForwardAsMlir(conv, "Conv", &context).ValueOrDie();
+      EmitConvolutionForwardAsMlir(conv, "Conv", &context).value();
 
   mlir_module->push_back(function);
   (void)mlir_module->verifyInvariants();
@@ -74,7 +74,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
     mlir::PassManager pm(mlir_module->getContext());
     pm.addPass(mlir::createLowerAffinePass());
     pm.addPass(mlir::createConvertSCFToCFPass());
-    pm.addPass(mlir::createMemRefToLLVMPass());
+    pm.addPass(mlir::createMemRefToLLVMConversionPass());
     pm.addPass(mlir::createConvertFuncToLLVMPass());
     CHECK(mlir::succeeded(pm.run(*mlir_module)));
   }
@@ -142,7 +142,7 @@ CHECK-NEXT: }
 
   EXPECT_TRUE(
       RunFileCheck(CompileHloConvAndGetMlir(hlo_text), expected_mlir_pattern)
-          .ValueOrDie());
+          .value());
 }
 
 }  // namespace

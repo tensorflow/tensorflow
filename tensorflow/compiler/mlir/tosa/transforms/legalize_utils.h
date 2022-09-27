@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H
-#define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H
+#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_
 
 #include <climits>
 #include <cstddef>
@@ -38,6 +38,15 @@ limitations under the License.
 
 namespace mlir {
 namespace tosa {
+
+LogicalResult getDynamicDims(PatternRewriter& rewriter, Value value,
+                             llvm::SmallVector<Value>& dims);
+
+llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
+                                                  Operation* op,
+                                                  Value input_value,
+                                                  ShapedType output_type,
+                                                  llvm::ArrayRef<Value> dims);
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
@@ -76,7 +85,8 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
 void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
                             double input_scale, int32_t input_zp,
                             std::function<double(double)> func,
-                            Value& upper_const, Value& lower_const);
+                            Value& first_const, Value& second_const,
+                            Value& third_const, Value& fourth_const);
 
 // Create a 32-bit float constant operator from a float
 Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
@@ -110,7 +120,7 @@ bool getTransposeConv2dPaddingValues(
     tensorflow::Padding tf_pad, tensorflow::TensorFormat data_format_tf,
     uint32_t first_filter_spatial_dim, ShapedType input_type,
     ShapedType filter_type, ShapedType output_type, ArrayAttr strides,
-    ArrayAttr dilations, PatternRewriter& rewriter, ArrayAttr& explicit_pad);
+    PatternRewriter& rewriter, ArrayAttr& explicit_pad);
 
 // Templated function to create a constant op for given type and shape.
 // T: storage C type.
@@ -185,4 +195,4 @@ void CreateReplaceOpAndInfer(PatternRewriter& rewriter, Operation* op,
 }  // namespace tosa
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H
+#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_UTILS_H_

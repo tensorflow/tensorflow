@@ -26,7 +26,7 @@ Status ForceXlaConstantsOnHostPass::Run(
   Graph* graph = options.graph->get();
 
   OptimizerOptions opts;
-  auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  auto pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
       nullptr, options.session_options->env, /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, options.flib_def, opts);
   FunctionLibraryRuntime* flr =

@@ -41,7 +41,7 @@ REGISTER_OP("Examples>MultiplexDense")
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(2), &unused));
 
       c->set_output(0, out);
-      return tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     })
     .Doc(R"doc(
 Return elements chosen from `a` or `b` depending on `cond`.

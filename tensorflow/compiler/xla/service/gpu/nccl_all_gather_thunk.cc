@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 #if XLA_ENABLE_XCCL
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif
 
 namespace xla {
@@ -40,16 +40,16 @@ namespace gpu {
     mlir::lmhlo::AllGatherOp op) {
   NcclAllGatherConfig config;
   config.config =
-      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
+      GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds());
   return config;
 }
 
 /*static*/ bool NcclAllGatherThunk::CanImplement(mlir::lmhlo::AllGatherOp op) {
-  return absl::c_all_of(op.operands(), [&](mlir::Value operand) {
+  return absl::c_all_of(op.getInputs(), [&](mlir::Value operand) {
     Shape shape = GetShape(operand);
     return LayoutUtil::IsDenseArray(shape) &&
            IsTypeSupportedByNccl(shape.element_type()) &&
-           LayoutUtil::MinorToMajor(shape).back() == op.all_gather_dimension();
+           LayoutUtil::MinorToMajor(shape).back() == op.getAllGatherDimension();
   });
 }
 
@@ -80,7 +80,7 @@ Status RunAllGather(std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
                         ToNcclDataTypeAndCountMultiplier(element_type));
     ncclDataType_t dtype = dtype_and_multiplier.first;
-    int element_count = buffer.element_count * dtype_and_multiplier.second;
+    int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
     VLOG(3) << absl::StreamFormat(
         "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, sendcount=%d, "
@@ -94,7 +94,7 @@ Status RunAllGather(std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing all-gather for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

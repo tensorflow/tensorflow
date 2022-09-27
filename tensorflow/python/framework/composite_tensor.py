@@ -16,8 +16,6 @@
 
 import abc
 
-import six
-
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
@@ -25,8 +23,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("__internal__.CompositeTensor", v1=[])
-@six.add_metaclass(abc.ABCMeta)
-class CompositeTensor(object):
+class CompositeTensor(metaclass=abc.ABCMeta):
   """Abstract base class for Tensor-like objects that are composed from Tensors.
 
   Each `CompositeTensor` can be decomposed into a structured collection of
@@ -88,6 +85,19 @@ class CompositeTensor(object):
   def __tf_tracing_type__(self, context):
     return self._type_spec.__tf_tracing_type__(context)
 
+  def _convert_variables_to_tensors(self):
+    """Converts ResourceVariable components to Tensors.
+
+    Override this method to explicitly convert ResourceVariables embedded in the
+    CompositeTensor to Tensors. By default, it returns the CompositeTensor
+    unchanged.
+
+    Returns:
+      A CompositeTensor with all its ResourceVariable components converted to
+      Tensors.
+    """
+    return self
+
 
 _pywrap_utils.RegisterType("CompositeTensor", CompositeTensor)
 
@@ -113,6 +123,10 @@ def replace_composites_with_components(structure):
   else:
     return nest.map_structure(
         replace_composites_with_components, structure, expand_composites=False)
+
+
+def convert_variables_to_tensors(composite_tensor):
+  return composite_tensor._convert_variables_to_tensors()  # pylint: disable=protected-access
 
 
 # @TODO(edloper): Can we replace convert_to_tensor_or_xyz with just

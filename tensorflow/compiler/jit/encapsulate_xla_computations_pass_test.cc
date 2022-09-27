@@ -179,7 +179,7 @@ TEST(EncapsulateXlaComputations, DeterministicEncapsulate) {
       }
     }
     TF_CHECK_OK(EncapsulateXlaComputationsPass::Encapsulate(&graph, &flib_def));
-    return SerializeGraphDeterministic(*graph).ValueOrDie();
+    return SerializeGraphDeterministic(*graph).value();
   };
 
   // Changing the order of control input shouldn't affect the graph generated.

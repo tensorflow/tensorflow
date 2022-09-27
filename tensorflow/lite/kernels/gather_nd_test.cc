@@ -73,6 +73,22 @@ TEST(GatherNdOpTest, ElementIndexingIntoMatrix) {
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({1.1, 2.2}));
 }
 
+TEST(GatherNdOpTest, ErrorOnOutOfBoundsTooLarge) {
+  GatherNdOpModel m({TensorType_FLOAT32, {2, 2}}, {TensorType_INT32, {2, 2}});
+  m.SetInput<float>({1.1, 1.2, 2.1, 2.2});
+  m.SetPositions<int32_t>({0, 0, 2, 0});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+  m.SetPositions<int32_t>({0, 0, 1, 2});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(GatherNdOpTest, ErrorOnOutOfBoundsNegative) {
+  GatherNdOpModel m({TensorType_FLOAT32, {2, 2}}, {TensorType_INT32, {2, 2}});
+  m.SetInput<float>({1.1, 1.2, 2.1, 2.2});
+  m.SetPositions<int32_t>({1, -1, 1, 1});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
 TEST(GatherNdOpTest, SliceIndexingIntoMatrix) {
   GatherNdOpModel m({TensorType_FLOAT32, {2, 2}}, {TensorType_INT32, {2, 1}});
   m.SetInput<float>({1.1, 1.2, 2.1, 2.2});
@@ -342,9 +358,14 @@ TEST(GatherNdOpTest, Int64Int64) {
 
 TEST(GatherNdOpTest, StringInt32) {
   GatherNdOpModel m({TensorType_STRING, {3, 2, 3}}, {TensorType_INT32, {2, 2}});
-  m.SetInput<std::string>({"A", "B", "C", "D", "E", "F",  //
-                           "G", "H", "I", "J", "K", "L",  //
-                           "M", "N", "O", "P", "Q", "R"});
+  m.SetInput<std::string>({"A", "B", "C",  //
+                           "D", "E", "F",  //
+                           //
+                           "G", "H", "I",  //
+                           "J", "K", "L",  //
+                           //
+                           "M", "N", "O",  //
+                           "P", "Q", "R"});
   m.SetPositions<int32_t>({0, 1, 1, 0});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
@@ -354,14 +375,49 @@ TEST(GatherNdOpTest, StringInt32) {
 
 TEST(GatherNdOpTest, StringInt64) {
   GatherNdOpModel m({TensorType_STRING, {3, 2, 3}}, {TensorType_INT64, {2, 2}});
-  m.SetInput<std::string>({"A", "B", "C", "D", "E", "F",  //
-                           "G", "H", "I", "J", "K", "L",  //
-                           "M", "N", "O", "P", "Q", "R"});
+  m.SetInput<std::string>({"A", "B", "C",  //
+                           "D", "E", "F",  //
+                           //
+                           "G", "H", "I",  //
+                           "J", "K", "L",  //
+                           //
+                           "M", "N", "O",  //
+                           "P", "Q", "R"});
   m.SetPositions<int64_t>({0LL, 1LL, 1LL, 0LL});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput<std::string>(),
               ElementsAreArray({"D", "E", "F", "G", "H", "I"}));
+}
+
+TEST(GatherNdOpTest, StringOutOfBoundsTooLarge) {
+  GatherNdOpModel m({TensorType_STRING, {3, 2, 3}}, {TensorType_INT32, {2, 2}});
+  m.SetInput<std::string>({"A", "B", "C",  //
+                           "D", "E", "F",  //
+                           //
+                           "G", "H", "I",  //
+                           "J", "K", "L",  //
+                           //
+                           "M", "N", "O",  //
+                           "P", "Q", "R"});
+  m.SetPositions<int32_t>({0, 0, 3, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+  m.SetPositions<int32_t>({0, 0, 2, 2});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(GatherNdOpTest, StringOutOfBoundsNegative) {
+  GatherNdOpModel m({TensorType_STRING, {3, 2, 3}}, {TensorType_INT32, {2, 2}});
+  m.SetInput<std::string>({"A", "B", "C",  //
+                           "D", "E", "F",  //
+                           //
+                           "G", "H", "I",  //
+                           "J", "K", "L",  //
+                           //
+                           "M", "N", "O",  //
+                           "P", "Q", "R"});
+  m.SetPositions<int32_t>({1, -1, 0, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
 }
 
 TEST(GatherNdOpTest, EmptyParamsAndIndex) {

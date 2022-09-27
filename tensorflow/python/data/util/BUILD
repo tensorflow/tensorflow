@@ -9,10 +9,7 @@ py_library(
     name = "nest",
     srcs = ["nest.py"],
     srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:util",
-        "@six_archive//:six",
-    ],
+    deps = ["//tensorflow/python:util"],
 )
 
 py_test(
@@ -45,7 +42,6 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//tensorflow/python/user_ops:ops",
-        "@six_archive//:six",
     ],
 )
 

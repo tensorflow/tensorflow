@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
-#include "tensorflow/lite/delegates/gpu/delegate.h"
+#include "tensorflow/lite/delegates/gpu/delegate_options.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
-#include "tensorflow/lite/experimental/acceleration/compatibility/devicedb.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/database_generated.h"
 
 namespace tflite {
 namespace acceleration {

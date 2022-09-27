@@ -117,6 +117,8 @@ void AddSupportedFunctionalOps(MLIRContext* context,
   supported_ops->insert(
       OperationName(TF::WhileRegionOp::getOperationName(), context));
   supported_ops->insert(
+      OperationName(TF::XlaCallModuleOp::getOperationName(), context));
+  supported_ops->insert(
       OperationName(TF::XlaReduceOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::XlaReduceWindowOp::getOperationName(), context));
@@ -407,7 +409,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   PatternApplicator(std::move(patterns))
       .walkAllPatterns([&](const Pattern& pattern) {
         Optional<OperationName> root_kind = pattern.getRootKind();
-        if (root_kind.hasValue()) supported_ops.insert(root_kind.getValue());
+        if (root_kind.has_value()) supported_ops.insert(root_kind.getValue());
       });
   AddSupportedFunctionalOps(module.getContext(), &supported_ops);
   AddSupportedOpsUsingFolding(module.getContext(), &supported_ops);

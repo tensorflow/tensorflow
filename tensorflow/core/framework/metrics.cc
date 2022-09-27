@@ -224,6 +224,11 @@ auto* build_graph_time_usecs = monitoring::Counter<0>::New(
     "spent optimizing the graph with Grappler, and time spent pruning the "
     "sub-graph.");
 
+auto* function_graph_optimization_time_usecs = monitoring::Counter<0>::New(
+    "/tensorflow/core/function_graph_optimization_time_usecs",
+    "The amount of time TensorFlow has spent optimizing function graphs, in "
+    "microseconds. ");
+
 auto* xla_compilations = monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilations",
     "The number of XLA compilations used to collect "
@@ -483,6 +488,15 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs) {
   }
 }
 
+void UpdateFunctionGraphOptimizationTime(const uint64 running_time_usecs) {
+  if (running_time_usecs > 0) {
+    static auto* function_graph_optimization_time_usecs_cell =
+        function_graph_optimization_time_usecs->GetCell();
+    function_graph_optimization_time_usecs_cell->IncrementBy(
+        running_time_usecs);
+  }
+}
+
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs) {
   if (distribution_time_usecs > 0) {
     tpu_variable_distribution_time_usecs->GetCell()->IncrementBy(
@@ -529,16 +543,6 @@ void TestDelta::Reset() { last_value_ = cell_->value(); }
 
 int64 TestDelta::Get() { return cell_->value() - last_value_; }
 
-void UpdateTfMlirGraphOptimizationPassStateCounter(
-    const std::string& pass_state, const std::string& processing_state) {
-  static auto* metric = monitoring::Counter<2>::New(
-      "/tensorflow/core/tf_mlir_update_graph_optimization_pass_state_counter",
-      "Tracks changes in a graph's UpdateTfMlirGraphOptimizationPassState",
-      "PassState", "ProcessingState");
-
-  metric->GetCell(pass_state, processing_state)->IncrementBy(1);
-}
-
 void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,
                                          bool fallback_enabled,
@@ -560,6 +564,30 @@ void UpdateTpuErrorCounter(const string& op, const string& error_type) {
 void UpdateEagerClientErrorCounter(const string& error_source,
                                    const string& error_type) {
   eager_client_error_counter->GetCell(error_source, error_type)->IncrementBy(1);
+}
+
+void UpdateTfMlirBridgeGraphAnalysisPerOp(
+    const std::string& op_name, const std::string& construction_context,
+    bool is_single_core_inference_mode, const std::string& num_replicas,
+    const std::string& num_cores_per_replica, const std::string& use_tpu,
+    const std::string& allow_soft_placement,
+    const std::string& use_spmd_for_xla_partitioning,
+    const std::string& unsupported_reason, bool has_unsupported_features) {
+  static auto* metric = monitoring::Counter<10>::New(
+      "/tensorflow/core/tf_mlir_bridge_graph_analysis_per_op",
+      "Tracks processing state per op in first phase of mlir bridge", "op_name",
+      "construction_context", "is_single_core_inference_mode", "num_replicas",
+      "num_cores_per_replica", "use_tpu", "allow_soft_placement",
+      "use_spmd_for_xla_partitioning", "unsupported_reason",
+      "has_unsupported_features");
+
+  metric
+      ->GetCell(op_name, construction_context,
+                is_single_core_inference_mode ? "Yes" : "No", num_replicas,
+                num_cores_per_replica, use_tpu, allow_soft_placement,
+                use_spmd_for_xla_partitioning, unsupported_reason,
+                has_unsupported_features ? "Yes" : "No")
+      ->IncrementBy(1);
 }
 
 }  // namespace metrics

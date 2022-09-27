@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -28,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -77,7 +76,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
       ROOT gte = pred[5,7,2]{2,1,0} compare(x, reshape), direction=GE
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
 
   // Check the optimized IR as the unoptimized IR contains dead udiv and urem.
   CompileAndVerifyIr(std::move(module),
@@ -103,7 +102,7 @@ TEST_F(GpuIndexTest,
       ROOT gte = pred[1,7,2,5,3]{4,3,2,1,0} compare(x, broadcast), direction=GE
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
   CompileAndVerifyIr(std::move(module),
                      R"(
 ; CHECK: %[[tmp4:.*]] = udiv i32 %[[linear_index:.*]], 1
@@ -136,7 +135,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
       ROOT gte = pred[5,7,2]{2,1,0} compare(x, broadcast), direction=GE
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
 
   // Check the optimized IR reuses the linear index by calculating modulo 14.
 
@@ -168,7 +167,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
       ROOT y = f16[1,1024,1,256]{2,3,1,0} convert(x)
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
 
   // Check that the unoptimized IR reuses the linear index.
   CompileAndVerifyIr(std::move(module),
@@ -199,7 +198,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithTranspose) {
       ROOT gte = pred[1024,2,256,3]{2,3,0,1} compare(transpose, y), direction=GE
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
   // Check the optimized IR contains no udiv and urem.
   CompileAndVerifyIr(std::move(module),
                      R"(

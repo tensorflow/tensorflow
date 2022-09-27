@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -49,7 +50,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class CancellationManager;
 class CollectiveExecutor;
 class DeviceSet;
 class Graph;

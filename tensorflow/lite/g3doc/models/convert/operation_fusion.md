@@ -66,7 +66,85 @@ TensorFlow Lite is a hard problem. This is because:
 
 As such, conversion of fused operations has proven quite challenging.
 
-## Converting from composite to fused operation
+## Converting from composite op to a TFLite custom operation (recommended)
+
+### Wrap the composite operation in a `tf.function`
+
+In many cases, some part of the model can be mapped to a single operation in
+TFLite. This can help with performance when writing an optimized implementation
+for specific operations. To be able to create a fused operation in TFLite,
+identify the part of the graph that represents a fused operation and wrap it in
+a `tf.function` with "experimental_implements" attribute to a `tf.function`,
+which has attribute value `tfl_fusable_op` with value `true`. If the custom
+operation takes attributes then pass them as part of the same
+"experimental_implements".
+
+Example,
+
+```python
+def get_implements_signature():
+  implements_signature = [
+    # 'name' will be used as a name for the operation.
+    'name: "my_custom_fused_op"',
+    # attr "tfl_fusable_op" is required to be set with true value.
+    'attr {key: "tfl_fusable_op" value { b: true } }',
+    # Example attribute "example_option" that the op accepts.
+    'attr {key: "example_option" value { i: %d } }' % 10
+  ]
+  return ' '.join(implements_signature)
+
+@tf.function(experimental_implements=get_implements_signature())
+def my_custom_fused_op(input_1, input_2):
+  # An empty function that represents pre/post processing example that
+  # is not represented as part of the Tensorflow graph.
+  output_1 = tf.constant(0.0, dtype=tf.float32, name='first_output')
+  output_2 = tf.constant(0.0, dtype=tf.float32, name='second_output')
+  return output_1, output_2
+
+class TestModel(tf.Module):
+  def __init__(self):
+    super(TestModel, self).__init__()
+    self.conv_1 = tf.keras.layers.Conv2D(filters=1, kernel_size=(3, 3))
+    self.conv_2 = tf.keras.layers.Conv2D(filters=1, kernel_size=(3, 3))
+
+  @tf.function(input_signature=[
+      tf.TensorSpec(shape=[1, 28, 28, 3], dtype=tf.float32),
+      tf.TensorSpec(shape=[1, 28, 28, 3], dtype=tf.float32),
+  ])
+  def simple_eval(self, input_a, input_b):
+    return my_custom_fused_op(self.conv_1(input_a), self.conv_2(input_b))
+```
+
+Note that you don't need to set `allow_custom_ops` on the converter as
+`tfl_fusable_op` attribute imply this already.
+
+### Implement custom op and register with TFLite Interpreter
+
+Implement your fused operation as a TFLite Custom operation - see
+[instructions](https://www.tensorflow.org/lite/guide/ops_custom).
+
+Note that, the name to register the op with should be similar to the name
+specified in the `name` attribute in the implements signature.
+
+An example for the op in the example is
+```c++
+  TfLiteRegistration reg;
+  // This name must match the name specified in the implements signature.
+  static constexpr char kOpName[] = "my_custom_fused_op";
+  reg.custom_name = kOpName;
+  reg.prepare = [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
+    // Add your code.
+    return kTfLiteOk;
+  };
+  reg.invoke = [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
+    // Add your coder.
+    return kTfLiteOk;
+  };
+  reg.builtin_code = kTfLiteCustom;
+  resolver->AddCustom(kOpName, &reg);
+```
+
+## Converting from composite to fused operation (Advanced)
 
 The overall architecture for converting TensorFlow composite operations to
 TensorFlow Lite fused operations is below:
@@ -254,7 +332,7 @@ operation in TensorFlow Lite leveraging the function as a conversion interface.
 
 <a id="fusion_code"></a>
 
-```C++
+```c++
 void RewriteFunc() {
     Value lookup = func_.getArgument(1);
     Value value = func_.getArgument(0);

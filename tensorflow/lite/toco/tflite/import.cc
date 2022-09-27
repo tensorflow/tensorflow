@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/import.h"
 
+#include <memory>
+#include <string>
+
 #include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -216,7 +219,7 @@ std::unique_ptr<Model> Import(const ModelFlags& model_flags,
     LOG(FATAL) << "Number of subgraphs in tflite should be exactly 1.";
   }
   std::unique_ptr<Model> model;
-  model.reset(new Model);
+  model = std::make_unique<Model>();
 
   details::TensorsTable tensors_table;
   details::LoadTensorsTable(*input_model, &tensors_table);

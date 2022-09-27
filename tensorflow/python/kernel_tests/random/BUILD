@@ -194,7 +194,7 @@ cuda_py_test(
 
 tf_py_test(
     name = "random_shuffle_queue_test",
-    size = "small",
+    size = "medium",
     srcs = ["random_shuffle_queue_test.py"],
     tags = [
         "no_cuda_on_cpu_tap",  # TODO(b/171060960) flakyly broken assertions

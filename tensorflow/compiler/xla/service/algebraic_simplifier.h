@@ -172,14 +172,6 @@ class AlgebraicSimplifierOptions {
 
   bool enable_sink_broadcast() const { return enable_sink_broadcast_; }
 
-  void set_replace_transpose_with_bitcast(bool replace_transpose_with_bitcast) {
-    replace_transpose_with_bitcast_ = replace_transpose_with_bitcast;
-  }
-
-  bool replace_transpose_with_bitcast() const {
-    return replace_transpose_with_bitcast_;
-  }
-
   // If true, min(x, NaN) = NaN.  If false, min(x, NaN) = x.
   //
   // TODO(b/209827141): Remove this and make minmax_propagate_nan uncondtionally
@@ -213,7 +205,6 @@ class AlgebraicSimplifierOptions {
   bool enable_reduce_of_reshape_{true};
   bool enable_negative_padding_replacement_{true};
   bool enable_sink_broadcast_{true};
-  bool replace_transpose_with_bitcast_{true};
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
   Metadata metadata_;
@@ -231,7 +222,10 @@ class AlgebraicSimplifier : public HloModulePass {
 
   // Run algebraic simplification on the given computation. Returns whether the
   // computation was changed.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Create constant from literal with tiles and element size updated in the
   // constant's layout.
@@ -356,9 +350,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
            AlgebraicSimplifier* simplifier);
 
   // Compute a function that maps from bitcasted dimensions to the resulting
-  // ones. Returns the function as a vector if successful; absl::optional
+  // ones. Returns the function as a vector if successful; std::optional
   // otherwise.
-  static absl::optional<std::vector<std::vector<int64_t>>> ComputeBitcastDimMap(
+  static std::optional<std::vector<std::vector<int64_t>>> ComputeBitcastDimMap(
       const Shape& bitcast_shape, const Shape& operand_shape);
   // Invert the directions of the given bitcast dimension map.
   static std::vector<std::vector<int64_t>> InvertBitcastDimMap(
@@ -369,8 +363,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // re-shaped result of applying bitcast to the original_shape, by using
   // dim_map to re-shape layout dimensions of original_shape. Returns the
   // result_shape with modified layout if the conversion succeeds; Returns
-  // absl::nullopt if fails.
-  static absl::optional<Shape> ReshapeLayoutDimensions(
+  // std::nullopt if fails.
+  static std::optional<Shape> ReshapeLayoutDimensions(
       const Shape& original_shape, const Shape& result_shape,
       const std::vector<std::vector<int64_t>>& original_map,
       const std::vector<std::vector<int64_t>>& result_map);
@@ -501,15 +495,14 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Tries to use a kDot in place of the given convolution.
   StatusOr<bool> SimplifyConvToDot(HloInstruction* convolution);
+  // Tries to use a multiplication in place of the given convolution.
+  StatusOr<bool> SimplifyConvToMultiply(HloInstruction* convolution);
 
   // Tries to simplify a slice where the result of the slice is a scalar.
   StatusOr<bool> TrySimplifyScalarSlice(HloInstruction* slice);
 
   // Tries to convert slice(reshape(X)) into reshape(slice(X))
   StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
-
-  // Tries to convert slice(reshape(X)) into reshape(slice(X))
-  StatusOr<bool> TryToReorderSliceAndTranspose(HloInstruction* slice);
 
   // Tries to convert slice(reverse(X)) into reverse(slice(X))
   StatusOr<bool> TryToReorderSliceAndReverse(HloInstruction* slice);

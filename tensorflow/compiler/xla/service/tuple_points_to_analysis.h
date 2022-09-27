@@ -36,8 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -327,7 +327,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     DCHECK_GE(id, 0);
     auto iter = per_instruction_.find(id);
     if (iter == per_instruction_.end()) {
-      return per_instruction_.emplace(id, absl::make_unique<PerInstruction>())
+      return per_instruction_.emplace(id, std::make_unique<PerInstruction>())
           .first->second.get();
     } else {
       return iter->second.get();

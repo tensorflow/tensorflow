@@ -15,9 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
-#include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
@@ -28,12 +37,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -130,7 +135,7 @@ class DummyEagerClientCache : public EagerClientCache {
 class FakeCache : public TestWorkerCache {
   Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
-    eager_client_cache->reset(new DummyEagerClientCache);
+    *eager_client_cache = std::make_unique<DummyEagerClientCache>();
     return OkStatus();
   }
 
@@ -156,7 +161,7 @@ class EagerServiceImplTest : public ::testing::Test {
     worker_env_.rendezvous_mgr = &rendezvous_mgr_;
     worker_env_.session_mgr = session_mgr_.get();
 
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(
+    device_mgr_ = std::make_unique<StaticDeviceMgr>(
         DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
     worker_env_.local_devices = device_mgr_->ListDevices();
     worker_env_.device_mgr = device_mgr_.get();
@@ -183,7 +188,7 @@ void SetTensorProto(TensorProto* tensor_proto) {
 
 void BuildOperation(
     Operation* operation, int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
+    const std::vector<std::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device) {
   operation->set_id(id);
@@ -193,10 +198,10 @@ void BuildOperation(
   for (const auto& input : inputs) {
     if (input.index() == 0) {
       *operation->add_op_inputs()->mutable_tensor() =
-          absl::get<TensorProto>(input);
+          std::get<TensorProto>(input);
     } else {
       const auto& tensor_handle_pair =
-          absl::get<std::pair<int64_t, int32>>(input);
+          std::get<std::pair<int64_t, int32>>(input);
       auto* input = operation->add_op_inputs()->mutable_remote_handle();
       input->set_op_id(tensor_handle_pair.first);
       input->set_output_num(tensor_handle_pair.second);
@@ -212,7 +217,7 @@ void BuildOperation(
 
 void AddOperationToEnqueueRequest(
     int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
+    const std::vector<std::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     EnqueueRequest* request) {
@@ -222,7 +227,7 @@ void AddOperationToEnqueueRequest(
 
 void AddOperationToRunComponentFunctionRequest(
     int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
+    const std::vector<std::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     const int output_num, RunComponentFunctionRequest* request) {
@@ -704,7 +709,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
  public:
   FunctionWithRemoteInputsTest()
       : EagerServiceImplTest(), eager_service_impl_(&worker_env_) {
-    remote_device_mgr_ = absl::make_unique<StaticDeviceMgr>(
+    remote_device_mgr_ = std::make_unique<StaticDeviceMgr>(
         DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:1"));
     context_id_ = random::New64();
   }
@@ -772,12 +777,12 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
                                  &remote_enqueue_request);
     TF_EXPECT_OK(eager_service_impl_.Enqueue(nullptr, &remote_enqueue_request,
                                              &remote_enqueue_response));
-    eager_cluster_flr_ = absl::make_unique<EagerClusterFunctionLibraryRuntime>(
+    eager_cluster_flr_ = std::make_unique<EagerClusterFunctionLibraryRuntime>(
         context_id_, ctx, device_mgr_.get());
 
     fdef_ = MatMulFunction();
     TF_ASSERT_OK(func_lib_def_.AddFunctionDef(fdef_));
-    eager_pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
+    eager_pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         remote_device_mgr_.get(), Env::Default(), /*config=*/
         nullptr, TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
         /*thread_pool=*/nullptr, eager_cluster_flr_.get(),
@@ -815,7 +820,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
     TF_ASSERT_OK(tensor_handle->Tensor(&t));
     EXPECT_EQ(outputs.size(), 1);
     EXPECT_EQ(outputs.at(0).index(), 1);
-    const TensorShape& shape = absl::get<TensorShape>(outputs.at(0));
+    const TensorShape& shape = std::get<TensorShape>(outputs.at(0));
     EXPECT_EQ(shape, t->shape());
     CheckOutputTensorAndClose(*t);
   }
@@ -960,7 +965,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/absl::nullopt, ctx->RendezvousCreator(),
+      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousCreator(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -985,8 +990,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
 
   TF_ASSERT_OK(kernel->Run(/*step_container=*/nullptr, inputs, &outputs,
                            /*cancellation_manager=*/nullptr,
-                           /*remote_func_params=*/absl::nullopt,
-                           /*stack_trace=*/absl::nullopt,
+                           /*eager_func_params=*/std::nullopt,
+                           /*stack_trace=*/std::nullopt,
                            /*coordination_service_agent=*/nullptr));
 
   CheckOutputsAndClose(outputs, op_id);
@@ -1014,7 +1019,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/absl::nullopt, ctx->RendezvousCreator(),
+      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousCreator(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -1041,7 +1046,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
   Notification n;
   kernel->RunAsync(/*step_container=*/nullptr, inputs, &outputs,
                    /*cancellation_manager=*/nullptr,
-                   /*remote_func_params=*/absl::nullopt,
+                   /*eager_func_params=*/std::nullopt,
                    /*coordination_service_agent=*/nullptr,
                    [&status, &n](const Status& s) {
                      status = s;
@@ -1235,7 +1240,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
 
   // Set RemoteMgr to ctx.
   auto remote_mgr =
-      absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true, ctx);
+      std::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true, ctx);
   TF_ASSERT_OK(ctx->InitializeRemoteWorker(
       /*remote_eager_workers=*/nullptr, /*remote_device_mgr=*/nullptr,
       /*remote_contexts=*/{}, context_id, /*context_view_id=*/0,

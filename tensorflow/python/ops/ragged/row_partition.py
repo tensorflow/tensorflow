@@ -1205,6 +1205,7 @@ class RowPartition(composite_tensor.CompositeTensor):
 # of precomputed row-partition encodings (rather than always using row_splits).
 
 
+@type_spec.register("tf.RowPartitionSpec")
 class RowPartitionSpec(type_spec.TypeSpec):
   """Type specification for a `tf.RowPartition`."""
 
@@ -1370,6 +1371,16 @@ class RowPartitionSpec(type_spec.TypeSpec):
     nrows = tensor_shape.dimension_value(self._nrows[0])
     nvals = tensor_shape.dimension_value(self._nvals[0])
     return RowPartitionSpec(nrows, nvals, self._uniform_row_length, dtype)
+
+  def __deepcopy__(self, memo):
+    del memo
+    dtype = self.dtype
+    nrows = tensor_shape.dimension_value(self._nrows[0])
+    nvals = tensor_shape.dimension_value(self._nvals[0])
+    uniform_row_length = (None if self._uniform_row_length is None else
+                          tensor_shape.dimension_value(
+                              self._uniform_row_length[0]))
+    return RowPartitionSpec(nrows, nvals, uniform_row_length, dtype)
 
 
 #===============================================================================

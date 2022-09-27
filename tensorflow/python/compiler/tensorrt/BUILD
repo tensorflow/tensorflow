@@ -94,6 +94,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:graph_util",
+        "//tensorflow/python/compiler/tensorrt/test:test_utils",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:save_options",

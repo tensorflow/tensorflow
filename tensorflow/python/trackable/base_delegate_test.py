@@ -14,7 +14,7 @@
 # ==============================================================================
 """Tests for base_delegate."""
 import os
-
+from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables as variables_lib
@@ -22,7 +22,6 @@ from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.trackable import base
 from tensorflow.python.trackable import base_delegate
-from tensorflow.python.training.tracking import util
 
 
 class Inner(base.Trackable):

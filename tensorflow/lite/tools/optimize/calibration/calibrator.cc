@@ -67,7 +67,7 @@ class Calibrator {
       : node_ptr_opinfo_map_(node_ptr_opinfo_map),
         logging_op_resolver_(std::move(logging_op_resolver)),
         error_reporter_(error_reporter) {
-    logger_ = absl::make_unique<Logger>();
+    logger_ = std::make_unique<Logger>();
   }
 
   // Returns the wrapped kernel invoke function |TfLiteRegistration.invoke|.
@@ -86,6 +86,7 @@ class Calibrator {
 
   std::vector<const TfLiteNode*> GetNodesUnderCalibration() {
     std::vector<const TfLiteNode*> nodes;
+    nodes.reserve(node_ptr_opinfo_map_.size());
     for (const auto& entry : node_ptr_opinfo_map_) {
       nodes.push_back(entry.first);
     }
@@ -170,7 +171,7 @@ class GlobalCalibratorRegistry {
           "Failed to create calibrator, context already registered.");
       return kTfLiteError;
     }
-    auto calibrator = absl::make_unique<Calibrator>(
+    auto calibrator = std::make_unique<Calibrator>(
         node_to_opinfo, std::move(logging_op_resolver), reporter);
     calibrator_registry_[context] = std::move(calibrator);
     *calibrator_ptr = calibrator_registry_.at(context).get();
@@ -455,7 +456,7 @@ TfLiteStatus BuildLoggingInterpreter(
 
   // Prepare the logging op resolver to use |LoggingEval| for kernel
   // invocations.
-  auto logging_op_resolver = absl::make_unique<LoggingOpResolver>(
+  auto logging_op_resolver = std::make_unique<LoggingOpResolver>(
       builtin_op_and_versions, custom_op_and_versions, op_resolver, LoggingEval,
       error_reporter);
   tflite::InterpreterBuilder(tflite_model, *logging_op_resolver,

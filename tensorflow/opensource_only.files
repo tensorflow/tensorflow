@@ -5,14 +5,14 @@ tensorflow/api_template_v1.__init__:.py
 tensorflow/compat_template.__init__:.py
 tensorflow/compat_template_v1.__init__:.py
 tensorflow/compiler/mlir/glob_lit_test.bzl:
-tensorflow/compiler/mlir/hlo/WORKSPACE:
 tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.bzl:
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
-tensorflow/core/platform/default/build_config/BUILD:
+tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
+tensorflow/compiler/xla/stream_executor/build_defs.bzl:
+tensorflow/core/tfrt/mla/mla_test_utils.h:
+tensorflow/core/tfrt/mla/mla_utils.h:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
-tensorflow/dtensor/mlir/utils/BUILD:
-tensorflow/dtensor/mlir/utils/collective_lowering.cc:
 tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
 tensorflow/dtensor/mlir/utils/update_tpu_metadata.cc:
 tensorflow/examples/custom_ops_doc/multiplex_1/BUILD:
@@ -36,6 +36,7 @@ tensorflow/lite/core/shims/BUILD:
 tensorflow/lite/core/shims/c/builtin_op_data.h:
 tensorflow/lite/core/shims/c/c_api.h:
 tensorflow/lite/core/shims/c/c_api_experimental.h:
+tensorflow/lite/core/shims/c/c_api_types.h:
 tensorflow/lite/core/shims/c/common.h:
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h:
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/gpu_plugin.h:
@@ -63,6 +64,7 @@ tensorflow/lite/delegates/gpu/cl/serialization_generated.h:
 tensorflow/lite/delegates/gpu/common/gpu_model_generated.h:
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h:
 tensorflow/lite/delegates/hexagon/hexagon_nn/BUILD:
+tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl:
 tensorflow/lite/ios/BUILD:
@@ -140,6 +142,7 @@ tensorflow/tools/toolchains/win/tf_win_02212022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_04062022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_04112022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06152021/BUILD:
+tensorflow/tools/toolchains/win/tf_win_06152022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06212021/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06242021/BUILD:
 tensorflow/tools/toolchains/win/tf_win_08062020/BUILD:
@@ -147,6 +150,7 @@ tensorflow/tools/toolchains/win_1803/py36/BUILD:
 tensorflow/tools/toolchains/win_1803/py37/BUILD:
 tensorflow/tools/toolchains/win_1803/py38/BUILD:
 tensorflow/tools/toolchains/win_1803/py39/BUILD:
+tensorflow/tsl/platform/default/build_config/BUILD:
 tensorflow/virtual_root_template_v1.__init__:.py
 tensorflow/virtual_root_template_v2.__init__:.py
 third_party/BUILD:
@@ -166,6 +170,7 @@ third_party/clang_toolchain/download_clang.bzl:
 third_party/codegen.BUILD:
 third_party/common.bzl:
 third_party/compute_library/BUILD:
+third_party/compute_library/build_defs.bzl:
 third_party/coremltools.BUILD:
 third_party/cub.BUILD:
 third_party/curl.BUILD:
@@ -283,6 +288,7 @@ third_party/repo.bzl:
 third_party/six.BUILD:
 third_party/snappy.BUILD:
 third_party/sqlite.BUILD:
+third_party/stablehlo/BUILD:
 third_party/systemlibs/BUILD.tpl:
 third_party/systemlibs/BUILD:
 third_party/systemlibs/absl_py.BUILD:

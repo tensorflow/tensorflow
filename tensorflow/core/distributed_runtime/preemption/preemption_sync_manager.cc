@@ -20,10 +20,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
@@ -32,9 +32,10 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 
+
 namespace tensorflow {
 namespace {
-constexpr int64_t kUnsetSyncCounter = -1;
+constexpr int64_t kPreemptionSyncUnsetCounter = -1;
 constexpr char kPreemptionNoticeKey[] = "RECEIVED_PREEMPTION_NOTICE";
 constexpr char kPreemptionCounterDirKey[] = "PREEMPTION_CURRENT_COUNTER/";
 constexpr char kPreemptionBarrier[] = "PREEMPTION_SYNC_BARRIER";
@@ -50,15 +51,15 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
  public:
   PreemptionSyncManagerImpl() = default;
   ~PreemptionSyncManagerImpl() override {
-    call_opts_->StartCancel();
-    call_opts_->ClearCancelCallback();
     shutdown_.Notify();
-    sync_protocol_thread_ = nullptr;
   }
-  Status Initialize(Env* env, CoordinationServiceAgent* agent) override;
-  Status Initialize(Env* env, CoordinationServiceAgent* agent,
-                    std::unique_ptr<PreemptionNotifier>) override;
-  bool ReachedSyncPoint() override;
+  Status Initialize(CoordinationServiceAgent* agent) override;
+  Status Initialize(xla::DistributedRuntimeClient* client) override;
+  Status Initialize(CoordinationServiceAgent* agent,
+                    const std::string& preemption_notifier_type) override;
+  Status Initialize(CoordinationServiceAgent* agent,
+                    std::unique_ptr<PreemptionNotifier> notifier) override;
+  bool ReachedSyncPoint(int step_counter) override;
 
  private:
   // Determine the sync point upon receipt of preemption notice (death time).
@@ -68,30 +69,44 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
   void CancelPreemptionBarrier();
 
   mutex mu_;
-  // Tracks number of calls (ReachedSyncPoint());
+  // Tracks the last step_counter passed into ReachedSyncPoint();
   int64_t call_counter_ TF_GUARDED_BY(mu_) = 0;
   // If set, determines the sync point.
-  int64_t preemption_sync_counter_ TF_GUARDED_BY(mu_) = kUnsetSyncCounter;
+  int64_t preemption_sync_counter_ TF_GUARDED_BY(mu_) =
+      kPreemptionSyncUnsetCounter;
   std::string current_call_counter_key_;
 
   Env* env_;                         // Not owned;
   CoordinationServiceAgent* agent_;  // Not owned.
+  absl::Notification shutdown_;
+  std::unique_ptr<Thread> sync_protocol_thread_;
   std::unique_ptr<PreemptionNotifier> preemption_notifier_;
   std::shared_ptr<CallOptions> call_opts_;
-  std::unique_ptr<Thread> sync_protocol_thread_;
+};
 
-  absl::Notification shutdown_;
-};  // namespace
+Status PreemptionSyncManagerImpl::Initialize(
+    xla::DistributedRuntimeClient* client) {
+  TF_ASSIGN_OR_RETURN(CoordinationServiceAgent * coord_agent,
+                      client->GetCoordinationServiceAgent());
+  return Initialize(coord_agent);
+}
 
-Status PreemptionSyncManagerImpl::Initialize(Env* env,
-                                             CoordinationServiceAgent* agent) {
-  // TODO(b/230630494): Add Borg implementation.
-  return Initialize(env, agent, CreateSigtermNotifier(env));
+Status PreemptionSyncManagerImpl::Initialize(CoordinationServiceAgent* agent) {
+  return Initialize(agent, "sigterm");
 }
 
 Status PreemptionSyncManagerImpl::Initialize(
-    Env* env, CoordinationServiceAgent* agent,
+    CoordinationServiceAgent* agent,
+    const std::string& preemption_notifier_type) {
+  TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
+  return Initialize(agent, PreemptionNotifier::CreatePreemptionNotifier(
+                               preemption_notifier_type, env));
+}
+
+Status PreemptionSyncManagerImpl::Initialize(
+    CoordinationServiceAgent* agent,
     std::unique_ptr<PreemptionNotifier> notifier) {
+  TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
   env_ = env;
   agent_ = agent;
   preemption_notifier_ = std::move(notifier);
@@ -106,10 +121,15 @@ Status PreemptionSyncManagerImpl::Initialize(
   preemption_notifier_->WillBePreemptedAtAsync(
       [agent = agent_, task_name](StatusOr<absl::Time> death_time) {
         if (!death_time.ok()) {
-          // This usually happens when the preemption notifier dtor is called
-          // and blocking calls are cancelled.
-          LOG(ERROR) << "Error from preemption notifier: "
-                     << death_time.status();
+          // The preemption notifier invokes callback with Cancelled error when
+          // its being destructed.
+          if (errors::IsCancelled(death_time.status())) {
+            LOG(INFO) << "Preemption sync protocol cancelled by notifier: "
+                      << death_time.status();
+          } else {
+            LOG(ERROR) << "Error from preemption notifier: "
+                       << death_time.status();
+          }
           return;
         }
         // Notify coordination service about preemption notice.
@@ -126,8 +146,12 @@ Status PreemptionSyncManagerImpl::Initialize(
   call_opts_ = agent_->GetKeyValueAsync(
       kPreemptionNoticeKey,
       [this, agent = agent_](StatusOr<std::string> status_or_death_time) {
-        // Retrieve preemption notice and parse death time.
-        if (!status_or_death_time.ok()) {
+        if (errors::IsCancelled(status_or_death_time.status())) {
+          // The agent cancels pending GetKeyValue RPCs because of shutdown,
+          // so simply log and return.
+          LOG(INFO) << "Cancelled call to retrive preemption notice.";
+          return;
+        } else if (!status_or_death_time.ok()) {
           LOG(ERROR) << "Failed to retrieve preemption notice from "
                         "coordination service: "
                      << status_or_death_time.status();
@@ -166,7 +190,7 @@ Status PreemptionSyncManagerImpl::Initialize(
                       death_time)));
       });
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
@@ -224,7 +248,7 @@ void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
   // Note: Each task should retrieve the same set of call counters and arrive at
   // the same maximum. We have to calculate this max within each task because
   // coordination service does not provide GetMaxKeyValue().
-  int64_t max_counter = kUnsetSyncCounter;
+  int64_t max_counter = kPreemptionSyncUnsetCounter;
   for (const auto& kv : *all_counters) {
     int64_t call_counter;
     if (!absl::SimpleAtoi(kv.value(), &call_counter)) {
@@ -236,7 +260,7 @@ void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
     max_counter = std::max(max_counter, call_counter);
   }
 
-  if (max_counter == kUnsetSyncCounter) {
+  if (max_counter == kPreemptionSyncUnsetCounter) {
     LOG(ERROR) << "Preemption sync failed - no call counters found.";
     return;
   }
@@ -254,14 +278,14 @@ void PreemptionSyncManagerImpl::CancelPreemptionBarrier() {
   });
 }
 
-bool PreemptionSyncManagerImpl::ReachedSyncPoint() {
+bool PreemptionSyncManagerImpl::ReachedSyncPoint(int step_counter) {
   // Note: if a preemption notice has been received and ComputeSyncCallCounter()
   // is ongoing , this method will be blocked until it acquires the lock. This
   // prevents updates to `call_counter_` while `preemption_sync_counter_` is
   // being computed, which ensures correctness of the preemption sync protocol.
   mutex_lock l(mu_);
   // Track current call.
-  ++call_counter_;
+  call_counter_ = step_counter;
   VLOG(3) << "Current call counter: " << call_counter_
           << ", Preemption sync point: " << preemption_sync_counter_;
 

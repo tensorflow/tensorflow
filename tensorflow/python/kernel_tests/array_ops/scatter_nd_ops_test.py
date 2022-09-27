@@ -889,9 +889,11 @@ class ScatterNdTensorTest(test.TestCase):
                           constant_op.constant([1, 1, 1, 2, 1, 1, 1, 2]))
 
   def testUpdateMinMaxGradients(self):
-    with self.cached_session():
+
+    # Loop body as a function to avoid go/gpylint-faq#cell-var-from-loop.
+    def _TestFn(dtype):
       x = array_ops.ones([4], dtype=dtypes.float32)
-      indices = constant_op.constant([[1], [2], [3], [3]])
+      indices = constant_op.constant([[1], [2], [3], [3]], dtype=dtype)
       updates = constant_op.constant([2.0, 0.5, 1.0, 1.0], dtype=dtypes.float32)
 
       theoretical, _ = gradient_checker_v2.compute_gradient(
@@ -926,6 +928,10 @@ class ScatterNdTensorTest(test.TestCase):
             [0.0, 0.0, 0.3333, 0.3333]]],
           dtype=dtypes.float32)
       self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
+
+    with self.cached_session():
+      for dtype in (dtypes.int32, dtypes.int64):
+        _TestFn(dtype)
 
   def testTensorScatterUpdateWithForwarding(self):
     for dtype in (dtypes.int32, dtypes.float32):

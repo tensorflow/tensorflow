@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
         input_filename, tags, exported_names, &context);
     if (!module_or.status().ok()) return 1;
 
-    module_or.ConsumeValueOrDie()->print(output->os());
+    module_or.value()->print(output->os());
   } else if (import_saved_model_signature_defs) {
     mlir::MLIRContext context;
     tensorflow::MLIRImportOptions import_options;
@@ -134,7 +134,7 @@ int main(int argc, char** argv) {
         input_filename, tags, exported_names, &context, import_options);
     if (!module_or.status().ok()) return 1;
 
-    module_or.ConsumeValueOrDie()->print(output->os());
+    module_or.value()->print(output->os());
   } else if (import_saved_model_signature_defs_lite) {
     mlir::MLIRContext context;
     tensorflow::MLIRImportOptions import_options;
@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
         input_filename, tags, exported_names, &context, import_options);
     if (!module_or.status().ok()) return 1;
 
-    module_or.ConsumeValueOrDie()->print(output->os());
+    module_or.value()->print(output->os());
   } else {
     auto input = mlir::openInputFile(input_filename, &error_message);
 

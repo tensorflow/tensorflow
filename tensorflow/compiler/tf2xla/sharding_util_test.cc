@@ -25,7 +25,7 @@ TEST(CoreUtilTest, ParseShardingFromDevice) {
   Graph graph(OpRegistry::Global());
 
   auto core_from_sharding =
-      [](absl::optional<xla::OpSharding> sharding) -> int64 {
+      [](std::optional<xla::OpSharding> sharding) -> int64 {
     if (sharding.has_value() &&
         sharding.value().type() == xla::OpSharding::MAXIMAL) {
       return sharding.value().tile_assignment_devices(0);
@@ -36,24 +36,24 @@ TEST(CoreUtilTest, ParseShardingFromDevice) {
 
   auto parse_status = ParseShardingFromDevice("", 1);
   TF_EXPECT_OK(parse_status.status());
-  EXPECT_EQ(-1, core_from_sharding(parse_status.ValueOrDie()));
+  EXPECT_EQ(-1, core_from_sharding(parse_status.value()));
   parse_status = ParseShardingFromDevice("", 100);
   TF_EXPECT_OK(parse_status.status());
-  EXPECT_EQ(-1, core_from_sharding(parse_status.ValueOrDie()));
+  EXPECT_EQ(-1, core_from_sharding(parse_status.value()));
 
   parse_status = ParseShardingFromDevice("/device:A_REPLICATED_CORE:-1", 100);
   EXPECT_FALSE(parse_status.ok());
 
   parse_status = ParseShardingFromDevice("/device:A_REPLICATED_CORE:55", 100);
   TF_EXPECT_OK(parse_status.status());
-  EXPECT_EQ(55, core_from_sharding(parse_status.ValueOrDie()));
+  EXPECT_EQ(55, core_from_sharding(parse_status.value()));
 
   parse_status = ParseShardingFromDevice("/device:A_REPLICATED_CORE:100", 100);
   EXPECT_FALSE(parse_status.ok());
 
   parse_status = ParseShardingFromDevice("/cpu:0", 100);
   TF_EXPECT_OK(parse_status.status());
-  EXPECT_EQ(-1, core_from_sharding(parse_status.ValueOrDie()));
+  EXPECT_EQ(-1, core_from_sharding(parse_status.value()));
 }
 
 class ShardingWithMetadataTest
@@ -83,12 +83,11 @@ TEST_P(ShardingWithMetadataTest, GetShardingFromNode) {
 
   auto test_sharding_metadata =
       [&check_metadata](
-          const std::function<StatusOr<absl::optional<xla::OpSharding>>()>&
-              fn) {
+          const std::function<StatusOr<std::optional<xla::OpSharding>>()>& fn) {
         auto status_or_sharding = fn();
         TF_ASSERT_OK(status_or_sharding.status());
-        ASSERT_TRUE(status_or_sharding.ValueOrDie().has_value());
-        auto& sharding = status_or_sharding.ValueOrDie();
+        ASSERT_TRUE(status_or_sharding.value().has_value());
+        auto& sharding = status_or_sharding.value();
         ASSERT_TRUE(sharding.has_value());
         if (sharding->type() == xla::OpSharding::TUPLE) {
           EXPECT_TRUE(sharding->metadata().empty());

@@ -79,7 +79,7 @@ class BaseTransposeConvOpModel : public SingleOpModel {
         BuiltinOperator_TRANSPOSE_CONV, BuiltinOptions_TransposeConvOptions,
         CreateTransposeConvOptions(builder_, padding, stride_w, stride_h)
             .Union());
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_TRANSPOSE_CONV, registration, version);
     BuildInterpreter(
         {GetShape(output_shape_), GetShape(filter_), GetShape(input_)});
@@ -634,7 +634,7 @@ class BaseTransposeConvBiasOpModel : public SingleOpModel {
         BuiltinOperator_TRANSPOSE_CONV, BuiltinOptions_TransposeConvOptions,
         CreateTransposeConvOptions(builder_, padding, stride_w, stride_h)
             .Union());
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_TRANSPOSE_CONV, registration, version);
     BuildInterpreter({GetShape(output_shape_), GetShape(filter_),
                       GetShape(input_), GetShape(bias_)});

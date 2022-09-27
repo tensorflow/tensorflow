@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -81,6 +81,14 @@ int64_t UserCount(const HloInstruction* hlo) {
 
 bool FusionNodeIndexingEvaluation::CodeDuplicationTooHigh(
     const HloInstruction* producer) const {
+  // We always allow to fuse broadcasts even if it causes code duplication,
+  // because the alternative is worse: We would have to materialize the
+  // broadcast in memory. Still, if our evaluation indicates that code
+  // duplication would be too high, this would propagate to the operand of the
+  // broadcast, so we would then not allow to fuse the operand of the broadcast.
+  if (producer->opcode() == HloOpcode::kBroadcast) {
+    return false;
+  }
   int64_t emitted_instructions = EvaluateEmittedInstructions(producer);
   return emitted_instructions > kAllowedCodeDuplication ||
          (OpInvalidatesCache(producer) &&

@@ -46,7 +46,7 @@ class AllGatherCanonicalizeTest : public HloTestBase {
     HloPassPipeline pipeline("all-gather-cse");
     pipeline.AddPass<CanonicalizeAllGatherForCSE>();
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 };
 
@@ -62,7 +62,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(reshape,
@@ -82,7 +82,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(reshape, op::Reshape(op::AllGather(op::Parameter())));
@@ -101,7 +101,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(reshape, op::Reshape(op::AllGather(op::Parameter())));
@@ -120,7 +120,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(reshape, op::Reshape(op::AllGather(op::Parameter())));
@@ -139,7 +139,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(reshape, AllOf(op::AllGather(op::Reshape(op::Reshape(_))),

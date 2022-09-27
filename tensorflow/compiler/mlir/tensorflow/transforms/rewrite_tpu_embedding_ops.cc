@@ -27,7 +27,7 @@ namespace TF {
 namespace {
 
 // Rewrites RecvTPUEmbeddingActivationsOp and SendTPUEmbeddingGradients ops to
-// internal variants by introducing _RecvTPUEmbeddingDeduplicationData op.
+// internal variants by introducing XlaRecvTPUEmbeddingDeduplicationData op.
 struct RewriteTPUEmbeddingOps
     : public RewriteTPUEmbeddingOpsPassBase<RewriteTPUEmbeddingOps> {
   void runOnOperation() override;
@@ -72,27 +72,26 @@ LogicalResult RunOnRegion(Region* region) {
   Location loc = recv_op ? recv_op.getLoc() : send_op.getLoc();
   StringRef config = recv_op ? recv_op.config() : send_op.config();
 
-  // Create _RecvTPUEmbeddingDeduplicationData op.
+  // Create XlaRecvTPUEmbeddingDeduplicationData op.
   OpBuilder builder(region);
   auto output_ty =
       RankedTensorType::get({}, VariantType::get(region->getContext()));
-  auto dedup_op = builder.create<_RecvTPUEmbeddingDeduplicationDataOp>(
+  auto dedup_op = builder.create<XlaRecvTPUEmbeddingDeduplicationDataOp>(
       loc, output_ty, config);
 
   // Rewrite RecvTPUEmbeddingActivations op to the corresponding internal op.
   if (recv_op)
-    AddOperandAndRewriteAs<_RecvTPUEmbeddingActivationsOp>(recv_op, dedup_op,
-                                                           &builder);
+    AddOperandAndRewriteAs<XlaRecvTPUEmbeddingActivationsOp>(recv_op, dedup_op,
+                                                             &builder);
 
   // Rewrite SendTPUEmbeddingGradients op to the corresponding internal op and
   // then update the OperandSegmentSize attribute.
   if (send_op) {
     int32_t operand_sizes[] = {static_cast<int32_t>(send_op.N()),
                                static_cast<int32_t>(send_op.NN()), 1};
-    auto attr_ty = VectorType::get(3, builder.getI32Type());
-    auto operand_size_attr = DenseIntElementsAttr::get(attr_ty, operand_sizes);
+    auto operand_size_attr = builder.getDenseI32ArrayAttr(operand_sizes);
 
-    auto new_send_op = AddOperandAndRewriteAs<_SendTPUEmbeddingGradientsOp>(
+    auto new_send_op = AddOperandAndRewriteAs<XlaSendTPUEmbeddingGradientsOp>(
         send_op, dedup_op, &builder);
     new_send_op->setAttr(new_send_op.getOperandSegmentSizeAttr(),
                          operand_size_attr);

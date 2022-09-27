@@ -48,7 +48,10 @@ class HloDomainIsolator : public HloModulePass {
   // Update domains for an instruction.
   StatusOr<bool> UpdateDomains(HloInstruction* instruction);
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   DomainCreatorFactory creator_factory_;

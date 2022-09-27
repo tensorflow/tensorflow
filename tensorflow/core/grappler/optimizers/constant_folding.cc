@@ -228,7 +228,7 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     // switch node, and use it to anchor the control dependency.
     for (const NodeDef* output : node_map->GetOutputs(node->name())) {
       if (IsIdentity(*output) || IsIdentityNSingleInput(*output)) {
-        if (IsSameInput(node->input(0), input_name)) {
+        if (IsSameInput(output->name(), input_name)) {
           return AsControlDependency(*output);
         }
       }

@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/test_util.h"
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
 #include <iterator>
+#include <random>
 
 namespace tflite {
 

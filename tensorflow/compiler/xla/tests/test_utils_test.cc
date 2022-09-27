@@ -43,14 +43,14 @@ XLA_TEST_F(TestUtilsTest, UnusedParam) {
   Shape pair_float = ShapeUtil::MakeShape(F32, {2});
   Reduce(Parameter(&builder, 0, pair_float, "operand"),
          Parameter(&builder, 1, single_float, "init"),
-         computation_status.ValueOrDie(), {0});
+         computation_status.value(), {0});
   computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executables, local_client_->Compile(computation_status.ValueOrDie(),
-                                               {&pair_float, &single_float},
-                                               ExecutableBuildOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto executables,
+                          local_client_->Compile(computation_status.value(),
+                                                 {&pair_float, &single_float},
+                                                 ExecutableBuildOptions()));
   HloModule& module =
       const_cast<HloModule&>(executables[0]->executable()->module());
   TF_ASSERT_OK(MakeFakeArguments(&module).status());
@@ -69,7 +69,7 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
       dynamic-slice.1 = f32[1,2,3] dynamic-slice(array_param.1, index_param.0, index_param.1, index_param.2), dynamic_slice_sizes={1,2,3}
       ROOT dynamic-slice.2 = f32[3,2,2] dynamic-slice(array_param.2, index_param.0, index_param.1, index_param.2), dynamic_slice_sizes={3,2,2}
     })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 5);
@@ -100,7 +100,7 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
       dynamic-update-slice.1 = f32[123,4,789] dynamic-update-slice(array_param.1, update_param.1, index_param.0, index_param.1, index_param.2)
       ROOT dynamic-update-slice.2 = f32[3,3000,5] dynamic-update-slice(array_param.2, update_param.2, index_param.0, index_param.1, index_param.2)
     })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 7);
@@ -134,7 +134,7 @@ ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (
   ROOT %sort.148.1589 = (f32[1048576]{0}, s32[1048576]{0}) sort(f32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}, to_apply=compare
 }
 )")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
@@ -165,7 +165,7 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
   ROOT %sort.148.1589 = (s32[1048576]{0}, s32[1048576]{0}) sort(s32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}, to_apply=compare
 }
 )")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
@@ -196,7 +196,7 @@ ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,14
   ROOT %sort = (bf16[2,1452]{1,0}, s32[2,1452]{1,0}) sort(bf16[2,1452]{1,0} %parameter.0, s32[2,1452]{1,0} %parameter.1), dimensions={1}, to_apply=compare
 }
 )")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
@@ -224,7 +224,7 @@ ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
   ROOT %bitcast.5 = f32[] bitcast(f32[1]{0} %dynamic-slice.3)
 }
 )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
@@ -253,7 +253,7 @@ ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
       slice_sizes={1,1,300}
 }
 )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
@@ -291,7 +291,7 @@ ENTRY main {
     index_vector_dim=1
   }
 )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));

@@ -111,7 +111,7 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
             fused_activation_function, dilation_factor, dilation_factor)
             .Union());
 
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_DEPTHWISE_CONV_2D, registration);
 
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
@@ -292,6 +292,11 @@ TEST_F(PerChannelHybridDepthwiseConvolutionOptimizedOpTest,
 TEST_F(PerChannelHybridDepthwiseConvolutionOptimizedOpTest,
        AccuracyPaddingTest1024) {
   RandomTest(1, 3, 3, 1024, 3, true, 1);
+}
+
+TEST_F(PerChannelHybridDepthwiseConvolutionOptimizedOpTest,
+       AccuracyPaddiacc_buffer_sizengTest4096) {
+  RandomTest(1, 3, 3, 4096, 3, true, 1);
 }
 
 TEST_F(PerChannelHybridDepthwiseConvolutionOptimizedOpTest,

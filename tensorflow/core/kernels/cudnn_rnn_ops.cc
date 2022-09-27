@@ -22,6 +22,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 #include <unordered_set>
+#include <utility>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/device_base.h"
@@ -712,20 +713,20 @@ Status CreateForwardAndBackwardIODescriptors(
           input_shape.dim_size(0), input_shape.dim_size(1),
           input_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(input_desc_s.status());
-      *input_desc = input_desc_s.ConsumeValueOrDie();
+      *input_desc = std::move(input_desc_s).value();
     } else {
       auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
           input_shape.dim_size(1), input_shape.dim_size(0),
           input_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(input_desc_s.status());
-      *input_desc = input_desc_s.ConsumeValueOrDie();
+      *input_desc = std::move(input_desc_s).value();
     }
   } else {
     auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
         input_shape.dim_size(0), input_shape.dim_size(1),
         input_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(input_desc_s.status());
-    *input_desc = input_desc_s.ConsumeValueOrDie();
+    *input_desc = std::move(input_desc_s).value();
   }
 
   DCHECK_EQ(hidden_state_shape.dims(), 3);
@@ -734,13 +735,13 @@ Status CreateForwardAndBackwardIODescriptors(
         hidden_state_shape.dim_size(0), hidden_state_shape.dim_size(1),
         hidden_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
-    *h_state_desc = hidden_state_desc_s.ConsumeValueOrDie();
+    *h_state_desc = std::move(hidden_state_desc_s).value();
   } else {
     auto hidden_state_desc_s = executor->createRnnStateTensorDescriptor(
         hidden_state_shape.dim_size(1), hidden_state_shape.dim_size(0),
         hidden_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
-    *h_state_desc = hidden_state_desc_s.ConsumeValueOrDie();
+    *h_state_desc = std::move(hidden_state_desc_s).value();
   }
 
   DCHECK_EQ(cell_state_shape.dims(), 3);
@@ -749,13 +750,13 @@ Status CreateForwardAndBackwardIODescriptors(
         cell_state_shape.dim_size(0), cell_state_shape.dim_size(1),
         cell_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(cell_state_desc_s.status());
-    *c_state_desc = cell_state_desc_s.ConsumeValueOrDie();
+    *c_state_desc = std::move(cell_state_desc_s).value();
   } else {
     auto cell_state_desc_s = executor->createRnnStateTensorDescriptor(
         cell_state_shape.dim_size(1), cell_state_shape.dim_size(0),
         cell_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(cell_state_desc_s.status());
-    *c_state_desc = cell_state_desc_s.ConsumeValueOrDie();
+    *c_state_desc = std::move(cell_state_desc_s).value();
   }
 
   DCHECK_EQ(output_shape.dims(), 3);
@@ -765,20 +766,20 @@ Status CreateForwardAndBackwardIODescriptors(
           output_shape.dim_size(0), output_shape.dim_size(1),
           output_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(output_desc_s.status());
-      *output_desc = output_desc_s.ConsumeValueOrDie();
+      *output_desc = std::move(output_desc_s).value();
     } else {
       auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
           output_shape.dim_size(1), output_shape.dim_size(0),
           output_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(output_desc_s.status());
-      *output_desc = output_desc_s.ConsumeValueOrDie();
+      *output_desc = std::move(output_desc_s).value();
     }
   } else {
     auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
         output_shape.dim_size(0), output_shape.dim_size(1),
         output_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(output_desc_s.status());
-    *output_desc = output_desc_s.ConsumeValueOrDie();
+    *output_desc = std::move(output_desc_s).value();
   }
 
   return OkStatus();
@@ -1087,7 +1088,7 @@ class CudnnRNNKernelCommon : public OpKernel {
     if (!rnn_desc_s.ok()) {
       return FromExecutorStatus(rnn_desc_s);
     }
-    *rnn_desc = rnn_desc_s.ConsumeValueOrDie();
+    *rnn_desc = std::move(rnn_desc_s).value();
     return OkStatus();
   }
 
@@ -1109,7 +1110,7 @@ class CudnnRNNKernelCommon : public OpKernel {
         use_padded_io);
     TF_RETURN_IF_ERROR(rnn_desc_s.status());
 
-    *rnn_desc = rnn_desc_s.ConsumeValueOrDie();
+    *rnn_desc = std::move(rnn_desc_s).value();
     return OkStatus();
   }
 

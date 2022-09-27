@@ -69,6 +69,7 @@ cc_library(
         ":tfrt_fallback_sync_opdefs_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
         "@tf_runtime//:tensor_opdefs",
@@ -112,11 +113,13 @@ td_library(
     ],
     includes = ["."],
     visibility = [
+        "//learning/brain/experimental/tfrt:__subpackages__",
         "//learning/brain/tfrt/tpu/compiler:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
     ],
     deps = [
-        "@llvm-project//mlir:SideEffectTdFiles",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
         "@tf_runtime//:CoreRTTdFiles",
         "@tf_runtime//:OpBaseTdFiles",
         "@tf_runtime//:compiler_td_files",
@@ -168,9 +171,19 @@ gentbl_cc_library(
             ["-gen-op-defs"],
             "tfrt_fallback_sync.cpp.inc",
         ),
+        (
+            [
+                "-gen-dialect-decls",
+                "-dialect=tfrt_fallback_sync",
+            ],
+            "tfrt_fallback_sync_dialect.h.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tfrt_fallback_sync.td",
     test = True,
+    visibility = [
+        "//learning/brain/experimental/tfrt:__subpackages__",
+    ],
     deps = [":tfrt_fallback_td_files"],
 )

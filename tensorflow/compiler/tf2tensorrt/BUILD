@@ -6,8 +6,8 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "VERSION",
     "if_google",
-    "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
     "tf_custom_op_library_additional_deps",
@@ -79,7 +79,7 @@ cc_library(
     deps = if_tensorrt([
         "@local_config_tensorrt//:tensorrt_headers",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
     ]),
 )
 
@@ -206,6 +206,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -417,6 +418,7 @@ tf_cuda_library(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core:stream_executor_headers_lib",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
@@ -429,6 +431,8 @@ tf_cuda_library(
     deps = [
         ":common_utils",
         ":logger_registry",
+        ":utils",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
@@ -507,7 +511,7 @@ tf_cuda_library(
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "trt_allocator_test",
     size = "small",
     srcs = ["utils/trt_allocator_test.cc"],
@@ -522,7 +526,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "trt_lru_cache_test",
     size = "small",
     srcs = ["utils/trt_lru_cache_test.cc"],
@@ -675,10 +679,14 @@ tf_cuda_library(
         "convert/ops/einsum.cc",
         "convert/ops/fill_ops.cc",
         "convert/ops/like_ops.cc",
+        "convert/ops/log_softmax.cc",
         "convert/ops/quantization_ops.cc",
+        "convert/ops/selectv2.cc",
         "convert/ops/slice_ops.cc",
+        "convert/ops/softmax.cc",
         "convert/ops/tile.cc",
         "convert/ops/unary_ops.cc",
+        "convert/ops/variable_ops.cc",
         "convert/timing_cache.cc",
         "convert/trt_optimization_pass.cc",
     ],
@@ -732,7 +740,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/profiler/lib:annotated_traceme",
-        "//tensorflow/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps() + select({
         ":use_efficient_nms_plugin": [":efficient_nms_plugin"],
@@ -806,6 +814,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
@@ -943,10 +954,14 @@ tf_cuda_library(
 
 cc_library(
     name = "utils",
-    srcs = ["convert/utils.cc"],
+    srcs = [
+        "convert/utils.cc",
+        "utils/trt_experimental_features.cc",
+    ],
     hdrs = [
         "common/utils.h",
         "convert/utils.h",
+        "utils/trt_experimental_features.h",
         "utils/trt_tensor_proxy.h",
     ],
     copts = tf_copts(),
@@ -979,14 +994,18 @@ tf_cuda_library(
         ":common_utils",
         ":tensorrt_lib",
         ":op_converter_registry",
-        "//tensorflow/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
     ]),
 )
 
 pybind_extension(
     name = "_pywrap_py_utils",
     srcs = ["utils/py_utils_wrapper.cc"],
-    link_in_framework = True,
+    dynamic_deps = select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
     static_deps = [
         "@bazel_tools//:__subpackages__",
         "@boringssl//:__subpackages__",
@@ -1026,10 +1045,10 @@ pybind_extension(
     deps = [
         ":common_utils",
         ":py_utils",
+        "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
-        "//tensorflow/stream_executor",
         "@pybind11",
     ],
 )

@@ -139,7 +139,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<ChooseFastestIterator>(
+      return std::make_unique<ChooseFastestIterator>(
           ChooseFastestIterator::Params{
               this, strings::StrCat(prefix, "::ChooseFastest")});
     }
@@ -317,7 +317,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
         std::vector<ThreadInfo> threads(dataset()->inputs_.size());
         for (size_t i = 0, num_inputs = dataset()->inputs_.size();
              i < num_inputs; ++i) {
-          threads[i].result = absl::make_unique<InvocationResult>();
+          threads[i].result = std::make_unique<InvocationResult>();
           threads[i].thread = ctx->StartThread(
               strings::StrCat("tf_data_merge_", i),
               std::bind(&ChooseFastestIterator::RunnerThread, this, ctx,

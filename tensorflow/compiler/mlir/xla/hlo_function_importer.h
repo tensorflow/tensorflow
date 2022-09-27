@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_FUNCTION_IMPORTER_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_FUNCTION_IMPORTER_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_FUNCTION_IMPORTER_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_HLO_FUNCTION_IMPORTER_H_
 
+#include <string>
 #include <unordered_map>
 
 #include "absl/types/optional.h"
@@ -26,9 +27,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -55,7 +56,7 @@ class HloFunctionImporter {
       const xla::HloComputation& computation, mlir::ModuleOp module,
       std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>*
           function_map,
-      mlir::Builder* builder);
+      mlir::Builder* builder, bool is_main);
 
   // Imports the given hlo computation to the specified region. If
   // 'flatten_region_arg_tuple' is true, then flatten the tuple-typed region
@@ -148,7 +149,7 @@ class HloFunctionImporter {
   // Imports the given computation as a new function, if it hasn't been already
   // imported.
   StatusOr<mlir::func::FuncOp> ImportAsFunc(
-      const xla::HloComputation& computation);
+      const xla::HloComputation& computation, bool is_main);
 
   // Imports the given computation in the specified region.
   tensorflow::Status ImportAsRegion(const HloComputation& computation,
@@ -216,15 +217,49 @@ class HloFunctionImporter {
   // Converts Array ref to an DenseIntElementsAttr.
   mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements);
 
+  // Converts Array ref of bools to a DenseIntElementsAttr of I1 type.
+  mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<bool> elements);
+
   // Converts Array ref to padding attribute. Input is a flattened list of
   // padding low and padding high for each of the spatial dimensions.
   mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
 
   // Converts channel id to attribute
-  mlir::NamedAttribute ConvertChannelHandle(absl::optional<int64_t> channel_id);
+  mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id);
+
+  // Convert use global device ids flag to attribute
+  mlir::NamedAttribute ConvertUseGlobalDeviceIds();
 
   // Converts channel handle to attribute
   mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);
+
+  // ============
+  // Imports an old-style async start op. E.g. an HLO all-gather-start
+  // instruction is imported as an async-start associated with an all-gather
+  // computation.
+  //
+  // Eventually, old-style async ops (e.g. all-gather-start) and new-style async
+  // ops (i.e. async-start, async-update and async-done) will converge on the
+  // HLO side, so we decided to not introduce new MHLO ops for all-gather-start
+  // and friends.
+  //
+  // In the end, there may be new ops added in the old-style because they're not
+  // compatible with the new-style async semantics, but those should be handled
+  // on their own, rather than this function which "upgrades" ops to the
+  // new-style async API.
+  // ============
+  template <typename SyncOp>
+  StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
+      llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
+      const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
+      mlir::Type result_type, mlir::OpBuilder* func_builder,
+      std::string func_name, std::function<Status(SyncOp)> mutate_op);
+
+  // Imports an old-style async done op
+  StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
+      llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
+      const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
+      mlir::Type result_type, mlir::OpBuilder* func_builder);
 
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;
@@ -241,4 +276,4 @@ class HloFunctionImporter {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_FUNCTION_IMPORTER_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_HLO_FUNCTION_IMPORTER_H_

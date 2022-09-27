@@ -311,7 +311,7 @@ TfLiteStatus SymmetricPerChannelQuantization(TensorT* tensor,
   const int32_t channel_dim_size = tensor->shape[channel_dim_index];
   // Fill per channel max and min values if needed
   if (tensor->quantization == nullptr) {
-    tensor->quantization = absl::make_unique<QuantizationParametersT>();
+    tensor->quantization = std::make_unique<QuantizationParametersT>();
   }
   if (!HasMinMax(tensor)) {
     TF_LITE_ENSURE_STATUS(
@@ -483,7 +483,7 @@ TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
                                         &max_value, &scaling_factor);
 
   if (tensor->quantization == nullptr) {
-    tensor->quantization = absl::make_unique<QuantizationParametersT>();
+    tensor->quantization = std::make_unique<QuantizationParametersT>();
   }
   tensor->quantization->scale = std::vector<float>(1, scaling_factor);
   tensor->quantization->zero_point = std::vector<int64_t>(1, 0);
@@ -549,7 +549,7 @@ TfLiteStatus AddQuantizationParams(const std::vector<float>& scales,
                                    ModelT* model, TensorT* tensor,
                                    ErrorReporter* error_reporter) {
   if (tensor->quantization == nullptr) {
-    tensor->quantization = absl::make_unique<QuantizationParametersT>();
+    tensor->quantization = std::make_unique<QuantizationParametersT>();
   }
   tensor->quantization->scale.assign(scales.begin(), scales.end());
   if (zero_point.size() != scales.size()) {
@@ -759,7 +759,7 @@ TfLiteStatus QuantizeActivation(TensorT* tensor, TensorType activations_type,
 
 TfLiteStatus QuantizeActivationToInt16(TensorT* tensor, float scale) {
   const int32_t zero_point = 0;
-  tensor->quantization = absl::make_unique<QuantizationParametersT>();
+  tensor->quantization = std::make_unique<QuantizationParametersT>();
   tensor->quantization->scale.push_back(scale);
   tensor->quantization->zero_point.push_back(zero_point);
   tensor->type = TensorType_INT16;

@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/node_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/statusor.h"
 

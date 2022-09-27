@@ -38,17 +38,22 @@ using ::tensorflow::tfrt_stub::OpKernelRunnerTable;
 void FallbackResourceArray::SetResource(
     int index, tensorflow::tfrt_stub::ImmutableTensor tensor) {
   if (resource_async_values_.size() <= index) {
+    resource_storage_.resize(index + 1);
     resource_async_values_.resize(index + 1);
   }
 
-  DCHECK(!resource_async_values_[index]);
+  DCHECK(resource_storage_[index].get() == nullptr);
+  DCHECK(resource_async_values_[index].AsPtr().value() == nullptr);
 
   resources_.push_back(std::make_unique<tensorflow::tfrt_stub::ImmutableTensor>(
       std::move(tensor)));
 
-  resource_async_values_[index] = std::make_unique<
-      tfrt::UnRefCountedAsyncValue<tensorflow::tfrt_stub::FallbackTensor>>(
-      resources_.back().get());
+  resource_storage_[index] = std::make_unique<
+      tfrt::internal::AsyncValueStorage<tfrt_stub::FallbackTensor>>();
+
+  resource_async_values_[index] =
+      tfrt::MakeAvailableAsyncValueRef<tfrt_stub::FallbackTensor>(
+          *resource_storage_[index], resources_.back().get());
 }
 
 static CancellationManager* GetDefaultCancellationManager() {
@@ -87,12 +92,12 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
   DCHECK(resource_array_);
   DCHECK(rendezvous_);
 
-  // TODO(tfrt-devs): Support customizing non-CPU devices.
-  auto* device = device_manager_->HostCPU();
   if (user_intra_op_threadpool != nullptr) {
-    custom_device_ = tensorflow::RenamedDevice::NewRenamedDevice(
-        device->name(), device, /*owns_underlying=*/false,
-        /*isolate_session_state=*/false, user_intra_op_threadpool);
+    for (auto* device : device_manager_->ListDevices()) {
+      custom_device_[device] = tensorflow::RenamedDevice::NewRenamedDevice(
+          device->name(), device, /*owns_underlying=*/false,
+          /*isolate_session_state=*/false, user_intra_op_threadpool);
+    }
   }
   if (model_metadata.has_value()) {
     session_metadata_ = *model_metadata;

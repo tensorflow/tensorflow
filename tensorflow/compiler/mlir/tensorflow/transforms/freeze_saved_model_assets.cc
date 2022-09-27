@@ -86,7 +86,7 @@ void FreezeAssetsPass::runOnOperation() {
       // Replace the arg with a tf.Const op in the function body.
       builder.setInsertionPointToStart(&func.getBody().front());
 
-      std::string asset_filename = asset.filename().str();
+      std::string asset_filename = asset.getFilename().str();
       std::string filename =
           tensorflow::io::JoinPath(saved_model_dir, asset_filename);
       ShapedType shaped_type =

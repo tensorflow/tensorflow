@@ -21,17 +21,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
-StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
+StatusOr<bool> AsyncCollectiveCreator::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   struct ReplacedAsync {
     HloInstruction* start;
     HloInstruction* done;
   };
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     // Find all supported collective ops first as we can't modify the
     // instructions while iterating through them.
     std::vector<HloInstruction*> supported_collectives;
@@ -129,7 +132,7 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
               HloInstruction::CreateCollectivePermuteStart(
                   ShapeInference::InferCollectivePermuteStartShape(
                       operand_shapes)
-                      .ValueOrDie(),
+                      .value(),
                   operand, cp->mutable_operand(1), cp->mutable_operand(2),
                   cp->mutable_operand(3), cp->source_target_pairs(),
                   cp->dynamic_slice_sizes_list(), cp->channel_id()));

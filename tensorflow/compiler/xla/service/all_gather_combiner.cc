@@ -48,7 +48,7 @@ namespace {
 // all_gather_dimension.
 Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
   if (to_combine.size() < 2) {
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Combined " << to_combine.size() << " AllGather ops";
 
@@ -98,7 +98,7 @@ Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
     TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
         to_combine[i], std::move(replace_with)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // The group key encapsulates all of the properties which must match for it to
@@ -108,10 +108,10 @@ using GroupKey =
 
 // Returns a key that will be equal for instructions that might be combined, or
 // different if not.
-absl::optional<GroupKey> CombineKey(const HloInstruction* instruction,
-                                    const HloDomainMap& domain_map) {
+std::optional<GroupKey> CombineKey(const HloInstruction* instruction,
+                                   const HloDomainMap& domain_map) {
   if (instruction->opcode() != HloOpcode::kAllGather) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const auto* ag = Cast<HloAllGatherInstruction>(instruction);
@@ -137,7 +137,9 @@ AllGatherCombiner::AllGatherCombiner(int64_t combine_threshold_in_bytes,
     : combine_threshold_in_bytes_(combine_threshold_in_bytes),
       combine_threshold_count_(combine_threshold_count) {}
 
-StatusOr<bool> AllGatherCombiner::Run(HloModule* module) {
+StatusOr<bool> AllGatherCombiner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running AllGatherCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
@@ -154,7 +156,8 @@ StatusOr<bool> AllGatherCombiner::Run(HloModule* module) {
   }
 
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&domain_map](const HloInstruction* instruction) {

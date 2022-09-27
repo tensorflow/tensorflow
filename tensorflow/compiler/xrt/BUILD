@@ -49,10 +49,10 @@ cc_library(
     deps = [
         "//tensorflow/compiler/jit:xla_device",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_node_context",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_configuration",
-        "//tensorflow/stream_executor/tpu:tpu_node_context",
     ],
 )
 
@@ -94,6 +94,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
+        "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -101,9 +104,6 @@ cc_library(
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/stream_executor",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor:tf_allocator_adapter",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",

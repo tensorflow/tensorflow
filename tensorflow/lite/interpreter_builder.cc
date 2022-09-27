@@ -603,11 +603,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       }
       if (auto* buffer = (*buffers)[tensor->buffer()]) {
         if (auto* array = buffer->data()) {
-          if (size_t size = array->size()) {
-            *buffer_size = size;
-            *buffer_data = reinterpret_cast<const char*>(array->data());
-            return kTfLiteOk;
-          }
+          *buffer_size = array->size();
+          *buffer_data = reinterpret_cast<const char*>(array->data());
+          return kTfLiteOk;
         }
       }
       return kTfLiteOk;
@@ -758,7 +756,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     return cleanup_and_error();
   }
 
-  interpreter->reset(new Interpreter(error_reporter_));
+  *interpreter = std::make_unique<Interpreter>(error_reporter_);
   if (subgraphs->size() > 1) {
     (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }

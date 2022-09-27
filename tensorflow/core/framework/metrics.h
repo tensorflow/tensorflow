@@ -192,14 +192,8 @@ void RecordUnusedOutput(const string& op_name);
 // TODO(jtkeeling): Should we record building/optimizing tf.functions?
 void UpdateGraphBuildTime(const uint64 running_time_usecs);
 
-// Records the status of a graph passing through various states/stages of
-// TfMlirGraphOptimizationPass processing using
-// tf_metadata.tf_mlir_update_graph_optimization_pass_state_counter metric.
-// 'pass_state' identifies the state of the pass
-// (or "PassState" metric field) and 'processing_state' refers to the stage
-// in the process the graph is at (or "ProcessingState" metric field).
-void UpdateTfMlirGraphOptimizationPassStateCounter(
-    const std::string& pass_state, const std::string& processing_state);
+// Updates the metric stored for time spent optimizing function graphs.
+void UpdateFunctionGraphOptimizationTime(const uint64 running_time_usecs);
 
 // Records the activity of the first phase of the mlir bridge using the
 // tf_metadata.tf_mlir_bridge_first_phase_count metric.
@@ -211,6 +205,24 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,
                                          bool fallback_enabled,
                                          const std::string& result);
+
+// Records the activity per op using the
+// tf_metadata.tf_mlir_bridge_graph_analysis_per_op.
+// op_name: the name of op.
+// construction_context: eager, session, Not tracked.
+// is_single_core_inference_mode: true, false.
+// unsupported_reason: the reason why the graph is not supported in MLIR-based
+// bridge, like invalid graph, has unsupported ops, etc.
+// has_unsupported_features: true indicates MLIR-based bridge is disabled,
+// false indicates MLIR-based bridge is enabled.
+
+void UpdateTfMlirBridgeGraphAnalysisPerOp(
+    const std::string& op_name, const std::string& construction_context,
+    bool is_single_core_inference_mode, const std::string& num_replicas,
+    const std::string& num_cores_per_replica, const std::string& use_tpu,
+    const std::string& allow_soft_placement,
+    const std::string& use_spmd_for_xla_partitioning,
+    const std::string& unsupported_reason, bool has_unsupported_features);
 
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>

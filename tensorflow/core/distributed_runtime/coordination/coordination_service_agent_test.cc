@@ -120,10 +120,9 @@ class CoordinationServiceAgentTest : public ::testing::Test {
   }
 
   // Should be called after mocking service responses, before testing the agent.
-  void InitializeAgent() {
-    CoordinationServiceConfig config;
+  void InitializeAgent(CoordinationServiceConfig config = {}) {
     config.set_service_leader("test_leader");
-    TF_EXPECT_OK(agent_->Initialize(
+    TF_ASSERT_OK(agent_->Initialize(
         Env::Default(), /*job_name=*/"test_job",
         /*task_id=*/0, config, std::move(client_),
         /*error_fn=*/[](Status s) {
@@ -161,8 +160,8 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_Simple_Success) {
 
   auto result = agent_->GetKeyValue(test_key);
 
-  TF_EXPECT_OK(result.status());
-  EXPECT_EQ(result.ValueOrDie(), test_value);
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(*result, test_value);
 }
 
 TEST_F(CoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
@@ -181,8 +180,8 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
 
   auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(10));
 
-  TF_EXPECT_OK(result.status());
-  EXPECT_EQ(result.ValueOrDie(), test_value);
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(*result, test_value);
 }
 
 TEST_F(CoordinationServiceAgentTest, GetKeyValue_Timeout_ReturnError) {
@@ -267,8 +266,8 @@ TEST_F(CoordinationServiceAgentTest,
 
   auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(10));
 
-  TF_EXPECT_OK(result.status());
-  EXPECT_EQ(result.ValueOrDie(), test_value);
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(*result, test_value);
 }
 
 TEST_F(CoordinationServiceAgentTest, CancelGetKeyValue_Success) {
@@ -312,7 +311,7 @@ TEST_F(CoordinationServiceAgentTest, TryGetKeyValue_Simple_Success) {
   InitializeAgent();
   auto result = agent_->TryGetKeyValue(test_key);
   TF_ASSERT_OK(result.status());
-  EXPECT_EQ(result.ValueOrDie(), test_value);
+  EXPECT_EQ(*result, test_value);
 }
 
 TEST_F(CoordinationServiceAgentTest, GetKeyValueDir_Simple_Success) {
@@ -332,26 +331,15 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValueDir_Simple_Success) {
 
   auto result = agent_->GetKeyValueDir(test_key);
 
-  TF_EXPECT_OK(result.status());
-  EXPECT_THAT(result.ValueOrDie(), UnorderedPointwise(KvEq(), test_values));
-}
-
-TEST_F(CoordinationServiceAgentTest, NotAllowedToConnectAfterShuttingDown) {
-  InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
-
-  TF_EXPECT_OK(agent_->Shutdown());
-  Status status = agent_->Connect();
-
-  // Not allowed to connect after shutting down.
-  EXPECT_TRUE(errors::IsFailedPrecondition(status));
+  TF_ASSERT_OK(result.status());
+  EXPECT_THAT(*result, UnorderedPointwise(KvEq(), test_values));
 }
 
 TEST_F(CoordinationServiceAgentTest, ShutdownInErrorShouldReturnError) {
   // Connect coordination agent and set it to error.
   InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
-  TF_EXPECT_OK(agent_->ReportError(errors::Internal("Test Error.")));
+  TF_ASSERT_OK(agent_->Connect());
+  TF_ASSERT_OK(agent_->ReportError(errors::Internal("Test Error.")));
 
   // Shutdown should return error.
   Status s = agent_->Shutdown();
@@ -362,7 +350,7 @@ TEST_F(CoordinationServiceAgentTest, ShutdownInErrorShouldReturnError) {
 TEST_F(CoordinationServiceAgentTest, Reset_ConnectedButNotInError_Fail) {
   // Connect agent.
   InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
+  TF_ASSERT_OK(agent_->Connect());
 
   auto status = agent_->Reset();
 
@@ -373,11 +361,11 @@ TEST_F(CoordinationServiceAgentTest, Reset_ConnectedButNotInError_Fail) {
 TEST_F(CoordinationServiceAgentTest, ConnectAfterResetError) {
   // Connect coordination agent and set it to error.
   InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
-  TF_EXPECT_OK(agent_->ReportError(errors::Internal("Test Error.")));
+  TF_ASSERT_OK(agent_->Connect());
+  TF_ASSERT_OK(agent_->ReportError(errors::Internal("Test Error.")));
 
   // Reset error.
-  TF_EXPECT_OK(agent_->Reset());
+  TF_ASSERT_OK(agent_->Reset());
   // Agent should be able to reconnect to the service after resetting.
   TF_EXPECT_OK(agent_->Connect());
 }
@@ -389,15 +377,15 @@ TEST_F(CoordinationServiceAgentTest, ResetCanBeRetried) {
       .WillOnce(InvokeArgument<2>(OkStatus()));
   // Connect coordination agent and set it to error.
   InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
-  TF_EXPECT_OK(agent_->ReportError(errors::Internal("Test Error.")));
+  TF_ASSERT_OK(agent_->Connect());
+  TF_ASSERT_OK(agent_->ReportError(errors::Internal("Test Error.")));
 
   // Reset error fails for the first time.
   Status reset_status = agent_->Reset();
   EXPECT_TRUE(errors::IsInternal(reset_status));
 
   // Agent should be able to attempt resetting again.
-  TF_EXPECT_OK(agent_->Reset());
+  TF_ASSERT_OK(agent_->Reset());
   // Agent should be able to reconnect to the service after resetting.
   TF_EXPECT_OK(agent_->Connect());
 }
@@ -407,8 +395,8 @@ TEST_F(CoordinationServiceAgentTest, GetOwnTask) {
 
   auto result = agent_->GetOwnTask();
 
-  TF_EXPECT_OK(result.status());
-  CoordinatedTask actual_task = result.ValueOrDie();
+  TF_ASSERT_OK(result.status());
+  CoordinatedTask actual_task = *result;
   // These fields are from the arguments used in InitializeAgent().
   CoordinatedTask expected_task;
   expected_task.set_job_name("test_job");
@@ -426,9 +414,9 @@ TEST_F(CoordinationServiceAgentTest, GetOwnTask_Uninitialized) {
 TEST_F(CoordinationServiceAgentTest, WaitAtBarrier_SameIdUsedTwice_Fails) {
   InitializeAgent();
   const std::string barrier_id = "only_use_once";
-  TF_EXPECT_OK(agent_->Connect());
+  TF_ASSERT_OK(agent_->Connect());
   // Wait at barrier for the first time should succeed.
-  TF_EXPECT_OK(
+  TF_ASSERT_OK(
       agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}));
 
   // Subsequent calls should fail.
@@ -436,6 +424,44 @@ TEST_F(CoordinationServiceAgentTest, WaitAtBarrier_SameIdUsedTwice_Fails) {
       agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{});
 
   EXPECT_TRUE(errors::IsFailedPrecondition(result));
+}
+
+TEST_F(CoordinationServiceAgentTest, GetEnv_SucceedsAfterInit) {
+  EXPECT_TRUE(errors::IsFailedPrecondition(agent_->GetEnv().status()));
+  InitializeAgent();
+
+  StatusOr<Env*> result = agent_->GetEnv();
+
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(*result, Env::Default());
+}
+
+TEST_F(CoordinationServiceAgentTest, Connect_AbortedErrorShouldBeRetried) {
+  // Mock connection failing for the first two times.
+  EXPECT_CALL(*GetClient(), RegisterTaskAsync(_, _, _, _))
+      .WillOnce(InvokeArgument<3>(errors::Aborted("DuplicateTaskRegistration")))
+      .WillOnce(InvokeArgument<3>(errors::Aborted("DuplicateTaskRegistration")))
+      .WillOnce(InvokeArgument<3>(OkStatus()));
+  InitializeAgent();
+
+  TF_EXPECT_OK(agent_->Connect());
+}
+
+TEST_F(CoordinationServiceAgentTest, Connect_AbortedErrorShouldFailEventually) {
+  // Mock connection failing - old incarnation of coordination service never
+  // restarts.
+  EXPECT_CALL(*GetClient(), RegisterTaskAsync(_, _, _, _))
+      .WillRepeatedly(
+          InvokeArgument<3>(errors::Aborted("DuplicateTaskRegistration")));
+  CoordinationServiceConfig config;
+  // Connect should only be retried for 3 seconds.
+  config.set_cluster_register_timeout_in_ms(
+      absl::ToInt64Milliseconds(absl::Seconds(3)));
+  InitializeAgent(config);
+
+  Status s = agent_->Connect();
+
+  EXPECT_TRUE(errors::IsAborted(s));
 }
 
 }  // namespace

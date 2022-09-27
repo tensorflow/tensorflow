@@ -90,7 +90,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       const string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
   }
 

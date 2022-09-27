@@ -592,7 +592,7 @@ Status DirectSession::RunInternal(
       pool = nullptr;
     }
   } else if (threadpool_options.inter_op_threadpool != nullptr) {
-    threadpool_wrapper = absl::make_unique<thread::ThreadPool>(
+    threadpool_wrapper = std::make_unique<thread::ThreadPool>(
         threadpool_options.inter_op_threadpool);
     pool = threadpool_wrapper.get();
   } else {
@@ -1980,7 +1980,7 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
   const std::vector<Tensor>* actual_feed_tensors;
 
   if (TF_PREDICT_FALSE(any_resource_feeds)) {
-    converted_feed_tensors = absl::make_unique<std::vector<Tensor>>();
+    converted_feed_tensors = std::make_unique<std::vector<Tensor>>();
     converted_feed_tensors->reserve(feed_tensors.size());
     for (const Tensor& t : feed_tensors) {
       if (t.dtype() == DT_RESOURCE) {

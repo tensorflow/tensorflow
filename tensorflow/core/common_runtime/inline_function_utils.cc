@@ -252,21 +252,21 @@ std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::DefaultPlacer(const Graph& graph,
                                          const Node& caller) {
   VLOG(3) << "Create default placer for inlined function body.";
-  return absl::make_unique<DefaultFunctionBodyPlacer>(caller);
+  return std::make_unique<DefaultFunctionBodyPlacer>(caller);
 }
 
 std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::SingleDevicePlacer(const Graph& graph,
                                               const Node& caller) {
   VLOG(3) << "Create single device placer for inlined function body.";
-  return absl::make_unique<SingleDeviceFunctionBodyPlacer>(caller);
+  return std::make_unique<SingleDeviceFunctionBodyPlacer>(caller);
 }
 
 std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::MultiDevicePlacer(const Graph& graph,
                                              const Node& caller) {
   VLOG(3) << "Create multi device placer for inlined function body.";
-  return absl::make_unique<MultiDeviceFunctionBodyPlacer>(caller);
+  return std::make_unique<MultiDeviceFunctionBodyPlacer>(caller);
 }
 
 namespace {

@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 using stream_executor::port::StatusOr;
 
@@ -37,10 +37,10 @@ namespace {
 
 // Returns string attribute value for the node if the attribute is present,
 // otherwise returns empty optional value.
-absl::optional<string> GetStringAttr(const Node& n, const string& attr_name) {
+std::optional<string> GetStringAttr(const Node& n, const string& attr_name) {
   auto attr = n.attrs().Find(attr_name);
   if (!attr) {
-    return absl::nullopt;
+    return std::nullopt;
   } else {
     return attr->s();
   }
@@ -344,7 +344,7 @@ Status PerformStaticShapeInferenceBeforeEncapsulation(Graph* g) {
 StatusOr<std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
 OutsideCompilationClusterDependencies(
     const Graph* g, const string& outside_compilation_attr_name) {
-  auto cluster_deps = absl::make_unique<
+  auto cluster_deps = std::make_unique<
       absl::flat_hash_map<string, absl::flat_hash_set<string>>>();
 
   for (const Edge* e : g->edges()) {
@@ -367,7 +367,7 @@ OutsideCompilationClusterDependencies(
   }
 
   auto cluster_deps_ordered =
-      absl::make_unique<absl::flat_hash_map<string, std::vector<string>>>();
+      std::make_unique<absl::flat_hash_map<string, std::vector<string>>>();
 
   for (auto it = cluster_deps->begin(); it != cluster_deps->end(); it++) {
     std::vector<string> ordered_deps(it->second.begin(), it->second.end());

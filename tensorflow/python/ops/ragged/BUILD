@@ -589,6 +589,20 @@ py_test(
 )
 
 py_test(
+    name = "ragged_math_ops_test",
+    size = "medium",
+    srcs = ["ragged_math_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":ragged",  # fixdeps: keep
+        ":ragged_factory_ops",
+        ":ragged_math_ops",
+        "//tensorflow/python:framework_test_lib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "ragged_getitem_test",
     size = "medium",
     timeout = "long",
@@ -1308,7 +1322,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "ragged_dynamic_partition_op_test",
     srcs = ["ragged_dynamic_partition_op_test.py"],
     python_version = "PY3",
@@ -1493,11 +1507,7 @@ py_test(
 
 cuda_py_test(
     name = "ragged_factory_ops_test",
-    size = "small",
     srcs = ["ragged_factory_ops_test.py"],
-    tags = [
-        "no_gpu",  # TODO(b/213596871): times out
-    ],
     deps = [
         ":ragged_functional_ops",
         "//tensorflow/python:map_fn",

@@ -59,12 +59,12 @@ class KernelSupportLibrary {
       llvm::Value* step,
       const std::function<void(llvm::Value* ind_var, bool is_first_iteration)>&
           for_body_generator) {
-    CHECK_EQ(::tensorflow::OkStatus(),
+    CHECK_EQ(OkStatus(),
              ForWithStatus(
                  name, start, end, step,
                  [&](llvm::Value* ind_var, bool is_first_iteration) -> Status {
                    for_body_generator(ind_var, is_first_iteration);
-                   return ::tensorflow::OkStatus();
+                   return OkStatus();
                  }));
   }
 
@@ -116,7 +116,7 @@ class KernelSupportLibrary {
         name, start, end, step, peel_first_iteration,
         [&](llvm::Value* ind_var, llvm::Value* is_first_iteration) -> Status {
           for_body_generator(ind_var, is_first_iteration);
-          return ::tensorflow::OkStatus();
+          return OkStatus();
         }));
   }
 
@@ -215,7 +215,7 @@ class KernelSupportLibrary {
       llvm::Value* condition,
       const std::function<Status()>& true_block_generator,
       const std::function<Status()>& false_block_generator = []() -> Status {
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       }) {
     return IfWithStatus("", condition, true_block_generator,
                         false_block_generator);
@@ -235,16 +235,16 @@ class KernelSupportLibrary {
           name, condition,
           [&]() {
             true_block_generator();
-            return ::tensorflow::OkStatus();
+            return OkStatus();
           },
           [&]() {
             false_block_generator();
-            return ::tensorflow::OkStatus();
+            return OkStatus();
           }));
     } else {
       TF_CHECK_OK(IfWithStatus(name, condition, [&]() {
         true_block_generator();
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       }));
     }
   }

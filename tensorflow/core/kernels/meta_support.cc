@@ -65,7 +65,7 @@ uint8_t* GetScratch(OpKernelContext* context) {
   Scratch* scratch = nullptr;
   std::function<Status(Scratch**)> creator = [](Scratch** resource) {
     *resource = new Scratch();
-    return Status::OK();
+    return OkStatus();
   };
   Status s = context->resource_manager()->LookupOrCreate(
       "MetaGemm", "ScratchBuffer", &scratch, creator);

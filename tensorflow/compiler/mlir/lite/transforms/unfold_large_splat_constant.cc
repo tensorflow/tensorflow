@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
-
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 namespace mlir {
 namespace TFL {
 namespace {
@@ -81,14 +81,15 @@ class UnfoldLargeSplatConstantPass
         op_builder->create<mlir::arith::ConstantOp>(
             const_op->getLoc(),
             DenseIntElementsAttr::get(
-                RankedTensorType::get({splat_elements_attr.getType().getRank()},
-                                      op_builder->getI64Type()),
+                tensorflow::GetTypeFromTFTensorShape(
+                    {splat_elements_attr.getType().getRank()},
+                    op_builder->getI64Type()),
                 splat_elements_attr.getType().getShape()));
     mlir::arith::ConstantOp fill_value =
         op_builder->create<mlir::arith::ConstantOp>(
             const_op->getLoc(),
             DenseElementsAttr::get(
-                RankedTensorType::get(
+                tensorflow::GetTypeFromTFTensorShape(
                     {}, splat_elements_attr.getType().getElementType()),
                 splat_elements_attr.getSplatValue<Attribute>()));
     TFL::FillOp fill = op_builder->create<TFL::FillOp>(

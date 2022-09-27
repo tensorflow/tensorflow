@@ -16,7 +16,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h"

@@ -251,6 +251,13 @@ class LinearOperatorDiagTest(
     operator = linalg.LinearOperatorDiag(diag)
     self.check_tape_safe(operator)
 
+  def test_convert_variables_to_tensors(self):
+    diag = variables_module.Variable([[2.]])
+    operator = linalg.LinearOperatorDiag(diag)
+    with self.cached_session() as sess:
+      sess.run([diag.initializer])
+      self.check_convert_variables_to_tensors(operator)
+
 
 if __name__ == "__main__":
   linear_operator_test_util.add_tests(LinearOperatorDiagTest)

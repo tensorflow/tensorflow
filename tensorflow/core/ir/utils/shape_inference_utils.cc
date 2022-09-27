@@ -81,9 +81,17 @@ NamedAttrList GetAllAttributesFromOperation(Operation* op) {
 }
 
 // Extracts a PartialTensorShape from the MLIR type.
+// Some MLIR shapes may fail to be represented as PartialTensorShape, e.g.
+// those where num_elements overflows.
+// TODO(tlongeri): Should num_elements overflow be handled by the MLIR
+// verifier? Are there other cases?
 Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
   if (auto ranked_type = t.dyn_cast<RankedTensorType>()) {
-    return tensorflow::PartialTensorShape(ranked_type.getShape());
+    tensorflow::PartialTensorShape shape;
+    const tensorflow::Status status =
+        tensorflow::PartialTensorShape::BuildPartialTensorShape(
+            ranked_type.getShape(), &shape);
+    if (status.ok()) return shape;
   }
   return None;
 }
@@ -97,9 +105,12 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
       int arg_idx = arg.getArgNumber();
       auto attrs =
           func_op.getArgAttrOfType<ArrayAttr>(arg_idx, "tf._output_shapes");
-      if (!attrs || attrs.empty()) return None;
-      auto shape_attr = attrs[0].cast<tf_type::ShapeAttr>();
-      if (shape_attr.hasRank())
+      if (!attrs || attrs.size() != 1) return None;
+
+      // "tf._output_shapes" in certain models may not store the shape as
+      // ShapeAttr, ignore them because we don't know how to interpret it.
+      auto shape_attr = attrs[0].dyn_cast<tf_type::ShapeAttr>();
+      if (shape_attr && shape_attr.hasRank())
         return tensorflow::PartialTensorShape(shape_attr.getShape());
     }
   }
@@ -167,7 +178,7 @@ Optional<SmallVector<int64_t, 8>> GetShapeFromHandle(InferenceContext& context,
 TensorType CreateTensorType(InferenceContext& context, const ShapeHandle& sh,
                             Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
-  if (shape.hasValue())
+  if (shape.has_value())
     return RankedTensorType::get(shape.getValue(), element_type);
   return UnrankedTensorType::get(element_type);
 }
@@ -177,7 +188,7 @@ ShapedTypeComponents CreateShapedTypeComponents(InferenceContext& context,
                                                 const ShapeHandle& sh,
                                                 Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
-  if (shape.hasValue())
+  if (shape.has_value())
     return ShapedTypeComponents(shape.getValue(), element_type);
   return ShapedTypeComponents(element_type);
 }

@@ -124,6 +124,15 @@ typedef struct TfLiteOpaqueNode TfLiteOpaqueNode;
 // TfLiteOpaqueTensor is an opaque version of TfLiteTensor;
 typedef struct TfLiteOpaqueTensor TfLiteOpaqueTensor;
 
+// TfLiteOpaqueDelegateStruct: opaque version of TfLiteDelegate; allows
+// delegation of nodes to alternative backends.
+//
+// This is an abstract type that is intended to have the same
+// role as TfLiteDelegate from common.h, but without exposing the implementation
+// details of how delegates are implemented.
+// WARNING: This is an experimental type and subject to change.
+typedef struct TfLiteOpaqueDelegateStruct TfLiteOpaqueDelegateStruct;
+
 #ifdef __cplusplus
 }  // extern C
 #endif

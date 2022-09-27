@@ -133,6 +133,7 @@ TfLiteSignatureRunner* TfLiteInterpreterGetSignatureRunner(
     const TfLiteInterpreter* interpreter, const char* signature_key) {
   tflite::SignatureRunner* signature_runner =
       interpreter->impl->GetSignatureRunner(signature_key);
+  if (!signature_runner) return nullptr;
   return new TfLiteSignatureRunner{signature_runner};
 }
 

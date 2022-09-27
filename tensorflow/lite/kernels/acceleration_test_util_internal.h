@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <functional>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -64,7 +65,7 @@ class ConfigurationEntry {
 // and the parse function to convert configuration lines into configuration
 // objects.
 template <typename T>
-absl::optional<T> GetAccelerationTestParam(std::string test_id) {
+std::optional<T> GetAccelerationTestParam(std::string test_id) {
   static std::atomic<std::vector<ConfigurationEntry<T>>*> test_config_ptr;
 
   if (test_config_ptr.load() == nullptr) {
@@ -92,9 +93,9 @@ absl::optional<T> GetAccelerationTestParam(std::string test_id) {
       [&test_id](ConfigurationEntry<T> elem) { return elem.Matches(test_id); });
   if (test_config_iter != test_config->end() &&
       !test_config_iter->IsDenylistEntry()) {
-    return absl::optional<T>(test_config_iter->TestConfig());
+    return std::optional<T>(test_config_iter->TestConfig());
   } else {
-    return absl::optional<T>();
+    return std::optional<T>();
   }
 }
 

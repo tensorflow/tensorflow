@@ -15,20 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/fused_eigen_output_kernels.h"
 
+#include <string>
+
 #include "absl/strings/str_join.h"
-#include "absl/strings/substitute.h"
 
 namespace tensorflow {
 
 Status InitializeFusedComputation(
-    OpKernelConstruction* context, const string& kernel_name,
+    OpKernelConstruction* context, const std::string& kernel_name,
     const std::vector<FusedComputationPattern>& patterns,
     FusedComputationType* fused_computation,
     FusedComputationArgs* fused_computation_args) {
   // 'fused_ops' and 'num_args' attributes are specified by the Grappler
   // Remapper optimizer (see grappler/optimizers/remapper.cc).
 
-  std::vector<string> fused_ops;
+  std::vector<std::string> fused_ops;
   TF_RETURN_IF_ERROR(context->GetAttr("fused_ops", &fused_ops));
   if (fused_ops.empty()) {
     return errors::InvalidArgument("Fused ", kernel_name,
@@ -37,6 +38,19 @@ Status InitializeFusedComputation(
 
   int num_args;
   TF_RETURN_IF_ERROR(context->GetAttr("num_args", &num_args));
+  int num_host_args;
+  if (!context->GetAttr("num_host_args", &num_host_args).ok()) {
+    num_host_args = 0;  // default value
+  }
+  int num_inputs = context->num_inputs();
+  if (num_inputs != 2 + num_args + num_host_args) {
+    return errors::InvalidArgument(
+        "Fused ", kernel_name,
+        " must have the number of inputs equal to 2 + num_args + num_host_args "
+        "but in fact the number of inputs is ",
+        num_inputs, " and num_args is ", num_args, " and num_host_args is ",
+        num_host_args);
+  }
 
   // TODO(ezhulenev): Add support for fusion element-wise op chains defined
   // at runtime, e.g. Relu+Sqrt+Tanh+etc.
@@ -60,12 +74,48 @@ Status InitializeFusedComputation(
   if (*fused_computation == FusedComputationType::kBiasAdd ||
       *fused_computation == FusedComputationType::kBiasAddWithRelu ||
       *fused_computation == FusedComputationType::kBiasAddWithRelu6 ||
+      *fused_computation == FusedComputationType::kBiasAddWithTanh ||
+      *fused_computation == FusedComputationType::kBiasAddWithSigmoid ||
       *fused_computation == FusedComputationType::kBiasAddWithElu ||
-      *fused_computation == FusedComputationType::kBiasAddWithLeakyRelu) {
-    if (num_args != 1) {
+      *fused_computation == FusedComputationType::kBiasAddWithLeakyRelu ||
+      *fused_computation == FusedComputationType::kBiasAddWithGeluApproximate ||
+      *fused_computation == FusedComputationType::kBiasAddWithGeluExact) {
+    if (num_args != 1 && !(num_args == 2 && num_host_args == 2)) {
       return errors::InvalidArgument(
           "Fused ", kernel_name,
-          " with BiasAdd must have one extra argument: bias.");
+          " with BiasAdd must have one extra argument: bias"
+          " or 4 extra arguments: bias, side_input, conv_input_scale and "
+          "side_input_scale");
+    }
+    constexpr int kConvInput = 0;
+    constexpr int kFilter = 1;
+    constexpr int kBias = 2;
+    constexpr int kSideInput = 3;
+    if (context->input_type(kConvInput) == DT_INT8) {
+      if (num_inputs != 6) {
+        return errors::InvalidArgument("Fused ", kernel_name,
+                                       " for int8 must have 6 inputs and ",
+                                       num_inputs, " is provided");
+      }
+      if (context->input_type(kFilter) != DT_INT8) {
+        return errors::InvalidArgument("Fused ", kernel_name,
+                                       " for int8 has filter type ",
+                                       context->input_type(kFilter),
+                                       " that does not match the input fype ",
+                                       context->input_type(kConvInput));
+      }
+      if (context->input_type(kBias) != DT_FLOAT) {
+        return errors::InvalidArgument(
+            "Fused ", kernel_name, " for int8 has bias type ",
+            context->input_type(kBias), " that must have the float type");
+      }
+      if (context->input_type(kSideInput) != DT_INT8) {
+        return errors::InvalidArgument("Fused ", kernel_name,
+                                       " for int8 has side_input type ",
+                                       context->input_type(kSideInput),
+                                       " that does not match the input fype ",
+                                       context->input_type(kConvInput));
+      }
     }
     if (*fused_computation == FusedComputationType::kBiasAddWithLeakyRelu) {
       TF_RETURN_IF_ERROR(context->GetAttr(

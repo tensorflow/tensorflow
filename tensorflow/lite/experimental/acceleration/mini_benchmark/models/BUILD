@@ -17,7 +17,7 @@
 
 package(
     default_visibility = [
-        "//visibility:public",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
     ],
     licenses = ["notice"],
 )

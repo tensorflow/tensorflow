@@ -71,11 +71,14 @@ enum MinibenchmarkStatus {
   kMinibenchmarkCouldntChmodTemporaryFile = 508,
   kMinibenchmarkPopenFailed = 509,
   kMinibenchmarkCommandFailed = 510,
+  kMinibenchmarkCommandTimedOut = 514,
   kMiniBenchmarkCannotLoadSupportLibrary = 511,
   kMiniBenchmarkInvalidSupportLibraryConfiguration = 512,
+  kMinibenchmarkPipeFailed = 513,
   // Validator status codes.
   kMinibenchmarkDelegateNotSupported = 1000,
   kMinibenchmarkDelegatePluginNotFound = 1001,
+  kMinibenchmarkDelegateCreateFailed = 1013,
   kMinibenchmarkModelTooLarge = 1002,  // Safety limit currently set at 100M.
   kMinibenchmarkSeekToModelOffsetFailed = 1003,
   kMinibenchmarkModelReadFailed = 1004,
@@ -88,6 +91,8 @@ enum MinibenchmarkStatus {
   kMinibenchmarkValidationSubgraphHasTooFewInputs = 1011,
   kMinibenchmarkValidationSubgraphHasTooFewOutputs = 1011,
   kMinibenchmarkValidationSubgraphInputsDontMatchOutputs = 1012,
+  kMinibenchmarkValidationInputMissing = 1013,
+  kMinibenchmarkValidationSubgraphBuildFailed = 1014,
 
   // Validator runner status codes.
   kMinibenchmarkChildProcessAlreadyRunning = 1501,

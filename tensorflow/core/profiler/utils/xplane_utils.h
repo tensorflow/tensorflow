@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_UTILS_H_
 
+#include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -34,6 +37,30 @@ namespace profiler {
 // WARNING: This should only be used when comparing events from the same XLine.
 inline Timespan XEventTimespan(const XEvent& event) {
   return Timespan(event.offset_ps(), event.duration_ps());
+}
+
+// Returns the planes with the given predicate.
+template <typename F>
+std::vector<const XPlane*> FindPlanes(const XSpace& space, const F& predicate) {
+  std::vector<const XPlane*> result;
+  for (const XPlane& plane : space.planes()) {
+    if (predicate(plane)) {
+      result.push_back(&plane);
+    }
+  }
+  return result;
+}
+
+// Returns mutable planes with the given predicate.
+template <typename F>
+std::vector<XPlane*> FindMutablePlanes(XSpace* space, const F& predicate) {
+  std::vector<XPlane*> result;
+  for (XPlane& plane : *space->mutable_planes()) {
+    if (predicate(plane)) {
+      result.push_back(&plane);
+    }
+  }
+  return result;
 }
 
 // Returns the plane with the given name or nullptr if not found.
@@ -54,8 +81,9 @@ std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
 std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
                                                  absl::string_view prefix);
 
-// Returns the plane with the given id or nullptr if not found.
+// Returns the plane with the given id/name or nullptr if not found.
 const XLine* FindLineWithId(const XPlane& plane, int64_t id);
+const XLine* FindLineWithName(const XPlane& plane, absl::string_view name);
 
 XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 
@@ -135,6 +163,47 @@ bool IsEmpty(const XSpace& space);
 // GPU kernel events.
 void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,
                       XPlane* plane);
+
+// Get a fingerprint of device plane for deduplicating derived lines in similar
+// device planes. The fingerprint is a hash of sorted HLO modules name which
+// were appeared on current plane.
+// Returns 0 when such "Xla Modules" line don't exist.
+uint64_t GetDevicePlaneFingerprint(const XPlane& plane);
+template <typename XPlanePointerIterator>
+void SortPlanesById(XPlanePointerIterator begin, XPlanePointerIterator end) {
+  std::sort(begin, end, [&](const XPlane* a, const XPlane* b) {
+    return a->id() < b->id();  // ascending order of device xplane id.
+  });
+}
+
+// When certain event context only exists from event from other line, which
+// "encloses" current event in timeline, we need to find out quickly which
+// enclosing event is (or if there is one).
+// To Avoid O(N) search overhead, assume the event are processed in the order
+// of "XLine default sorting order".
+class XEventContextTracker {
+ public:
+  // The events on line need to be sorted and disjointed.
+  XEventContextTracker(const XPlaneVisitor* plane, const XLine* line)
+      : plane_(plane), line_(line) {}
+
+  // Returns the event that encloses/contains the specified input event.
+  // Expects called with events with start timestamps sorted incrementingly.
+  std::optional<XEventVisitor> GetContainingEvent(const Timespan& event);
+
+  // Returns the event that overlaps the specified input event.
+  // Expects called with events with start timestamps sorted incrementingly.
+  std::optional<XEventVisitor> GetOverlappingEvent(const Timespan& event);
+
+ private:
+  const XPlaneVisitor* plane_;
+  const XLine* line_;
+  int64_t current_index_ = -1;
+};
+
+// Aggregate traces on full_trace xplane and add them onto the aggregated_trace
+// xplane.
+void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace);
 
 }  // namespace profiler
 }  // namespace tensorflow

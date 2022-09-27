@@ -279,7 +279,7 @@ def _zero_debias(strategy, unbiased_var, value, decay):
 
 
 @tf_export("train.ExponentialMovingAverage")
-class ExponentialMovingAverage(object):
+class ExponentialMovingAverage:
   """Maintains moving averages of variables by employing an exponential decay.
 
   When training a model, it is often beneficial to maintain moving averages of

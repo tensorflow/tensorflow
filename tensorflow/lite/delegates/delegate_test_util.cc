@@ -363,20 +363,20 @@ std::unique_ptr<SimpleDelegate>
 SimpleDelegate::DelegateWithRuntimeShapePropagation(
     const std::vector<int>& nodes, int64_t delegate_flags,
     int min_ops_per_subset) {
-  return std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+  return std::make_unique<SimpleDelegate>(
       nodes, delegate_flags, false /**fail_node_prepare**/,
       min_ops_per_subset /**min_ops_per_subset**/, false /**fail_node_invoke**/,
-      true /**automatic_shape_propagation**/));
+      true /**automatic_shape_propagation**/);
 }
 
 std::unique_ptr<SimpleDelegate> SimpleDelegate::DelegateWithDynamicOutput(
     const std::vector<int>& nodes) {
   // All params default except nodes & set_output_tensor_dynamic.
-  return std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+  return std::make_unique<SimpleDelegate>(
       nodes, kTfLiteDelegateFlagsAllowDynamicTensors,
       false /**fail_node_prepare**/, 0 /**min_ops_per_subset**/,
       false /**fail_node_invoke**/, false /**automatic_shape_propagation**/,
-      true /**custom_op**/, true /**set_output_tensor_dynamic**/));
+      true /**custom_op**/, true /**set_output_tensor_dynamic**/);
 }
 
 void TestFP16Delegation::SetUp() {

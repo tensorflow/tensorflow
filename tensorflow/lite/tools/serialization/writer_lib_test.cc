@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <cstdlib>
 #include <fstream>
+#include <memory>
 #include <numeric>
 #include <sstream>
 #include <string>
 #include <tuple>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -345,6 +347,53 @@ TEST_P(SingleSubgraphTest, OpVersioningTest) {
   CHECK_EQ(output_reg.version, 2);
 }
 
+TEST_P(SingleSubgraphTest, DynamicShapeTest) {
+  // Build a model with a single Add op.
+  Interpreter interpreter;
+
+  interpreter.AddTensors(3);
+  std::vector<int> dims = {1, 3};
+  std::vector<int> dims_signature = {-1, 3};
+  interpreter.SetTensorParametersReadWrite(
+      0, kTfLiteFloat32, "a", dims, TfLiteQuantizationParams{1.0, 0},
+      /*is_variable=*/false, &dims_signature);
+  interpreter.SetTensorParametersReadWrite(
+      1, kTfLiteFloat32, "b", dims, TfLiteQuantizationParams{1.0, 0},
+      /*is_variable=*/false, &dims_signature);
+  interpreter.SetTensorParametersReadWrite(
+      2, kTfLiteFloat32, "c", dims, TfLiteQuantizationParams{1.0, 0},
+      /*is_variable=*/false, &dims_signature);
+
+  interpreter.SetInputs({0, 1});
+  interpreter.SetOutputs({2});
+  const char* initial_data = "";
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  TfLiteAddParams* builtin_data =
+      reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  builtin_data->activation = kTfLiteActNone;
+  builtin_data->pot_scale_int16 = false;
+  const TfLiteRegistration* reg = resolver.FindOp(BuiltinOperator_ADD, 1);
+  interpreter.AddNodeWithParameters({0, 1}, {2}, initial_data, 0,
+                                    reinterpret_cast<void*>(builtin_data), reg);
+
+  // Export interpreter and import back.
+  const std::string test_file = CreateFilePath("test_dynamic_shape.tflite");
+  WriteToFile(&interpreter, test_file, GetParam());
+  std::unique_ptr<FlatBufferModel> model =
+      FlatBufferModel::BuildFromFile(test_file.c_str());
+  InterpreterBuilder builder(*model, resolver);
+  std::unique_ptr<Interpreter> new_interpreter;
+  builder(&new_interpreter);
+  CHECK_EQ(new_interpreter->AllocateTensors(), kTfLiteOk);
+
+  // Check shape signature in new interpreter.
+  TfLiteTensor* tensor0 = new_interpreter->tensor(0);
+  CHECK_NOTNULL(tensor0->dims_signature);
+  TfLiteIntArrayView shape_view(tensor0->dims_signature);
+  CHECK_EQ(shape_view.size(), 2);
+  CHECK_EQ(shape_view[0], -1);
+}
+
 INSTANTIATE_TEST_SUITE_P(Writer, SingleSubgraphTest, ::testing::Bool());
 
 struct ReshapeTestPattern {
@@ -471,7 +520,7 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
   const int kSeqNumber = 4;
   const int kExpectedValue = 15;
 
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), kSeqNumber);
   builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
@@ -527,7 +576,7 @@ TEST_F(WhileTest, TestModelWriterFromSubgraphs) {
   const int kSeqNumber = 4;
   const int kExpectedValue = 15;
 
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), kSeqNumber);
   builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));

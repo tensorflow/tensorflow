@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/perception_ops_utils.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
@@ -109,7 +110,7 @@ class PerceptionUtilsTest : public ::testing::Test {
     context_
         ->loadDialect<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
                       mlir::TF::TensorFlowDialect, TensorFlowLiteDialect>();
-    builder_ = std::unique_ptr<mlir::Builder>(new Builder(context_.get()));
+    builder_ = std::make_unique<mlir::Builder>(context_.get());
 
     fused_max_unpooling_func_ =
         createMaxUnpoolingFunc(builder_.get(), {2, 4, 4, 2}, {2, 2, 2, 2});

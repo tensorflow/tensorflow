@@ -79,7 +79,7 @@ void ModifyFunctionSignature(
   Location loc = func.getLoc();
   for (int64_t i = 0; i < original_arg_count; ++i) {
     auto buffer_type = arg_to_buffer_type(i);
-    if (!buffer_type.hasValue()) continue;
+    if (!buffer_type.has_value()) continue;
     func.getArgument(i).setType(*buffer_type);
     new_input_types[i] = *buffer_type;
     auto size_arg = func.front().addArgument(size_type, loc);

@@ -161,9 +161,12 @@ class TRTEngineResourceOpsTest
     if (this->param_.dynamic_shape) {
       TrtShapeOptimizationProfile profile;
       profile.SetShapeTensorMask(network.get());
+      const int n_input = param_.n_inputs;
+      // Set the input mask to true (no resource input)
+      std::vector<bool> input_mask(n_input, true);
+      profile.SetInputMask(input_mask);
       // The for loop defines three optimization profiles for the network.
       for (int i = 1; i <= 3; i++) {
-        const int n_input = param_.n_inputs;
         std::vector<TensorShape> shape_vec(n_input);
         // Define a shape with all dimensions set to 3*i.
         std::vector<int> dimvec(this->param_.dims.nbDims, 3 * i);
@@ -286,7 +289,7 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   }
   resource->cache_.emplace(
       engine_input_shape,
-      absl::make_unique<EngineContext>(std::move(engine), std::move(context)));
+      std::make_unique<EngineContext>(std::move(engine), std::move(context)));
   // Check that the resource has multiple references before it is unregistered
   // from the resource manager.
   EXPECT_FALSE(resource->RefCountIsOne());
@@ -322,7 +325,7 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   // Verify the file for the serialized engine.
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(filename, &file));
-  auto reader = absl::make_unique<io::RecordReader>(file.get());
+  auto reader = std::make_unique<io::RecordReader>(file.get());
   uint64 offset = 0;
   tstring record;
   TF_ASSERT_OK(reader->ReadRecord(&offset, &record));

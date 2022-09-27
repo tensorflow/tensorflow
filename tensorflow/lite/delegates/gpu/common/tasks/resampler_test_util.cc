@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/resampler_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -56,7 +57,7 @@ absl::Status ResamplerIdentityTest(const BHWC& shape,
       GPUOperation operation = CreateResampler(env->GetGpuInfo(), op_def);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor, warp_tensor},
-          absl::make_unique<GPUOperation>(std::move(operation)),
+          std::make_unique<GPUOperation>(std::move(operation)),
           src_tensor.shape, &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(src_tensor.data, dst_tensor.data, eps));
     }

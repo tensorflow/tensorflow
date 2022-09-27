@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/platform/logging.h"

@@ -357,10 +357,10 @@ Status DatasetOpsTestBase::CreateIteratorContext(
     std::unique_ptr<IteratorContext>* iterator_context) {
   IteratorContext::Params params(op_context);
   params.resource_mgr = op_context->resource_manager();
-  function_handle_cache_ = absl::make_unique<FunctionHandleCache>(flr_);
+  function_handle_cache_ = std::make_unique<FunctionHandleCache>(flr_);
   params.function_handle_cache = function_handle_cache_.get();
   params.cancellation_manager = cancellation_manager_.get();
-  *iterator_context = absl::make_unique<IteratorContext>(params);
+  *iterator_context = std::make_unique<IteratorContext>(params);
   return OkStatus();
 }
 
@@ -378,7 +378,7 @@ Status DatasetOpsTestBase::InitThreadPool(int thread_num) {
     return errors::InvalidArgument(
         "The `thread_num` argument should be positive but got: ", thread_num);
   }
-  thread_pool_ = absl::make_unique<thread::ThreadPool>(
+  thread_pool_ = std::make_unique<thread::ThreadPool>(
       Env::Default(), ThreadOptions(), "test_thread_pool", thread_num);
   return OkStatus();
 }
@@ -395,16 +395,16 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
   std::vector<std::unique_ptr<Device>> devices;
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
-  device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
-  resource_mgr_ = absl::make_unique<ResourceMgr>("default_container");
+  device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
+  resource_mgr_ = std::make_unique<ResourceMgr>("default_container");
 
   FunctionDefLibrary proto;
   for (const auto& fdef : flib) *(proto.add_function()) = fdef;
   lib_def_ =
-      absl::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(), proto);
+      std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(), proto);
 
   OptimizerOptions opts;
-  pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, thread_pool_.get(),
       /*parent=*/nullptr,
@@ -495,21 +495,21 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
     OpKernel* kernel, gtl::InlinedVector<TensorValue, 4>* inputs,
     std::unique_ptr<OpKernelContext::Params>* context_params,
     std::unique_ptr<OpKernelContext>* context) {
-  auto params = absl::make_unique<OpKernelContext::Params>();
-  cancellation_manager_ = absl::make_unique<CancellationManager>();
+  auto params = std::make_unique<OpKernelContext::Params>();
+  cancellation_manager_ = std::make_unique<CancellationManager>();
   params->cancellation_manager = cancellation_manager_.get();
   params->device = device_.get();
   params->frame_iter = FrameAndIter(0, 0);
   params->function_library = flr_;
-  params->inputs = inputs;
+  params->inputs = *inputs;
   params->op_kernel = kernel;
   params->resource_manager = resource_mgr_.get();
   params->runner = &runner_;
   slice_reader_cache_ =
-      absl::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
+      std::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
   params->slice_reader_cache = slice_reader_cache_.get();
   step_container_ =
-      absl::make_unique<ScopedStepContainer>(0, [](const string&) {});
+      std::make_unique<ScopedStepContainer>(0, [](const string&) {});
   params->step_container = step_container_.get();
 
   // Set the allocator attributes for the outputs.
@@ -523,7 +523,7 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
   }
   params->output_attr_array = allocator_attrs_.data();
 
-  *context = absl::make_unique<OpKernelContext>(params.get());
+  *context = std::make_unique<OpKernelContext>(params.get());
   *context_params = std::move(params);
   return OkStatus();
 }
@@ -531,7 +531,7 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
 Status DatasetOpsTestBase::CreateSerializationContext(
     std::unique_ptr<SerializationContext>* context) {
   *context =
-      absl::make_unique<SerializationContext>(SerializationContext::Params{});
+      std::make_unique<SerializationContext>(SerializationContext::Params{});
   return OkStatus();
 }
 
@@ -553,7 +553,7 @@ Status DatasetOpsTestBase::AddDatasetInput(
                                    inputs->size(), " vs. ", input_types.size());
   }
   bool is_ref = IsRefType(input_types[inputs->size()]);
-  auto input = absl::make_unique<Tensor>(allocator_, dtype, shape);
+  auto input = std::make_unique<Tensor>(allocator_, dtype, shape);
 
   if (is_ref) {
     DataType expected_dtype = RemoveRefType(input_types[inputs->size()]);
@@ -664,7 +664,7 @@ Status DatasetOpsTestBase::CheckSplitProviderShardedIteration(
   IteratorContext::Params iterator_params(iterator_ctx.get());
   std::move(split_providers.begin(), split_providers.end(),
             std::back_inserter(iterator_params.split_providers));
-  iterator_ctx = absl::make_unique<IteratorContext>(iterator_params);
+  iterator_ctx = std::make_unique<IteratorContext>(iterator_params);
   int mid_breakpoint = expected_outputs.size() / 2;
   int near_end_breakpoint = expected_outputs.size() - 1;
   int end_breakpoint = expected_outputs.size();
@@ -841,7 +841,7 @@ Status DatasetOpsTestBase::RunDatasetOp(
   // Copy the input tensors, storing them in the `inputs` vectors, and storing
   // owned references to the copies in `created_tensors`.
   for (auto& input : dataset_params.GetInputTensors()) {
-    auto copy = absl::make_unique<Tensor>(input);
+    auto copy = std::make_unique<Tensor>(input);
     inputs.push_back(TensorValue(copy.get()));
     created_tensors->push_back(std::move(copy));
   }
@@ -880,7 +880,7 @@ Status DatasetOpsTestBase::MakeIterator(
   std::move(split_providers.begin(), split_providers.end(),
             std::back_inserter(iterator_params.split_providers));
 
-  iterator_ctx = absl::make_unique<IteratorContext>(iterator_params);
+  iterator_ctx = std::make_unique<IteratorContext>(iterator_params);
   std::unique_ptr<IteratorBase> iterator_base;
   TF_RETURN_IF_ERROR(dataset.dataset()->MakeIterator(
       iterator_ctx.get(), /*parent=*/nullptr, dataset_params.iterator_prefix(),
@@ -976,7 +976,7 @@ Status DatasetOpsTestBase::MakeDatasetTensor(
   Tensor dataset_tensor(DT_VARIANT, TensorShape({}));
   TF_RETURN_IF_ERROR(
       StoreDatasetInVariantTensor(dataset_base, &dataset_tensor));
-  *dataset = absl::make_unique<Tensor>(dataset_tensor);
+  *dataset = std::make_unique<Tensor>(dataset_tensor);
   return OkStatus();
 }
 

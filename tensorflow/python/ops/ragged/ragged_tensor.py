@@ -2445,7 +2445,7 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
     self._ragged_rank = ragged_rank
     if not isinstance(self._ragged_rank, int):
       raise TypeError(f"Argument `ragged_rank` must be an int. "
-                      f"Recieved {ragged_rank}.")
+                      f"Received {ragged_rank}.")
 
     if rank is not None:
       if ragged_rank >= rank:

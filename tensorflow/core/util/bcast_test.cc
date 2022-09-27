@@ -375,6 +375,13 @@ TEST(BCastTest, Basic_Tensor_Scalar) {
             "[11,7,5,3,2]"
             "[11,7,5,3,2]"
             "[0,1,2,3,4][]");
+
+  // int32 edge-case:
+  EXPECT_EQ(BCast({1, 2147483648}, {1}),
+            "[2147483648][1][1][2147483648]"
+            "[2147483648]"
+            "[1,2147483648]"
+            "[0][0,1]");
 }
 
 TEST(BCastTest, Basic_Tensor_With_DimSize_1_Scalar) {

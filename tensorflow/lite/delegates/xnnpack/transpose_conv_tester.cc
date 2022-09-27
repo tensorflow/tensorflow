@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/transpose_conv_tester.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <functional>

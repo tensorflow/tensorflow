@@ -37,7 +37,7 @@ tf_py_test(
     deps = [
         ":registration",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -54,7 +54,7 @@ tf_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/trackable:autotrackable",
         "@absl_py//absl/testing:parameterized",
     ],
 )

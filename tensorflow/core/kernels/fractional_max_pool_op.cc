@@ -19,12 +19,13 @@ limitations under the License.
 #include <random>
 #include <vector>
 
-#include "tensorflow/core/kernels/fractional_pool_common.h"
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/kernels/fractional_pool_common.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
@@ -352,7 +353,9 @@ class FractionalMaxPoolGradOp : public OpKernel {
         output_size[2] * output_size[1] * output_size[0];
     for (int64_t i = 0; i < num_reshaped_cols; ++i) {
       for (int64_t j = 0; j < output_size[3]; ++j) {
-        DCHECK_EQ(tensor_out_dup_mat(j, i), tensor_out_mat(j, i));
+        OP_REQUIRES(context, tensor_out_dup_mat(j, i) == tensor_out_mat(j, i),
+                    errors::InvalidArgument(
+                        "tensor_out_dup is not the same as tensor_out"));
       }
     }
 
@@ -369,11 +372,12 @@ class FractionalMaxPoolGradOp : public OpKernel {
 
     for (int index = 0; index < num_total_outputs; ++index) {
       int input_backprop_index = out_arg_max_flat(index);
-      // According to maxpooling_op.cc, the performance impact below is small.
-      CHECK(input_backprop_index >= 0 &&
-            input_backprop_index < num_total_inputs)
-          << "Invalid input backprop index: " << input_backprop_index << ", "
-          << num_total_inputs;
+      OP_REQUIRES(
+          context,
+          input_backprop_index >= 0 && input_backprop_index < num_total_inputs,
+          errors::InvalidArgument(
+              "Invalid input backprop index: ", input_backprop_index, ", ",
+              num_total_inputs));
       input_backprop_flat(input_backprop_index) += out_backprop_flat(index);
     }
   }

@@ -36,7 +36,7 @@ class PrefetchDatasetParams : public DatasetParams {
         slack_period_(slack_period),
         legacy_autotune_(legacy_autotune),
         buffer_size_min_(buffer_size_min) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());

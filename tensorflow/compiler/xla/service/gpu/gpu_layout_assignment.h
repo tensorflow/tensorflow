@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -33,8 +33,7 @@ class GpuLayoutAssignment : public LayoutAssignment {
       ComputationLayout* entry_computation_layout,
       se::StreamExecutor* stream_executor,
       ChannelLayoutConstraints* channel_constraints = nullptr)
-      : LayoutAssignment(entry_computation_layout,
-                         channel_constraints),
+      : LayoutAssignment(entry_computation_layout, channel_constraints),
         stream_executor_(stream_executor) {}
   ~GpuLayoutAssignment() override {}
 

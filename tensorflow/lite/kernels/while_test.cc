@@ -40,7 +40,7 @@ class WhileTest : public ControlFlowOpTest {};
 TEST_F(WhileTest, TestTriangularNumberSequence) {
   const std::vector<int> expected = {1, 3, 6, 10, 15, 21, 28};
   for (int i = 0; i < expected.size(); ++i) {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     AddSubgraphs(2);
     builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), i);
     builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
@@ -69,7 +69,7 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
 TEST_F(WhileTest, TestTriangularNumberSequenceWithShallowCopy) {
   const std::vector<int> expected = {1, 3, 6, 10, 15, 21, 28};
   for (int i = 0; i < expected.size(); ++i) {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     AddSubgraphs(2);
     builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), i);
     builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
@@ -111,7 +111,7 @@ TEST_F(WhileTest, TestTriangularNumberSequenceWithShallowCopy) {
 }
 
 TEST_F(WhileTest, TestPadLoop) {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), 3);
   builder_->BuildPadLoopBodySubgraph(interpreter_->subgraph(2), {1, 2});
@@ -137,7 +137,7 @@ TEST_F(WhileTest, TestPadLoop) {
 }
 
 TEST_F(WhileTest, TestPadLoopWithShallowCopy) {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), 3);
   builder_->BuildPadLoopBodySubgraph(interpreter_->subgraph(2), {1, 2});
@@ -170,7 +170,7 @@ TEST_F(WhileTest, TestPadLoopWithShallowCopy) {
 }
 
 TEST_F(WhileTest, TestWhileLoopWithDynamicTensor) {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraphWithDynamicTensor(
       interpreter_->subgraph(1), 3);

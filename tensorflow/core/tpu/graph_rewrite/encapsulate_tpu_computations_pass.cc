@@ -97,21 +97,6 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     return ret;
   };
 
-  auto get_replicated_input_index = [&](const Node& n) {
-    CHECK_EQ("_Arg", n.type_string());
-    int index;
-    TF_CHECK_OK(GetIndexAttr(n, arg_source_tensors.size(), &index));
-    if (arg_source_tensors.at(index).node->type_string() !=
-        kTPUReplicatedInput) {
-      return -1;
-    }
-    int replicated_index;
-    TF_CHECK_OK(GetNodeAttr(arg_source_tensors.at(index).node->attrs(), "index",
-                            &replicated_index));
-
-    return replicated_index;
-  };
-
   auto is_guaranteed_constant = [&](const Node& n) {
     bool guaranteed_constant = false;
     if (!GetNodeAttr(n.attrs(), "_is_guaranteed_constant", &guaranteed_constant)
@@ -193,8 +178,6 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     // Replicated values appear before non-replicated values.
     bool a_not_replicated = !is_replicated_input(*a, &a_is_packed);
     bool b_not_replicated = !is_replicated_input(*b, &b_is_packed);
-    int a_replicated_index = get_replicated_input_index(*a);
-    int b_replicated_index = get_replicated_input_index(*b);
     // Non-resources appear before resources
     bool a_is_resource = (a->output_type(0) == DT_RESOURCE);
     bool b_is_resource = (b->output_type(0) == DT_RESOURCE);
@@ -202,9 +185,9 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     StringPiece a_name(a->name());
     StringPiece b_name(b->name());
     return std::tie(a_is_guaranteed_constant, a_not_replicated, a_is_packed,
-                    a_is_resource, a_replicated_index, a_name) <
+                    a_is_resource, a_name) <
            std::tie(b_is_guaranteed_constant, b_not_replicated, b_is_packed,
-                    b_is_resource, b_replicated_index, b_name);
+                    b_is_resource, b_name);
   });
   // Sorts the retvals by name so the order is deterministic.
   std::sort(retvals.begin(), retvals.end(),

@@ -17,12 +17,14 @@ import os
 import random
 import re
 import sys
+import threading
 import time
 import urllib
 
 from absl.testing import parameterized
 
 # pylint:disable=g-direct-tensorflow-import
+from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
@@ -32,7 +34,6 @@ from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.failure_handling import failure_handling
 from tensorflow.python.distribute.failure_handling import gce_util
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.module import module
@@ -40,7 +41,7 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import util as tracking_util
+from tensorflow.python.training import server_lib
 
 
 mock = test.mock
@@ -51,6 +52,7 @@ EPOCHS_TO_RUN = 5
 STEPS_PER_EPOCH = 6
 _PEER_WATCHER_THREAD_PREFIX = 'PeerTerminationWatcher'
 _LOCAL_WATCHER_THREAD_PREFIX = 'WorkerTerminationSignalWatcher'
+MAX_WAIT_TIME = 30
 
 
 def _is_oss():
@@ -58,23 +60,13 @@ def _is_oss():
   return len(sys.argv) >= 1 and 'bazel' in sys.argv[0]
 
 
-def _enable_coordination_service(cluster_spec):
-
-  if context.context().coordination_service is None:
-    coordination_service = 'standalone'
-    coordinated_jobs = ['chief', 'worker']
-    context.context().configure_coordination_service(
-        service_type=coordination_service,
-        service_leader=multi_worker_util.coordination_leader(
-            cluster_spec),
-        coordinated_jobs=coordinated_jobs)
-
-
 def _make_checkpoint_manager(checkpoint, checkpoint_dir, cluster_resolver):
-  if multi_worker_util.is_chief(
-      cluster_spec=cluster_resolver.cluster_spec(),
-      task_type=cluster_resolver.task_type,
-      task_id=cluster_resolver.task_id):
+
+  if not cluster_resolver.cluster_spec().as_dict() or (
+      multi_worker_util.is_chief(
+          cluster_spec=cluster_resolver.cluster_spec(),
+          task_type=cluster_resolver.task_type,
+          task_id=cluster_resolver.task_id)):
     return checkpoint_management.CheckpointManager(
         checkpoint, directory=checkpoint_dir, max_to_keep=1)
   else:
@@ -83,6 +75,26 @@ def _make_checkpoint_manager(checkpoint, checkpoint_dir, cluster_resolver):
         directory=failure_handling._non_chief_checkpoint_dir(
             checkpoint_dir, cluster_resolver.task_id),
         max_to_keep=1)
+
+
+def raise_if_not_all_exit(grace_period, mpr):
+  """Wait for all cluster to exit with a time out."""
+  waiting_time = 0
+  exit_process_count = 0
+  # This addition to mitigate the fact that our step time is too short in test
+  while exit_process_count != CLUSTER_SIZE and waiting_time < max(
+      grace_period + 15, MAX_WAIT_TIME):
+    exit_process_count = 0
+    for worker_id in range(CLUSTER_SIZE):
+      if not mpr.process_exists('worker', worker_id):
+        exit_process_count += 1
+    waiting_time += 1
+    time.sleep(1)
+
+  if waiting_time == max(grace_period + 5, 40):
+    raise RuntimeError('Waited long but at least one worker still exist. '
+                       'Considering size of our model, this should not'
+                       ' happen.')
 
 
 class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
@@ -99,7 +111,6 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       training_restarted=None,
       termination_config=failure_handling.TerminationConfig(grace_period=0)):
 
-    _enable_coordination_service(cluster_spec)
     strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
 
     def mock_termination_watcher_function_gce(*args, **kwargs):
@@ -169,6 +180,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       # where the signal is sent quite late and training finishes before the
       # grace period ends.
       if training_restarted.is_set() and not training_finished.is_set():
+        logging.info(gfile.ListDirectory(checkpoint_dir))
         match_group = [
             re.search(r'.*ckpt-(\d+).index', a_file)
             for a_file in gfile.ListDirectory(checkpoint_dir)
@@ -230,82 +242,86 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
             return
 
   @combinations.generate(
-      combinations.combine(input_arg=['checkpoint', 'manager'],))
-  def test_basic_run(self, input_arg):
-    has_chief = False
-    cluster_spec = multi_worker_test_base.create_cluster_spec(
-        has_chief=has_chief,
-        num_workers=CLUSTER_SIZE)
-    maintenance_event = multi_process_runner.manager().Event()
-    training_finished = multi_process_runner.manager().Event()
-    training_restarted = multi_process_runner.manager().Event()
-
-    checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt/')
-
+      combinations.combine(input_arg=['checkpoint', 'manager'],
+                           mwms_mode=['local', 'multi_worker'],))
+  def test_basic_run(self, input_arg, mwms_mode):
     if _is_oss():
       rpc_layer = 'grpc'
     else:
       rpc_layer = 'grpc+loas'
+    checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt/')
 
-    mpr = multi_process_runner.MultiProcessRunner(
-        self.worker_fn,
-        cluster_spec,
-        args=(checkpoint_dir, cluster_spec, input_arg, maintenance_event,
-              training_finished, False, training_restarted),
-        rpc_layer=rpc_layer,
-        return_output=True,
-        dependence_on_chief=has_chief)
+    if mwms_mode == 'multi_worker':
+      has_chief = False
+      cluster_spec = multi_worker_test_base.create_cluster_spec(
+          has_chief=has_chief,
+          num_workers=CLUSTER_SIZE)
+      maintenance_event = multi_process_runner.manager().Event()
+      training_finished = multi_process_runner.manager().Event()
+      training_restarted = multi_process_runner.manager().Event()
 
-    logging.info('Cluster starting.')
-    mpr.start()
+      mpr = multi_process_runner.MultiProcessRunner(
+          self.worker_fn,
+          cluster_spec,
+          args=(checkpoint_dir, cluster_spec, input_arg, maintenance_event,
+                training_finished, False, training_restarted),
+          rpc_layer=rpc_layer,
+          return_output=True,
+          dependence_on_chief=has_chief)
 
-    while (not maintenance_event.is_set()) and (not training_finished.is_set()):
-      time.sleep(1)
+      logging.info('Cluster starting.')
+      mpr.start()
 
-    # wait for all cluster to exit with a time out
-    waiting_time = 0
-    exit_process_count = 0
-    # this addition to mitigate the fact that our step time is too short in test
-    while exit_process_count != CLUSTER_SIZE and waiting_time < 15:
-      exit_process_count = 0
-      for worker_id in range(CLUSTER_SIZE):
-        if not mpr.process_exists('worker', worker_id):
-          exit_process_count += 1
-      waiting_time += 1
-      time.sleep(1)
+      raise_if_not_all_exit(0, mpr)
 
-    if waiting_time >= 15:
-      raise RuntimeError('Waited long but at least one worker still exist. '
-                         'Considering size of our model, this should not'
-                         ' happen.')
+      if not training_finished.is_set():
+        logging.info('restarting workers')
+        training_restarted.set()
+        for worker_id in range(CLUSTER_SIZE):
+          mpr.start_single_process('worker', worker_id, cluster_spec)
+        logging.info('workers restarted')
 
-    if not training_finished.is_set():
-      logging.info('restarting workers')
-      training_restarted.set()
-      for worker_id in range(CLUSTER_SIZE):
-        mpr.start_single_process('worker', worker_id, cluster_spec)
-      logging.info('workers restarted')
+      mpr.join(timeout=250)
+      self.assertTrue(training_finished.is_set())
 
-    mpr.join(timeout=250)
-    self.assertTrue(training_finished.is_set())
+    else:
+      maintenance_event = threading.Event()
+      training_finished = threading.Event()
+      training_restarted = threading.Event()
+
+      cluster_spec = server_lib.ClusterSpec({})
+      caught_exit = False
+      try:
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+                       maintenance_event, training_finished, False,
+                       training_restarted)
+      except SystemExit as exit_error:
+        caught_exit = True
+        # We cannot use assertRaise instead, since termination is not always
+        # triggered.
+        self.assertEqual(exit_error.code, 143)  # pylint:disable=g-assert-in-except
+
+      if maintenance_event.is_set() and not training_finished.is_set():
+        self.assertTrue(caught_exit)
+
+        logging.info('restarting workers')
+        training_restarted.set()
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+                       maintenance_event, training_finished, False,
+                       training_restarted)
+
+      self.assertTrue(training_finished.is_set())
 
   @combinations.generate(
       combinations.combine(
           grace_period=[0, 7],
           input_arg=['checkpoint', 'manager'],
+          mwms_mode=['local', 'multi_worker'],
       ))
   def test_multiple_workers_preempted_consecutively(self, grace_period,
-                                                    input_arg):
-    has_chief = False
-    cluster_spec = multi_worker_test_base.create_cluster_spec(
-        has_chief=has_chief,
-        num_workers=CLUSTER_SIZE)
-    maintenance_event = multi_process_runner.manager().Event()
-    training_finished = multi_process_runner.manager().Event()
-    training_restarted = multi_process_runner.manager().Event()
+                                                    input_arg, mwms_mode):
 
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt/')
-
     if _is_oss():
       rpc_layer = 'grpc'
     else:
@@ -313,94 +329,149 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
 
     termination_config = failure_handling.TerminationConfig(
         grace_period=grace_period)
-    mpr = multi_process_runner.MultiProcessRunner(
-        self.worker_fn,
-        cluster_spec,
-        args=(checkpoint_dir, cluster_spec, input_arg, maintenance_event,
-              training_finished, True, training_restarted, termination_config),
-        rpc_layer=rpc_layer,
-        return_output=True,
-        dependence_on_chief=has_chief)
 
-    logging.info('Cluster starting.')
-    mpr.start()
+    if mwms_mode == 'multi_worker':
+      has_chief = False
+      cluster_spec = multi_worker_test_base.create_cluster_spec(
+          has_chief=has_chief,
+          num_workers=CLUSTER_SIZE)
+      has_chief = False
+      maintenance_event = multi_process_runner.manager().Event()
+      training_finished = multi_process_runner.manager().Event()
+      training_restarted = multi_process_runner.manager().Event()
+      mpr = multi_process_runner.MultiProcessRunner(
+          self.worker_fn,
+          cluster_spec,
+          args=(checkpoint_dir, cluster_spec, input_arg, maintenance_event,
+                training_finished, True, training_restarted,
+                termination_config),
+          rpc_layer=rpc_layer,
+          return_output=True,
+          dependence_on_chief=has_chief)
 
-    # wait for all cluster to exit with a time out
-    waiting_time = 0
-    exit_process_count = 0
-    # this addition to mitigate the fact that our step time is too short in test
-    while exit_process_count != CLUSTER_SIZE and waiting_time < max(
-        grace_period + 15, 40):
-      exit_process_count = 0
-      for worker_id in range(CLUSTER_SIZE):
-        if not mpr.process_exists('worker', worker_id):
-          exit_process_count += 1
-      waiting_time += 1
-      time.sleep(1)
+      logging.info('Cluster starting.')
+      mpr.start()
 
-    if waiting_time == max(grace_period + 5, 40):
-      raise RuntimeError('Waited long but at least one worker still exist. '
-                         'Considering size of our model, this should not'
-                         ' happen.')
+      raise_if_not_all_exit(grace_period, mpr)
 
-    maintenance_event.set()
-    logging.info('restarting workers')
-    training_restarted.set()
-    for worker_id in range(CLUSTER_SIZE):
-      mpr.start_single_process('worker', worker_id, cluster_spec)
-    logging.info('workers restarted')
-
-    mpr.join(timeout=250)
-    self.assertTrue(training_finished.is_set())
-
-  @combinations.generate(
-      combinations.combine(input_arg=['checkpoint', 'manager'],))
-  def test_grace_period_continue_training(self, input_arg):
-    grace_period = 7
-    has_chief = False
-    cluster_spec = multi_worker_test_base.create_cluster_spec(
-        has_chief=has_chief,
-        num_workers=CLUSTER_SIZE)
-
-    checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt/')
-    maintenance_event = multi_process_runner.manager().Event()
-    training_finished = multi_process_runner.manager().Event()
-    training_restarted = multi_process_runner.manager().Event()
-
-    if _is_oss():
-      rpc_layer = 'grpc'
-    else:
-      rpc_layer = 'grpc+loas'
-
-    termination_config = failure_handling.TerminationConfig(
-        grace_period=grace_period)
-    mpr = multi_process_runner.MultiProcessRunner(
-        self.worker_fn,
-        cluster_spec,
-        args=(checkpoint_dir, cluster_spec, input_arg, maintenance_event,
-              training_finished, False, training_restarted, termination_config),
-        rpc_layer=rpc_layer,
-        return_output=True,
-        dependence_on_chief=has_chief)
-
-    logging.info('Cluster starting.')
-    mpr.start()
-
-    while (not maintenance_event.is_set()) and (not training_finished.is_set()):
-      time.sleep(1)
-
-    # this addition to mitigate the fact that our step time is too short in test
-    time.sleep(grace_period + 10)
-    if not training_finished.is_set():
+      maintenance_event.set()
       logging.info('restarting workers')
       training_restarted.set()
       for worker_id in range(CLUSTER_SIZE):
         mpr.start_single_process('worker', worker_id, cluster_spec)
       logging.info('workers restarted')
 
-    mpr.join(timeout=250)
+      mpr.join(timeout=250)
+      self.assertTrue(training_finished.is_set())
 
-    self.assertTrue(training_finished.is_set())
+    else:
+      maintenance_event = threading.Event()
+      training_finished = threading.Event()
+      training_restarted = threading.Event()
+
+      cluster_spec = server_lib.ClusterSpec({})
+
+      caught_exit = False
+      try:
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+                       maintenance_event, training_finished, True,
+                       training_restarted, termination_config)
+      except SystemExit as exit_error:
+        caught_exit = True
+        # We cannot use assertRaise instead, since termination is not always
+        # triggered.
+        self.assertEqual(exit_error.code, 143)  # pylint:disable=g-assert-in-except
+
+      if maintenance_event.is_set() and not training_finished.is_set():
+        self.assertTrue(caught_exit)
+
+        logging.info('restarting workers')
+        training_restarted.set()
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+                       maintenance_event, training_finished, True,
+                       training_restarted, termination_config)
+
+  @combinations.generate(
+      combinations.combine(input_arg=['checkpoint', 'manager'],
+                           mwms_mode=['local', 'multi_worker'],))
+  def test_grace_period_continue_training(self, input_arg, mwms_mode):
+    checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt/')
+    grace_period = 7
+    if _is_oss():
+      rpc_layer = 'grpc'
+    else:
+      rpc_layer = 'grpc+loas'
+
+    termination_config = failure_handling.TerminationConfig(
+        grace_period=grace_period)
+
+    if mwms_mode == 'multi_worker':
+      has_chief = False
+      cluster_spec = multi_worker_test_base.create_cluster_spec(
+          has_chief=has_chief,
+          num_workers=CLUSTER_SIZE)
+
+      checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt/')
+      maintenance_event = multi_process_runner.manager().Event()
+      training_finished = multi_process_runner.manager().Event()
+      training_restarted = multi_process_runner.manager().Event()
+
+      mpr = multi_process_runner.MultiProcessRunner(
+          self.worker_fn,
+          cluster_spec,
+          args=(checkpoint_dir, cluster_spec, input_arg, maintenance_event,
+                training_finished, False, training_restarted,
+                termination_config),
+          rpc_layer=rpc_layer,
+          return_output=True,
+          dependence_on_chief=has_chief)
+
+      logging.info('Cluster starting.')
+      mpr.start()
+
+      while (not maintenance_event.is_set()) and (
+          not training_finished.is_set()):
+        time.sleep(1)
+
+      raise_if_not_all_exit(grace_period, mpr)
+
+      if not training_finished.is_set():
+        logging.info('restarting workers')
+        training_restarted.set()
+        for worker_id in range(CLUSTER_SIZE):
+          mpr.start_single_process('worker', worker_id, cluster_spec)
+        logging.info('workers restarted')
+
+      mpr.join(timeout=250)
+
+      self.assertTrue(training_finished.is_set())
+
+    else:
+      maintenance_event = threading.Event()
+      training_finished = threading.Event()
+      training_restarted = threading.Event()
+
+      cluster_spec = server_lib.ClusterSpec({})
+      caught_exit = False
+      try:
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+                       maintenance_event, training_finished, False,
+                       training_restarted, termination_config)
+      except SystemExit as exit_error:
+        caught_exit = True
+        # We cannot use assertRaise instead, since termination is not always
+        # triggered.
+        self.assertEqual(exit_error.code, 143)  # pylint:disable=g-assert-in-except
+
+      if maintenance_event.is_set() and not training_finished.is_set():
+        self.assertTrue(caught_exit)
+
+        logging.info('restarting workers')
+        training_restarted.set()
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+                       maintenance_event, training_finished, False,
+                       training_restarted, termination_config)
+        self.assertTrue(training_finished.is_set())
 
 
 if __name__ == '__main__':

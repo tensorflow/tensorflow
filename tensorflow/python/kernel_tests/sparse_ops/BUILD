@@ -191,16 +191,8 @@ cuda_py_test(
 cuda_py_test(
     # Test name is shortened to workaround Windows Bazel's 259 char path limit.
     name = "sparse_tensor_dense_matmul_op_d9m_test",
-    size = "small",
+    size = "medium",
     srcs = ["sparse_tensor_dense_matmul_op_d9m_test.py"],
-    tags = [
-        "no_cuda_asan",
-        "noasan",
-        "notsan",
-    ],  # b/192492331
-    xla_tags = [
-        "no_cuda_asan",  # times out
-    ],  # b/192492331
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -215,9 +207,6 @@ cuda_py_test(
     name = "sparse_tensor_dense_matmul_op_test",
     size = "medium",
     srcs = ["sparse_tensor_dense_matmul_op_test.py"],
-    tags = [
-        "notap",  # b/231313017
-    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

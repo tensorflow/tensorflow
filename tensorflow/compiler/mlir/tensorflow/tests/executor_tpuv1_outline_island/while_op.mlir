@@ -38,7 +38,7 @@ module {
     func.return %0 : tensor<i32>
   }
   func.func @while_cond_without_cluster_attr(%arg0: tensor<i32>) -> tensor<i1> {
-    %0 = "tf.PartionedCallOp"(%arg0) { f = @callee_func} : (tensor<i32>) -> tensor<i1>
+    %0 = "tf.PartitionedCallOp"(%arg0) { f = @callee_func} : (tensor<i32>) -> tensor<i1>
     func.return %0 : tensor<i1>
   }
   func.func @callee_func(%arg0: tensor<i32>) -> tensor<i1> {

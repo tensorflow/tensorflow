@@ -59,7 +59,7 @@ REGISTER_OP("CTCLoss")
 
       c->set_output(0, c->Vector(batch_size));
       c->set_output(1, inputs);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CTCLossV2")
@@ -96,7 +96,7 @@ REGISTER_OP("CTCLossV2")
 
       c->set_output(0, c->Vector(batch_size));
       c->set_output(1, inputs);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CTCGreedyDecoder")
@@ -126,7 +126,7 @@ REGISTER_OP("CTCGreedyDecoder")
       c->set_output(1, c->Vector(total_decoded_outputs));
       c->set_output(2, c->Vector(2));
       c->set_output(3, c->Matrix(batch_size, 1));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CTCBeamSearchDecoder")
@@ -168,7 +168,7 @@ REGISTER_OP("CTCBeamSearchDecoder")
         c->set_output(out_idx++, shape_v);
       }
       c->set_output(out_idx++, c->Matrix(batch_size, top_paths));
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

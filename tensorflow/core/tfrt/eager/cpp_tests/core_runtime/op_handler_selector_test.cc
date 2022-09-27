@@ -322,7 +322,7 @@ class FakeOperation : public ImmediateExecutionOperation {
 
 static std::unique_ptr<CoreRuntime> CreateCoreRuntime() {
   auto diag_handler = [](const DecodedDiagnostic& diag) {
-    LOG(ERROR) << "Encountered runtime error: " << diag.message << "\n";
+    LOG(ERROR) << "Encountered runtime error: " << diag.message() << "\n";
   };
   auto corert =
       CoreRuntime::Create(diag_handler, tfrt::CreateMallocAllocator(),

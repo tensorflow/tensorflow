@@ -43,7 +43,7 @@ void WrapOpInLaunch(Operation* op, llvm::StringRef device) {
       /*result_types=*/op->getResultTypes());
   op->replaceAllUsesWith(launch_op);
 
-  launch_op.body().push_back(new Block);
+  launch_op.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&launch_op.GetBody());
   auto* return_op =
       builder.create<tf_device::ReturnOp>(op->getLoc(), op->getResults())

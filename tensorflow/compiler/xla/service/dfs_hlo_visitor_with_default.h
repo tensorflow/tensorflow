@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -274,9 +274,7 @@ class DfsHloVisitorWithDefaultBase
 
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".
-  Status FinishVisit(HloInstructionPtr /*root*/) override {
-    return Status::OK();
-  }
+  Status FinishVisit(HloInstructionPtr /*root*/) override { return OkStatus(); }
 
  private:
   DfsHloVisitorWithDefaultBase(const DfsHloVisitorWithDefaultBase&) = delete;
@@ -296,18 +294,19 @@ using ConstDfsHloVisitorWithDefault =
 class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
  public:
   // Runs a visitor on the module and returns whether the module has changed.
-  StatusOr<bool> RunOnModule(HloModule* module) {
-    bool is_changed = false;
-    for (const auto& computation : module->computations()) {
+  StatusOr<bool> RunOnModule(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {}) {
+    for (const auto& computation :
+         module->MakeNonfusionComputations(execution_threads)) {
       TF_RETURN_IF_ERROR(computation->Accept(this));
-      is_changed |= changed();
     }
-    return is_changed;
+    return changed();
   }
 
   // Default visitor action is to do nothing and return OK.
   Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   bool changed() const { return changed_; }
@@ -325,7 +324,7 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(old_instruction->parent()->ReplaceWithNewInstruction(
         old_instruction, std::move(new_instruction)));
     changed_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Replaces the existing HLO instruction old_instruction, with
@@ -350,9 +349,13 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
                         ReplaceInstruction(old_instruction, new_instruction,
                                            /*preserve_sharding=*/false));
     DCHECK(changed);
-    return Status::OK();
+    return OkStatus();
   }
 
+  // Mark the computation as having changed.
+  void MarkAsChanged() { changed_ = true; }
+
+ private:
   bool changed_ = false;
 };
 

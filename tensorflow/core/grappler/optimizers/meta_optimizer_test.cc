@@ -896,7 +896,7 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnInvalidGraph) {
   MetaOptimizer optimizer_with_post_verifiers(nullptr, config_proto);
   Status status =
       optimizer_with_post_verifiers.Optimize(nullptr, item, &output);
-  EXPECT_EQ(status.code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_TRUE(errors::IsInvalidArgument(status));
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
       "NodeDef expected inputs 'float' do not match 3 inputs specified"));
@@ -1081,6 +1081,11 @@ TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
 
   GraphDef output;
   ConfigProto config_proto;
+  // Disable conditional code motion to prevent placeholders from being sunk
+  // into branch_func (would result in zero parameters for it).
+  config_proto.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_experimental_conditional_code_motion(RewriterConfig::OFF);
 
   MetaOptimizer optimizer(nullptr, config_proto);
   Status status = optimizer.Optimize(nullptr, item, &output);

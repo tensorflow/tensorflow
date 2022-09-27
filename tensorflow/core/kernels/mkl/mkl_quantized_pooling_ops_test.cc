@@ -115,7 +115,7 @@ TEST_F(QuantizedMaxPooling3DTest, QUINT8_INPUT) {
   RunQuantizedPooling<quint8>(input_float, ksize, stride, padding,
                               &output_float);
 
-  test::ExpectTensorNear<float>(expected_output, output_float, 0.2);
+  test::ExpectTensorNear<float>(expected_output, output_float, 0.3);
 }
 
 TEST_F(QuantizedMaxPooling3DTest, QINT8_INPUT) {
@@ -143,7 +143,7 @@ TEST_F(QuantizedMaxPooling3DTest, QINT8_INPUT) {
   RunQuantizedPooling<qint8>(input_float, ksize, stride, padding,
                              &output_float);
 
-  test::ExpectTensorNear<float>(expected_output, output_float, 0.2);
+  test::ExpectTensorNear<float>(expected_output, output_float, 0.3);
 }
 
 TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
@@ -189,8 +189,8 @@ TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
 
   AddInputFromArray<quint8>(input_quantized.shape(),
                             input_quantized.flat<quint8>());
-  AddInputFromArray<float>(TensorShape({1}), {input_min});
-  AddInputFromArray<float>(TensorShape({1}), {input_max});
+  AddInputFromArray<float>(TensorShape({}), {input_min});
+  AddInputFromArray<float>(TensorShape({}), {input_max});
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -245,8 +245,8 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
   test::FillValues<float>(&expected_float, {11, 12, 15, 16, 27, 28, 31, 32});
   AddInputFromArray<quint8>(input_quantized.shape(),
                             input_quantized.flat<quint8>());
-  AddInputFromArray<float>(TensorShape({1}), {input_min});
-  AddInputFromArray<float>(TensorShape({1}), {input_max});
+  AddInputFromArray<float>(TensorShape({}), {input_min});
+  AddInputFromArray<float>(TensorShape({}), {input_max});
 
   TF_ASSERT_OK(RunOpKernel());
 

@@ -17,6 +17,7 @@ tf_python_pybind_extension(
         "//tensorflow/python:pybind11_lib",
         "//tensorflow/python:pybind11_status",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )

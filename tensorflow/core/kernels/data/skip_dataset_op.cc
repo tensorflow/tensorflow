@@ -47,10 +47,10 @@ class SkipDatasetOp::Dataset : public DatasetBase {
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     if (count_ < 0) {
-      return absl::make_unique<EmptyIterator>(EmptyIterator::Params{
+      return std::make_unique<EmptyIterator>(EmptyIterator::Params{
           this, name_utils::IteratorPrefix(kEmptySkip, prefix)});
     } else {
-      return absl::make_unique<FiniteIterator>(FiniteIterator::Params{
+      return std::make_unique<FiniteIterator>(FiniteIterator::Params{
           this, name_utils::IteratorPrefix(kFiniteSkip, prefix)});
     }
   }

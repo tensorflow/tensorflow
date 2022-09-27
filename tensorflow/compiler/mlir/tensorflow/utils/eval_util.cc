@@ -27,12 +27,12 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -82,7 +82,7 @@ mlir::LogicalResult EvaluateOperation(
   auto node_def_or = ConvertTFDialectOpToNodeDef(
       inst, node_name.c_str(), /*ignore_unregistered_attrs=*/true);
   RETURN_FAILURE_IF_ERROR(node_def_or.status());
-  const auto& node_def = node_def_or.ValueOrDie();
+  const auto& node_def = node_def_or.value();
 
   TFE_Op* op = TFE_NewOp(context, node_def->op().c_str(), status);
   RETURN_FAILURE_IF_ERROR(status);
@@ -140,7 +140,7 @@ mlir::LogicalResult EvaluateOperation(
     RETURN_FAILURE_IF_ERROR(TF_TensorToTensor(tf_tensor, &tensor));
     auto attr_or = ConvertTensor(tensor, &builder);
     RETURN_FAILURE_IF_ERROR(attr_or.status());
-    results->push_back(attr_or.ValueOrDie());
+    results->push_back(attr_or.value());
   }
 
   VLOG(1) << "Evaluate node " << node_name << " successfully!";

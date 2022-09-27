@@ -137,6 +137,10 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
 void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               XSpace* space);
 
+// Derives `Tensorflow Ops`, `Tensorflow Name Scope` and `Source Code` lines
+// from device_trace.
+void DeriveLinesFromStats(tensorflow::profiler::XPlane* device_trace);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

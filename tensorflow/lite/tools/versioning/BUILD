@@ -80,12 +80,13 @@ tf_cc_test(
     ],
     data = [
         "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
     deps = [
         ":op_signature",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:model_builder",
-        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )

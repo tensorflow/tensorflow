@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <sstream>
+#include <string>
 
 #include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -92,14 +93,14 @@ ProfileSummarizer::ProfileSummarizer(
     std::shared_ptr<ProfileSummaryFormatter> summary_formatter)
     : summary_formatter_(summary_formatter) {
   // Create stats calculator for the primary graph.
-  stats_calculator_map_[0] = std::unique_ptr<tensorflow::StatsCalculator>(
-      new tensorflow::StatsCalculator(
-          summary_formatter_->GetStatSummarizerOptions()));
+  stats_calculator_map_[0] = std::make_unique<tensorflow::StatsCalculator>(
+
+      summary_formatter_->GetStatSummarizerOptions());
 
   // Create stats calculator for the delegation op.
-  delegate_stats_calculator_ = std::unique_ptr<tensorflow::StatsCalculator>(
-      new tensorflow::StatsCalculator(
-          summary_formatter_->GetStatSummarizerOptions()));
+  delegate_stats_calculator_ = std::make_unique<tensorflow::StatsCalculator>(
+
+      summary_formatter_->GetStatSummarizerOptions());
 }
 void ProfileSummarizer::ProcessProfiles(
     const std::vector<const ProfileEvent*>& profile_stats,
@@ -191,9 +192,9 @@ tensorflow::StatsCalculator* ProfileSummarizer::GetStatsCalculator(
     uint32_t subgraph_index) {
   if (stats_calculator_map_.count(subgraph_index) == 0) {
     stats_calculator_map_[subgraph_index] =
-        std::unique_ptr<tensorflow::StatsCalculator>(
-            new tensorflow::StatsCalculator(
-                summary_formatter_->GetStatSummarizerOptions()));
+        std::make_unique<tensorflow::StatsCalculator>(
+
+            summary_formatter_->GetStatSummarizerOptions());
   }
   return stats_calculator_map_[subgraph_index].get();
 }

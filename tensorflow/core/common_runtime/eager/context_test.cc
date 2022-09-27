@@ -62,7 +62,7 @@ class EagerContextTest : public ::testing::Test {
  protected:
   void InitDeviceManager() {
     ASSERT_EQ(device_manager_, nullptr);
-    device_manager_ = absl::make_unique<DynamicDeviceMgr>();
+    device_manager_ = std::make_unique<DynamicDeviceMgr>();
     std::vector<std::unique_ptr<Device>> added_devices;
     added_devices.emplace_back(CreateDevice(DEVICE_CPU, 0));
     added_devices.emplace_back(CreateDevice(DEVICE_CPU, 1));
@@ -325,7 +325,7 @@ TEST_F(EagerContextTest, XlaCompileDeviceType) {
   context()->SetJitCompileRewrite(true);
   auto op = ImmediateOpPtr(context()->CreateOperation());
   TF_ASSERT_OK(
-      op->Reset("XTimesTwo", "/job:localhost/replica:0/task:0/device:TPU:0"));
+      op->Reset("XTimesTwo", "/job:localhost/replica:0/task:0/device:CPU:0"));
   Tensor int_tensor = test::AsScalar<int64_t>(3);
   auto input_int = core::RefCountPtr<ImmediateExecutionTensorHandle>(
       context()->CreateLocalHandleFromTFTensor(

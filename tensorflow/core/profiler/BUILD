@@ -88,13 +88,16 @@ tf_proto_library(
 
 cc_library(
     name = "profiler_impl",
-    visibility = ["//tensorflow:__pkg__"],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/core/profiler/backends/cpu:annotation_stack_impl",
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",
         "//tensorflow/core/profiler/lib:profiler_factory_impl",
         "//tensorflow/core/profiler/lib:profiler_session_impl",
-        "//tensorflow/core/profiler/utils:time_utils_impl",
+        "//tensorflow/tsl/profiler/utils:time_utils_impl",
     ],
     alwayslink = True,
 )
@@ -141,6 +144,7 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "//tensorflow/core/profiler/lib:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/profiler/lib:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

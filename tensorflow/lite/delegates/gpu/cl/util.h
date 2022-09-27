@@ -59,6 +59,10 @@ absl::Status CreateCLSubBuffer(cl_context context, cl_mem parent,
 absl::Status CreateRGBAImage2D(cl_context context, int width, int height,
                                cl_channel_type channel_type, void* data,
                                cl_mem* result);
+
+absl::Status CreateQcomConvolutionFilter(cl_context context, int kernel_x,
+                                         int kernel_y, cl_mem* filter,
+                                         const void* data);
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

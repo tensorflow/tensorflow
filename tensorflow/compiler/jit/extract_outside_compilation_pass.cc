@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -43,11 +43,11 @@ namespace {
 
 // Control return mapping function for outside compilation host graphs.
 // All nodes with kXlaHasHostTransfer attribute are control outputs.
-absl::optional<string> HostGraphControlRetMapping(const Node* n) {
+std::optional<string> HostGraphControlRetMapping(const Node* n) {
   if (HasNodeAttr(n->def(), kXlaHasHostTransferAttrName)) {
     return n->name();
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // Add a key placeholder node to the graph. The key placeholder node will be
@@ -274,25 +274,25 @@ StatusOr<Node*> ReplaceRetNodesWithSendFromHostNode(
 }
 
 // Returns input shapes (excluding key placeholder) for `send_from_host_node`
-// if they are all fully defined; absl::nullopt otherwise.
-absl::optional<std::vector<PartialTensorShape>> GetInferredInputShapes(
+// if they are all fully defined; std::nullopt otherwise.
+std::optional<std::vector<PartialTensorShape>> GetInferredInputShapes(
     int num_inputs, Node* send_from_host_node) {
   std::vector<PartialTensorShape> results(num_inputs);
   for (int i = 0; i < num_inputs; i++) {
     const Edge* e;
     if (!send_from_host_node->input_edge(i, &e).ok()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     std::vector<PartialTensorShape> shapes;
     if (!GetNodeAttr(e->src()->attrs(), kXlaInferredShapesAttrName, &shapes)
              .ok()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     const PartialTensorShape shape = shapes[e->src_output()];
     if (!shape.IsFullyDefined()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     results[e->dst_input()] = shape;
@@ -1851,7 +1851,7 @@ TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
 
   // Change `n` to call the new function directly.
   auto replace_builder =
-      absl::make_unique<NodeDefBuilder>(n->name(), new_func_name, fld);
+      std::make_unique<NodeDefBuilder>(n->name(), new_func_name, fld);
   std::vector<NodeDefBuilder::NodeOut> inputs(n->num_inputs());
   for (const Edge* e : n->in_edges()) {
     if (e->IsControlEdge()) {
@@ -1871,7 +1871,7 @@ TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
   for (const auto& attr : n->attrs()) {
     replace_builder->Attr(attr.first, attr.second);
   }
-  auto replace_def = absl::make_unique<NodeDef>();
+  auto replace_def = std::make_unique<NodeDef>();
   TF_RETURN_IF_ERROR(replace_builder->Finalize(replace_def.get()));
   TF_ASSIGN_OR_RETURN(Node * replace, ReplaceNode(g, n, *replace_def));
   replace->AddAttr(kXlaTokenInputNodesAttrName,
@@ -2246,7 +2246,7 @@ Status RewriteOutsideCompilationSubgraphFn::operator()(
   // Check whether we have all input shapes for XlaSendFromHost. If we do, we
   // will set `shapes` attr for the call node; otherwise we will save the
   // shape inference graph and set `shape_inference_graph` for the call node.
-  absl::optional<std::vector<PartialTensorShape>> shapes =
+  std::optional<std::vector<PartialTensorShape>> shapes =
       GetInferredInputShapes(send_from_host_dtypes.size(), send_from_host_node);
   for (Node* n : (*graph)->nodes()) {
     n->ClearAttr(kXlaInferredShapesAttrName);
@@ -2362,7 +2362,7 @@ Status ExtractOutsideCompilationForFunction(
         fbody->graph, outside_compilation_attr_name));
 
     // Encapsulate outside_compilation cluster into function call node.
-    auto rewrite_fn = absl::make_unique<RewriteOutsideCompilationSubgraphFn>(
+    auto rewrite_fn = std::make_unique<RewriteOutsideCompilationSubgraphFn>(
         xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
         new_func_name);
     TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
@@ -2379,7 +2379,7 @@ Status ExtractOutsideCompilationForFunction(
         // If we could not infer shapes for XlaSendFromHost inputs statically,
         // we will set the "shape_inference_graph" attribute. In that case, copy
         // outside compilation subgraph as shape inference graph in `fld`.
-        auto shape_inference_graph = absl::make_unique<NameAttrList>();
+        auto shape_inference_graph = std::make_unique<NameAttrList>();
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "shape_inference_graph",
                                        shape_inference_graph.get()));
         if (!shape_inference_graph->name().empty()) {
@@ -2391,7 +2391,7 @@ Status ExtractOutsideCompilationForFunction(
           if (!xla_fdef) {
             return errors::Internal("Cannot find XLA function ", n->name());
           }
-          auto shape_inference_fdef = absl::make_unique<FunctionDef>(*xla_fdef);
+          auto shape_inference_fdef = std::make_unique<FunctionDef>(*xla_fdef);
           shape_inference_fdef->mutable_signature()->set_name(
               shape_inference_graph->name());
           if (fld->Find(shape_inference_graph->name())) {
@@ -2408,7 +2408,7 @@ Status ExtractOutsideCompilationForFunction(
       auto host_compute_node_or = ReplaceOutsideCompilationCallNode(
           graph_out.get(), n, host_compute_core, *cluster_deps);
       TF_RETURN_IF_ERROR(host_compute_node_or.status());
-      Node* host_compute_node = host_compute_node_or.ValueOrDie();
+      Node* host_compute_node = host_compute_node_or.value();
       host_compute_nodes[host_compute_node->name()] = host_compute_node;
     }
     // For XlaHostCompute nodes with dependencies, add control edges between
@@ -2444,7 +2444,7 @@ Status ExtractOutsideCompilationForFunction(
     TF_RETURN_IF_ERROR(
         ConstructHostGraph(xla_cluster_name, outside_compilation_attr_name,
                            outside_compilation_host_graphs, fld, &host_graph));
-    auto host_graph_fdef = absl::make_unique<FunctionDef>();
+    auto host_graph_fdef = std::make_unique<FunctionDef>();
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*host_graph, host_graph_func_name,
                                           HostGraphControlRetMapping,
                                           host_graph_fdef.get()));
@@ -2471,7 +2471,7 @@ Status ExtractOutsideCompilationForFunction(
     }
 
     // Replace original function.
-    auto updated_fdef = absl::make_unique<FunctionDef>();
+    auto updated_fdef = std::make_unique<FunctionDef>();
     TF_RETURN_IF_ERROR(
         GraphToFunctionDef(*g, new_func_name, updated_fdef.get()));
     updated_fdef->mutable_signature()->set_is_stateful(true);

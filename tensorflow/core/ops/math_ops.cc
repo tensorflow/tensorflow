@@ -45,7 +45,7 @@ REGISTER_OP("AddN")
 
       if (dtype != DT_VARIANT) {
         // Exit early if not DT_VARIANT.
-        return Status::OK();
+        return OkStatus();
       } else {
         // DT_VARIANT shape handle shape inference.  All sizes and dtypes must
         // be the same; all shapes must be compatible via Merge.
@@ -92,7 +92,7 @@ REGISTER_OP("AddN")
         if (shapes_and_types) {
           c->set_output_handle_shapes_and_types(0, cur_shapes_and_types);
         }
-        return Status::OK();
+        return OkStatus();
       }
     });
 
@@ -712,7 +712,7 @@ REGISTER_OP("Betainc")
       }
 
       c->set_output(0, output);
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -755,7 +755,7 @@ REGISTER_OP("GreaterEqual").COMPARISON();
         TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(   \
             c, x, y, incompatible_shape_error, &output));          \
         c->set_output(0, output);                                  \
-        return Status::OK();                                       \
+        return OkStatus();                                         \
       })
 
 REGISTER_OP("Equal").EQUALITY_COMPARISON();
@@ -847,7 +847,7 @@ REGISTER_OP("Select")
 
       if (!c->RankKnown(cond) || !c->RankKnown(data)) {
         c->set_output(0, data);
-        return Status::OK();
+        return OkStatus();
       }
 
       // rank of shape and data is known.
@@ -859,7 +859,7 @@ REGISTER_OP("Select")
         // The rank of 'cond' is a scalar.
         // t and e can have any shape.
         c->set_output(0, data);
-        return Status::OK();
+        return OkStatus();
       }
 
       if (cond_rank != 1) {
@@ -867,14 +867,14 @@ REGISTER_OP("Select")
         // then shape must match 'then' and 'else'
         TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
         c->set_output(0, data);
-        return Status::OK();
+        return OkStatus();
       }
 
       if (data_rank == 0) {
         // if 'then' and 'else' are scalar also the cond must be
         TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
         c->set_output(0, data);
-        return Status::OK();
+        return OkStatus();
       }
 
       if (cond_rank == 1) {
@@ -882,12 +882,12 @@ REGISTER_OP("Select")
         // the first dimension of 'then' and 'else'
         TF_RETURN_IF_ERROR(c->Merge(cond, c->Vector(c->Dim(data, 0)), &cond));
         c->set_output(0, data);
-        return Status::OK();
+        return OkStatus();
       }
 
       c->set_output(0, data);
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SelectV2")
@@ -938,7 +938,7 @@ REGISTER_OP("SelectV2")
       TF_RETURN_IF_ERROR(
           BroadcastBinaryOpOutputShapeFnHelper(c, cond, other, true, &output));
       c->set_output(0, output);
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -1101,7 +1101,7 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
     }
 
     c->set_output(0, c->MakeShape(dims));
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t dimension_val;
@@ -1127,7 +1127,7 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
     }
   }
   c->set_output(0, c->MakeShape(dims));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -1165,7 +1165,7 @@ Status SegmentReductionShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(
       c->Concatenate(c->Vector(InferenceContext::kUnknownDim), subshape, &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SparseSegmentReductionShapeFn(InferenceContext* c) {
@@ -1189,7 +1189,7 @@ Status SparseSegmentReductionShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(
       c->Concatenate(c->Vector(InferenceContext::kUnknownDim), subshape, &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
@@ -1227,7 +1227,7 @@ Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->Concatenate(dim0_shape, subshape, &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SparseSegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
@@ -1266,7 +1266,7 @@ Status SparseSegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
     TF_RETURN_IF_ERROR(c->Concatenate(c->Vector(dim0_value), subshape, &out));
   }
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -1502,7 +1502,7 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   }
 
   c->set_output(0, c->Vector(static_cast<int64_t>(size)));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -1532,7 +1532,7 @@ REGISTER_OP("Range")
       TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (start_t == nullptr || limit_t == nullptr || delta_t == nullptr) {
         c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-        return Status::OK();
+        return OkStatus();
       }
       if (dtype == DT_INT32) {
         return RangeSize<int32>(start_t, limit_t, delta_t, c);
@@ -1555,7 +1555,7 @@ REGISTER_OP("Range")
       } else {
         return errors::InvalidArgument("Unsupported dtype", dtype);
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("LinSpace")
@@ -1576,7 +1576,7 @@ REGISTER_OP("LinSpace")
       const Tensor* num_t = c->input_tensor(2);
       if (num_t == nullptr) {
         c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-        return Status::OK();
+        return OkStatus();
       }
 
       int64_t num;
@@ -1587,7 +1587,7 @@ REGISTER_OP("LinSpace")
       }
       if (num <= 0) return errors::InvalidArgument("Requires num > 0: ", num);
       c->set_output(0, c->Vector(num));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("Complex")
@@ -1629,7 +1629,7 @@ REGISTER_OP("Conj")
       if (handle_data != nullptr) {
         c->set_output_handle_shapes_and_types(0, *handle_data);
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -1656,7 +1656,7 @@ REGISTER_OP("Cross")
         TF_RETURN_IF_ERROR(c->WithValue(dim, 3, &dim));
       }
       c->set_output(0, a_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -1693,7 +1693,7 @@ REGISTER_OP("HistogramFixedWidth")
       } else {
         c->set_output(0, c->UnknownShapeOfRank(1));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("Bincount")
@@ -1711,7 +1711,7 @@ REGISTER_OP("Bincount")
       if (size_tensor == nullptr) {
         // Return unknown shape if size is not known.
         c->set_output(0, c->UnknownShapeOfRank(1));
-        return Status::OK();
+        return OkStatus();
       }
 
       if (size_tensor->dims() != 0) {
@@ -1726,7 +1726,7 @@ REGISTER_OP("Bincount")
                                        ") must be non-negative");
       }
       c->set_output(0, c->MakeShape({size_val}));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DenseBincount")
@@ -1748,7 +1748,7 @@ REGISTER_OP("DenseBincount")
       if (size_tensor == nullptr) {
         // Return unknown shape if size is not known.
         c->set_output(0, c->UnknownShape());
-        return Status::OK();
+        return OkStatus();
       }
       if (size_tensor->dims() != 0) {
         return errors::InvalidArgument("Shape must be rank 0 but is rank ",
@@ -1775,7 +1775,7 @@ REGISTER_OP("DenseBincount")
       } else if (c->Rank(c->input(0)) == 2) {
         c->set_output(0, c->MakeShape({c->Dim(c->input(0), 0), size_val}));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseBincount")
@@ -1793,7 +1793,7 @@ REGISTER_OP("SparseBincount")
       if (size_tensor == nullptr) {
         // Return unknown shape if size is not known.
         c->set_output(0, c->UnknownShape());
-        return Status::OK();
+        return OkStatus();
       }
       if (size_tensor->dims() != 0) {
         return errors::InvalidArgument("Shape must be rank 0 but is rank ",
@@ -1820,7 +1820,7 @@ REGISTER_OP("SparseBincount")
       if (shape_tensor == nullptr) {
         // Return unknown shape if size is not known.
         c->set_output(0, c->UnknownShape());
-        return Status::OK();
+        return OkStatus();
       }
       if (shape_tensor->NumElements() == 1) {
         c->set_output(0, c->MakeShape({size_val}));
@@ -1830,7 +1830,7 @@ REGISTER_OP("SparseBincount")
       } else {
         return errors::InvalidArgument("Input must be less than rank 2");
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("RaggedBincount")
@@ -1844,7 +1844,7 @@ REGISTER_OP("RaggedBincount")
     .Output("output: T")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("Cumsum")
@@ -1903,7 +1903,7 @@ REGISTER_OP("QuantizedMatMul")
 
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 // Note: This op is not commutative w.r.t. to all its inputs.
@@ -1924,7 +1924,7 @@ REGISTER_OP("QuantizedMul")
       TF_RETURN_IF_ERROR(shape_inference::BroadcastBinaryOpShapeFn(c));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 // Note: This op is not commutative w.r.t. to all its inputs.
@@ -1952,7 +1952,7 @@ REGISTER_OP("QuantizedAdd")
 
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizeDownAndShrinkRange")
@@ -1971,7 +1971,7 @@ REGISTER_OP("QuantizeDownAndShrinkRange")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("Requantize")
@@ -1994,7 +1994,7 @@ REGISTER_OP("Requantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("RequantizationRange")
@@ -2010,7 +2010,7 @@ REGISTER_OP("RequantizationRange")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -2076,7 +2076,7 @@ REGISTER_OP("RequantizePerChannel")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 REGISTER_OP("RequantizationRangePerChannel")
     .Input("input: T")
@@ -2092,7 +2092,7 @@ REGISTER_OP("RequantizationRangePerChannel")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("NextAfter")
@@ -2127,7 +2127,7 @@ REGISTER_OP("SobolSample")
                                 : num_results_t->scalar<int32>()();
 
       c->set_output(0, c->Matrix(num_results, dim));
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

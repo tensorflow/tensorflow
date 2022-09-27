@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,14 +31,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace tensorflow {
 
 // Snapshot of resource variables for a TF kernel invocation, mapping from
 // parameter number to values at execution time. If the resource variable is not
 // initialized, the value will not be present.
-using ResourceVarsSnapshot = absl::flat_hash_map<int, absl::optional<Tensor>>;
+using ResourceVarsSnapshot = absl::flat_hash_map<int, std::optional<Tensor>>;
 
 // Information about the state of a variable passed as input to the _XlaCompile
 // and _XlaRun operators.  Unlocks the resource variable and decrements its
@@ -45,8 +45,8 @@ using ResourceVarsSnapshot = absl::flat_hash_map<int, absl::optional<Tensor>>;
 class VariableInfo {
  public:
   explicit VariableInfo(int index, absl::string_view name, Var* var,
-                        const absl::optional<ManagedStackTrace>&
-                            definition_stack_trace = absl::nullopt);
+                        const std::optional<ManagedStackTrace>&
+                            definition_stack_trace = std::nullopt);
   VariableInfo(VariableInfo&& other);
 
   VariableInfo& operator=(VariableInfo&& other);
@@ -70,7 +70,7 @@ class VariableInfo {
   bool lock_held() const { return lock_held_; }
   void set_lock_held() { lock_held_ = true; }
 
-  const absl::optional<ManagedStackTrace>& definition_stack_trace() const {
+  const std::optional<ManagedStackTrace>& definition_stack_trace() const {
     return definition_stack_trace_;
   }
 
@@ -80,7 +80,7 @@ class VariableInfo {
   int index_;
   std::string name_;
   Var* var_;
-  absl::optional<ManagedStackTrace> definition_stack_trace_;
+  std::optional<ManagedStackTrace> definition_stack_trace_;
 
   // We can't use a optional<mutex_lock> here because it confuses the compiler's
   // thread safety analysis. Instead we use a boolean flag and release the lock

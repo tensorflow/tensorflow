@@ -26,10 +26,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace cpu {
+
+class CpuExecutable;
 
 // This class wraps the configurability options that LLVM exposes including: the
 // target triple, the target cpu and the target features.  It also includes the
@@ -173,7 +175,10 @@ class CpuCompiler : public LLVMCompiler {
       HloModule* module, bool is_aot_compile,
       LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile);
 
-  mutable std::unique_ptr<HloProto> hlo_proto_;
+  StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
+      std::unique_ptr<HloModule> module);
+  StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
+      std::unique_ptr<HloModule> module);
 
   CpuCompiler(const CpuCompiler&) = delete;
   CpuCompiler& operator=(const CpuCompiler&) = delete;

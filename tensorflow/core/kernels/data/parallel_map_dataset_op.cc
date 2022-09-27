@@ -108,7 +108,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       const string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
   }
 
@@ -258,7 +258,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = GetAutotuneDefaultParallelism(ctx);
       }
-      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      cancellation_manager_ = std::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
@@ -788,7 +788,7 @@ std::unique_ptr<DatasetBase> MakeDataServiceUncompressDataset(
   DatasetContext::Params param;
   param.type_string = kParallelMapDatasetV2;
   param.node_name = kParallelMapDatasetV2;
-  return absl::make_unique<ParallelMapDatasetOp::Dataset>(
+  return std::make_unique<ParallelMapDatasetOp::Dataset>(
       DatasetContext(std::move(param)), input,
       /*num_parallel_calls=*/model::kAutotune, output_types, output_shapes,
       DeterminismPolicy(DeterminismPolicy::Type::kDefault),

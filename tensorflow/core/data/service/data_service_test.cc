@@ -59,9 +59,9 @@ tstring LocalTempFilename() {
   return tstring(path);
 }
 
-std::vector<int64_t> Range(const int64 range) {
+std::vector<int64_t> Range(const int64_t range) {
   std::vector<int64_t> result;
-  for (int64 i = 0; i < range; ++i) {
+  for (int64_t i = 0; i < range; ++i) {
     result.push_back(i);
   }
   return result;
@@ -280,7 +280,7 @@ TEST(DataServiceTest, DispatcherStateExport) {
               SizeIs(1));
   EXPECT_EQ(
       server_state_export.dispatcher_state_export().iterations(0).dataset_id(),
-      1000);
+      "1000");
   EXPECT_THAT(server_state_export.dispatcher_state_export()
                   .iterations(0)
                   .iteration_key()

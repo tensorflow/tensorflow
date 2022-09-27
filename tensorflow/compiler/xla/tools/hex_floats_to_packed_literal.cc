@@ -21,13 +21,13 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 using std::string;
 
@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
   };
   std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  tsl::port::InitMain(argv[0], &argc, &argv);
   if (argc != 1 || !parse_ok) {
     LOG(QFATAL) << usage;
   }
@@ -53,9 +53,8 @@ int main(int argc, char** argv) {
     LOG(QFATAL) << "--output_file is required";
   }
 
-  std::unique_ptr<tensorflow::RandomAccessFile> file;
-  TF_CHECK_OK(
-      tensorflow::Env::Default()->NewRandomAccessFile(input_file, &file));
+  std::unique_ptr<tsl::RandomAccessFile> file;
+  TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(input_file, &file));
 
   std::vector<float> floats;
   std::string line;
@@ -70,7 +69,7 @@ int main(int argc, char** argv) {
 
   absl::string_view content(absl::bit_cast<const char*>(floats.data()),
                             floats.size() * sizeof(float));
-  TF_CHECK_OK(tensorflow::WriteStringToFile(tensorflow::Env::Default(),
-                                            output_file, content));
+  TF_CHECK_OK(
+      tsl::WriteStringToFile(tsl::Env::Default(), output_file, content));
   return 0;
 }

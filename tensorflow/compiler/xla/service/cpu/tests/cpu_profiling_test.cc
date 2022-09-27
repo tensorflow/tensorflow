@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {
@@ -90,7 +90,7 @@ TEST_P(CpuProfilingTest, DoIt) {
 
   std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
 
-  CompileAheadOfTimeAndVerifyIr(std::move(hlo_module).ValueOrDie(), options,
+  CompileAheadOfTimeAndVerifyIr(std::move(hlo_module).value(), options,
                                 check_lines,
                                 /*match_optimized_ir=*/true);
 }

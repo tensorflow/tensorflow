@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_FLEX_SUBGRAPH_RESOURCE_H_
 
 #include <memory>
+#include <string>
 
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/mutex.h"

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"

@@ -44,5 +44,4 @@ set(FARMHASH_SOURCE_DIR "${farmhash_SOURCE_DIR}" CACHE PATH
 add_subdirectory(
   "${CMAKE_CURRENT_LIST_DIR}/farmhash"
   "${farmhash_BINARY_DIR}"
-  EXCLUDE_FROM_ALL
 )

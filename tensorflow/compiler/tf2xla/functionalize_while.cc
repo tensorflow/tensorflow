@@ -120,7 +120,7 @@ StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
 Status BuildLoopCondition(const Graph& graph, WhileLoopFrame* frame,
                           std::unique_ptr<Graph>* cond_output) {
   VLOG(2) << "Building loop condition for " << frame->name;
-  *cond_output = absl::make_unique<Graph>(graph.op_registry());
+  *cond_output = std::make_unique<Graph>(graph.op_registry());
   Graph* output = cond_output->get();
 
   // Map from nodes in the original graph to the condition graph.
@@ -157,7 +157,7 @@ Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
                      DataTypeVector* arg_types,
                      std::unique_ptr<Graph>* body_output) {
   VLOG(2) << "Building loop body for " << frame->name;
-  *body_output = absl::make_unique<Graph>(graph.op_registry());
+  *body_output = std::make_unique<Graph>(graph.op_registry());
   Graph* output = body_output->get();
 
   // Map from nodes in the original graph to the body graph.
