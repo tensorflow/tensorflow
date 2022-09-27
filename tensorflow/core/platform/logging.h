@@ -22,7 +22,6 @@ limitations under the License.
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace internal {
-using tsl::internal::LogMessage;
 using tsl::internal::LogString;
 }  // namespace internal
 using tsl::ERROR;

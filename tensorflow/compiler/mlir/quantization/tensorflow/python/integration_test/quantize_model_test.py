@@ -269,6 +269,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             out, min=-0.3, max=0.4, num_bits=8, narrow_range=False)
         return {'output': q_out}
 
+    np.random.seed(1234)
     model = ConvModel()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -476,6 +477,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           out = activation_fn(out)
         return {'output': out}
 
+    np.random.seed(1234)
     model = ConvModel()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -583,6 +585,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           out = activation_fn(out)
         return {'output': out}
 
+    np.random.seed(1234)
     model = DepthwiseConvModel()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -633,6 +636,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_ptq_model(self, activation_fn: Optional[ops.Operation],
                             has_bias: bool, target_opset: quant_opts_pb2.OpSet):
+    np.random.seed(1234)
     model = self._create_matmul_model(has_bias, activation_fn)
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -697,7 +701,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input_tensor=ops.convert_to_tensor(input_data))
     # The difference between TF and target path is expected to be small (smaller
     # or equal to 1 in the quantized domain).
-    self.assertAllClose(new_outputs, got_outputs, atol=0.0734)
+    self.assertAllClose(new_outputs, got_outputs, atol=0.1048)
     self.assertAllClose(new_outputs, expected_outputs, atol=0.1023)
 
   @parameterized.named_parameters(

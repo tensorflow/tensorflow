@@ -444,10 +444,8 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     }
 
     // Implement adding accumulator to the gml_st.parallel terminator.
-    if (options.distribute &&
-        llvm::any_of(op.getLoopIteratorTypes(), [](StringRef type) {
-          return type == getReductionIteratorTypeName();
-        }))
+    if (options.distribute && llvm::count(op.getLoopIteratorTypes(),
+                                          utils::IteratorType::reduction) > 0)
       return failure();
 
     // 1. Get the range of the loops that are represented by the operation.

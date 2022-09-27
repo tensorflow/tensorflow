@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/statusor.h"
 
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace tsl {

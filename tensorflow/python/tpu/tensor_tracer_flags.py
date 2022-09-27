@@ -124,6 +124,10 @@ TT_CHECK_FILTER = flags.DEFINE_bool(
     'tt_check_filter',
     default=False,
     help='Terminate early to check op name filtering.')
+TT_SINGLE_CORE_SUMMARIES = flags.DEFINE_bool(
+    'tt_single_core_summaries',
+    default=False,
+    help='Report single core metric and avoid aggregation.')
 
 
 class TTParameters(object):

@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
 #define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
 
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 
+// Include generated definitions.
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h.inc"
 
 #endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H

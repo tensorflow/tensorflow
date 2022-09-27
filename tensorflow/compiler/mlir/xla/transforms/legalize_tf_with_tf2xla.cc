@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/mlir_hlo_builder.h"
-#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes_detail.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
@@ -753,7 +752,12 @@ class Tf2XlaRewritePattern : public RewritePattern {
   bool is_module_pass_;
 };
 
-class LegalizeTF : public LegalizeTFWithTF2XLABase<LegalizeTF> {
+// Include declaration for LegalizeTFWithTF2XLAOptions
+#define GEN_PASS_DECL_LEGALIZETFWITHTF2XLA
+#define GEN_PASS_DEF_LEGALIZETFWITHTF2XLA
+#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
+
+class LegalizeTF : public impl::LegalizeTFWithTF2XLABase<LegalizeTF> {
  public:
   LegalizeTF() = default;
   explicit LegalizeTF(llvm::StringRef device_type, bool prefer_tf2xla) {

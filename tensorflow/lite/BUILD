@@ -103,7 +103,7 @@ config_setting(
 STABLE_FRAMEWORK_LIB_HDRS = [
     "allocation.h",
     "context_util.h",
-    "core/macros.h",
+    "//tensorflow/lite/core:macros.h",
     "error_reporter.h",
     "interpreter.h",
     "model.h",
@@ -116,7 +116,7 @@ STABLE_FRAMEWORK_LIB_HDRS = [
 
 FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
     "context.h",
-    "core/subgraph.h",
+    "//tensorflow/lite/core:subgraph.h",
     "graph_info.h",
     "interpreter_options.h",
     "logger.h",
@@ -126,12 +126,12 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
 
 # Private header files that are included from the public API header files.
 STABLE_FRAMEWORK_LIB_IMPL_HDRS = [
-    "core/subgraph.h",
+    "//tensorflow/lite/core:subgraph.h",
     "signature_runner.h",
 ]
 
 exports_files(
-    FRAMEWORK_LIB_HDRS,
+    [hdr for hdr in FRAMEWORK_LIB_HDRS if hdr[0] != "/"],
     visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
 )
 
@@ -470,9 +470,9 @@ cc_library(
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/core/impl:headers",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
@@ -513,9 +513,9 @@ cc_library(
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/core/impl:headers",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
@@ -578,7 +578,6 @@ cc_library(
         ":simple_memory_arena",
         ":stderr_reporter",
         ":string",
-        ":subgraph",
         ":tensorflow_profiler_logger_shim",
         ":type_to_tflitetype",
         ":util",
@@ -586,9 +585,10 @@ cc_library(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/core/impl:headers",
         "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qs8",
         "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qu8",
@@ -609,10 +609,10 @@ cc_library(
     name = "signature_runner_header",
     hdrs = ["signature_runner.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//tensorflow/lite/core/impl:__subpackages__"],
+    visibility = ["//tensorflow/lite/core:__subpackages__"],
     deps = [
-        "//tensorflow/lite:subgraph",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/internal:signature_def",
     ],
 )
@@ -628,7 +628,6 @@ cc_library(
         "signature_runner.cc",
     ],
     hdrs = [
-        "core/subgraph.h",
         "graph_info.h",
         "interpreter.h",
         "interpreter_builder.h",
@@ -637,6 +636,7 @@ cc_library(
         "model.h",
         "model_builder.h",
         "signature_runner.h",
+        "//tensorflow/lite/core:subgraph.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
@@ -661,9 +661,9 @@ cc_library(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/core/impl:headers",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
@@ -674,56 +674,6 @@ cc_library(
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 
-# TODO(b/161243354): move this target to core/BUILD, once we've
-# added a BUILD file there.  (Unfortunately that isn't completely
-# straightforward due to core/macros.h being exposed as a public header
-# in the :framework_stable target.)
-cc_library(
-    name = "subgraph",
-    srcs = [
-        "core/subgraph.cc",
-    ],
-    hdrs = [
-        "core/subgraph.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + tflite_copts_warnings(),
-    visibility = [
-        "//tensorflow/lite/core/impl:__subpackages__",
-        "//tensorflow/lite/kernels:__subpackages__",
-    ],
-    deps = [
-        ":allocation",
-        ":graph_info",
-        ":interpreter_options_header",
-        ":kernel_api",
-        ":macros",
-        ":memory_planner",
-        ":minimal_logging",
-        ":util",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/c:common_internal",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/experimental/resource",
-        "//tensorflow/lite/profiling:root_profiler",
-        "//tensorflow/lite/schema:schema_fbs",
-    ] + select({
-        ":tflite_use_simple_memory_planner": [
-            ":simple_planner",
-        ],
-        "//conditions:default": [
-            ":arena_planner",
-        ],
-    }) + select({
-        ":tensorflow_profiler_config": [
-            ":tensorflow_profiler_logger_shim",
-        ],
-        "//conditions:default": [],
-    }),
-    alwayslink = 1,  # TODO(b/161243354): eliminate this.
-)
-
 cc_library(
     name = "interpreter_options_header",
     hdrs = [
@@ -731,7 +681,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//tensorflow/lite/core/impl:__subpackages__",
+        "//tensorflow/lite/core:__subpackages__",
     ],
 )
 
@@ -751,6 +701,7 @@ cc_library(
         ":macros",
         "//tensorflow/lite:cc_api_experimental",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -883,8 +834,8 @@ cc_library(
     name = "tflite_with_xnnpack_optional",
     srcs = ["tflite_with_xnnpack_optional.cc"],
     hdrs = [
-        "core/macros.h",
         "tflite_with_xnnpack_optional.h",
+        "//tensorflow/lite/core:macros.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
@@ -913,6 +864,7 @@ cc_test(
         ":string",
         ":string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -929,6 +881,7 @@ cc_library(
         ":string_util",
         ":version",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -962,27 +915,13 @@ cc_test(
         ":util",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-# Test subgraph.
-cc_test(
-    name = "subgraph_test",
-    size = "small",
-    srcs = [
-        "core/subgraph_test.cc",
-    ],
-    deps = [
-        ":framework",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -997,6 +936,7 @@ cc_test(
     ],
     deps = [
         ":framework",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
@@ -1064,6 +1004,7 @@ cc_test(
         ":string",
         ":string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -1090,6 +1031,7 @@ tf_cc_test(
     ],
     deps = [
         ":framework",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -1120,6 +1062,7 @@ cc_test(
         ":tflite_with_xnnpack",
         ":util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1179,6 +1122,7 @@ cc_test(
         ":framework",
         ":optional_debug_tools",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest_main",
@@ -1333,7 +1277,7 @@ cc_library(
 
 cc_library(
     name = "macros",
-    hdrs = ["core/macros.h"],
+    hdrs = ["//tensorflow/lite/core:macros.h"],
     compatible_with = get_compatible_with_portable(),
 )
 

@@ -13,14 +13,17 @@ package(
 td_library(
     name = "rt_ops_td_files",
     srcs = [
-        "rt_base.td",
+        "rt_dialect.td",
+        "rt_interfaces.td",
         "rt_ops.td",
     ],
     compatible_with = get_compatible_with_cloud(),
     includes = ["include"],
     visibility = ["//visibility:private"],
     deps = [
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
 )
 
@@ -34,7 +37,7 @@ gentbl_cc_library(
         ),
         (
             ["-gen-dialect-defs"],
-            "rt_dialect.cpp.inc",
+            "rt_dialect.cc.inc",
         ),
         (
             ["-gen-op-decls"],
@@ -42,7 +45,7 @@ gentbl_cc_library(
         ),
         (
             ["-gen-op-defs"],
-            "rt_ops.cpp.inc",
+            "rt_ops.cc.inc",
         ),
         (
             ["-gen-typedef-decls"],
@@ -50,7 +53,23 @@ gentbl_cc_library(
         ),
         (
             ["-gen-typedef-defs"],
-            "rt_types.cpp.inc",
+            "rt_types.cc.inc",
+        ),
+        (
+            ["-gen-attr-interface-decls"],
+            "rt_attr_interfaces.h.inc",
+        ),
+        (
+            ["-gen-attr-interface-defs"],
+            "rt_attr_interfaces.cc.inc",
+        ),
+        (
+            ["-gen-attrdef-decls"],
+            "rt_attrs.h.inc",
+        ),
+        (
+            ["-gen-attrdef-defs"],
+            "rt_attrs.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
@@ -59,16 +78,26 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "rt_ops",
-    srcs = ["rt_ops.cc"],
-    hdrs = ["rt_ops.h"],
+    name = "rt",
+    srcs = [
+        "rt_dialect.cc",
+        "rt_interfaces.cc",
+        "rt_ops.cc",
+    ],
+    hdrs = [
+        "rt_dialect.h",
+        "rt_interfaces.h",
+        "rt_ops.h",
+    ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":rt_inc_gen",
         "//tensorflow/compiler/xla/runtime:constraints",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
     ],
 )

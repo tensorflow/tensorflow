@@ -156,7 +156,7 @@ void HandleInput(Value input, const int64_t execute_arg_index,
   builder.setInsertionPoint(execute_launch);
   auto copy_with_layout = BuildCopyWithLayout(execute_launch, compile_launch,
                                               get_layout, input, &builder);
-  copy_with_layout->setAttr(kDeviceAttr, execute_launch.deviceAttr());
+  copy_with_layout->setAttr(kDeviceAttr, execute_launch.getDeviceAttr());
   execute.setOperand(execute_arg_index, copy_with_layout);
 }
 
@@ -168,7 +168,7 @@ bool HandleReplicatedInputs(
     mlir::BlockArgument replicate_arg, tf_device::ReplicateOp replicate,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
   // We need to know the devices to copy to.
-  if (!replicate.devices()) return false;
+  if (!replicate.getDevices()) return false;
 
   MutableArrayRef<OpOperand> inputs =
       replicate.GetOperandsForBlockArgument(replicate_arg);
@@ -186,7 +186,7 @@ bool HandleReplicatedInputs(
         BuildCopyWithLayout(execute_launch, compile_launch, get_layout,
                             entry.value().get(), &builder);
 
-    auto device_list = replicate.devices()
+    auto device_list = replicate.getDevices()
                            .getValue()
                            .get(execute_launch.getDevice())
                            .cast<ArrayAttr>();
@@ -241,7 +241,7 @@ void HandleCompileAndExecutes(
         // not on the host.)
         auto* input_op = input.getDefiningOp();
         if (maybe_replicate &&
-            maybe_replicate.body().isAncestor(input_op->getParentRegion())) {
+            maybe_replicate.getBody().isAncestor(input_op->getParentRegion())) {
           continue;
         }
         if (!IsSupportedInputOp(input_op, resource_alias_analysis)) continue;
@@ -271,7 +271,8 @@ void TPUDynamicLayoutPass::runOnFunction(
 
     llvm::SmallVector<tf_device::LaunchOp, 4> execute_launches;
     execute_launches.reserve(compile_launch.getNumResults() - 1);
-    for (Value program_result : llvm::drop_begin(compile_launch.results(), 1)) {
+    for (Value program_result :
+         llvm::drop_begin(compile_launch.getResults(), 1)) {
       if (!program_result.hasOneUse()) return;
       Operation* user = *program_result.user_begin();
       auto execute = llvm::dyn_cast<TF::TPUExecuteOp>(user);

@@ -96,7 +96,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
     auto loc = broadcastShapesOp.getLoc();
     ImplicitLocOpBuilder lb(loc, rewriter);
     Value zero = lb.create<arith::ConstantIndexOp>(0);
-    SmallVector<Value> shapes = adaptor.shapes();
+    SmallVector<Value> shapes = adaptor.getShapes();
     size_t k = shapes.size();
     SmallVector<Value> ranks;
     ranks.reserve(k);

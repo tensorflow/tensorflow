@@ -1281,8 +1281,6 @@ REGISTER_OP("XlaCallModule")
     .Attr("Tin: list(type) >= 0")
     .Attr("dim_args_spec: list(string) >= 0")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      // For debugging
-      VLOG(3) << "XlaCallModule.shape_inference";
       std::vector<shape_inference::ShapeHandle> args_shapes;
       TF_RETURN_IF_ERROR(c->input("args", &args_shapes));
       for (int i = 0; i < args_shapes.size(); ++i) {

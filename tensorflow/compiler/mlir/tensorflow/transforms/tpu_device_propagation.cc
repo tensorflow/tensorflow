@@ -52,7 +52,7 @@ bool IsSupportedGraph(func::FuncOp func) {
 
   Operation* terminator = block.getTerminator();
   if (graph.getNumResults() != terminator->getNumOperands()) return false;
-  for (auto result : llvm::zip(graph.results(), terminator->getOperands()))
+  for (auto result : llvm::zip(graph.getResults(), terminator->getOperands()))
     if (std::get<0>(result) != std::get<1>(result)) return false;
 
   return true;

@@ -23,13 +23,6 @@ limitations under the License.
 #if defined __GNUC__ && defined __SSE4_1__ && !defined TF_LITE_DISABLE_X86_NEON
 #define USE_NEON
 #include "NEON_2_SSE.h"
-#if defined vld1q_lane_u64
-#undef vld1q_lane_u64
-// TODO(b/240305641): workaround a bug in the arm_neon_sse.h header, this can be
-// removed after https://github.com/intel/ARM_NEON_2_x86_SSE/pull/60 is merged
-// upstream.
-#define vld1q_lane_u64(ptr, vec, lane) _MM_INSERT_EPI64(vec, *(ptr), lane)
-#endif
 #endif
 
 // NEON_OR_PORTABLE(SomeFunc, args) calls NeonSomeFunc(args) if USE_NEON is

@@ -119,7 +119,7 @@ class WindowsRandomAccessFile : public RandomAccessFile {
 
   Status Name(StringPiece* result) const override {
     *result = filename_;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
@@ -153,7 +153,7 @@ class WindowsRandomAccessFile : public RandomAccessFile {
 #if defined(TF_CORD_SUPPORT)
   Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
     if (n == 0) {
-      return Status::OK();
+      return OkStatus();
     }
     if (n < 0) {
       return errors::InvalidArgument(
@@ -204,7 +204,7 @@ class WindowsWritableFile : public WritableFile {
     }
 
     assert(size_t(bytes_written) == data.size());
-    return Status::OK();
+    return OkStatus();
   }
 
 #if defined(TF_CORD_SUPPORT)
@@ -221,7 +221,7 @@ class WindowsWritableFile : public WritableFile {
 
       assert(size_t(bytes_written) == chunk.size());
     }
-    return Status::OK();
+    return OkStatus();
   }
 #endif
 
@@ -238,7 +238,7 @@ class WindowsWritableFile : public WritableFile {
                                      filename_);
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Close() override {
@@ -254,7 +254,7 @@ class WindowsWritableFile : public WritableFile {
     }
 
     hfile_ = INVALID_HANDLE_VALUE;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Flush() override {
@@ -262,12 +262,12 @@ class WindowsWritableFile : public WritableFile {
       return IOErrorFromWindowsError("FlushFileBuffers failed for: " +
                                      filename_);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Name(StringPiece* result) const override {
     *result = filename_;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Sync() override { return Flush(); }
@@ -333,7 +333,7 @@ Status WindowsFileSystem::NewRandomAccessFile(
   }
 
   result->reset(new WindowsRandomAccessFile(translated_fname, hfile));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WindowsFileSystem::NewWritableFile(
@@ -354,7 +354,7 @@ Status WindowsFileSystem::NewWritableFile(
   }
 
   result->reset(new WindowsWritableFile(translated_fname, hfile));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WindowsFileSystem::NewAppendableFile(
@@ -385,7 +385,7 @@ Status WindowsFileSystem::NewAppendableFile(
   result->reset(new WindowsWritableFile(translated_fname, hfile));
   file_guard.release();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
@@ -394,7 +394,7 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
-  Status s = Status::OK();
+  Status s = OkStatus();
 
   // Open the file for read-only
   DWORD file_flags = FILE_ATTRIBUTE_READONLY;
@@ -471,7 +471,7 @@ Status WindowsFileSystem::FileExists(const string& fname,
   constexpr int kOk = 0;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
   if (_waccess(ws_translated_fname.c_str(), kOk) == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   return errors::NotFound(fname, " not found");
 }
@@ -510,7 +510,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
     return IOErrorFromWindowsError(context);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WindowsFileSystem::DeleteFile(const string& fname,
@@ -570,7 +570,7 @@ Status WindowsFileSystem::IsDirectory(const string& fname,
   TF_RETURN_IF_ERROR(FileExists(fname));
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
   if (PathIsDirectoryW(ws_translated_fname.c_str())) {
-    return Status::OK();
+    return OkStatus();
   }
   return Status(tsl::error::FAILED_PRECONDITION, "Not a directory");
 }
@@ -605,7 +605,7 @@ Status WindowsFileSystem::RenameFile(const string& src, const string& target,
         strings::StrCat("Failed to rename: ", src, " to: ", target));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
@@ -624,7 +624,7 @@ Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
   for (string& result : *results) {
     std::replace(result.begin(), result.end(), '/', '\\');
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool WindowsFileSystem::Match(const string& filename, const string& pattern) {

@@ -778,10 +778,10 @@ StatusOr<llvm::SmallVector<Layout>> GetLayoutsFromAssignVariableOps(
     // and the AssignVariableOp.
     for (auto consuming_op : result.getUsers()) {
       // To get to the AssignVariableOp that consumes `result`, we expect
-      // an IdentityOp or a DTensorSend op on the path. So, skip past
+      // an IdentityOp, CastOp, or a DTensorSend op on the path. So, skip past
       // these ops first.
-      while (llvm::isa<mlir::TF::IdentityOp, mlir::TF::DTensorSend>(
-          consuming_op)) {
+      while (llvm::isa<mlir::TF::CastOp, mlir::TF::IdentityOp,
+                       mlir::TF::DTensorSend>(consuming_op)) {
         if (auto send_op =
                 mlir::dyn_cast_or_null<mlir::TF::DTensorSend>(consuming_op)) {
           TF_ASSIGN_OR_RETURN(

@@ -22,12 +22,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model_builder.h"
@@ -58,11 +58,12 @@ class CustomValidationEmbedderTest : public ::testing::Test {
 TEST_F(CustomValidationEmbedderTest, BuildValidationModelSucceed) {
   int batch_size = 5;
   std::vector<uint8_t> input_buffer(batch_size * kMobileNetModelInputByteSize);
-  CustomValidationEmbedder embedder(
-      *plain_model_loader_->GetModel()->GetModel(), batch_size, {input_buffer});
+  CustomValidationEmbedder embedder(batch_size, {input_buffer});
 
   FlatBufferBuilder fbb;
-  EXPECT_EQ(embedder.BuildModel(fbb), kMinibenchmarkSuccess);
+  EXPECT_EQ(
+      embedder.BuildModel(*plain_model_loader_->GetModel()->GetModel(), fbb),
+      kMinibenchmarkSuccess);
 
   // Verify validation graph can be invoked.
   auto model =
@@ -84,12 +85,12 @@ TEST_F(CustomValidationEmbedderTest, BuildValidationModelSucceed) {
 
 TEST_F(CustomValidationEmbedderTest, BuildValidationModelTooManyInput) {
   int batch_size = 5;
-  CustomValidationEmbedder embedder(
-      *plain_model_loader_->GetModel()->GetModel(), batch_size, {{}, {}});
+  CustomValidationEmbedder embedder(batch_size, {{}, {}});
 
   FlatBufferBuilder fbb;
-  EXPECT_EQ(embedder.BuildModel(fbb),
-            kMinibenchmarkValidationSubgraphBuildFailed);
+  EXPECT_EQ(
+      embedder.BuildModel(*plain_model_loader_->GetModel()->GetModel(), fbb),
+      kMinibenchmarkValidationSubgraphBuildFailed);
 }
 
 }  // namespace

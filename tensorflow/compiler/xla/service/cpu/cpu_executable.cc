@@ -364,7 +364,7 @@ Status XlaRuntimeCpuExecutable::Execute(
     return InternalError("Failed to execute XLA Runtime executable: %s.",
                          status.message());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(

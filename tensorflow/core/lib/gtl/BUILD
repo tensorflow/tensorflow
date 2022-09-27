@@ -23,6 +23,8 @@ package(
         # tensorflow/examples/custom_ops_doc/simple_hash_table uses map_util
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        # TODO(aminim): remove when array_slice migrates to TSL
+        "//tensorflow/tsl:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -77,6 +79,7 @@ cc_library(
         "//tensorflow/core/lib/hash",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/gtl:flatmap",
     ],
 )
 
@@ -275,7 +278,6 @@ filegroup(
     srcs = [
         "cleanup_test.cc",
         "edit_distance_test.cc",
-        "flatmap_test.cc",
         "manual_constructor_test.cc",
         "top_n_test.cc",
     ],

@@ -1137,6 +1137,12 @@ Status EagerContext::FindCompositeDeviceFromName(
   return errors::NotFound("Unknown composite device: ", device_name);
 }
 
+bool EagerContext::IsCustomDevice(const string& device_name) {
+  CustomDevice* device = nullptr;
+  return custom_device_op_handler_.FindCustomDeviceFromName(device_name,
+                                                            &device);
+}
+
 Status EagerContext::RegisterCustomDevice(
     const string& device_name, std::unique_ptr<CustomDevice> device) {
   Device* existing_physical_device = nullptr;

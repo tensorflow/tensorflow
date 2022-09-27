@@ -25,8 +25,10 @@ package(
 filegroup(
     name = "mobile_srcs",
     srcs = [
-        "byte_swap.cc",
-        "byte_swap.h",
+        "byte_swap_array.cc",
+        "byte_swap_array.h",
+        "byte_swap_tensor.cc",
+        "byte_swap_tensor.h",
         "naming.cc",
         "naming.h",
         "tensor_bundle.cc",
@@ -42,16 +44,15 @@ alias(
 cc_library(
     name = "tensor_bundle",
     srcs = [
-        "byte_swap.cc",
         "tensor_bundle.cc",
     ],
     hdrs = [
-        "byte_swap.h",
         "tensor_bundle.h",
     ],
     copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     deps = [
+        ":byteswaptensor",
         ":naming",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -78,6 +79,30 @@ cc_library(
     deps = ["//tensorflow/core:lib"],
 )
 
+cc_library(
+    name = "byteswaparray",
+    srcs = ["byte_swap_array.cc"],
+    hdrs = ["byte_swap_array.h"],
+    deps = [
+        "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+    ],
+)
+
+cc_library(
+    name = "byteswaptensor",
+    srcs = ["byte_swap_tensor.cc"],
+    hdrs = ["byte_swap_tensor.h"],
+    deps = [
+        ":byteswaparray",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:byte_order",
+    ],
+)
+
 tf_cc_test(
     name = "tensor_bundle_test",
     srcs = ["tensor_bundle_test.cc"],
@@ -87,6 +112,7 @@ tf_cc_test(
         "notsan",
     ],
     deps = [
+        ":byteswaptensor",
         ":tensor_bundle",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

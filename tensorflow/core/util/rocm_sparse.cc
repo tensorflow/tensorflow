@@ -67,12 +67,12 @@ class HipSparseHandles {
   ~HipSparseHandles() { Release(); }
 
   Status Initialize() {
-    if (initialized_) return Status::OK();
+    if (initialized_) return OkStatus();
     TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreate(&hipsparse_handle_));
     TF_RETURN_IF_GPUSPARSE_ERROR(
         wrap::hipsparseSetStream(hipsparse_handle_, stream_));
     initialized_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   hipsparseHandle_t& handle() {
@@ -149,7 +149,7 @@ Status GpuSparse::Initialize() {
   }
   gpusparse_handle_ = &it->second.handle();
   initialized_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 #define TF_CALL_HIPSPARSE_DTYPES(m)          \
@@ -172,7 +172,7 @@ Status GpuSparse::Coo2csr(const int* cooRowInd, int nnz, int m,
   TF_RETURN_IF_GPUSPARSE_ERROR(
       wrap::hipsparseXcoo2csr(*gpusparse_handle_, cooRowInd, nnz, m, csrRowPtr,
                               HIPSPARSE_INDEX_BASE_ZERO));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GpuSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
@@ -181,7 +181,7 @@ Status GpuSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
   TF_RETURN_IF_GPUSPARSE_ERROR(
       wrap::hipsparseXcsr2coo(*gpusparse_handle_, csrRowPtr, nnz, m, cooRowInd,
                               HIPSPARSE_INDEX_BASE_ZERO));
-  return Status::OK();
+  return OkStatus();
 }
 
 #if TF_ROCM_VERSION < 40200
@@ -197,7 +197,7 @@ static inline Status CsrmmImpl(
       hipsparse_handle, transA, transB, m, n, k, nnz, AsHipComplex(alpha_host),
       descrA, AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
       AsHipComplex(B), ldb, AsHipComplex(beta_host), AsHipComplex(C), ldc));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRMM_INSTANCE(Scalar, sparse_prefix)                                 \
@@ -232,7 +232,7 @@ TF_CALL_HIP_LAPACK_TYPES(CSRMM_INSTANCE);
     TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseSpMM_bufferSize(              \
         *gpusparse_handle_, transA, transB, alpha, matA, matB, beta, matC,    \
         dtype, alg, bufferSize));                                             \
-    return Status::OK();                                                      \
+    return OkStatus();                                                        \
   }
 
 TF_CALL_HIPSPARSE_DTYPES(SPMM_BUFFERSIZE_INSTANCE);
@@ -249,7 +249,7 @@ TF_CALL_HIPSPARSE_DTYPES(SPMM_BUFFERSIZE_INSTANCE);
     TF_RETURN_IF_GPUSPARSE_ERROR(                                            \
         wrap::hipsparseSpMM(*gpusparse_handle_, transA, transB, alpha, matA, \
                             matB, beta, matC, dtype, alg, buffer));          \
-    return Status::OK();                                                     \
+    return OkStatus();                                                       \
   }
 
 TF_CALL_HIPSPARSE_DTYPES(SPMM_INSTANCE);
@@ -270,7 +270,7 @@ static inline Status CsrmvImpl(SparseFnT op, OpKernelContext* context,
       op(hipsparse_handle, transA, m, n, nnz, AsHipComplex(alpha_host), descrA,
          AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
          AsHipComplex(x), AsHipComplex(beta_host), AsHipComplex(y)));
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(ebrevdo,rmlarsen): Use csrmv_mp for all cases when available in CUDA 9.
@@ -304,7 +304,7 @@ Status GpuSparse::CsrgemmNnz(
       *gpusparse_handle_, transA, transB, m, n, k, descrA, nnzA,
       csrSortedRowPtrA, csrSortedColIndA, descrB, nnzB, csrSortedRowPtrB,
       csrSortedColIndB, descrC, csrSortedRowPtrC, nnzTotalDevHostPtr));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Scalar, typename SparseFnT>
@@ -322,7 +322,7 @@ static inline Status CsrgemmImpl(
       AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA, descrB,
       nnzB, AsHipComplex(csrSortedValB), csrSortedRowPtrB, csrSortedColIndB,
       descrC, AsHipComplex(csrSortedValC), csrSortedRowPtrC, csrSortedColIndC));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRGEMM_INSTANCE(Scalar, sparse_prefix)                                \
@@ -376,7 +376,7 @@ static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
                                   AsHipComplex(csrVal), csrRowPtr, csrColInd,
                                   info.info(), pBuffer.data()));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRU2CSR_INSTANCE(Scalar, sparse_prefix)                               \
@@ -406,7 +406,7 @@ static inline Status Csr2cscImpl(SparseFnT op, OpKernelContext* context,
                                   AsHipComplex(csrVal), csrRowPtr, csrColInd,
                                   AsHipComplex(cscVal), cscRowInd, cscColPtr,
                                   copyValues, HIPSPARSE_INDEX_BASE_ZERO));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSR2CSC_INSTANCE(Scalar, sparse_prefix)                              \
@@ -439,7 +439,7 @@ static inline Status CsrgeamBufferSizeExtImpl(
       AsHipComplex(beta), descrB, nnzB, AsHipComplex(csrSortedValB),
       csrSortedRowPtrB, csrSortedColIndB, descrC, AsHipComplex(csrSortedValC),
       csrSortedRowPtrC, csrSortedColIndC, bufferSize));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRGEAM_BUFFERSIZE_INSTANCE(Scalar, sparse_prefix)                     \
@@ -475,7 +475,7 @@ Status GpuSparse::CsrgeamNnz(
       *gpusparse_handle_, m, n, descrA, nnzA, csrSortedRowPtrA,
       csrSortedColIndA, descrB, nnzB, csrSortedRowPtrB, csrSortedColIndB,
       descrC, csrSortedRowPtrC, nnzTotalDevHostPtr, workspace));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Scalar, typename SparseFnT>
@@ -494,7 +494,7 @@ static inline Status Csrgeam2Impl(
       AsHipComplex(beta), descrB, nnzB, AsHipComplex(csrSortedValB),
       csrSortedRowPtrB, csrSortedColIndB, descrC, AsHipComplex(csrSortedValC),
       csrSortedRowPtrC, csrSortedColIndC, workspace));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRGEAM_INSTANCE(Scalar, sparse_prefix)                                \

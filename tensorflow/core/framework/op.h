@@ -64,7 +64,7 @@ class OpRegistryInterface {
 //   OpRegistry::Global()->Register(
 //     [](OpRegistrationData* op_reg_data)->Status {
 //       // Populate *op_reg_data here.
-//       return Status::OK();
+//       return OkStatus();
 //   });
 class OpRegistry : public OpRegistryInterface {
  public:
@@ -128,7 +128,7 @@ class OpRegistry : public OpRegistryInterface {
   // Process the current list of deferred registrations. Note that calls to
   // Export, LookUp and DebugString would also implicitly process the deferred
   // registrations. Returns the status of the first failed op registration or
-  // Status::OK() otherwise.
+  // OkStatus() otherwise.
   Status ProcessRegistrations() const;
 
   // Defer the registrations until a later call to a function that processes
@@ -147,7 +147,7 @@ class OpRegistry : public OpRegistryInterface {
   bool MustCallDeferred() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Calls the functions in deferred_ and registers their OpDef's
-  // It returns the Status of the first failed op registration or Status::OK()
+  // It returns the Status of the first failed op registration or OkStatus()
   // otherwise.
   Status CallDeferred() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 

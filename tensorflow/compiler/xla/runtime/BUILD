@@ -48,12 +48,10 @@ cc_library(
     hdrs = ["async_runtime.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/core/platform:mutex",  # TODO(aminim): migrate eigen3/unsupported/Eigen/CXX11/ThreadPool:70 to TSL
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:platform_port",
-        "//third_party/eigen3",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/status",
-        "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -293,6 +291,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "results_test",
+    srcs = ["results_test.cc"],
+    deps = [
+        ":logical_result",
+        ":results",
+        ":types",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "runtime",
     hdrs = ["runtime.h"],
@@ -341,6 +351,16 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "tracing",
+    hdrs = ["tracing.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":custom_call",
+        ":type_id",
     ],
 )
 

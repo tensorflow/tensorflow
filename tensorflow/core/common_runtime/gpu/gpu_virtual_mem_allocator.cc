@@ -154,7 +154,7 @@ void* GpuVirtualMemAllocator::Alloc(size_t alignment, size_t num_bytes,
     LOG(ERROR) << maybe_handle.status();
     return nullptr;
   }
-  GpuDriver::GenericMemoryHandle handle = std::move(maybe_handle).ValueOrDie();
+  GpuDriver::GenericMemoryHandle handle = std::move(maybe_handle).value();
 
   // Map VAs for this physical memory.
   auto status =

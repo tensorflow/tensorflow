@@ -41,7 +41,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_CONVERTLMHLOGPUTOGPURUNTIMEPASS
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
 
 using namespace mlir;  // NOLINT
@@ -58,7 +58,7 @@ using mlir::lmhlo_gpu::GEMMOp;
 using xla::runtime::CustomCallDeclarations;
 
 class ConvertLmhloGpuToGpuRuntimePass
-    : public ConvertLmhloGpuToGpuRuntimePassBase<
+    : public impl::ConvertLmhloGpuToGpuRuntimePassBase<
           ConvertLmhloGpuToGpuRuntimePass> {
   void runOnOperation() override;
 

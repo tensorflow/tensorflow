@@ -75,7 +75,7 @@ void FunctionalToExecutorDialectConversion::runOnOperation() {
   OpBuilder builder(&body, body.begin());
   auto graph_op = builder.create<tf_executor::GraphOp>(
       loc, func.getFunctionType().getResults());
-  graph_op.body().push_back(new Block);
+  graph_op.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&graph_op.GetBody());
   auto island = builder.create<tf_executor::IslandOp>(
       loc, func.getFunctionType().getResults(),
@@ -88,11 +88,11 @@ void FunctionalToExecutorDialectConversion::runOnOperation() {
   }
   builder.create<tf_executor::FetchOp>(loc, to_fetch);
   // Build Island.
-  island.body().push_back(new Block);
-  island.body().front().getOperations().splice(
-      island.body().front().begin(), body.getOperations(), copy_range.begin(),
-      copy_range.end());
-  builder.setInsertionPointToEnd(&island.body().front());
+  island.getBody().push_back(new Block);
+  island.getBody().front().getOperations().splice(
+      island.getBody().front().begin(), body.getOperations(),
+      copy_range.begin(), copy_range.end());
+  builder.setInsertionPointToEnd(&island.getBody().front());
   builder.create<tf_executor::YieldOp>(loc, return_op.getOperands());
   for (auto item : llvm::enumerate(graph_op.getResults())) {
     return_op.setOperand(item.index(), item.value());

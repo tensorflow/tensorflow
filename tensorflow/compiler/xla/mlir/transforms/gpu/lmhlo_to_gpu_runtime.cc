@@ -47,7 +47,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_CONVERTLMHLOTOGPURUNTIMEPASS
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
 
 using namespace mlir;  // NOLINT
@@ -66,7 +66,8 @@ using xla::runtime::AppendCustomCallAttrs;
 using xla::runtime::CustomCallDeclarations;
 
 class ConvertLmhloToGpuRuntimePass
-    : public ConvertLmhloToGpuRuntimePassBase<ConvertLmhloToGpuRuntimePass> {
+    : public impl::ConvertLmhloToGpuRuntimePassBase<
+          ConvertLmhloToGpuRuntimePass> {
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -348,10 +349,12 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
     assert(op.getNumOperands() == 1 && "expected single cond operand");
     Value pred = op.getOperand(0);
 
-    // Clone condition and body blocks into the new loop operation.
+    // Inline condition and body regions into the new loop operation.
     BlockAndValueMapping mapping;
-    op.getCond().cloneInto(&loop.getBefore(), mapping);
-    op.getBody().cloneInto(&loop.getAfter(), mapping);
+    rewriter.inlineRegionBefore(op.getCond(), loop.getBefore(),
+                                loop.getBefore().begin());
+    rewriter.inlineRegionBefore(op.getBody(), loop.getAfter(),
+                                loop.getAfter().begin());
 
     {  // Replace loop condition terminator.
       auto* terminator = loop.getBefore().back().getTerminator();

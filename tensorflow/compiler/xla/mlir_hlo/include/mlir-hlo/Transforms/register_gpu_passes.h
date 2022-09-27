@@ -28,12 +28,15 @@ namespace hlo {
 namespace impl {
 struct HloToGpuPipelineOptions
     : public PassPipelineOptions<HloToGpuPipelineOptions> {
-  ListOption<int64_t> tileSizes{
-      *this, "tile-sizes",
-      llvm::cl::desc("tile-sizes option for tile-loops pass")};
-  ListOption<int64_t> unrollFactors{
-      *this, "unroll-factors",
-      llvm::cl::desc("unroll-factors option for tile-loops pass")};
+  ListOption<int64_t> blockTileDim{
+      *this, "block-tile",
+      llvm::cl::desc("dimensions of the subproblem processed by the block")};
+  ListOption<int64_t> warpTileDim{
+      *this, "warp-tile",
+      llvm::cl::desc("dimensions of the subproblem processed by the warp")};
+  ListOption<int64_t> threadTileDim{
+      *this, "thread-tile",
+      llvm::cl::desc("dimensions of the subproblem processed by the thread")};
 };
 }  // namespace impl
 
@@ -44,7 +47,8 @@ inline void registerAllHloGpuPasses() {
       "hlo-to-gpu-pipeline",
       "Pipeline to transform HLO to LLVM + NVVM dialects.",
       [](OpPassManager &pm, const impl::HloToGpuPipelineOptions &options) {
-        createHloToGpuPipeline(pm, options.tileSizes, options.unrollFactors);
+        createHloToGpuPipeline(pm, options.blockTileDim, options.warpTileDim,
+                               options.threadTileDim);
       });
 }
 

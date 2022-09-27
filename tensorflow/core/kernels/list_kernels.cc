@@ -375,6 +375,8 @@ class TensorListResize : public OpKernel {
   void Compute(OpKernelContext* c) override {
     const TensorList* input_list = nullptr;
     OP_REQUIRES_OK(c, GetInputList(c, 0, &input_list));
+    OP_REQUIRES(c, TensorShapeUtils::IsScalar(c->input(1).shape()),
+                errors::InvalidArgument("size must be a scalar"));
     int32_t size = c->input(1).scalar<int32>()();
     OP_REQUIRES(
         c, size >= 0,

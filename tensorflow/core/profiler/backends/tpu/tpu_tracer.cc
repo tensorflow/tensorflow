@@ -72,7 +72,7 @@ Status TpuTracer::Start() {
     LOG(ERROR) << "TPU tracer failed to start.";
     return status.status();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuTracer::Stop() {
@@ -82,7 +82,7 @@ Status TpuTracer::Stop() {
     LOG(ERROR) << "TPU tracer failed to stop.";
     return status.status();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuTracer::CollectData(XSpace* space) {
@@ -109,7 +109,7 @@ Status TpuTracer::CollectData(XSpace* space) {
     LOG(ERROR) << "TPU tracer failed to collect data.";
     return status.status();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

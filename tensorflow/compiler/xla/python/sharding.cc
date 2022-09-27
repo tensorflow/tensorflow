@@ -15,11 +15,29 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/sharding.h"
 
+#include <utility>
+
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 
 namespace jax {
 
 namespace py = pybind11;
+
+MeshPspecSharding::MeshPspecSharding(py::object mesh, py::object spec,
+                                     py::object parsed_pspec)
+    : XLACompatibleSharding(/*num_devices=*/[&mesh]() {
+        py::array devices = mesh.attr("devices");
+        return devices.size();
+      }()),
+      mesh_(std::move(mesh)),
+      spec_(std::move(spec)),
+      parsed_pspec_(std::move(parsed_pspec)) {
+  try {
+    py::cast(this).attr("_preprocess")();
+  } catch (py::error_already_set& err) {
+    throw py::value_error(err.what());
+  }
+}
 
 void RegisterSharding(py::module& m) {
   py::object abc_module = py::module::import("abc");
@@ -35,12 +53,33 @@ void RegisterSharding(py::module& m) {
                                               py::metaclass(abc_meta));
   abc_init(py::type::of<XLACompatibleSharding>());
 
+  py::class_<MeshPspecSharding, XLACompatibleSharding>(m, "MeshPspecSharding",
+                                                       py::dynamic_attr())
+      .def(py::init<py::object, py::object, py::object>(), py::arg("mesh"),
+           py::arg("spec"), py::arg("_parsed_pspec") = py::none())
+      .def_property_readonly("mesh", &MeshPspecSharding::mesh)
+      .def_property_readonly("spec", &MeshPspecSharding::spec)
+      .def_property("_parsed_pspec", &MeshPspecSharding::parsed_pspec,
+                    &MeshPspecSharding::set_parsed_pspec);
+
+  py::class_<SingleDeviceSharding, XLACompatibleSharding>(
+      m, "SingleDeviceSharding", py::dynamic_attr())
+      .def(py::init<py::object>(), py::arg("device"))
+      .def_property_readonly("_device", &SingleDeviceSharding::device);
+
   py::class_<PmapSharding, XLACompatibleSharding>(m, "PmapSharding",
                                                   py::dynamic_attr())
       .def(py::init<py::object, ShardingSpec>(), py::arg("devices"),
            py::arg("sharding_spec"))
       .def_property_readonly("devices", &PmapSharding::devices)
       .def_property_readonly("sharding_spec", &PmapSharding::sharding_spec);
+
+  py::class_<OpShardingSharding, XLACompatibleSharding>(m, "OpShardingSharding",
+                                                        py::dynamic_attr())
+      .def(py::init<py::list, xla::OpSharding>(), py::arg("devices"),
+           py::arg("op_sharding"))
+      .def_property_readonly("_devices", &OpShardingSharding::devices)
+      .def_property_readonly("_op_sharding", &OpShardingSharding::op_sharding);
 }
 
 }  // namespace jax

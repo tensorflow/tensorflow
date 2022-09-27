@@ -368,6 +368,12 @@ class Compiler {
     return shape;
   }
 
+  // Returns an AotCompilationResult of the executable for serialization.
+  virtual StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+      Executable* executable) const {
+    return Unimplemented("Export unimplemented");
+  }
+
  private:
   // Mutex that guards the platform-compiler map.
   static absl::Mutex platform_compiler_mutex_;

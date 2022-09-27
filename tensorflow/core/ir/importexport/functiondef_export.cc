@@ -78,7 +78,7 @@ static tensorflow::StatusOr<std::string> GetValueName(Value operand,
   } else {
     if (!get_result)
       return InvalidArgument("Missing get_result operation as input");
-    producer = get_result.value().getDefiningOp();
+    producer = get_result.getValue().getDefiningOp();
     if (!producer)
       return InvalidArgument("Expect a tfg operation as input to GetResultOp");
   }
@@ -92,8 +92,8 @@ static tensorflow::StatusOr<std::string> GetValueName(Value operand,
   if (is_control) name = "^";
   absl::StrAppend(&name, name_attr.getValue().str());
   if (get_result)
-    absl::StrAppend(&name, ":", get_result.name().str(), ":",
-                    get_result.number());
+    absl::StrAppend(&name, ":", get_result.getName().str(), ":",
+                    get_result.getNumber());
   return name;
 }
 
@@ -143,7 +143,7 @@ static Status ExportArgDef(OpDef::ArgDef *arg, DictionaryAttr arg_attrs,
 
 tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
     GraphFuncOp func_op) {
-  if (!func_op.generic())
+  if (!func_op.getGeneric())
     return InvalidArgument(
         "Expected a generic function in ConvertGenericFunctionToFunctionDef");
   auto control_ty = tfg::ControlType::get(func_op.getContext());

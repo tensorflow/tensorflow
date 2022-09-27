@@ -111,4 +111,41 @@ def ConvertLmhloGpuToGpuRuntimePass :
   let constructor = "createConvertLmhloGpuToGpuRuntimePass()";
 }
 
+//===----------------------------------------------------------------------===//
+// XLA runtime performance tracing passes.
+//===----------------------------------------------------------------------===//
+
+// TODO(ezhulenev): This pass should be generic for all backends, consider
+// moving it to the `transforms/runtime` folder once it will be used by CPU
+// compiler.
+
+def AddHloTraceAnnotationsPass :
+    Pass<"xla-add-hlo-trace-annotations", "mlir::ModuleOp"> {
+  let summary = "Adds HLO trace annotations to the supported operations";
+
+  let description = [{
+    Adds HLO trace annotations to the operations that result from compiling
+    an input HLO module, e.g. it adds HLO trace annotations to all runtime custom
+    calls that are constructed from the corresponding HLO operations.
+
+    Example:
+
+    ```mlir
+    call @xla.gpu.gemm(...) : (...) -> memref<?x?xf32>
+    ```
+
+    becomes:
+
+    ```mlir
+    call @xla.gpu.gemm(...) { rt.trace = #rt.hlo<"gemm.1", "xla_module", 0> }
+      : (...) -> memref<?x?xf32>
+    ```
+
+    XLA compilation pipeline wraps traced operations into the `rt.trace`
+    operation, and eventually lowers them to the tracing API calls.
+  }];
+
+  let constructor = "createAddHloTraceAnnotationsPass()";
+}
+
 #endif  // XLA_GPU_PASSES

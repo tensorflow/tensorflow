@@ -37,7 +37,7 @@ from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
-from tensorflow.python.eager import function_saved_model_utils
+from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
@@ -147,13 +147,13 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
     for obj in trackable_objects:
       if isinstance(obj, asset.Asset):
         asset_paths[obj.asset_path] = obj
-      if isinstance(obj, function_saved_model_utils.TrackableConstant):
+      if isinstance(obj, saved_model_utils.TrackableConstant):
         constant_captures[obj.capture] = obj
 
     def _get_merged_trackable(x):
       if isinstance(x, asset.Asset):
         return asset_paths[x.asset_path]
-      if isinstance(x, function_saved_model_utils.TrackableConstant):
+      if isinstance(x, saved_model_utils.TrackableConstant):
         if x.capture in asset_paths:
           return asset_paths[x.capture]
         else:
@@ -828,7 +828,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
       return object_map[function](*args)
     # Registered saver/restore functions do not appear in `object_map`, because
     # they are not in the object graph.
-    return function_saved_model_utils.ExportedConcreteFunction(
+    return saved_model_utils.ExportedConcreteFunction(
         function, tensor_map)(*args)
 
   for obj in object_map.values():

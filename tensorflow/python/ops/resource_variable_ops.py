@@ -28,6 +28,8 @@ from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import auto_control_deps_utils as acd
+from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
@@ -1509,7 +1511,45 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
                        "need to get a new output Tensor.")
 
 
-class ResourceVariable(BaseResourceVariable):
+class ResourceVariableGradient(
+    composite_tensor_gradient.CompositeTensorGradient):
+  """CompositeTensorGradient protocol for ResourceVariable."""
+
+  # TODO(b/246997907): update this method to return value.handle.
+  def get_gradient_components(self, value):
+    """Returns the components of `value` that should be included in gradients.
+
+    For a ResourceVariable, its gradient component is its handle tensor.
+    For now, we return the ResourceVariable because the gradient infrastructure
+    has special logics to handle ResourceVariables. We should remove those
+    special logics and return the handle tensor.
+
+    Args:
+      value: A `ResourceVariable`.
+
+    Returns:
+      `value` itself.
+    """
+    return value
+
+  def replace_gradient_components(self, value, component_grads):
+    """Replaces the gradient components in `value` with `component_grads`.
+
+    The gradient of a ResourceVariable is either None or a Tensor. So we don't
+    need `value`'s TypeSpec or non-gradient components in this method.
+
+    Args:
+      value: A `ResourceVariable` with its gradient components compatible with
+        `component_grads`.
+      component_grads: A `Tensor` or None as the gradient result.
+
+    Returns:
+      The `component_grads`, which is either a `Tensor` or None.
+    """
+    return component_grads
+
+
+class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
   """Variable based on resource handles.
 
   See the [Variables How To](https://tensorflow.org/guide/variables)
@@ -1578,7 +1618,9 @@ class ResourceVariable(BaseResourceVariable):
       synchronization=None,
       aggregation=None,
       shape=None,
-      handle=None):
+      handle=None,
+      experimental_enable_variable_lifting=None,
+      ):
     """Creates a variable.
 
     Args:
@@ -1636,6 +1678,15 @@ class ResourceVariable(BaseResourceVariable):
       handle: (optional) The handle of a `tf.Variable`. If provided, only
         `trainable`, `shape`, `dtype`, and `handle` will be used to construct
         this `tf.Variable`.
+      experimental_enable_variable_lifting: Whether to lift the variable out if
+        it's in a `tf.function`. Default is `True`. When this argument
+        is `True`, variable creation will follow the behavior and
+        restrictions described
+        [here](https://www.tensorflow.org/guide/function#creating_tfvariables).
+        If this argument is `False`, that description doesn't apply,
+        and you can freely create and use the variable in the
+        `tf.function`, as if it's a "mutable `tf.Tensor`". You can't
+        return the variable though.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -1680,7 +1731,20 @@ class ResourceVariable(BaseResourceVariable):
           shape=shape,
           distribute_strategy=distribute_strategy,
           validate_shape=validate_shape,
-      )
+          experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+          )
+
+  # CompositeTensor method
+  @property
+  def _type_spec(self):
+    return VariableSpec.from_value(self)
+
+  # CompositeTensor method
+  def _shape_invariant_to_type_spec(self, shape):
+    return VariableSpec(shape, self.dtype, self.trainable)
+
+  # CompositeTensorGradient protocol
+  __composite_gradient__ = ResourceVariableGradient()
 
   def _init_from_args(
       self,
@@ -1696,6 +1760,7 @@ class ResourceVariable(BaseResourceVariable):
       distribute_strategy=None,
       shape=None,
       validate_shape=True,
+      experimental_enable_variable_lifting=None,
   ):
     """Creates a variable.
 
@@ -1747,6 +1812,15 @@ class ResourceVariable(BaseResourceVariable):
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
+      experimental_enable_variable_lifting: Whether to lift the variable out if
+        it's in a `tf.function`. Default is `True`. When this argument
+        is `True`, variable creation will follow the behavior and
+        restrictions described
+        [here](https://www.tensorflow.org/guide/function#creating_tfvariables).
+        If this argument is `False`, that description doesn't apply,
+        and you can freely create and use the variable in the
+        `tf.function`, as if it's a "mutable `tf.Tensor`". You can't
+        return the variable though.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -1762,6 +1836,8 @@ class ResourceVariable(BaseResourceVariable):
     synchronization, aggregation, trainable = (
         variables.validate_synchronization_aggregation_trainable(
             synchronization, aggregation, trainable, name))
+    if experimental_enable_variable_lifting is None:
+      experimental_enable_variable_lifting = True
     if initial_value is None:
       raise ValueError("The `initial_value` arg to `tf.Variable` must "
                        "be specified except when you are not providing a "
@@ -1796,6 +1872,11 @@ class ResourceVariable(BaseResourceVariable):
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
+    if experimental_enable_variable_lifting:
+      maybe_init_scope = ops.init_scope
+    else:
+      maybe_init_scope = contextlib.nullcontext
+    with maybe_init_scope():
       with ops.name_scope(
           name,
           "Variable", [] if init_from_fn else [initial_value],
@@ -1806,7 +1887,7 @@ class ResourceVariable(BaseResourceVariable):
           shared_name = handle_name
           unique_id = shared_name
         else:
-          # When in eager mode use a uid for the shared_name, to prevent
+          # When in eager mode, use a uid for the shared_name, to prevent
           # accidental sharing.
           unique_id = "%s_%d" % (handle_name, ops.uid())
           shared_name = None  # Never shared
@@ -1911,7 +1992,7 @@ class ResourceVariable(BaseResourceVariable):
           # accessed to generate functions that are compatible with SavedModel.
           cached_value._cached_variable = weakref.ref(self)  # pylint: disable=protected-access
 
-        if not context.executing_eagerly():
+        if self._in_graph_mode:
           # Eager variables are only added to collections if they are part of an
           # eager variable store (otherwise in an interactive session they would
           # hog memory and cause OOM). This is done in ops/variable_scope.py.

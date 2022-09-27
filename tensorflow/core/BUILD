@@ -292,6 +292,7 @@ cc_library(
         "//tensorflow/core/lib/strings:legacy_lib_string_headers",
         "//tensorflow/core/platform:lib_hdrs",
         "//tensorflow/core/util:lib_hdrs",
+        "//tensorflow/tsl/lib/io:legacy_lib_io_headers",
         "//tensorflow/tsl/platform:lib_hdrs",
     ],
     visibility = ["//visibility:public"],
@@ -327,9 +328,6 @@ cc_library(
 cc_library(
     name = "test",
     testonly = 1,
-    srcs = [
-        "//tensorflow/core/platform:legacy_test_srcs",
-    ],
     hdrs = [
         "//tensorflow/core/lib/core:legacy_lib_core_status_test_util_header",
         "//tensorflow/core/platform:test_hdrs",
@@ -350,7 +348,8 @@ cc_library(
         ":protos_all_cc",
         "//tensorflow/tsl/platform/default/build_config:gtest",
         "//tensorflow/core/kernels:required",
-        "@com_google_benchmark//:benchmark",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
         "@com_google_googletest//:gtest",
     ] + tf_additional_test_deps(),
 )
@@ -437,6 +436,8 @@ tf_cuda_library(
         "//tensorflow/core/util:determinism_hdr",
         "//tensorflow/core/public:version.h",
         "//tensorflow/lite/kernels/shim:tf_headers",
+        "//tensorflow/tsl/framework:allocator_hdrs",
+        "//tensorflow/tsl/framework:cancellation_hdrs",
     ] + if_mkl([
         "//tensorflow/core/util:mkl_util_hdrs",
     ]),
@@ -490,6 +491,8 @@ cc_library(
         "//tensorflow/core/framework:tensor_types.h",
         "//tensorflow/core/framework:type_traits.h",
         "//tensorflow/core/platform:framework_lite_hdrs",
+        "//tensorflow/tsl/framework:numeric_types.h",
+        "//tensorflow/tsl/framework:type_traits.h",
         "//tensorflow/tsl/platform:framework_lite_hdrs",
         "//tensorflow/tsl/platform/default:integral_types.h",
         "//tensorflow/tsl/platform/default:logging.h",
@@ -832,6 +835,7 @@ filegroup(
         "//tensorflow/core/util:mobile_srcs_no_runtime",
         "//tensorflow/core/util/ctc:mobile_srcs",
         "//tensorflow/core/profiler:mobile_srcs_no_runtime",
+        "//tensorflow/tsl/framework:mobile_srcs_no_runtime",
         "//tensorflow/tsl/platform:mobile_srcs_no_runtime",
     ] + glob(
         [
@@ -866,6 +870,7 @@ filegroup(
         "//tensorflow/core/graph:mobile_srcs_only_runtime",
         "//tensorflow/core/kernels:mobile_srcs",
         "//tensorflow/core/lib/io:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/lib/io:mobile_srcs_only_runtime",
         "//tensorflow/core/nccl:mobile_srcs",
         "//tensorflow/core/profiler:mobile_srcs_only_runtime",
         "//tensorflow/core/public:mobile_srcs_only_runtime",
@@ -886,6 +891,7 @@ filegroup(
         "//tensorflow/core/lib/strings:mobile_srcs_only_runtime",
         "//tensorflow/core/platform:mobile_srcs_only_runtime",
         "//tensorflow/tsl/platform:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/framework:mobile_srcs_only_runtime",
 
         # Wav io files
         "//tensorflow/core/lib/wav:wav_io.h",
@@ -1210,6 +1216,7 @@ filegroup(
         "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/lib/math:math_util.h",
+        "//tensorflow/tsl/lib/io:legacy_lib_io_all_headers",
         "//tensorflow/tsl/lib/math:math_util.h",
         "//tensorflow/tsl/platform:legacy_lib_internal_headers",
         "//tensorflow/tsl/platform:lib_internal_private_hdrs",
@@ -1241,6 +1248,7 @@ filegroup(
         "//tensorflow/core/platform:legacy_platform_lib_hdrs",
         "//tensorflow/core/platform:lib_internal_public_hdrs",
         "//tensorflow/core/util:lib_internal_public_hdrs",
+        "//tensorflow/tsl/lib/io:legacy_lib_internal_public_headers",
         "//tensorflow/tsl/platform:lib_internal_public_hdrs",
     ],
     visibility = ["//visibility:private"],
@@ -1548,6 +1556,7 @@ filegroup(
         "//tensorflow/core/util:framework_internal_private_hdrs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
+        "//tensorflow/tsl/framework:framework_internal_private_hdrs",
     ],
     visibility = ["//visibility:private"],
 )
@@ -1567,6 +1576,7 @@ filegroup(
         "//tensorflow/core/framework:tracking_allocator.h",  # only needed for tests
         "//tensorflow/core/framework:variant.h",
         "//tensorflow/core/util:framework_internal_public_hdrs",
+        "//tensorflow/tsl/framework:tracking_allocator.h",  # only needed for tests
     ],
     visibility = ["//visibility:private"],
 )
@@ -1664,6 +1674,8 @@ tf_cuda_library(
         "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/tsl/platform:stringpiece",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
@@ -1675,6 +1687,7 @@ tf_cuda_library(
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/core/util:tensor_format",
         "//tensorflow/compiler/jit:common",
+        "//tensorflow/tsl/framework:cancellation",
         "@com_google_absl//absl/container:btree",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
@@ -1810,7 +1823,7 @@ cc_library(
     hdrs = [
         "//tensorflow/core/lib/gtl:legacy_lib_test_internal_headers",
         "//tensorflow/core/lib/io:legacy_lib_test_internal_headers",
-        "//tensorflow/core/lib/random:legacy_lib_test_internal_headers",
+        "//tensorflow/tsl/lib/io:legacy_lib_test_internal_headers",
     ],
     deps = [
         ":lib",
@@ -1821,7 +1834,7 @@ cc_library(
 # Main program for tests
 alias(
     name = "test_main",
-    actual = "//tensorflow/core/platform:test_main",
+    actual = "//tensorflow/tsl/platform:test_main",
     visibility = ["//tensorflow:internal"],
 )
 
@@ -1831,19 +1844,15 @@ tf_cc_tests(
     srcs = [
         "//tensorflow/core/lib/core:legacy_lib_core_all_tests",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
-        "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_tests",
-        "//tensorflow/core/lib/io:legacy_lib_io_all_tests",
         "//tensorflow/core/lib/monitoring:collection_registry_test.cc",
         "//tensorflow/core/lib/monitoring:counter_test.cc",
         "//tensorflow/core/lib/monitoring:gauge_test.cc",
         "//tensorflow/core/lib/monitoring:metric_def_test.cc",
         "//tensorflow/core/lib/monitoring:percentile_sampler_test.cc",
         "//tensorflow/core/lib/monitoring:sampler_test.cc",
-        "//tensorflow/core/lib/random:legacy_lib_random_tests",
         "//tensorflow/core/lib/strings:legacy_low_level_library_tests",
         "//tensorflow/core/lib/wav:wav_io_test.cc",
         "//tensorflow/tsl/lib/core:legacy_lib_core_all_tests",
-        "//tensorflow/tsl/lib/math:math_util_test.cc",
     ],
     deps = [
         ":lib",
@@ -1891,21 +1900,6 @@ tf_cc_tests(
 )
 
 tf_cc_test(
-    name = "lib_random_random_distributions_test",
-    srcs = ["//tensorflow/core/lib/random:legacy_lib_random_random_distributions_test"],
-    tags = ["optonly"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
     name = "lib_strings_ordered_code_test",
     srcs = ["//tensorflow/core/lib/strings:legacy_strings_ordered_code_test"],
     extra_copts = ["$(STACK_FRAME_UNLIMITED)"],  # Tests initialize large vectors
@@ -1928,18 +1922,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         "@com_google_absl//absl/memory",
-    ],
-)
-
-tf_cc_test(
-    name = "lib_random_weighted_picker_test",
-    size = "medium",
-    srcs = ["//tensorflow/core/lib/random:legacy_lib_random_random_weighted_picker_test"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":test",
-        ":test_main",
     ],
 )
 

@@ -270,7 +270,7 @@ StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
   auto builder = OpBuilder::atBlockBegin(module->getBody());
   auto graph_op = builder.create<GraphOp>(
       module->getLoc(), ConvertVersionAttr(ctx_, graph.versions()));
-  graph_op.nodes().push_back(new Block);
+  graph_op.getNodes().push_back(new Block);
 
   // Populate the function op defs.
   function_op_defs_.reserve(graph.library().function_size());
@@ -286,9 +286,9 @@ StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
     gradient_map.emplace(gradient.function_name(), gradient.gradient_func());
 
   // Convert the graph.
-  ConversionState s(&graph_op.nodes().front(), placeholder_state_);
+  ConversionState s(&graph_op.getNodes().front(), placeholder_state_);
   TF_RETURN_IF_ERROR(
-      ConvertNodes(builder, s, graph.node(), &graph_op.nodes().front()));
+      ConvertNodes(builder, s, graph.node(), &graph_op.getNodes().front()));
 
   // A function to convert a generic or non-generic function.
   const auto convert_func = [this, &gradient_map](GraphFuncOp func_op,
@@ -372,18 +372,18 @@ Status GraphDefImporter::ConvertFunctionAttributes(
   const tensorflow::OpDef &signature = function.signature();
   if (signature.name().empty())
     return InvalidArgument("Function without a name");
-  attrs.append(op.sym_nameAttrName(), b_.getStringAttr(signature.name()));
+  attrs.append(op.getSymNameAttrName(), b_.getStringAttr(signature.name()));
 
   if (!signature.description().empty()) {
-    attrs.append(op.descriptionAttrName(),
+    attrs.append(op.getDescriptionAttrName(),
                  b_.getStringAttr(signature.description()));
   }
   if (signature.is_stateful())
-    attrs.append(op.is_statefulAttrName(), b_.getUnitAttr());
+    attrs.append(op.getIsStatefulAttrName(), b_.getUnitAttr());
   auto grad_it = gradient_map.find(signature.name());
   if (grad_it != gradient_map.end()) {
     StringPiece name = grad_it->second;
-    attrs.append(op.gradientAttrName(),
+    attrs.append(op.getGradientAttrName(),
                  FlatSymbolRefAttr::get(ctx_, {name.data(), name.size()}));
   }
 
@@ -400,9 +400,9 @@ Status GraphDefImporter::ConvertFunctionAttributes(
       resource_arg_unique_ids_keys.push_back(unique_id.first);
       resource_arg_unique_ids_values.push_back(unique_id.second);
     }
-    attrs.append(op.resource_arg_unique_ids_keysAttrName(),
+    attrs.append(op.getResourceArgUniqueIdsKeysAttrName(),
                  b_.getI32TensorAttr(resource_arg_unique_ids_keys));
-    attrs.append(op.resource_arg_unique_ids_valuesAttrName(),
+    attrs.append(op.getResourceArgUniqueIdsValuesAttrName(),
                  b_.getI32TensorAttr(resource_arg_unique_ids_values));
   }
   return ::tensorflow::OkStatus();
@@ -538,8 +538,8 @@ Status GraphDefImporter::ConvertFunctionDef(
   const OpDef &signature = function.signature();
   // TODO(jeffniu): Does the name need to be mangled?
 
-  func_op.body().push_back(new Block);
-  Block *body = &func_op.body().front();
+  func_op.getBody().push_back(new Block);
+  Block *body = &func_op.getBody().front();
   auto builder = OpBuilder::atBlockBegin(func_op.SingleBlock::getBody());
 
   // Convert the attributes.
@@ -630,9 +630,9 @@ Status GraphDefImporter::ConvertFunctionDef(
                            b_.getArrayAttr(control_ret_attrs));
 
   // Finalize the function attributes.
-  func_attrs.append(func_op.arg_attrsAttrName(), b_.getArrayAttr(arg_attrs));
-  func_attrs.append(func_op.res_attrsAttrName(), b_.getArrayAttr(res_attrs));
-  func_attrs.append(func_op.function_typeAttrName(),
+  func_attrs.append(func_op.getArgAttrsAttrName(), b_.getArrayAttr(arg_attrs));
+  func_attrs.append(func_op.getResAttrsAttrName(), b_.getArrayAttr(res_attrs));
+  func_attrs.append(func_op.getFunctionTypeAttrName(),
                     TypeAttr::get(b_.getFunctionType(arg_types, res_types)));
   func_op->setAttrs(func_attrs.getDictionary(ctx_));
 

@@ -228,7 +228,7 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     """The `Graph` that contains the index, value, and dense_shape tensors."""
     return self._indices.graph
 
-  def __str__(self):
+  def __repr__(self):
     return "SparseTensor(indices=%s, values=%s, dense_shape=%s)" % (
         self._indices, self._values, self._dense_shape)
 

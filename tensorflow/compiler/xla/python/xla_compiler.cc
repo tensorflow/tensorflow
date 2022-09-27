@@ -774,6 +774,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("__hash__",
            [](const xla::HloSharding& self) { return absl::HashOf(self); })
       .def("is_replicated", &xla::HloSharding::IsReplicated)
+      .def("tile", [](const xla::HloSharding& self,
+                      xla::Shape shape) { return self.TileShape(shape); })
+      .def("__repr__",
+           [](const xla::HloSharding& self) { return self.ToString(); })
       .def("to_proto", &xla::HloSharding::ToProto);
 
   py::class_<FrontendAttributes> frontend_attributes(m, "FrontendAttributes");

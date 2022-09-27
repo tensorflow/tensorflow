@@ -409,7 +409,7 @@ bool HandleHostReplicatedInputs(int64_t index,
                                 tf_device::ReplicateOp replicate,
                                 int32_t block_size) {
   // We need to know the devices to copy to.
-  if (!replicate.devices()) return false;
+  if (!replicate.getDevices()) return false;
 
   MutableArrayRef<OpOperand> inputs =
       replicate.GetOperandsForBlockArgument(block_arg);
@@ -455,7 +455,7 @@ void HandleCluster(tf_device::ClusterFuncOp cluster_func, int32_t block_size,
       if (input.index() != arg_num) continue;
       auto input_op = input.value().getDefiningOp();
       if (maybe_replicate &&
-          maybe_replicate.body().isAncestor(input_op->getParentRegion())) {
+          maybe_replicate.getBody().isAncestor(input_op->getParentRegion())) {
         continue;
       }
       if (!IsSupportedHostInputOp(input_op)) continue;

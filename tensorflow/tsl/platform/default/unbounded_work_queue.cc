@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/numa.h"
 
-namespace tensorflow {
+namespace tsl {
 
 UnboundedWorkQueue::UnboundedWorkQueue(Env* env, const string& thread_name,
                                        const ThreadOptions& thread_options)
@@ -100,4 +100,4 @@ void UnboundedWorkQueue::PooledThreadFunc() {
   }
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

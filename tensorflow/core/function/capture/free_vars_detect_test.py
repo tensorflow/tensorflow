@@ -14,12 +14,18 @@
 # ==============================================================================
 """Tests for detecting free vars in tf.function."""
 
+import functools
 import unittest
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.function.capture import free_vars_detect
+from tensorflow.python.util import tf_decorator
+
+
+def get_var_name(d):
+  return [var.name for var in d]
 
 
 class FreeVarDetectionTest(parameterized.TestCase):
@@ -30,7 +36,10 @@ class FreeVarDetectionTest(parameterized.TestCase):
     def f(x):
       return x + 1
 
-    free_vars = free_vars_detect.detect_function_free_vars(f)
+    # a map: func_name -> free_vars
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("f", func_map.keys())
+    free_vars = get_var_name(func_map["f"])
     self.assertEmpty(free_vars)
 
   def test_func_local_var(self):
@@ -39,7 +48,9 @@ class FreeVarDetectionTest(parameterized.TestCase):
       x = 1
       return x + 1
 
-    free_vars = free_vars_detect.detect_function_free_vars(f)
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("f", func_map.keys())
+    free_vars = get_var_name(func_map["f"])
     self.assertEmpty(free_vars)
 
   def test_global_var_int(self):
@@ -48,7 +59,9 @@ class FreeVarDetectionTest(parameterized.TestCase):
     def f():
       return x + 1
 
-    free_vars = free_vars_detect.detect_function_free_vars(f)
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("f", func_map.keys())
+    free_vars = get_var_name(func_map["f"])
     self.assertSequenceEqual(free_vars, ["x"])
 
   def test_global_var_dict(self):
@@ -57,7 +70,9 @@ class FreeVarDetectionTest(parameterized.TestCase):
     def f():
       return glob["a"] + 1
 
-    free_vars = free_vars_detect.detect_function_free_vars(f)
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("f", func_map.keys())
+    free_vars = get_var_name(func_map["f"])
     self.assertSequenceEqual(free_vars, ["glob"])
 
   def test_global_var_dict_w_var_index(self):
@@ -67,7 +82,9 @@ class FreeVarDetectionTest(parameterized.TestCase):
     def f():
       return glob[key] + 1
 
-    free_vars = free_vars_detect.detect_function_free_vars(f)
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("f", func_map.keys())
+    free_vars = get_var_name(func_map["f"])
     self.assertSequenceEqual(free_vars, ["glob", "key"])
 
   def test_duplicate_global_var(self):
@@ -76,18 +93,24 @@ class FreeVarDetectionTest(parameterized.TestCase):
     def f():
       return x + x
 
-    free_vars = free_vars_detect.detect_function_free_vars(f)
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("f", func_map.keys())
+    free_vars = get_var_name(func_map["f"])
     self.assertSequenceEqual(free_vars, ["x"])
 
   def test_lambda_wo_free_var(self):
     f = lambda x: x + x
-    free_vars = free_vars_detect.detect_function_free_vars(f)
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("<lambda>", func_map.keys())
+    free_vars = get_var_name(func_map["<lambda>"])
     self.assertEmpty(free_vars)
 
   def test_lambda_w_free_var(self):
     glob = 1
     f = lambda x: x + glob
-    free_vars = free_vars_detect.detect_function_free_vars(f)
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("<lambda>", func_map.keys())
+    free_vars = get_var_name(func_map["<lambda>"])
     self.assertSequenceEqual(free_vars, ["glob"])
 
   def test_glob_numpy_var(self):
@@ -99,7 +122,9 @@ class FreeVarDetectionTest(parameterized.TestCase):
       res = a + b + c
       return res
 
-    free_vars = free_vars_detect.detect_function_free_vars(f)
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("f", func_map.keys())
+    free_vars = get_var_name(func_map["f"])
     self.assertSequenceEqual(free_vars, ["a", "b"])
 
   def test_global_var_in_nested_func(self):
@@ -112,10 +137,12 @@ class FreeVarDetectionTest(parameterized.TestCase):
 
       return g()
 
-    free_vars = free_vars_detect.detect_function_free_vars(f)
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("f", func_map.keys())
+    self.assertLen(func_map.keys(), 1)
+    free_vars = get_var_name(func_map["f"])
     self.assertSequenceEqual(free_vars, ["x"])
 
-  @unittest.skip("Feature not implemented")
   def test_global_var_from_outer_func(self):
     x = 1
 
@@ -125,10 +152,15 @@ class FreeVarDetectionTest(parameterized.TestCase):
     def f():
       return g()
 
-    free_vars = free_vars_detect.detect_function_free_vars(f)
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("f", func_map.keys())
+    self.assertIn("g", func_map.keys())
+    self.assertLen(func_map.keys(), 2)
+    free_vars = get_var_name(func_map["f"])
+    self.assertSequenceEqual(free_vars, ["g"])
+    free_vars = get_var_name(func_map["g"])
     self.assertSequenceEqual(free_vars, ["x"])
 
-  @unittest.skip("Feature not implemented")
   def test_global_var_from_renamed_outer_func(self):
     x = 1
 
@@ -139,8 +171,48 @@ class FreeVarDetectionTest(parameterized.TestCase):
       h = g
       return h()
 
-    free_vars = free_vars_detect.detect_function_free_vars(f)
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("f", func_map.keys())
+    self.assertIn("g", func_map.keys())
+    self.assertLen(func_map.keys(), 2)
+    free_vars = get_var_name(func_map["f"])
+    self.assertSequenceEqual(free_vars, ["g"])
+    free_vars = get_var_name(func_map["g"])
     self.assertSequenceEqual(free_vars, ["x"])
+
+  # Use `wrapper_first` to control different arguments order
+  @parameterized.parameters(
+      (functools.update_wrapper, True),
+      (tf_decorator.make_decorator, False))
+  def test_func_w_decorator(self, make_decorator, wrapper_first):
+    x = 1
+
+    def decorator_foo(func):
+
+      def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+      if wrapper_first:
+        return make_decorator(wrapper, func)
+      else:
+        return make_decorator(func, wrapper)
+
+    @decorator_foo
+    @decorator_foo
+    def f():
+
+      @decorator_foo
+      @decorator_foo
+      def g():
+        return x + 1
+
+      return g()
+
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("f", func_map.keys())
+    self.assertLen(func_map.keys(), 2)
+    free_vars = get_var_name(func_map["f"])
+    self.assertSequenceEqual(free_vars, ["decorator_foo", "x"])
 
   # TODO(panzf): test the pattern when callable function args are supported
   @unittest.skip("Feature not implemented")

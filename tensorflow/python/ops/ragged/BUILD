@@ -1322,7 +1322,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "ragged_dynamic_partition_op_test",
     srcs = ["ragged_dynamic_partition_op_test.py"],
     python_version = "PY3",

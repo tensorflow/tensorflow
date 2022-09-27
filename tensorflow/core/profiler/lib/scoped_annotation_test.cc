@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation_stack.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -38,11 +39,22 @@ TEST(ScopedAnnotation, Simple) {
     EXPECT_EQ(AnnotationStack::Get(), "blah");  // enabled
     AnnotationStack::Enable(false);
   }
+
   {
     AnnotationStack::Enable(true);
     ScopedAnnotation outer("foo");
     ScopedAnnotation inner("bar");
     EXPECT_EQ(AnnotationStack::Get(), "foo::bar");  // enabled
+    AnnotationStack::Enable(false);
+  }
+
+  {
+    AnnotationStack::Enable(true);
+    int64_t id0 = ScopedAnnotationStack::ActivityStart("foo");
+    int64_t id1 = ScopedAnnotationStack::ActivityStart("bar");
+    EXPECT_EQ(AnnotationStack::Get(), "foo::bar");  // enabled
+    ScopedAnnotationStack::ActivityEnd(id1);
+    ScopedAnnotationStack::ActivityEnd(id0);
     AnnotationStack::Enable(false);
   }
 

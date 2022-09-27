@@ -44,7 +44,7 @@ func.func @compute(%a: memref<2x6x2x2xf32>,
 // CHECK: func private @xla.gpu.cublas.lt.matmul(
 // CHECK-SAME:   memref<2x6x2x2xf32>, memref<2x6x2x2xf32>,
 // CHECK-SAME:   memref<2x6x2x2xf32>, memref<2x6x2x2xf32>
-// CHECK-SAME: ) attributes {rt.direct_custom_call = "xla.gpu.cublas.lt.matmul"}
+// CHECK-SAME: ) attributes {rt.custom_call = "xla.gpu.cublas.lt.matmul"}
 
 // -----
 
@@ -94,5 +94,5 @@ func.func @compute(%a: memref<2x6x2x2xf32>,
 // CHECK: func private @xla.gpu.cublas.lt.matmul.bias(
 // CHECK-SAME:   memref<2x6x2x2xf32>, memref<2x6x2x2xf32>, memref<2x6x2x2xf32>,
 // CHECK-SAME:   memref<2x6x2x2xf32>, memref<2x6x2x2xf32>
-// CHECK-SAME: ) attributes {rt.direct_custom_call =
+// CHECK-SAME: ) attributes {rt.custom_call =
 // CHECK-SAME: "xla.gpu.cublas.lt.matmul.bias"}

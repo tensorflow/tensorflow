@@ -20,7 +20,7 @@ func.func @test(%arg0: memref<f32>) {
 }
 
 // CHECK: func.func private @[[CUSTOM_CALL]](memref<f32>)
-// CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.custom_call"}
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.custom_call"}
 
 // -----
 
@@ -62,4 +62,4 @@ func.func @test_with_mapping(
 // CHECK: func.func private @[[CUSTOM_CALL]](memref<f32>, memref<0xi8>,
 // CHECK-SAME: memref<f32>, memref<0xi8>, memref<f32>, memref<f32>,
 // CHECK-SAME: memref<0xi8>, memref<f32>)
-// CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.custom_call"}
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.custom_call"}

@@ -99,7 +99,7 @@ bool CanMergeIntoCluster(const Cluster& c, Operation* to_merge) {
 
 void ReplaceLiveOutExternalUses(llvm::ArrayRef<Value> live_outs,
                                 tf_device::LaunchOp launch_op) {
-  Region* launch_op_region = &launch_op.body();
+  Region* launch_op_region = &launch_op.getBody();
   for (const auto& p : llvm::zip(live_outs, launch_op.getResults())) {
     Value from = std::get<0>(p);
     // TODO(jingpu): move this to RegionUtils.h in MLIR core.
@@ -169,7 +169,7 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
       live_out_types);
 
   // Attach the region to launch_op.
-  launch_op.body().takeBody(region);
+  launch_op.getBody().takeBody(region);
 
   // Replace any external uses of live-out values with return values of launch
   // op. So live-out values no longer escape the region.

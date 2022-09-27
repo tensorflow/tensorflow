@@ -95,7 +95,7 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
 
   code extraBaseClassDeclaration = [{
     /// Number of loops
-    unsigned getNumLoops() { return step().size(); }
+    unsigned getNumLoops() { return getStep().size(); }
 
     /// Number of operands controlling the loop: lbs, ubs, steps
     unsigned getNumControlOperands() { return 3 * getNumLoops(); }
@@ -219,7 +219,7 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     /// Number of output operands
-    unsigned getNumOutputs() { return outputs().size(); }
+    unsigned getNumOutputs() { return getOutputs().size(); }
 
     /// Get the region output args.
     Block::BlockArgListType getRegionOutputArgs() {
@@ -305,34 +305,11 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
 
   let extraClassDeclaration = [{
 
-    unsigned getNumUpdates() { return srcs().size(); }
-
-    // Methods for `srcs` arguments.
-    OpOperand* getSrcOperand(unsigned i) {
-      return &getOperation()->getOpOperand(3 * i);
-    }
-
-    SmallVector<OpOperand*> getSrcOperands() {
-      SmallVector<OpOperand*> operands;
-      for (unsigned i = 0, e = getNumOperands(); i < e; i += 3)
-        operands.push_back(&getOperation()->getOpOperand(i));
-      return operands;
-    }
-
-    bool isSrcOperand(OpOperand& operand) {
-      return operand.getOperandNumber() % 3 == 0;
-    }
+    unsigned getNumUpdates() { return getSrcs().size(); }
 
     // Methods for `dst` arguments.
     OpOperand* getDstOperand(unsigned i) {
-      return &getOperation()->getOpOperand(3 * i + 1);
-    }
-
-    SmallVector<OpOperand*> getDstOperands() {
-      SmallVector<OpOperand*> operands;
-      for (unsigned i = 1, e = getNumOperands(); i < e; i += 3)
-        operands.push_back(&getOperation()->getOpOperand(i));
-      return operands;
+      return &getOperation()->getOpOperand(getNumUpdates() + i);
     }
 
     FailureOr<OpResult> getTiedOpResult(OpOperand &opOperand) {
@@ -340,29 +317,15 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
 
       auto parent = getOperation()->getBlock()->getParentOp();
       if (isa<ParallelOp>(parent) || isa<ForOp>(parent)) {
-        return parent->getResult(0);
+        return parent->getResult(opOperand.getOperandNumber() -
+                                 getNumUpdates());
       }
       return failure();
     }
 
     bool isDstOperand(OpOperand& operand) {
-      return operand.getOperandNumber() % 3 == 1;
-    }
-
-    // Methods for `set` arguments.
-    OpOperand* getSetOperand(unsigned i) {
-      return &getOperation()->getOpOperand(3 * i + 2);
-    }
-
-    SmallVector<OpOperand*> getSetOperands() {
-      SmallVector<OpOperand*> operands;
-      for (unsigned i = 2, e = getNumOperands(); i < e; i += 3)
-        operands.push_back(&getOperation()->getOpOperand(i));
-      return operands;
-    }
-
-    bool isSetOperand(OpOperand& operand) {
-      return operand.getOperandNumber() % 3 == 2;
+      return operand.getOperandNumber() >= getNumUpdates() &&
+             operand.getOperandNumber() < getNumUpdates() * 2;
     }
   }];
 }

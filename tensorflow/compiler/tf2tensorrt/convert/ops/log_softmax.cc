@@ -45,7 +45,7 @@ class ConvertLogSoftmax : public OpConverterBase<ConvertLogSoftmax> {
           "TensorRT LogSoftmax cannot apply on the batch dimension");
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -91,7 +91,7 @@ class ConvertLogSoftmax : public OpConverterBase<ConvertLogSoftmax> {
     params.converter->SetLayerName(sub, node_def, "sub");
 
     params.outputs->push_back(TRT_TensorOrWeights(sub->getOutput(0)));
-    return Status::OK();
+    return OkStatus();
   }
 };
 

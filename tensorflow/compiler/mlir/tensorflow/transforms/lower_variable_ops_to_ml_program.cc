@@ -54,7 +54,7 @@ std::string GetVariableName(Operation* op) {
       return absl::StrCat("vars.", container, ".", shared_name);
     }
   } else if (auto global = dyn_cast<tf_saved_model::GlobalTensorOp>(op)) {
-    return absl::StrCat("vars.", global.sym_name().str());
+    return absl::StrCat("vars.", global.getSymName().str());
   }
   return "<no name>";
 }
@@ -79,20 +79,54 @@ Operation* GetHandleSource(Operation* op, DataFlowSolver& solver) {
   return source;
 }
 
-ml_program::GlobalOp CreateGlobalOpFromOp(Type type, Operation* source,
-                                          OpBuilder& builder,
+Attribute GetInitialValue(Operation* source) {
+  if (auto global = dyn_cast<tf_saved_model::GlobalTensorOp>(source)) {
+    return global.value();
+  }
+  return nullptr;
+}
+
+Type GetGlobalType(Operation* source) {
+  if (auto var_handle_op = dyn_cast<TF::VarHandleOp>(source)) {
+    // Resources are represented as tensor<resource<tensor<...>>>, so
+    // unwrap until we get to the inner tensor<...>.
+    auto tensor =
+        llvm::dyn_cast<TensorType>(var_handle_op.resource().getType());
+    if (!tensor) return nullptr;
+    TF::ResourceType resource =
+        llvm::dyn_cast<TF::ResourceType>(tensor.getElementType());
+    if (!resource || resource.getSubtypes().size() != 1) return nullptr;
+    return resource.getSubtypes().front();
+  } else if (auto global_tensor_op =
+                 dyn_cast<tf_saved_model::GlobalTensorOp>(source)) {
+    return global_tensor_op.type();
+  }
+  // Likely can't actually happen, assuming tf_saved_model.semantics checks
+  // already ran.
+  return nullptr;
+}
+
+ml_program::GlobalOp CreateGlobalOpFromOp(Operation* source, OpBuilder& builder,
                                           SymbolTable& symbol_table) {
+  Type type = GetGlobalType(source);
   std::string name = GetVariableName(source);
   if (auto existing = symbol_table.lookup<ml_program::GlobalOp>(name)) {
-    // TODO(kramm): Verify that this is the same type.
+    // This might be of a different type, but we'll do a Cast later.
     return existing;
   }
+
+  Attribute initial_value = GetInitialValue(source);
+  if (!initial_value) {
+    initial_value = builder.getZeroAttr(type);
+  }
+
+  if (!type) return nullptr;
+
   auto globalOp = builder.create<ml_program::GlobalOp>(
-      builder.getBlock()->getParentOp()->getLoc(), name, type, true,
-      builder.getZeroAttr(type), nullptr);
+      builder.getBlock()->getParentOp()->getLoc(), name, type, false,
+      initial_value, nullptr);
   symbol_table.insert(globalOp);
-  // TODO(kramm): If we're converting from a GlobalTensorOp, also
-  // convert the initial value.
+
   return globalOp;
 }
 
@@ -122,25 +156,30 @@ struct LowerVariableOpsToMlProgramPass
     module.walk([&](TF::ReadVariableOp op) {
       Operation* source = GetHandleSource(op, solver);
       if (!source) return;
-      ml_program::GlobalOp globalOp = CreateGlobalOpFromOp(
-          op->getResult(0).getType(), source, globalBuilder, symbol_table);
+      ml_program::GlobalOp globalOp =
+          CreateGlobalOpFromOp(source, globalBuilder, symbol_table);
       if (!globalOp) return;
       OpBuilder builder(op);
-      auto loadOp = builder.create<mlir::ml_program::GlobalLoadOp>(
-          op.getLoc(), op.value().getType(),
+      Operation* load = builder.create<mlir::ml_program::GlobalLoadOp>(
+          op.getLoc(), globalOp.getType(),
           SymbolRefAttr::get(op->getContext(), globalOp.getSymName()));
-      op.getResult().replaceAllUsesWith(loadOp.getResult());
+      if (globalOp.getType() != op.value().getType()) {
+        load = builder.create<TF::CastOp>(op.getLoc(), op.value().getType(),
+                                          load->getResult(0));
+      }
+      op.getResult().replaceAllUsesWith(load->getResult(0));
       op.erase();
     });
 
     module.walk([&](TF::AssignVariableOp op) {
       Operation* source = GetHandleSource(op, solver);
       if (!source) return;
-      ml_program::GlobalOp globalOp = CreateGlobalOpFromOp(
-          op.value().getType(), source, globalBuilder, symbol_table);
+      ml_program::GlobalOp globalOp =
+          CreateGlobalOpFromOp(source, globalBuilder, symbol_table);
       if (!globalOp) return;
       symbol_table.insert(globalOp);
       OpBuilder builder(op);
+      globalOp.setIsMutableAttr(builder.getUnitAttr());
       Value value_to_store = op.value();
       if (globalOp.getType() != op.value().getType()) {
         value_to_store = builder.create<TF::CastOp>(

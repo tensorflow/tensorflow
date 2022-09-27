@@ -153,7 +153,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
     const mlir::TF::ResourceAliasAnalysis::Info& resource_analysis_info,
     bool check_device, bool check_same_region) {
   VariableAccessesForTPUExecute var_access_info;
-  Attribute device_attr = execute_launch.deviceAttr();
+  Attribute device_attr = execute_launch.getDeviceAttr();
   if (check_device && !device_attr) return var_access_info;
   auto func = execute_launch->getParentOfType<mlir::func::FuncOp>();
 
@@ -511,9 +511,9 @@ LogicalResult MergeForOneTPUExecute(
 
   // Wrap in launch for device assignment.
   auto merged_execute_launch = builder->create<tf_device::LaunchOp>(
-      merged_execute.getLoc(), execute_launch.deviceAttr(),
+      merged_execute.getLoc(), execute_launch.getDeviceAttr(),
       merged_execute.getResultTypes());
-  merged_execute_launch.body().push_back(new Block);
+  merged_execute_launch.getBody().push_back(new Block);
 
   builder->setInsertionPointToEnd(&merged_execute_launch.GetBody());
   builder->create<tf_device::ReturnOp>(merged_execute.getLoc(),

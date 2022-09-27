@@ -39,7 +39,7 @@ bool IsNotInsideTfEntryFunction(Operation* op) {
 
 template <typename OpTy>
 bool HasInitializedOpKernelContextOperand(OpTy op) {
-  return op.ctx() != nullptr;
+  return op.getCtx() != nullptr;
 }
 
 // The pass rewrites the function marked with `tf_entry` attribute.

@@ -49,8 +49,8 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
+#include "tensorflow/compiler/mlir/xla/location_metadata.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
@@ -490,39 +490,6 @@ static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
           {attr.getName().str(), value_str_attr.getValue().str()});
 
   return frontend_attributes;
-}
-
-// Returns a OpMetadata proto based on the location of the op. If the location
-// is unknown, an empty proto is returned. `op_name` are populated with the op
-// location (converted). FileLineColLoc locations are populated by taking the
-// file name and line number, and populating `source_file` and `source_line`
-// respectively.
-static xla::OpMetadata CreateOpMetadataFromLocation(
-    mlir::Operation* op, mlir::MlirToHloConversionOptions options) {
-  xla::OpMetadata metadata;
-  mlir::Location loc = op->getLoc();
-  if (loc.isa<mlir::UnknownLoc>()) return metadata;
-
-  std::string name = mlir::GetNameFromLoc(loc);
-  if (options.legalize_node_names) {
-    mlir::LegalizeNodeName(name);
-  }
-  metadata.set_op_name(name);
-  std::string op_type = mlir::GetOpTypeFromLoc(loc);
-  mlir::LegalizeNodeName(op_type);
-  metadata.set_op_type(op_type);
-
-  if (auto name_loc = op->getLoc().dyn_cast<mlir::NameLoc>()) {
-    loc = name_loc.getChildLoc();
-    if (loc.isa<mlir::UnknownLoc>()) return metadata;
-  }
-
-  if (auto file_line_col_loc = loc.dyn_cast<mlir::FileLineColLoc>()) {
-    metadata.set_source_file(file_line_col_loc.getFilename().str());
-    metadata.set_source_line(file_line_col_loc.getLine());
-  }
-
-  return metadata;
 }
 
 // Checks if all shardings are set.

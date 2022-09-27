@@ -132,6 +132,8 @@ class JitExecutable {
   JitExecutable(const JitExecutable&) = delete;
   JitExecutable(JitExecutable&&) = default;
 
+  std::string mlir_module() { return mlir_module_; }
+
  private:
   JitExecutable(std::string_view mlir_module, std::string_view entrypoint,
                 std::string_view memory_region_name, Options opts,

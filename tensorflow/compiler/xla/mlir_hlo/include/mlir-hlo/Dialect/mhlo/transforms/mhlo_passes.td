@@ -31,8 +31,14 @@ def ChloLegalizeToLinalgPass : Pass<"sparse-chlo-legalize-to-linalg", "func::Fun
   let constructor = "createLegalizeSparseChloToLinalgPass()";
 }
 
+def HloCanonicalizeScatterPass : Pass<"hlo-canonicalize-scatter", "func::FuncOp"> {
+  let summary = "Rewrites scatter into transposes, reshapes and a simple scatter.";
+  let constructor = "createHloCanonicalizeScatterPass()";
+  let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
+}
+
 def HloCanonicalizeReductionPass : Pass<"hlo-canonicalize-reduction", "func::FuncOp"> {
-  let summary = "canonicalize reduction ops to be suitable for codegen.";
+  let summary = "Canonicalize reduction ops to be suitable for codegen.";
   let constructor = "createHloCanonicalizeReductionPass()";
 }
 
@@ -93,6 +99,17 @@ def HloLegalizeToLinalgPass : Pass<"hlo-legalize-to-linalg", "func::FuncOp"> {
 def LegalizeMHLOToTHLOPass : Pass<"legalize-mhlo-to-thlo", "mlir::func::FuncOp"> {
   let summary = "Legalize from HLO dialect to tHLO dialect.";
   let constructor = "::mlir::mhlo::createLegalizeMHLOToTHLOPass()";
+  let options =
+      [Option<"enableExperimental", "enable-experimental", "bool",
+              /*default=*/"false",
+              "Enable conversion to operations that are still under "
+              "developement and might not be working in some pipelines. For "
+              "example, thlo.map and thlo.transpose.">];
+  let dependentDialects = [
+    "arith::ArithmeticDialect", "complex::ComplexDialect",
+    "linalg::LinalgDialect", "math::MathDialect", "shape::ShapeDialect",
+    "tensor::TensorDialect", "thlo::THLODialect"
+  ];
 }
 
 def HloLegalizeShapeComputationsPass : Pass<"hlo-legalize-shape-computations", "func::FuncOp"> {
@@ -278,4 +295,16 @@ def CollapseElementwiseMapPass
     : Pass<"mhlo-collapse-elementwise-map", "func::FuncOp"> {
   let summary = "Collapse the mhlo.map if the map only has elementwise ops.";
   let constructor = "createCollapseElementwiseMapPass()";
+}
+
+def HloLegalizeToStablehloPass : Pass<"hlo-legalize-to-stablehlo", "ModuleOp"> {
+  let summary = "Legalize HLO to StableHLO.";
+  let constructor = "createHloLegalizeToStablehloPass()";
+  let dependentDialects = ["stablehlo::StablehloDialect"];
+}
+
+def StablehloLegalizeToHloPass : Pass<"stablehlo-legalize-to-hlo", "ModuleOp"> {
+  let summary = "Legalize StableHLO to HLO.";
+  let constructor = "createStablehloLegalizeToHloPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
 }

@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -310,11 +309,11 @@ ElementwiseDescriptor CreateElementwiseDesc(const GpuInfo& gpu_info,
                                             const OperationDef& definition,
                                             const OperationType& op_type,
                                             const ElementwiseAttributes& attr) {
-  const float* scalar = std::get_if<float>(&attr.param);
+  const float* scalar = absl::get_if<float>(&attr.param);
   const auto* linear_tensor =
-      std::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.param);
+      absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.param);
   const auto* hwc_tensor =
-      std::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(&attr.param);
+      absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(&attr.param);
 
   if (scalar) {
     return CreateElementwiseOneRuntimeOneScalar(definition, op_type, *scalar,

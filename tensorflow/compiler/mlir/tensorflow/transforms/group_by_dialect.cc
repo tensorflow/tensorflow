@@ -33,31 +33,13 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id);
 
 class GroupByDialectPass : public GroupByDialectPassBase<GroupByDialectPass> {
  public:
-  void runOnOperation() override {
-    mlir::func::FuncOp func = getOperation();
-    int function_id = 0;
+  void runOnOperation() override;
 
-    for (Block& block : func.getBody().getBlocks()) {
-      StringRef current_dialect("<none>");
-      std::vector<Operation*> ops;
-      for (Operation& op : block.getOperations()) {
-        StringRef dialect = op.getName().getDialectNamespace();
-        if (dialect != current_dialect) {
-          if (!top_level_dialects_.contains(current_dialect)) {
-            wrapOpsInFunction(ops, function_id++);
-          }
-          ops.clear();
-          current_dialect = dialect;
-        }
-        ops.push_back(&op);
-      }
-      if (!top_level_dialects_.contains(current_dialect)) {
-        wrapOpsInFunction(ops, function_id++);
-      }
-    }
-  }
+ private:
+  void processFunction(mlir::func::FuncOp func, int& counter);
 
-  llvm::SmallDenseSet<StringRef> top_level_dialects_ = {"glue", "func"};
+  llvm::SmallDenseSet<StringRef> top_level_dialects_ = {"ml_program", "glue",
+                                                        "func"};
 };
 
 // Compute the set of all values which are inputs to `ops`, but not generated
@@ -66,27 +48,41 @@ void computeInputsOutputs(std::vector<Operation*>& ops,
                           std::vector<Value>* inputs,
                           std::vector<Value>* outputs) {
   // All operations.
-  llvm::DenseSet<Operation*> all_operations(ops.begin(), ops.end());
+  llvm::DenseSet<Operation*> all_operations;
 
   // All results of all ops.
   llvm::DenseSet<Value> all_internal_results;
-  for (Operation* op : ops) {
-    for (Value result : op->getResults()) {
-      all_internal_results.insert(result);
-    }
+  for (Operation* outer : ops) {
+    outer->walk([&](Operation* op) {
+      all_operations.insert(op);
+      for (Value result : op->getResults()) {
+        all_internal_results.insert(result);
+      }
+      // We treat block arguments of inner blocks as "results", too, in
+      // the sense that they're values produced inside this op.
+      for (Region& region : op->getRegions()) {
+        for (Block& block : region.getBlocks()) {
+          for (BlockArgument& arg : block.getArguments()) {
+            all_internal_results.insert(arg);
+          }
+        }
+      }
+    });
   }
 
   // All operand values in our set not produced as result by some op in our set.
   llvm::DenseSet<Value> inputs_seen;
-  for (Operation* op : ops) {
-    for (Value operand : op->getOperands()) {
-      if (!all_internal_results.contains(operand)) {
-        if (!inputs_seen.contains(operand)) {
-          inputs->push_back(operand);
-          inputs_seen.insert(operand);
+  for (Operation* outer : ops) {
+    outer->walk([&](Operation* op) {
+      for (Value operand : op->getOperands()) {
+        if (!all_internal_results.contains(operand)) {
+          if (!inputs_seen.contains(operand)) {
+            inputs->push_back(operand);
+            inputs_seen.insert(operand);
+          }
         }
       }
-    }
+    });
   }
 
   // All results in our set that have a user outside our set.
@@ -138,7 +134,11 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id) {
   func->setAttr("dialect", builder.getStringAttr(dialect));
   auto block = func.addEntryBlock();
 
-  llvm::DenseSet<Operation*> all_operations(ops.begin(), ops.end());
+  llvm::DenseSet<Operation*> all_operations;
+  for (Operation* outer : ops) {
+    outer->walk([&](Operation* op) { all_operations.insert(op); });
+  }
+
   for (BlockArgument& arg : block->getArguments()) {
     inputs[arg.getArgNumber()].replaceUsesWithIf(arg, [=](OpOperand& o) {
       // Within the operations we're moving, we need to replace uses of
@@ -170,6 +170,38 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id) {
 }
 
 }  // namespace
+
+void GroupByDialectPass::processFunction(mlir::func::FuncOp func,
+                                         int& counter) {
+  // don't re-process functions we generated
+  if (func->getAttr("dialect")) return;
+
+  for (Block& block : func.getBody().getBlocks()) {
+    StringRef current_dialect("<none>");
+    std::vector<Operation*> ops;
+    for (Operation& op : block.getOperations()) {
+      StringRef dialect = op.getName().getDialectNamespace();
+      if (dialect != current_dialect) {
+        if (!top_level_dialects_.contains(current_dialect)) {
+          wrapOpsInFunction(ops, counter++);
+        }
+        ops.clear();
+        current_dialect = dialect;
+      }
+      ops.push_back(&op);
+    }
+    if (!top_level_dialects_.contains(current_dialect)) {
+      wrapOpsInFunction(ops, counter++);
+    }
+  }
+  counter++;
+}
+
+void GroupByDialectPass::runOnOperation() {
+  int counter = 0;
+  getOperation().walk(
+      [&](func::FuncOp func) { processFunction(func, counter); });
+}
 
 std::unique_ptr<Pass> CreateGroupByDialectPass() {
   return std::make_unique<GroupByDialectPass>();

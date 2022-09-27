@@ -122,7 +122,7 @@ LogicalResult UpdateRegionReplicateVariantOps(
 
     // Map aliased devices to explicit devices based on replica.
     if (auto launch = dyn_cast<tf_device::LaunchOp>(op))
-      if (auto device_by_replica = devices.getValue().get(launch.device()))
+      if (auto device_by_replica = devices.getValue().get(launch.getDevice()))
         launch->setAttr(
             kDeviceAttr,
             device_by_replica.cast<ArrayAttr>()[replica_id].cast<StringAttr>());
@@ -142,13 +142,13 @@ LogicalResult ExpandReplicateIntoReplicas(
     tf_executor::IslandOp island_op, tf_device::ReplicateOp replicate_op,
     int num_replicas, llvm::SmallVectorImpl<tf_executor::IslandOp>& replicas) {
   replicas.reserve(num_replicas);
-  auto devices = replicate_op.devices();
+  auto devices = replicate_op.getDevices();
 
   // Collect result types and operands.
   Operation& terminator = replicate_op.GetBody().back();
   llvm::SmallVector<Type, 8> output_types(terminator.getOperandTypes());
   auto control_type = tf_executor::ControlType::get(island_op.getContext());
-  llvm::SmallVector<Value, 8> replica_inputs(island_op.controlInputs());
+  llvm::SmallVector<Value, 8> replica_inputs(island_op.getControlInputs());
 
   // Replace replicate terminator with YieldOp.
   builder.setInsertionPoint(&terminator);
@@ -170,10 +170,10 @@ LogicalResult ExpandReplicateIntoReplicas(
                   replicate_op.GetReplicaOperandForBlockArgument(block_arg, i));
 
     // Copy over replicate region into replica island.
-    replicate_op.body().cloneInto(&replica.body(), mapping);
+    replicate_op.getBody().cloneInto(&replica.getBody(), mapping);
 
     if (failed(UpdateRegionReplicateVariantOps(builder, replicate_op.getLoc(),
-                                               replica.body(),
+                                               replica.getBody(),
                                                /*replica_id=*/i, devices)))
       return failure();
 
@@ -238,7 +238,7 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
                                          tf_executor::IslandOp island_op,
                                          tf_device::ReplicateOp replicate_op) {
   OpBuilder builder(island_op);
-  const int num_replicas = replicate_op.n();
+  const int num_replicas = replicate_op.getN();
 
   // Create islands per replica.
   llvm::SmallVector<tf_executor::IslandOp, 8> replicas;
@@ -251,30 +251,31 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
                                                nullptr);
   for (auto replica_and_idx : llvm::enumerate(replicas))
     for (auto replica_result_and_idx :
-         llvm::enumerate(replica_and_idx.value().outputs()))
+         llvm::enumerate(replica_and_idx.value().getOutputs()))
       replicas_outputs[num_replicas * replica_result_and_idx.index() +
                        replica_and_idx.index()] =
           replica_result_and_idx.value();
 
   // Remap replicate results to per replica result.
-  for (auto result : llvm::zip(island_op.outputs(), replicas_outputs))
+  for (auto result : llvm::zip(island_op.getOutputs(), replicas_outputs))
     std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
 
   // Add sink island to pin all replicas as a control dependency if there is a
   // control dependency leading from the replicate originally.
-  if (!island_op.control().use_empty()) {
+  if (!island_op.getControl().use_empty()) {
     llvm::SmallVector<Value, 8> island_operands;
-    for (auto& replica : replicas) island_operands.push_back(replica.control());
+    for (auto& replica : replicas)
+      island_operands.push_back(replica.getControl());
 
     builder.setInsertionPoint(island_op);
     auto island_sink = builder.create<tf_executor::IslandOp>(
         island_op.getLoc(), llvm::ArrayRef<Type>{},
         tf_executor::ControlType::get(island_op.getContext()), island_operands);
-    island_sink.body().push_back(new Block);
+    island_sink.getBody().push_back(new Block);
     builder.setInsertionPointToEnd(&island_sink.GetBody());
     builder.create<tf_executor::YieldOp>(island_op.getLoc(),
                                          llvm::ArrayRef<Value>{});
-    island_op.control().replaceAllUsesWith(island_sink.control());
+    island_op.getControl().replaceAllUsesWith(island_sink.getControl());
   }
 
   // Replicas with no uses should be pinned to a graph fetch so they still
@@ -282,7 +283,7 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
   llvm::SmallVector<Value, 8> unused_replica_controls;
   for (auto& replica : replicas)
     if (replica.use_empty())
-      unused_replica_controls.push_back(replica.control());
+      unused_replica_controls.push_back(replica.getControl());
 
   if (!unused_replica_controls.empty()) {
     tf_executor::FetchOp fetch = graph_op.GetFetch();

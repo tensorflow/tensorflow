@@ -202,7 +202,7 @@ struct type_caster<tensorflow::StatusOr<PayloadType>> {
                           handle parent) {
     if (src.ok()) {
       // Convert and return the payload.
-      return PayloadCaster::cast(std::forward<CType>(src).ValueOrDie(), policy,
+      return PayloadCaster::cast(std::forward<CType>(src).value(), policy,
                                  parent);
     } else {
       // Convert and return the error.

@@ -361,7 +361,7 @@ std::unique_ptr<TensorWithLayout> TensorWithLayout::Dummy(
 std::string TensorWithLayout::SummarizeValue() const {
   std::string value_summary;
   Status status;
-  if (layout().IsFullyReplicated()) {
+  if (dtype() != TF_RESOURCE && layout().IsFullyReplicated()) {
     status =
         tensorflow::unwrap(tensor()->tensor(0))->SummarizeValue(value_summary);
   } else {

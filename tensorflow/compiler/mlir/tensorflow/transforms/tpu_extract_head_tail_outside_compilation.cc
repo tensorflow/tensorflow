@@ -109,7 +109,7 @@ tf_device::LaunchOp CreateLaunchForBlock(OpBuilder* builder, Operation* op,
   before ? builder->setInsertionPoint(op) : builder->setInsertionPointAfter(op);
   auto launch = builder->create<tf_device::LaunchOp>(
       op->getLoc(), builder->getStringAttr(host_device), launch_result_types);
-  launch.body().push_back(launch_block);
+  launch.getBody().push_back(launch_block);
 
   builder->setInsertionPointToEnd(&launch.GetBody());
   builder->create<tf_device::ReturnOp>(op->getLoc(), launch_results);
@@ -135,7 +135,7 @@ llvm::SmallVector<Operation*, 4> FindOutsideCompiledOpsAtHead(
     tf_device::ClusterOp cluster) {
   const auto& analysis = side_effect_analysis.GetAnalysisForFunc(
       cluster->getParentOfType<func::FuncOp>());
-  Region* cluster_region = &cluster.body();
+  Region* cluster_region = &cluster.getBody();
   llvm::SmallSetVector<Operation*, 4> head_outside_compiled_ops;
 
   auto cluster_ops = cluster.GetBody().without_terminator();
@@ -198,7 +198,7 @@ void CreateHeadComputation(OpBuilder* builder, tf_device::ClusterOp cluster,
   for (auto result : llvm::zip(launch.GetBody().getTerminator()->getOperands(),
                                launch.getResults()))
     replaceAllUsesInRegionWith(std::get<0>(result), std::get<1>(result),
-                               cluster.body());
+                               cluster.getBody());
 }
 
 // Extracts and move outside compiled ops that have no dependencies in the
@@ -233,7 +233,7 @@ void FindOutsideCompiledOpsAtTailAndClusterResults(
     llvm::SmallVectorImpl<Value>* cluster_results) {
   const auto& analysis = side_effect_analysis.GetAnalysisForFunc(
       cluster->getParentOfType<func::FuncOp>());
-  Region* cluster_region = &cluster.body();
+  Region* cluster_region = &cluster.getBody();
   llvm::SmallSetVector<Operation*, 4> tail_outside_compiled_ops_set;
   Operation* terminator = cluster.GetBody().getTerminator();
   llvm::SmallSetVector<Value, 4> cluster_results_set;
@@ -336,7 +336,7 @@ tf_device::ClusterOp UpdateClusterResults(
   auto new_cluster = builder->create<tf_device::ClusterOp>(
       cluster.getLoc(), new_cluster_result_types,
       /*operands=*/llvm::ArrayRef<Value>{}, cluster->getAttrs());
-  new_cluster.body().takeBody(cluster.body());
+  new_cluster.getBody().takeBody(cluster.getBody());
 
   auto operand_not_in_cluster = [&](OpOperand& operand) {
     return !new_cluster.getOperation()->isProperAncestor(operand.getOwner());
@@ -410,7 +410,7 @@ void RemoveClusterAliasedOutputs(OpBuilder* builder,
   auto new_cluster = builder->create<tf_device::ClusterOp>(
       cluster.getLoc(), new_cluster_result_types,
       /*operands=*/llvm::ArrayRef<Value>{}, cluster->getAttrs());
-  new_cluster.body().takeBody(cluster.body());
+  new_cluster.getBody().takeBody(cluster.getBody());
   new_cluster.GetBody().getTerminator()->setOperands(new_cluster_results);
 
   for (auto result :

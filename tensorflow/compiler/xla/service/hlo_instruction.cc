@@ -276,6 +276,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                proto.is_host_transfer());
       break;
     case HloOpcode::kSendDone:
+      TF_RET_CHECK(DynCast<HloSendInstruction>(operands(0)) != nullptr)
+          << "SendDone must take the context operand from Send";
       instruction = CreateSendDone(operands(0), proto.is_host_transfer());
       break;
     case HloOpcode::kRecv:
@@ -283,6 +285,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                proto.channel_id(), proto.is_host_transfer());
       break;
     case HloOpcode::kRecvDone:
+      TF_RET_CHECK(DynCast<HloRecvInstruction>(operands(0)) != nullptr)
+          << "RecvDone must take the context operand from Recv";
       instruction = CreateRecvDone(operands(0), proto.is_host_transfer());
       break;
     case HloOpcode::kReverse:
@@ -1841,21 +1845,11 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
       return true;
-
-    // Collective instructions with channel_id are side effecting only if
-    // they are used in non-spmd context.
-    case HloOpcode::kAllToAll:
-    case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
-    case HloOpcode::kReduceScatter:
-      if (Cast<HloCollectiveInstruction>(this)->constrain_layout()) {
-        return true;
-      }
-      [[fallthrough]];
-    case HloOpcode::kCollectivePermute:
-      return Cast<HloChannelInstruction>(this)->channel_id().has_value() &&
-             !GetModule()->config().use_spmd_partitioning();
-
+      return channel_id().has_value() ||
+             Cast<HloAllReduceInstruction>(this)->constrain_layout();
+    case HloOpcode::kAllToAll:
+      return Cast<HloAllToAllInstruction>(this)->constrain_layout();
     case HloOpcode::kCustomCall:
       return Cast<HloCustomCallInstruction>(this)
           ->custom_call_has_side_effect();
@@ -3902,7 +3896,7 @@ namespace {
 
 // Indicates how an instruction uses a value (such as an operand).
 //
-// Does it (a) not use it, (b) use it, or (c) use it multiple times?
+// Does it (a) use it multiple times, (b) use it, or (c) not use it?
 enum class UseKind { kReuse = 0, kUse = 1, kNoUse = 2 };
 
 // A helper class for memoized, recursive computation of HloOpcode::kFusion

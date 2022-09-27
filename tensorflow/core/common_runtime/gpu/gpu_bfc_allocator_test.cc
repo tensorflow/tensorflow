@@ -66,12 +66,12 @@ std::unique_ptr<SubAllocator> CreateVirtualMemorySubAllocator(
   PlatformDeviceId gpu_id(0);
   auto executor =
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .ValueOrDie();
+          .value();
   auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
       executor->implementation()->GpuContextHack());
   return GpuVirtualMemAllocator::Create({}, {}, *gpu_context, gpu_id,
                                         virtual_address_space_size, {})
-      .ValueOrDie();
+      .value();
 }
 #endif
 

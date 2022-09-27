@@ -732,6 +732,11 @@ class ShapeUtil {
   static std::optional<Vector3> FindTranspose021(const Shape& input_shape,
                                                  const Shape& output_shape);
 
+  // Entry point for physical + logical transposition.
+  static std::optional<Vector3> FindLogicalTranspose021(
+      const Shape& input_shape, const Shape& output_shape,
+      absl::Span<int64_t const> dimensions);
+
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.
   static Shape DeviceShapeToHostShape(Shape s);

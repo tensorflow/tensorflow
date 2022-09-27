@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"
 
 namespace xla {
 namespace runtime {
@@ -55,6 +55,12 @@ static std::unique_ptr<Type> ConvertCanonicalType(
     if (auto value_type = convert.Convert(value.getValueType());
         value_type.ok())
       return std::make_unique<AsyncValueType>(std::move(*value_type));
+  }
+
+  // mlir::{IntegerType, FloatType} -> xla::runtime::ScalarType
+  if (type.isa<mlir::IntegerType, mlir::FloatType>()) {
+    if (auto dtype = TypeConverter::ConvertElementType(type); dtype.ok())
+      return std::make_unique<ScalarType>(*dtype);
   }
 
   // mlir::RankedTensorType -> xla::runtime::RankedTensorType
@@ -113,10 +119,12 @@ static std::unique_ptr<Type> ConvertCanonicalType(
 }
 
 StatusOr<std::unique_ptr<Type>> TypeConverter::Convert(mlir::Type type) const {
-  if (auto converted = ConvertCanonicalType(type, *this)) return converted;
+  if (std::unique_ptr<Type> converted = ConvertCanonicalType(type, *this))
+    return std::move(converted);
 
   for (const ConversionFn& conversion : conversions_)
-    if (auto converted = conversion(type)) return converted;
+    if (std::unique_ptr<Type> converted = conversion(type))
+      return std::move(converted);
 
   return InvalidArgumentError(StrFormat(
       "can't convert type: %s to the run time type", debugString(type)));

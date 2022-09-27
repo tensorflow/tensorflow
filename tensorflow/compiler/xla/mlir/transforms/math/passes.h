@@ -24,6 +24,9 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
+#define GEN_PASS_DECL_MATHOPTIMIZATIONPASS
+#include "tensorflow/compiler/xla/mlir/transforms/math/passes.h.inc"
+
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateMathOptimizationPass(bool enable_avx2 = false);
 

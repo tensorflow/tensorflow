@@ -22,7 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 // TODO(skyewm): remove when everything goes through C API
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -303,10 +303,14 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
-  std::string module_str = tensorflow::SerializeMlirModule(module);
+  std::string module_bytecode;
+  {
+    llvm::raw_string_ostream os(module_bytecode);
+    mlir::writeBytecodeToFile(module, os);
+  }
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
-                                  module_str, format);
+                                  module_bytecode, format);
 }
 
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
@@ -331,11 +335,28 @@ PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
 
 StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
     PjRtBuffer* buffer) {
-  if (kPjRtCApiBypass) {
-    VLOG(1) << "PJRT C API BYPASS: UnsafeBufferPointer";
-    return wrapped_->UnsafeBufferPointer(PjRtCApiBuffer::GetWrapped(buffer));
+  // Validate that the buffer's client matches the function call's client, since
+  // that could be a common error.
+  // Not doing input nullptr validation since such cases should be rare, and
+  // crashes should bubble up the call stack to higher layers. See b/248334153
+  // for the considerations that went into this.
+  if (buffer->client() != this) {
+    return InvalidArgument(
+        "buffer passed to PjRtCApiClient::UnsafeBufferPointer() is from a "
+        "different client than that of the function call. Buffer's client "
+        "platform: '%s', function call's client platform: '%s'.",
+        buffer->client()->platform_name(), this->platform_name());
   }
-  return Unimplemented("PJRT C API does not support UnsafeBufferPointer");
+
+  PJRT_Buffer_UnsafePointer_Args args;
+  args.struct_size = PJRT_Buffer_UnsafePointer_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer =
+      tensorflow::down_cast<const PjRtCApiBuffer*>(buffer)->c_buffer();
+
+  RETURN_STATUS_IF_ERROR(c_api_->PJRT_Buffer_UnsafePointer(&args), c_api_);
+
+  return args.buffer_pointer;
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::WrapExecutable(
@@ -633,7 +654,7 @@ static xla::PjRtFuture<Status> ConvertCEventToCppFuture(PJRT_Event* c_future,
           promise.Set(s);
           ::pjrt::MakeErrorDeleter(c_api)(error);
         } else {
-          promise.Set(Status::OK());
+          promise.Set(tsl::OkStatus());
         }
         ::pjrt::MakeEventDeleter(c_api)(c_future);
       });
@@ -653,16 +674,18 @@ static xla::PjRtFuture<Status> ConvertCEventToCppFuture(PJRT_Event* c_future,
   return PjRtFuture<Status>(std::move(promise));
 }
 
-StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-PjRtCApiExecutable::Execute(
+xla::StatusOr<PJRT_Executable_Execute_Args>
+PjRtCApiExecutable::GetCommonExecuteArgs(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-    const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
+    const ExecuteOptions& options, PJRT_ExecuteOptions& c_options,
+    std::vector<std::vector<PJRT_Buffer*>>& c_argument_lists_storage,
+    std::vector<PJRT_Buffer**>& c_arguments,
+    std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
+    std::vector<PJRT_Buffer**>& c_output_lists) {
   PJRT_Executable_Execute_Args args;
   args.struct_size = PJRT_Executable_Execute_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.executable = executable_.get();
-  PJRT_ExecuteOptions c_options;
   args.options = &c_options;
   args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
   args.options->launch_id = options.launch_id;
@@ -670,24 +693,17 @@ PjRtCApiExecutable::Execute(
   CHECK_GT(args.num_devices, 0);
   args.num_args = argument_handles[0].size();
 
-  args.device_complete_events = nullptr;
-  if (returned_futures.has_value()) {
-    std::vector<PJRT_Event*> c_events(args.num_devices);
-    args.device_complete_events = c_events.data();
-  }
-
   // Populates `args.argument_lists` from `argument_handles`.
-  std::vector<std::vector<PJRT_Buffer*>> c_argument_lists =
-      Convert2DCppBuffersToCBuffers(argument_handles);
-  std::vector<PJRT_Buffer**> c_arguments;
-  c_arguments.reserve(c_argument_lists.size());
-  for (auto& argument_list : c_argument_lists) {
+  c_argument_lists_storage = Convert2DCppBuffersToCBuffers(argument_handles);
+  c_arguments.reserve(c_argument_lists_storage.size());
+  for (auto& argument_list : c_argument_lists_storage) {
     c_arguments.push_back(argument_list.data());
   }
   args.argument_lists = c_arguments.data();
 
-  // Allocates memory for output. `c_buffer_lists_holder` and `c_buffer_lists`
+  // Allocates memory for output. `c_buffer_lists_storage` and `c_buffer_lists`
   // needs to stay alive during the call of `PJRT_Executable_Execute`.
+
   PJRT_Executable_NumOutputs_Args numoutputs_args;
   numoutputs_args.struct_size = PJRT_Executable_NumOutputs_Args_STRUCT_SIZE;
   numoutputs_args.priv = nullptr;
@@ -696,13 +712,39 @@ PjRtCApiExecutable::Execute(
       pjrt_c_api()->PJRT_Executable_NumOutputs(&numoutputs_args), pjrt_c_api());
   size_t outer_size = args.num_devices;
   size_t inner_size = numoutputs_args.num_outputs;
-  std::vector<std::vector<PJRT_Buffer*>> c_buffer_lists_holder(outer_size);
-  auto c_buffer_lists = std::vector<PJRT_Buffer**>(outer_size);
+  c_output_lists_storage.resize(outer_size);
+  c_output_lists.resize(outer_size);
   for (int i = 0; i < outer_size; ++i) {
-    c_buffer_lists_holder[i].resize(inner_size);
-    c_buffer_lists[i] = c_buffer_lists_holder[i].data();
+    c_output_lists_storage[i].resize(inner_size);
+    c_output_lists[i] = c_output_lists_storage[i].data();
   }
-  args.output_lists = c_buffer_lists.data();
+  args.output_lists = c_output_lists.data();
+
+  return args;
+}
+
+StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+PjRtCApiExecutable::Execute(
+    absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+    const ExecuteOptions& options,
+    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
+  std::vector<std::vector<PJRT_Buffer*>> c_argument_lists_storage;
+  std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
+  std::vector<PJRT_Buffer**> c_output_lists;
+  PJRT_ExecuteOptions c_options;
+  std::vector<PJRT_Buffer**> c_arguments;
+  TF_ASSIGN_OR_RETURN(
+      PJRT_Executable_Execute_Args args,
+      GetCommonExecuteArgs(argument_handles, options, c_options,
+                           c_argument_lists_storage, c_arguments,
+                           c_output_lists_storage, c_output_lists));
+
+  args.execute_device = nullptr;
+  args.device_complete_events = nullptr;
+  if (returned_futures.has_value()) {
+    std::vector<PJRT_Event*> c_events(args.num_devices);
+    args.device_complete_events = c_events.data();
+  }
 
   RETURN_STATUS_IF_ERROR(pjrt_c_api()->PJRT_Executable_Execute(&args),
                          pjrt_c_api());
@@ -714,8 +756,10 @@ PjRtCApiExecutable::Execute(
           args.device_complete_events[i], pjrt_c_api());
     }
   }
+
   return Convert2DCBuffersToCppBuffers(args.output_lists, args.num_devices,
-                                       numoutputs_args.num_outputs, client_);
+                                       c_output_lists_storage[0].size(),
+                                       client_);
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -723,24 +767,34 @@ PjRtCApiExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
-  if (kPjRtCApiBypass) {
-    VLOG(1) << "PJRT C API BYPASS: ExecuteSharded";
-    std::vector<PjRtBuffer*> wrapped_args =
-        PjRtCApiBuffer::GetWrappedVector(argument_handles);
-
-    TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> out,
-                        wrapped()->ExecuteSharded(
-                            wrapped_args, PjRtCApiDevice::GetWrapped(device),
-                            options, returned_future, fill_future));
-
-    for (std::unique_ptr<PjRtBuffer>& buffer : out) {
-      buffer = std::make_unique<PjRtCApiBuffer>(
-          client_,
-          new PJRT_Buffer{std::move(buffer), client_->pjrt_c_client()});
-    }
-    return out;
+  if (fill_future) {
+    return Unimplemented(
+        "PJRT C API does not support fill_future for ExecuteSharded");
   }
-  return Unimplemented("PJRT C API does not support ExecuteSharded");
+  std::vector<std::vector<PjRtBuffer*>> argument_handles_vec = {
+      {argument_handles.begin(), argument_handles.end()}};
+
+  std::vector<std::vector<PJRT_Buffer*>> c_argument_lists_storage;
+  std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
+  std::vector<PJRT_Buffer**> c_output_lists;
+  PJRT_ExecuteOptions c_options;
+  std::vector<PJRT_Buffer**> c_arguments;
+  TF_ASSIGN_OR_RETURN(
+      PJRT_Executable_Execute_Args args,
+      GetCommonExecuteArgs(argument_handles_vec, options, c_options,
+                           c_argument_lists_storage, c_arguments,
+                           c_output_lists_storage, c_output_lists));
+
+  args.execute_device =
+      tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+  args.execute_device->device = device;
+
+  RETURN_STATUS_IF_ERROR(pjrt_c_api()->PJRT_Executable_Execute(&args),
+                         pjrt_c_api());
+
+  return std::move(Convert2DCBuffersToCppBuffers(
+      args.output_lists, args.num_devices, c_output_lists_storage[0].size(),
+      client_)[0]);
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>

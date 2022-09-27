@@ -215,14 +215,15 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
   return kTfLiteOk;
 }
 
-void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
+void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
+                                 bool preserve_data) {
   if (tensor->allocation_type != kTfLiteDynamic &&
       tensor->allocation_type != kTfLitePersistentRo) {
     return;
   }
   // TODO(b/145340303): Tensor data should be aligned.
-  if (!tensor->data.raw) {
-    tensor->data.raw = (char*)malloc(num_bytes);
+  if (!tensor->data.data) {
+    tensor->data.data = (char*)malloc(num_bytes);
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     tflite::OnTfLiteTensorAlloc(tensor, num_bytes);
 #endif
@@ -230,12 +231,23 @@ void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     tflite::OnTfLiteTensorDealloc(tensor);
 #endif
-    tensor->data.raw = (char*)realloc(tensor->data.raw, num_bytes);
+    if (preserve_data) {
+      tensor->data.data = (char*)realloc(tensor->data.data, num_bytes);
+    } else {
+      // Calling free and malloc can be more efficient as it avoids needlessly
+      // copying the data when it is not required.
+      free(tensor->data.data);
+      tensor->data.data = (char*)malloc(num_bytes);
+    }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     tflite::OnTfLiteTensorAlloc(tensor, num_bytes);
 #endif
   }
   tensor->bytes = num_bytes;
+}
+
+void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
+  return TfLiteTensorResizeMaybeCopy(num_bytes, tensor, true);
 }
 #endif  // TF_LITE_STATIC_MEMORY
 

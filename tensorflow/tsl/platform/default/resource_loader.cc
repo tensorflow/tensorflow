@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/resource_loader.h"
 
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tools/cpp/runfiles/runfiles.h"
 
 using bazel::tools::cpp::runfiles::Runfiles;

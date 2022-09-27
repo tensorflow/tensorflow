@@ -5,6 +5,7 @@ load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_all
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
+# TODO(b/249181641): Restructure source codes for TF quantization.
 package_group(
     name = "internal_visibility_allowlist_package",
     packages = [
@@ -19,6 +20,17 @@ package(
         ":internal_visibility_allowlist_package",
     ],
     licenses = ["notice"],
+)
+
+cc_library(
+    name = "constants",
+    hdrs = [
+        "constants.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 py_binary(
@@ -70,6 +82,7 @@ td_library(
         "passes/lift_quantizable_spots_as_functions.td",
         "passes/lift_quantizable_spots_as_functions_drq.td",
         "passes/optimize.td",
+        "passes/post_quantize.td",
         "passes/prepare_lifting.td",
         "passes/prepare_quantize.td",
         "passes/quantize_composite_functions.td",
@@ -191,6 +204,20 @@ gentbl_cc_library(
     deps = [":quant_td_files"],
 )
 
+gentbl_cc_library(
+    name = "post_quantize_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/post_quantize.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/post_quantize.td",
+    deps = [":quant_td_files"],
+)
+
 cc_library(
     name = "tf_quant_ops",
     srcs = [
@@ -269,6 +296,7 @@ cc_library(
         "passes/optimize.cc",
         "passes/optimize.inc",
         "passes/post_quantize.cc",
+        "passes/post_quantize.inc",
         "passes/prepare_lifting.cc",
         "passes/prepare_lifting.inc",
         "passes/prepare_quantize.cc",
@@ -286,6 +314,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":constants",
         ":pass_utils",
         ":quantization_options_proto_cc",
         ":tf_quant_ops",
@@ -299,6 +328,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_to_xla_attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
@@ -318,6 +348,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",

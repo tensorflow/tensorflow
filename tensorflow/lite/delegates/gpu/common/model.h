@@ -17,11 +17,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MODEL_H_
 
 #include <algorithm>
-#include <any>
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -53,12 +51,12 @@ struct QuantizationParams {
 struct Value {
   const ValueId id;
   TensorRef<BHWC> tensor;
-  std::optional<QuantizationParams> quant_params;
+  absl::optional<QuantizationParams> quant_params;
 };
 
 struct Operation {
   std::string type;
-  std::any attributes;
+  absl::any attributes;
 };
 
 struct Node {

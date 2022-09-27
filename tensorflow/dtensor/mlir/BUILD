@@ -148,7 +148,6 @@ cc_library(
     name = "create_dtensor_mlir_passes",
     hdrs = [
         "create_dtensor_mlir_passes.h",
-        "dtensor_mlir_passes_classes.h",
     ],
     deps = [
         ":device_utils",
@@ -216,6 +215,7 @@ cc_library(
         ":collectives_common",
         ":create_dtensor_mlir_passes",
         ":device_utils",
+        ":dtensor_location",
         ":dtensor_passes_inc_gen",
         ":dtensor_send_recv",
         ":group_assignment",

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "tensorflow/core/platform/path.h"
+#include "tensorflow/tsl/platform/path.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -35,8 +35,6 @@ string RocmRoot() {
 #endif
 }
 
-string RocdlRoot() {
-  return tensorflow::io::JoinPath(RocmRoot(), "amdgcn/bitcode");
-}
+string RocdlRoot() { return io::JoinPath(RocmRoot(), "amdgcn/bitcode"); }
 
 }  // namespace tsl

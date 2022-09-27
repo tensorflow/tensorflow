@@ -156,7 +156,7 @@ mlir::Value CoreRTConverter::GetDistributedContext(
   auto get_dist_ctx_op = rewriter->create<tfrt::dist::GetDistributedContextOp>(
       op->getLoc(), distributed_context_type());
 
-  mlir::Value result = get_dist_ctx_op.result();
+  mlir::Value result = get_dist_ctx_op.getResult();
   distributed_context_by_func_[func_op.getOperation()] = result;
   return result;
 }
@@ -177,7 +177,7 @@ mlir::Value CoreRTConverter::GetRemoteChainManager(
   auto create_mgr_op = rewriter->create<tfrt::dist::CreateRemoteChainManager>(
       op->getLoc(), remote_chain_mgr_type, dist_ctx);
 
-  mlir::Value result = create_mgr_op.result();
+  mlir::Value result = create_mgr_op.getResult();
   remote_chain_mgr_by_func_[func_op.getOperation()] = result;
   return result;
 }

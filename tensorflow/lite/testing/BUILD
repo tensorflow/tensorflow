@@ -201,6 +201,7 @@ cc_library(
         ":split",
         ":test_runner",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:headers",
     ],
 )
 
@@ -266,6 +267,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
@@ -635,6 +637,7 @@ tflite_portable_test_suite()
 
 tflite_custom_android_library(
     name = "customized_tflite_for_add_ops",
+    experimental = True,
     models = ["//tensorflow/lite:testdata/add.bin"],
     visibility = ["//visibility:public"],
 )

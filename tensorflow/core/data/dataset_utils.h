@@ -128,7 +128,7 @@ class AnonymousResourceOp : public OpKernel {
   const bool return_deleter_;
 };
 
-// Returns Status::OK() if `expected` and `received` types match,
+// Returns OkStatus() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.
 Status VerifyTypesMatch(const DataTypeVector& expected,
                         const DataTypeVector& received);
@@ -136,7 +136,7 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
 Status VerifyTypesMatch(const DataTypeVector& expected,
                         const std::vector<Tensor>& received);
 
-// Returns Status::OK() if `expected` and `received` shapes are compatible,
+// Returns OkStatus() if `expected` and `received` shapes are compatible,
 // errors::InvalidArgument otherwise.
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);

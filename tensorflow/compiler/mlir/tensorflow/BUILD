@@ -254,6 +254,7 @@ gentbl_cc_library(
     deps = [
         ":tensorflow_ops_td_files",
         "@llvm-project//mlir:FuncTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
     ],
 )
@@ -439,6 +440,7 @@ cc_library(
         ":tensorflow_op_interfaces",
         ":tensorflow_types",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
     ],
@@ -1206,6 +1208,7 @@ cc_library(
         "transforms/readonly_references_to_resources.cc",
         "transforms/region_control_flow_to_functional.cc",
         "transforms/remove_unused_arguments.cc",
+        "transforms/remove_unused_while_results.cc",
         "transforms/replica_id_to_device_ordinal.cc",
         "transforms/replicate_invariant_op_hoisting.cc",
         "transforms/replicate_to_island.cc",
@@ -1242,6 +1245,7 @@ cc_library(
         "transforms/tpu_space_to_depth_pass.cc",
         "transforms/tpu_update_embedding_enqueue_op_inputs.cc",
         "transforms/tpu_variable_runtime_reformatting.cc",
+        "transforms/update_control_dependencies.cc",
         "transforms/verify_suitable_for_graph_export_pass.cc",
         "transforms/xla_cluster_formation.cc",
         "transforms/xla_inline_device_ops.cc",

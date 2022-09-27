@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
@@ -32,7 +31,7 @@ ElementwiseDescriptor CreatePReLU(const PReLUAttributes& attr,
   ElementwiseDescriptor op_desc;
   std::string alpha_read;
   auto alpha_linear =
-      std::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
+      absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
   if (alpha_linear) {
     TensorDescriptor alpha_tensor_desc = CreateConstantLinearTensorDescriptor(
         tensor_desc.GetDataType(), tensor_desc.GetStorageType(), *alpha_linear);
@@ -42,7 +41,7 @@ ElementwiseDescriptor CreatePReLU(const PReLUAttributes& attr,
   }
 
   auto alpha_hwc =
-      std::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
+      absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
   if (alpha_hwc) {
     const BHWC shape =
         BHWC(1, alpha_hwc->shape.h, alpha_hwc->shape.w, alpha_hwc->shape.c);

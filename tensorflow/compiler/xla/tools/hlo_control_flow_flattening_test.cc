@@ -334,9 +334,10 @@ TEST_F(HloControlFlowFlatteningTest, AllReduce) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0), op::Parameter(1)));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "all-reduce");
 }
 
 TEST_F(HloControlFlowFlatteningTest, AllReduceStartAndDone) {
@@ -364,9 +365,11 @@ TEST_F(HloControlFlowFlatteningTest, AllReduceStartAndDone) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::CustomCall(op::Parameter(0))));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "done");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "crs");
 }
 
 TEST_F(HloControlFlowFlatteningTest, AllGather) {
@@ -387,9 +390,9 @@ TEST_F(HloControlFlowFlatteningTest, AllGather) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0)));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "ag");
 }
 
 TEST_F(HloControlFlowFlatteningTest, AllToAll) {
@@ -410,9 +413,9 @@ TEST_F(HloControlFlowFlatteningTest, AllToAll) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0)));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "a2a");
 }
 
 TEST_F(HloControlFlowFlatteningTest, CollectivePermute) {
@@ -421,7 +424,7 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermute) {
 
   ENTRY CollectivePermute {
     input = f32[128,32]{0,1} parameter(0)
-    ROOT root = f32[128,32]{0,1} collective-permute(input), source_target_pairs={{0,1},{1,2},{2,3}}
+    ROOT collective-permute = f32[128,32]{0,1} collective-permute(input), source_target_pairs={{0,1},{1,2},{2,3}}
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -433,9 +436,10 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermute) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0)));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "collective-permute");
 }
 
 TEST_F(HloControlFlowFlatteningTest, CollectivePermuteInPlaceUpdate) {
@@ -450,7 +454,7 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermuteInPlaceUpdate) {
     tuple.1 = (s32[], s32[]) tuple(constant.1, constant.1)
     constant.2 = s32[] constant(64)
     tuple.2 = (s32[], s32[]) tuple(constant.1, constant.2)
-    ROOT root = f32[128,128]{0,1} collective-permute(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{128,32}}
+    ROOT collective-permute = f32[128,128]{0,1} collective-permute(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{128,32}}
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -462,11 +466,12 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermuteInPlaceUpdate) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0), op::Broadcast(op::Constant()),
                              op::Tuple(op::Constant(), op::Constant()),
                              op::Tuple(op::Constant(), op::Constant())));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "collective-permute");
 }
 
 TEST_F(HloControlFlowFlatteningTest, CollectivePermuteStartAndDone) {
@@ -488,9 +493,12 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermuteStartAndDone) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::CustomCall(op::Parameter(0))));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "collective-permute-done.1");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "collective-permute-start.1");
 }
 
 TEST_F(HloControlFlowFlatteningTest, Recv) {
@@ -516,9 +524,12 @@ TEST_F(HloControlFlowFlatteningTest, Recv) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::CustomCall()));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "recv-done");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "recv");
 }
 
 TEST_F(HloControlFlowFlatteningTest, RecvHostTransfer) {
@@ -547,9 +558,12 @@ TEST_F(HloControlFlowFlatteningTest, RecvHostTransfer) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::CustomCall()));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "recv-done");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "recv");
 }
 
 TEST_F(HloControlFlowFlatteningTest, Send) {
@@ -576,9 +590,12 @@ TEST_F(HloControlFlowFlatteningTest, Send) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::CustomCall()));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "send-done");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "send");
 }
 
 TEST_F(HloControlFlowFlatteningTest, SendHostTransfer) {
@@ -608,9 +625,12 @@ TEST_F(HloControlFlowFlatteningTest, SendHostTransfer) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::CustomCall()));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "send-done");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "send");
 }
 
 TEST_F(HloControlFlowFlatteningTest, AllGatherStartAndDone) {
@@ -636,9 +656,11 @@ TEST_F(HloControlFlowFlatteningTest, AllGatherStartAndDone) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::CustomCall(op::Parameter(0))));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "ag-done");
+  EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0)->name(),
+            "ag-start");
 }
 
 TEST_F(HloControlFlowFlatteningTest, CollectiveFusion) {
@@ -690,9 +712,9 @@ ENTRY main {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
-  LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0), op::Parameter(1)));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "fusion");
 }
 
 void CheckWhileBound(HloInstruction* while_op, int expected_bound) {

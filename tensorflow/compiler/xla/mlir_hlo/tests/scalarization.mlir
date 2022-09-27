@@ -23,6 +23,27 @@ func.func @zero_rank(%lhs: tensor<f32>, %rhs: tensor<f32>) -> tensor<f32>  {
 
 // -----
 
+func.func @linalg_index(%arg0: tensor<1xf64>) -> tensor<1xf64> {
+  %0 = linalg.init_tensor [1] : tensor<1xf64>
+  %1 = linalg.generic {
+    indexing_maps = [affine_map<(d0) -> (d0)>],
+    iterator_types = ["parallel"]}
+    outs(%0 : tensor<1xf64>) {
+  ^bb0(%arg1: f64):
+    %2 = linalg.index 0 : index
+    %3 = tensor.extract %arg0[%2] : tensor<1xf64>
+    linalg.yield %3 : f64
+  } -> tensor<1xf64>
+  return %1 : tensor<1xf64>
+}
+// CHECK-LABEL: func @linalg_index
+// CHECK-SAME:      (%[[ARG:.*]]: tensor<1xf64>)
+// CHECK-NEXT:    %[[C0:.*]] = arith.constant 0
+// CHECK-NEXT:    %[[ELEM:.*]] = tensor.extract %[[ARG]][%[[C0]]]
+// CHECK-NEXT:    tensor.from_elements %[[ELEM]]
+
+// -----
+
 
 func.func @nonzero_rank(%lhs: tensor<1xf32>, %rhs: tensor<1x1xf32>)
     -> tensor<1x1x1xf32>  {
@@ -117,6 +138,50 @@ func.func @multiple_ops(%lhs: tensor<f32>, %rhs: tensor<f32>) -> tensor<f32>  {
 // CHECK:         %[[RES2:.*]] = arith.mulf %[[RES]], %[[RHS_VAL]]
 // CHECK:         %[[NEW_TENSOR_RES:.*]] = tensor.from_elements %[[RES2]]
 // CHECK:         return %[[NEW_TENSOR_RES]]
+
+// -----
+
+func.func @outside_yield() -> tensor<1x1xi1>  {
+  %true = arith.constant true
+  %0 = linalg.init_tensor [1, 1]: tensor<1x1xi1>
+  %1 = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>],
+                       iterator_types = ["parallel", "parallel"]}
+       outs(%0 : tensor<1x1xi1>) {
+  ^bb0(%arg1: i1):
+    linalg.yield %true : i1
+  } -> tensor<1x1xi1>
+  return %1: tensor<1x1xi1>
+}
+
+// CHECK-LABEL: func @outside_yield
+// CHECK:         %[[CST:.*]] = arith.constant dense<true> : tensor<1x1xi1>
+// CHECK:         return %[[CST]]
+
+// -----
+
+#map0 = affine_map<(d0) -> ()>
+#map1 = affine_map<(d0) -> (d0)>
+func.func @extra_argument(%arg0: tensor<4xf64>, %arg2: tensor<i1>) -> tensor<f64> {
+  %cst = arith.constant 0.000000e+00 : f64
+  %0 = linalg.init_tensor [] : tensor<f64>
+  %1 = linalg.fill ins(%cst : f64) outs(%0 : tensor<f64>) -> tensor<f64>
+  %2 = linalg.generic {
+    indexing_maps = [affine_map<(d0) -> ()>,
+                     affine_map<(d0) -> (d0)>,
+                     affine_map<(d0) -> ()>],
+    iterator_types = ["reduction"]}
+    ins(%arg2, %arg0 : tensor<i1>, tensor<4xf64>) outs(%1 : tensor<f64>) {
+  ^bb0(%arg3: i1, %arg4: f64, %arg5: f64):
+    %3 = arith.cmpf une, %arg4, %arg4 : f64
+    %4 = arith.select %3, %cst, %arg4 : f64
+    %5 = arith.select %arg3, %4, %cst : f64
+    %6 = arith.addf %arg5, %5 : f64
+    linalg.yield %6 : f64
+  } -> tensor<f64>
+  return %2 : tensor<f64>
+}
+
+// CHECK-LABEL: func @extra_argument
 
 // -----
 

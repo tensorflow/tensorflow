@@ -31,8 +31,9 @@ namespace tensorflow {
 namespace quantization {
 namespace {
 
-// Serializes GraphDef to python bytes object. Raises python ValueError if
-// serialization fails.
+using ::tensorflow::quantization::internal::ExportedModel;
+
+// Serializes a GraphDef. Raises python ValueError if serialization fails.
 std::string SerializeGraphDef(const GraphDef& graph_def,
                               const absl::string_view function_name,
                               const int line_no) {
@@ -51,65 +52,75 @@ std::string SerializeGraphDef(const GraphDef& graph_def,
 
 }  // namespace
 
-std::string QuantizeQatModel(const absl::string_view saved_model_path,
-                             const absl::string_view exported_names_str,
-                             const absl::string_view tags,
-                             const absl::string_view quant_opts_serialized) {
-  const absl::StatusOr<GraphDef> graph_def = internal::QuantizeQatModel(
-      saved_model_path, exported_names_str, tags, quant_opts_serialized);
-  if (!graph_def.ok()) {
-    throw py::value_error(absl::StrFormat("Failed to quantize QAT model: %s",
-                                          graph_def.status().message()));
-  }
-
-  return SerializeGraphDef(*graph_def, __func__, __LINE__);
-}
-
-std::string QuantizePtqDynamicRange(
+std::pair<std::string, std::string> QuantizeQatModel(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags,
     const absl::string_view quant_opts_serialized) {
-  const absl::StatusOr<GraphDef> graph_def = internal::QuantizePtqDynamicRange(
-      saved_model_path, exported_names_str, tags, quant_opts_serialized);
-  if (!graph_def.ok()) {
+  const absl::StatusOr<ExportedModel> exported_model =
+      internal::QuantizeQatModel(saved_model_path, exported_names_str, tags,
+                                 quant_opts_serialized);
+  if (!exported_model.ok()) {
+    throw py::value_error(absl::StrFormat("Failed to quantize QAT model: %s",
+                                          exported_model.status().message()));
+  }
+
+  return std::make_pair(
+      SerializeGraphDef(exported_model->graph_def, __func__, __LINE__),
+      exported_model->init_node_name);
+}
+
+std::pair<std::string, std::string> QuantizePtqDynamicRange(
+    const absl::string_view saved_model_path,
+    const absl::string_view exported_names_str, const absl::string_view tags,
+    const absl::string_view quant_opts_serialized) {
+  const absl::StatusOr<ExportedModel> exported_model =
+      internal::QuantizePtqDynamicRange(saved_model_path, exported_names_str,
+                                        tags, quant_opts_serialized);
+  if (!exported_model.ok()) {
     throw py::value_error(
         absl::StrFormat("Failed to apply post-training dynamic range "
                         "quantization to the model: %s",
-                        graph_def.status().message()));
+                        exported_model.status().message()));
   }
 
-  return SerializeGraphDef(*graph_def, __func__, __LINE__);
+  return std::make_pair(
+      SerializeGraphDef(exported_model->graph_def, __func__, __LINE__),
+      exported_model->init_node_name);
 }
 
-std::string QuantizePtqModelPreCalibration(
+std::pair<std::string, std::string> QuantizePtqModelPreCalibration(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags) {
-  const absl::StatusOr<GraphDef> graph_def =
+  const absl::StatusOr<ExportedModel> exported_model =
       internal::QuantizePtqModelPreCalibration(saved_model_path,
                                                exported_names_str, tags);
-  if (!graph_def.ok()) {
+  if (!exported_model.ok()) {
     throw py::value_error(absl::StrFormat(
         "Failed to quantize PTQ model at the precalibration stage: %s",
-        graph_def.status().message()));
+        exported_model.status().message()));
   }
 
-  return SerializeGraphDef(*graph_def, __func__, __LINE__);
+  return std::make_pair(
+      SerializeGraphDef(exported_model->graph_def, __func__, __LINE__),
+      exported_model->init_node_name);
 }
 
-std::string QuantizePtqModelPostCalibration(
+std::pair<std::string, std::string> QuantizePtqModelPostCalibration(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags,
     const absl::string_view quant_opts_serialized) {
-  const absl::StatusOr<GraphDef> graph_def =
+  const absl::StatusOr<ExportedModel> exported_model =
       internal::QuantizePtqModelPostCalibration(
           saved_model_path, exported_names_str, tags, quant_opts_serialized);
-  if (!graph_def.ok()) {
+  if (!exported_model.ok()) {
     throw py::value_error(absl::StrFormat(
         "Failed to quantize PTQ model at the postcalibration stage: %s",
-        graph_def.status().message()));
+        exported_model.status().message()));
   }
 
-  return SerializeGraphDef(*graph_def, __func__, __LINE__);
+  return std::make_pair(
+      SerializeGraphDef(exported_model->graph_def, __func__, __LINE__),
+      exported_model->init_node_name);
 }
 
 void ClearCollectedInformationFromCalibrator() {

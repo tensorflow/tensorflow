@@ -122,7 +122,7 @@ class ROCMBlas : public blas::BlasSupport {
     if (!DoBlasInternal(args...)) {
       return port::InternalError("Failed calling rocBLAS");
     }
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 
   template <typename FuncT, typename... Args>

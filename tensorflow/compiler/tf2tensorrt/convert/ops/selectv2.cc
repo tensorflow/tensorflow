@@ -78,7 +78,7 @@ class ConvertSelectV2 : public OpConverterBase<ConvertSelectV2> {
           params.validation_only, &tensor_[i], node, i));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -93,7 +93,7 @@ class ConvertSelectV2 : public OpConverterBase<ConvertSelectV2> {
 
     converter->SetLayerName(select_layer, params.node_def.name(), "selectv2");
     AddOutput(TRT_TensorOrWeights(select_layer->getOutput(0)));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

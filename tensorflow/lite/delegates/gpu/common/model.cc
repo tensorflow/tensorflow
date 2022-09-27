@@ -114,7 +114,7 @@ Value* GraphFloat32::GetValue(ValueId id) const {
 Node* GraphFloat32::NewNode() {
   const NodeId new_id = nodes_.size();
   NodeDef def;
-  def.node = std::make_unique<Node>(Node{static_cast<NodeId>(new_id), {}});
+  def.node = absl::make_unique<Node>(Node{static_cast<NodeId>(new_id), {}});
   Node* node = def.node.get();
   nodes_[new_id] = std::move(def);
   execution_plan_.push_back(new_id);
@@ -136,7 +136,7 @@ absl::Status GraphFloat32::InsertNodeAfter(NodeId id, Node** new_node) {
 
   const NodeId new_id = nodes_.size();
   NodeDef def;
-  def.node = std::make_unique<Node>(Node{static_cast<NodeId>(new_id), {}});
+  def.node = absl::make_unique<Node>(Node{static_cast<NodeId>(new_id), {}});
   *new_node = def.node.get();
   nodes_[new_id] = std::move(def);
   execution_plan_.insert(execution_plan_.begin() + idx + 1, new_id);
@@ -146,7 +146,7 @@ absl::Status GraphFloat32::InsertNodeAfter(NodeId id, Node** new_node) {
 Value* GraphFloat32::NewValue() {
   ValueDef def;
   def.value =
-      std::make_unique<Value>(Value{static_cast<ValueId>(values_.size()), {}});
+      absl::make_unique<Value>(Value{static_cast<ValueId>(values_.size()), {}});
   Value* value = def.value.get();
   values_.push_back(std::move(def));
   return value;
@@ -311,7 +311,7 @@ absl::Status GraphFloat32::MakeExactCopy(GraphFloat32* model) const {
   for (auto& value_def : values_) {
     model->values_.push_back({});
     if (value_def.value) {
-      model->values_.back().value = std::make_unique<Value>(*value_def.value);
+      model->values_.back().value = absl::make_unique<Value>(*value_def.value);
     }
   }
   // Add all nodes first.
@@ -320,7 +320,7 @@ absl::Status GraphFloat32::MakeExactCopy(GraphFloat32* model) const {
     model->nodes_[node_id] = {};
     auto& node_def = nodes_.at(node_id);
     if (node_def.node) {
-      model->nodes_[node_id].node = std::make_unique<Node>(*node_def.node);
+      model->nodes_[node_id].node = absl::make_unique<Node>(*node_def.node);
     }
   }
   // Wire up dependencies between nodes.

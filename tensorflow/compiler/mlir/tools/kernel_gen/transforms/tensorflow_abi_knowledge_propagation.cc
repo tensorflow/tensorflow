@@ -94,7 +94,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       OpBuilder b = OpBuilder::atBlockBegin(&kernel.getBody().front());
       llvm::SmallDenseMap<int64_t, Value> constants;
       auto loc = kernel.getLoc();
-      for (auto operand : launch.operands()) {
+      for (auto operand : launch.getKernelOperands()) {
         auto memref = operand.getType().dyn_cast<MemRefType>();
         if (!memref) {
           // Scalar argument, advance kernel position by one.

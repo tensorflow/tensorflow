@@ -28,7 +28,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/tsl/lib/monitoring/metric_def.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/types.h"
@@ -36,8 +36,6 @@ limitations under the License.
 namespace tsl {
 namespace monitoring {
 using tensorflow::HistogramProto;
-using tensorflow::monitoring::MetricDef;
-using tensorflow::monitoring::MetricKind;
 // SamplerCell which has a null implementation.
 class SamplerCell {
  public:
@@ -96,7 +94,7 @@ class Sampler {
     return &default_sampler_cell_;
   }
 
-  Status GetStatus() { return Status::OK(); }
+  Status GetStatus() { return OkStatus(); }
 
  private:
   Sampler(std::unique_ptr<Buckets> buckets) : buckets_(std::move(buckets)) {}
@@ -121,9 +119,9 @@ class Sampler {
 #include <vector>
 
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/lib/histogram/histogram.h"
-#include "tensorflow/core/lib/monitoring/collection_registry.h"
-#include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/tsl/lib/histogram/histogram.h"
+#include "tensorflow/tsl/lib/monitoring/collection_registry.h"
+#include "tensorflow/tsl/lib/monitoring/metric_def.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -132,10 +130,7 @@ class Sampler {
 namespace tsl {
 namespace monitoring {
 using tensorflow::HistogramProto;
-using tensorflow::monitoring::CollectionRegistry;
-using tensorflow::monitoring::MetricCollectorGetter;
-using tensorflow::monitoring::MetricDef;
-using tensorflow::monitoring::MetricKind;
+
 // SamplerCell stores each value of an Sampler.
 //
 // A cell can be passed off to a module which may repeatedly update it without
@@ -159,7 +154,7 @@ class SamplerCell {
   HistogramProto value() const;
 
  private:
-  tensorflow::histogram::ThreadSafeHistogram histogram_;
+  histogram::ThreadSafeHistogram histogram_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SamplerCell);
 };

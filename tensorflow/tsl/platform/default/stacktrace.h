@@ -34,7 +34,8 @@ limitations under the License.
 
 #include <sstream>
 #include <string>
-#include "tensorflow/core/platform/abi.h"
+
+#include "tensorflow/tsl/platform/abi.h"
 
 namespace tsl {
 
@@ -58,7 +59,7 @@ inline std::string CurrentStackTrace() {
       }
     }
 
-    std::string demangled = tensorflow::port::MaybeAbiDemangle(symbol);
+    std::string demangled = port::MaybeAbiDemangle(symbol);
     if (demangled.length()) {
       ss << "\t" << demangled << std::endl;
     } else {

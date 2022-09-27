@@ -843,7 +843,7 @@ class BatchMatMulOp : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -869,7 +869,7 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
     if (in1.dims() < 2) {
       return errors::InvalidArgument("In[1] ndims must be >= 2: ", in1.dims());
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

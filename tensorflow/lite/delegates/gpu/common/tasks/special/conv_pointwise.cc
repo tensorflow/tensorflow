@@ -110,7 +110,7 @@ absl::Status IsMeanNode(const GraphFloat32& graph, Node* node,
                         NodeContext* node_context) {
   RETURN_IF_ERROR(IsNode(graph, OperationType::MEAN, 1, 1, node, node_context));
   auto mean_attr =
-      std::any_cast<MeanAttributes>(node_context->node->operation.attributes);
+      absl::any_cast<MeanAttributes>(node_context->node->operation.attributes);
   if (mean_attr.dims != std::set<Axis>{Axis::CHANNELS}) {
     return absl::InternalError("Expected mean node with channels reduction.");
   }
@@ -132,7 +132,7 @@ absl::Status IsSliceNode(const GraphFloat32& graph, Node* node,
   RETURN_IF_ERROR(
       IsNode(graph, OperationType::SLICE, 1, 1, node, node_context));
   auto slice_attr =
-      std::any_cast<SliceAttributes>(node_context->node->operation.attributes);
+      absl::any_cast<SliceAttributes>(node_context->node->operation.attributes);
   if (slice_attr.strides != BHWC(1, 1, 1, 1)) {
     return absl::InternalError("Not valid attributes in slice node.");
   }
@@ -143,8 +143,8 @@ absl::Status IsConcatNode(const GraphFloat32& graph, Node* node,
                           NodeContext* node_context) {
   RETURN_IF_ERROR(
       IsNode(graph, OperationType::CONCAT, -1, 1, node, node_context));
-  auto concat_attr =
-      std::any_cast<ConcatAttributes>(node_context->node->operation.attributes);
+  auto concat_attr = absl::any_cast<ConcatAttributes>(
+      node_context->node->operation.attributes);
   if (concat_attr.axis != Axis::CHANNELS) {
     return absl::InternalError("Not valid attributes in concat node.");
   }
@@ -165,7 +165,7 @@ absl::Status GetOffset(const GraphFloat32& graph, NodeId concat_input_node,
   RETURN_IF_ERROR(
       IsSliceNode(graph, graph.FindProducer(slice_output_id), &slice_node));
   auto slice_attr =
-      std::any_cast<SliceAttributes>(slice_node.node->operation.attributes);
+      absl::any_cast<SliceAttributes>(slice_node.node->operation.attributes);
   *offset_x = slice_attr.starts.w;
   *offset_y = slice_attr.starts.h;
   consumed_nodes->insert(mean_node.node->id);

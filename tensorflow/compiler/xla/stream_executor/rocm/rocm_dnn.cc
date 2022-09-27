@@ -615,7 +615,7 @@ port::Status MIOpenSupport::Init() {
       reinterpret_cast<miopenHandle_t*>(&miopen_handle), (hipStream_t)(0));
   if (status == miopenStatusSuccess) {
     miopen_.reset(new MIOpenAccess(miopen_handle));
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 
   CHECK_EQ(miopen_handle, nullptr);
@@ -2491,7 +2491,7 @@ port::Status MIOpenSupport::DoPrepareForCtcLoss(
     }
   }
 
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 port::Status MIOpenSupport::DoCtcLossImpl(
@@ -2521,7 +2521,7 @@ port::Status MIOpenSupport::DoCtcLossImpl(
     return port::InternalError("Failure during MIOpen CTC Loss");
   }
 
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 port::Status MIOpenSupport::DoCtcLoss(
@@ -2934,7 +2934,7 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
     }
   }
 
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 class RocmConvRunner : public dnn::ConvRunner {
@@ -3080,7 +3080,7 @@ class RocmConvRunner : public dnn::ConvRunner {
                        ::stream_executor::gpu::ToString(status)));
     }
 
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 
  private:
@@ -3168,7 +3168,7 @@ port::Status MIOpenSupport::GetConvolveRunners(
     out_runners->push_back(std::move(runner));
   }
 
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
@@ -4072,7 +4072,7 @@ port::Status MIOpenSupport::DoPoolForward(
     return port::InternalError(absl::StrCat(
         "Failed to enqueue forward pooling on stream: ", ToString(status)));
   }
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 bool PoolingWorkspaceDescriptor::IsSame(
@@ -4268,7 +4268,7 @@ port::Status MIOpenSupport::DoPoolBackward(
     return port::InternalError(absl::StrCat(
         "Failed to enqueue backward pooling on stream: ", ToString(status)));
   }
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 bool MIOpenSupport::DoNormalizeWithDimensions(

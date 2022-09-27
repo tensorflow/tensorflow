@@ -229,8 +229,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
   Status status =
       RunTFXLABridge(module, enable_logging, CreateTPUBridgePipeline);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      "tpu", "v2", fallback_enabled,
-      status == ::tensorflow::OkStatus() ? "success" : "failure");
+      "tpu", "v2", fallback_enabled, status.ok() ? "success" : "failure");
   OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
       status);
@@ -241,8 +240,7 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
   Status status =
       RunTFXLABridge(module, enable_logging, CreateTPUBridgePipelineV1);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      "tpu", "v1", fallback_enabled,
-      status == ::tensorflow::OkStatus() ? "success" : "failure");
+      "tpu", "v1", fallback_enabled, status.ok() ? "success" : "failure");
   return status;
 }
 
@@ -348,7 +346,7 @@ tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging) {
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
       /*fallback_enabled*/ false,
-      /*result*/ status == ::tensorflow::OkStatus() ? "success" : "failure");
+      /*result*/ status.ok() ? "success" : "failure");
   return status;
 }
 

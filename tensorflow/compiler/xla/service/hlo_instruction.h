@@ -55,10 +55,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -1827,9 +1827,6 @@ class HloInstruction {
   }
   void set_logical_creation_pass_id(int64_t pass_id) {
     metadata_.set_logical_creation_pass_id(pass_id);
-  }
-  void set_metadata_replaced_op(absl::string_view replaced_op) {
-    metadata_.set_replaced_op(std::string(replaced_op));
   }
   const OpMetadata& metadata() const { return metadata_; }
 

@@ -316,7 +316,7 @@ tf_device::LaunchOp WrapOpInLaunch(OpBuilder* builder, Location loc,
 
   auto launch = builder->create<tf_device::LaunchOp>(
       loc, builder->getStringAttr(device), op->getResultTypes());
-  launch.body().push_back(new Block);
+  launch.getBody().push_back(new Block);
 
   builder->setInsertionPointToEnd(&launch.GetBody());
   builder->create<tf_device::ReturnOp>(loc, op->getResults());
@@ -363,7 +363,7 @@ Operation* BuildCompileOp(
     compile_op_operands.emplace_back(shape_op.getResult());
   }
 
-  FlatSymbolRefAttr func_attr = cluster_func.funcAttr();
+  FlatSymbolRefAttr func_attr = cluster_func.getFuncAttr();
   func::FuncOp func =
       cluster_func->getParentOfType<ModuleOp>().lookupSymbol<func::FuncOp>(
           func_attr.getValue());
@@ -632,7 +632,7 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
 LogicalResult CheckTPUPartitionedInputAndOutputAreValid(
     tf_device::ClusterFuncOp cluster,
     tf_device::ParallelExecuteOp parallel_execute) {
-  for (auto cluster_result : parallel_execute.execute_outputs()) {
+  for (auto cluster_result : parallel_execute.getExecuteOutputs()) {
     for (Operation* user :
          llvm::make_early_inc_range(cluster_result.getUsers())) {
       // Check that user has no outputs that are TPUPartitionedOutput
@@ -693,7 +693,7 @@ LogicalResult Rewrite(
   int num_replicas = 1;
   tf_device::ReplicateOp replicate =
       cluster_func->getParentOfType<tf_device::ReplicateOp>();
-  if (replicate) num_replicas = replicate.n();
+  if (replicate) num_replicas = replicate.getN();
 
   auto num_cores_per_replica_attr = cluster_func->getAttrOfType<IntegerAttr>(
       tensorflow::kNumCoresPerReplicaAttr);
@@ -830,7 +830,7 @@ void EraseClusterFuncs(
         cluster->getParentOfType<tf_device::ParallelExecuteOp>();
     assert(old_parallel_execute);
 
-    for (auto result : old_parallel_execute.execute_outputs()) {
+    for (auto result : old_parallel_execute.getExecuteOutputs()) {
       for (Operation* user : llvm::make_early_inc_range(result.getUsers())) {
         if (llvm::isa<TF::TPUPartitionedOutputOp>(user)) {
           assert(user->use_empty());

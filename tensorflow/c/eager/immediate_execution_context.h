@@ -167,6 +167,9 @@ class ImmediateExecutionContext : public AbstractContext {
   //===--------------------------------------------------------------------===//
   virtual CustomDeviceOpHandler& GetCustomDeviceOpHandler() = 0;
 
+  // Returns whether `device_name` is registered as a custom device.
+  virtual bool IsCustomDevice(const string& device_name) = 0;
+
   // Register a custom device. It will return error is the device name is
   // already registered.
   // TODO(tfrt-devs): Remove this method. Let caller register it directly into

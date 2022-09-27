@@ -1684,17 +1684,8 @@ static std::vector<int64_t> MajorToMinorLayout(const Shape& s) {
   return std::vector<int64_t>{minor_to_major.rbegin(), minor_to_major.rend()};
 }
 
-/* static */ std::optional<Vector3> ShapeUtil::FindTranspose021(
-    const Shape& input_shape, const Shape& output_shape) {
-  if (!ShapeUtil::CompatibleIgnoringElementType(input_shape, output_shape)) {
-    return std::nullopt;
-  }
-
-  std::vector<int64_t> major_to_minor_input = MajorToMinorLayout(input_shape);
-  std::vector<int64_t> major_to_minor_output = MajorToMinorLayout(output_shape);
-  std::vector<int64_t> output_to_input = ComposePermutations(
-      InversePermutation(major_to_minor_output), major_to_minor_input);
-
+static std::optional<Vector3> FindTranspose021Helper(
+    const Shape& input_shape, absl::Span<int64_t const> output_to_input) {
   std::vector<size_t> segments = ConsecutiveSegments(output_to_input);
   if (segments.size() > 3) {
     return std::nullopt;
@@ -1711,6 +1702,32 @@ static std::vector<int64_t> MajorToMinorLayout(const Shape& s) {
     return Vector3{normalized_dims[0], normalized_dims[2], normalized_dims[1]};
   }
   return std::nullopt;
+}
+
+/* static */ std::optional<Vector3> ShapeUtil::FindLogicalTranspose021(
+    const Shape& input_shape, const Shape& output_shape,
+    absl::Span<int64_t const> dimensions) {
+  if (!LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) ||
+      !LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
+    // Only works on default layouts.
+    return std::nullopt;
+  }
+
+  return FindTranspose021Helper(input_shape, InversePermutation(dimensions));
+}
+
+/* static */ std::optional<Vector3> ShapeUtil::FindTranspose021(
+    const Shape& input_shape, const Shape& output_shape) {
+  if (!ShapeUtil::CompatibleIgnoringElementType(input_shape, output_shape)) {
+    return std::nullopt;
+  }
+
+  std::vector<int64_t> major_to_minor_input = MajorToMinorLayout(input_shape);
+  std::vector<int64_t> major_to_minor_output = MajorToMinorLayout(output_shape);
+  std::vector<int64_t> output_to_input = ComposePermutations(
+      InversePermutation(major_to_minor_output), major_to_minor_input);
+
+  return FindTranspose021Helper(input_shape, output_to_input);
 }
 
 Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {

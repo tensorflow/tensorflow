@@ -575,8 +575,9 @@ cc_library(
         ":device_memory",
         ":dnn_proto_cc",
         ":stream_executor_headers",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
@@ -720,6 +721,17 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "dnn_test",
+    size = "small",
+    srcs = ["dnn_test.cc"],
+    deps = [
+        ":dnn",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "tf_allocator_adapter",
     srcs = ["tf_allocator_adapter.cc"],
@@ -755,4 +767,21 @@ alias(
 alias(
     name = "rocm_platform",
     actual = "//tensorflow/stream_executor/rocm:all_runtime",
+)
+
+# TODO(se-owner): document or remove this.
+cc_library(
+    name = "stream_executor_bundle",
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
+        "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
+    ],
 )

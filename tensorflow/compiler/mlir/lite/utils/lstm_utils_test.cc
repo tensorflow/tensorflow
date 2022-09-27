@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -182,7 +183,7 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
 
   EXPECT_EQ(fused_lstm_func_.getFunctionType().getNumResults(), 1);
   auto output_types = fused_lstm_func_.getFunctionType().getResults();
-  SmallVector<int64_t, 2> output_shape{1, -1};
+  SmallVector<int64_t, 2> output_shape{1, mlir::ShapedType::kDynamicSize};
   EXPECT_EQ(output_types[0].cast<RankedTensorType>().getShape().size(),
             output_shape.size());
   for (int i = 0; i < output_shape.size(); i++) {
@@ -253,7 +254,7 @@ TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
 
   EXPECT_EQ(fused_ln_lstm_func_.getFunctionType().getNumResults(), 1);
   auto output_types = fused_ln_lstm_func_.getFunctionType().getResults();
-  SmallVector<int64_t, 2> output_shape{1, -1};
+  SmallVector<int64_t, 2> output_shape{1, mlir::ShapedType::kDynamicSize};
   EXPECT_EQ(output_types[0].cast<RankedTensorType>().getShape().size(),
             output_shape.size());
   for (int i = 0; i < output_shape.size(); i++) {

@@ -320,7 +320,7 @@ Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
 
   // DumpApiCallbackData(domain, cbid, cbdata);
 
-  if (domain != ACTIVITY_DOMAIN_HIP_API) return Status::OK();
+  if (domain != ACTIVITY_DOMAIN_HIP_API) return OkStatus();
 
   const hip_api_data_t* data = reinterpret_cast<const hip_api_data_t*>(cbdata);
 
@@ -348,7 +348,7 @@ Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
       } else {
         LOG(WARNING) << "An API exit callback received without API enter "
                         "with same correlation id. Event droped!";
-        return Status::OK();  // This API does not belong to us.
+        return OkStatus();  // This API does not belong to us.
       }
       exit_time = RocmTracer::GetTimestamp();
     }
@@ -429,7 +429,7 @@ Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
         break;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void RocmApiCallbackImpl::AddKernelEventUponApiExit(uint32_t cbid,
@@ -1010,7 +1010,7 @@ Status RocmActivityCallbackImpl::operator()(const char* begin,
         roctracer_next_record(record, &record)));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void RocmActivityCallbackImpl::AddHipKernelActivityEvent(
@@ -1409,7 +1409,7 @@ void RocmTracer::ApiCallbackHandler(uint32_t domain, uint32_t cbid,
 }
 
 Status RocmTracer::EnableApiTracing() {
-  if (api_tracing_enabled_) return Status::OK();
+  if (api_tracing_enabled_) return OkStatus();
   api_tracing_enabled_ = true;
 
   for (auto& iter : options_->api_callbacks) {
@@ -1431,11 +1431,11 @@ Status RocmTracer::EnableApiTracing() {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RocmTracer::DisableApiTracing() {
-  if (!api_tracing_enabled_) return Status::OK();
+  if (!api_tracing_enabled_) return OkStatus();
   api_tracing_enabled_ = false;
 
   for (auto& iter : options_->api_callbacks) {
@@ -1457,7 +1457,7 @@ Status RocmTracer::DisableApiTracing() {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void ActivityCallback(const char* begin, const char* end, void* user_data) {
@@ -1487,7 +1487,7 @@ void RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
 }
 
 Status RocmTracer::EnableActivityTracing() {
-  if (activity_tracing_enabled_) return Status::OK();
+  if (activity_tracing_enabled_) return OkStatus();
   activity_tracing_enabled_ = true;
 
   if (!options_->activity_tracing.empty()) {
@@ -1524,11 +1524,11 @@ Status RocmTracer::EnableActivityTracing() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RocmTracer::DisableActivityTracing() {
-  if (!activity_tracing_enabled_) return Status::OK();
+  if (!activity_tracing_enabled_) return OkStatus();
 
   for (auto& iter : options_->activity_tracing) {
     activity_domain_t domain = iter.first;
@@ -1579,7 +1579,7 @@ Status RocmTracer::DisableActivityTracing() {
 
   activity_tracing_enabled_ = false;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ uint64_t RocmTracer::GetTimestamp() {

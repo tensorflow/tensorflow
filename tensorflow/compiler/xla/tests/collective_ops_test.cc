@@ -1091,6 +1091,98 @@ XLA_TEST_F(CollectiveOpsTest, ReduceScatter_Dim1) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({15, 17, 23, 25}, results[1]);
 }
 
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatterReassociate)) {
+  const char* const kModuleStr = R"(
+  HloModule m
+  sum {
+    a = u32[] parameter(0)
+    b = u32[] parameter(1)
+    ROOT add.2 = u32[] add(a, b)
+  }
+
+  ENTRY main {
+    c0 = u32[8] constant({  1,  2,  3,  4,  5,  6,  7,  8})
+    c1 = u32[8] constant({ 11, 12, 13, 14, 15, 16, 17, 18})
+    c2 = u32[8] constant({  2,  3,  4,  5,  6,  7,  8,  9})
+    c3 = u32[8] constant({ 12, 13, 14, 15, 16, 17, 18, 19})
+    zero = u32[] constant(0)
+    id = u32[] replica-id()
+    p = pred[] compare(id, zero), direction=EQ
+    pb = pred[8] broadcast(p), dimensions={}
+    // data0 = c0 for replica 0 and c1 for replica 1
+    data0 = u32[8] select(pb, c0, c1)
+    // data1 = c2 for replica 0 and c3 for replica 1
+    data1 = u32[8] select(pb, c2, c3)
+
+    rs0 = u32[4] reduce-scatter(data0), replica_groups={}, dimensions={0}, to_apply=sum
+    rs1 = u32[4] reduce-scatter(data1), replica_groups={}, dimensions={0}, to_apply=sum
+    ROOT add = u32[4] add(rs0, rs1)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  auto config = GetModuleConfigForTest(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+
+  const ErrorSpec es{1e-5, 1e-5};
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({26, 30, 34, 38}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({42, 46, 50, 54}, results[1]);
+}
+
+XLA_TEST_F(CollectiveOpsTest,
+           DISABLED_ON_CPU(ReduceScatterReassociate_ReduceScatterCreator)) {
+  const char* const kModuleStr = R"(
+  HloModule m
+  sum {
+    a = u32[] parameter(0)
+    b = u32[] parameter(1)
+    ROOT add.2 = u32[] add(a, b)
+  }
+
+  ENTRY main {
+    c0 = u32[8] constant({  1,  2,  3,  4,  5,  6,  7,  8})
+    c1 = u32[8] constant({ 11, 12, 13, 14, 15, 16, 17, 18})
+    c2 = u32[8] constant({  2,  3,  4,  5,  6,  7,  8,  9})
+    c3 = u32[8] constant({ 12, 13, 14, 15, 16, 17, 18, 19})
+    zero = u32[] constant(0)
+    id = u32[] replica-id()
+    p = pred[] compare(id, zero), direction=EQ
+    pb = pred[8] broadcast(p), dimensions={}
+    // data0 = c0 for replica 0 and c1 for replica 1
+    data0 = u32[8] select(pb, c0, c1)
+    // data1 = c2 for replica 0 and c3 for replica 1
+    data1 = u32[8] select(pb, c2, c3)
+
+    ar0 = u32[8] all-reduce(data0), replica_groups={}, to_apply=sum
+    ar1 = u32[8] all-reduce(data1), replica_groups={}, to_apply=sum
+    rid = u32[] replica-id()
+    slice_size = u32[] constant(4)
+    offset = u32[] multiply(rid, slice_size)
+    ds0 = u32[4] dynamic-slice(ar0, offset), dynamic_slice_sizes={4}
+    ds1 = u32[4] dynamic-slice(ar1, offset), dynamic_slice_sizes={4}
+    ROOT add = u32[4] add(ds0, ds1)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  auto config = GetModuleConfigForTest(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+
+  const ErrorSpec es{1e-5, 1e-5};
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({26, 30, 34, 38}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({42, 46, 50, 54}, results[1]);
+}
+
 XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduceReassociate)) {
   const char* const kModuleStr = R"(
   HloModule m

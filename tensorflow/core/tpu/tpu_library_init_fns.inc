@@ -111,14 +111,14 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation);
   TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation);
 
-  return tensorflow::Status::OK();
+  return tensorflow::OkStatus();
 }
 
 tensorflow::Status InitializeTpuStructFns(void* library_handle) {
   TF_RETURN_IF_ERROR(SetTpuOpsStructFns(library_handle));
   TF_RETURN_IF_ERROR(SetExecutorStructFn(library_handle));
 
-  return tensorflow::Status::OK();
+  return tensorflow::OkStatus();
 }
 
 }  // namespace

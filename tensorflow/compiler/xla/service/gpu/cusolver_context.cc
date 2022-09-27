@@ -175,7 +175,7 @@ hipsolverFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
 Status ConvertStatus(hipsolverStatus_t status) {
   switch (status) {
     case HIPSOLVER_STATUS_SUCCESS:
-      return Status::OK();
+      return OkStatus();
     case HIPSOLVER_STATUS_NOT_INITIALIZED:
       return FailedPrecondition("hipsolver has not been initialized");
     case HIPSOLVER_STATUS_ALLOC_FAILED:
@@ -217,7 +217,7 @@ rocblas_fill GpuBlasUpperLower(se::blas::UpperLower uplo) {
 Status ConvertStatus(rocblas_status status) {
   switch (status) {
     case rocblas_status_success:
-      return Status::OK();
+      return OkStatus();
     case rocblas_status_invalid_handle:
       return FailedPrecondition("handle not initialized, invalid or null");
     case rocblas_status_not_implemented:

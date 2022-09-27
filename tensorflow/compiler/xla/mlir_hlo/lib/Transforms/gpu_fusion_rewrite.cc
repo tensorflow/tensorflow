@@ -99,7 +99,8 @@ static constexpr llvm::StringLiteral kWrittenOperandsAttrName = "lmhlo.written";
 void GpuFusionRewritePass::getDependentDialects(
     DialectRegistry& registry) const {
   OpPassManager passManager;
-  createHloToGpuPipeline(passManager, /*tileSizes=*/{}, /*unrollFactors=*/{});
+  createHloToGpuPipeline(passManager, /*blockTileDim=*/{}, /*warpTileDim=*/{},
+                         /*threadTileDim=*/{});
   passManager.getDependentDialects(registry);
 }
 
@@ -238,13 +239,16 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   // Create and run the HLO to GPU pass pipeline.
   auto resultType =
       fusionOp.getFusionResults().front().getType().cast<TensorType>();
-  int64_t unrollFactor = getElementsPerThread(resultType);
-  int64_t tileSize =
-      getThreadsPerBlock(resultType, unrollFactor) * unrollFactor;
+  int64_t elementsPerThread = getElementsPerThread(resultType);
+  constexpr int64_t kThreadsPerWarp = 32;
+  int64_t elementsPerWarp = elementsPerThread * kThreadsPerWarp;
+  int64_t elementsPerBlock =
+      getThreadsPerBlock(resultType, elementsPerThread) * elementsPerThread;
   // Note: passManager.enableIRPrinting() doesn't do anything on dynamic pass
   // pipelines. Printing needs to be enabled on the parent pass manager.
   PassManager passManager(getContext());
-  createHloToGpuPipeline(passManager, {tileSize}, {unrollFactor});
+  createHloToGpuPipeline(passManager, {elementsPerBlock}, {elementsPerWarp},
+                         {elementsPerThread});
   if (failed(parentPass.runPipeline(passManager, moduleOp)))
     return rewriter.notifyMatchFailure(fusionOp, "failed to run pipeline");
 
@@ -291,7 +295,7 @@ void FusionRewritePattern::annotateLaunchFunc(func::FuncOp funcOp,
                                               PatternRewriter& rewriter) {
   funcOp.walk([&](gpu::LaunchFuncOp op) {
     auto writtenOperands = llvm::to_vector(
-        llvm::map_range(op.operands(), [&](Value operand) -> bool {
+        llvm::map_range(op.getKernelOperands(), [&](Value operand) -> bool {
           auto arg = operand.dyn_cast<BlockArgument>();
           if (!arg) return false;
           return funcOp.getArgAttr(arg.getArgNumber(),
@@ -334,15 +338,15 @@ ConversionTarget FusionRewritePattern::getRewritableTarget(MLIRContext* ctx) {
       });
   // For now, use an explicit allow-list of hlo ops inside the fusion. If any
   // other op is present, the fusion will not be rewritten.
-  target.addLegalOp<mhlo::AddOp, mhlo::AbsOp, mhlo::CbrtOp, mhlo::CeilOp,
-                    mhlo::CosineOp, mhlo::DivOp, mhlo::ExpOp, mhlo::Expm1Op,
-                    mhlo::FloorOp, mhlo::LogOp, mhlo::Log1pOp, mhlo::LogisticOp,
-                    mhlo::MulOp, mhlo::NegOp, mhlo::RoundOp,
+  target.addDynamicallyLegalOp<
+      mhlo::AddOp, mhlo::AbsOp, mhlo::CbrtOp, mhlo::CeilOp, mhlo::CosineOp,
+      mhlo::DivOp, mhlo::ExpOp, mhlo::Expm1Op, mhlo::FloorOp, mhlo::LogOp,
+      mhlo::Log1pOp, mhlo::LogisticOp, mhlo::MulOp, mhlo::NegOp, mhlo::RoundOp,
 #if !TENSORFLOW_USE_ROCM
-                    mhlo::RoundNearestEvenOp,
+      mhlo::RoundNearestEvenOp,
 #endif
-                    mhlo::RsqrtOp, mhlo::SignOp, mhlo::SineOp, mhlo::SqrtOp,
-                    mhlo::SubtractOp, mhlo::TanhOp>();
+      mhlo::RsqrtOp, mhlo::SignOp, mhlo::SineOp, mhlo::SqrtOp, mhlo::SubtractOp,
+      mhlo::TanhOp>([&](Operation* op) { return op->hasOneUse(); });
   return target;
 }
 

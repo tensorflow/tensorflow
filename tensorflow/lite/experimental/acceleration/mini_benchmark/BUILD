@@ -59,6 +59,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
@@ -418,6 +419,7 @@ cc_library(
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
@@ -500,6 +502,7 @@ cc_library(
         # be invoked.
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+        "//tensorflow/lite:minimal_logging",
     ],
 )
 
@@ -850,6 +853,7 @@ cc_binary(
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+        "//tensorflow/lite:minimal_logging",
     ] + select({
         # On Android, as the validation runs in a separate process as a
         # different binary, any TFLite delegates to be validated need to
@@ -940,8 +944,10 @@ cc_test(
     name = "validator_runner_impl_test",
     srcs = ["validator_runner_impl_test.cc"],
     deps = [
+        ":embedded_mobilenet_model",
         ":embedded_mobilenet_validation_model",
         ":embedded_nnapi_sl_fake_impl",
+        ":embedded_validator_runner_entrypoint",
         ":fb_storage",
         ":mini_benchmark_test_helper",
         ":nnapi_sl_fake_impl_client",
@@ -953,7 +959,8 @@ cc_test(
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
-        "//tensorflow/lite/nnapi/sl:nnapi_support_library",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:custom_validation_embedder",
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "@com_google_googletest//:gtest_main",
     ],

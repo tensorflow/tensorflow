@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/test.h"
 
 // Defines the following utilities:
 //
@@ -95,8 +95,19 @@ limitations under the License.
 //   ...
 //   StatusOr<std::string> message("Hello, world");
 //   EXPECT_THAT(message, IsOk());
-//   Status status = Status::OK();
+//   Status status = OkStatus();
 //   EXPECT_THAT(status, IsOk());
+
+namespace tensorflow {
+namespace error {
+// TODO(ddunleavy) Move this to TSL. This stays here until error_codes proto
+// is moved to TSL due to an ADL issue
+inline void PrintTo(const tsl::error::Code code, std::ostream* os) {
+  *os << Code_Name(code);
+}
+
+}  // namespace error
+}  // namespace tensorflow
 
 namespace tsl {
 
@@ -107,12 +118,6 @@ void PrintTo(const StatusOr<T>& status_or, std::ostream* os) {
     *os << ": " << ::testing::PrintToString(status_or.value());
   }
 }
-
-namespace error {
-inline void PrintTo(const tsl::error::Code code, std::ostream* os) {
-  *os << Code_Name(code);
-}
-}  // namespace error
 
 namespace testing {
 namespace internal_status {

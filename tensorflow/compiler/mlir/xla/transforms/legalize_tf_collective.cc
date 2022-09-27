@@ -35,7 +35,6 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/utils.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/hlo_utils.h"
@@ -51,8 +50,11 @@ constexpr absl::string_view kGroupSizeAttrName =
 constexpr absl::string_view kGroupKeyAttrName =
     "tf2xla.collective_info.group_key";
 
+#define GEN_PASS_DEF_LEGALIZETFCOLLECTIVE
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
 class LegalizeTFCollective
-    : public LegalizeTFCollectiveBase<LegalizeTFCollective> {
+    : public impl::LegalizeTFCollectiveBase<LegalizeTFCollective> {
  public:
   void runOnOperation() override;
 };

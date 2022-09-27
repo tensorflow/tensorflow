@@ -37,7 +37,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 
-def TF_AbsOp : TF_Op<"Abs", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
+def TF_AbsOp : TF_Op<"Abs", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the absolute value of a tensor.";
 
   let description = [{
@@ -855,7 +855,7 @@ this value or a subsequent newer value of the variable.
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_AtanOp : TF_Op<"Atan", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_AtanOp : TF_Op<"Atan", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the trignometric inverse tangent of x element-wise.";
 
   let description = [{
@@ -885,6 +885,12 @@ tf.math.atan(y) # [1.047, 0.785] = x
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_Atan2Op : TF_Op<"Atan2", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
@@ -2071,7 +2077,7 @@ def TF_CastOp : TF_Op<"Cast", [NoSideEffect, SameOperandsAndResultShape]> {
   let hasFolder = 1;
 }
 
-def TF_CeilOp : TF_Op<"Ceil", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
+def TF_CeilOp : TF_Op<"Ceil", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns element-wise smallest integer not less than x.";
 
   let arguments = (ins
@@ -2083,6 +2089,12 @@ def TF_CeilOp : TF_Op<"Ceil", [Idempotent, NoSideEffect, SameOperandsAndResultTy
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_CheckNumericsOp : TF_Op<"CheckNumerics", [TF_SameOperandsAndResultTypeResolveRef]> {
@@ -2573,7 +2585,7 @@ the memory allocations reserved for TPUEmbedding.}]>:$memory_config
   );
 }
 
-def TF_ConjOp : TF_Op<"Conj", [Involution, NoSideEffect, SameOperandsAndResultType]> {
+def TF_ConjOp : TF_Op<"Conj", [NoSideEffect, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns the complex conjugate of a complex number.";
 
   let description = [{
@@ -2601,6 +2613,12 @@ tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_ConjugateTransposeOp : TF_Op<"ConjugateTranspose", [NoSideEffect]> {
@@ -2947,7 +2965,7 @@ Given an input tensor, this function computes hyperbolic cosine of every
   }];
 }
 
-def TF_CrossOp : TF_Op<"Cross", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_CrossOp : TF_Op<"Cross", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Compute the pairwise cross product.";
 
   let description = [{
@@ -2966,6 +2984,12 @@ of corresponding 3-element vectors is cross-multiplied independently.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_CrossReplicaSumOp : TF_Op<"CrossReplicaSum", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>, TF_NoConstantFold]> {
@@ -3136,7 +3160,7 @@ Must be in the range [-4, 4).}]>:$x,
   }];
 }
 
-def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Permute input tensor from `src_format` to `dst_format`.";
 
   let description = [{
@@ -3187,6 +3211,12 @@ With `src_format` of `NHWC`, `dst_format` of `NCHW`, and input:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_DebugIdentityV2Op : TF_Op<"DebugIdentityV2", []> {
@@ -4725,7 +4755,7 @@ the HBM size (in bytes) required for operation.}]>:$common_config
   );
 }
 
-def TF_ExpOp : TF_Op<"Exp", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_ExpOp : TF_Op<"Exp", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Computes exponential of x element-wise.  \\(y = e^x\\).
   }];
@@ -4768,6 +4798,12 @@ This function computes the exponential of every element in the input tensor.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_ExpandDimsOp : TF_Op<"ExpandDims", [NoSideEffect]> {
@@ -5319,7 +5355,7 @@ into a single Dataset.
   TF_DerivedOperandTypeListAttr Targuments = TF_DerivedOperandTypeListAttr<1>;
 }
 
-def TF_FloorOp : TF_Op<"Floor", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
+def TF_FloorOp : TF_Op<"Floor", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns element-wise largest integer not greater than x.";
 
   let arguments = (ins
@@ -5331,6 +5367,12 @@ def TF_FloorOp : TF_Op<"Floor", [Idempotent, NoSideEffect, SameOperandsAndResult
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_FloorDivOp : TF_Op<"FloorDiv", [NoSideEffect, ResultsBroadcastableShape]>,
@@ -6626,7 +6668,7 @@ I.e., \\(y = 1 / x\\).
   }];
 }
 
-def TF_InvertOp : TF_Op<"Invert", [Involution, NoSideEffect, SameOperandsAndResultType]> {
+def TF_InvertOp : TF_Op<"Invert", [NoSideEffect, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Invert (flip) each bit of supported types; for example, type `uint8` value 01010101 becomes 10101010.
   }];
@@ -6682,6 +6724,12 @@ for dtype in dtype_list:
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_InvertPermutationOp : TF_Op<"InvertPermutation", [NoSideEffect]> {
@@ -7747,7 +7795,7 @@ def TF_LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugOp : TF_
   let results = (outs);
 }
 
-def TF_LogOp : TF_Op<"Log", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_LogOp : TF_Op<"Log", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes natural logarithm of x element-wise.";
 
   let description = [{
@@ -7777,9 +7825,15 @@ tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
       return ArraysAreCastCompatible(inferred, actual);
     }
   }];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
-def TF_Log1pOp : TF_Op<"Log1p", [NoSideEffect, SameOperandsAndResultType, TF_CwiseUnary]> {
+def TF_Log1pOp : TF_Op<"Log1p", [NoSideEffect, TF_CwiseUnary, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes natural logarithm of (1 + x) element-wise.";
 
   let description = [{
@@ -7802,9 +7856,15 @@ tf.math.log1p(x) ==> [0., 0.4054651, 0.6931472, 1.7917595]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
-def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes log softmax activations.";
 
   let description = [{
@@ -7822,6 +7882,12 @@ For each batch `i` and class `j` we have
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_LogicalAndOp : TF_Op<"LogicalAnd", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
@@ -7843,7 +7909,7 @@ def TF_LogicalAndOp : TF_Op<"LogicalAnd", [Commutative, NoSideEffect, ResultsBro
   );
 }
 
-def TF_LogicalNotOp : TF_Op<"LogicalNot", [Involution, NoSideEffect, SameOperandsAndResultType]> {
+def TF_LogicalNotOp : TF_Op<"LogicalNot", [NoSideEffect, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns the truth value of `NOT x` element-wise.";
 
   let arguments = (ins
@@ -7855,6 +7921,12 @@ def TF_LogicalNotOp : TF_Op<"LogicalNot", [Involution, NoSideEffect, SameOperand
   );
 
   let hasCanonicalizer = 1;
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
+
   let extraClassDeclaration = [{
     static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
       return ArraysAreCastCompatible(inferred, actual);
@@ -9387,7 +9459,7 @@ retained with length 1.
   }];
 }
 
-def TF_MergeSummaryOp : TF_Op<"MergeSummary", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_MergeSummaryOp : TF_Op<"MergeSummary", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Merges summaries.";
 
   let description = [{
@@ -9410,6 +9482,12 @@ buffers.}]>:$inputs
   );
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_MergeV2CheckpointsOp : TF_Op<"MergeV2Checkpoints", []> {
@@ -9936,7 +10014,7 @@ def TF_NdtriOp : TF_Op<"Ndtri", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_NegOp : TF_Op<"Neg", [Involution, NoSideEffect, SameOperandsAndResultType, TF_CwiseUnary]> {
+def TF_NegOp : TF_Op<"Neg", [NoSideEffect, TF_CwiseUnary, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes numerical negative value element-wise.";
 
   let description = [{
@@ -9952,6 +10030,12 @@ I.e., \\(y = -x\\).
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 
   let extraClassDeclaration = [{
     static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
@@ -10280,7 +10364,7 @@ output =
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Int32, TF_Int64, TF_Uint8]>, [{A tensor of indices.}]>:$indices,
+    Arg<TensorOf<[TF_Int32, TF_Int64, TF_Int8, TF_Uint8]>, [{A tensor of indices.}]>:$indices,
     Arg<TF_Int32Tensor, [{A scalar defining the depth of the one hot dimension.}]>:$depth,
     Arg<TF_Tensor, [{A scalar defining the value to fill in output when `indices[j] = i`.}]>:$on_value,
     Arg<TF_Tensor, [{A scalar defining the value to fill in output when `indices[j] != i`.}]>:$off_value,
@@ -10342,7 +10426,7 @@ op.}], [TF_DatasetIteratorAlloc]>:$handle
   );
 }
 
-def TF_OnesLikeOp : TF_Op<"OnesLike", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
+def TF_OnesLikeOp : TF_Op<"OnesLike", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns a tensor of ones with the same shape and type as x.";
 
   let arguments = (ins
@@ -10354,6 +10438,12 @@ def TF_OnesLikeOp : TF_Op<"OnesLike", [Idempotent, NoSideEffect, SameOperandsAnd
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_OptimizeDatasetV2Op : TF_Op<"OptimizeDatasetV2", [NoSideEffect]> {
@@ -12043,7 +12133,7 @@ If `x` and `y` are reals, this will return the floating-point division.
   let hasFolder = 1;
 }
 
-def TF_ReciprocalOp : TF_Op<"Reciprocal", [Involution, NoSideEffect, SameOperandsAndResultType]> {
+def TF_ReciprocalOp : TF_Op<"Reciprocal", [NoSideEffect, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the reciprocal of x element-wise.";
 
   let description = [{
@@ -12059,6 +12149,12 @@ I.e., \\(y = 1 / x\\).
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_ReciprocalGradOp : TF_Op<"ReciprocalGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
@@ -12174,7 +12270,7 @@ set to `1` depending on `keep_dims`.}]>:$output
   );
 }
 
-def TF_ReluOp : TF_Op<"Relu", [Idempotent, NoSideEffect, SameOperandsAndResultType, TF_LayoutAgnostic]> {
+def TF_ReluOp : TF_Op<"Relu", [NoSideEffect, TF_Idempotent, TF_LayoutAgnostic, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes rectified linear: `max(features, 0)`.";
 
   let description = [{
@@ -12200,9 +12296,15 @@ array([0., 0., 3.], dtype=float32)
       return ArraysAreCastCompatible(inferred, actual);
     }
   }];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
-def TF_Relu6Op : TF_Op<"Relu6", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
+def TF_Relu6Op : TF_Op<"Relu6", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes rectified linear 6: `min(max(features, 0), 6)`.";
 
   let arguments = (ins
@@ -12214,6 +12316,12 @@ def TF_Relu6Op : TF_Op<"Relu6", [Idempotent, NoSideEffect, SameOperandsAndResult
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_Relu6GradOp : TF_Op<"Relu6Grad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
@@ -14290,7 +14398,7 @@ bitwise_ops.right_shift(lhs, rhs)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RintOp : TF_Op<"Rint", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
+def TF_RintOp : TF_Op<"Rint", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns element-wise integer closest to x.";
 
   let description = [{
@@ -14314,6 +14422,12 @@ rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_RiscAddOp : TF_Op<"RiscAdd", [Commutative, NoSideEffect]> {
@@ -14365,10 +14479,12 @@ The state of the RNG after
 `rng_read_and_skip(n)` will be the same as that after `uniform([n])`
 (or any other distribution). The actual increment added to the
 counter is an unspecified implementation choice.
+
+In the case that the input algorithm is RNG_ALG_AUTO_SELECT, the counter in the state needs to be of size int64[2], the current maximal counter size among algorithms. In this case, this op will manage the counter as if it is an 128-bit integer with layout [lower_64bits, higher_64bits]. If an algorithm needs less than 128 bits for the counter, it should use the left portion of the int64[2]. In this way, the int64[2] is compatible with all current RNG algorithms (Philox, ThreeFry and xla::RandomAlgorithm::RNG_DEFAULT). Downstream RNG ops can thus use this counter with any RNG algorithm.
   }];
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, [{The handle of the resource variable that stores the state of the RNG.}]>:$resource,
+    Arg<TF_ResourceTensor, [{The handle of the resource variable that stores the state of the RNG. The state consists of the counter followed by the key.}]>:$resource,
     Arg<TF_Int32Tensor, [{The RNG algorithm.}]>:$alg,
     Arg<TF_Uint64Tensor, [{The amount of advancement.}]>:$delta
   );
@@ -14427,7 +14543,7 @@ dimensions of `axis`.}]>:$output
   TF_DerivedOperandTypeAttr Tshift = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_RoundOp : TF_Op<"Round", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
+def TF_RoundOp : TF_Op<"Round", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Rounds the values of a tensor to the nearest integer, element-wise.
   }];
@@ -14446,9 +14562,15 @@ according to the current system rounding mode use std::cint.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
-def TF_RsqrtOp : TF_Op<"Rsqrt", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_RsqrtOp : TF_Op<"Rsqrt", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes reciprocal of square root of x element-wise.";
 
   let description = [{
@@ -14464,6 +14586,12 @@ I.e., \\(y = 1 / \sqrt{x}\\).
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_RsqrtGradOp : TF_Op<"RsqrtGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
@@ -14651,7 +14779,7 @@ with two matrices of new values.
 In Python, this scatter operation would look like this:
 
 ```python
-    indices = tf.constant([[0], [2]])
+    indices = tf.constant([[1], [3]])
     updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
                             [7, 7, 7, 7], [8, 8, 8, 8]],
                            [[5, 5, 5, 5], [6, 6, 6, 6],
@@ -14663,10 +14791,10 @@ In Python, this scatter operation would look like this:
 
 The resulting tensor would look like this:
 
-    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+    [[[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
      [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
+     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]]]
 
 Note that on CPU, if an out of bound index is found, an error is returned.
 On GPU, if an out of bound index is found, the index is ignored.
@@ -15388,7 +15516,7 @@ Specifically, `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`, and
   }];
 }
 
-def TF_SignOp : TF_Op<"Sign", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
+def TF_SignOp : TF_Op<"Sign", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns an element-wise indication of the sign of a number.";
 
   let description = [{
@@ -15410,9 +15538,15 @@ Example usage:
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
-def TF_SinOp : TF_Op<"Sin", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SinOp : TF_Op<"Sin", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes sine of x element-wise.";
 
   let description = [{
@@ -15435,6 +15569,12 @@ Given an input tensor, this function computes sine of every
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_SinhOp : TF_Op<"Sinh", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
@@ -15551,7 +15691,7 @@ def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, TF_SameOperandsAndResultTyp
   }];
 }
 
-def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes softmax activations.";
 
   let description = [{
@@ -15571,6 +15711,12 @@ For each batch `i` and class `j` we have
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_SoftmaxCrossEntropyWithLogitsOp : TF_Op<"SoftmaxCrossEntropyWithLogits", [NoSideEffect]> {
@@ -16611,7 +16757,7 @@ def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
 
   let arguments = (ins
     Arg<TF_Tensor, [{The tensor to split.}]>:$value,
-    Arg<TF_I32OrI64Tensor, [{list containing the sizes of each output tensor along the split
+    Arg<TensorOf<[TF_Int32, TF_Int64, TF_Int8]>, [{list containing the sizes of each output tensor along the split
 dimension. Must sum to the dimension of value along split_dim.
 Can contain one -1 indicating that dimension is to be inferred.}]>:$size_splits,
     Arg<TF_Int32Tensor, [{0-D.  The dimension along which to split.  Must be in the range
@@ -16631,7 +16777,7 @@ except along `axis`, where their sizes are
   let hasVerifier = 1;
 }
 
-def TF_SqrtOp : TF_Op<"Sqrt", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SqrtOp : TF_Op<"Sqrt", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes square root of x element-wise.";
 
   let description = [{
@@ -16647,6 +16793,12 @@ I.e., \\(y = \sqrt{x} = x^{1/2}\\).
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_SqrtGradOp : TF_Op<"SqrtGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
@@ -16675,7 +16827,7 @@ is the corresponding input gradient.
   }];
 }
 
-def TF_SquareOp : TF_Op<"Square", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_SquareOp : TF_Op<"Square", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes square of x element-wise.";
 
   let description = [{
@@ -16693,6 +16845,12 @@ I.e., \\(y = x * x = x^2\\).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
+
   let extraClassDeclaration = [{
     static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
       return ArraysAreCastCompatible(inferred, actual);
@@ -21035,7 +21193,7 @@ def TF_XlogyOp : TF_Op<"Xlogy", [NoSideEffect, ResultsBroadcastableShape, TF_Sam
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_ZerosLikeOp : TF_Op<"ZerosLike", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
+def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, TF_Idempotent, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Returns a tensor of zeros with the same shape and type as x.";
 
   let arguments = (ins
@@ -21047,6 +21205,12 @@ def TF_ZerosLikeOp : TF_Op<"ZerosLike", [Idempotent, NoSideEffect, SameOperandsA
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_ZetaOp : TF_Op<"Zeta", [NoSideEffect, ResultsBroadcastableShape]>,
@@ -21141,7 +21305,7 @@ expected to create these operators.
   TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF__FusedConv2DOp : TF_Op<"_FusedConv2D", [NoSideEffect]> {
+def TF__FusedConv2DOp : TF_Op<"_FusedConv2D", [AttrSizedOperandSegments, NoSideEffect]> {
   let summary = [{
 Performs a convolution followed by a specified series of operations.
   }];
@@ -21167,14 +21331,17 @@ create these operators.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$input,
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$filter,
-    Variadic<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>>:$args,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int8, TF_Qint8]>:$input,
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int8, TF_Qint8]>:$filter,
+    Variadic<TF_Tensor>:$args,
+    Variadic<TF_Float32Tensor>:$host_args,
 
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_args,
     I64ArrayAttr:$strides,
     TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
     DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$explicit_paddings,
-    DefaultValuedOptionalAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "\"NHWC\"">:$data_format,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["HWIO", "OIHW", "OIHW_VECT_I"]>, "\"HWIO\"">:$filter_format,
     DefaultValuedOptionalAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$fused_ops,
@@ -21183,11 +21350,12 @@ create these operators.
   );
 
   let results = (outs
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$output
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int8, TF_Qint8]>:$output
   );
 
-  TF_DerivedOperandSizeAttr num_args = TF_DerivedOperandSizeAttr<2>;
+  TF_DerivedOperandSizeAttr num_host_args = TF_DerivedOperandSizeAttr<3>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeListAttr TArgs = TF_DerivedOperandTypeListAttr<2>;
 }
 
 def TF__FusedMatMulOp : TF_Op<"_FusedMatMul", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {

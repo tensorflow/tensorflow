@@ -122,15 +122,15 @@ bool IsOpReplicateInvariant(Region* replicate_region, Operation* op) {
 // invariant. Shape ops are rewritten to be invariant when possible, prior to
 // hoisting ops.
 void HoistReplicateInvariantOps(tf_device::ReplicateOp replicate_op) {
-  const int num_replicas = replicate_op.n();
+  const int num_replicas = replicate_op.getN();
   Block* replicate_block = &replicate_op.GetBody();
 
   replicate_op.walk([&](TF::ShapeOp shape_op) {
     MakeShapeOpInvariant(replicate_op, num_replicas, replicate_block, shape_op);
   });
 
-  Region* replicate_region = &replicate_op.body();
-  Optional<DictionaryAttr> virtual_device_list = replicate_op.devices();
+  Region* replicate_region = &replicate_op.getBody();
+  Optional<DictionaryAttr> virtual_device_list = replicate_op.getDevices();
   for (Operation& inner_op :
        llvm::make_early_inc_range(replicate_op.GetBody())) {
     if (llvm::isa<tf_device::ReturnOp>(inner_op)) continue;

@@ -291,6 +291,10 @@ std::unique_ptr<Pass> CreateGroupByDialectPass();
 // Removes unused parameters from functions & their callers.
 std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveUnusedArgumentsPass();
 
+// Removes unused results from WhileRegion ops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateRemoveUnusedWhileResultsPass();
+
 // Populates the supplied passmanager with the passes required to run the
 // CPU/GPU bridge.
 void CreateTFXLABridgePipeline(OpPassManager& pm);
@@ -330,6 +334,11 @@ CreateTFExecutorTPUV1IslandInliningPass();
 // Creates a pass to prune tf_executor.graph from dead nodes.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTFExecutorGraphPruningPass(
     llvm::ArrayRef<std::string> ops_to_preserve = {});
+
+// Creates a pass to update control dependencies.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFExecutorUpdateControlDependenciesPass();
+
 }  // namespace tf_executor
 
 namespace TFDevice {

@@ -1266,6 +1266,58 @@ class HloInstructionPatternOpcodeImpl {
   bool invert_;
 };
 
+// An HloInstructionPattern implementation that optionally matches a unary
+// operand with a given opcode before matching a given pattern.
+template <typename PatternType, typename PatternImpl>
+class HloInstructionPatternOptionalUnaryOpImpl {
+ public:
+  explicit HloInstructionPatternOptionalUnaryOpImpl(
+      absl::Span<const HloOpcode> opcodes,
+      const HloInstructionPattern<PatternType, PatternImpl>& pattern)
+      : opcodes_(opcodes), pattern_(pattern) {}
+
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    // Compare the opcode of the instruction with the entries of opcodes_.
+    if (absl::c_linear_search(opcodes_, inst->opcode())) {
+      // Additionally, the operand of the instruction must match the given
+      // operand pattern.
+      if (pattern_.Match(HloOperand(inst, 0), option)) {
+        return true;
+      } else {
+        EXPLAIN << " and the ";
+      }
+    } else {
+      EXPLAIN << "The HloInstruction doesn't have one of the opcodes {"
+              << absl::StrJoin(opcodes_, ", ",
+                               [](std::string* out, const HloOpcode opcode) {
+                                 absl::StrAppend(out, HloOpcodeString(opcode));
+                               })
+              << "} and the ";
+    }
+    // In the transparent case, the instruction matches the given operand
+    // pattern.
+    if (pattern_.Match(inst, option, /*explain_instruction=*/false)) {
+      return true;
+    }
+    return false;
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "which optionally matches a unary operand with one of the opcodes {"
+        << absl::StrJoin(opcodes_, ", ",
+                         [](std::string* out, const HloOpcode opcode) {
+                           absl::StrAppend(out, HloOpcodeString(opcode));
+                         })
+        << "} before matching ";
+    pattern_.DescribeTo(os, indent);
+    *os << ".";
+  }
+
+ private:
+  absl::Span<const HloOpcode> opcodes_;
+  const HloInstructionPattern<PatternType, PatternImpl> pattern_;
+};
+
 // An HloInstructionPattern implementation that matches only if the instruction
 // has one of a given list of custom call targets.
 class HloInstructionCustomCallTargetImpl {
@@ -1924,20 +1976,34 @@ class HloInstructionPattern {
   }
 
   // Returns true and captures the instruction iff it matches the pattern.
-  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+  bool Match(::xla::HloInstruction* inst, MatchOption option,
+             bool explain_instruction = true) const {
     if (impl_.Match(inst, option)) {
       if (option.capture && matched_inst_) {
         *matched_inst_ = inst;
       }
       return true;
     }
-    EXPLAIN << "\nin " << InstToString(inst);
+    if (explain_instruction) {
+      EXPLAIN << "\nin " << InstToString(inst);
+    }
     return false;
   }
 
   // Modifies the pattern to match only if the instruction has the given name.
   auto WithName(absl::string_view name) const {
     return AppendImpl(HloInstructionPatternNameImpl(name));
+  }
+
+  // Modifies the pattern to optionally match a unary operand with a given
+  // opcode before matching a given pattern.
+  template <typename PatternType, typename PatternImpl>
+  constexpr auto WithOptionalUnaryOp(
+      absl::Span<const HloOpcode> opcodes,
+      const HloInstructionPattern<PatternType, PatternImpl>& pattern) const {
+    return AppendImpl(
+        HloInstructionPatternOptionalUnaryOpImpl<PatternType, PatternImpl>(
+            opcodes, pattern));
   }
 
   // Modifies the pattern to match only if the instruction has the given opcode.
@@ -2157,6 +2223,22 @@ XLA_NULLOP_PATTERN(PartitionId)
 XLA_NULLOP_PATTERN(ReplicaId)
 #undef XLA_NULLOP_PATTERN
 
+// A pattern which optionally matches a unary operand with a given opcode before
+// matching a given pattern.
+template <typename Pattern>
+inline auto OptionalUnaryOp(absl::Span<const HloOpcode> ops,
+                            Pattern&& pattern) {
+  return Op().WithOptionalUnaryOp(ops, std::forward<Pattern>(pattern));
+}
+
+template <typename HloInstructionType, typename Pattern>
+inline auto OptionalUnaryOp(HloInstructionType** matched_inst,
+                            absl::Span<const HloOpcode> ops,
+                            Pattern&& pattern) {
+  return Op(matched_inst)
+      .WithOptionalUnaryOp(ops, std::forward<Pattern>(pattern));
+}
+
 // Helpers for unary instructions.
 #define XLA_UNOP_PATTERN(NAME)                                       \
   inline auto NAME() { return Op().WithOpcode(HloOpcode::k##NAME); } \
@@ -2372,6 +2454,7 @@ auto CustomCall(Arg0&& arg0, Args&&... args) {
                               /*operand_num=*/0, std::forward<Arg0>(arg0),
                               std::forward<Args>(args)...);
 }
+
 template <typename... Args>
 auto CustomCall(absl::string_view custom_call_target, Args&&... args) {
   return CustomCall(std::forward<Args>(args)...)
@@ -2387,11 +2470,20 @@ auto CustomCall(HloInstructionType** matched_inst, Arg0&& arg0,
       CustomCall(matched_inst).WithNumOperands(sizeof...(Args) + 1),
       /*operand_num=*/0, std::forward<Arg0>(arg0), std::forward<Args>(args)...);
 }
+
 template <typename HloInstructionType, typename... Args>
 auto CustomCall(HloInstructionType** matched_inst,
                 absl::string_view custom_call_target, Args&&... args) {
   return CustomCall(matched_inst, std::forward<Args>(args)...)
       .WithCustomCallTarget(custom_call_target);
+}
+
+template <typename HloInstructionType, typename... Args>
+auto CustomCall(HloInstructionType** matched_inst,
+                absl::Span<const absl::string_view> custom_call_targets,
+                Args&&... args) {
+  return CustomCall(matched_inst, std::forward<Args>(args)...)
+      .WithCustomCallTarget(custom_call_targets);
 }
 
 // Helpers for comparison instructions.

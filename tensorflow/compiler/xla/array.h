@@ -362,7 +362,7 @@ class Array {
 
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array. If a callback returns a non-OK status, returns that else returns
-  // Status::OK().
+  // OkStatus().
   Status EachStatus(std::function<Status(absl::Span<const int64_t>, T*)> f) {
     std::vector<int64_t> index(sizes_.size());
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
@@ -376,7 +376,7 @@ class Array {
 
   // Invokes a callback with the (indices, value) for each cell in the array.
   // If a callback returns a non-OK status, returns that else returns
-  // Status::OK().
+  // OkStatus().
   Status EachStatus(
       std::function<Status(absl::Span<const int64_t>, T)> f) const {
     std::vector<int64_t> index(sizes_.size());

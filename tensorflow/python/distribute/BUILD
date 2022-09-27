@@ -2303,6 +2303,7 @@ distribute_py_test(
     name = "distributed_table_test",
     srcs = ["distributed_table_test.py"],
     python_version = "PY3",
+    shard_count = 12,
     tags = [
         "multi_and_single_gpu",
         "noasan",  # TODO(b/237407459)

@@ -127,6 +127,27 @@ class AsyncValueType : public llvm::RTTIExtends<AsyncValueType, Type> {
 };
 
 //===----------------------------------------------------------------------===//
+// Scalar type corresponding to mlir::IntegerType or mlir::FloatType.
+//===----------------------------------------------------------------------===//
+
+class ScalarType : public llvm::RTTIExtends<ScalarType, Type> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  explicit ScalarType(PrimitiveType type) : type_(type) {}
+
+  PrimitiveType type() const { return type_; }
+
+  absl::StatusOr<ArgumentAbi> AsArgument() const final;
+  absl::StatusOr<ResultAbi> AsResult() const final;
+
+  std::string ToString() const final;
+
+ private:
+  PrimitiveType type_;
+};
+
+//===----------------------------------------------------------------------===//
 // Ranked Tensor type corresponding to the mlir::RankedTensorType.
 //===----------------------------------------------------------------------===//
 

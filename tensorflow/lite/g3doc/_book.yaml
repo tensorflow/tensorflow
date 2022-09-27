@@ -54,10 +54,8 @@ upper_tabs:
       - heading: "Hardware acceleration"
       - title: "Delegates"
         path: /lite/performance/delegates
-      - title: "GPU delegate"
+      - title: "GPU delegates"
         path: /lite/performance/gpu
-      - title: "Advanced GPU"
-        path: /lite/performance/gpu_advanced
       - title: "Implementing a delegate"
         path: /lite/performance/implementing_delegate
         status: experimental
@@ -118,6 +116,8 @@ upper_tabs:
         path: /lite/android/tutorials/audio_classification
 
       - heading: "Hardware acceleration"
+      - title: "GPU delegate"
+        path: /lite/android/delegates/gpu
       - title: "NNAPI delegate"
         path: /lite/android/delegates/nnapi
       - title: "Hexagon delegate"
@@ -164,6 +164,8 @@ upper_tabs:
       - heading: "Hardware acceleration"
       - title: "Core ML delegate"
         path: /lite/performance/coreml_delegate
+      - title: "GPU delegate"
+        path: /lite/ios/delegates/gpu
 
 
     - name: "Other Edge"

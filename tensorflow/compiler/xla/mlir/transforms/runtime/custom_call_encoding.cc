@@ -35,8 +35,8 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
-#include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"
+#include "tensorflow/compiler/xla/runtime/tracing.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
 namespace Eigen {
@@ -1161,6 +1161,13 @@ CustomCallAttrEncodingSet DefaultAttrEncodings() {
   encodings
       .Add<StringAttrEncoding, ScalarAttrEncoding, DenseElementsAttrEncoding,
            ArrayAttrEncoding, DenseArrayAttrEncoding, EmptyArrayAttrEncoding>();
+
+  encodings.Add<AggregateAttrEncoding<HloTraceAttr, HloTrace>>(
+      encodings, AggregateAttrDef<HloTraceAttr>()
+                     .Add("hlo_op", &HloTraceAttr::getHloOp)
+                     .Add("module", &HloTraceAttr::getModule)
+                     .Add("program_id", &HloTraceAttr::getProgramId));
+
   return encodings;
 }
 

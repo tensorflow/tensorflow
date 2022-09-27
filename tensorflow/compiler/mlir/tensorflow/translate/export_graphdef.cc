@@ -317,8 +317,9 @@ Status Exporter::AddEdge(Operation* inst) {
           llvm::dyn_cast<mlir::tf_executor::NextIterationSinkOp>(inst)) {
     auto* dst_node = nodes_[inst];
     TF_RETURN_IF_ERROR(
-        AddEdgeBetweenNodes(next_iter_sink.input(), dst_node, 0));
-    for (auto control_and_idx : llvm::enumerate(next_iter_sink.controlInputs()))
+        AddEdgeBetweenNodes(next_iter_sink.getInput(), dst_node, 0));
+    for (auto control_and_idx :
+         llvm::enumerate(next_iter_sink.getControlInputs()))
       TF_RETURN_IF_ERROR(AddEdgeBetweenNodes(control_and_idx.value(), dst_node,
                                              control_and_idx.index() + 1));
 
@@ -602,9 +603,8 @@ Status Exporter::ConvertLibFunction(
       Exporter::Convert(configs, tf_dialect, symbol_table, function, flib,
                         visited_functions, &control_ret_nodes));
   const auto control_ret = [&](const Node* n) -> std::optional<string> {
-    return control_ret_nodes.contains(n)
-               ? absl::make_optional<string>(n->name())
-               : std::nullopt;
+    return control_ret_nodes.contains(n) ? std::make_optional<string>(n->name())
+                                         : std::nullopt;
   };
   FunctionDef func_def;
   TF_RETURN_IF_ERROR(

@@ -714,8 +714,8 @@ class FusedConv2DOpTest : public OpsTestBase {
     RunAndFetch(root, "with_activation", output, allow_gpu_device);
   }
 
-  void RunFusedConv2DOp(const Tensor& input_data, const Tensor& filter_data,
-                        const std::vector<Tensor>& args_data,
+  void RunFusedConv2DOp(Tensor input_data, Tensor filter_data,
+                        std::vector<Tensor> args_data,
                         const std::vector<std::string>& fused_ops,
                         const std::string& padding,
                         const std::vector<int>& explicit_paddings,
@@ -725,101 +725,98 @@ class FusedConv2DOpTest : public OpsTestBase {
 
     DataType dtype = DataTypeToEnum<T>::v();
 
-    const Tensor* input_data_ptr = &input_data;
-    const Tensor* filter_data_ptr = &filter_data;
-    const std::vector<Tensor>* args_data_ptr = &args_data;
-
-    Tensor input_data_nchwv;
-    Tensor filter_data_oihwv;
-    std::vector<Tensor> args_data_for_int8;
-
     // Check if there is an available GPU device.
     const bool has_gpu_device = HasGpuDevice();
-    const bool packed = kIsInt8 && allow_gpu_device && has_gpu_device;
     const bool has_extra_parameters = kIsInt8;
     const bool has_float_bias = kIsInt8;
 
     DataType dtype_args =
         has_float_bias ? DataTypeToEnum<float>::v() : DataTypeToEnum<T>::v();
 
-    if (packed) {
+    const int n = GetTensorDim(input_data, FORMAT_NHWC, 'N');
+    const int h = GetTensorDim(input_data, FORMAT_NHWC, 'H');
+    const int w = GetTensorDim(input_data, FORMAT_NHWC, 'W');
+    const int kh = GetFilterDim(filter_data, FORMAT_HWIO, 'H');
+    const int kw = GetFilterDim(filter_data, FORMAT_HWIO, 'W');
+    const int ic = GetFilterDim(filter_data, FORMAT_HWIO, 'I');
+    const int oc = GetFilterDim(filter_data, FORMAT_HWIO, 'O');
+    const int v = (kIsInt8 && allow_gpu_device && has_gpu_device) ? 4 : 1;
+
+    if (v > 1) {
       {
-        // Convert the input from NHWC to NCHW_VECT_C
-        int n = GetTensorDim(input_data, FORMAT_NHWC, 'N');
-        int h = GetTensorDim(input_data, FORMAT_NHWC, 'H');
-        int w = GetTensorDim(input_data, FORMAT_NHWC, 'W');
-        int c = GetTensorDim(input_data, FORMAT_NHWC, 'C');
-
-        input_data_nchwv =
-            Tensor(dtype, ShapeFromFormat(FORMAT_NCHW_VECT_C, n, h, w, c));
+        Tensor input_data_nchwv(
+            dtype, ShapeFromFormat(FORMAT_NCHW_VECT_C, n, h, w, ic));
         input_data_nchwv.tensor<T, 5>() =
-            input_data.shaped<T, 5>({n, h, w, c / 4, 4})
+            input_data.shaped<T, 5>({n, h, w, ic / v, v})
                 .shuffle(Eigen::array<int, 5>{0, 3, 1, 2, 4});
-
-        input_data_ptr = &input_data_nchwv;
+        input_data = input_data_nchwv;
       }
 
       {
         // Convert the filter from HWIO to OIHW_VECT_I
-        int h = GetFilterDim(filter_data, FORMAT_HWIO, 'H');
-        int w = GetFilterDim(filter_data, FORMAT_HWIO, 'W');
-        int i = GetFilterDim(filter_data, FORMAT_HWIO, 'I');
-        int o = GetFilterDim(filter_data, FORMAT_HWIO, 'O');
-
-        filter_data_oihwv = Tensor(
-            dtype, ShapeFromFilterTensorFormat(FORMAT_OIHW_VECT_I, h, w, i, o));
+        Tensor filter_data_oihwv(
+            dtype,
+            ShapeFromFilterTensorFormat(FORMAT_OIHW_VECT_I, kh, kw, ic, oc));
 
         filter_data_oihwv.tensor<T, 5>() =
-            filter_data.shaped<T, 4>({h, w, i, o})
-                .shuffle(Eigen::array<int, 4>{3, 0, 1, 2})
-                .reshape(Eigen::array<int, 5>{o, h, w, i / 4, 4})
-                .shuffle(Eigen::array<int, 5>{0, 3, 1, 2, 4});
-
-        filter_data_ptr = &filter_data_oihwv;
+            filter_data.shaped<T, 4>({kh, kw, ic, oc})
+                .reshape(Eigen::array<int, 5>{kh, kw, ic / v, v, oc})
+                .shuffle(Eigen::array<int, 5>{4, 2, 0, 1, 3});
+        filter_data = filter_data_oihwv;
       }
     }
 
     if (has_float_bias) {
       // Convert the bias to float
-      for (const Tensor& from : args_data) {
-        TensorShape shape = from.shape();
-        Tensor to = Tensor(dtype_args, shape);
-        for (int index = 0; index < from.NumElements(); index++) {
-          int8 v = *(reinterpret_cast<int8*>(from.data()) + index);
-          *(reinterpret_cast<float*>(to.data()) + index) =
+      for (Tensor& arg_data : args_data) {
+        TensorShape shape = arg_data.shape();
+        Tensor arg_data_float = Tensor(dtype_args, shape);
+        for (int index = 0; index < arg_data.NumElements(); index++) {
+          int8 v = *(reinterpret_cast<int8*>(arg_data.data()) + index);
+          *(reinterpret_cast<float*>(arg_data_float.data()) + index) =
               static_cast<float>(v);
         }
-        args_data_for_int8.push_back(to);
+        arg_data = arg_data_float;
       }
-
-      args_data_ptr = &args_data_for_int8;
     }
 
     int num_args = static_cast<int>(args_data.size());
 
-    Output input = ops::Const(root.WithOpName("input"),
-                              Input::Initializer(*input_data_ptr));
-    Output filter = ops::Const(root.WithOpName("filter"),
-                               Input::Initializer(*filter_data_ptr));
+    Output input =
+        ops::Const(root.WithOpName("input"), Input::Initializer(input_data));
+    Output filter =
+        ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data));
 
     std::vector<NodeDefBuilder::NodeOut> args;
     std::vector<DataType> args_dtypes;
     for (int i = 0; i < num_args; ++i) {
       Output arg = ops::Const(root.WithOpName(absl::StrCat("arg", i)),
-                              Input::Initializer((*args_data_ptr)[i]));
+                              Input::Initializer(args_data[i]));
       args.emplace_back(arg.name(), 0, dtype_args);
       args_dtypes.emplace_back(dtype_args);
     }
 
     Tensor side_input(dtype);
     if (has_extra_parameters) {
+      auto calculate_convolve_output_dim =
+          [](int input_dim, int filter_dim, int stride,
+             const std::string& padding) -> int {
+        if (padding == "VALID") {
+          return (input_dim - filter_dim + stride) / stride;
+        } else if (padding == "SAME") {
+          return (input_dim + stride - 1) / stride;
+        } else {
+          return -1;  // Not supported
+        }
+      };
+
       // Create side_input
-      int n = GetTensorDim(input_data, FORMAT_NHWC, 'N');
-      int h = GetTensorDim(input_data, FORMAT_NHWC, 'H');
-      int w = GetTensorDim(input_data, FORMAT_NHWC, 'W');
-      int c = GetFilterDim(filter_data, FORMAT_HWIO, 'O');
+      int oh = calculate_convolve_output_dim(h, kh, stride, padding);
+      ASSERT_NE(oh, -1);
+      int ow = calculate_convolve_output_dim(w, kw, stride, padding);
+      ASSERT_NE(ow, -1);
       side_input =
-          Tensor(dtype, ShapeFromFormat(FORMAT_NCHW_VECT_C, n, h, w, c));
+          Tensor(dtype, ShapeFromFormat(FORMAT_NCHW_VECT_C, n, oh, ow, oc));
       side_input.flat<T>() = side_input.flat<T>().setConstant(0);
     }
 
@@ -857,33 +854,26 @@ class FusedConv2DOpTest : public OpsTestBase {
                      .Attr("num_host_args", num_host_args)
                      .Attr("T", dtype)
                      .Attr("TArgs", args_dtypes)
-                     .Attr("data_format", packed ? "NCHW_VECT_C" : "NHWC")
+                     .Attr("data_format", v > 1 ? "NCHW_VECT_C" : "NHWC")
                      .Attr("strides", {1, stride, stride, 1})
                      .Attr("padding", padding)
                      .Attr("explicit_paddings", explicit_paddings)
                      .Attr("fused_ops", fused_ops)
                      .Finalize(&fused_conv2d));
 
-    Tensor raw_output;
-    RunAndFetch(root, fused_conv2d.name(), &raw_output, allow_gpu_device,
+    RunAndFetch(root, fused_conv2d.name(), output, allow_gpu_device,
                 &fused_conv2d);
 
-    if (packed) {
+    if (v > 1) {
       // Convert the output from NCHW_VECT_C to NHWC
-      TensorShape raw_output_shape = raw_output.shape();
-      int n = raw_output_shape.dim_size(0);
-      int c = raw_output_shape.dim_size(1);
-      int h = raw_output_shape.dim_size(2);
-      int w = raw_output_shape.dim_size(3);
-      int v = raw_output_shape.dim_size(4);
-
-      *output = Tensor(dtype, ShapeFromFormat(FORMAT_NHWC, n, h, w, c * v));
-      output->tensor<T, 4>() =
-          raw_output.tensor<T, 5>()
+      const int oh = GetTensorDim(*output, FORMAT_NCHW_VECT_C, 'H');
+      const int ow = GetTensorDim(*output, FORMAT_NCHW_VECT_C, 'W');
+      Tensor output_nhwc(dtype, ShapeFromFormat(FORMAT_NHWC, n, oh, ow, oc));
+      output_nhwc.tensor<T, 4>() =
+          output->tensor<T, 5>()
               .shuffle(Eigen::array<int, 5>{0, 2, 3, 1, 4})
-              .reshape(Eigen::array<int, 4>{n, h, w, c * v});
-    } else {
-      *output = raw_output;
+              .reshape(Eigen::array<int, 4>{n, oh, ow, oc});
+      *output = output_nhwc;
     }
   }
 

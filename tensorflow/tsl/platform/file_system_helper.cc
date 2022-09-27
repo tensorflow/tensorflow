@@ -19,22 +19,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/file_system.h"
 #include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/platform.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/str_util.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
 namespace tsl {
-// TODO(aminim): remove after tensorflow/core/platform/path.h migration.
-namespace io {
-using namespace tensorflow::io;  // NOLINT
-}  // namespace io
 namespace internal {
 
 namespace {

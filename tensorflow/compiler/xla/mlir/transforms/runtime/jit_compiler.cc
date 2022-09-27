@@ -256,7 +256,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   auto llvm_ctx = std::make_unique<llvm::LLVMContext>();
   auto llvm_module = translateModuleToLLVMIR(compiler->module(), *llvm_ctx);
   if (!llvm_module)
-    return InternalError("failed to translate module to LLVM IR");
+    return compiler->Error("failed to translate module to LLVM IR");
 
   // Compile input module to the native function.
   auto engine = ExecutionEngine::CreateFromModule(

@@ -204,6 +204,19 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
       ArrayAttr targs_attr = ArrayAttr::get(context, targs_values);
       attrs.push_back(
           NamedAttribute(StringAttr::get(context, "TArgs"), targs_attr));
+
+      auto num_args_attr = IntegerAttr::get(IntegerType::get(context, 64), 1);
+      attrs.push_back(
+          NamedAttribute(StringAttr::get(context, "num_args"), num_args_attr));
+
+      // Fused conv operands are input, filter, args and host args. Here, bias
+      // input of the BiasAdd op. Host args corresponds to conv_input_scale and
+      // side_input_scale and not relevant in this case.
+      auto sizes = mlir::DenseI32ArrayAttr::get(context, {1, 1, 1, 0});
+      auto attr_name =
+          StringAttr::get(context, mlir::OpTrait::AttrSizedOperandSegments<
+                                       void>::getOperandSegmentSizeAttr());
+      attrs.push_back(NamedAttribute(attr_name, sizes));
     }
 
     // Insert fused operation right before the BiasAdd operation to guarantee

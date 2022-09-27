@@ -20,9 +20,9 @@ from typing import List
 import weakref
 
 from tensorflow.core.function.polymorphism import function_cache
-from tensorflow.python.eager import function_context
-from tensorflow.python.eager import function_spec
 from tensorflow.python.eager import monitoring
+from tensorflow.python.eager.polymorphic_function import function_context
+from tensorflow.python.eager.polymorphic_function import function_spec
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.platform import tf_logging as logging

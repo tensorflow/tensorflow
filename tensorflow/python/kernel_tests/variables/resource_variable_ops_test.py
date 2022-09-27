@@ -28,10 +28,12 @@ from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import memory_checker
 from tensorflow.python.framework import ops
@@ -39,6 +41,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
@@ -80,6 +83,23 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # involving objects with __del__ defined.
     self.assertEmpty(gc.garbage)
     super(ResourceVariableOpsTest, self).tearDown()
+
+  def testLocalVariables(self):
+    num_traces = 0
+
+    # TODO(b/210930091): Test jit_compile=True when the bridge work is done.
+    @def_function.function(jit_compile=False)
+    def f():
+      nonlocal num_traces
+      num_traces += 1
+      v = variables.Variable(3, experimental_enable_variable_lifting=False)
+      v.assign_add(5)
+      return v.read_value()
+
+    self.assertEqual(num_traces, 0)
+    for _ in range(3):
+      self.assertAllClose(f(), 8)
+      self.assertEqual(num_traces, 1)
 
   @test_util.run_deprecated_v1
   def testHandleDtypeShapeMatch(self):
@@ -1716,6 +1736,33 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
   def testIterateVariable(self):
     v = variables.Variable([1., 2.])
     self.assertAllClose([1., 2.], list(iter(v)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCompositeTensorTypeSpec(self):
+    v = resource_variable_ops.ResourceVariable([1.])
+    self.evaluate(v.initializer)
+    self.assertIsInstance(v, composite_tensor.CompositeTensor)
+    spec = type_spec.type_spec_from_value(v)
+
+    self.assertIsInstance(spec, resource_variable_ops.VariableSpec)
+    self.assertAllEqual(spec.shape.as_list(), (1,))
+    self.assertEqual(spec.dtype, dtypes.float32)
+    self.assertTrue(spec.trainable)
+    self.assertEqual(spec, v._type_spec)
+    self.assertEqual(spec, v._shape_invariant_to_type_spec((1,)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testVariableInExtensionType(self):
+    class MaskVariable(extension_type.ExtensionType):
+      variable: resource_variable_ops.ResourceVariable
+      mask: ops.Tensor
+
+    v = resource_variable_ops.ResourceVariable([1., 2.])
+    self.evaluate(v.initializer)
+    mask = constant_op.constant([True, False])
+    mask_variable = MaskVariable(variable=v, mask=mask)
+    self.assertAllEqual(mask_variable.variable, [1., 2.])
+    self.assertAllEqual(mask_variable.mask, [True, False])
 
   @test_util.run_in_graph_and_eager_modes
   def testInitFromHandle(self):

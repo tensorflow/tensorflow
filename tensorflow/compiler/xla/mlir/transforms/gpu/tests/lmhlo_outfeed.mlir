@@ -11,4 +11,4 @@ func.func @gpu_infeed(%arg0: memref<?xf32>) {
 }
 
 // CHECK: func private @[[OUTFEED]](memref<?xf32>)
-// CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.outfeed"}
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.outfeed"}
