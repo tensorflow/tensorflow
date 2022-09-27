@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -42,6 +43,7 @@ namespace quant {
 namespace {
 
 using ::tensorflow::kImportModelDefaultGraphFuncName;
+using ::tensorflow::quantization::kInitOpNamePrefix;
 
 // There can only be max 2 init funcs; one for variable initialization and one
 // for initializing resources other than variables (e.g. tables).
@@ -259,12 +261,12 @@ void ClearInitializersAttr(tf_saved_model::SessionInitializerOp session_init_op,
 // Creates a new `IslandOp` that wraps a `TF::NoOp`. The `IslandOp` has control
 // dependencies to the values provided.
 tf_executor::IslandOp CreateNoOpWithControlDependencies(
-    tf_executor::GraphOp main_graph_op,
+    const Location loc, tf_executor::GraphOp main_graph_op,
     const ArrayRef<Value> control_dependencies) {
   auto builder = OpBuilder::atBlockTerminator(&main_graph_op.GetBody());
 
   auto wrapper_island_op = builder.create<tf_executor::IslandOp>(
-      main_graph_op.getLoc(), /*outputs=*/TypeRange{},
+      loc, /*outputs=*/TypeRange{},
       /*control=*/tf_executor::ControlType::get(builder.getContext()),
       /*controlInputs=*/control_dependencies);
   wrapper_island_op.body().emplaceBlock();
@@ -273,8 +275,8 @@ tf_executor::IslandOp CreateNoOpWithControlDependencies(
   auto guard = OpBuilder::InsertionGuard(builder);
   builder.setInsertionPointToStart(&wrapper_island_op.GetBody());
 
-  builder.create<TF::NoOp>(main_graph_op.getLoc());
-  builder.create<tf_executor::YieldOp>(main_graph_op.getLoc());
+  builder.create<TF::NoOp>(loc);
+  builder.create<tf_executor::YieldOp>(loc);
 
   return wrapper_island_op;
 }
@@ -292,6 +294,15 @@ void AddFetchOperandToMain(tf_executor::GraphOp main_graph_op,
                                        std::move(fetches));
 
   old_fetch.erase();  // Removes the old fetch op.
+}
+
+// Creates a new Location for the init op. This creates a loc by attaching a
+// prefix `kInitOpNamePrefix` to the initializer function's name so that it is
+// identifiable.
+Location CreateInitOpLoc(MLIRContext* ctx, func::FuncOp init_func_ops) {
+  const std::string name =
+      absl::StrCat(kInitOpNamePrefix, "_", init_func_ops.getName().str());
+  return NameLoc::get(StringAttr::get(ctx, name));
 }
 
 void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
@@ -325,10 +336,10 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
 
     // Creates a NoOp that has control dependency to the initializer function
     // for non-variables.
-    // TODO(b/245448931): Prepend a suffix to the Location and add tests.
+    const Location loc = CreateInitOpLoc(ctx, init_func_ops->back());
     tf_executor::IslandOp noop_wrapper_island_op =
         CreateNoOpWithControlDependencies(
-            main_graph_op,
+            loc, main_graph_op,
             /*control_dependencies=*/ArrayRef<Value>{init_op_fetches.back()});
 
     AddFetchOperandToMain(main_graph_op,

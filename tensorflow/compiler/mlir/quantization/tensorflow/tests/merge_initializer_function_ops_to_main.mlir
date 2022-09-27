@@ -1,4 +1,10 @@
-// RUN: tf-quant-opt %s -quant-merge-initializer-function-ops-to-main -allow-unregistered-dialect -mlir-disable-threading -split-input-file | FileCheck %s
+// RUN: tf-quant-opt %s -quant-merge-initializer-function-ops-to-main \
+// RUN:     -allow-unregistered-dialect -mlir-disable-threading \
+// RUN:     -split-input-file | FileCheck %s
+// RUN: tf-quant-opt %s -quant-merge-initializer-function-ops-to-main \
+// RUN:     -allow-unregistered-dialect -mlir-disable-threading \
+// RUN:     -split-input-file -mlir-print-local-scope -mlir-print-debuginfo \
+// RUN:     | FileCheck %s --check-prefix CHECK-LOC
 
 // CHECK-LABEL: module attributes
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1228 : i32}, tf_saved_model.semantics} {
@@ -69,6 +75,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK-NEXT: tf_executor.fetch %[[OUT]], %[[CTL_4]] : tensor<*xi64>, !tf_executor.control
 // CHECK-NEXT: }
 // CHECK-NEXT: return %[[GRAPH_OUT]] : tensor<*xi64>
+
+// Checks that the location for the init op is properly set.
+// CHECK-LOC-LABEL: func.func @main
+// CHECK-LOC: tf_executor.island({{.*}}) wraps "tf.NoOp"()
+// CHECK-LOC-SAME: loc("init_op__NoOp")
 }
 
 // -----
@@ -120,6 +131,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK-NEXT: tf_executor.fetch %[[CTL_4]] : !tf_executor.control
 // CHECK-NEXT: }
 // CHECK-NEXT: return
+
+// Checks that the location for the init op is properly set.
+// CHECK-LOC-LABEL: func.func @main
+// CHECK-LOC: tf_executor.island({{.*}}) wraps "tf.NoOp"()
+// CHECK-LOC-SAME: loc("init_op__NoOp")
 }
 
 // -----
@@ -176,6 +192,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK-NEXT: tf_executor.fetch %[[CTL_2]] : !tf_executor.control
 // CHECK-NEXT: }
 // CHECK-NEXT: return
+
+// Checks that the location for the init op is properly set.
+// CHECK-LOC-LABEL: func.func @main
+// CHECK-LOC: tf_executor.island({{.*}}) wraps "tf.NoOp"()
+// CHECK-LOC-NOT: NoOp_2
+// CHECK-LOC-SAME: loc("init_op__NoOp_1")
 }
 
 // -----

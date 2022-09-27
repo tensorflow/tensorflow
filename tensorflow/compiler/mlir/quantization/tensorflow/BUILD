@@ -5,6 +5,7 @@ load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_all
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
+# TODO(b/249181641): Restructure source codes for TF quantization.
 package_group(
     name = "internal_visibility_allowlist_package",
     packages = [
@@ -19,6 +20,17 @@ package(
         ":internal_visibility_allowlist_package",
     ],
     licenses = ["notice"],
+)
+
+cc_library(
+    name = "constants",
+    hdrs = [
+        "constants.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 py_binary(
@@ -286,6 +298,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":constants",
         ":pass_utils",
         ":quantization_options_proto_cc",
         ":tf_quant_ops",
