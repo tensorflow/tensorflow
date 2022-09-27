@@ -66,7 +66,8 @@ namespace mhlo = mlir::mhlo;
 namespace shape = mlir::shape;
 namespace tensor = mlir::tensor;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_SYMBOLICSHAPEOPTIMIZATION
+#define GEN_PASS_DECL_SYMBOLICSHAPEOPTIMIZATION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 // -------------------------------------------------------------------------- //
@@ -283,7 +284,8 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
 // -------------------------------------------------------------------------- //
 
 struct SymbolicShapeOptimizationPass
-    : public SymbolicShapeOptimizationBase<SymbolicShapeOptimizationPass> {
+    : public impl::SymbolicShapeOptimizationBase<
+          SymbolicShapeOptimizationPass> {
   SymbolicShapeOptimizationPass() = default;
 
   explicit SymbolicShapeOptimizationPass(bool constraints_only) {
