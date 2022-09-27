@@ -162,6 +162,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/real_imag_expander.h"
 #include "tensorflow/compiler/xla/service/reduce_decomposer.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_combiner.h"
+#include "tensorflow/compiler/xla/service/reduce_scatter_reassociate.h"
 #include "tensorflow/compiler/xla/service/reshape_decomposer.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/result_caster.h"
@@ -572,6 +573,7 @@ Status GpuCompiler::OptimizeHloModule(
     collectives_pipeline.AddPass<AllReduceFolder>();
     collectives_pipeline.AddPass<ReduceScatterCreator>();
     collectives_pipeline.AddPass<AllReduceReassociate>();
+    collectives_pipeline.AddPass<ReduceScatterReassociate>();
 
     // Run algebraic simplifier to reshape(broadcast) into a broadcast when
     // the reshape is just adding a unit dimension. This will help with the

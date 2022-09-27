@@ -1723,6 +1723,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:real_imag_expander",
         "//tensorflow/compiler/xla/service:reduce_decomposer",
         "//tensorflow/compiler/xla/service:reduce_scatter_combiner",
+        "//tensorflow/compiler/xla/service:reduce_scatter_reassociate",
         "//tensorflow/compiler/xla/service:reshape_decomposer",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:result_caster",
