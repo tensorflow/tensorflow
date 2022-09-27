@@ -549,6 +549,17 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_scatter(c0, [-1, -2], element_shape=[])
       self.evaluate(l)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterWithNonScalarFails(self):
+    c = constant_op.constant(value=[2])
+    num_elements = np.array([[], [], []], dtype=np.float32)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                r"Shape must be rank 0 but is rank \d+|"
+                                r"\w+ must be a scalar"):
+      self.evaluate(
+          gen_list_ops.TensorListScatterV2(
+              tensor=c, indices=c, element_shape=c, num_elements=num_elements))
+
   def testScatterIntoExistingList(self):
     l = list_ops.tensor_list_reserve(
         element_dtype=dtypes.float32, element_shape=[], num_elements=3)
