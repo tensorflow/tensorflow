@@ -164,7 +164,7 @@ void ProfileSummarizer::ProcessProfiles(
       node_name += "/" + std::to_string(event->extra_event_metadata);
       stats_calculator->AddNodeStats(node_name, event->tag, node_num,
                                      node_exec_time,
-                                     node_mem_usage.max_rss_kb * 1000.0);
+                                     node_mem_usage.mem_footprint_kb * 1000.0);
     }
 
     // Add total time except actual delegate ops since the elapsed time of the

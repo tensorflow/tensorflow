@@ -169,8 +169,6 @@ cc_library(
 cc_test(
     name = "memory_usage_monitor_test",
     srcs = ["memory_usage_monitor_test.cc"],
-    tags = [
-    ],
     deps = [
         ":memory_info",
         ":memory_usage_monitor",
@@ -237,6 +235,7 @@ cc_test(
 cc_test(
     name = "profile_summarizer_test",
     srcs = ["profile_summarizer_test.cc"],
+    copts = common_copts,
     deps = [
         ":profile_summarizer",
         ":profiler",
@@ -249,4 +248,7 @@ cc_test(
     ],
 )
 
-tflite_portable_test_suite_combined(combine_conditions = {"deps": ["@com_google_googletest//:gtest_main"]})
+tflite_portable_test_suite_combined(
+    combine_conditions = {"deps": ["@com_google_googletest//:gtest_main"]},
+    enable_ios_test_suite = True,
+)
