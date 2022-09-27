@@ -1119,7 +1119,7 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
 //   } else {
 //     ... ...
 //   }
-//   return Status::OK();
+//   return OkStatus();
 // }
 //
 // NOTE: $T is substituted with the type variable "T" when the

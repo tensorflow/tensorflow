@@ -130,7 +130,7 @@ struct OptimizationProfileConfig {
         j++;
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Returns true if profile range completely includes the given shapes.

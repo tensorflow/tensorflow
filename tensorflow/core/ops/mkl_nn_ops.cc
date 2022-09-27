@@ -67,7 +67,7 @@ REGISTER_OP("_MklNativeConv3DBackpropInputV2")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Convolution3D backward input op that does not depend on layout
@@ -93,7 +93,7 @@ REGISTER_OP("_MklNativeConv3DBackpropFilterV2")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Conv3DBackpropFilter op that does not depend on layout
@@ -178,7 +178,7 @@ REGISTER_OP("_MklNativeDepthwiseConv2dNativeBackpropInput")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklNativeDepthwiseConv2dNativeBackpropFilter")
@@ -197,7 +197,7 @@ REGISTER_OP("_MklNativeDepthwiseConv2dNativeBackpropFilter")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklFusedConv2D")
@@ -805,7 +805,7 @@ REGISTER_OP("_MklQuantizedConv2DAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedConv2DWithBias")
@@ -839,7 +839,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBias")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedConv2DWithBiasAndRequantize")
@@ -876,7 +876,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedConv2DAndRelu")
@@ -907,7 +907,7 @@ REGISTER_OP("_MklQuantizedConv2DAndRelu")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedConv2DAndReluAndRequantize")
@@ -942,7 +942,7 @@ REGISTER_OP("_MklQuantizedConv2DAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedConv2DWithBiasAndRelu")
@@ -976,7 +976,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasAndRelu")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedConv2DWithBiasAndReluAndRequantize")
@@ -1015,7 +1015,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedConv2DWithBiasSumAndRelu")
@@ -1050,7 +1050,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasSumAndRelu")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedConv2DWithBiasSumAndReluAndRequantize")
@@ -1093,7 +1093,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasSumAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
@@ -1136,7 +1136,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedConv2DPerChannel")
@@ -1167,7 +1167,7 @@ REGISTER_OP("_MklQuantizedConv2DPerChannel")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL-DNN implementation of QuantizedConv2D op.
@@ -1193,7 +1193,7 @@ REGISTER_OP("_MklDepthwiseConv2dNativeBackpropInput")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklEinsum")
@@ -1224,7 +1224,7 @@ REGISTER_OP("_MklDepthwiseConv2dNativeBackpropFilter")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedMatMulWithBias")
@@ -1257,7 +1257,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBias")
 
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedMatMulWithBiasAndRelu")
@@ -1290,7 +1290,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndRelu")
 
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedMatMulWithBiasAndReluAndRequantize")
@@ -1327,7 +1327,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndReluAndRequantize")
 
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedMatMulWithBiasAndDequantize")
@@ -1360,7 +1360,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndDequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedMatMulWithBiasAndRequantize")
@@ -1397,7 +1397,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndRequantize")
 
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_MklQuantizedDepthwiseConv2D")
@@ -1428,7 +1428,7 @@ REGISTER_OP("_MklQuantizedDepthwiseConv2D")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL-DNN implementation of quantized depthwise Conv2D.
@@ -1466,7 +1466,7 @@ REGISTER_OP("_MklQuantizedDepthwiseConv2DWithBias")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL-DNN implementation of quantized depthwise Conv2D with Bias.
@@ -1505,7 +1505,7 @@ REGISTER_OP("_MklQuantizedDepthwiseConv2DWithBiasAndRelu")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL-DNN implementation of quantized depthwise Conv2D with Bias and Relu.
@@ -1549,7 +1549,7 @@ REGISTER_OP("_MklQuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL-DNN implementation of quantized depthwise Conv2D with Bias, Relu and Requantize.

@@ -1940,7 +1940,7 @@ REGISTER_OP("_MklConv2DBackpropFilter")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Conv2DBackpropFilter. Uses MKL DNN APIs to compute the
@@ -1967,7 +1967,7 @@ REGISTER_OP("_MklNativeConv2DBackpropFilter")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Conv2DBackpropFilter for Eager mode. Uses MKL DNN APIs
@@ -2006,7 +2006,7 @@ REGISTER_OP("__MklDummyConv2DBackpropFilterWithBias")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &sh));
       TF_RETURN_IF_ERROR(c->WithRank(sh, 4, &sh));
       c->set_output(0, sh);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Dummy node that enables fusing Conv2DBackpropFilter and BiasAddGrad operator
@@ -2083,7 +2083,7 @@ REGISTER_OP("_MklConv2DBackpropInput")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Convolution2D backward input. Uses MKL DNN APIs to compute the
@@ -2110,7 +2110,7 @@ REGISTER_OP("_MklNativeConv2DBackpropInput")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Convolution2D backward input for Eager mode. Uses MKL DNN APIs
@@ -2163,7 +2163,7 @@ REGISTER_OP("_MklConv3DBackpropInputV2")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Convolution3D backward input. Uses MKL DNN APIs to compute the
@@ -2192,7 +2192,7 @@ REGISTER_OP("_MklConv3DBackpropFilterV2")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Conv3DBackpropFilter. Uses MKL DNN APIs to compute the
@@ -2604,7 +2604,7 @@ REGISTER_OP("_MklLRNGrad")
       TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));     // input_image
       TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));     // output_image
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of LRNGrad operator. Uses MKL DNN APIs to compute gradient for

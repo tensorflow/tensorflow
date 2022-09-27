@@ -703,13 +703,13 @@ class IteratorBase {
   // in `*end_of_sequence`, and `*out_tensors` will be empty.
   //
   // Implementations should never return `OutOfRange` error. If at end of
-  // sequence, set `*end_of_sequence = true` and return `Status::OK()`.
+  // sequence, set `*end_of_sequence = true` and return `OkStatus()`.
   // Internally raised `OutOfRange` errors that do not imply end of sequence
   // should be converted to a different error type before being propagated to
   // the caller.
   //
   // Implementations must explicitly set `*end_of_sequence = false` if an
-  // `Status::OK()` status is returned and the iterator is not at the end of the
+  // `OkStatus()` status is returned and the iterator is not at the end of the
   // sequence.
   //
   // This method is thread-safe.
@@ -728,7 +728,7 @@ class IteratorBase {
   // is traversing.
   //
   // If there are not enough outputs to skip, it will set
-  // `*end_of_sequence = true` and return `Status::OK()`. `*num_skipped` will
+  // `*end_of_sequence = true` and return `OkStatus()`. `*num_skipped` will
   // store the number of outputs that are skipped. When `*end_of_sequence` is
   // `false`, `*num_skipped` should equal to `num_to_skip`.
   virtual Status Skip(IteratorContext* ctx, int num_to_skip,
@@ -1017,7 +1017,7 @@ class DatasetBase : public core::RefCounted {
   // Indicates whether the dataset depends on any external state which would
   // prevent it from being serializable. If so, the method returns
   // `errors::FailedPrecondition` with a message that identifies the external
-  // state. Otherwise, the method returns `Status::OK()`.
+  // state. Otherwise, the method returns `OkStatus()`.
   virtual Status CheckExternalState() const = 0;
 
   // Indicates whether the dataset is compatible with random access.
