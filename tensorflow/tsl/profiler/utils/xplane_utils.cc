@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -24,19 +24,20 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/lib/context_types.h"
+#include "tensorflow/tsl/profiler/utils/math_utils.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
+#include "tensorflow/tsl/profiler/utils/xplane_builder.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -279,7 +280,7 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
   RemoveEmptyLines(dst_plane);
   XPlaneVisitor src(&src_plane);
   XPlaneBuilder dst(dst_plane);
-  src.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
+  src.ForEachStat([&](const XStatVisitor& stat) {
     XStatMetadata* stat_metadata = dst.GetOrCreateStatMetadata(stat.Name());
     // Use SetOrAddStat to avoid duplicating stats in dst_plane.
     dst.SetOrAddStat(*stat_metadata, stat.RawStat(), src_plane);
@@ -486,7 +487,7 @@ std::optional<XEventVisitor> XEventContextTracker::GetOverlappingEvent(
 
 void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
   struct EventStat {
-    Stat<int64_t> stat;
+    tensorflow::Stat<int64_t> stat;
     int64_t children_duration;
   };
   using StatByEvent = absl::flat_hash_map<int64_t /*event_id*/, EventStat>;
@@ -571,4 +572,4 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

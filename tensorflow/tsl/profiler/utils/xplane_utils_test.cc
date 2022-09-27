@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
 
 #include <cstdint>
 #include <optional>
@@ -24,16 +24,16 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/utils/math_utils.h"
+#include "tensorflow/tsl/profiler/utils/xplane_builder.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -576,4 +576,4 @@ TEST(XplaneutilsTest, TestEventMetadataStatsAreCopiedForRefValue) {
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

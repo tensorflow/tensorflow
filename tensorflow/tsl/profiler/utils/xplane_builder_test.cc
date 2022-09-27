@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -107,4 +107,4 @@ TEST(TimespanTests, NonInstantSpanIncludesSingleTimeTests) {
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
