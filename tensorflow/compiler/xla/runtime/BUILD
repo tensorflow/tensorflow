@@ -195,6 +195,23 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "executable_test",
+    srcs = ["executable_test.cc"],
+    deps = [
+        ":arguments",
+        ":async_runtime",
+        ":diagnostics",
+        ":executable",
+        ":jit_executable",
+        ":results",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime/tests:testlib_pipeline",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/base:dynamic_annotations",
+    ],
+)
+
 cc_library(
     name = "execution_engine",
     srcs = ["execution_engine.cc"],
