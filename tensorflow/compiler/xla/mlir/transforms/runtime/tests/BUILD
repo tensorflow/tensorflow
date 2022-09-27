@@ -40,5 +40,6 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:Transforms",
     ],
 )

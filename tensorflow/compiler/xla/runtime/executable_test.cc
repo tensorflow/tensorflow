@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/runtime/results.h"
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace runtime {
@@ -59,8 +60,7 @@ static absl::Status CompileAndExecute(
   if (!jit_executable.ok()) return jit_executable.status();
 
   AsyncValuePtr<Executable> executable = jit_executable->DefaultExecutable();
-  if (executable.IsError())
-    return absl::InternalError(executable.GetError().message());
+  if (executable.IsError()) return executable.GetError();
 
   Executable::CallFrame call_frame;
   auto initialized = executable->InitializeCallFrame(args, &call_frame);
@@ -165,6 +165,68 @@ TEST(ExecutableTest, AsyncExecuteAndAwait) {
   EXPECT_EQ(runner.num_executed(), 1);
   EXPECT_EQ(result, 42);
 }
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks are below.
+//===----------------------------------------------------------------------===//
+
+using benchmark::State;
+
+static void CompileAndBenchmark(
+    State& state, std::string_view module, ArgumentsRef args,
+    ResultConverter& results,
+    AsyncTaskRunner* async_task_runner = NoAsyncTaskRunner()) {
+  JitExecutable::Options opts;
+  opts.specialization = JitExecutable::Specialization::kDisabled;
+  opts.compiler.register_dialects = RegisterXlaRuntimeTestlibDialects;
+  opts.compiler.create_compilation_pipeline = CreateXlaRuntimeTestlibPipeline;
+
+  StatusOr<JitExecutable> jit_executable =
+      JitExecutable::Instantiate(module, "test", opts);
+  CHECK(jit_executable.ok()) << jit_executable.status().message();
+
+  AsyncValuePtr<Executable> executable = jit_executable->DefaultExecutable();
+  CHECK(!executable.IsError()) << executable.GetError().message();
+
+  Executable::CallFrame call_frame;
+  auto initialized = executable->InitializeCallFrame(args, &call_frame);
+  CHECK(initialized.ok()) << initialized.message();
+
+  Executable::ExecuteOpts execute_opts;
+  execute_opts.async_task_runner = async_task_runner;
+
+  for (auto _ : state) {
+    call_frame.args[0] = nullptr;  // reset execution context
+    executable->Execute(call_frame, execute_opts);
+    CHECK(!call_frame.is_error) << call_frame.error;
+    absl::Status returned = executable->ReturnResults(results, &call_frame);
+    CHECK(returned.ok()) << returned.message();
+  }
+}
+
+void BM_AsyncExecuteAndAwait(State& state) {
+  absl::string_view module = R"(
+    func.func @test(%arg0: i32, %arg1: i32) -> i32 {
+      %token, %result = async.execute -> !async.value<i32> {
+        %0 = arith.addi %arg0, %arg1 : i32
+        async.yield %0 : i32
+      }
+      %1 = async.await %result : !async.value<i32>
+      return %1 : i32
+    }
+  )";
+
+  int32_t result = 0;
+  ResultConverterSet converter(AssertNoError, ReturnI32{&result});
+
+  ScalarArg arg0(static_cast<int32_t>(20));
+  ScalarArg arg1(static_cast<int32_t>(22));
+
+  InlineAsyncTaskRunner runner;
+  CompileAndBenchmark(state, module, {arg0, arg1}, converter, &runner);
+}
+
+BENCHMARK(BM_AsyncExecuteAndAwait);
 
 }  // namespace runtime
 }  // namespace xla

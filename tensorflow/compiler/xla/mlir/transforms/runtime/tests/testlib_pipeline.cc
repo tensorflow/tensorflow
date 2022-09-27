@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
 
 namespace xla {
@@ -65,6 +66,10 @@ void CreateXlaRuntimeTestlibPipeline(mlir::OpPassManager& pm) {
   // Convert everything else to LLVM dialect.
   pm.addPass(mlir::createConvertFuncToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+
+  // Clean up IR before translating it to LLVM.
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::createCanonicalizerPass());
 }
 
 }  // namespace runtime
