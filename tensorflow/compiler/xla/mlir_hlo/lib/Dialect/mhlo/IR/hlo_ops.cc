@@ -2121,6 +2121,24 @@ LogicalResult GatherOp::inferReturnTypeComponents(
 // DynamicGatherOp
 //===----------------------------------------------------------------------===//
 
+// Canonicalize mhlo.dynamic_gather to mhlo.gather when slice_sizes is constant.
+LogicalResult simplifyDynamicGatherToGather(DynamicGatherOp op,
+                                            PatternRewriter& rewriter) {
+  DenseIntElementsAttr sliceSizes;
+  if (!matchPattern(op.slice_sizes(), m_Constant(&sliceSizes))) {
+    return failure();
+  }
+  rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
+      op, op.operand(), op.start_indices(), op.dimension_numbersAttr(),
+      sliceSizes, op.indices_are_sortedAttr());
+  return success();
+}
+
+void DynamicGatherOp::getCanonicalizationPatterns(RewritePatternSet& result,
+                                                  MLIRContext* context) {
+  result.add(simplifyDynamicGatherToGather);
+}
+
 LogicalResult DynamicGatherOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
