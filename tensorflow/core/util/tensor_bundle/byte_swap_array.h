@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_H_
-#define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_H_
+#ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_ARRAY_H_
+#define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_ARRAY_H_
 
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/byte_order.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 // Define basic byte swapping operations.
 // These operations must be macros to use compiler intrinsics.
@@ -100,18 +99,6 @@ namespace tensorflow {
 //
 Status ByteSwapArray(char *array, size_t bytes_per_elem, int array_len);
 
-// Byte-swap a tensor's backing buffer in place.
-//
-// Args:
-//  t: Tensor to be modified IN PLACE. Any tensors that share a backing
-//     buffer with this one will also end up byte-swapped.
-// Returns: OkStatus() on success, -1 otherwise
-// TODO(frreiss): Should this be a member of the Tensor class?
-Status ByteSwapTensor(Tensor *t);
-
-// Swap tensor_content field of Const Op Tensors in the named functions
-Status ByteSwapTensorContent(MetaGraphDef *meta_graph_def);
-
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_H_
+#endif  // TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_ARRAY_H_

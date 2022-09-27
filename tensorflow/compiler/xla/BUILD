@@ -511,6 +511,7 @@ cc_library(
         ":util",
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util/tensor_bundle:byteswaparray",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/base",
