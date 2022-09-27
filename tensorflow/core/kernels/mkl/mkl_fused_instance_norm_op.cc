@@ -108,8 +108,9 @@ class MklFusedInstanceNormOp : public OpKernel {
                                          memory::format_tag::nc);
       Tensor scale_shift_tensor;
       int64_t tensor_shape = scale_shift_md.get_size() / sizeof(float);
-      ctx->allocate_temp(DataTypeToEnum<float>::v(), {tensor_shape},
-                         &scale_shift_tensor);
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(DataTypeToEnum<float>::v(), {tensor_shape},
+                                  &scale_shift_tensor));
       void* scale_shift_buf =
           static_cast<void*>(scale_shift_tensor.flat<float>().data());
       SetupScaleShiftBuffer(scale_tensor, shift_tensor, engine_stream_ptr,

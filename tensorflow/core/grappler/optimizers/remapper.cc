@@ -2062,8 +2062,10 @@ bool FindInstanceNorm(RemapperContext* ctx, int node_index,
     return false;
   }
   Tensor gamma_tensor, beta_tensor;
-  gamma_tensor.FromProto(gamma_node->attr().at("value").tensor());
-  beta_tensor.FromProto(beta_node->attr().at("value").tensor());
+  if (!gamma_tensor.FromProto(gamma_node->attr().at("value").tensor()) ||
+      !beta_tensor.FromProto(beta_node->attr().at("value").tensor())) {
+    return false;
+  }
   if (!gamma_tensor.IsSameSize(beta_tensor)) return false;
 
   // Get the reduction axes for mean node to check if the
@@ -2076,7 +2078,10 @@ bool FindInstanceNorm(RemapperContext* ctx, int node_index,
   }
 
   Tensor mean_axes_tensor;
-  mean_axes_tensor.FromProto(mean_axes_node->attr().at("value").tensor());
+  if (!mean_axes_tensor.FromProto(
+          mean_axes_node->attr().at("value").tensor())) {
+    return false;
+  }
   dtype = mean_axes_tensor.dtype();
   if (dtype != DT_INT32 && dtype != DT_INT64) return false;
 
@@ -3204,15 +3209,19 @@ Status AddMklFusedInstanceNorm(RemapperContext* ctx,
 
   if (!mean_axes_node || mean_axes_node->op() != "Const") {
     VLOG(2) << "Mean reduction axes node is not valid, abort fusion";
-    return Status::OK();
+    return OkStatus();
   }
   DataType dtype;
   Tensor mean_axes_tensor;
-  mean_axes_tensor.FromProto(mean_axes_node->attr().at("value").tensor());
+  if (!mean_axes_tensor.FromProto(
+          mean_axes_node->attr().at("value").tensor())) {
+    VLOG(2) << "Unable to get mean reduction axes, abort fusion";
+    return OkStatus();
+  }
   dtype = mean_axes_tensor.dtype();
   if (dtype != DT_INT32 && dtype != DT_INT64) {
     VLOG(2) << "Unexpected mean reduction axes data type, abort fusion";
-    return Status::OK();
+    return OkStatus();
   }
   std::vector<int> reduction_axes =
       (dtype == DT_INT32) ? GetTensorValues<int32, int>(mean_axes_tensor)
@@ -3224,11 +3233,11 @@ Status AddMklFusedInstanceNorm(RemapperContext* ctx,
         ctx->graph_view.GetNode(matched_nodes_map->at("activation"))->node();
     if (!activation_node) {
       VLOG(2) << "Error to retrieve activation node, abort fusion";
-      return Status::OK();
+      return OkStatus();
     }
     if (!IsLeakyRelu(*activation_node) && !IsRelu(*activation_node)) {
       VLOG(2) << "Unsupported activation node, abort fusion";
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -3284,7 +3293,7 @@ Status AddMklFusedInstanceNorm(RemapperContext* ctx,
   for (const auto& node_idx : *remove_node_indices) {
     (*nodes_to_delete)[node_idx] = true;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // This function supports below patterns that require inferred
