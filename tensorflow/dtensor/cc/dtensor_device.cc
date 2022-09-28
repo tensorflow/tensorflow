@@ -2011,7 +2011,11 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
       TFE_TensorHandleDevicePointer(tensor, status));
   if (!tensorflow::dtensor::Layout(typed_input->layout()).IsFullyReplicated()) {
     TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 "Trying to copy a non-replicated DTensor is not supported.");
+                 absl::StrCat("Trying to copy a non-replicated DTensor is not "
+                              "supported. Input tensor is: ",
+                              typed_input->DebugString())
+                     .c_str());
+
     return nullptr;
   }
   if (typed_input->tensor()->dtype() == TF_RESOURCE) {
