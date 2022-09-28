@@ -62,6 +62,13 @@ A smaller CPU-only package is also available:
 ```
 $ pip install tensorflow-cpu
 ```
+To install in Anaconda environment:
+[See the Tensorflow guide in Anaconda documentation](https://docs.anaconda.com/anaconda/user-guide/tasks/tensorflow).
+
+```
+$ conda create -n tf tensorflow
+$ conda activate tf
+```
 
 To update TensorFlow to the latest version, add `--upgrade` flag to the above
 commands.
