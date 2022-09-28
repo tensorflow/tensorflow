@@ -211,6 +211,47 @@ cc_library(
 )
 
 cc_library(
+    name = "device_id",
+    textual_hdrs = [
+        "device_id.h",
+        "device_id_manager.h",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:types",
+    ] + if_static([
+        ":device_id_impl",
+    ]),
+)
+
+cc_library(
+    name = "device_id_impl",
+    srcs = ["device_id_manager.cc"],
+    hdrs = [
+        "device_id.h",
+        "device_id_manager.h",
+    ],
+    deps = [
+        ":device_type",
+        "//tensorflow/tsl/lib/gtl:int_type",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:types",
+    ],
+)
+
+filegroup(
+    name = "device_runtime_headers",
+    srcs = [
+        "device_id.h",
+        "device_id_manager.h",
+    ],
+)
+
+cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
     visibility = [

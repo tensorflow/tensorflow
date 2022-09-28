@@ -680,6 +680,7 @@ filegroup(
         "refcount.h",
         "setround.h",
         "snappy.h",
+        "status.h",
         "tracing.h",
         "unbounded_work_queue.h",
     ],

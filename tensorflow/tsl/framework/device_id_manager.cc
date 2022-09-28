@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/device/device_id_manager.h"
+#include "tensorflow/tsl/framework/device_id_manager.h"
 
 #include <unordered_map>
 
-#include "tensorflow/core/common_runtime/device/device_id.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/status.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 // Manages the map between TfDeviceId and platform device id.
 class TfToPlatformDeviceIdMap {
@@ -89,7 +89,7 @@ class TfToPlatformDeviceIdMap {
   mutable mutex mu_;
   TypeIdMapType id_map_ TF_GUARDED_BY(mu_);
 
-  friend class ::tensorflow::DeviceIdManager;
+  friend class ::tsl::DeviceIdManager;
   TF_DISALLOW_COPY_AND_ASSIGN(TfToPlatformDeviceIdMap);
 };
 }  // namespace
@@ -116,4 +116,4 @@ void DeviceIdManager::TestOnlyReset() {
   TfToPlatformDeviceIdMap::singleton()->TestOnlyReset();
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

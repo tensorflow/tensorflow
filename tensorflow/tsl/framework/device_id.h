@@ -13,14 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_H_
+#ifndef TENSORFLOW_TSL_FRAMEWORK_DEVICE_ID_H_
+#define TENSORFLOW_TSL_FRAMEWORK_DEVICE_ID_H_
 
-#include "tensorflow/core/lib/gtl/int_type.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/lib/gtl/int_type.h"
 
-namespace tensorflow {
+namespace tsl {
 
 // There are three types of device ids:
 // - *physical* device id: this is the integer index of a device in the
@@ -83,9 +81,9 @@ namespace tensorflow {
 // for the StreamExecutor interface (as we don't change its API), whenever we
 // need a TF device id (or platform device id) we should use TfDeviceId (or
 // PlatformDeviceId) instead of a raw integer.
-using tsl::PlatformDeviceId;  // NOLINT
-using tsl::TfDeviceId;        // NOLINT
+TSL_LIB_GTL_DEFINE_INT_TYPE(TfDeviceId, int32);
+TSL_LIB_GTL_DEFINE_INT_TYPE(PlatformDeviceId, int32);
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_H_
+#endif  // TENSORFLOW_TSL_FRAMEWORK_DEVICE_ID_H_
