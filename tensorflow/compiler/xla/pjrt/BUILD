@@ -69,8 +69,8 @@ tf_cc_test(
         ":semaphore",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -113,7 +113,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -128,8 +128,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:random",
+        "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -206,7 +206,7 @@ tf_cc_test(
     deps = [
         ":pjrt_client_test_common",
         ":tfrt_cpu_pjrt_client",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -222,7 +222,7 @@ tf_cc_test(
         ":gpu_device",
         ":pjrt_client_test_common",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -633,8 +633,8 @@ tf_cc_test(
         ":lru_cache",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -675,10 +675,10 @@ tf_cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/numeric:int128",
@@ -720,7 +720,8 @@ tf_cc_test(
     deps = [
         ":host_callback",
         "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:test",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],
 )

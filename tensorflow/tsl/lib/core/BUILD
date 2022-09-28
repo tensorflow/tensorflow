@@ -5,6 +5,10 @@
 #   to other TF components outside of TSL.
 
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 # TODO(rdzhabarov): Tighten visibility after migration is complete.
 package(

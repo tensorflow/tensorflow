@@ -79,8 +79,8 @@ tf_cc_test(
     deps = [
         ":calling_convention",
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
@@ -222,7 +222,7 @@ cc_library(
     hdrs = ["specialization.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:type_converter",
+        ":type_converter",
         "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:constraints",
@@ -266,8 +266,8 @@ tf_cc_test(
     deps = [
         ":type_converter",
         "//tensorflow/compiler/xla/runtime:types",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "@llvm-project//mlir:IR",
     ],
 )
