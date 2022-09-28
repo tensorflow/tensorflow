@@ -19,7 +19,7 @@ import numpy as np
 
 from google.protobuf.message import DecodeError
 from tensorflow.compiler.xla import xla_data_pb2
-from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -116,8 +116,7 @@ class XlaShardingTest(test_util.TensorFlowTestCase):
       return split_tensor
 
     in_tensor = array_ops.ones([4, 5, 6], dtype=dtypes.float32)
-    result = split_helper(
-        array_ops.ones([4, 5, 6], dtype=dtypes.float32))
+    result = split_helper(array_ops.ones([4, 5, 6], dtype=dtypes.float32))
     self.assertAllEqual(in_tensor, result)
 
   def test_split_raises_error_with_incommensurate_dimensions(self):
@@ -156,8 +155,7 @@ class XlaShardingTest(test_util.TensorFlowTestCase):
       return tensor_dest
 
     in_tensor = array_ops.ones([4, 5, 6], dtype=dtypes.float32)
-    result = copy_helper(
-        array_ops.ones([4, 5, 6], dtype=dtypes.float32))
+    result = copy_helper(array_ops.ones([4, 5, 6], dtype=dtypes.float32))
     self.assertAllEqual(in_tensor, result)
 
   def test_get_sharding_tile_shape_returns_none_on_none_input(self):
