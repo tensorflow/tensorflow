@@ -347,10 +347,12 @@ class Mesh(object):
 
     v_cpus_counts = len(tf_config.list_logical_devices('CPU'))
     if v_cpus_counts < len(self._local_devices):
-      raise ValueError('Must have at least {0} virtual CPUs for mesh : {1}, '
-                       'but got : {2} virtual CPUs.'.format(
-                           len(self._local_devices), self.to_string(),
-                           v_cpus_counts))
+      raise ValueError(
+          'Must have at least {0} virtual CPUs for mesh : {1}, '
+          'but got : {2} virtual CPUs. '
+          'Call tf.experimental.dtensor.initialize_accelerator_system() '
+          'to initialize the host CPU devices with the accelerators.'.format(
+              len(self._local_devices), self.to_string(), v_cpus_counts))
     device_array = np.asarray([
         spec.replace(device_type='CPU') for spec in self._local_devices
     ]).reshape((len(self._local_devices), 1))
