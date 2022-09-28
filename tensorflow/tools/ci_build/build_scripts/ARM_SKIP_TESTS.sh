@@ -24,4 +24,6 @@ ARM_SKIP_TESTS="-//tensorflow/lite/... \
 -//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
 -//tensorflow/python/kernel_tests/nn_ops:conv2d_backprop_filter_grad_test \
 -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
+-//tensorflow/python/grappler:remapper_test_cpu \
+-//tensorflow/python/grappler:remapper_test_gpu \
 -//tensorflow/python/training:server_lib_test"
