@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/time/time.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
@@ -44,6 +45,8 @@ limitations under the License.
 namespace tflite {
 namespace acceleration {
 namespace {
+
+constexpr absl::Duration kWaitBetweenRefresh = absl::Milliseconds(20);
 
 class ValidatorRunnerImplTest : public ::testing::Test {
  protected:
@@ -71,24 +74,6 @@ class ValidatorRunnerImplTest : public ::testing::Test {
     return ValidatorRunnerImpl(model_path_, storage_path_, data_directory_path_,
                                0, std::move(custom_validation_embedder_),
                                error_reporter_, nnapi_sl_, entrypoint_name_);
-  }
-
-  std::vector<const BenchmarkEvent*> WaitUntilNTestCompleted(
-      FlatbufferStorage<BenchmarkEvent>& storage, int num_tests) {
-    std::vector<const BenchmarkEvent*> results;
-    while (results.size() != num_tests) {
-      results.clear();
-      storage.Read();
-      for (int i = 0; i < storage.Count(); i++) {
-        const BenchmarkEvent* event = storage.Get(i);
-        if (event->event_type() == BenchmarkEventType_ERROR ||
-            (event->event_type() == BenchmarkEventType_END &&
-             event->result())) {
-          results.push_back(event);
-        }
-      }
-    }
-    return results;
   }
 
   bool should_perform_test_;
@@ -137,11 +122,11 @@ TEST_F(ValidatorRunnerImplTest, SucceedWithNnApiSl) {
           std::move(tflite_settings)));
 
   // Validate.
-  // Note: lifetime of storage need to outlast results, as results are pointers
-  // to data within storage.
   FlatbufferStorage<BenchmarkEvent> storage(storage_path_, error_reporter_);
-  std::vector<const BenchmarkEvent*> results =
-      WaitUntilNTestCompleted(storage, 1);
+  while (validator.GetNumCompletedResults() < 1) {
+    usleep(absl::ToInt64Microseconds(kWaitBetweenRefresh));
+  }
+  std::vector<const BenchmarkEvent*> results = validator.GetSuccessfulResults();
   for (auto result : results) {
     EXPECT_THAT(result, testing::Property(&BenchmarkEvent::event_type,
                                           testing::Eq(BenchmarkEventType_END)));
@@ -172,8 +157,10 @@ TEST_F(ValidatorRunnerImplTest, SucceedWithEmbeddedValidation) {
 
   // Validate.
   FlatbufferStorage<BenchmarkEvent> storage(storage_path_, error_reporter_);
-  std::vector<const BenchmarkEvent*> results =
-      WaitUntilNTestCompleted(storage, 1);
+  while (validator.GetNumCompletedResults() < 1) {
+    usleep(absl::ToInt64Microseconds(kWaitBetweenRefresh));
+  }
+  std::vector<const BenchmarkEvent*> results = validator.GetSuccessfulResults();
   for (auto result : results) {
     EXPECT_THAT(result, testing::Property(&BenchmarkEvent::event_type,
                                           testing::Eq(BenchmarkEventType_END)));
