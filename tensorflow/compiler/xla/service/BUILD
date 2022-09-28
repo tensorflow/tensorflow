@@ -367,6 +367,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/lib/strings:proto_serialization",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/platform:status",
@@ -1419,6 +1420,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/lib/strings:proto_serialization",
     ] + internal_hlo_deps(),
 )
 

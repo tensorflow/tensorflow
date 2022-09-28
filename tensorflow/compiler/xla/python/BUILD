@@ -731,6 +731,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/lib/strings:proto_serialization",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/synchronization",

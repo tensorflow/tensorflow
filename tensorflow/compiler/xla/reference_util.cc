@@ -142,7 +142,7 @@ ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
   if (padding == Padding::kValid) {
     return window_util::StridedBound(unpadded_width, window_len, stride);
   }
-  return tensorflow::MathUtil::CeilOfRatio(unpadded_width, stride);
+  return tsl::MathUtil::CeilOfRatio(unpadded_width, stride);
 }
 
 /* static  */ std::unique_ptr<std::vector<float>>

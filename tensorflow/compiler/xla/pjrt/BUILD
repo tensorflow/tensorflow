@@ -291,7 +291,7 @@ cc_library(
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
     deps = [
-        "//tensorflow/core/lib/monitoring:counter",
+        "//tensorflow/tsl/lib/monitoring:counter",
         "@com_google_absl//absl/strings",
     ],
 )
