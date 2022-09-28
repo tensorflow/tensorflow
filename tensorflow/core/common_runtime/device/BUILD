@@ -76,6 +76,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":device_id",
+        "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:allocator",

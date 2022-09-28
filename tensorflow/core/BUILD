@@ -1241,6 +1241,7 @@ filegroup(
 filegroup(
     name = "lib_internal_public_headers",
     srcs = [
+        "//tensorflow/compiler/xla/stream_executor:device_mem_allocator_headers",
         "//tensorflow/core/lib/core:legacy_lib_internal_core_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_internal_public_gtl_headers",
         "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
