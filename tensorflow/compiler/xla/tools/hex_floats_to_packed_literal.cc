@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/io/buffered_inputstream.h"
-#include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/lib/io/buffered_inputstream.h"
+#include "tensorflow/tsl/lib/io/random_inputstream.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -58,8 +58,8 @@ int main(int argc, char** argv) {
 
   std::vector<float> floats;
   std::string line;
-  tensorflow::io::RandomAccessInputStream stream(file.get());
-  tensorflow::io::BufferedInputStream buf(&stream, 1048576);
+  tsl::io::RandomAccessInputStream stream(file.get());
+  tsl::io::BufferedInputStream buf(&stream, 1048576);
   while (buf.ReadLine(&line).ok()) {
     float value;
     QCHECK(sscanf(line.c_str(), "%f", &value) != 1)

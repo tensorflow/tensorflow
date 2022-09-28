@@ -1788,6 +1788,7 @@ cc_library(
     deps = if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         ":nvptx_compiler_impl",
+        "//tensorflow/tsl/platform:path",
     ]),
     alwayslink = True,  # Contains compiler registration
 )
@@ -1802,6 +1803,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/tsl/platform:cuda_libdevice_path",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
         "@com_google_absl//absl/strings",
     ],
 )

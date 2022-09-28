@@ -92,6 +92,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/platform:path",
     ] + tf_grpc_cc_dependencies(),
 )
 

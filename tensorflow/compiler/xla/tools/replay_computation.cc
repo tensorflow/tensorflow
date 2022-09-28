@@ -70,8 +70,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/lib/io/record_reader.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
@@ -360,9 +360,9 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
   std::unique_ptr<tsl::RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
       std::string(filename.begin(), filename.end()), &file));
-  tensorflow::io::RecordReader reader(
+  tsl::io::RecordReader reader(
       file.get(),
-      tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
+      tsl::io::RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
 
   std::vector<HloSnapshot> snapshots;
   uint64_t offset = 0;

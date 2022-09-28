@@ -340,6 +340,7 @@ cc_library(
         ":util",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
         "@com_google_absl//absl/hash",
     ],
 )
@@ -774,6 +775,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/lib/io:buffered_inputstream",
+        "//tensorflow/tsl/lib/io:random_inputstream",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/strings",

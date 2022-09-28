@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/io/zlib_compression_options.h"
-#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/tsl/lib/io/zlib_compression_options.h"
+#include "tensorflow/tsl/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/tsl/lib/strings/proto_serialization.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/path.h"
@@ -207,10 +207,9 @@ static Status WriteStringToFile(tsl::Env* env, const std::string& fname,
   std::unique_ptr<tsl::WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
   if (compressed) {
-    auto gz_opts = tensorflow::io::ZlibCompressionOptions::GZIP();
-    tensorflow::io::ZlibOutputBuffer gz_file(
-        file.get(), gz_opts.input_buffer_size, gz_opts.output_buffer_size,
-        gz_opts);
+    auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
+    tsl::io::ZlibOutputBuffer gz_file(file.get(), gz_opts.input_buffer_size,
+                                      gz_opts.output_buffer_size, gz_opts);
     TF_RETURN_IF_ERROR(gz_file.Init());
     while (auto next_producer = data_producer.Next()) {
       TF_RETURN_IF_ERROR(gz_file.Append(next_producer()));
@@ -231,10 +230,9 @@ static Status WriteStringToFile(tsl::Env* env, const std::string& fname,
   }
   std::unique_ptr<tsl::WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
-  auto gz_opts = tensorflow::io::ZlibCompressionOptions::GZIP();
-  tensorflow::io::ZlibOutputBuffer gz_file(file.get(),
-                                           gz_opts.input_buffer_size,
-                                           gz_opts.output_buffer_size, gz_opts);
+  auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
+  tsl::io::ZlibOutputBuffer gz_file(file.get(), gz_opts.input_buffer_size,
+                                    gz_opts.output_buffer_size, gz_opts);
   TF_RETURN_IF_ERROR(gz_file.Init());
   TF_RETURN_IF_ERROR(gz_file.Append(data));
   return gz_file.Close();
@@ -644,8 +642,7 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
     const std::string path = tsl::io::JoinPath(dir, filename);
     Status status;
     if (opts.dump_as_text) {
-      status =
-          tensorflow::WriteTextProto(env, absl::StrCat(path, ".txt"), proto);
+      status = tsl::WriteTextProto(env, absl::StrCat(path, ".txt"), proto);
     } else {
       status = tsl::WriteBinaryProto(env, absl::StrCat(path, ".pb"), proto);
     }
