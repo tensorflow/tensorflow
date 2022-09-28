@@ -2239,7 +2239,7 @@ tf_cc_test(
     name = "triangular_solve_expander_test",
     size = "medium",
     srcs = ["triangular_solve_expander_test.cc"],
-    shard_count = 3,
+    shard_count = 12,
     deps = [
         ":hlo",
         ":triangular_solve_expander",
