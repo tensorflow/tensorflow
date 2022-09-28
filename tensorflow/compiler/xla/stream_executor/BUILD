@@ -768,7 +768,7 @@ cc_library(
         ":platform",
         ":stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/core/framework:allocator",
+        "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/synchronization",
     ],

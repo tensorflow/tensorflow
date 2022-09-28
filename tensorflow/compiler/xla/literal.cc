@@ -54,7 +54,7 @@ using absl::StrCat;
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 // Literals can be used as DMA targets, which can require alignment. We
-// force a tensorflow::Allocator::kAllocatorAlignment-byte minimum
+// force a tsl::Allocator::kAllocatorAlignment-byte minimum
 // alignment.
 constexpr int kMinimumAlignment = 64;
 
