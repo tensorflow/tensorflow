@@ -366,6 +366,12 @@ class DTensorDevice {
 
   void RecordInShapeLayoutCache(const TensorWithLayout& tensor);
 
+  // Choose a mesh to broadcast a non-dtensor to a dtensor based on the
+  // operation, other input meshes, default mesh, and dtypes.
+  const MeshWithParallelDevice* ChooseBroadcastingMesh(
+      const absl::flat_hash_set<Mesh>& input_meshes,
+      const std::vector<TF_DataType>& dtypes);
+
   // Returns whether a given mesh is a remote mesh.
   bool is_remote_mesh(const Mesh& mesh) const;
 
@@ -503,6 +509,32 @@ TF_Buffer* TensorWithLayoutSummarize(void* data, TF_Status* status) {
   std::string summary =
       reinterpret_cast<TensorWithLayout*>(data)->SummarizeValue();
   return TF_NewBufferFromString(summary.data(), summary.size());
+}
+
+const MeshWithParallelDevice* DTensorDevice::ChooseBroadcastingMesh(
+    const absl::flat_hash_set<Mesh>& input_meshes,
+    const std::vector<TF_DataType>& dtypes) {
+  bool has_string_dtype = std::find(dtypes.begin(), dtypes.end(),
+                                    TF_DataType::TF_STRING) != dtypes.end();
+  // String tensors can only be broadcast to a CPU mesh, so broadcast
+  // to CPU mesh if there is one we can infer.
+  if (has_string_dtype) {
+    // Choose the first CPU mesh amongst the input meshes as the CPU broadcast
+    // mesh if it exists.
+    for (const Mesh& mesh : input_meshes) {
+      if (mesh.is_cpu_mesh()) {
+        return mesh_to_device_map_[mesh].get();
+      }
+    }
+  }
+
+  // If a unique mesh is identified across all inputs, we use that mesh as the
+  // mesh to broadcast to. Otherwise we fallback to default mesh.
+  const MeshWithParallelDevice* broadcast_mesh =
+      input_meshes.size() == 1
+          ? mesh_to_device_map_[*input_meshes.begin()].get()
+          : default_mesh_;
+  return broadcast_mesh;
 }
 
 TFE_TensorHandle* DTensorDevice::MakeLayoutTensorHandle(
@@ -1827,11 +1859,16 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
   if (TF_GetCode(status) != TF_OK) return;
   std::vector<TFE_TensorHandle*> inputs_vector;
   inputs_vector.reserve(num_inputs);
+
+  std::vector<TF_DataType> dtypes;
+  dtypes.reserve(num_inputs);
+
   for (int input_index = 0; input_index < num_inputs; ++input_index) {
     TFE_TensorHandle* input =
         TFE_OpGetFlatInput(original_op, input_index, status);
     if (TF_GetCode(status) != TF_OK) return;
     inputs_vector.push_back(input);
+    dtypes.push_back(TFE_TensorHandleDataType(input));
   }
   TFE_TensorHandle** inputs = inputs_vector.data();
 
@@ -1890,12 +1927,9 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     typed_inputs[j] = t;
   }
 
-  // If a unique mesh is identified across all inputs, we use that mesh as the
-  // mesh to broadcast to. Otherwise we fallback to default mesh.
   const MeshWithParallelDevice* broadcast_mesh =
-      input_meshes.size() == 1
-          ? mesh_to_device_map_[*input_meshes.begin()].get()
-          : default_mesh_;
+      ChooseBroadcastingMesh(input_meshes, dtypes);
+
   if (!broadcast_mesh) {
     RETURN_STATUS(status, TF_INVALID_ARGUMENT,
                   "No mesh has been registered to DTensor. Use copy_to_mesh to "
