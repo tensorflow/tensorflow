@@ -537,6 +537,19 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "execute_test",
+    srcs = ["execute_test.cc"],
+    deps = [
+        ":core",
+        ":execute",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:math",
+    ],
+)
+
+tf_cc_test(
     name = "execute_node_test",
     srcs = ["execute_node_test.cc"],
     deps = [
