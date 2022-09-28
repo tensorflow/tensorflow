@@ -90,6 +90,10 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
       input_min_tensor = ctx->input(1);
       input_max_tensor = ctx->input(2);
       if (axis_ == -1) {
+        OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(input_min_tensor.shape()),
+                InvalidArgument("input_min_tensor should be scalar, got ", input_min_tensor.shape()));
+        OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(input_max_tensor.shape()),
+                InvalidArgument("input_max_tensor should be scalar, got ", input_max_tensor.shape()));
         auto min_val = input_min_tensor.scalar<T>()();
         auto max_val = input_max_tensor.scalar<T>()();
         OP_REQUIRES(ctx, min_val <= max_val,
