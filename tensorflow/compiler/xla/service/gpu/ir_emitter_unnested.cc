@@ -4614,8 +4614,29 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
       CanVectorizeReduction(cc, fusion, fused_computation, reduction_dimensions,
                             num_threads_x, reduction_tiling, input_shape);
   int vector_size = vectorize ? 2 : 1;
-  int num_partial_results =
-      !reduction_dimensions.is_row_reduction && vectorize ? 2 : 1;
+  int num_partial_results = 1;
+  if (!reduction_dimensions.is_row_reduction && vectorize) {
+    if (smallest_input_dtype_bits <= 32) {
+      // Make sure to use all the data read at once.
+      // Instead of hardcoding the granularity, we can query the granularity we
+      // need like this:
+      //   size_t granularity = 0;
+      //   CUresult res = cuCtxGetLimit(&granularity,
+      //   CU_LIMIT_MAX_L2_FETCH_GRANULARITY); // 0x05
+      // But we need a context to be active. Which isn't the case here.
+      num_partial_results = std::min(64 / smallest_input_dtype_bits, 8);
+
+      // Limit register presure, PRED dtype is only one bit.
+      num_partial_results = std::min(num_partial_results, 8);
+      // Limit register presure for MOF, but still use a minimum of 2.
+      int64_t fan_out = fusion.getFusionRoots().size();
+      num_partial_results /= fan_out;
+      num_partial_results = std::max(num_partial_results, 2);
+    } else {
+      num_partial_results = 2;
+    }
+  }
+
   VLOG(3) << "Each threads will produce " << num_partial_results
           << " output(s)";
   reduction_tiling[kDimX] *= num_partial_results;
