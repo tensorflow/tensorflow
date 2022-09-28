@@ -435,13 +435,7 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
   int num_replicas() const override { return wrapped()->num_replicas(); }
   int num_partitions() const override { return wrapped()->num_partitions(); }
 
-  int64_t SizeOfGeneratedCodeInBytes() const override {
-    if (kPjRtCApiBypass) {
-      VLOG(1) << "PJRT C API BYPASS: SizeOfGeneratedCodeInBytes";
-      return wrapped()->SizeOfGeneratedCodeInBytes();
-    }
-    CHECK(false) << "PJRT C API does not support SizeOfGeneratedCodeInBytes";
-  }
+  int64_t SizeOfGeneratedCodeInBytes() const override;
 
   const DeviceAssignment& device_assignment() const override {
     if (kPjRtCApiBypass) {
