@@ -571,8 +571,6 @@ def custom_call_v2(
 ):
   """Emits an HLO `CustomCall` operation with multiple outputs.
 
-  This operation is supported by the MLIR-based TF/XLA bridge.
-
   See `CustomCall` specification at
     https://tensorflow.org/xla/operation_semantics#customcall,
   and `mhlo.custom_call` specification at
