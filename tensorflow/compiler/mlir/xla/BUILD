@@ -178,6 +178,7 @@ cc_library(
         ":type_to_shape",
         ":xla_legalize_tf_passes_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/client:sharding_builder",
