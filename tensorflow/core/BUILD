@@ -1031,8 +1031,7 @@ cc_library(
     name = "portable_tensorflow_lib_lite",
     srcs = if_mobile([":mobile_srcs"]),
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
-    defines = ["SUPPORT_SELECTIVE_REGISTRATION"] +
-              select({
+    defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + select({
                   "//tensorflow:chromiumos": ["IS_MOBILE_PLATFORM"],
                   "//tensorflow:fuchsia": ["IS_MOBILE_PLATFORM"],
                   "//conditions:default": [],
@@ -1058,7 +1057,10 @@ cc_library(
 #     name = "portable_tensorflow_lib_lite_no_runtime",
 #     srcs = if_mobile([":mobile_srcs_no_runtime"]),
 #     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
-#     defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + select({
+#     defines = [
+#         "SUPPORT_SELECTIVE_REGISTRATION",
+#         "EIGEN_NEON_GEBP_NR=4",
+#     ] + select({
 #         "//tensorflow:chromiumos": ["IS_MOBILE_PLATFORM"],
 #         "//tensorflow:fuchsia": ["IS_MOBILE_PLATFORM"],
 #         "//conditions:default": [],

@@ -279,6 +279,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + EXTRA_EIGEN_COPTS,
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     visibility = ["//visibility:private"],
     deps = [
         ":op_macros",
@@ -366,6 +367,7 @@ cc_library(
         "//tensorflow:fuchsia": [],
         "//conditions:default": ["-DTFLITE_HAVE_CPUINFO"],
     }),
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
         ":tflite_with_ruy",
         ":op_macros",

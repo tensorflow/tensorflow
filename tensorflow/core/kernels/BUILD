@@ -939,6 +939,7 @@ cc_library(
         "eigen_spatial_convolutions.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
         ":eigen_contraction_kernel",
         ":eigen_convolution_helpers",
@@ -958,6 +959,7 @@ cc_library(
         "eigen_pooling.h",
         "eigen_spatial_convolutions.h",
     ],
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
         ":eigen_convolution_helpers",
         ":eigen_spatial_convolutions-inl",
@@ -4151,7 +4153,9 @@ tf_kernel_library(
     }) + select({
         ":xsmm_backward_convolutions": ["TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS"],
         "//conditions:default": [],
-    }),
+    }) + [
+        "EIGEN_NEON_GEBP_NR=4",
+    ],
     prefix = "conv_ops",
     deps = [
         ":conv_grad_shape_utils",
@@ -7084,6 +7088,7 @@ cc_library(
         "//tensorflow/core/kernels:portable_extended_ops",
     ]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     linkopts = if_android(["-ldl"]),
     tags = [
         "manual",
