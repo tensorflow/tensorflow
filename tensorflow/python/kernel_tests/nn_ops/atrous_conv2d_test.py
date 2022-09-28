@@ -208,7 +208,6 @@ class AtrousConv2DTransposeTest(test.TestCase):
                     x, f_up, y_shape, strides=[1, 1, 1, 1], padding=padding)
                 self.assertAllClose(y1, y2, rtol=1e-3, atol=1e-3)
 
-  @test_util.run_deprecated_v1
   def testAtrousConv2DTransposeInvalid(self):
     with self.session():
       with self.assertRaises((errors.InvalidArgumentError, ValueError)):
