@@ -997,6 +997,15 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           ->create<mlir::mhlo::TupleOp>(loc, result_type, sort_op.getResults())
           .getOperation();
     }
+    case HloOpcode::kCopyStart: {
+      return ImportOldStyleAsyncStart<mlir::mhlo::CopyOp>(
+          attributes, operands, loc, result_type, func_builder, "copy_",
+          [](auto) { return Status::OK(); });
+    }
+    case HloOpcode::kCopyDone: {
+      return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
+                                     func_builder);
+    }
     case HloOpcode::kConditional: {
       llvm::SmallVector<Type, 4> rets;
 
