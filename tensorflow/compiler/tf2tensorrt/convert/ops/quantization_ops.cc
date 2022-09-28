@@ -328,7 +328,8 @@ Status ConvertDynamicRangeMode(const OpConverterParams* params) {
     TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "max", &max_range));
   } else if (op_name == "FakeQuantWithMinMaxVars" ||
              op_name == "QuantizeAndDequantizeV2" ||
-             op_name == "QuantizeAndDequantizeV3") {
+             op_name == "QuantizeAndDequantizeV3" ||
+             op_name == "QuantizeAndDequantizeV4") {
     // Get ranges via inputs.
     auto get_weights_value = [&inputs](int index) {
       const auto* raw_weights = inputs.at(index).weights().GetPointer<float>();
@@ -407,6 +408,9 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(
 REGISTER_DEFAULT_TRT_OP_CONVERTER(
     MakeConverterFunction<ConvertQDQ<ops::QuantizeAndDequantizeV3>>(),
     "QuantizeAndDequantizeV3");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(
+    MakeConverterFunction<ConvertQDQ<ops::QuantizeAndDequantizeV2>>(),
+    "QuantizeAndDequantizeV4");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(
     MakeConverterFunction<ConvertQDQ<ops::FakeQuantWithMinMaxVars>>(),
     "FakeQuantWithMinMaxVars");

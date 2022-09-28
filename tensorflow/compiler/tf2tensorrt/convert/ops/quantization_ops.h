@@ -25,17 +25,19 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
-constexpr std::array<const char*, 4> kQuantizationOpNames = {
+constexpr std::array<const char*, 5> kQuantizationOpNames = {
     "QuantizeAndDequantizeV2",
     "QuantizeAndDequantizeV3",
+    "QuantizeAndDequantizeV4",
     "FakeQuantWithMinMaxVars",
     "FakeQuantWithMinMaxArgs",
 };
 
 // Operations with supported conversion to Q/DQ ops in TensorRT explicit
 // precision mode.
-constexpr std::array<const char*, 1> kExplicitQuantizationOpNames = {
+constexpr std::array<const char*, 2> kExplicitQuantizationOpNames = {
     "QuantizeAndDequantizeV2",
+    "QuantizeAndDequantizeV4",
 };
 
 // Contains two scaling factors for quantization and dequantization
