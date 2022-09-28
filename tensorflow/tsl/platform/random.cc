@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/random.h"
 
+#include <memory>
 #include <random>
 
 #include "tensorflow/tsl/platform/mutex.h"
@@ -36,6 +37,12 @@ uint64 New64() {
   static std::mt19937_64* rng = InitRngWithRandomSeed();
   static mutex mu(LINKER_INITIALIZED);
   mutex_lock l(mu);
+  return (*rng)();
+}
+
+uint64 ThreadLocalNew64() {
+  static thread_local std::unique_ptr<std::mt19937_64> rng =
+      std::unique_ptr<std::mt19937_64>(InitRngWithRandomSeed());
   return (*rng)();
 }
 
