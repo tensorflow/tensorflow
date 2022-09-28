@@ -395,8 +395,11 @@ class TensorListConcat : public OpKernel {
   void Compute(OpKernelContext* c) override {
     PartialTensorShape element_shape_except_first_dim;
     if (!element_shape_.unknown_rank()) {
-      element_shape_except_first_dim = PartialTensorShape(
-          gtl::ArraySlice<int64_t>(element_shape_.dim_sizes()).subspan(1));
+      auto dim_sizes = element_shape_.dim_sizes();
+      OP_REQUIRES(c, !dim_sizes.empty(),
+                  errors::InvalidArgument("element_shape must not be empty"));
+      element_shape_except_first_dim =
+          PartialTensorShape(gtl::ArraySlice<int64_t>(dim_sizes).subspan(1));
     }
     // Check that the input Variant tensor is indeed a TensorList and has the
     // correct element type.
