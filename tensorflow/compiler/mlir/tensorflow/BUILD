@@ -1249,6 +1249,7 @@ cc_library(
         "transforms/verify_suitable_for_graph_export_pass.cc",
         "transforms/xla_cluster_formation.cc",
         "transforms/xla_inline_device_ops.cc",
+        "transforms/xla_rewrite.cc",
         "translate/breakup-islands.cc",
         "translate/split_into_island_per_op_pass.cc",
         "translate/tf_executor_to_functional.cc",
