@@ -1923,6 +1923,19 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
       test_quantize_and_dequantize_v4_grad()
 
 
+class QuantizeAndDequantizeV2TestTest(test_util.TensorFlowTestCase):
+
+  def testInvalidArgs(self):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                r".*should be scalar.*"):
+      q, _, _ = array_ops.quantize_and_dequantize_v2(
+          input=np.ones((10)),
+          input_min=-1,
+          input_max=[-1, 1],
+          range_given=True)
+      self.evaluate(q)
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class SortedSearchTest(test_util.TensorFlowTestCase):
 
