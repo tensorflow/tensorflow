@@ -130,7 +130,7 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWithFdModelCustomValidation) {
     EXPECT_EQ(benchmark_event->event_type(), BenchmarkEventType_END);
   }
 }
-
+#ifndef __ANDROID__
 TEST_F(BlockingValidatorRunnerTest, SucceedWhenRunningMultipleTimes) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
@@ -140,11 +140,7 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWhenRunningMultipleTimes) {
   BlockingValidatorRunner runner(options_);
   ASSERT_EQ(runner.Init(), kMinibenchmarkSuccess);
   FlatBufferBuilder fbb;
-#ifdef __ANDROID__
-  fbb.Finish(CreateTFLiteSettings(fbb, Delegate_GPU));
-#else
   fbb.Finish(CreateTFLiteSettings(fbb));
-#endif  // __ANDROID__
 
   int num_runs = 3;
   for (int i = 0; i < num_runs; i++) {
@@ -160,6 +156,7 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWhenRunningMultipleTimes) {
     }
   }
 }
+#endif  // !__ANDROID__
 
 TEST_F(BlockingValidatorRunnerTest, ReturnEmptyWhenTimedOut) {
   if (!should_perform_test_) {
