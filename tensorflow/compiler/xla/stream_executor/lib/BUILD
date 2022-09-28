@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_windows")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl:tsl.bzl", "if_windows")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 

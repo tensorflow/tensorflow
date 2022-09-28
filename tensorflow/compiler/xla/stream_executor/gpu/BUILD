@@ -9,10 +9,10 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_copts")
+load("//tensorflow/tsl:tsl.bzl", "if_libtpu", "tf_copts")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 

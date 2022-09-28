@@ -7,7 +7,8 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_openmp_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
+load("//tensorflow/tsl:tsl.bzl", "tf_copts")
 load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
@@ -18,7 +19,7 @@ load(
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load(":build_defs.bzl", "runtime_copts")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available", "tf_proto_library")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [":friends"],

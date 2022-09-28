@@ -1,10 +1,13 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_libtpu",
     "tf_cc_binary",
     "tf_cc_test",
+)
+load(
+    "//tensorflow/tsl:tsl.bzl",
+    "if_libtpu",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",

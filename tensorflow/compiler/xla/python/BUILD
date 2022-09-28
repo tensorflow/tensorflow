@@ -1,5 +1,5 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load(

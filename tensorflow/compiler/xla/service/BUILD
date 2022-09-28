@@ -1,14 +1,15 @@
 # Description:
 #   XLA service implementation.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library", "xla_py_test_deps")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/tsl:tsl.bzl", "if_libtpu")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")

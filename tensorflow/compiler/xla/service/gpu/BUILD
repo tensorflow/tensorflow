@@ -12,11 +12,10 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_google",
     "tf_cc_test",
-    "tf_copts",
     "tf_cuda_library",
 )
+load("//tensorflow/tsl:tsl.bzl", "if_google", "tf_copts")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
