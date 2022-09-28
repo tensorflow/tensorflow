@@ -300,12 +300,25 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm->CloneWithNewOperands(instr->shape(), operands);
 
     TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
+
+    // Choose whether the bias must alias the output. Legacy cublas GEMMs must
+    // operate in place and alias the bias with the output, whereas with
+    // cublasLt we can choose.
+    //
+    // Operating in place is always safe; copy-insertion will insert copies if
+    // necessary.  But (we assume) copying is slower than operating
+    // out-of-place, so for cublasLt (where we have the choice), we try to
+    // operate in place if we think it a copy won't be necessary.
+    //
+    // We assume that parameters are always read-only and therefore we'd need to
+    // copy if we were going to operate in place. (This is not quite true; the
+    // param could have input/output aliasing.)  We also assume that if there
+    // are other uses of the bias, we might need to copy.  (Again, not quite
+    // true if those uses all come before this operation.  But copy-insertion
+    // runs before scheduling, so it can't know and has to conservatively insert
+    // copies.)
     if (IsLegacyCublasMatmul(*fused_op) ||
         (bias->opcode() != HloOpcode::kParameter && !have_other_bias_users)) {
-      // Force bias input to alias with output. Legacy cublas GEMMs must operate
-      // in-place. CublasLt GEMMS can choose to operate in-place. For cublasLt,
-      // if the bias is a parameter of the computation or if there are other
-      // users of the bias, then we will not overwrite the bias buffer.
       xla::Cast<HloCustomCallInstruction>(fused_op.get())
           ->set_output_to_operand_aliasing({{{}, {2, {}}}});
     }
