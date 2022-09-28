@@ -905,6 +905,7 @@ cc_library(
         ":bfloat16",
         ":platform",
         ":tstring",
+        "//tensorflow/tsl/framework:device_type",
         "//tensorflow/tsl/platform:types",
     ],
 )

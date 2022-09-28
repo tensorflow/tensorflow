@@ -18,6 +18,9 @@ load(
     "cc_library",
 )
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
 package(
     default_visibility = [
         "//visibility:public",
@@ -32,6 +35,7 @@ filegroup(
         "allocator.h",
         "allocator_registry.h",
         "cancellation.h",
+        "device_type.h",
         "numeric_types.h",
         "tracking_allocator.h",
         "type_traits.h",
@@ -47,6 +51,7 @@ filegroup(
         "allocator_registry.cc",
         "allocator_registry.h",
         "cpu_allocator_impl.cc",
+        "device_type.h",
         "numeric_types.h",
         "tracking_allocator.cc",
         "tracking_allocator.h",
@@ -195,6 +200,17 @@ cc_library(
 )
 
 cc_library(
+    name = "device_type",
+    srcs = ["device_type.cc"],
+    hdrs = ["device_type.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
     visibility = [
@@ -285,6 +301,7 @@ exports_files(
         "allocator_retry.h",
         "bfc_allocator.cc",
         "bfc_allocator.h",
+        "device_type.h",
         "shared_counter.h",
         "tracking_allocator.h",
     ],

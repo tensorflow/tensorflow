@@ -438,6 +438,7 @@ tf_cuda_library(
         "//tensorflow/lite/kernels/shim:tf_headers",
         "//tensorflow/tsl/framework:allocator_hdrs",
         "//tensorflow/tsl/framework:cancellation_hdrs",
+        "//tensorflow/tsl/framework:device_type.h",
     ] + if_mkl([
         "//tensorflow/core/util:mkl_util_hdrs",
     ]),
@@ -479,7 +480,10 @@ cc_library(
 
 cc_library(
     name = "framework_types_hdr",
-    hdrs = ["//tensorflow/core/framework:types.h"],
+    hdrs = [
+        "//tensorflow/core/framework:types.h",
+        "//tensorflow/tsl/framework:device_type.h",
+    ],
     linkstatic = 1,
     visibility = ["//visibility:public"],
 )

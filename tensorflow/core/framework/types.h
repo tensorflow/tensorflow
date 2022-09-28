@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/framework/device_type.h"
 
 namespace tensorflow {
 
@@ -50,26 +51,7 @@ enum MemoryType {
   HOST_MEMORY = 1,
 };
 
-// A DeviceType is just a string, but we wrap it up in a class to give
-// some type checking as we're passing these around
-class DeviceType {
- public:
-  DeviceType(const char* type)  // NOLINT(runtime/explicit)
-      : type_(type) {}
-
-  explicit DeviceType(StringPiece type) : type_(type.data(), type.size()) {}
-
-  const char* type() const { return type_.c_str(); }
-  const std::string& type_string() const { return type_; }
-
-  bool operator<(const DeviceType& other) const;
-  bool operator==(const DeviceType& other) const;
-  bool operator!=(const DeviceType& other) const { return !(*this == other); }
-
- private:
-  std::string type_;
-};
-std::ostream& operator<<(std::ostream& os, const DeviceType& d);
+using tsl::DeviceType;  // NOLINT
 
 // Convenient constants that can be passed to a DeviceType constructor.
 // See comments for CreateOpKernel in op_kernel.h for uses of DEVICE_DEFAULT
