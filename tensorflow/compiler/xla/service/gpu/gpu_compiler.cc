@@ -298,23 +298,25 @@ bool ConvIsLowerable(HloInstruction* conv) {
 using OwnedThunkSequence = GpuExecutable::OwnedThunkSequence;
 using OwnedJitRtProgram = GpuExecutable::OwnedJitRtProgram;
 
-StatusOr<std::unique_ptr<Executable>> JitRtAotCompilationResult::LoadExecutable(
+StatusOr<std::unique_ptr<Executable>>
+XlaRuntimeAotCompilationResult::LoadExecutable(
     Compiler* compiler, se::StreamExecutor* executor) const {
-  TF_ASSIGN_OR_RETURN(
-      HloModuleConfig hlo_module_config,
-      HloModule::CreateModuleConfigFromProto(
-          jitrt_executable_.hlo_module_proto(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          xla_runtime_executable_.hlo_module_proto(),
+                          GetDebugOptionsFromFlags()));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(jitrt_executable_.hlo_module_proto(),
+      HloModule::CreateFromProto(xla_runtime_executable_.hlo_module_proto(),
                                  hlo_module_config));
   auto gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
   return GpuExecutable::LoadFromObjFile(
-      std::move(hlo_module), jitrt_executable_.obj_file(),
-      jitrt_executable_.mlir_module(), jitrt_executable_.entry_func_attrs(),
-      GetDebugOptionsFromFlags(), jitrt_executable_.gpu_asm_text(),
-      jitrt_executable_.gpu_binary(), gpu_compiler->GetGpuVersion(executor),
-      executor);
+      std::move(hlo_module), xla_runtime_executable_.obj_file(),
+      xla_runtime_executable_.mlir_module(),
+      xla_runtime_executable_.entry_func_attrs(), GetDebugOptionsFromFlags(),
+      xla_runtime_executable_.gpu_asm_text(),
+      xla_runtime_executable_.gpu_binary(),
+      gpu_compiler->GetGpuVersion(executor), executor);
 }
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
@@ -1551,10 +1553,11 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     std::string data(obj_file->getBuffer().data(),
                      obj_file->getBuffer().size());
-    results.emplace_back(std::make_unique<xla::gpu::JitRtAotCompilationResult>(
-        module->ToProto(), data, program->module,
-        compile_module_results.entry_func_attrs, backend_result.first,
-        backend_result.second));
+    results.emplace_back(
+        std::make_unique<xla::gpu::XlaRuntimeAotCompilationResult>(
+            module->ToProto(), data, program->module,
+            compile_module_results.entry_func_attrs, backend_result.first,
+            backend_result.second));
   }
   return std::move(results);
 }
@@ -1579,7 +1582,7 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
   auto binary = gpu_executable->binary();
 
   std::unique_ptr<AotCompilationResult> result =
-      std::make_unique<gpu::JitRtAotCompilationResult>(
+      std::make_unique<xla::gpu::XlaRuntimeAotCompilationResult>(
           module_proto, obj_file, mlir_module, entry_func_attrs, text, binary);
   return result;
 }
