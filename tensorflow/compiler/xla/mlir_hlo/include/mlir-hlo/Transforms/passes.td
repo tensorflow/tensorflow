@@ -179,7 +179,11 @@ def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
 
 def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
   let summary = "Converts ops on tensors with 1 element to scalar ops.";
-  let dependentDialects = ["tensor::TensorDialect", "arith::ArithmeticDialect"];
+  let dependentDialects = [
+    "arith::ArithmeticDialect",
+    "gml_st::GmlStDialect",
+    "tensor::TensorDialect"
+  ];
   let constructor = "createScalarizationPass()";
 }
 

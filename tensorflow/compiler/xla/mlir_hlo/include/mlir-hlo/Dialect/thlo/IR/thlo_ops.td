@@ -137,13 +137,14 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
     SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "Destination-style twin for `mhlo.scatter`";
   let description = [{
-    Caveats:
-    - the variadic case is not supported.
-    - Only point updates are supported
-      - update_window_dims is []
-      - inserted_window_dims is range(operand.shape.rank)
-      - scatter_dims_to_operand_dims is range(indices.shape.rank)
-      - index_vector_dim is indices.shape.rank-1
+    tHLO ScatterOp corresponds to the canonicalized mHLO ScatterOp, i.e.
+
+    - update_window_dims is range(1, rank(update_window_dims))
+    - inserted_window_dims is []
+    - scatter_dims_to_operand_dims is range(0, rank(indices))
+    - index_vector_dim is rank(indices) - 1
+
+    At the moment, the variadic case is not supported.
   }];
   let arguments = (ins
     // Input args
@@ -163,6 +164,12 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
     }
     mlir::ValueRange getInputs() { return inputs(); }
     mlir::ValueRange outputs() { return getOperands().take_back(1); }
+
+    // Returns index vector dimension size, which is always statically-known.
+    int64_t getIndexVectorDim() { return getIndices().getType().getDimSize(1); }
+
+    // Returns the number of indices, i.e. number of scalar/tensor updates.
+    int64_t getIndicesCount() { return getIndices().getType().getDimSize(0); }
   }];
 }
 

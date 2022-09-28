@@ -479,10 +479,10 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
 
 // -----
 
-func.func @scatter_i32_i64(%indices: tensor<?x2xi32>, %updates: tensor<?xi64>,
-                           %init: tensor<?x?xi64>) -> tensor<?x?xi64> {
+func.func @scatter_i32_i64(%indices: tensor<?x2xi32>,
+    %updates: tensor<?x?x?xi64>, %init: tensor<?x?xi64>) -> tensor<?x?xi64> {
   %result = thlo.scatter
-    ins (%indices: tensor<?x2xi32>, %updates: tensor<?xi64>)
+    ins (%indices: tensor<?x2xi32>, %updates: tensor<?x?x?xi64>)
     outs (%init: tensor<?x?xi64>) { op_label = "tile-1d-point" }
     (%in: i64, %out: i64) {
       %0 = arith.addi %in, %out: i64
@@ -493,138 +493,29 @@ func.func @scatter_i32_i64(%indices: tensor<?x2xi32>, %updates: tensor<?xi64>,
 
 // CHECK-FOR-LABEL: func.func @scatter_i32_i64(
 // CHECK-FOR-SAME:    %[[INDICES:.*]]: tensor<?x2xi32>,
-// CHECK-FOR-SAME:    %[[UPDATES:.*]]: tensor<?xi64>,
+// CHECK-FOR-SAME:    %[[UPDATES:.*]]: tensor<?x?x?xi64>,
 // CHECK-FOR-SAME:    %[[INIT:.*]]: tensor<?x?xi64>
-// CHECK-FOR:       %[[C0:.*]] = arith.constant 0 : index
-// CHECK-FOR:       %[[DIM:.*]] = tensor.dim %[[UPDATES]]
-// CHECK-FOR:       gml_st.for ({{.*}}) = (%[[C0]]) to (%[[DIM]])
+
+// CHECK-FOR-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK-FOR-DAG:   %[[C1:.*]] = arith.constant 1 : index
+// CHECK-FOR-DAG:   %[[C2:.*]] = arith.constant 2 : index
+
+// CHECK-FOR:       gml_st.for (%{{.*}}) = (%[[C0]]) to (%[[C2]]) step (%[[C1]])
+
 // CHECK-FOR:       %[[UPDATE_SUB:.*]] = gml_st.materialize %[[UPDATES]]
-// CHECK-FOR-SAME:    : tensor<?xi64>[!gml_st.tile<1>]
+// CHECK-FOR-SAME:    : tensor<?x?x?xi64>[!gml_st.tile<1x?x?>]
 // CHECK-FOR:       %[[INDICES_SUB:.*]] = gml_st.materialize %[[INDICES]]
-// CHECK-FOR:         : tensor<?x2xi32>[!gml_st.tile<1x2>]
+// CHECK-FOR-SAME:    : tensor<?x2xi32>[!gml_st.tile<1x2>]
 // CHECK-FOR:       %[[INIT_SUB:.*]] = gml_st.materialize
-// CHECK-FOR:         : tensor<?x?xi64>[!gml_st.tile<?x?>]
+// CHECK-FOR-SAME:    : tensor<?x?xi64>[!gml_st.tile<?x?>]
+
 // CHECK-FOR:       %[[SCATTER:.*]] = thlo.scatter
 // CHECK-FOR-SAME:    ins(%[[INDICES_SUB]] : tensor<1x2xi32>,
-// CHECK-FOR-SAME:        %[[UPDATE_SUB]] : tensor<1xi64>)
+// CHECK-FOR-SAME:        %[[UPDATE_SUB]] : tensor<1x?x?xi64>)
 // CHECK-FOR-SAME:    outs(%[[INIT_SUB]] : tensor<?x?xi64>)
 // CHECK-FOR:           arith.addi
 // CHECK-FOR:           thlo.yield
 // CHECK-FOR:       gml_st.set_yield %[[SCATTER:.*]]
-
-// CHECK-PARALLEL-LABEL: @scatter_i32_i64
-
-// -----
-
-func.func @scatter_i32_f32(%indices: tensor<?x2xi32>, %updates: tensor<?xf32>,
-                           %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  %result = thlo.scatter
-    ins (%indices: tensor<?x2xi32>, %updates: tensor<?xf32>)
-    outs (%init: tensor<?x?xf32>) { op_label = "tile-1d-point" }
-    (%in: f32, %out: f32) {
-      %0 = arith.addf %in, %out: f32
-      thlo.yield %0: f32
-    }
-  return %result : tensor<?x?xf32>
-}
-// CHECK-FOR-LABEL: func.func @scatter_i32_f32(
-// CHECK-FOR-SAME:    %[[INDICES:.*]]: tensor<?x2xi32>,
-// CHECK-FOR-SAME:    %[[UPDATES:.*]]: tensor<?xf32>,
-// CHECK-FOR-SAME:    %[[INIT:.*]]: tensor<?x?xf32>
-// CHECK-FOR:       %[[C0:.*]] = arith.constant 0 : index
-// CHECK-FOR:       %[[DIM:.*]] = tensor.dim %[[UPDATES]], %[[C0]]
-// CHECK-FOR:       gml_st.for (%{{.*}}) = (%[[C0]]) to (%[[DIM]])
-// CHECK-FOR:         %[[UPDATES_SUB:.*]] = gml_st.materialize %[[UPDATES]]
-// CHECK-FOR-SAME:      : tensor<?xf32>[!gml_st.tile<1>]
-// CHECK-FOR:         %[[INDICES_SUB:.*]] = gml_st.materialize %[[INDICES]]
-// CHECK-FOR-SAME:      : tensor<?x2xi32>[!gml_st.tile<1x2>]
-// CHECK-FOR:         %[[INIT_SUB:.*]] = gml_st.materialize
-// CHECK-FOR-SAME:      : tensor<?x?xf32>[!gml_st.tile<?x?>]
-// CHECK-FOR:             %[[SCATTER:.*]] = thlo.scatter
-// CHECK-FOR-SAME:    ins(%[[INDICES_SUB]] : tensor<1x2xi32>,
-// CHECK-FOR-SAME:        %[[UPDATES_SUB]] : tensor<1xf32>)
-// CHECK-FOR-SAME:    outs(%[[INIT_SUB]] : tensor<?x?xf32>)
-// CHECK-FOR:           arith.addf
-// CHECK-FOR:           thlo.yield
-// CHECK-FOR:       gml_st.set_yield %[[SCATTER]]
-
-// CHECK-PARALLEL-LABEL: @scatter_i32_f32
-
-// -----
-
-func.func @scatter_2d_indices(%indices: tensor<?x?x2xi32>,
-    %updates: tensor<?x?xf32>, %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  %result = thlo.scatter
-    ins (%indices: tensor<?x?x2xi32>, %updates: tensor<?x?xf32>)
-    outs (%init: tensor<?x?xf32>) { op_label = "tile-2d-point" }
-    (%in: f32, %out: f32) {
-      %0 = arith.maxf %in, %out: f32
-      thlo.yield %0: f32
-    }
-  return %result : tensor<?x?xf32>
-}
-// CHECK-FOR-LABEL: func.func @scatter_2d_indices(
-// CHECK-FOR-SAME:      %[[INDICES:.*]]: tensor<?x?x2xi32>,
-// CHECK-FOR-SAME:      %[[UPDATES:.*]]: tensor<?x?xf32>,
-// CHECK-FOR-SAME:      %[[INIT:.*]]: tensor<?x?xf32>
-// CHECK-FOR-DAG:     %[[C0:.*]] = arith.constant 0 : index
-// CHECK-FOR-DAG:     %[[C1:.*]] = arith.constant 1 : index
-// CHECK-FOR:         %[[DIM0:.*]] = tensor.dim %[[UPDATES]], %[[C0]]
-// CHECK-FOR:         %[[DIM1:.*]] = tensor.dim %[[UPDATES]], %[[C1]]
-// CHECK-FOR:         gml_st.for ({{.*}}) = (%[[C0]], %[[C0]]) to (%[[DIM0]], %[[DIM1]])
-// CHECK-FOR:           %[[UPDATES_SUB:.*]] = gml_st.materialize %[[UPDATES]]
-// CHECK-FOR:             : tensor<?x?xf32>[!gml_st.tile<1x1>]
-// CHECK-FOR:           %[[INDICES_SUB:.*]] = gml_st.materialize %[[INDICES]]
-// CHECK-FOR:             : tensor<?x?x2xi32>[!gml_st.tile<1x1x2>]
-// CHECK-FOR:           %[[INIT_SUB:.*]] = gml_st.materialize
-// CHECK-FOR:             : tensor<?x?xf32>[!gml_st.tile<?x?>]
-// CHECK-FOR:           %[[SCATTER:.*]] = thlo.scatter
-// CHECK-FOR-SAME:        ins(%[[INDICES_SUB]] : tensor<1x1x2xi32>,
-// CHECK-FOR-SAME:            %[[UPDATES_SUB]] : tensor<1x1xf32>)
-// CHECK-FOR-SAME:        outs(%[[INIT_SUB]] : tensor<?x?xf32>)
-// CHECK-FOR:             arith.maxf
-// CHECK-FOR:             thlo.yield
-// CHECK-FOR:           gml_st.set_yield %[[SCATTER:.*]]
-
-// CHECK-PARALLEL-LABEL: @scatter_2d_indices
-
-// -----
-
-func.func @scatter_small_vector_dim(%indices: tensor<?x?x2xi32>,
-    %updates: tensor<?x?xf32>, %init: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
-  %result = thlo.scatter
-    ins (%indices: tensor<?x?x2xi32>, %updates: tensor<?x?xf32>)
-    outs (%init: tensor<?x?x?xf32>) { op_label = "tile-2d-point" }
-    (%in: f32, %out: f32) {
-      %0 = arith.addf %in, %out: f32
-      thlo.yield %0: f32
-    }
-  return %result : tensor<?x?x?xf32>
-}
-// CHECK-FOR-LABEL: func.func @scatter_small_vector_dim(
-// CHECK-FOR-SAME:      %[[INDICES:.*]]: tensor<?x?x2xi32>,
-// CHECK-FOR-SAME:      %[[UPDATES:.*]]: tensor<?x?xf32>,
-// CHECK-FOR-SAME:      %[[INIT:.*]]: tensor<?x?x?xf32>
-// CHECK-FOR-DAG:     %[[C0:.*]] = arith.constant 0 : index
-// CHECK-FOR-DAG:     %[[C1:.*]] = arith.constant 1 : index
-// CHECK-FOR:         %[[DIM0:.*]] = tensor.dim %[[UPDATES]], %[[C0]]
-// CHECK-FOR:         %[[DIM1:.*]] = tensor.dim %[[UPDATES]], %[[C1]]
-// CHECK-FOR:         gml_st.for ({{.*}}) = (%[[C0]], %[[C0]]) to (%[[DIM0]], %[[DIM1]])
-// CHECK-FOR:           %[[UPDATES_SUB:.*]] = gml_st.materialize %[[UPDATES]]
-// CHECK-FOR-SAME:        : tensor<?x?xf32>[!gml_st.tile<1x1>]
-// CHECK-FOR:           %[[INDICES_SUB:.*]] = gml_st.materialize %[[INDICES]]
-// CHECK-FOR-SAME:        : tensor<?x?x2xi32>[!gml_st.tile<1x1x2>]
-// CHECK-FOR:           %[[INIT_SUB:.*]] = gml_st.materialize
-// CHECK-FOR-SAME:        : tensor<?x?x?xf32>[!gml_st.tile<?x?x?>]
-// CHECK-FOR:           %[[SCATTER:.*]] = thlo.scatter
-// CHECK-FOR-SAME:        ins(%[[INDICES_SUB]] : tensor<1x1x2xi32>,
-// CHECK-FOR-SAME:            %[[UPDATES_SUB]] : tensor<1x1xf32>)
-// CHECK-FOR-SAME:        outs(%[[INIT_SUB]] : tensor<?x?x?xf32>)
-// CHECK-FOR:             arith.addf
-// CHECK-FOR:             thlo.yield
-// CHECK-FOR:           gml_st.set_yield %[[SCATTER]]
-
-// CHECK-PARALLEL-LABEL: @scatter_small_vector_dim
 
 // -----
 

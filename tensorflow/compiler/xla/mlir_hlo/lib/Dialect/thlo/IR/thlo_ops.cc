@@ -765,21 +765,47 @@ void ScatterOp::print(OpAsmPrinter &p) {
 LogicalResult ScatterOp::verify() {
   if (failed(verifyDestinationStyleOp(getOperation()))) return failure();
 
-  auto indicesShapeWithoutVectorDim =
-      getIndices().getType().getShape().drop_back(1);
-  if (indicesShapeWithoutVectorDim !=
-      getUpdates().getType().cast<ShapedType>().getShape()) {
-    return emitOpError(
-        "Expected indices.shape to be updates.shape + [index_vector_dim_size]");
+  auto indicesType = getIndices().getType().cast<RankedTensorType>();
+  int64_t indicesRank = indicesType.getRank();
+
+  if (indicesRank != 2)
+    return emitOpError() << "expected `indices` to be a 2D tensor";
+
+  auto updatesType = getUpdates().getType();
+  int64_t updatesRank = updatesType.getRank();
+
+  if (updatesType.getDimSize(0) != indicesType.getDimSize(0)) {
+    return emitOpError() << "expected major dimension of `indices` to match "
+                            "major dimension of `updates`";
+  }
+
+  int64_t indexVectorDim = indicesType.getDimSize(1);
+  if (ShapedType::isDynamic(indexVectorDim))
+    return emitOpError() << "expected index vector dimension size to be static";
+
+  auto initType = getInit().getType();
+  int64_t initRank = initType.getRank();
+
+  if (indexVectorDim > initRank) {
+    return emitOpError() << "expected index vector dimension size = "
+                         << indexVectorDim
+                         << " to be smaller or equal than `init` rank = "
+                         << initRank;
+  }
+
+  if (updatesRank - 1 != initRank)
+    return emitOpError() << "expected `updates` rank + 1 to match `init` rank";
+
+  if (updatesType.getElementType() != initType.getElementType()) {
+    return emitOpError()
+           << "expected `updates` element type to match `init` element type";
   }
 
   return success();
 }
 
 SmallVector<utils::IteratorType> ScatterOp::getLoopIteratorTypes() {
-  auto indicesRank = getIndices().getType().getRank();
-  return SmallVector<utils::IteratorType>(indicesRank - 1,
-                                          utils::IteratorType::parallel);
+  return {utils::IteratorType::reduction};
 }
 
 SmallVector<Value> ScatterOp::getDestinationOperands(OpBuilder &) {
@@ -787,7 +813,9 @@ SmallVector<Value> ScatterOp::getDestinationOperands(OpBuilder &) {
 }
 
 SmallVector<Range> ScatterOp::getIterationDomain(OpBuilder &b) {
-  return getIterationDomainForTensor(b, getLoc(), getUpdates());
+  Value indexVectorDimValue =
+      b.create<arith::ConstantIndexOp>(getLoc(), getIndexVectorDim());
+  return {Range{b.getIndexAttr(0), indexVectorDimValue, b.getIndexAttr(1)}};
 }
 
 static Value getSlice(OpBuilder &b, Location loc, Value tensor,
@@ -805,24 +833,44 @@ static Value getSlice(OpBuilder &b, Location loc, Value tensor,
   return b.create<gml_st::MaterializeOp>(loc, tensor, tile);
 }
 
+static Value getFullSpace(OpBuilder &b, Location loc, Value tensor) {
+  return getSlice(b, loc, tensor, llvm::None, llvm::None);
+}
+
 mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
     OpBuilder &b, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
   Location loc = getLoc();
+  IntegerAttr zeroAttr = b.getIndexAttr(0);
 
+  OpFoldResult tileOffset = offsets.front();
+  OpFoldResult tileSize = sizes.front();
+
+  // Tile outer dimension of updates.
   Value update = this->getUpdates();
-  Value updateSlice = getSlice(b, loc, update, offsets, sizes);
+  auto updateType = update.getType().cast<RankedTensorType>();
 
+  SmallVector<OpFoldResult> updateOffsets(updateType.getRank(), zeroAttr);
+  updateOffsets.front() = tileOffset;
+  SmallVector<OpFoldResult> updateSizes = tensor::getMixedSizes(b, loc, update);
+  updateSizes.front() = tileSize;
+
+  Value updateSlice = getSlice(b, loc, update, updateOffsets, updateSizes);
+
+  // Tile outer dimension of indices.
   Value indices = this->getIndices();
-  auto indicesOffsets = to_vector(offsets);
-  indicesOffsets.push_back(b.getIndexAttr(0));
-  auto indicesSizes = to_vector(sizes);
-  auto indicesType = indices.getType().cast<RankedTensorType>();
-  indicesSizes.push_back(b.getIndexAttr(indicesType.getShape().back()));
+
+  SmallVector<OpFoldResult> indicesOffsets{offsets.front(), zeroAttr};
+  indicesOffsets.front() = tileOffset;
+  SmallVector<OpFoldResult> indicesSizes =
+      tensor::getMixedSizes(b, loc, indices);
+  indicesSizes.front() = tileSize;
+
   Value indicesSlice = getSlice(b, loc, indices, indicesOffsets, indicesSizes);
 
+  // Get full space of the `init` tensor.
   Value init = this->getInit();
-  Value initSlice = getSlice(b, loc, init, llvm::None, llvm::None);
+  Value initSlice = getFullSpace(b, loc, init);
 
   auto dpsInterface =
       cast<linalg::DestinationStyleOpInterface>(this->getOperation());
