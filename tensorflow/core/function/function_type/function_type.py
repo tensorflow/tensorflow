@@ -64,6 +64,10 @@ class Parameter(inspect.Parameter):
             ", optional=" + repr(self.optional) + ", type_constraint=" +
             repr(self.type_constraint) + ")")
 
+  def __reduce__(self):
+    return (self.__class__, (self.name, self.kind, self.optional,
+                             self.type_constraint))
+
 
 class FunctionType(inspect.Signature):
   """Represents the parameters of a polymorphic function."""
