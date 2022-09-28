@@ -2847,14 +2847,19 @@ cc_test(
     ],
 )
 
+# TODO(b/249321616) pull unsorted_segment_test* into seperate `cc_library`.
 cc_test(
     name = "unsorted_segment_prod_test",
     size = "small",
-    srcs = ["unsorted_segment_prod_test.cc"],
+    srcs = [
+        "unsorted_segment_prod_test.cc",
+        "unsorted_segment_test.cc",
+        "unsorted_segment_test.h",
+    ],
     deps = [
         ":test_main",
         ":test_util",
-        ":unsorted_segment_test_utils",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2863,11 +2868,15 @@ cc_test(
 cc_test(
     name = "unsorted_segment_max_test",
     size = "small",
-    srcs = ["unsorted_segment_max_test.cc"],
+    srcs = [
+        "unsorted_segment_max_test.cc",
+        "unsorted_segment_test.cc",
+        "unsorted_segment_test.h",
+    ],
     deps = [
         ":test_main",
         ":test_util",
-        ":unsorted_segment_test_utils",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2876,11 +2885,15 @@ cc_test(
 cc_test(
     name = "unsorted_segment_sum_test",
     size = "small",
-    srcs = ["unsorted_segment_sum_test.cc"],
+    srcs = [
+        "unsorted_segment_sum_test.cc",
+        "unsorted_segment_test.cc",
+        "unsorted_segment_test.h",
+    ],
     deps = [
         ":test_main",
         ":test_util",
-        ":unsorted_segment_test_utils",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2889,23 +2902,9 @@ cc_test(
 cc_test(
     name = "unsorted_segment_min_test",
     size = "small",
-    srcs = ["unsorted_segment_min_test.cc"],
-    deps = [
-        ":test_main",
-        ":test_util",
-        ":unsorted_segment_test_utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
-    name = "unsorted_segment_test_utils",
-    testonly = 1,
     srcs = [
+        "unsorted_segment_sum_test.cc",
         "unsorted_segment_test.cc",
-    ],
-    hdrs = [
         "unsorted_segment_test.h",
     ],
     deps = [
