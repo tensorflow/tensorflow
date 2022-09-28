@@ -1630,7 +1630,13 @@ class MklFusedDepthwiseConvOp
 
 // The enum below contains the list of available fused ops. We are storing
 // shifted values for each fused op in order to save bit-shift times.
-enum class oneDNNFusedOps { kBias = 1, kSum = 2, kRelu = 4, kRequantize = 8 };
+enum class oneDNNFusedOps {
+  kBias = 1,
+  kSum = 2,
+  kRelu = 4,
+  kRequantize = 8,
+  kLeakyRelu = 16
+};
 
 template <typename Device, typename Tinput, typename Tbias, typename Toutput,
           typename Ttemp_output, bool is_depthwise, string legacy_fused_ops[],
@@ -1667,9 +1673,11 @@ class MklQuantizedConvOp
         {"BiasAdd"},
         {"Relu"},
         {"Requantize"},
+        {"BiasAdd", "LeakyRelu"},
         {"BiasAdd", "Relu"},
         {"BiasAdd", "Requantize"},
         {"Relu", "Requantize"},
+        {"BiasAdd", "LeakyRelu", "Requantize"},
         {"BiasAdd", "Relu", "Requantize"},
         {"BiasAdd", "Sum", "Relu"},
         {"BiasAdd", "Sum", "Relu", "Requantize"}};
@@ -1752,7 +1760,7 @@ class MklQuantizedConvOp
         post_op_to_idx_["output_scale"] = 0;
       } else if (fused_ops_[i] == "Sum") {
         post_op_to_idx_["sum"] = idx++;
-      } else if (fused_ops_[i] == "Relu") {
+      } else if (fused_ops_[i] == "Relu" || fused_ops_[i] == "LeakyRelu") {
         post_op_to_idx_["activation"] = idx++;
       }
     }
@@ -1764,6 +1772,10 @@ class MklQuantizedConvOp
     OP_REQUIRES(
         context, is_filter_const,
         errors::InvalidArgument("QuantizedConv: filter must be a constant"));
+
+    if (context->HasAttr("alpha")) {
+      OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
+    }
 
     if (num_fused_ops == -1) {
       // If num_fused_ops is -1 then the new API (ops) are being used.
@@ -1999,9 +2011,9 @@ class MklQuantizedConvOp
       }
     }
 
-    if (IsFused(oneDNNFusedOps::kRelu)) {
+    if (IsFused(oneDNNFusedOps::kRelu) || IsFused(oneDNNFusedOps::kLeakyRelu)) {
       params.post_op_params[post_op_to_idx_["activation"]] = {
-          "activation", dnnl::algorithm::eltwise_relu, {1.0, 0.0, 0.0}, ""};
+          "activation", dnnl::algorithm::eltwise_relu, {1.0, alpha_, 0.0}, ""};
     }
   }
 
@@ -2198,7 +2210,8 @@ class MklQuantizedConvOp
       {"BiasAdd", oneDNNFusedOps::kBias},
       {"Sum", oneDNNFusedOps::kSum},
       {"Relu", oneDNNFusedOps::kRelu},
-      {"Requantize", oneDNNFusedOps::kRequantize}};
+      {"Requantize", oneDNNFusedOps::kRequantize},
+      {"LeakyRelu", oneDNNFusedOps::kLeakyRelu}};
   std::shared_ptr<dnnl::memory> summand_;
   std::shared_ptr<dnnl::memory> dst_;
   int min_input_idx_ = -1;
@@ -2211,6 +2224,7 @@ class MklQuantizedConvOp
   int max_summand_idx_ = -1;
   int min_freezed_output_idx_ = -1;
   int max_freezed_output_idx_ = -1;
+  float alpha_ = 0.0;
 
   // Convenience function to check if op is in fused ops, e.g., IsFused(kBias).
   inline bool IsFused(oneDNNFusedOps op) {

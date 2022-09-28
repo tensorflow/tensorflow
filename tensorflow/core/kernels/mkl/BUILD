@@ -115,6 +115,7 @@ tf_cc_test_mkl(
     deps = [
         ":mkl_conv_op",
         ":mkl_kernel_util",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:math_ops_op_lib",

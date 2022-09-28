@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -829,6 +830,12 @@ class QuantizedConvTest : public OpsTestBase {
         last_op = "with_relu";
         out_op = ops::Relu(root.WithOpName(last_op), out_op);
       }
+
+      if (fused_ops[i] == "LeakyRelu") {
+        last_op = "with_leakyrelu";
+        // default alpha of LeakyRelu is 0.2
+        out_op = ops::internal::LeakyRelu(root.WithOpName(last_op), out_op);
+      }
     }
 
     tensorflow::GraphDef graph_def;
@@ -838,7 +845,8 @@ class QuantizedConvTest : public OpsTestBase {
 
   template <typename Tinput, typename Toutput>
   void TestBiasAddFusion(bool fuse_requantize, const bool is_depthwise,
-                         string activation = "", const float tol = 1.0) {
+                         string activation = "", const float tol = 1.0,
+                         const float alpha = 0.0) {
     const int stride = 1;
     const string padding = "VALID";
     std::vector<string> fused_ops = {"BiasAdd"};
@@ -881,6 +889,7 @@ class QuantizedConvTest : public OpsTestBase {
             .Attr("strides", {1, stride, stride, 1})
             .Attr("padding", padding)
             .Attr("fused_ops", fused_ops)
+            .Attr("alpha", alpha)
             .Input(FakeInput())
             .Input(FakeInput())
             .Finalize(node_def()));
@@ -1029,6 +1038,10 @@ TEST_F(QuantizedConvTest, BiasAddReluRequantizeFusion) {
   TestBiasAddFusion<qint8, qint8>(true, false, "Relu");
 }
 
+TEST_F(QuantizedConvTest, BiasAddLeakyReluRequantizeFusion) {
+  TestBiasAddFusion<qint8, qint8>(true, false, "LeakyRelu", 1.0, 0.2);
+}
+
 TEST_F(QuantizedConvTest, UnsignedInputBiasAddReluRequantizeFusion) {
   // We need higher tolerance for quint8 input/output
   TestBiasAddFusion<quint8, quint8>(true, false, "Relu", 4.0);
@@ -1044,6 +1057,10 @@ TEST_F(QuantizedConvTest, DWBiasAddRequantizeFusion) {
 
 TEST_F(QuantizedConvTest, DWBiasAddReluRequantizeFusion) {
   TestBiasAddFusion<qint8, qint8>(true, true, "Relu");
+}
+
+TEST_F(QuantizedConvTest, DWBiasAddLeakyReluRequantizeFusion) {
+  TestBiasAddFusion<qint8, qint8>(true, true, "LeakyRelu", 1.0, 0.2);
 }
 
 TEST_F(QuantizedConvTest, DWUnsignedInputBiasAddReluRequantizeFusion) {
