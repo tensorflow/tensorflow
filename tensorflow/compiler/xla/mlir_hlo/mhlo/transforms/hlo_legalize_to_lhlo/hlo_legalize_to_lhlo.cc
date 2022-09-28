@@ -63,6 +63,7 @@ Value insertDynamicAlloc(Location loc, Value result, Value shapeOperand,
   if (!resultType) {
     result.getDefiningOp()->emitOpError()
         << "tensor to buffer conversion expects ranked results";
+    return NULL;
   }
   auto memrefType =
       MemRefType::get(resultType.getShape(), resultType.getElementType());
@@ -91,6 +92,7 @@ Value insertAlloc(Location loc, OpResult result,
   if (!resultType || !resultType.hasStaticShape()) {
     result.getDefiningOp()->emitOpError()
         << "tensor to buffer conversion expects statically shaped results";
+    return NULL;
   }
   auto memrefType =
       MemRefType::get(resultType.getShape(), resultType.getElementType());

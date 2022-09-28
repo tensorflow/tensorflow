@@ -129,8 +129,11 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
         DeviceAssignment::Deserialize(execution_options->device_assignment()));
     config->set_static_device_assignment(*device_assignment);
   }
-  config->set_alias_passthrough_params(
-      execution_options->alias_passthrough_params());
+
+  if (execution_options != nullptr) {
+    config->set_alias_passthrough_params(
+        execution_options->alias_passthrough_params());
+  }
 
   if (aot_options != nullptr) {
     config->set_matrix_unit_operand_precision(

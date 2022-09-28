@@ -652,11 +652,12 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
       if (hook == nullptr) {
         s = errors::Internal("Invalid null hook for key ",
                              request->buf_rendezvous_key());
-      }
-      if (!DMAHelper::CanUseDMA(hook->prod_value)) {
-        s = errors::Internal("Tensor value for key ",
-                             request->buf_rendezvous_key(),
-                             " is not of a type supported by RecvBuf");
+      } else {
+        if (!DMAHelper::CanUseDMA(hook->prod_value)) {
+          s = errors::Internal("Tensor value for key ",
+                               request->buf_rendezvous_key(),
+                               " is not of a type supported by RecvBuf");
+        }
       }
     } else {
       if (hook != nullptr) {
