@@ -1516,13 +1516,6 @@ def tf_gpu_only_cc_test(
         data = data + tf_binary_dynamic_kernel_dsos(),
         deps = [":" + gpu_lib_name],
         linkopts = if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),
-        linkstatic = linkstatic or select({
-            # cc_tests with ".so"s in srcs incorrectly link on Darwin
-            # unless linkstatic=1.
-            # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-            clean_dep("//tensorflow:macos"): 1,
-            "//conditions:default": 0,
-        }),
         tags = tags,
         exec_properties = tf_exec_properties({"tags": tags}),
     )
