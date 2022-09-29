@@ -358,6 +358,7 @@ cc_test(
     deps = [
         ":c_api",
         ":c_api_experimental",
+        ":c_api_types",
         ":common",
     ],
 )
