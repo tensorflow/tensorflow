@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_OPS_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_OPS_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project  // IWYU pragma: keep
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"  // IWYU pragma: keep
