@@ -33,7 +33,6 @@ limitations under the License.
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -49,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
@@ -154,15 +152,6 @@ int main(int argc, char **argv) {
   MLIRContext context;
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
-  mlir::DialectRegistry registry;
-
-  if (input_mlir) {
-    // TODO(@zichuanwei): hack to enable mlir conversion via this tool, will get
-    // back to do it properly in the future
-    RegisterAllTensorFlowDialects(registry);
-    registry.insert<mlir::func::FuncDialect>();
-    context.appendDialectRegistry(registry);
-  }
 
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module;
   std::unordered_set<std::string> tags;
@@ -297,7 +286,6 @@ int main(int argc, char **argv) {
   toco_flags.set_allow_custom_ops(emit_custom_ops);
   toco_flags.set_allow_all_select_tf_ops(allow_all_select_tf_ops);
   toco_flags.set_enable_dynamic_update_slice(enable_dynamic_update_slice);
-  toco_flags.set_post_training_quantize(post_training_quantization);
   // Read list of user select ops.
   llvm::SmallVector<llvm::StringRef, 2> user_ops;
   (llvm::StringRef(select_user_tf_ops))
