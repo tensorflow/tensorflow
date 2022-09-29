@@ -82,6 +82,24 @@ func.func @materialize_dynamic_tensor(%tensor: tensor<?x?xf32>, %tile: !gml_st.t
   func.return
 }
 
+// CHECK-LABEL: @materialize_vector
+// CHECK-SAME: %[[VECTOR:.*]]: vector<64x32xf32>,
+// CHECK-SAME: %[[TILE:.*]]: !gml_st.tile<42x16>,
+// CHECK-SAME: %[[POINT:.*]]: !gml_st.tile<1x1>
+func.func @materialize_vector(%vector: vector<64x32xf32>,
+                              %tile: !gml_st.tile<42x16>,
+                              %point: !gml_st.tile<1x1>) {
+  // CHECK: %{{.*}} = gml_st.materialize %[[VECTOR]][%[[TILE]]]
+  // CHECK-SAME: : vector<64x32xf32>[!gml_st.tile<42x16>]
+  %0 = gml_st.materialize %vector[%tile]
+    : vector<64x32xf32>[!gml_st.tile<42x16>] to vector<42x16xf32>
+  // CHECK: %{{.*}} = gml_st.materialize %[[VECTOR]][%[[POINT]]]
+  // CHECK-SAME: : vector<64x32xf32>[!gml_st.tile<1x1>]
+  %1 = gml_st.materialize %vector[%point]
+    : vector<64x32xf32>[!gml_st.tile<1x1>] to f32
+  func.return
+}
+
 // -----
 
 #cwise_trait = {
@@ -185,7 +203,6 @@ func.func @tiled_loop_reduction(%input_3d: tensor<16x24x32xf32>,
 }
 // CHECK-LABEL: func @tiled_loop_reduction
 // CHECK: iterators[
-
 
 #map_1 = affine_map<(d0, d1, d2)[s0] -> (d0 * 768 + s0 + d1 * 32 + d2)>
 #map_2 = affine_map<(d0, d1)[s0] -> (d0 * 32 + s0 + d1)>
@@ -292,6 +309,25 @@ func.func @loop_on_points(%output: tensor<8xf32>) -> tensor<8xf32> {
   func.return %sum : tensor<8xf32>
 }
 // CHECK-LABEL: func @loop_on_points
+
+// -----
+
+func.func @loop_on_vector(%output: vector<8xf32>, %fill: vector<2xf32>)
+    -> vector<8xf32> {
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c8 = arith.constant 8 : index
+
+  %space = gml_st.space [8] : !gml_st.tile<8>
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c2) {
+    %tile = gml_st.tile %space [%i] [2] [1]
+      : !gml_st.tile<8> to !gml_st.tile<2>
+    gml_st.set_yield %fill into %output[%tile]
+      : vector<2xf32> into vector<8xf32>[!gml_st.tile<2>]
+  } : vector<8xf32>
+  func.return %sum : vector<8xf32>
+}
+// CHECK-LABEL: func @loop_on_vector
 
 // -----
 

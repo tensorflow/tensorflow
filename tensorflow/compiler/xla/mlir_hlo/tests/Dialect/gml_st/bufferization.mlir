@@ -267,3 +267,82 @@ func.func @materialize_and_yield_with_constants(
 // CHECK-NEXT:    %[[ABS:.*]] = math.absf %[[ELEM]] : f32
 // CHECK-NEXT:    memref.store %[[ABS]], %[[OUT]][%[[I]], %[[J]]]
 // CHECK-NEXT:    gml_st.set_yield
+
+// -----
+func.func @parallel_with_vector(%in: vector<8xf32>, %init : vector<8xf32>) -> vector<8xf32> {
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+  %space = gml_st.space [8] : !gml_st.tile<8>
+
+  %result = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
+    %tile = gml_st.tile %space [%i] [4] [1] : !gml_st.tile<8> to !gml_st.tile<4>
+    %in_tile = gml_st.materialize %in[%tile]
+      : vector<8xf32>[!gml_st.tile<4>] to vector<4xf32>
+    %neg = arith.negf %in_tile : vector<4xf32>
+    gml_st.set_yield %neg into %init[%tile]
+      : vector<4xf32> into vector<8xf32>[!gml_st.tile<4>]
+  } : vector<8xf32>
+
+  return %result : vector<8xf32>
+}
+// Bufferization should leave the parallel unchanged.
+// CHECK-LABEL: func @parallel_with_vector(
+// CHECK:       %[[RESULT:.*]] = gml_st.parallel
+// CHECK-NOT:   memref
+// CHECK-NOT:   vector.transfer_{{read|write}}
+// CHECK:       return %[[RESULT]] : vector<8xf32>
+
+// -----
+
+func.func @nested_parallel_with_vector(%init : tensor<?x32xf32>)
+    -> tensor<?x32xf32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %c32 = arith.constant 32 : index
+  %dim_0 = tensor.dim %init, %c0 : tensor<?x32xf32>
+  %space = gml_st.space [%dim_0, 32] : !gml_st.tile<?x32>
+
+  %result = gml_st.parallel (%i) = (%c0) to (%dim_0) step (%c1) {
+    %tile = gml_st.tile %space [%i, 0] [1, 32] [1, 1]
+      : !gml_st.tile<?x32> to !gml_st.tile<1x32>
+    %init_tile = gml_st.materialize %init[%tile]
+      : tensor<?x32xf32>[!gml_st.tile<1x32>] to tensor<1x32xf32>
+    %init_vec = vector.transfer_read %init_tile[%c0, %c0], %cst
+      {in_bounds = [true, true]}: tensor<1x32xf32>, vector<1x32xf32>
+
+    %result_vec = gml_st.parallel (%j) = (%c0) to (%c32) step (%c4) {
+      %vtile = gml_st.tile %tile [0, %j] [1, 4] [1, 1]
+        : !gml_st.tile<1x32> to !gml_st.tile<1x4>
+      %inner_tile = gml_st.materialize %init_vec[%vtile]
+        : vector<1x32xf32>[!gml_st.tile<1x4>] to vector<1x4xf32>
+      gml_st.set_yield %inner_tile into %init_vec[%vtile]
+        : vector<1x4xf32> into vector<1x32xf32>[!gml_st.tile<1x4>]
+    } : vector<1x32xf32>
+
+    %result = vector.transfer_write %result_vec, %init_tile[%c0, %c0]
+      {in_bounds = [true, true]} : vector<1x32xf32>, tensor<1x32xf32>
+    gml_st.set_yield %result into %init[%tile]
+      : tensor<1x32xf32> into tensor<?x32xf32>[!gml_st.tile<1x32>]
+  } : tensor<?x32xf32>
+
+  return %result : tensor<?x32xf32>
+}
+// The outer parallel should be bufferized, while the inner one should be left
+// unchanged.
+// CHECK-LABEL: func @nested_parallel_with_vector(
+// CHECK-SAME:  %[[INIT:.*]]: memref<?x32xf32>) -> memref<?x32xf32> {
+// CHECK:         gml_st.parallel (%[[I:.*]]) =
+// CHECK-DAG:       %[[INITTILE:.*]] = memref.subview %[[INIT]][%[[I]], 0]
+// CHECK-SAME:        memref<?x32xf32> to memref<1x32xf32
+// CHECK-DAG:       %[[INITVEC:.*]] = vector.transfer_read %[[INITTILE]]
+// CHECK-SAME:        memref<1x32xf32, {{.*}}>, vector<1x32xf32>
+// CHECK:           %[[RESVEC:.*]] = gml_st.parallel
+// CHECK:             gml_st.materialize %[[INITVEC]]
+// CHECK:             gml_st.set_yield
+// CHECK-SAME:          vector<1x4xf32> into vector<1x32xf32>[!gml_st.tile<1x4>]
+// CHECK:           vector.transfer_write %[[RESVEC]], %[[INITTILE]]
+// CHWECK-SAME:         vector<1x32xf32>, memref<1x32xf32
+// CHECK:         return %[[INIT]] : memref<?x32xf32>

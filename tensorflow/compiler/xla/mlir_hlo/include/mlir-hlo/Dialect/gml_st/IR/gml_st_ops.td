@@ -23,12 +23,12 @@ include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
-def RankedTensor : AnyTypeOf<[AnyRankedTensor], "", "::mlir::RankedTensorType">;
-def RankedTensorOrScalar : AnyTypeOf<[AnyRankedTensor, AnyFloat, AnyInteger]>;
+def RankedTensorOrVector : AnyTypeOf<[AnyRankedTensor, AnyVector], "", "::mlir::ShapedType">;
+def RankedTensorOrVectorOrScalar : AnyTypeOf<[AnyRankedTensor, AnyVector, AnyFloat, AnyInteger]>;
 
 def GMLST_MaterializeOp : GMLST_Op<"materialize", [NoSideEffect]> {
-  let arguments = (ins RankedTensor:$source, AnySet:$set);
-  let results = (outs RankedTensorOrScalar:$result);
+  let arguments = (ins RankedTensorOrVector:$source, AnySet:$set);
+  let results = (outs RankedTensorOrVectorOrScalar:$result);
 
   let builders = [OpBuilder<(ins "Value":$source, "Value":$set)>];
 
@@ -90,7 +90,7 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
       RecursiveSideEffects,
       SingleBlockImplicitTerminator<"gml_st::SetYieldOp">
     ])> {
-  let results = (outs Variadic<AnyRankedTensor>:$results);
+  let results = (outs Variadic<RankedTensorOrVector>:$results);
   let regions = (region SizedRegion<1>:$region);
 
   code extraBaseClassDeclaration = [{
@@ -282,8 +282,8 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
       : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
     ```
   }];
-  let arguments = (ins Variadic<RankedTensorOrScalar>:$srcs,
-                       Variadic<RankedTensor>:$dsts,
+  let arguments = (ins Variadic<RankedTensorOrVectorOrScalar>:$srcs,
+                       Variadic<RankedTensorOrVector>:$dsts,
                        Variadic<AnySet>:$sets,
                        BoolArrayAttr:$accumulatorFlags);
   let regions = (region VariadicRegion<SizedRegion<1>>:$accumulators);

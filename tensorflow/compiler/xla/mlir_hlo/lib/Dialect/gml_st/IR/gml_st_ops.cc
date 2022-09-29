@@ -156,11 +156,11 @@ void MaterializeOp::build(OpBuilder &builder, OperationState &result,
 }
 
 LogicalResult verifyCompatibleExtractedSubset(Operation *op,
-                                              RankedTensorType tensorType,
+                                              ShapedType shapedType,
                                               Type extractedType,
                                               Type setType) {
-  auto sourceRank = tensorType.getRank();
-  auto elementType = tensorType.getElementType();
+  auto sourceRank = shapedType.getRank();
+  auto elementType = shapedType.getElementType();
 
   // If the result is a scalar, check that the tile had a single element.
   if (!extractedType.isa<ShapedType>()) {
@@ -179,8 +179,8 @@ LogicalResult verifyCompatibleExtractedSubset(Operation *op,
            << tileType << " to have a single element shape";
   }
 
-  // If the result is a tensor, compare with the inferred type.
-  auto extractedTensorType = extractedType.cast<RankedTensorType>();
+  // If the result is a shaped type, compare with the inferred type.
+  auto extractedShapedType = extractedType.cast<ShapedType>();
   auto tileType = setType.cast<TileType>();
   int64_t tileRank = tileType.getRank();
   if (tileRank != sourceRank) {
@@ -189,10 +189,10 @@ LogicalResult verifyCompatibleExtractedSubset(Operation *op,
   }
 
   auto inferredType =
-      RankedTensorType::get(tileType.getShape(), tensorType.getElementType());
-  if (extractedTensorType != inferredType) {
+      shapedType.clone(tileType.getShape(), shapedType.getElementType());
+  if (extractedShapedType != inferredType) {
     return op->emitOpError("expected result type = ")
-           << extractedTensorType
+           << extractedShapedType
            << " to match the inferred type = " << inferredType;
   }
 
@@ -1880,9 +1880,9 @@ void SetYieldOp::build(
 LogicalResult SetYieldOp::verify() {
   for (const auto [dst, src, set] :
        llvm::zip(getDsts(), getSrcs(), getSets())) {
-    if (failed(verifyCompatibleExtractedSubset(
-            getOperation(), dst.getType().cast<RankedTensorType>(),
-            src.getType(), set.getType())))
+    if (failed(verifyCompatibleExtractedSubset(getOperation(),
+                                               dst.getType().cast<ShapedType>(),
+                                               src.getType(), set.getType())))
       return failure();
   }
   auto accumulatorCount = llvm::count_if(
