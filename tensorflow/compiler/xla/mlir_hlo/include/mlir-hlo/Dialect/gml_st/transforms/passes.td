@@ -109,5 +109,9 @@ def VectorizeGmlStLoopsPass :
       "Pass to vectorize linalg.generic ops tiled to gml_st.parallel and " #
       "gml_st.for loops.";
   let constructor = "::mlir::gml_st::createVectorizeGmlStLoopsPass()";
+  let options = [
+    Option<"vectorizeGmlStOps", "vectorize-gml-st-ops", "bool", "false",
+           "If true, vectorizes GmlSt ops in addition to linalg ops">,
+  ];
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }

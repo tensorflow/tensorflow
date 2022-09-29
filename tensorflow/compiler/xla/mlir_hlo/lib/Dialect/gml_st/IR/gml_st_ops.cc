@@ -137,19 +137,17 @@ Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
 // MaterializeOp
 //===----------------------------------------------------------------------===//
 
-static FailureOr<Type> inferReturnType(RankedTensorType sourceType,
-                                       Type setType) {
+static FailureOr<Type> inferReturnType(ShapedType sourceType, Type setType) {
   if (setType.isa<PointType>()) return sourceType.getElementType();
   if (auto tileType = setType.dyn_cast<TileType>()) {
-    return RankedTensorType::get(tileType.getShape(),
-                                 sourceType.getElementType());
+    return sourceType.clone(tileType.getShape(), sourceType.getElementType());
   }
   return failure();
 }
 
 void MaterializeOp::build(OpBuilder &builder, OperationState &result,
                           Value source, Value set) {
-  auto sourceType = source.getType().cast<RankedTensorType>();
+  auto sourceType = source.getType().cast<ShapedType>();
   auto resultTypeOr = inferReturnType(sourceType, set.getType());
   assert(resultTypeOr.hasValue() && "could not infer result type");
   build(builder, result, *resultTypeOr, source, set);

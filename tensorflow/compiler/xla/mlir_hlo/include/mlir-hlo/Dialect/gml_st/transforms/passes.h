@@ -28,6 +28,7 @@ limitations under the License.
 #define GEN_PASS_DECL_TILINGPASS
 #define GEN_PASS_DECL_GMLSTTOGPUPASS
 #define GEN_PASS_DECL_TILINGCWISEPASS
+#define GEN_PASS_DECL_VECTORIZEGMLSTLOOPSPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 namespace mlir {
@@ -74,7 +75,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateTiledLoopBufferizePass();
 
 /// Pass to vectorize linalg.generic ops tiled to gml_st.parallel and gml_st.for
 /// loops.
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(
+    bool vectorizeGmlStOps = false);
 
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
