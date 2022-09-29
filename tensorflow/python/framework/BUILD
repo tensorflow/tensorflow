@@ -1446,6 +1446,7 @@ py_library(
     visibility = visibility + [
         "//tensorflow:internal",
         "//third_party/py/keras:__subpackages__",
+        "//third_party/py/keras_cv:__subpackages__",
     ],
 )
 
