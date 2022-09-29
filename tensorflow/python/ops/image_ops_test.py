@@ -5928,7 +5928,6 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img = constant_op.constant(np.concatenate(img))
     img1 = array_ops.expand_dims(img, axis=0)  # batch dims: 1, 2.
     img2 = array_ops.expand_dims(img, axis=1)  # batch dims: 2, 1.
-
     score_tensor = image_ops.ssim_multiscale(
         img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session():
@@ -5946,11 +5945,12 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img2 = self._RandomImage((1, 150, 240, 3), 255)
     img1 = constant_op.constant(img1, dtypes.uint8)
     img2 = constant_op.constant(img2, dtypes.uint8)
-    ssim_uint8 = image_ops.ssim_multiscale(
-        img1, img2, 255, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session():
       with self.assertRaisesRegexp(
-        RuntimeError, 'The maximum "filter_size" value for'):
+        RuntimeError, 'You defined 5 "power_factors"'):
+        ssim_uint8 = image_ops.ssim_multiscale(
+          img1, img2, 255, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03
+        )
         self.evaluate(ssim_uint8)
 
   def testRange(self):
@@ -5995,7 +5995,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
 
   def testNumpyInput(self):
     """Test case for GitHub issue 28241."""
-    image = np.random.random([512, 512, 1])
+    image = np.random.random((1, 512, 512, 1))
     score_tensor = image_ops.ssim_multiscale(image, image, max_val=1.0)
     with self.cached_session():
       _ = self.evaluate(score_tensor)

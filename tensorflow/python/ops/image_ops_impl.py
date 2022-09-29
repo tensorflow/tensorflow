@@ -4507,14 +4507,21 @@ def ssim_multiscale(img1,
     # Shape checking.
     shape1, shape2, checks = _verify_compatible_image_shapes(img1, img2)
     # Filter and Power checks
-    min_dimension = math_ops.reduce_min((shape1,shape2))
-    if not(min_dimension/(2**(len(power_factors)-1)) >= filter_size):
-      smallest_dim = int(min_dimension/(2**(len(power_factors)-1)))
-      raise RuntimeError(
-        f'The maximum "filter_size" value for {len(power_factors)} '
-        f'"power_factors" values and images with {min_dimension} as '
-        f'smallest dimension is {smallest_dim}. Reduce the number of '
-        '"power_factors" or use images with bigger dimensions.')
+    min_dimension = math_ops.reduce_min(shape1[-3:-1])
+    smallest_dim = min_dimension/(2**(len(power_factors)-1))
+    if context.executing_eagerly() and (int(smallest_dim) < filter_size):
+        raise RuntimeError(
+          f'You defined {len(power_factors)} "power_factors" '
+          f'values and images with {min_dimension} as smallest dimension. '
+          f'Reduce the number of "power_factors" to '
+          f'{int(smallest_dim)} or less or use images with bigger dimensions.')
+    checks.append(
+      control_flow_ops.Assert(
+        math_ops.greater(smallest_dim, filter_size),
+        [smallest_dim, filter_size],
+        summarize=10
+      )
+    )
     with ops.control_dependencies(checks):
       img1 = array_ops.identity(img1)
 
