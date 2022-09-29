@@ -171,7 +171,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
       lbs.push_back(zero);
       ubs.push_back(updatesDimValues[i]);
       steps.push_back(one);
-      loopIds.push_back(i - 1);
+      loopIds.push_back(i);
     }
 
     auto loop = b.create<gml_st::ForOp>(
@@ -182,7 +182,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
 
           SmallVector<Value> updateIndex(updatesRank, zero);
           for (const auto &en : llvm::enumerate(loopIds))
-            updateIndex[en.index() + 1] = ivs[en.value()];
+            updateIndex[en.value()] = ivs[en.index()];
 
           SmallVector<Value> initIndex =
               to_vector(makeArrayRef(updateIndex).drop_front());
@@ -222,7 +222,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
                         thenBuilder.create<scf::YieldOp>(thenLoc, updatedInit);
                       },
                       [&](OpBuilder &elseBuilder, Location elseLoc) {
-                        elseBuilder.create<scf::YieldOp>(elseLoc, init);
+                        elseBuilder.create<scf::YieldOp>(elseLoc, initBlockArg);
                       })
                   .getResult(0);
 
