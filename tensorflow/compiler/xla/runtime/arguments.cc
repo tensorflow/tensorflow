@@ -255,43 +255,5 @@ Status VerifyMemrefArgument(unsigned index, const Type& type,
   return absl::OkStatus();
 }
 
-// -------------------------------------------------------------------------- //
-// BufferDesc.
-// -------------------------------------------------------------------------- //
-
-static Status VerifyBufferDesc(PrimitiveType element_type,
-                               std::optional<absl::Span<const int64_t>> sizes,
-                               const BufferDesc& buffer) {
-  size_t n_elem = !sizes.has_value() || sizes->empty() ? 1 : (*sizes)[0];
-  size_t expected_buffer_size =
-      primitive_util::ByteWidth(element_type) * n_elem;
-  if (LLVM_UNLIKELY(expected_buffer_size != buffer.size())) {
-    return InvalidArgumentError(StrCat(
-        "buffer size is not equal to that expected from the element type: got ",
-        buffer.size(), " vs expected ", expected_buffer_size, "."));
-  }
-  return absl::OkStatus();
-}
-
-Status BufferDesc::Verify(const Type& type) const {
-  // BufferDesc doesn't have its own type signature; it works with MemrefType.
-  if (auto* memref = dyn_cast<MemrefType>(&type))
-    return VerifyBufferDesc(memref->element_type(), memref->sizes(), *this);
-  return InvalidArgumentError(
-      StrCat("unsupported memref type: ", type.ToString()));
-}
-
-void BufferDesc::Pack(absl::Span<void*> args) const {
-  auto cast = [](const void* ptr) { return const_cast<void*>(ptr); };
-
-  args[0] = cast(&data_);
-  args[1] = cast(&data_);
-  args[2] = cast(&size_);
-}
-
-std::string BufferDesc::ToString() const {
-  return StrFormat("BufferDesc: data: %p size: %i", data(), size());
-}
-
 }  // namespace runtime
 }  // namespace xla

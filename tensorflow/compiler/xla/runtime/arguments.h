@@ -349,28 +349,6 @@ MemrefDesc::MemrefDesc(unsigned rank, PrimitiveType dtype, void* data,
 absl::Status VerifyMemrefArgument(unsigned index, const Type& type,
                                   const MemrefDesc& arg);
 
-//===----------------------------------------------------------------------===//
-// BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
-//===----------------------------------------------------------------------===//
-
-class BufferDesc final : public llvm::RTTIExtends<BufferDesc, Argument> {
- public:
-  static constexpr char ID = 0;  // NOLINT
-
-  BufferDesc(void* data, size_t size) : data_(data), size_(size) {}
-
-  void* data() const { return data_; }
-  size_t size() const { return size_; }
-
-  absl::Status Verify(const Type& type) const final;
-  void Pack(absl::Span<void*> args) const final;
-  std::string ToString() const final;
-
- private:
-  void* data_;
-  size_t size_;
-};
-
 }  // namespace runtime
 }  // namespace xla
 

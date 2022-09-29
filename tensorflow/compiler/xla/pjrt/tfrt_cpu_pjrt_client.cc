@@ -1482,7 +1482,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
     // Call generated function.
     if (cpu_executable->IsXlaRuntime()) {
-      std::vector<xla::runtime::BufferDesc> buffers;
+      std::vector<xla::cpu::BufferDesc> buffers;
       buffers.reserve(buffer_table.size());
       auto is_result_index = [this](int i) {
         for (const auto& result_idx : result_buffer_indices_) {
@@ -1495,13 +1495,11 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
       for (unsigned i = 0; i < buffer_table.size(); ++i) {
         if (is_result_index(i)) continue;
         const auto& buf = buffer_table[i];
-        buffers.emplace_back(
-            xla::runtime::BufferDesc{buf->data(), buf->size()});
+        buffers.emplace_back(xla::cpu::BufferDesc{buf->data(), buf->size()});
       }
       for (const auto& result_idx : result_buffer_indices_) {
         const auto& buf = buffer_table[result_idx];
-        buffers.emplace_back(
-            xla::runtime::BufferDesc{buf->data(), buf->size()});
+        buffers.emplace_back(xla::cpu::BufferDesc{buf->data(), buf->size()});
       }
       Status status = cpu_executable->ExecuteXlaRuntime(buffers);
       if (!status.ok()) return status;

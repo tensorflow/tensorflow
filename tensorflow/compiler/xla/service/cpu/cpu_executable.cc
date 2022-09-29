@@ -346,7 +346,7 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
 // Note: 'descriptor_index' and 'operand_index' are just used for error
 // reporting.
 static StatusOr<runtime::MemrefDesc> BufferToMemref(
-    const runtime::BufferDesc& descriptor, const runtime::Type& operand_type,
+    const BufferDesc& descriptor, const runtime::Type& operand_type,
     size_t descriptor_index, size_t operand_index) {
   auto* memref = llvm::dyn_cast<runtime::MemrefType>(&operand_type);
   if (!memref) {
@@ -390,7 +390,7 @@ static StatusOr<runtime::MemrefDesc> BufferToMemref(
 // converted to MemrefDesc's according to the corresponding operands in the
 // runtime signature.
 Status XlaRuntimeCpuExecutable::Execute(
-    const std::vector<runtime::BufferDesc>& descriptor_table) {
+    const std::vector<BufferDesc>& descriptor_table) {
   const runtime::FunctionType& signature =
       default_executable_->runtime_signature();
 
@@ -414,7 +414,7 @@ Status XlaRuntimeCpuExecutable::Execute(
   arguments.reserve(num_arguments);
 
   auto append_converted_buffer = [&](size_t descriptor_index) -> Status {
-    const runtime::BufferDesc& descriptor = descriptor_table[descriptor_index];
+    const BufferDesc& descriptor = descriptor_table[descriptor_index];
 
     // Use 1-based index to account for the execution context.
     size_t operand_index = arguments.size() + 1;

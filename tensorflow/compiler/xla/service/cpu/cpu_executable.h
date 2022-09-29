@@ -59,6 +59,18 @@ struct XlaFrameworkMapping {
   bool output_is_tuple = false;
 };
 
+// BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
+class BufferDesc {
+ public:
+  BufferDesc(void* data, size_t size) : data_(data), size_(size) {}
+  void* data() const { return data_; }
+  size_t size() const { return size_; }
+
+ private:
+  void* data_;
+  size_t size_;
+};
+
 class XlaRuntimeCpuExecutable {
  public:
   explicit XlaRuntimeCpuExecutable(
@@ -67,7 +79,7 @@ class XlaRuntimeCpuExecutable {
       : jit_executable_(std::move(jit_executable)),
         default_executable_(&jit_executable_->DefaultExecutable().get()),
         xla_framework_mapping_(xla_framework_mapping) {}
-  Status Execute(const std::vector<xla::runtime::BufferDesc>& descriptor_table);
+  Status Execute(const std::vector<BufferDesc>& descriptor_table);
   xla::runtime::Executable& default_executable() {
     return *default_executable_;
   }
@@ -102,8 +114,7 @@ class CpuExecutable : public Executable {
 
   bool IsXlaRuntime() { return xla_runtime_executable_ != nullptr; }
 
-  Status ExecuteXlaRuntime(
-      const std::vector<xla::runtime::BufferDesc>& descriptor_table) {
+  Status ExecuteXlaRuntime(const std::vector<BufferDesc>& descriptor_table) {
     return xla_runtime_executable_->Execute(descriptor_table);
   }
 
