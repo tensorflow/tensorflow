@@ -59,6 +59,7 @@ cc_library(
         "tf_jitrt_rewrite_vector_multi_reduction.cc",
         "tf_jitrt_symbolic_shape_optimization.cc",
         "tf_jitrt_tile_cwise.cc",
+        "tf_jitrt_tile_matmul.cc",
         "tf_jitrt_tile_reduction.cc",
         "tf_jitrt_tile_transpose.cc",
     ],

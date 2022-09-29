@@ -34,6 +34,7 @@ limitations under the License.
 
 namespace tensorflow {
 #define GEN_PASS_DECL_TILEREDUCTION
+#define GEN_PASS_DECL_TILEMATMUL
 #define GEN_PASS_DECL_TILEFILL
 #define GEN_PASS_DECL_TILECWISE
 #define GEN_PASS_DECL_MATHAPPROXIMATION
@@ -59,6 +60,11 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTileReductionPass(int64_t reduction_vector_size,
                         int64_t reduction_1d_tile_size,
                         llvm::ArrayRef<int64_t> reduction_2d_tile_sizes);
+
+// Pass to tile and fuse linalg.matmul on tensors.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileMatmulPass();
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileMatmulPass(
+    llvm::ArrayRef<int64_t> matmul_tile_sizes);
 
 // Pass to fuse `linalg.fill` into a tiled reduction.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

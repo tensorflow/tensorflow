@@ -51,6 +51,10 @@ struct TfJitRtPipelineOptions
       *this, "reduction-2d-tile-sizes",
       llvm::cl::desc("Tile sizes for a 2D reduction."), llvm::cl::ZeroOrMore};
 
+  ListOption<int64_t> matmul_tile_sizes{
+      *this, "matmul-tile-sizes",
+      llvm::cl::desc("Tile sizes for `linalg.matmul`."), llvm::cl::ZeroOrMore};
+
   Option<bool> legalize_i1_tensors{
       *this, "legalize-i1-tensors",
       llvm::cl::desc("Convert i1 tensors to i8 tensors."),
