@@ -122,7 +122,7 @@ Value createNestedPloopTilingRecursively(
 
   // Create ploop.
   auto ploop = b.create<ParallelOp>(
-      loc, sourceTy, lowerBounds, upperBounds, steps,
+      loc, sourceTy, lowerBounds, upperBounds, steps, llvm::None,
       [&](OpBuilder &b, Location loc, ValueRange ivs) {
         Value subset = createTileOrPoint(b, loc, sourceSpace, ivs, upperBounds,
                                          steps, nestedTileSizes.front());
@@ -386,6 +386,7 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
                            getValueOrCreateConstantIndexOp(builder, loc, lbs),
                            getValueOrCreateConstantIndexOp(builder, loc, ubs),
                            getValueOrCreateConstantIndexOp(builder, loc, steps),
+                           llvm::None,
                            [&](OpBuilder &nestedBuilder, Location bodyLoc,
                                ValueRange ivs) {
                              buildBody(nestedBuilder, bodyLoc, ivs);

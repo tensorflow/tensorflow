@@ -238,7 +238,7 @@ struct ParallelOpVectorizationPattern : public OpRewritePattern<ParallelOp> {
     };
     auto vectorParallel = rewriter.create<ParallelOp>(
         loc, resultTypes, op.getLowerBound(), op.getUpperBound(), op.getStep(),
-        bodyBuilder);
+        llvm::None, bodyBuilder);
     bvm.map(op.getResults(), vectorParallel.getResults());
 
     convertVectorResultsToTensor(op, op.getTerminator().getDsts(), bvm,

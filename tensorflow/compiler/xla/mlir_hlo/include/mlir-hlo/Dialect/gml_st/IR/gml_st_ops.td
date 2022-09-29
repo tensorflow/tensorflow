@@ -155,10 +155,16 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
   }];
   let arguments = (ins Variadic<Index>:$lowerBound,
                        Variadic<Index>:$upperBound,
-                       Variadic<Index>:$step);
+                       Variadic<Index>:$step,
+                       OptionalAttr<StrAttr>:$distributionType);
+  // The default builder does not generate the block with induction variables
+  // as arguments, and conflicts with the custom one. Prevent tablegen from
+  // generating it.
+  let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
       "ValueRange":$upperBounds, "ValueRange":$steps,
+      CArg<"Optional<StringAttr>", "llvm::None">:$distributionType,
       CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange)>",
       "nullptr">:$bodyBuilderFn)>,
   ];

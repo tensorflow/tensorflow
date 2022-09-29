@@ -384,7 +384,7 @@ struct ParallelOpInterface
     // Create new TiledLoopOp.
     auto newLoopOp = rewriter.create<ParallelOp>(
         loopOp.getLoc(), TypeRange{llvm::None}, loopOp.getLowerBound(),
-        loopOp.getUpperBound(), loopOp.getStep(), nullptr);
+        loopOp.getUpperBound(), loopOp.getStep());
 
     // Move the old body into the new loop.
     rewriter.mergeBlocks(loopOp.getBody(), newLoopOp.getBody(),
