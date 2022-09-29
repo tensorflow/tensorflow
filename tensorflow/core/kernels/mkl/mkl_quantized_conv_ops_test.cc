@@ -789,8 +789,8 @@ class QuantizedConvTest : public OpsTestBase {
   void RunFloatConv(const Tensor& input_data, const Tensor& filter_data,
                     const Tensor& bias_data, const Tensor& summand_data,
                     Tensor* output, const bool is_depthwise,
-                    const std::vector<string>& fused_ops, const string padding,
-                    const int stride) {
+                    const bool is_conv3d, const std::vector<string>& fused_ops,
+                    const string padding, const int stride) {
     auto root = tensorflow::Scope::NewRootScope();
     auto input_data_op =
         ops::Const(root.WithOpName("input"), Input::Initializer(input_data));
@@ -802,6 +802,11 @@ class QuantizedConvTest : public OpsTestBase {
           ops::Const(root.WithOpName("filter"),
                      Input::Initializer(filter_data)),
           {1, stride, stride, 1}, padding);
+    } else if (is_conv3d) {
+      out_op = ops::Conv3D(root.WithOpName("conv"), input_data_op,
+                           ops::Const(root.WithOpName("filter"),
+                                      Input::Initializer(filter_data)),
+                           {1, stride, stride, stride, 1}, padding);
     } else {
       out_op = ops::Conv2D(root.WithOpName("conv"), input_data_op,
                            ops::Const(root.WithOpName("filter"),
@@ -919,7 +924,8 @@ class QuantizedConvTest : public OpsTestBase {
     Tensor expected_float, dummy_summand;
 
     RunFloatConv(image_float, filter_float, bias_float, dummy_summand,
-                 &expected_float, is_depthwise, fused_ops, padding, stride);
+                 &expected_float, is_depthwise, /*is_conv3d*/ false, fused_ops,
+                 padding, stride);
     RunQuantizedKernel<Tinput, qint8, Toutput, float>(
         image_float, filter_float, bias_float, dummy_summand, expected_float,
         fused_ops, tol);
@@ -1008,12 +1014,105 @@ class QuantizedConvTest : public OpsTestBase {
 
     Tensor expected_float;
     RunFloatConv(image_float, filter_float, bias_float, summand_float,
-                 &expected_float, /*is_depthwise*/ false, fused_ops, padding,
-                 stride);
+                 &expected_float, /*is_depthwise*/ false, /*is_conv3d*/ false,
+                 fused_ops, padding, stride);
 
     RunQuantizedKernel<qint8, qint8, Toutput, float, Tsummand>(
         image_float, filter_float, bias_float, summand_float, expected_float,
         fused_ops);
+  }
+
+  template <typename Tinput, typename Toutput>
+  void TestConv3DBiasAddFusion(bool fuse_requantize, string activation = "",
+                               const float tol = 1.0) {
+    const int stride = 1;
+    const string padding = "VALID";
+    std::vector<string> fused_ops = {"BiasAdd"};
+    std::map<string, DataType> data_types = {
+        {"Tinput", DataTypeToEnum<Tinput>::v()},
+        {"Tfilter", DT_QINT8},
+        {"Tbias", DT_FLOAT},
+        {"Tsummand", DataTypeToEnum<Toutput>::v()},
+        {"out_type", DataTypeToEnum<Toutput>::v()}};
+    std::vector<DataType> input_types = {data_types["Tinput"],
+                                         data_types["Tfilter"],
+                                         data_types["Tbias"],
+                                         DT_FLOAT,   // min_input
+                                         DT_FLOAT,   // max_input
+                                         DT_FLOAT,   // min_filter
+                                         DT_FLOAT};  // max_filter
+    if (!activation.empty()) {
+      fused_ops.push_back(activation);
+    }
+
+    if (fuse_requantize) {
+      fused_ops.push_back("Requantize");
+      input_types.push_back(DT_FLOAT);  // min_freezed_output
+      input_types.push_back(DT_FLOAT);  // max_freezed_output
+    }
+
+    TF_EXPECT_OK(
+        NodeDefBuilder("quantized_conv_op", "_FusedQuantizedConv3D")
+            .Attr("Thost_inputs", input_types)
+            .Attr("Thost_outputs", {data_types["out_type"], DT_FLOAT, DT_FLOAT})
+            .Attr("Tdevice_inputs", std::vector<DataType>())
+            .Attr("Tdevice_outputs", std::vector<DataType>())
+            .Attr("Tinput", data_types["Tinput"])
+            .Attr("Tfilter", data_types["Tfilter"])
+            .Attr("Tbias", data_types["Tbias"])
+            .Attr("Tsummand", data_types["Tsummand"])
+            .Attr("out_type", data_types["out_type"])
+            .Attr("strides", {1, stride, stride, stride, 1})
+            .Attr("padding", padding)
+            .Attr("fused_ops", fused_ops)
+            .Input(FakeInput())
+            .Input(FakeInput())
+            .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+
+    const int image_batch = 1;
+    const int image_height = 4;
+    const int image_width = 4;
+    const int image_depth = 4;
+    const int channels = 2;
+
+    const int filter_depth = 2;
+    const int filter_height = 2;
+    const int filter_width = 2;
+    const int filter_out_channels = 2;
+
+    // Format is NHWC
+    Tensor image_float(DT_FLOAT, {image_batch, image_depth, image_height,
+                                  image_width, channels});
+    test::FillValues<float>(
+        &image_float,
+        {-1, 3,  1,  0, -2, 1, 3,  1, 2,  1,  0,  2,  -3, 2, 1,  1,
+         2,  -2, 0,  1, -2, 0, 1,  2, 3,  -1, 1,  -1, 0,  0, -3, 1,
+         -2, 0,  1,  1, -3, 3, 1,  0, 2,  -1, -1, 0,  3,  2, 1,  -2,
+         1,  0,  -2, 0, -1, 0, -3, 3, -3, 1,  0,  0,  1,  1, 0,  -2,
+         -1, 0,  1,  0, 1,  1, 3,  1, 1,  1,  0,  2,  0,  2, 1,  1,
+         1,  0,  0,  1, -2, 0, 1,  2, 3,  -1, 1,  1,  0,  0, -3, 1,
+         -2, 0,  1,  1, 3,  3, 1,  0, 2,  -1, 1,  0,  3,  2, -2, 2,
+         1,  0,  -2, 0, -1, 0, -3, 3, -3, 1,  0,  0,  -2, 1, 2,  -3});
+
+    Tensor filter_float(DT_FLOAT, {filter_depth, filter_height, filter_width,
+                                   channels, filter_out_channels});
+    test::FillValues<float>(
+        &filter_float, {-2, 3, -3, 0, -1, 0, 0, -2, 1,  0, 1, 1, 3, 3,  2, -2,
+                        2,  2, -3, 0, -1, 0, 0, -2, -1, 0, 1, 1, 3, -3, 2, -2});
+
+    Tensor bias_float(DT_FLOAT, {filter_out_channels});
+    test::FillValues<float>(&bias_float, {2, 1});
+
+    Tensor dummy_summand;
+
+    Tensor expected_float;
+    RunFloatConv(image_float, filter_float, bias_float, dummy_summand,
+                 &expected_float, /*is_depthwise*/ false, /*is_conv3d*/ true,
+                 fused_ops, padding, stride);
+    RunQuantizedKernel<Tinput, qint8, Toutput, float, Toutput>(
+        image_float, filter_float, bias_float, dummy_summand, expected_float,
+        fused_ops, tol);
   }
 };
 
@@ -1023,6 +1122,10 @@ TEST_F(QuantizedConvTest, BiasAddFusion) {
 
 TEST_F(QuantizedConvTest, BiasAddRequantizeFusion) {
   TestBiasAddFusion<qint8, qint8>(true, false);
+}
+
+TEST_F(QuantizedConvTest, Conv3DBiasAddRequantizeFusion) {
+  TestConv3DBiasAddFusion<qint8, qint8>(true, "Relu");
 }
 
 TEST_F(QuantizedConvTest, BiasAddReluRequantizeFusion) {
@@ -1061,6 +1164,368 @@ TEST_F(QuantizedConvTest, BiasAddSumReluRequantizeFusionSignedSummand) {
 
 TEST_F(QuantizedConvTest, BiasAddSumReluFusionFloatSummand) {
   TestBiasAddSumActivationFusion<float, qint32>("Relu");
+}
+
+class QuantizedConv3DTest : public OpsTestBase {
+ protected:
+  void ConfigureQuantizedConv3D(string padding = "VALID",
+                                const int& stride = 1) {
+    TF_EXPECT_OK(NodeDefBuilder("quantized_conv_op", "_FusedQuantizedConv3D")
+                     .Attr("Thost_inputs", {DT_QUINT8, DT_QINT8, DT_FLOAT,
+                                            DT_FLOAT, DT_FLOAT, DT_FLOAT})
+                     .Attr("Thost_outputs", {DT_QINT32, DT_FLOAT, DT_FLOAT})
+                     .Attr("Tdevice_inputs", std::vector<DataType>())
+                     .Attr("Tdevice_outputs", std::vector<DataType>())
+                     .Attr("Tinput", DT_QUINT8)
+                     .Attr("Tfilter", DT_QINT8)
+                     .Attr("out_type", DT_QINT32)
+                     .Attr("Tsummand", DT_QINT32)
+                     .Attr("strides", {1, stride, stride, stride, 1})
+                     .Attr("padding", padding)
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(QuantizedConv3DTest, Small) {
+  const int stride = 1;
+  string padding = "VALID";
+  ConfigureQuantizedConv3D(padding, stride);
+
+  const int channel_depth = 1;
+  const int image_width = 4;
+  const int image_height = 4;
+  const int image_batch_count = 1;
+  const int image_depth = 4;
+  // NDHWC = 1, 4, 4, 4, 1
+
+  // Image -> uint8
+  const float image_min = 0.0f;
+  const float image_max = 255.0f;
+
+  // The image matrix is:
+  // |  1 |  0 |  1 |  0 |
+  // |  1 |  1 |  3 |  1 |
+  // |  1 |  1 |  0 |  2 |
+  // |  0 |  2 |  1 |  1 |
+
+  // |  1 |  0 |  0 |  1 |
+  // |  2 |  0 |  1 |  2 |
+  // |  3 |  1 |  1 |  1 |
+  // |  0 |  0 |  3 |  1 |
+
+  // |  2 |  0 |  1 |  1 |
+  // |  3 |  3 |  1 |  0 |
+  // |  2 |  1 |  1 |  0 |
+  // |  3 |  2 |  1 |  2 |
+
+  // |  1 |  0 |  2 |  0 |
+  // |  1 |  0 |  3 |  3 |
+  // |  3 |  1 |  0 |  0 |
+  // |  1 |  1 |  0 |  2 |
+  Tensor image_float(DT_FLOAT, {image_batch_count, image_depth, image_height,
+                                image_width, channel_depth});
+  test::FillValues<float>(
+      &image_float,
+      {1, 0, 1, 0, 1, 1, 3, 1, 1, 1, 0, 2, 0, 2, 1, 1, 1, 0, 0, 1, 2, 0,
+       1, 2, 3, 1, 1, 1, 0, 0, 3, 1, 2, 0, 1, 1, 3, 3, 1, 0, 2, 1, 1, 0,
+       3, 2, 1, 2, 1, 0, 2, 0, 1, 0, 3, 3, 3, 1, 0, 0, 1, 1, 0, 2});
+  Tensor image_quantized =
+      FloatTensorToQuantized<quint8>(image_float, image_min, image_max);
+
+  const int filter_size = 2;
+  const int filter_count = 1;
+
+  // Filter -> int8 with symmetric range
+  const float filter_min = -127.0f;
+  const float filter_max = 127.0f;
+
+  // The filter matrix is:
+  // | 1 | 0 |
+  // | 0 | 0 |
+
+  // | 2 | 1 |
+  // | 0 | 0 |
+  Tensor filter_float(DT_FLOAT, {filter_size, filter_size, filter_size,
+                                 channel_depth, filter_count});
+  test::FillValues<float>(&filter_float, {0, 1, 0, 0, 2, 1, 0, 0});
+  Tensor filter_quantized =
+      FloatTensorToQuantized<qint8>(filter_float, filter_min, filter_max);
+
+  AddInputFromArray<quint8>(image_quantized.shape(),
+                            image_quantized.flat<quint8>());
+  AddInputFromArray<qint8>(filter_quantized.shape(),
+                           filter_quantized.flat<qint8>());
+  AddInputFromArray<float>(TensorShape({1}), {image_min});
+  AddInputFromArray<float>(TensorShape({1}), {image_max});
+  AddInputFromArray<float>(TensorShape({1}), {filter_min});
+  AddInputFromArray<float>(TensorShape({1}), {filter_max});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  // We're sliding the 2x2x2 filter across the 4x4x4 image, with the 'VALID'
+  // padding mode.
+  // This means we should end up with this matrix:
+  // |  2 |  1 |  1 |
+  // |  5 |  4 |  5 |
+  // |  8 |  3 |  5 |
+
+  // |  4 |  1 |  4 |
+  // |  9 |  8 |  4 |
+  // |  6 |  4 |  3 |
+
+  // |  2 |  3 |  5 |
+  // |  5 |  4 |  9 |
+  // |  8 |  3 |  0 |
+
+  // Output -> float
+  Tensor expected_float(DT_FLOAT, TensorShape({1, 3, 3, 3, 1}));
+  test::FillValues<float>(&expected_float,
+                          {2, 1, 1, 5, 4, 5, 8, 3, 5, 4, 1, 4, 9, 8,
+                           4, 6, 4, 3, 2, 3, 5, 5, 4, 9, 8, 3, 0});
+
+  const Tensor& output = *GetOutput(0);
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  Tensor output_float =
+      QuantizedTensorToFloat<qint32>(output, output_min, output_max);
+  test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
+}
+
+TEST_F(QuantizedConv3DTest, Small1) {
+  const int stride = 1;
+  string padding = "VALID";
+  ConfigureQuantizedConv3D(padding, stride);
+
+  const int channel_depth = 1;
+  const int image_width = 3;
+  const int image_height = 3;
+  const int image_batch_count = 1;
+  const int image_depth = 3;
+  // NDHWC = 1, 3, 3, 3, 1
+
+  // Image -> uint8
+  const float image_min = 0.0f;
+  const float image_max = 255.0f;
+
+  // The image matrix is:
+  // |  1 |  0 |  1 |
+  // |  1 |  1 |  3 |
+  // |  1 |  1 |  0 |
+
+  // |  1 |  0 |  0 |
+  // |  2 |  0 |  1 |
+  // |  3 |  1 |  1 |
+
+  // |  2 |  0 |  1 |
+  // |  3 |  3 |  1 |
+  // |  2 |  1 |  1 |
+
+  Tensor image_float(DT_FLOAT, {image_batch_count, image_depth, image_height,
+                                image_width, channel_depth});
+  test::FillValues<float>(&image_float,
+                          {1, 0, 1, 1, 1, 3, 1, 1, 0, 1, 0, 0, 2, 0,
+                           1, 3, 1, 1, 2, 0, 1, 3, 3, 1, 2, 1, 1});
+  Tensor image_quantized =
+      FloatTensorToQuantized<quint8>(image_float, image_min, image_max);
+
+  const int filter_size = 2;
+  const int filter_count = 1;
+
+  // Filter -> int8 with symmetric range
+  const float filter_min = -127.0f;
+  const float filter_max = 127.0f;
+
+  // The filter matrix is:
+  // | 1 | 0 |
+  // | 0 | 0 |
+
+  // | 2 | 1 |
+  // | 0 | 0 |
+
+  Tensor filter_float(DT_FLOAT, {filter_size, filter_size, filter_size,
+                                 channel_depth, filter_count});
+  test::FillValues<float>(&filter_float, {1, 0, 0, 0, 2, 1, 0, 0});
+  Tensor filter_quantized =
+      FloatTensorToQuantized<qint8>(filter_float, filter_min, filter_max);
+
+  AddInputFromArray<quint8>(image_quantized.shape(),
+                            image_quantized.flat<quint8>());
+  AddInputFromArray<qint8>(filter_quantized.shape(),
+                           filter_quantized.flat<qint8>());
+  AddInputFromArray<float>(TensorShape({1}), {image_min});
+  AddInputFromArray<float>(TensorShape({1}), {image_max});
+  AddInputFromArray<float>(TensorShape({1}), {filter_min});
+  AddInputFromArray<float>(TensorShape({1}), {filter_max});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  // We're sliding the 2x2x2 filter across the 3x3x3 image, with the 'VALID'
+  // padding mode.
+  // This means we should end up with this matrix:
+  // |  3 |  0 |
+  // |  5 |  2 |
+
+  // |  5 |  1 |
+  // | 11 |  7 |
+
+  // Output -> float
+  Tensor expected_float(DT_FLOAT, TensorShape({1, 2, 2, 2, 1}));
+  test::FillValues<float>(&expected_float, {3, 0, 5, 2, 5, 1, 11, 7});
+
+  const Tensor& output = *GetOutput(0);
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  Tensor output_float =
+      QuantizedTensorToFloat<qint32>(output, output_min, output_max);
+  test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
+}
+
+class QuantizedConv3DBiasAddRequantizeTest : public OpsTestBase {
+ protected:
+  void ConfigureQuantizedConv3DBiasAddRequantize(string padding = "VALID",
+                                                 const int& stride = 1) {
+    TF_EXPECT_OK(NodeDefBuilder("quantized_conv_op", "_FusedQuantizedConv3D")
+                     .Attr("Thost_inputs",
+                           {DT_QINT8, DT_QINT8, DT_FLOAT, DT_FLOAT, DT_FLOAT,
+                            DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT})
+                     .Attr("Thost_outputs", {DT_QINT8, DT_FLOAT, DT_FLOAT})
+                     .Attr("Tdevice_inputs", std::vector<DataType>())
+                     .Attr("Tdevice_outputs", std::vector<DataType>())
+                     .Attr("Tinput", DT_QINT8)
+                     .Attr("Tfilter", DT_QINT8)
+                     .Attr("Tbias", DT_FLOAT)
+                     .Attr("Tsummand", DT_QINT8)
+                     .Attr("out_type", DT_QINT8)
+                     .Attr("strides", {1, stride, stride, stride, 1})
+                     .Attr("padding", padding)
+                     .Attr("fused_ops", {"BiasAdd", "Requantize"})
+                     .Input(FakeInput())
+                     .Input(FakeInput())
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(QuantizedConv3DBiasAddRequantizeTest, Small) {
+  const int stride = 1;
+  string padding = "VALID";
+  ConfigureQuantizedConv3DBiasAddRequantize(padding, stride);
+
+  const int channel_depth = 1;
+  const int image_width = 4;
+  const int image_height = 4;
+  const int image_batch_count = 1;
+  const int image_depth = 4;
+  // NDHWC = 1, 4, 4, 4, 1
+
+  // Image -> uint8
+  const float image_min = -3.0f;
+  const float image_max = 3.0f;
+
+  // The image matrix is:
+  // |  1 |  0 |  1 |  0 |
+  // |  1 |  1 |  3 |  1 |
+  // |  1 |  1 |  0 |  2 |
+  // |  0 |  2 |  1 |  1 |
+
+  // |  1 |  0 |  0 |  1 |
+  // |  2 |  0 |  1 |  2 |
+  // |  3 |  1 |  1 |  1 |
+  // |  0 |  0 |  3 |  1 |
+
+  // |  2 |  0 |  1 |  1 |
+  // |  3 |  3 |  1 |  0 |
+  // |  2 |  1 |  1 |  0 |
+  // |  3 |  2 |  1 |  2 |
+
+  // |  1 |  0 |  2 |  0 |
+  // |  1 |  0 |  3 |  3 |
+  // |  3 |  1 |  0 |  0 |
+  // |  1 |  1 |  0 |  2 |
+  Tensor image_float(DT_FLOAT, {image_batch_count, image_depth, image_height,
+                                image_width, channel_depth});
+  test::FillValues<float>(
+      &image_float,
+      {1, 0, 1, 0, 1, 1, 3, 1, 1, 1, 0, 2, 0, 2, 1, 1, 1, 0, 0, 1, 2, 0,
+       1, 2, 3, 1, 1, 1, 0, 0, 3, 1, 2, 0, 1, 1, 3, 3, 1, 0, 2, 1, 1, 0,
+       3, 2, 1, 2, 1, 0, 2, 0, 1, 0, 3, 3, 3, 1, 0, 0, 1, 1, 0, 2});
+  Tensor image_quantized(DT_QINT8, {1, 4, 4, 4, 1});
+  image_quantized =
+      FloatTensorToQuantized<qint8>(image_float, image_min, image_max);
+
+  const int filter_size = 2;
+  const int filter_count = 1;
+
+  // Filter -> int8 with symmetric range
+  const float filter_min = -2.0f;
+  const float filter_max = 2.0f;
+
+  // The filter matrix is:
+  // | 1 | 0 |
+  // | 0 | 0 |
+
+  // | 2 | 1 |
+  // | 0 | 0 |
+  Tensor filter_float(DT_FLOAT, {filter_size, filter_size, filter_size,
+                                 channel_depth, filter_count});
+  test::FillValues<float>(&filter_float, {0, 1, 0, 0, 2, 1, 0, 0});
+  Tensor filter_quantized(DT_QINT8, {2, 2, 2, 1, 1});
+  filter_quantized =
+      FloatTensorToQuantized<qint8>(filter_float, filter_min, filter_max);
+
+  Tensor bias(DT_FLOAT, {filter_count});
+  test::FillValues<float>(&bias, {1});
+
+  Tensor min_output(DT_FLOAT, {1});
+  test::FillValues<float>(&min_output, {-10});
+
+  Tensor max_output(DT_FLOAT, {1});
+  test::FillValues<float>(&max_output, {10});
+
+  AddInputFromArray<qint8>(image_quantized.shape(),
+                           image_quantized.flat<qint8>());
+  AddInputFromArray<qint8>(filter_quantized.shape(),
+                           filter_quantized.flat<qint8>());
+  AddInputFromArray<float>(bias.shape(), bias.flat<float>());
+  AddInputFromArray<float>(TensorShape({1}), {image_min});
+  AddInputFromArray<float>(TensorShape({1}), {image_max});
+  AddInputFromArray<float>(TensorShape({1}), {filter_min});
+  AddInputFromArray<float>(TensorShape({1}), {filter_max});
+  AddInputFromArray<float>(min_output.shape(), min_output.flat<float>());
+  AddInputFromArray<float>(max_output.shape(), max_output.flat<float>());
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  // We're sliding the 2x2x2 filter across the 4x4x4 image, with the 'VALID'
+  // padding mode and Bias=1.
+  // This means we should end up with this matrix:
+  // |  3 |  2 |  2 |
+  // |  6 |  5 |  6 |
+  // |  9 |  4 |  6 |
+
+  // |  5 |  2 |  5 |
+  // | 10 |  9 |  5 |
+  // |  7 |  5 |  4 |
+
+  // |  3 |  4 |  6 |
+  // |  6 |  5 | 10 |
+  // |  9 |  4 |  1 |
+
+  // Output -> float
+  Tensor expected_float(DT_FLOAT, TensorShape({1, 3, 3, 3, 1}));
+  test::FillValues<float>(&expected_float,
+                          {3, 2, 2, 6, 5, 6, 9, 4, 6, 5,  2, 5, 10, 9,
+                           5, 7, 5, 4, 3, 4, 6, 6, 5, 10, 9, 4, 1});
+
+  const Tensor& output = *GetOutput(0);
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  Tensor output_float(DT_FLOAT, {1, 3, 3, 3, 1});
+  output_float = QuantizedTensorToFloat<qint8>(output, output_min, output_max);
+  test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 
 }  // namespace tensorflow

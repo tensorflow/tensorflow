@@ -285,6 +285,9 @@ Status FusedQuantizedConv2DShape(InferenceContext* c);
 // Shape function for _QuantizedDepthwiseConv2D op/fusion.
 Status FusedQuantizedDepthwiseConv2D(InferenceContext* c);
 
+// Shape function for _FusedQuantizedConv3D op/fusion.
+Status FusedQuantizedConv3DShape(InferenceContext* c);
+
 // Shape function for QuantizedAvgPool op
 Status QuantizedAvgPoolShape(InferenceContext* c);
 

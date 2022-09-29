@@ -768,15 +768,21 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
   return Conv2DShapeImpl(c, false);
 }
 
-// TODO(mjanusz): Unify all conv/pooling shape functions.
-Status Conv3DShape(shape_inference::InferenceContext* c) {
+namespace {
+Status Conv3DShapeImpl(shape_inference::InferenceContext* c, bool pad_enabled) {
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &input_shape));
   ShapeHandle filter_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &filter_shape));
 
-  string data_format;
-  Status s = c->GetAttr("data_format", &data_format);
+  string data_format_str;
+  Status s = c->GetAttr("data_format", &data_format_str);
+
+  TensorFormat data_format;
+  if (!FormatFromString(data_format_str, &data_format)) {
+    return errors::InvalidArgument("Invalid data format string: ",
+                                   data_format_str);
+  }
 
   std::vector<int32> dilations;
   TF_RETURN_IF_ERROR(c->GetAttr("dilations", &dilations));
@@ -797,7 +803,7 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
 
   int32_t stride_planes, stride_rows, stride_cols;
   int32_t dilation_planes, dilation_rows, dilation_cols;
-  if (s.ok() && data_format == "NCDHW") {
+  if (s.ok() && data_format_str == "NCDHW") {
     // Convert input_shape to NDHWC.
     auto dim = [&](char dimension) {
       return c->Dim(input_shape, GetTensorDimIndex<3>(FORMAT_NCHW, dimension));
@@ -859,20 +865,48 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
 
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
-  DimensionHandle output_planes, output_rows, output_cols;
 
+  std::vector<int64_t> explicit_paddings;
+  if (pad_enabled) {
+    Status s = c->GetAttr("explicit_paddings", &explicit_paddings);
+    // Use the default value, which is an empty list, if the attribute is not
+    // found. Otherwise return the error to the caller.
+    if (!s.ok() && !errors::IsNotFound(s)) {
+      return s;
+    }
+  }
+  DimensionHandle output_planes, output_rows, output_cols;
+  int64 pad_top = 0, pad_left = 0, pad_front = 0;
+  int64 pad_bottom = 0, pad_right = 0, pad_back = 0;
+  if (pad_enabled && explicit_paddings.size() > 0) {
+    padding = Padding::EXPLICIT;
+    if (data_format_str == "NDHWC") {
+      pad_front = explicit_paddings[2];
+      pad_back = explicit_paddings[3];
+      pad_top = explicit_paddings[4];
+      pad_bottom = explicit_paddings[5];
+      pad_left = explicit_paddings[6];
+      pad_right = explicit_paddings[7];
+    } else if (data_format_str == "NCDHW") {
+      pad_front = explicit_paddings[4];
+      pad_back = explicit_paddings[5];
+      pad_top = explicit_paddings[6];
+      pad_bottom = explicit_paddings[7];
+      pad_left = explicit_paddings[8];
+      pad_right = explicit_paddings[9];
+    }
+  }
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
       c, in_planes_dim, filter_planes_dim, dilation_planes, stride_planes,
-      padding, -1, -1, &output_planes));
+      padding, pad_front, pad_back, &output_planes));
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
-      c, in_rows_dim, filter_rows_dim, dilation_rows, stride_rows, padding, -1,
-      -1, &output_rows));
+      c, in_rows_dim, filter_rows_dim, dilation_rows, stride_rows, padding,
+      pad_top, pad_bottom, &output_rows));
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
-      c, in_cols_dim, filter_cols_dim, dilation_cols, stride_cols, padding, -1,
-      -1, &output_cols));
-
+      c, in_cols_dim, filter_cols_dim, dilation_cols, stride_cols, padding,
+      pad_left, pad_right, &output_cols));
   ShapeHandle output_shape;
-  if (data_format == "NCDHW") {
+  if (data_format_str == "NCDHW") {
     output_shape = c->MakeShape({batch_size_dim, output_depth_dim,
                                  output_planes, output_rows, output_cols});
   } else {
@@ -881,6 +915,12 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
   }
   c->set_output(0, output_shape);
   return OkStatus();
+}
+}  // namespace
+
+// TODO(mjanusz): Unify all conv/pooling shape functions.
+Status Conv3DShape(shape_inference::InferenceContext* c) {
+  return Conv3DShapeImpl(c, false);
 }
 
 Status Conv2DBackpropInputShape(shape_inference::InferenceContext* c) {
@@ -2616,6 +2656,12 @@ Status FusedQuantizedConv2DShape(InferenceContext* c) {
 Status FusedQuantizedDepthwiseConv2D(InferenceContext* c) {
   TF_RETURN_IF_ERROR(DepthwiseConv2DNativeShapeImpl(c, true));
   TF_RETURN_IF_ERROR(FusedQuantizedConvShape(c, 4));
+  return OkStatus();
+}
+
+Status FusedQuantizedConv3DShape(InferenceContext* c) {
+  TF_RETURN_IF_ERROR(shape_inference::Conv3DShapeImpl(c, true));
+  TF_RETURN_IF_ERROR(FusedQuantizedConvShape(c, 5));
   return OkStatus();
 }
 

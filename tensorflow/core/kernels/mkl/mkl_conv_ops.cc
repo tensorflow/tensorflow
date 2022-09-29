@@ -2535,6 +2535,10 @@ REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv2D",
 REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
                                              MklQuantizedConvOp, qint32, qint32,
                                              true, quantized_fusions::none, -1)
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv3D",
+                                             MklQuantizedConvOp, qint32, qint32,
+                                             false, quantized_fusions::none,
+                                             -1);
 #undef LABEL
 #define LABEL .Label(mkl_op_registry::kMklQuantizedOpLabel)
 #undef SUMMAND_TYPE_CONSTRAINT
@@ -2578,6 +2582,22 @@ REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
 REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
                                              MklQuantizedConvOp, qint8, quint8,
                                              true, quantized_fusions::none, -1);
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv3D",
+                                             MklQuantizedConvOp, qint8, qint8,
+                                             false, quantized_fusions::none,
+                                             -1);
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv3D",
+                                             MklQuantizedConvOp, quint8, qint8,
+                                             false, quantized_fusions::none,
+                                             -1);
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv3D",
+                                             MklQuantizedConvOp, quint8, quint8,
+                                             false, quantized_fusions::none,
+                                             -1);
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv3D",
+                                             MklQuantizedConvOp, qint8, quint8,
+                                             false, quantized_fusions::none,
+                                             -1);
 #undef LABEL
 #undef SUMMAND_TYPE_CONSTRAINT
 #undef BIAS_TYPE_CONSTRAINT
