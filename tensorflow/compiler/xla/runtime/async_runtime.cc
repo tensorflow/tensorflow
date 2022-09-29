@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdlib>
@@ -36,10 +37,11 @@ limitations under the License.
 namespace mlir {
 namespace runtime {
 
-using tfrt::AsyncValueRef;
+using tfrt::AsyncValueOwningRef;
 using tfrt::Chain;
-using tfrt::GetReadyChain;
+using tfrt::MakeAvailableAsyncValueRef;
 using tfrt::MakeConstructedAsyncValueRef;
+using tfrt::internal::AsyncValueStorage;
 
 using xla::runtime::AsyncRuntimeObject;
 
@@ -50,30 +52,33 @@ class AsyncToken : public AsyncRuntimeObject {
  public:
   explicit AsyncToken(unsigned ref_count = 1)
       : AsyncRuntimeObject(ref_count),
-        chain_(MakeConstructedAsyncValueRef<Chain>()) {}
+        chain_(MakeConstructedAsyncValueRef<Chain>(storage_)) {}
 
-  tfrt::AsyncValue* GetAsyncValue() const { return chain_.GetAsyncValue(); }
+  tfrt::AsyncValue* GetAsyncValue() const { return chain_.AsPtr().value(); }
 
  private:
-  AsyncValueRef<Chain> chain_;
+  AsyncValueStorage<Chain> storage_;
+  AsyncValueOwningRef<Chain> chain_;
 };
 
 class AsyncValue : public AsyncRuntimeObject {
  public:
   explicit AsyncValue(size_t size, size_t alignment, unsigned ref_count = 1)
       : AsyncRuntimeObject(ref_count),
-        storage_(MakeConstructedAsyncValueRef<Storage>(size, alignment)) {
+        data_storage_(size, alignment),
+        chain_(MakeConstructedAsyncValueRef<Chain>(storage_)) {
     // Storage memory will be initialized by the compiled executable.
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(GetStorage(), size);
   }
 
-  void* GetStorage() const {
+  void* GetStorage() {
     assert(!GetAsyncValue()->IsError() && "unexpected error state");
-    if (storage_->is_inline) return &storage_->inline_buffer;
-    return storage_->allocated_buffer;
+    if (data_storage_.is_inline)
+      return reinterpret_cast<void*>(&data_storage_.inline_buffer[0]);
+    return data_storage_.allocated_buffer;
   }
 
-  tfrt::AsyncValue* GetAsyncValue() const { return storage_.GetAsyncValue(); }
+  tfrt::AsyncValue* GetAsyncValue() const { return chain_.AsPtr().value(); }
 
  private:
   // If the requested async value storage is small, use the inlined storage.
@@ -98,12 +103,17 @@ class AsyncValue : public AsyncRuntimeObject {
 
     bool is_inline;
     union {
-      std::aligned_storage<kSize, kAlign>::type inline_buffer;
+      alignas(kAlign) std::array<std::byte, kSize> inline_buffer;
       void* allocated_buffer;
     };
   };
 
-  AsyncValueRef<Storage> storage_;
+  Storage data_storage_;
+
+  // Async value that tracks value readiness. It becomes available when result
+  // is written to the data storage and ready for consumption.
+  AsyncValueStorage<Chain> storage_;
+  AsyncValueOwningRef<Chain> chain_;
 };
 
 class AsyncGroup : public AsyncRuntimeObject {
@@ -114,8 +124,8 @@ class AsyncGroup : public AsyncRuntimeObject {
         rank_(0),
         pending_tokens_(size),
         num_errors_(0),
-        completed_(size == 0 ? GetReadyChain()
-                             : MakeConstructedAsyncValueRef<Chain>()) {
+        completed_(size_ == 0 ? MakeAvailableAsyncValueRef<Chain>(storage_)
+                              : MakeConstructedAsyncValueRef<Chain>(storage_)) {
     assert(size_ >= 0 && "size can't be negative");
   }
 
@@ -135,14 +145,14 @@ class AsyncGroup : public AsyncRuntimeObject {
       // We do track group error state with the number of errors, and never
       // set completion async value state to error.
       if (group->pending_tokens_.fetch_sub(1) == 1)
-        group->completed_.SetStateConcrete();
+        group->completed_.AsPtr().SetStateConcrete();
     });
 
     return rank;
   }
 
   tfrt::AsyncValue* GetCompletionAsyncValue() const {
-    return completed_.GetAsyncValue();
+    return completed_.AsPtr().value();
   }
 
   bool IsError() const { return num_errors_.load() != 0; }
@@ -155,7 +165,8 @@ class AsyncGroup : public AsyncRuntimeObject {
 
   // Async value that keeps track the group completion, it will become available
   // when the number of pending tokens will drop to zero.
-  AsyncValueRef<Chain> completed_;
+  AsyncValueStorage<Chain> storage_;
+  AsyncValueOwningRef<Chain> completed_;
 };
 
 }  // namespace runtime
