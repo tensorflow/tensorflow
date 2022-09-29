@@ -198,13 +198,7 @@ const PyArray::Storage& PyArray::GetStorage() const {
   return *GetPyArrayStorageFromObject(reinterpret_cast<PyArrayObject*>(ptr()));
 }
 
-void PyArray::Check() {
-  try {
-    this->attr("_check")();
-  } catch (py::error_already_set& err) {
-    throw py::value_error(err.what());
-  }
-}
+void PyArray::Check() { this->attr("_check")(); }
 
 void PyArray::Rearrange() { this->attr("_rearrange")(); }
 
