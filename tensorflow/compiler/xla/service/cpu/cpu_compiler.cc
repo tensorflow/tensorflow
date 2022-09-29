@@ -1329,6 +1329,27 @@ namespace {
 
 namespace runtime = ::xla::runtime;
 
+class FlattenTuplesAndBufferizeTypeConverter : public mlir::TypeConverter {
+ public:
+  FlattenTuplesAndBufferizeTypeConverter() {
+    addConversion(
+        [](mlir::Type type, mlir::SmallVectorImpl<mlir::Type>& converted)
+            -> mlir::LogicalResult {
+          mlir::bufferization::BufferizeTypeConverter bufferize;
+          auto tuple_type = type.dyn_cast<mlir::TupleType>();
+          if (!tuple_type) {
+            converted.push_back(bufferize.convertType(type));
+            return mlir::success();
+          }
+          // TODO(b/249078472): update this expansion to support nested tuples.
+          converted.append(llvm::to_vector(llvm::map_range(
+              tuple_type.getTypes(),
+              [&](mlir::Type t) { return bufferize.convertType(t); })));
+          return mlir::success();
+        });
+  }
+};
+
 StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
     mlir::ModuleOp mlir_module, absl::string_view entry_point) {
   runtime::CpuPipelineOptions copts;
@@ -1348,7 +1369,7 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
     runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(pm, copts);
   };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
-      mlir::bufferization::BufferizeTypeConverter());
+      FlattenTuplesAndBufferizeTypeConverter());
 
   std::string serialized_mlir;
   llvm::raw_string_ostream os(serialized_mlir);

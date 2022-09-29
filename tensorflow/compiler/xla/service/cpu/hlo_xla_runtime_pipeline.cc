@@ -84,6 +84,10 @@ void AddSparsificationPasses(OpPassManager& pm) {
 // Assemble a HLO XLA Runtime pipeline to lower from HLO to Linalg on buffers.
 // -------------------------------------------------------------------------- //
 void CreateDefaultHloXlaRuntimePipeline(OpPassManager& pm) {
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mlir::mhlo::createExpandHloTuplesPass("main"));
+  // TODO(b/233771980): Remove once custom_call doesn't use tuples.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createFlattenTuplePass());
   // Remove redundant shape operations left after legalizing to HLO.
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
