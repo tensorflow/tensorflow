@@ -23,8 +23,11 @@ include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
-def RankedTensorOrVector : AnyTypeOf<[AnyRankedTensor, AnyVector], "", "::mlir::ShapedType">;
-def RankedTensorOrVectorOrScalar : AnyTypeOf<[AnyRankedTensor, AnyVector, AnyFloat, AnyInteger]>;
+def RankedTensorOrVector
+  : AnyTypeOf<[AnyRankedTensor, AnyVector], "", "::mlir::ShapedType">;
+def RankedTensorOrVectorOrScalar : AnyTypeOf<[
+  AnyRankedTensor, AnyVector, AnyFloat, AnyInteger, AnyComplex
+]>;
 
 def GMLST_MaterializeOp : GMLST_Op<"materialize", [NoSideEffect]> {
   let arguments = (ins RankedTensorOrVector:$source, AnySet:$set);
