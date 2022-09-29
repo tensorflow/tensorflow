@@ -6704,6 +6704,12 @@ struct PositiveValue {
   bool operator()(const ValType& v) { return !v.isNegative() && !v.isZero(); }
 };
 
+static const APFloat& addSign(const APFloat& v, Type) { return v; }
+static APSInt addSign(const APInt& v, Type t) {
+  // Add signedness information to the value, treating signless as signed.
+  return APSInt(v, t.isUnsignedInteger());
+}
+
 template <typename Op, typename ElementType, typename ValType, typename Convert,
           typename Validate = AnyValue<ValType>>
 static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
@@ -6731,7 +6737,7 @@ static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   values.reserve(val.getNumElements());
   for (const auto v : val.getValues<ValType>()) {
     if (!Validate()(v)) return {};
-    Optional<ValType> r = Convert()(v);
+    Optional<ValType> r = Convert()(addSign(v, type));
     if (!r) return {};
     values.push_back(r.value());
   }
@@ -6752,12 +6758,6 @@ struct RoundNearestEven {
     APFloat r = f;
     r.roundToIntegral(llvm::RoundingMode::NearestTiesToEven);
     return r;
-  }
-};
-
-struct LogicalNot {
-  Optional<APInt> operator()(const APInt& i) {
-    return APInt(i.getBitWidth(), static_cast<uint64_t>(!i));
   }
 };
 
@@ -6798,11 +6798,11 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
     return {};                                                                \
   }
 
-#define UNARY_FOLDER_INT(Op, Func)                                   \
-  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                 \
-    if (getElementTypeOrSelf(getType()).isa<IntegerType>())          \
-      return UnaryFolder<Op, IntegerType, APInt, Func>(this, attrs); \
-    return {};                                                       \
+#define UNARY_FOLDER_INT(Op, Func)                                          \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                        \
+    if (getElementTypeOrSelf(getType()).isa<IntegerType>())                 \
+      return UnaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs); \
+    return {};                                                              \
   }
 
 #define UNARY_FOLDER_FLOAT(Op, Func)                                 \
@@ -6838,7 +6838,7 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
 
 UNARY_FOLDER(NegOp, std::negate)
 UNARY_FOLDER(SignOp, Sign)
-UNARY_FOLDER_INT(NotOp, LogicalNot)
+UNARY_FOLDER_INT(NotOp, std::bit_not)
 UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven)
 UNARY_FOLDER_FLOAT(RoundOp, Round)
 
@@ -6902,12 +6902,6 @@ void printBinaryOp(Operation* op, OpAsmPrinter& p) {
   p.printOperands(op->getOperands());
   p.printOptionalAttrDict(op->getAttrs());
   p << " : " << resultType;
-}
-
-static const APFloat& addSign(const APFloat& v, Type) { return v; }
-static APSInt addSign(const APInt& v, Type t) {
-  // Add signedness information to the value, treating signless as signed.
-  return APSInt(v, t.isUnsignedInteger());
 }
 
 template <typename Op, typename ElementType = Type, typename ValType,
@@ -6989,7 +6983,9 @@ template <>
 struct Remainder<APFloat> {
   APFloat operator()(const APFloat& a, const APFloat& b) const {
     APFloat result(a);
-    result.remainder(b);
+    // Using .mod instead of .remainder is important for behavior around signed
+    // zeros
+    result.mod(b);
     return result;
   }
 };
@@ -6999,9 +6995,25 @@ struct Max {
   T operator()(const T& a, const T& b) const { return std::max<T>(a, b); }
 };
 
+template <>
+struct Max<APFloat> {
+  // maximum on APFloat is required for NaN propagation logic
+  APFloat operator()(const APFloat& a, const APFloat& b) const {
+    return llvm::maximum(a, b);
+  }
+};
+
 template <typename T>
 struct Min {
   T operator()(const T& a, const T& b) const { return std::min<T>(a, b); }
+};
+
+template <>
+struct Min<APFloat> {
+  // minimum on APFloat is required for NaN propagation logic
+  APFloat operator()(const APFloat& a, const APFloat& b) const {
+    return llvm::minimum(a, b);
+  }
 };
 
 template <typename T>
@@ -7954,38 +7966,6 @@ LogicalResult CompareOp::reifyReturnTypeShapes(
                                      &reifiedReturnShapes);
 }
 
-template <typename T>
-struct Less : std::less<T> {};
-
-template <>
-struct Less<APInt> {
-  bool operator()(const APInt& a, const APInt& b) const { return a.slt(b); }
-};
-
-template <typename T>
-struct LessEqual : std::less_equal<T> {};
-
-template <>
-struct LessEqual<APInt> {
-  bool operator()(const APInt& a, const APInt& b) const { return a.sle(b); }
-};
-
-template <typename T>
-struct Greater : std::greater<T> {};
-
-template <>
-struct Greater<APInt> {
-  bool operator()(const APInt& a, const APInt& b) const { return a.sgt(b); }
-};
-
-template <typename T>
-struct GreaterEqual : std::greater_equal<T> {};
-
-template <>
-struct GreaterEqual<APInt> {
-  bool operator()(const APInt& a, const APInt& b) const { return a.sge(b); }
-};
-
 template <typename Op, typename ElementType, typename SrcType, typename Convert>
 static Attribute CompareFolder(CompareOp op, ArrayRef<Attribute> attrs) {
   if (!attrs[0] || !attrs[1]) return {};
@@ -8000,7 +7980,8 @@ static Attribute CompareFolder(CompareOp op, ArrayRef<Attribute> attrs) {
     return {};
   }
 
-  if (!operandType.getElementType().isa<ElementType>()) {
+  auto etype = operandType.getElementType();
+  if (!etype.isa<ElementType>()) {
     return {};
   }
 
@@ -8011,7 +7992,9 @@ static Attribute CompareFolder(CompareOp op, ArrayRef<Attribute> attrs) {
   values.reserve(lhs.getNumElements());
   for (const auto zip :
        llvm::zip(lhs.getValues<SrcType>(), rhs.getValues<SrcType>())) {
-    values.push_back(Convert()(std::get<0>(zip), std::get<1>(zip)));
+    values.push_back(
+        Convert()(addSign(std::get<0>(zip), lhs.getElementType()),
+                  addSign(std::get<1>(zip), rhs.getElementType())));
   }
 
   auto resultTy = op.getType().cast<ShapedType>();
@@ -8077,17 +8060,17 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
     if (auto folded = CompareFolder<Op, FloatType, APFloat, Func<APFloat>>( \
             *this, operands))                                               \
       return folded;                                                        \
-    if (auto folded = CompareFolder<Op, IntegerType, APInt, Func<APInt>>(   \
+    if (auto folded = CompareFolder<Op, IntegerType, APInt, Func<APSInt>>(  \
             *this, operands))                                               \
       return folded;                                                        \
   }
 
   COMPARE_FOLDER(CompareOp, ComparisonDirection::EQ, std::equal_to);
   COMPARE_FOLDER(CompareOp, ComparisonDirection::NE, std::not_equal_to);
-  COMPARE_FOLDER(CompareOp, ComparisonDirection::LT, Less);
-  COMPARE_FOLDER(CompareOp, ComparisonDirection::LE, LessEqual);
-  COMPARE_FOLDER(CompareOp, ComparisonDirection::GT, Greater);
-  COMPARE_FOLDER(CompareOp, ComparisonDirection::GE, GreaterEqual);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::LT, std::less);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::LE, std::less_equal);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::GT, std::greater);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::GE, std::greater_equal);
 #undef COMPARE_FOLDER
 
   return {};
