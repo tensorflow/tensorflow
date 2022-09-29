@@ -100,3 +100,11 @@ func.func @tanh(%arg : tensor<10xf32>) -> tensor<10xf32> {
   %0 = "mhlo.tanh"(%arg) : (tensor<10xf32>) -> tensor<10xf32>
   return %0 : tensor<10xf32>
 }
+
+// CHECK-LABEL: @transpose
+func.func @transpose(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG: %[[VAR1:.*]] = "tosa.transpose"(%arg0, %[[VAR0]])
+  %0 = "mhlo.transpose"(%arg0) {permutation = dense<[2, 1, 0]> : tensor<3xi64>} : (tensor<1x2x3xf32>) -> tensor<3x2x1xf32>
+  return %0 : tensor<3x2x1xf32>
+}

@@ -266,6 +266,27 @@ struct ConvertMhloSliceOp : public OpRewritePattern<mhlo::SliceOp> {
   }
 };
 
+struct ConvertMhloTransposeOp : public OpRewritePattern<mhlo::TransposeOp> {
+  using OpRewritePattern<mhlo::TransposeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto rank = op.getOperand().getType().getRank();
+    if (rank < 1 || rank > 6) {
+      return rewriter.notifyMatchFailure(
+          op, "tosa.transpose only supports 1D to 6D tensors");
+    }
+
+    auto perms = op.permutation();
+    auto constOp = rewriter.create<tosa::ConstOp>(
+        op->getLoc(),
+        RankedTensorType::get({perms.size()}, rewriter.getI64Type()), perms);
+    rewriter.replaceOpWithNewOp<tosa::TransposeOp>(op, op.getResult().getType(),
+                                                   op.getOperand(), constOp);
+    return success();
+  }
+};
+
 LogicalResult LegalizeMhlo::initialize(MLIRContext* ctx) {
   RewritePatternSet patternList(ctx);
   populateGeneratedPDLLPatterns(patternList);
@@ -273,6 +294,7 @@ LogicalResult LegalizeMhlo::initialize(MLIRContext* ctx) {
   patternList.addWithLabel<ConvertMhloDotOp>({"MhloDot"}, ctx);
   patternList.addWithLabel<ConvertMhloReduceOp>({"MhloReduce"}, ctx);
   patternList.addWithLabel<ConvertMhloSliceOp>({"MhloSlice"}, ctx);
+  patternList.addWithLabel<ConvertMhloTransposeOp>({"MhloTranspose"}, ctx);
   patterns = std::move(patternList);
   return success();
 }
