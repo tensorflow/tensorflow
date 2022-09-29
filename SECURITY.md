@@ -171,11 +171,9 @@ rules](https://bughunters.google.com/about/rules/6521337925468160/google-open-so
 
 ### Reporting vulnerabilities
 
-Please email reports about any security related issues you find to
-`security@tensorflow.org`. This mail is delivered to a small security team. For
-critical problems, you may encrypt your report (see below).
+Please fill out [this report form](https://forms.gle/mr12SgzXENhxQ7jD6) about any security related issues you find. This mail is delivered to a small security team. For critical problems, you may encrypt your report (see below).
 
-Please use a descriptive subject line for your report email. After the initial
+Please use a descriptive title for your report. After the initial
 reply to your report, the security team will endeavor to keep you informed of
 the progress being made towards a fix and announcement.
 
@@ -184,6 +182,7 @@ In addition, please include the following information along with your report:
 *   Your name and affiliation (if any).
 *   A description of the technical details of the vulnerabilities. It is very
     important to let us know how we can reproduce your findings.
+*   A minimal example of the vulnerabity.
 *   An explanation of who can exploit this vulnerability, and what they gain
     when doing so -- write an attack scenario. This will help us evaluate your
     report quickly, especially if the issue is complex.
