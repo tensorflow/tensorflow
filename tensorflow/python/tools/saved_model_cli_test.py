@@ -180,7 +180,8 @@ signature_def['serving_default']:
     # Call with specific values to create new polymorphic function traces.
     dummy_model.func1(constant_op.constant(5), constant_op.constant(9), True)
     dummy_model(constant_op.constant(5))
-    save.save(dummy_model, saved_model_dir)
+    with self.cached_session():
+      save.save(dummy_model, saved_model_dir)
     self.parser = saved_model_cli.create_parser()
     args = self.parser.parse_args(['show', '--dir', saved_model_dir, '--all'])
     with captured_output() as (out, err):
@@ -261,7 +262,8 @@ Concrete Functions:
 
     saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
     dummy_model = DummyModel()
-    save.save(dummy_model, saved_model_dir)
+    with self.cached_session():
+      save.save(dummy_model, saved_model_dir)
     self.parser = saved_model_cli.create_parser()
     args = self.parser.parse_args(['show', '--dir', saved_model_dir, '--all'])
     with captured_output() as (out, err):
