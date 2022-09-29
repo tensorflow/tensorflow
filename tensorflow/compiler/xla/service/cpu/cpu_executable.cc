@@ -339,10 +339,44 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
 }
 
 Status XlaRuntimeCpuExecutable::Execute(
-    const std::vector<runtime::BufferDesc>& buffers) {
+    const std::vector<runtime::BufferDesc>& descriptor_table) {
+  const runtime::FunctionType& signature =
+      default_executable_->runtime_signature();
+
+  size_t num_arguments = xla_framework_mapping_.inputs.size();
+  if (xla_framework_mapping_.output_is_tuple) {
+    num_arguments += xla_framework_mapping_.flattened_outputs.size();
+  } else if (xla_framework_mapping_.result != -1) {
+    num_arguments += 1;
+  }
+
+  // Verify that the number of arguments in the mapping matches the signature.
+  // Add one to num_arguments to account for the signature's execution context.
+  if (num_arguments + 1 != signature.num_operands()) {
+    return InternalError(
+        "Wrong number of arguments: got %zu via XLA FrameworkMapping, expected "
+        "%d.",
+        num_arguments, static_cast<int>(signature.num_operands()) - 1);
+  }
+
+  std::vector<runtime::BufferDesc> arguments;
+  arguments.reserve(num_arguments);
+
+  for (int64_t index : xla_framework_mapping_.inputs) {
+    arguments.push_back(descriptor_table[index]);
+  }
+  // We can have an empty tuple as output.
+  if (xla_framework_mapping_.output_is_tuple) {
+    for (int64_t index : xla_framework_mapping_.flattened_outputs) {
+      arguments.push_back(descriptor_table[index]);
+    }
+  } else if (xla_framework_mapping_.result != -1) {
+    arguments.push_back(descriptor_table[xla_framework_mapping_.result]);
+  }
+
   runtime::Executable::CallFrame call_frame;
   if (auto status =
-          default_executable_->InitializeCallFrame(buffers, &call_frame);
+          default_executable_->InitializeCallFrame(arguments, &call_frame);
       !status.ok()) {
     return InternalError("Failed to initialize call frame: %s.",
                          status.message());

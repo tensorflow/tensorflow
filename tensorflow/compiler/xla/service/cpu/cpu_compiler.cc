@@ -1036,7 +1036,8 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> createMLIRModule(
     HloModule* module, mlir::MLIRContext& mlir_context,
-    BufferAssignment* assignment) {
+    BufferAssignment* assignment,
+    XlaFrameworkMapping* export_mapping = nullptr) {
   LoadMLIRDialects(mlir_context);
   mlir::OpBuilder builder(&mlir_context);
   auto mlir_module = builder.create<mlir::ModuleOp>(builder.getUnknownLoc());
@@ -1060,28 +1061,44 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> createMLIRModule(
   llvm::SmallVector<mlir::Attribute> result_inner_mapping;
   if (output_allocation->allocation()->is_tuple()) {
     for (auto i : llvm::seq<int>(0, root_instr->shape().tuple_shapes_size())) {
+      int64_t result_index =
+          assignment->GetUniqueSlice(root_instr, {i})->index();
       result_inner_mapping.push_back(mlir::IntegerAttr::get(
-          mlir::IntegerType::get(&mlir_context, 64),
-          assignment->GetUniqueSlice(root_instr, {i})->index()));
+          mlir::IntegerType::get(&mlir_context, 64), result_index));
+      if (export_mapping != nullptr) {
+        export_mapping->flattened_outputs.push_back(result_index);
+      }
     }
   }
 
-  auto result_mapping = builder.getI32IntegerAttr(
-      static_cast<int32_t>(output_allocation->index()));
+  int output_index = static_cast<int>(output_allocation->index());
+  auto result_mapping = builder.getI32IntegerAttr(output_index);
   mlir_module->walk([&](mlir::func::FuncOp f) {
     if (f.getSymName() == "main") {
       for (auto& p : llvm::enumerate(operand_mapping)) {
         f.setArgAttr(p.index(), "xla_framework.input_mapping", p.value().first);
+        if (export_mapping != nullptr) {
+          auto index_attr = p.value().first.dyn_cast<mlir::IntegerAttr>();
+          if (index_attr) {
+            export_mapping->inputs.push_back(index_attr.getInt());
+          }
+        }
         // Mark argument as (non-)writeable for bufferization. This ensures that
         // entry parameters are not overwritten.
         f.setArgAttr(p.index(), "bufferization.writable", p.value().second);
       }
       f->setAttr("xla_framework.result_mapping", result_mapping);
+      if (export_mapping != nullptr) {
+        export_mapping->result = output_index;
+      }
     }
 
     if (output_allocation->allocation()->is_tuple()) {
       f->setAttr("xla_framework.result_inner_mapping",
                  mlir::ArrayAttr::get(f.getContext(), result_inner_mapping));
+      if (export_mapping != nullptr) {
+        export_mapping->output_is_tuple = true;
+      }
     }
   });
   return {mlir_module};
@@ -1351,7 +1368,8 @@ class FlattenTuplesAndBufferizeTypeConverter : public mlir::TypeConverter {
 };
 
 StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
-    mlir::ModuleOp mlir_module, absl::string_view entry_point) {
+    mlir::ModuleOp mlir_module, absl::string_view entry_point,
+    const XlaFrameworkMapping& xla_framework_mapping) {
   runtime::CpuPipelineOptions copts;
 
   runtime::JitExecutable::Options opts;
@@ -1381,7 +1399,8 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
                          jit_executable.status().message());
   }
   return std::make_unique<XlaRuntimeCpuExecutable>(
-      std::make_unique<runtime::JitExecutable>(std::move(*jit_executable)));
+      std::make_unique<runtime::JitExecutable>(std::move(*jit_executable)),
+      xla_framework_mapping);
 }
 }  // namespace
 
@@ -1423,12 +1442,15 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
   }
 
   mlir::MLIRContext mlir_context;
+  XlaFrameworkMapping xla_framework_mapping;
   TF_ASSIGN_OR_RETURN(
       auto mlir_module,
-      createMLIRModule(hlo_module.get(), mlir_context, assignment.get()));
+      createMLIRModule(hlo_module.get(), mlir_context, assignment.get(),
+                       &xla_framework_mapping));
 
-  TF_ASSIGN_OR_RETURN(auto xla_runtime_executable,
-                      GetXlaRuntimeCpuExecutable(*mlir_module, "main"));
+  TF_ASSIGN_OR_RETURN(
+      auto xla_runtime_executable,
+      GetXlaRuntimeCpuExecutable(*mlir_module, "main", xla_framework_mapping));
 
   return std::make_unique<CpuExecutable>(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
