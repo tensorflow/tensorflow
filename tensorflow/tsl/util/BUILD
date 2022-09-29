@@ -156,7 +156,6 @@ check_deps(
         otherwise = [":determinism"],
     ),
     deps = [
-        "//tensorflow:tensorflow_cc",
     ],
 )
 

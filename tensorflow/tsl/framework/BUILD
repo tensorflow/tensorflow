@@ -217,7 +217,6 @@ cc_library(
         "device_id_manager.h",
     ],
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/core/platform:types",
     ] + if_static([
         ":device_id_impl",

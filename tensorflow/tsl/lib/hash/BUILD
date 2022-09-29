@@ -62,9 +62,9 @@ tf_cc_test(
     srcs = ["crc32c_test.cc"],
     deps = [
         ":crc32c",
-        "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
