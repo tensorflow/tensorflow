@@ -228,6 +228,7 @@ cc_library(
         ":xplane_schema",
         ":xplane_visitor",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/utils:tf_xplane_visitor",
     ],
 )
 

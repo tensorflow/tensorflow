@@ -219,3 +219,15 @@ tf_cc_test(
         "@com_google_absl//absl/types:optional",
     ],
 )
+
+cc_library(
+    name = "tf_xplane_visitor",
+    hdrs = ["tf_xplane_visitor.h"],
+    copts = tf_profiler_copts(),
+    visibility = [":friends"],
+    deps = [
+        ":xplane_schema",
+        ":xplane_visitor",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)

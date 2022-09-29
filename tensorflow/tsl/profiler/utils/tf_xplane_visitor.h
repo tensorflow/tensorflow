@@ -13,20 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_UTILS_TF_XPLANE_VISITOR_H_
-#define TENSORFLOW_CORE_PROFILER_UTILS_TF_XPLANE_VISITOR_H_
+#ifndef TENSORFLOW_TSL_PROFILER_UTILS_TF_XPLANE_VISITOR_H_
+#define TENSORFLOW_TSL_PROFILER_UTILS_TF_XPLANE_VISITOR_H_
 
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
-using tsl::profiler::CreateTfXPlaneVisitor;  // NOLINT
+inline XPlaneVisitor CreateTfXPlaneVisitor(
+  const tensorflow::profiler::XPlane* plane) {
+  return XPlaneVisitor(plane, {FindHostEventType, FindTfOpEventType},
+                       {FindStatType});
+}
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PROFILER_UTILS_TF_XPLANE_VISITOR_H_
+#endif  // TENSORFLOW_TSL_PROFILER_UTILS_TF_XPLANE_VISITOR_H_
