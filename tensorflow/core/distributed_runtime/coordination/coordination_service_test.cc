@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
@@ -44,7 +46,6 @@ namespace {
 using ::testing::EqualsProto;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
-using ::testing::proto::IgnoringRepeatedFieldOrdering;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
 constexpr absl::Duration kShutdownBarrierTimeout = absl::Milliseconds(500);
@@ -671,8 +672,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
                         local_devices_1.mutable_tf()->devices().end());
   expected_devices->Add(local_devices_2.mutable_tf()->devices().begin(),
                         local_devices_2.mutable_tf()->devices().end());
-  EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
-                                   EqualsProto(expected_cluster_devices)));
+  EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
 }
 
 TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
@@ -713,9 +713,11 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
 
   // Each task sends its device info.
   CoordinationServiceDeviceInfo cluster_devices;
-  coord_service->WaitForAllTasks(task_0, local_devices_0,
-                                 [&](Status s) { TF_ASSERT_OK(s); });
+  // Make sure that cluster device order is deterministic even if devices are
+  // sent out of order.
   coord_service->WaitForAllTasks(task_1, local_devices_1,
+                                 [&](Status s) { TF_ASSERT_OK(s); });
+  coord_service->WaitForAllTasks(task_0, local_devices_0,
                                  [&](Status s) { TF_ASSERT_OK(s); });
   coord_service->WaitForAllTasks(task_2, local_devices_2, [&](Status s) {
     TF_ASSERT_OK(s);
@@ -736,8 +738,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
       local_1;
   *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
       local_2;
-  EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
-                                   EqualsProto(expected_cluster_devices)));
+  EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
 }
 
 // Task devices should not be added twice if same task calls WaitForAllDevices()
@@ -792,8 +793,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
                         local_devices_0.mutable_tf()->devices().end());
   expected_devices->Add(local_devices_1.mutable_tf()->devices().begin(),
                         local_devices_1.mutable_tf()->devices().end());
-  EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
-                                   EqualsProto(expected_cluster_devices)));
+  EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
 }
 
 TEST_F(CoordinationBarrierTest, Barrier) {
