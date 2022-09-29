@@ -200,6 +200,7 @@ cc_library(
 tf_cc_test(
     name = "executable_test",
     srcs = ["executable_test.cc"],
+    tags = ["nomsan"],  # TODO(ezhulenev): Find msan error in LLVM coroutine passes
     deps = [
         ":arguments",
         ":async_runtime",
