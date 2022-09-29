@@ -31,6 +31,8 @@ namespace tflite {
 namespace {
 
 constexpr int32_t kNodeNotAssigned = std::numeric_limits<int32_t>::max();
+constexpr int32_t kLastActiveNodeUndefined =
+    std::numeric_limits<int32_t>::max();
 
 }  // namespace
 
@@ -43,7 +45,8 @@ ArenaPlanner::ArenaPlanner(TfLiteContext* context,
       arena_(kDefaultArenaAlignment, subgraph_index),
       persistent_arena_(kDefaultArenaAlignment, subgraph_index),
       preserve_all_tensors_(preserve_all_tensors),
-      tensor_alignment_(tensor_alignment) {}
+      tensor_alignment_(tensor_alignment),
+      last_active_node_(kLastActiveNodeUndefined) {}
 
 ArenaPlanner::~ArenaPlanner() {
   arena_.ReleaseBuffer();
@@ -65,6 +68,10 @@ TfLiteStatus ArenaPlanner::ResetAllocations() {
   TF_LITE_ENSURE_STATUS(persistent_arena_.ClearPlan());
   allocs_.clear();
   allocs_.resize(graph_info_->num_tensors());
+  // NOMUTANTS -- Setting last_active_node_ to kLastActiveNodeUndefined causes
+  // all allocs to be cleared. if this is not set, the slow path is taken
+  // (Purge) which inspects each alloc. Both paths give the exact same result.
+  last_active_node_ = kLastActiveNodeUndefined;
   return kTfLiteOk;
 }
 
@@ -79,8 +86,6 @@ TfLiteStatus ArenaPlanner::ResetAllocationsAfter(int node) {
       }
     }
   }
-  arena_.DeallocateAfter(node);
-
   return kTfLiteOk;
 }
 
@@ -189,7 +194,6 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
       }
     }
   }
-
   // Note that graph outputs will never be scheduled for deallocation. We
   // could do that here for completeness, but it won't have any effect.
   return kTfLiteOk;
@@ -351,18 +355,26 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(
   TfLiteTensor* tensors = graph_info_->tensors();
   for (const auto& tensor_index : tensors_to_allocate) {
     TfLiteTensor& tensor = tensors[tensor_index];
+    // Only arena allocated tensors are allocated here.
     if (tensor.allocation_type == kTfLiteArenaRw) {
       if (allocs_[tensor_index].size < tensor.bytes) {
-        TF_LITE_ENSURE_STATUS(
-            arena_.Deallocate(context_, allocs_[tensor_index]));
         tensors_allocated->push_back(tensor_index);
       }
-    } else {
+    } else if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
       tensors_allocated->push_back(tensor_index);
     }
   }
 
-  arena_.ResolveDeallocations();
+  if (tensors_allocated->empty()) {
+    return kTfLiteOk;
+  }
+  if (first_node < last_active_node_) {
+    arena_.ResetAllocs();
+  } else {
+    // NOMUTANTS -- This function has no impact on the results, it only makes
+    // exection faster.
+    arena_.PurgeActiveAllocs(first_node);
+  }
   CreateTensorAllocationVector(tensors_allocated);
   // Vector of ids of already allocated tensors, ordered by offset.
   for (const auto& tensor_index : *tensors_allocated) {
@@ -385,6 +397,7 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(
       }
     }
   }
+  last_active_node_ = last_node;
   return kTfLiteOk;
 }
 
