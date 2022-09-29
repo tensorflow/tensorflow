@@ -1,5 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "td_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = [
@@ -56,10 +57,22 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/lite/kernels:padding",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_to_xla_attribute_utils_test",
+    srcs = ["tf_to_xla_attribute_utils_test.cc"],
+    deps = [
+        ":tf_to_xla_attribute_utils",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
