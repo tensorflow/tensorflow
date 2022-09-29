@@ -717,10 +717,10 @@ cc_library(
 
 cc_library(
     name = "stream_executor_cuda",
-    deps = if_google(
-        [
-            "//tensorflow/compiler/xla/stream_executor:stream_executor_bundle",
-        ] + select({
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_bundle",
+    ] + if_google(
+        select({
             # copybara:uncomment_begin(different config setting in OSS)
             # "//tools/cc_target_os:gce": [],
             # copybara:uncomment_end_and_comment_begin
