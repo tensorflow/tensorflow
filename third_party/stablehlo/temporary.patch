@@ -1,3 +1,24 @@
+diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
+--- stablehlo/stablehlo/dialect/CMakeLists.txt
++++ stablehlo/stablehlo/dialect/CMakeLists.txt
+@@ -65,7 +65,7 @@
+   LINK_LIBS PUBLIC
+   StablehloBase
+   StablehloBroadcastUtils
+-  MLIRArithmeticDialect
++  MLIRArithDialect
+   MLIRControlFlowInterfaces
+   MLIRInferTypeOpInterface
+   MLIRIR
+@@ -105,7 +105,7 @@
+ 
+   LINK_LIBS PUBLIC
+   StablehloBase
+-  MLIRArithmeticDialect
++  MLIRArithDialect
+   MLIRInferTypeOpInterface
+   MLIRIR
+   MLIRQuantDialect
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp

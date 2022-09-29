@@ -63,7 +63,7 @@ add_mlir_library(MLIRHLOGPUTransforms
 
   LINK_LIBS PUBLIC
   GmlStPasses
-  MLIRArithmeticTransforms
+  MLIRArithTransforms
   MLIRGPUOps
   MLIRHLOAnalysis
   MLIRIR

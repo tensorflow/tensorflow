@@ -129,8 +129,8 @@ add_mlir_library(MhloToLhloConversion
   LINK_LIBS PUBLIC
   MhloDialect
   LmhloDialect
-  MLIRArithmeticDialect
-  MLIRArithmeticTransforms
+  MLIRArithDialect
+  MLIRArithTransforms
   MLIRFuncTransforms
   MLIRIR
   MLIRPass

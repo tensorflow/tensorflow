@@ -35,7 +35,7 @@ add_mlir_library(GmlStFusionInterface
   fusion_interface.cc
 
   LINK_LIBS PUBLIC
-  MLIRArithmeticDialect
+  MLIRArithDialect
   MLIRIR
   MLIRSupport
 
@@ -49,7 +49,7 @@ add_mlir_library(GmlStTilingInterfaceImpl
   LINK_LIBS PUBLIC
   GmlStDialect
   GmlStTilingInterface
-  MLIRArithmeticDialect
+  MLIRArithDialect
   MLIRAffineDialect
   MLIRLinalgDialect
   MLIRLinalgTransforms
@@ -67,7 +67,7 @@ add_mlir_library(GmlStFusionInterfaceImpl
   LINK_LIBS PUBLIC
   GmlStDialect
   GmlStFusionInterface
-  MLIRArithmeticDialect
+  MLIRArithDialect
   MLIRIR
   MLIRSupport
 )
@@ -119,7 +119,7 @@ add_mlir_library(GmlStPasses
   MhloDialect
   MLIRDialectUtils
   MLIRAffineDialect
-  MLIRArithmeticDialect
+  MLIRArithDialect
   MLIRFuncDialect
   MLIRGPUOps
   MLIRIR
