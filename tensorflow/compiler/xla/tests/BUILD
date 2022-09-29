@@ -238,6 +238,8 @@ cc_library(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/tsl/lib/core:bitmap",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/memory",

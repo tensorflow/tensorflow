@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bitmap.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -77,7 +77,7 @@ class LiteralUtil {
   static Literal CreateR0(NativeT value);
   template <typename NativeT>
   static Literal CreateR1(absl::Span<const NativeT> values);
-  static Literal CreateR1(const tensorflow::core::Bitmap& values);
+  static Literal CreateR1(const tsl::core::Bitmap& values);
   template <typename NativeT>
   static Literal CreateR2(
       std::initializer_list<std::initializer_list<NativeT>> values);

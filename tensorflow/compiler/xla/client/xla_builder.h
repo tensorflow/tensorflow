@@ -1708,7 +1708,7 @@ template <typename NativeT>
 XlaOp ConstantR0(XlaBuilder* builder, NativeT value);
 template <typename NativeT>
 XlaOp ConstantR1(XlaBuilder* builder, absl::Span<const NativeT> values);
-XlaOp ConstantR1(XlaBuilder* builder, const tensorflow::core::Bitmap& values);
+XlaOp ConstantR1(XlaBuilder* builder, const tsl::core::Bitmap& values);
 template <typename NativeT>
 XlaOp ConstantR2(XlaBuilder* builder,
                  std::initializer_list<std::initializer_list<NativeT>> values);
@@ -2756,8 +2756,7 @@ XlaOp ConstantR1(XlaBuilder* builder, int64_t length, NativeT value) {
   return ConstantLiteral(builder, literal);
 }
 
-inline XlaOp ConstantR1(XlaBuilder* builder,
-                        const tensorflow::core::Bitmap& values) {
+inline XlaOp ConstantR1(XlaBuilder* builder, const tsl::core::Bitmap& values) {
   return ConstantLiteral(builder, LiteralUtil::CreateR1(values));
 }
 

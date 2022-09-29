@@ -3320,6 +3320,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/lib/math:math_util",
+        "//tensorflow/tsl/lib/core:bitmap",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/algorithm",

@@ -44,7 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bitmap.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -867,7 +867,7 @@ class MutableLiteralBase : public LiteralBase {
   // array of S32.
   template <typename NativeT>
   void PopulateR1(absl::Span<const NativeT> values);
-  void PopulateR1(const tensorflow::core::Bitmap& values);
+  void PopulateR1(const tsl::core::Bitmap& values);
   template <typename NativeT>
   void PopulateR2(std::initializer_list<std::initializer_list<NativeT>> values);
   template <typename NativeT>

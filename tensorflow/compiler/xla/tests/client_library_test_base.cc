@@ -159,7 +159,7 @@ std::string ClientLibraryTestBase::ExecuteToString(
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1(
-    XlaBuilder* builder, const tensorflow::core::Bitmap& expected,
+    XlaBuilder* builder, const tsl::core::Bitmap& expected,
     absl::Span<GlobalData* const> arguments) {
   Literal expected_literal = LiteralUtil::CreateR1(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
