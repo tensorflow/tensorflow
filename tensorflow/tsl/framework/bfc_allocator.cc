@@ -20,8 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/tsl/framework/allocator_retry.h"
+#include "tensorflow/tsl/lib/core/bits.h"
 #include "tensorflow/tsl/platform/file_system.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mutex.h"

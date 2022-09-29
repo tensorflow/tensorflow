@@ -22,6 +22,7 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "bitmap.h",
+        "bits.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/core:__pkg__"],
@@ -31,6 +32,7 @@ filegroup(
     name = "legacy_lib_core_all_headers",
     srcs = [
         "bitmap.h",
+        "bits.h",
         "status_test_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -53,6 +55,7 @@ filegroup(
     name = "legacy_lib_core_headers",
     srcs = [
         "bitmap.h",
+        "bits.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/core:__pkg__"],
@@ -88,5 +91,14 @@ cc_library(
     deps = [
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "bits",
+    hdrs = ["bits.h"],
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:types",
     ],
 )

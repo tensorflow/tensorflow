@@ -43,6 +43,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/core:bits",
     ],
 )
 

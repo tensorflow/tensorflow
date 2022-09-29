@@ -181,9 +181,9 @@ cc_library(
         ":shared_counter",
         "//tensorflow/core:framework",  # core/framework/metrics.h
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/lib/core:bits",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/lib/core:bits",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
