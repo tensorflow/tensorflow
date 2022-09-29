@@ -813,9 +813,8 @@ SmallVector<Value> ScatterOp::getDestinationOperands(OpBuilder &) {
 }
 
 SmallVector<Range> ScatterOp::getIterationDomain(OpBuilder &b) {
-  Value indexVectorDimValue =
-      b.create<arith::ConstantIndexOp>(getLoc(), getIndexVectorDim());
-  return {Range{b.getIndexAttr(0), indexVectorDimValue, b.getIndexAttr(1)}};
+  Value indicesCount = b.create<tensor::DimOp>(getLoc(), getIndices(), 0);
+  return {Range{b.getIndexAttr(0), indicesCount, b.getIndexAttr(1)}};
 }
 
 static Value getSlice(OpBuilder &b, Location loc, Value tensor,

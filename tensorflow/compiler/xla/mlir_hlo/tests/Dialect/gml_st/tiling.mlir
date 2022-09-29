@@ -500,7 +500,8 @@ func.func @scatter_i32_i64(%indices: tensor<?x2xi32>,
 // CHECK-FOR-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-FOR-DAG:   %[[C2:.*]] = arith.constant 2 : index
 
-// CHECK-FOR:       gml_st.for (%{{.*}}) = (%[[C0]]) to (%[[C2]]) step (%[[C1]])
+// CHECK-FOR:       %[[INDICES_COUNT:.*]] = tensor.dim %[[INDICES]], %c0
+// CHECK-FOR:       gml_st.for (%{{.*}}) = (%[[C0]]) to (%[[INDICES_COUNT]])
 
 // CHECK-FOR:       %[[UPDATE_SUB:.*]] = gml_st.materialize %[[UPDATES]]
 // CHECK-FOR-SAME:    : tensor<?x?x?xi64>[!gml_st.tile<1x?x?>]
