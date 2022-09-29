@@ -137,6 +137,7 @@ filegroup(
         "util.h",
         "work_sharder.cc",
         "work_sharder.h",
+        "//tensorflow/core/util/quantization:mobile_srcs_only_runtime",
         "//tensorflow/tsl/util:mobile_srcs_only_runtime",
     ],
 )
@@ -999,6 +1000,7 @@ tf_proto_library(
         ":event_proto",
         ":saved_tensor_slice_proto",
         ":memmapped_file_system_proto",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto",
     ],
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",
