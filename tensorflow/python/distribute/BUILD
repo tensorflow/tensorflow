@@ -2257,6 +2257,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tf_decorator",
+        "//tensorflow/python:util",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/training:server_lib",
@@ -2306,6 +2307,7 @@ distribute_py_test(
     shard_count = 12,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/249822228)
         "noasan",  # TODO(b/237407459)
         "notpu",
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
@@ -2317,6 +2319,7 @@ distribute_py_test(
         ":parameter_server_strategy_v2",
         ":ps_values",
         ":test_util",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:lookup_ops",
