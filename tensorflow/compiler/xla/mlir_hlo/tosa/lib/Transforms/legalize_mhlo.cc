@@ -92,8 +92,8 @@ struct ConvertMhloDotOp : public OpRewritePattern<mhlo::DotOp> {
     }
 
     if (lhsType.getElementType() != rhsType.getElementType()) {
-      return rewriter.notifyMatchFailure(op,
-                                         "lhs and rhs elemt types must match");
+      return rewriter.notifyMatchFailure(
+          op, "lhs and rhs element types must match");
     }
 
     auto lhsShape = lhsType.getShape();
@@ -226,12 +226,53 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
   }
 };
 
+struct ConvertMhloSliceOp : public OpRewritePattern<mhlo::SliceOp> {
+  using OpRewritePattern<mhlo::SliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::SliceOp op,
+                                PatternRewriter& rewriter) const override {
+    auto rank = op.getOperand().getType().getRank();
+    if (rank < 1 || rank > 6) {
+      return rewriter.notifyMatchFailure(
+          op, "tosa.slice only supports 1D to 6D tensors");
+    }
+
+    auto strides = op.getStrides().getValues<int64_t>();
+    for (auto stride : strides) {
+      if (stride != 1) {
+        return rewriter.notifyMatchFailure(
+            op, "tosa.slice only supports strides of 1");
+      }
+    }
+
+    auto startIndices = op.getStartIndices().getValues<int64_t>();
+    auto endIndices = op.getLimitIndices().getValues<int64_t>();
+
+    llvm::SmallVector<int64_t, 2> size;
+    size.resize(startIndices.size());
+    llvm::SmallVector<int64_t, 2> startIndicesI64;
+    startIndicesI64.resize(startIndices.size());
+
+    for (int64_t i = 0; i < startIndices.size(); i++) {
+      size[i] = endIndices[i] - startIndices[i];
+      startIndicesI64[i] = startIndices[i];
+    }
+
+    rewriter.replaceOpWithNewOp<tosa::SliceOp>(
+        op, op.getResult().getType(), op.operand(),
+        rewriter.getI64ArrayAttr(startIndicesI64),
+        rewriter.getI64ArrayAttr(size));
+    return success();
+  }
+};
+
 LogicalResult LegalizeMhlo::initialize(MLIRContext* ctx) {
   RewritePatternSet patternList(ctx);
   populateGeneratedPDLLPatterns(patternList);
   patternList.addWithLabel<ConvertMhloCompareOp>({"MhloCompare"}, ctx);
   patternList.addWithLabel<ConvertMhloDotOp>({"MhloDot"}, ctx);
   patternList.addWithLabel<ConvertMhloReduceOp>({"MhloReduce"}, ctx);
+  patternList.addWithLabel<ConvertMhloSliceOp>({"MhloSlice"}, ctx);
   patterns = std::move(patternList);
   return success();
 }
