@@ -12,21 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_UTILS_TPU_XPLANE_UTILS_H_
-#define TENSORFLOW_CORE_PROFILER_UTILS_TPU_XPLANE_UTILS_H_
+#include "tensorflow/tsl/profiler/utils/tpu_xplane_utils.h"
 
 #include <vector>
 
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/tsl/profiler/utils/tpu_xplane_utils.h"
+#include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
-using tsl::profiler::FindMutableTensorCorePlanes;  // NOLINT
-using tsl::profiler::FindTensorCorePlanes;         // NOLINT
+std::vector<const XPlane*> FindTensorCorePlanes(const XSpace& xspace) {
+  return FindPlanes(xspace, [](const XPlane& xplane) {
+    static const LazyRE2 re = {kTpuPlaneRegex};
+    return RE2::FullMatch(xplane.name(), *re);
+  });
+}
+
+std::vector<XPlane*> FindMutableTensorCorePlanes(XSpace* xspace) {
+  return FindMutablePlanes(xspace, [](const XPlane& xplane) {
+    static const LazyRE2 re = {kTpuPlaneRegex};
+    return RE2::FullMatch(xplane.name(), *re);
+  });
+}
 
 }  // namespace profiler
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_PROFILER_UTILS_TPU_XPLANE_UTILS_H_
+}  // namespace tsl

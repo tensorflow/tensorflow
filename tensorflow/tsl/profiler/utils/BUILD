@@ -231,3 +231,113 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ],
 )
+
+cc_library(
+    name = "parse_annotation",
+    srcs = ["parse_annotation.cc"],
+    hdrs = ["parse_annotation.h"],
+    copts = tf_profiler_copts(),
+    visibility = [":friends"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "parse_annotation_test",
+    srcs = ["parse_annotation_test.cc"],
+    deps = [
+        ":parse_annotation",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "group_events",
+    srcs = ["group_events.cc"],
+    hdrs = ["group_events.h"],
+    copts = tf_profiler_copts(),
+    visibility = [":friends"],
+    deps = [
+        ":tf_xplane_visitor",
+        ":xplane_builder",
+        ":xplane_schema",
+        ":xplane_utils",
+        ":xplane_visitor",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/lib/gtl:map_util",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:context_types_hdrs",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "xplane_test_utils",
+    testonly = True,
+    srcs = ["xplane_test_utils.cc"],
+    hdrs = ["xplane_test_utils.h"],
+    copts = tf_profiler_copts(),
+    visibility = [":friends"],
+    deps = [
+        ":xplane_builder",
+        ":xplane_schema",
+        ":xplane_utils",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:variant",
+    ],
+)
+
+tf_cc_test(
+    name = "group_events_test",
+    srcs = ["group_events_test.cc"],
+    deps = [
+        ":group_events",
+        ":tf_xplane_visitor",
+        ":xplane_builder",
+        ":xplane_schema",
+        ":xplane_test_utils",
+        ":xplane_visitor",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "tpu_xplane_utils",
+    srcs = ["tpu_xplane_utils.cc"],
+    hdrs = ["tpu_xplane_utils.h"],
+    deps = [
+        ":xplane_schema",
+        ":xplane_utils",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/platform:regexp",
+    ],
+)
+
+tf_cc_test(
+    name = "tpu_xplane_utils_test",
+    srcs = ["tpu_xplane_utils_test.cc"],
+    deps = [
+        ":tpu_xplane_utils",
+        ":xplane_schema",
+        ":xplane_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)

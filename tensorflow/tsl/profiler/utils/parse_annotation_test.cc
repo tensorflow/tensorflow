@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/utils/parse_annotation.h"
+#include "tensorflow/tsl/profiler/utils/parse_annotation.h"
 
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -152,4 +152,4 @@ TEST(ParseAnnotationTest, UnmatchedQuotedMetadata) {
 }
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

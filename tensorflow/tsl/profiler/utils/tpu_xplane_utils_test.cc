@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
+#include "tensorflow/tsl/profiler/utils/tpu_xplane_utils.h"
 
 #include <vector>
 
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -53,4 +53,4 @@ TEST(TpuXPlaneUtilsTest, GetMutableTensorCoreXPlanesFromXSpace) {
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

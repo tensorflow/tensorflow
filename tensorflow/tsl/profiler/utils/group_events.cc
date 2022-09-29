@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/utils/group_events.h"
+#include "tensorflow/tsl/profiler/utils/group_events.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -30,16 +30,16 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/context_types.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/lib/context_types.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/xplane_builder.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -790,4 +790,4 @@ void GroupTfEvents(XSpace* space) {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

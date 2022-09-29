@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/utils/parse_annotation.h"
+#include "tensorflow/tsl/profiler/utils/parse_annotation.h"
 
 #include <stack>
 #include <string>
@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -141,4 +141,4 @@ std::vector<Annotation> ParseAnnotationStack(
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

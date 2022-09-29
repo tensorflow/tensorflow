@@ -13,25 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/utils/group_events.h"
+#include "tensorflow/tsl/profiler/utils/group_events.h"
+
+#include <optional>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/xplane_builder.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/xplane_test_utils.h"
+#include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -417,18 +414,17 @@ TEST(GroupEventsTest, SemanticArgTest) {
   GroupTfEvents(&raw_space);
   int num_events = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
-      [&](const tensorflow::profiler::XLineVisitor& line) {
+      [&](const XLineVisitor& line) {
         num_events += line.NumEvents();
-        line.ForEachEvent(
-            [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64_t> group_id;
-              if (absl::optional<XStatVisitor> stat =
-                      event.GetStat(StatType::kGroupId)) {
-                group_id = stat->IntValue();
-              }
-              EXPECT_TRUE(group_id.has_value());
-              EXPECT_EQ(*group_id, 0);
-            });
+        line.ForEachEvent([&](const XEventVisitor& event) {
+          std::optional<int64_t> group_id;
+          if (std::optional<XStatVisitor> stat =
+                  event.GetStat(StatType::kGroupId)) {
+            group_id = stat->IntValue();
+          }
+          EXPECT_TRUE(group_id.has_value());
+          EXPECT_EQ(*group_id, 0);
+        });
       });
   EXPECT_EQ(num_events, 3);
 }
@@ -458,22 +454,21 @@ TEST(GroupEventsTest, SemanticIntArgNoMatchTest) {
   GroupTfEvents(&raw_space);
   int num_events = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
-      [&](const tensorflow::profiler::XLineVisitor& line) {
+      [&](const XLineVisitor& line) {
         num_events += line.NumEvents();
-        line.ForEachEvent(
-            [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64_t> group_id;
-              if (absl::optional<XStatVisitor> stat =
-                      event.GetStat(StatType::kGroupId)) {
-                group_id = stat->IntValue();
-              }
-              if (event.Type() == HostEventType::kExecutorStateProcess) {
-                EXPECT_FALSE(group_id.has_value());
-              } else {
-                EXPECT_TRUE(group_id.has_value());
-                EXPECT_EQ(*group_id, 0);
-              }
-            });
+        line.ForEachEvent([&](const XEventVisitor& event) {
+          std::optional<int64_t> group_id;
+          if (std::optional<XStatVisitor> stat =
+                  event.GetStat(StatType::kGroupId)) {
+            group_id = stat->IntValue();
+          }
+          if (event.Type() == HostEventType::kExecutorStateProcess) {
+            EXPECT_FALSE(group_id.has_value());
+          } else {
+            EXPECT_TRUE(group_id.has_value());
+            EXPECT_EQ(*group_id, 0);
+          }
+        });
       });
   EXPECT_EQ(num_events, 3);
 }
@@ -503,22 +498,21 @@ TEST(GroupEventsTest, SemanticUintArgNoMatchTest) {
   GroupTfEvents(&raw_space);
   int num_events = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
-      [&](const tensorflow::profiler::XLineVisitor& line) {
+      [&](const XLineVisitor& line) {
         num_events += line.NumEvents();
-        line.ForEachEvent(
-            [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64_t> group_id;
-              if (absl::optional<XStatVisitor> stat =
-                      event.GetStat(StatType::kGroupId)) {
-                group_id = stat->IntValue();
-              }
-              if (event.Type() == HostEventType::kExecutorStateProcess) {
-                EXPECT_FALSE(group_id.has_value());
-              } else {
-                EXPECT_TRUE(group_id.has_value());
-                EXPECT_EQ(*group_id, 0);
-              }
-            });
+        line.ForEachEvent([&](const XEventVisitor& event) {
+          std::optional<int64_t> group_id;
+          if (std::optional<XStatVisitor> stat =
+                  event.GetStat(StatType::kGroupId)) {
+            group_id = stat->IntValue();
+          }
+          if (event.Type() == HostEventType::kExecutorStateProcess) {
+            EXPECT_FALSE(group_id.has_value());
+          } else {
+            EXPECT_TRUE(group_id.has_value());
+            EXPECT_EQ(*group_id, 0);
+          }
+        });
       });
   EXPECT_EQ(num_events, 3);
 }
@@ -542,22 +536,21 @@ TEST(GroupEventsTest, AsyncEventTest) {
 
   GroupTfEvents(&raw_space);
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
-      [&](const tensorflow::profiler::XLineVisitor& line) {
+      [&](const XLineVisitor& line) {
         EXPECT_EQ(line.NumEvents(), 3);
-        line.ForEachEvent(
-            [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64_t> group_id;
-              if (absl::optional<XStatVisitor> stat =
-                      event.GetStat(StatType::kGroupId)) {
-                group_id = stat->IntValue();
-              }
-              if (event.Name() == kAsync) {
-                EXPECT_FALSE(group_id.has_value());
-              } else {
-                EXPECT_TRUE(group_id.has_value());
-                EXPECT_EQ(*group_id, 0);
-              }
-            });
+        line.ForEachEvent([&](const XEventVisitor& event) {
+          std::optional<int64_t> group_id;
+          if (std::optional<XStatVisitor> stat =
+                  event.GetStat(StatType::kGroupId)) {
+            group_id = stat->IntValue();
+          }
+          if (event.Name() == kAsync) {
+            EXPECT_FALSE(group_id.has_value());
+          } else {
+            EXPECT_TRUE(group_id.has_value());
+            EXPECT_EQ(*group_id, 0);
+          }
+        });
       });
 }
 
@@ -595,26 +588,24 @@ TEST(GroupEventsTest, WorkerTest) {
 
   GroupTfEvents(&raw_space);
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
-      [&](const tensorflow::profiler::XLineVisitor& line) {
+      [&](const XLineVisitor& line) {
         EXPECT_EQ(line.NumEvents(), 6);
-        line.ForEachEvent(
-            [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64_t> group_id;
-              if (absl::optional<XStatVisitor> stat =
-                      event.GetStat(StatType::kGroupId)) {
-                group_id = stat->IntValue();
-              }
-              if (event.TimestampPs() < kSecondEagerKernelExecuteStartTime) {
-                EXPECT_FALSE(group_id.has_value());
-              } else if (event.TimestampPs() <
-                         kFourthEagerKernelExecuteStartTime) {
-                EXPECT_TRUE(group_id.has_value());
-                EXPECT_EQ(*group_id, 0);
-              } else {
-                EXPECT_TRUE(group_id.has_value());
-                EXPECT_EQ(*group_id, 1);
-              }
-            });
+        line.ForEachEvent([&](const XEventVisitor& event) {
+          std::optional<int64_t> group_id;
+          if (std::optional<XStatVisitor> stat =
+                  event.GetStat(StatType::kGroupId)) {
+            group_id = stat->IntValue();
+          }
+          if (event.TimestampPs() < kSecondEagerKernelExecuteStartTime) {
+            EXPECT_FALSE(group_id.has_value());
+          } else if (event.TimestampPs() < kFourthEagerKernelExecuteStartTime) {
+            EXPECT_TRUE(group_id.has_value());
+            EXPECT_EQ(*group_id, 0);
+          } else {
+            EXPECT_TRUE(group_id.has_value());
+            EXPECT_EQ(*group_id, 1);
+          }
+        });
       });
 }
 
@@ -663,28 +654,26 @@ TEST(GroupEventsTest, BatchingSessionTest) {
   EXPECT_EQ(group_metadata_map.at(2).children.size(), 1);
   // Check that the events have the selected_group_ids stat set.
   uint64 num_checked = 0;
-  CreateTfXPlaneVisitor(raw_plane).ForEachLine(
-      [&](const tensorflow::profiler::XLineVisitor& line) {
-        line.ForEachEvent(
-            [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64_t> group_id;
-              if (absl::optional<XStatVisitor> stat =
-                      event.GetStat(StatType::kGroupId)) {
-                group_id = stat->IntValue();
-              }
-              EXPECT_TRUE(group_id.has_value());
-              if (line.Id() == 0 &&
-                  event.Type() == HostEventType::kBatchingSessionRun) {
-                ++num_checked;
-              } else if (line.Id() == 1 &&
-                         event.Type() == HostEventType::kProcessBatch) {
-                ++num_checked;
-              }
-            });
-      });
+  CreateTfXPlaneVisitor(raw_plane).ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      std::optional<int64_t> group_id;
+      if (std::optional<XStatVisitor> stat =
+              event.GetStat(StatType::kGroupId)) {
+        group_id = stat->IntValue();
+      }
+      EXPECT_TRUE(group_id.has_value());
+      if (line.Id() == 0 &&
+          event.Type() == HostEventType::kBatchingSessionRun) {
+        ++num_checked;
+      } else if (line.Id() == 1 &&
+                 event.Type() == HostEventType::kProcessBatch) {
+        ++num_checked;
+      }
+    });
+  });
   EXPECT_EQ(num_checked, 3);
 }
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

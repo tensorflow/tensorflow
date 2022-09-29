@@ -12,31 +12,25 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
+#ifndef TENSORFLOW_TSL_PROFILER_UTILS_TPU_XPLANE_UTILS_H_
+#define TENSORFLOW_TSL_PROFILER_UTILS_TPU_XPLANE_UTILS_H_
 
 #include <vector>
 
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
-std::vector<const XPlane*> FindTensorCorePlanes(const XSpace& xspace) {
-  return FindPlanes(xspace, [](const XPlane& xplane) {
-    static const LazyRE2 re = {kTpuPlaneRegex};
-    return RE2::FullMatch(xplane.name(), *re);
-  });
-}
+// Find and return TensorCore XPlanes from the XSpace.
+std::vector<const tensorflow::profiler::XPlane*> FindTensorCorePlanes(
+    const tensorflow::profiler::XSpace& xspace);
 
-std::vector<XPlane*> FindMutableTensorCorePlanes(XSpace* xspace) {
-  return FindMutablePlanes(xspace, [](const XPlane& xplane) {
-    static const LazyRE2 re = {kTpuPlaneRegex};
-    return RE2::FullMatch(xplane.name(), *re);
-  });
-}
+// Find and return Mutable TensorCore XPlanes from the XSpace.
+std::vector<tensorflow::profiler::XPlane*> FindMutableTensorCorePlanes(
+    tensorflow::profiler::XSpace* xspace);
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
+
+#endif  // TENSORFLOW_TSL_PROFILER_UTILS_TPU_XPLANE_UTILS_H_
