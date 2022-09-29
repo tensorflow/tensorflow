@@ -281,6 +281,20 @@ StatusOr<mlir::Value> EmitRelayout(
                                   newly_created_ops);
 }
 
+StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
+                                                     mlir::Location loc,
+                                                     const Mesh& mesh,
+                                                     int32 value) {
+  absl::flat_hash_set<std::string> reduce_dims;
+  for (const MeshDimension& mesh_dim : mesh.dims()) {
+    reduce_dims.insert(mesh_dim.name);
+  }
+  return EmitAllReduce(
+      builder, Layout::ReplicatedOnMesh(mesh, /*rank=*/1), reduce_dims,
+      IntConst(builder, loc, std::vector<int32>{value}).getDefiningOp(),
+      kReduceOpAdd);
+}
+
 StatusOr<mlir::Operation*> EmitAllReduce(
     mlir::OpBuilder& builder, const dtensor::Layout& output_layout,
     const absl::flat_hash_set<std::string>& reduced_dims,

@@ -76,7 +76,9 @@ class _SingleDeviceSaver(object):
           tensor_names.append(checkpoint_key)
           tensors.append(tensor)
           slice_specs.append(slice_spec)
-    save_device = options.experimental_io_device or "cpu:0"
+    save_device = options.experimental_io_device or (
+        len(tensors) and saveable_object_util.set_cpu0(tensors[0].device))
+    save_device = save_device or "cpu:0"
     with ops.device(save_device):
       return io_ops.save_v2(file_prefix, tensor_names, slice_specs, tensors)
 
@@ -451,21 +453,29 @@ class MultiDeviceSaver(object):
         restore_fn(file_prefix)
       return restore_ops
 
-    restore_device = options.experimental_io_device or "cpu:0"
-
-    # Since this will causes a function re-trace on each restore, limit this to
+    has_custom_device_saver = any([
+        context.is_custom_device(d) for d in self._single_device_savers.keys()
+    ])
+    # Since this will cause a function re-trace on each restore, limit this to
     # cases where it is needed: eager and when there are multiple tasks/single
-    # device savers. Note that the retrace is needed to ensure we pickup the
-    # latest values of options like experimental_io_device.
+    # device savers or any single device saver is a custom device. Note that the
+    # retrace is needed to ensure we pickup the latest values of options like
+    # experimental_io_device.
+    #
+    # We run in a function when there is a custom device saver because custom
+    # devices, such as DTensor, usually do a sharded save and restore.
+    # Doing a sharded save and restore requires knowledge about what shards
+    # of variables we are restoring to. In practice, this means that custom
+    # devices need the AssignVariableOps along with the Restore op within the
+    # same graph to infer shapes and shard specs for Restore op.
     if context.executing_eagerly() and (len(self._single_device_savers) > 1 or
-                                        options.experimental_io_device):
+                                        has_custom_device_saver):
       @def_function.function(jit_compile=False, autograph=False)
       def tf_function_restore():
         restore_fn()
         return {}
 
-      with ops.device(restore_device):
-        restore_ops = tf_function_restore()
+      restore_ops = tf_function_restore()
     else:
       restore_ops = restore_fn()
 
