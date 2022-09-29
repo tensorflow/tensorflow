@@ -41,6 +41,7 @@ tf_cc_binary(
         "//tensorflow/tsl/lib/io:random_inputstream",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/util:command_line_flags",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ],
@@ -90,6 +91,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/io:record_reader",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/util:command_line_flags",
         "//third_party/eigen3",
         "@com_google_absl//absl/types:span",
     ],
@@ -213,6 +215,7 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/util:command_line_flags",
     ],
 )
 
@@ -264,6 +267,7 @@ tf_cc_binary(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/util:command_line_flags",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]),
@@ -391,6 +395,7 @@ tf_cc_binary(
         "//tensorflow/core/platform:test",
         "//tensorflow/core:framework_internal",
         "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/util:command_line_flags",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]),

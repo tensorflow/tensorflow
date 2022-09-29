@@ -964,6 +964,7 @@ cc_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/tsl/platform:logging",
+            "//tensorflow/tsl/util:command_line_flags",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
@@ -981,6 +982,7 @@ tf_cc_test(
             "//tensorflow/core:lib",
             "//tensorflow/tsl/platform:logging",
             "//tensorflow/tsl/platform:test",
+            "//tensorflow/tsl/util:command_line_flags",
             "@com_google_absl//absl/strings:str_format",
         ],
 )
@@ -1000,6 +1002,7 @@ cc_library(
             ":xla_proto_cc",
             "//tensorflow/core:framework_internal",
             "//tensorflow/tsl/platform:logging",
+            "//tensorflow/tsl/util:command_line_flags",
             "@com_google_absl//absl/base",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/container:node_hash_map",

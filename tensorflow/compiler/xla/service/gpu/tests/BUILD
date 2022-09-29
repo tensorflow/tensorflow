@@ -777,6 +777,7 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/tsl/util:command_line_flags",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
         "//tensorflow/compiler/xla/service/gpu:nvptx_helper",

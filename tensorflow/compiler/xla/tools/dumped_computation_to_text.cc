@@ -90,13 +90,13 @@ void RealMain(absl::Span<char* const> args, bool compile) {
 
 int main(int argc, char** argv) {
   bool compile = false;
-  std::vector<tensorflow::Flag> flag_list = {
+  std::vector<tsl::Flag> flag_list = {
       {"compile", &compile,
        "If true, compile the computation using the default client before "
        "dumping the HLO. Otherwise dump the raw (uncompiled) HLO."},
   };
-  const std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parsed_flags_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  const std::string usage = tsl::Flags::Usage(argv[0], flag_list);
+  bool parsed_flags_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   QCHECK(parsed_flags_ok) << "\n" << usage;
 
   tsl::port::InitMain(usage.c_str(), &argc, &argv);
