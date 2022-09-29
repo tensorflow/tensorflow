@@ -5995,7 +5995,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
 
   def testNumpyInput(self):
     """Test case for GitHub issue 28241."""
-    image = np.random.random((1, 512, 512, 1))
+    image = np.random.random([512, 512, 1])
     score_tensor = image_ops.ssim_multiscale(image, image, max_val=1.0)
     with self.cached_session():
       _ = self.evaluate(score_tensor)
