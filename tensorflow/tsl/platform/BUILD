@@ -1152,15 +1152,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "cuda",
-    hdrs = ["cuda.h"],
-    deps = [
-        ":platform",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
-    ],
-)
-
-cc_library(
     name = "tensor_float_32_utils",
     srcs = ["tensor_float_32_utils.cc"],
     hdrs = ["tensor_float_32_utils.h"],
