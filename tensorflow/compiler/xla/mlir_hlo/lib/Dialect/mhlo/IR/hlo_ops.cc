@@ -7016,21 +7016,6 @@ struct Min<APFloat> {
   }
 };
 
-template <typename T>
-struct And {
-  T operator()(const T& a, const T& b) const { return a & b; }
-};
-
-template <typename T>
-struct Or {
-  T operator()(const T& a, const T& b) const { return a | b; }
-};
-
-template <typename T>
-struct Xor {
-  T operator()(const T& a, const T& b) const { return a ^ b; }
-};
-
 #define BINARY_FOLDER_INTERNAL(Op, Func)                                     \
   if (getElementTypeOrSelf(getType()).isa<FloatType>())                      \
     return BinaryFolder<Op, FloatType, APFloat, Func<APFloat>>(this, attrs); \
@@ -7138,7 +7123,8 @@ OpFoldResult AndOp::fold(ArrayRef<Attribute> operands) {
   }
 
   if (!rhsVal || !lhsVal) return {};
-  return BinaryFolder<AndOp, IntegerType, APInt, And<APSInt>>(this, operands);
+  return BinaryFolder<AndOp, IntegerType, APInt, std::bit_and<APSInt>>(
+      this, operands);
 }
 
 OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
@@ -7168,7 +7154,8 @@ OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
   }
 
   if (!rhsVal || !lhsVal) return {};
-  return BinaryFolder<OrOp, IntegerType, APInt, Or<APSInt>>(this, operands);
+  return BinaryFolder<OrOp, IntegerType, APInt, std::bit_or<APSInt>>(this,
+                                                                     operands);
 }
 
 OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
@@ -7195,7 +7182,8 @@ OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
   }
 
   if (!rhsVal || !lhsVal) return {};
-  return BinaryFolder<XorOp, IntegerType, APInt, Xor<APSInt>>(this, operands);
+  return BinaryFolder<XorOp, IntegerType, APInt, std::bit_xor<APSInt>>(
+      this, operands);
 }
 
 #undef BINARY_FOLDER_INTERNAL
