@@ -1270,7 +1270,7 @@ LogicalResult YieldOp::verify() {
 
   SmallVector<Value, 2> tensorOuts;
   llvm::copy_if(
-      parentOp.outputs(), std::back_inserter(tensorOuts),
+      parentOp.getOutputs(), std::back_inserter(tensorOuts),
       [&](Value out) { return out.getType().isa<RankedTensorType>(); });
   if (tensorOuts.size() != getValues().size())
     return emitOpError("expects number of tensor output args = ")
