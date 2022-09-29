@@ -716,19 +716,12 @@ void SegmentReductionFunctor<
   const Index num_segments = output.size() / input_inner_dim_size;
 
   bool use_deterministic_kernels =
-#if defined(PLATFORM_WINDOWS)
-      // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows CI
-      // build error.
-      false;
-#else
       UseDeterministicSegmentReductions() ||
       (OpDeterminismRequired() && !ReduceOpIsAssociative<ReductionF, T>::value);
-#endif
 
   // TODO(benbarsdell): If there are no performance concerns with the new
-  // deterministic kernels, remove this runtime check and only compile the old
-  // non-deterministic kernels on Windows (as a workaround for the build failure
-  // issue).
+  // deterministic kernels, remove this runtime check and the old
+  // non-deterministic kernels.
   if (!use_deterministic_kernels) {
     // Set 'output' to initial value.
     GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
@@ -774,9 +767,6 @@ void SegmentReductionFunctor<
                               segment_offsets_ptr, output.data()));
     }
   } else {
-    // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows CI
-    // build error.
-#if !defined(PLATFORM_WINDOWS)
     using Treduce = typename ReduceType<ReductionF, T>::type;
     OP_REQUIRES_OK(
         ctx,
@@ -786,13 +776,6 @@ void SegmentReductionFunctor<
             /*is_mean=*/is_mean, /*is_sqrtn=*/false, data, segment_ids.data(),
             /*indices=*/static_cast<const Index*>(nullptr),
             /*weights=*/static_cast<T*>(nullptr), output.data()));
-#else
-    // Note: Shouldn't reach here because use_deterministic_kernels is always
-    // false on Windows.
-    OP_REQUIRES(ctx, false,
-                errors::Unimplemented("Deterministic segment reductions are "
-                                      "not implemented on Windows."));
-#endif
   }
 }
 
@@ -808,15 +791,9 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     }
 
     bool use_deterministic_kernels =
-#if defined(PLATFORM_WINDOWS)
-        // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows CI
-        // build error.
-        false;
-#else
         UseDeterministicSegmentReductions() ||
         (!ReduceOpIsAssociative<ReductionF, T>::value &&
          OpDeterminismRequired());
-#endif
 
     bool determinism_requirement_met =
         use_deterministic_kernels ||
@@ -840,9 +817,8 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     const Index num_segments = output.size() / input_inner_dim_size;
 
     // TODO(benbarsdell): If there are no performance concerns with the new
-    // deterministic kernels, remove this runtime check and only compile the old
-    // non-deterministic kernels on Windows (as a workaround for the build
-    // failure issue).
+    // deterministic kernels, remove this runtime check and the old
+    // non-deterministic kernels.
     if (!use_deterministic_kernels) {
       // Set 'output' to initial value.
       GPUDevice d = ctx->template eigen_device<GPUDevice>();
@@ -862,9 +838,6 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
           input_outer_dim_size, input_inner_dim_size, output_outer_dim_size,
           unsorted_segment_ids.data(), data.data(), output.data()));
     } else {
-      // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows CI
-      // build error.
-#if !defined(PLATFORM_WINDOWS)
       // Allocate temporary space and sort segment_ids, then call the sorted
       // implem.
       Tensor segment_ids;
@@ -899,14 +872,6 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
               /*is_sqrtn=*/false, /*input=*/data.data(),
               /*segment_ids=*/segment_ids_ptr, /*indices=*/sorted_indices_ptr,
               /*weights=*/static_cast<T*>(nullptr), output.data()));
-#else
-      // Note: Shouldn't reach here because use_deterministic_kernels is always
-      // false on Windows.
-      OP_REQUIRES(
-          ctx, false,
-          errors::Unimplemented("Deterministic unsorted segment reductions are "
-                                "not implemented on Windows."));
-#endif
     }
   }
 };
