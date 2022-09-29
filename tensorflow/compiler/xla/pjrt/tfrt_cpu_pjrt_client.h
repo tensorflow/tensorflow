@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
@@ -38,13 +40,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace xla {
 
@@ -114,7 +116,7 @@ class TfrtCpuClient final : public PjRtClient {
  public:
   TfrtCpuClient(int process_index,
                 std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-                std::unique_ptr<tfrt::HostContext> host_ctx);
+                size_t num_threads);
   ~TfrtCpuClient();
 
   int process_index() const override { return process_index_; }
@@ -137,7 +139,7 @@ class TfrtCpuClient final : public PjRtClient {
       int local_hardware_id) const override;
 
   PjRtPlatformId platform_id() const override {
-    return tensorflow::Fingerprint64(CpuName());
+    return tsl::Fingerprint64(CpuName());
   }
 
   absl::string_view platform_name() const override { return CpuName(); }
@@ -223,7 +225,9 @@ class TfrtCpuClient final : public PjRtClient {
     return Unimplemented("Defragment not implemented.");
   }
 
-  tfrt::HostContext* GetHostContext() const { return host_ctx_.get(); }
+  tsl::thread::ThreadPool* pjrt_client_thread_pool() const {
+    return pjrt_client_thread_pool_.get();
+  }
 
   Eigen::ThreadPoolDevice* eigen_intraop_device() const {
     return eigen_intraop_device_.get();
@@ -249,11 +253,13 @@ class TfrtCpuClient final : public PjRtClient {
   absl::flat_hash_map<int, TfrtCpuDevice*> id_to_device_;
   // Addressable devices indexed by core_id.
   std::vector<PjRtDevice*> addressable_devices_;
-  std::unique_ptr<tfrt::HostContext> host_ctx_;
   std::unique_ptr<ComputationPlacer> computation_placer_;
 
+  // Thread pool for running PjRtClient tasks.
+  std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
+
   // TODO(zhangqiaorjc): Use tfrt::compat::EigenHostContextThreadPool.
-  std::unique_ptr<tensorflow::thread::ThreadPool> eigen_intraop_pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
 
   // Launching collectives are prone to deadlock when we use fixed-sized
@@ -512,6 +518,14 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
         cpu_executable_->shared_module()};
   }
 
+  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    CompiledMemoryStats memory_stats = CompiledMemoryStats();
+    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
+    const HloProto* proto = cpu_executable_->hlo_proto();
+    memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+    return memory_stats;
+  }
+
   using PjRtLoadedExecutable::Execute;
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
@@ -536,6 +550,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   void Delete() override;
 
   bool IsDeleted() override;
+
+  bool IsReturnedFutureSupported() const override { return true; }
 
   StatusOr<std::optional<std::string>> Fingerprint() const;
 

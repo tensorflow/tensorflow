@@ -925,31 +925,31 @@ def _slice_helper(tensor, slice_spec, var=None):
   ```python
   # Strip leading and trailing 2 elements
   foo = tf.constant([1,2,3,4,5,6])
-  print(foo[2:-2].eval())  # => [3,4]
+  print(foo[2:-2])  # => [3,4]
 
   # Skip every other row and reverse the order of the columns
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[::2,::-1].eval())  # => [[3,2,1], [9,8,7]]
+  print(foo[::2,::-1])  # => [[3,2,1], [9,8,7]]
 
   # Use scalar tensors as indices on both dimensions
-  print(foo[tf.constant(0), tf.constant(2)].eval())  # => 3
+  print(foo[tf.constant(0), tf.constant(2)])  # => 3
 
   # Insert another dimension
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[tf.newaxis, :, :].eval()) # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[:, tf.newaxis, :].eval()) # => [[[1,2,3]], [[4,5,6]], [[7,8,9]]]
-  print(foo[:, :, tf.newaxis].eval()) # => [[[1],[2],[3]], [[4],[5],[6]],
+  print(foo[tf.newaxis, :, :]) # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[:, tf.newaxis, :]) # => [[[1,2,3]], [[4,5,6]], [[7,8,9]]]
+  print(foo[:, :, tf.newaxis]) # => [[[1],[2],[3]], [[4],[5],[6]],
   [[7],[8],[9]]]
 
   # Ellipses (3 equivalent operations)
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[tf.newaxis, :, :].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis, ...].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, :, :])  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, ...])  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis])  # => [[[1,2,3], [4,5,6], [7,8,9]]]
 
   # Masks
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[foo > 2].eval())  # => [3, 4, 5, 6, 7, 8, 9]
+  print(foo[foo > 2])  # => [3, 4, 5, 6, 7, 8, 9]
   ```
 
   Notes:
@@ -1314,18 +1314,16 @@ def _SliceHelperVar(var, slice_spec):
   This function in addition also allows assignment to a sliced range.
   This is similar to `__setitem__` functionality in Python. However,
   the syntax is different so that the user can capture the assignment
-  operation for grouping or passing to `sess.run()`.
+  operation for grouping or passing to `sess.run()` in TF1.
   For example,
 
   ```python
   import tensorflow as tf
   A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
-  with tf.compat.v1.Session() as sess:
-    sess.run(tf.compat.v1.global_variables_initializer())
-    print(sess.run(A[:2, :2]))  # => [[1,2], [4,5]]
+  print(A[:2, :2])  # => [[1,2], [4,5]]
 
-    op = A[:2,:2].assign(22. * tf.ones((2, 2)))
-    print(sess.run(op))  # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
+  A[:2,:2].assign(22. * tf.ones((2, 2))))
+  print(A) # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
   ```
 
   Note that assignments currently do not support NumPy broadcasting
@@ -4624,12 +4622,36 @@ def squeeze_v2(input, axis=None, name=None):
   # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
   tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
   ```
-
+  
   Unlike the older op `tf.compat.v1.squeeze`, this op does not accept a
   deprecated `squeeze_dims` argument.
 
   Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
   time, where `N` is the number of elements in the squeezed dimensions.
+  
+  Note: If squeeze is performed on dimensions of unknown sizes, then the
+  returned Tensor will be of unknown shape. A common situation is when the
+  first (batch) dimension is of size `None`, `tf.squeeze` returns
+  `<unknown>` shape which may be a surprise. Specify the `axis=` argument
+  to get the expected result, as illustrated in the following example:
+  
+  ```python
+  @tf.function
+  def func(x):
+    print('x.shape:', x.shape)
+    known_axes = [i for i, size in enumerate(x.shape) if size == 1]
+    y = tf.squeeze(x, axis=known_axes)
+    print('shape of tf.squeeze(x, axis=known_axes):', y.shape)
+    y = tf.squeeze(x)
+    print('shape of tf.squeeze(x):', y.shape)
+    return 0
+ 
+  _ = func.get_concrete_function(tf.TensorSpec([None, 1, 2], dtype=tf.int32))
+  # Output is.
+  # x.shape: (None, 1, 2)
+  # shape of tf.squeeze(x, axis=known_axes): (None, 2)
+  # shape of tf.squeeze(x): <unknown>
+  ```
 
   Args:
     input: A `Tensor`. The `input` to squeeze.

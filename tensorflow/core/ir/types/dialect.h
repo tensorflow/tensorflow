@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_IR_TYPE_DIALECT_H_
-#define TENSORFLOW_CORE_IR_TYPE_DIALECT_H_
+#ifndef TENSORFLOW_CORE_IR_TYPES_DIALECT_H_
+#define TENSORFLOW_CORE_IR_TYPES_DIALECT_H_
 
 #include <string>
 
@@ -349,4 +349,4 @@ inline Type GetElementTypeOrSelfResolveRef(Type type) {
 #include "tensorflow/core/ir/types/attributes.h.inc"
 #include "tensorflow/core/ir/types/attributes_enum.h.inc"
 
-#endif  // TENSORFLOW_CORE_IR_TYPE_DIALECT_H_
+#endif  // TENSORFLOW_CORE_IR_TYPES_DIALECT_H_

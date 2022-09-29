@@ -61,12 +61,10 @@ cc_library(
         "include/mhlo_tosa/Transforms/passes.h",
     ],
     includes = ["include"],
-    textual_hdrs = [
-        "lib/Transforms/passes_detail.h",
-    ],
     deps = [
         ":MHLOTOSAPDLLPatternsIncGen",
         ":MHLOTOSATransformsPassIncGen",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -90,5 +88,6 @@ cc_binary(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TosaDialect",
+        "@stablehlo//:register",
     ],
 )

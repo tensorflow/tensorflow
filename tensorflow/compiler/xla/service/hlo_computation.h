@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -142,6 +142,9 @@ class HloComputation {
   // the instruction.
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
                                  const std::string& new_name = "");
+
+  HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
+                                 const OpMetadata* metadata);
 
   // Replace the old parameter at index param_no with
   // `instruction`. Updates uses and root instruction. Removes old
@@ -285,12 +288,11 @@ class HloComputation {
     return H::combine(std::move(h), instructions.size());
   }
 
-  using InstructionSequence = tensorflow::gtl::iterator_range<
+  using InstructionSequence = tsl::gtl::iterator_range<
       UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>;
 
-  using ConstInstructionSequence =
-      tensorflow::gtl::iterator_range<UnwrappingIterator<
-          std::list<std::unique_ptr<HloInstruction>>::const_iterator>>;
+  using ConstInstructionSequence = tsl::gtl::iterator_range<UnwrappingIterator<
+      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>;
 
   // Gets the instructions in this computation.
   //

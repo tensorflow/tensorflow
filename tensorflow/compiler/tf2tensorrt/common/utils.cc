@@ -80,7 +80,7 @@ Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
   //                               profile_index * bindings_per_profile
   const int bindings_per_profile = cuda_engine->getNbBindings() / n_profiles;
   *binding_index = *binding_index + profile_index * bindings_per_profile;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTrtBindingIndex(int network_input_index, int profile_index,

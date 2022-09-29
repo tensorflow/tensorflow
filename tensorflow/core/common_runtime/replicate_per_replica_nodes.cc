@@ -14,14 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 
+#include <algorithm>
 #include <queue>
 
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/common_runtime/optimize_cross_host_control_deps.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {
+
+constexpr int kOptimizeCrossHostEdgesTheshold = 8;
 
 // A helper for rewriting nodes assigned to a virtual composite device.
 class ReplicateHelper {
@@ -268,6 +273,11 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
     }
   }
 
+  if (composite_device_to_cluster_nodes.empty()) {
+    VLOG(1) << "No nodes with composiste device found.";
+    return OkStatus();
+  }
+
   for (auto& it : composite_device_to_cluster_nodes) {
     const std::vector<string>& allowed_devices =
         *composite_devices.at(it.first);
@@ -303,6 +313,15 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
           cluster_nodes.begin()->first->assigned_device_name());
     }
   }
+
+  // Optimize cross host control output/input edges. We apply the optimizations
+  // at the end to reduce the newly created cross-host edges caused by
+  // per-replica nodes/edges replications.
+  TF_RETURN_IF_ERROR(OptimizeCrossHostControlOutputEdges(
+      graph, kOptimizeCrossHostEdgesTheshold));
+  TF_RETURN_IF_ERROR(OptimizeCrossHostControlInputEdges(
+      graph, kOptimizeCrossHostEdgesTheshold));
+
   return OkStatus();
 }
 

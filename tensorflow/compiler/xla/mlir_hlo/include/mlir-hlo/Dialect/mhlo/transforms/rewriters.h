@@ -81,7 +81,7 @@ void populateShapeComputationPatterns(MLIRContext *context,
                                       RewritePatternSet *patterns);
 
 // Converter to signless intergers to be used with linalg conversion patterns.
-std::unique_ptr<TypeConverter> createHloToLinalgSignedIntegerConverter();
+std::unique_ptr<TypeConverter> createHloToLinalgTypeConverter();
 
 // Sets up legality definitions for materializing broadcasts.
 void setupMaterializeBroadcastsLegality(MLIRContext *context,
@@ -171,6 +171,26 @@ void populateDecomposeChloPatterns(MLIRContext *context,
                                    RewritePatternSet *patterns);
 
 }  // namespace chlo
+
+namespace stablehlo {
+
+// Populates MHLO ops to StableHLO ops rewriting patterns.
+// Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns
+// which make sure `func.func`, `func.call` and `func.return` which involve
+// illegal types also get converted.
+void populateHloToStablehloPatterns(RewritePatternSet *patterns,
+                                    TypeConverter *converter,
+                                    MLIRContext *context);
+
+// Populates StableHLO ops to MHLO ops rewriting patterns.
+// Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns
+// which make sure `func.func`, `func.call` and `func.return` which involve
+// illegal types also get converted.
+void populateStablehloToHloPatterns(RewritePatternSet *patterns,
+                                    TypeConverter *converter,
+                                    MLIRContext *context);
+
+}  // namespace stablehlo
 
 }  // namespace mlir
 

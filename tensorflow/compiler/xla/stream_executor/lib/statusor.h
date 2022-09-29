@@ -17,12 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_STATUSOR_H_
 
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace port {
 
-using tensorflow::StatusOr;  // TENSORFLOW_STATUS_OK // NOLINT
+using tsl::StatusOr;  // TENSORFLOW_STATUS_OK // NOLINT
 
 }  // namespace port
 }  // namespace stream_executor

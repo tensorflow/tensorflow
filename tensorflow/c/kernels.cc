@@ -26,13 +26,14 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
 // Required for IS_MOBILE_PLATFORM definition
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
-#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 using tensorflow::errors::InvalidArgument;
@@ -307,6 +308,23 @@ void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
   ::tensorflow::Set_TF_Status_from_Status(status, s);
   if (s.ok()) {
     cc_ctx->set_output(i, cc_tensor);
+  }
+}
+
+TF_Tensor* TF_GetMutableOutput(TF_OpKernelContext* ctx, int i,
+                               TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (i < 0 || i >= cc_ctx->num_outputs()) {
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "output index out of range");
+    return nullptr;
+  }
+  const ::tensorflow::Tensor& cc_tensor = *(cc_ctx->mutable_output(i));
+  TF_Tensor* result =
+      ::tensorflow::TF_TensorFromTensor(cc_tensor, &status->status);
+  if (TF_GetCode(status) == TF_OK) {
+    return result;
+  } else {
+    return nullptr;
   }
 }
 
@@ -604,10 +622,28 @@ int64_t TF_StepId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
 }
 
+TF_Buffer* TF_OpKernelConstruction_GetNodeDef(TF_OpKernelConstruction* ctx,
+                                              TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  TF_Buffer* ret = TF_NewBuffer();
+  status->status = MessageToBuffer(cc_ctx->def(), ret);
+  if (!status->status.ok()) {
+    TF_DeleteBuffer(ret);
+    return nullptr;
+  }
+  return ret;
+}
+
 uint64_t TF_GetFrameId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)
       ->frame_iter()
       .frame_id;
+}
+
+int TF_GetGraphDefVersion(TF_OpKernelContext* ctx) {
+  return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)
+      ->function_library()
+      ->graph_def_version();
 }
 
 int64_t TF_GetIterId(TF_OpKernelContext* ctx) {
@@ -622,6 +658,16 @@ TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx) {
   opkernel_name_sv.data = cc_ctx->op_kernel().name().data();
   opkernel_name_sv.len = cc_ctx->op_kernel().name().length();
   return opkernel_name_sv;
+}
+
+TF_StringView TF_GetResourceMgrDefaultContainerName(TF_OpKernelContext* ctx) {
+  auto cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  TF_StringView default_container_name_sv;
+  default_container_name_sv.data =
+      cc_ctx->resource_manager()->default_container().data();
+  default_container_name_sv.len =
+      cc_ctx->resource_manager()->default_container().length();
+  return default_container_name_sv;
 }
 
 TF_StringView TF_GetOpKernelRequestedInput(TF_OpKernelContext* ctx,

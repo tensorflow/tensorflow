@@ -163,7 +163,7 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
 
   mlir::TF::WhereOp indices = builder.create<mlir::TF::WhereOp>(
       not_equal.getLoc(),
-      mlir::RankedTensorType::get(GetShapeOfValue(not_equal).ValueOrDie(),
+      mlir::RankedTensorType::get(GetShapeOfValue(not_equal).value(),
                                   builder.getI64Type()),
       not_equal);
 
@@ -277,7 +277,7 @@ StatusOr<mlir::Value> EmitRelayout(
 
   if (!is_sparse) return all_scatter;
   if (!all_scatter.ok()) return all_scatter;
-  return EmitDenseToSparseToDense(builder, all_scatter.ValueOrDie(),
+  return EmitDenseToSparseToDense(builder, all_scatter.value(),
                                   newly_created_ops);
 }
 
@@ -321,7 +321,8 @@ StatusOr<mlir::Operation*> EmitAllReduce(
   mlir::Location loc = DT_LOC2(input->getLoc(), "DTensorAllReduceOp");
   auto all_reduce = builder.create<mlir::TF::DTensorAllReduceOp>(
       loc, input->getResultTypes()[0], input->getOpResult(0),
-      builder.create<mlir::TF::ConstOp>(loc, group_assignment),
+      builder.create<mlir::TF::ConstOp>(DT_LOC2(loc, "group_assignment"),
+                                        group_assignment),
       builder.getStringAttr(std::string(reduce_op)),
       builder.getStringAttr(device_type));
   SetSingleLayoutOnOp(all_reduce, output_layout);

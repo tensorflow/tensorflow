@@ -19,17 +19,21 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_SHAPEREIFICATIONPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 struct ShapeReificationPattern : public OpRewritePattern<shape::ShapeOfOp> {
@@ -149,7 +153,7 @@ struct ShapeReificationThroughAssumingOpsPattern
 };
 
 struct ShapeReificationPass
-    : public ShapeReificationPassBase<ShapeReificationPass> {
+    : public impl::ShapeReificationPassBase<ShapeReificationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect>();
   }

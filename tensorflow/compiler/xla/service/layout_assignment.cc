@@ -55,9 +55,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -171,8 +171,9 @@ bool LayoutAssignment::AllOperandBuffersForwarded(
   PointsToSet::BufferSet* output_buffers = GetBufferSet(instruction);
   PointsToSet::BufferSet* operand_buffers =
       GetBufferSet(instruction->operand(operand_no));
-  return absl::c_all_of(*output_buffers, [&](const LogicalBuffer* b) {
-    return operand_buffers->count(b) > 0;
+  // Each buffer in operand_buffers should also occur in output_buffers.
+  return absl::c_all_of(*operand_buffers, [&](const LogicalBuffer* b) {
+    return output_buffers->count(b) > 0;
   });
 }
 
@@ -816,6 +817,10 @@ Status LayoutAssignment::AddMandatoryConstraints(
 namespace {
 
 bool LayoutsInShapesEqual(const Shape& lhs, const Shape& rhs) {
+  if (!lhs.has_layout() && !rhs.has_layout()) {
+    return true;
+  }
+  CHECK(lhs.has_layout() && rhs.has_layout());
   return Layout::Equal().MinorToMajorOnly()(lhs.layout(), rhs.layout());
 }
 
@@ -1607,6 +1612,9 @@ Status LayoutAssignment::PropagateOperandConstraint(
         continue;
       }
       const HloInstruction* sibling = user->operand(operand_no);
+      if (!sibling->shape().IsArray()) {
+        continue;
+      }
       const int64_t sibling_rank = sibling->shape().rank();
       if (sibling_rank <= 1) {
         continue;
@@ -2083,9 +2091,8 @@ Status LayoutAssignment::CalculateComputationLayout(
           }
           auto param_layout = InferArrayLayout(operand, index);
           if (param_layout.ok()) {
-            VLOG(5) << index << ":" << param_layout.ValueOrDie().ToString()
-                    << "\n";
-            update->ResetLayout(param_layout.ValueOrDie(), index);
+            VLOG(5) << index << ":" << param_layout.value().ToString() << "\n";
+            update->ResetLayout(param_layout.value(), index);
             change = true;
           }
         });
@@ -2321,6 +2328,9 @@ Status LayoutAssignment::PropagateMemorySpace(HloModule* module) {
     int64_t buffer_memory_space = Layout::kDefaultMemorySpace;
     for (auto value : buffer.values()) {
       const Shape& defining_shape = value->defining_position().shape();
+      if (!defining_shape.has_layout()) {
+        continue;
+      }
       int64_t memory_space = defining_shape.layout().memory_space();
       if (memory_space != Layout::kDefaultMemorySpace) {
         if (buffer_memory_space != Layout::kDefaultMemorySpace &&

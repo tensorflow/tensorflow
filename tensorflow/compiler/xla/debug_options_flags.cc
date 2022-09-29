@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 
+#include <cstdlib>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/base/call_once.h"
@@ -51,14 +54,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #ifdef XLA_CPU_USE_ACL
   opts.set_xla_cpu_use_acl(true);
 #endif
-  opts.set_xla_cpu_use_jitrt(false);
+  opts.set_xla_cpu_use_xla_runtime(false);
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
-
-  // Run all GPU work on one stream by default.  Using multiple streams
-  // increases memory usage and we lack strong motivating benchmarks for tuning
-  // the heuristics needed to decide when to run on multiple streams.  See
-  // b/77879207.
-  opts.set_xla_gpu_disable_multi_streaming(true);
 
   opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
@@ -88,7 +85,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
   opts.set_xla_detailed_logging_and_dumping(true);
 
-  opts.set_xla_gpu_jitrt_executable(false);
+  opts.set_xla_gpu_enable_xla_runtime_executable(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
 
@@ -98,6 +95,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_mlir_lowering(false);
   opts.set_xla_gpu_enable_mlir_lowering(true);
   opts.set_xla_gpu_normalize_layouts(false);
+  opts.set_xla_gpu_simplify_all_fp_conversions(true);
   return opts;
 }
 
@@ -392,11 +390,6 @@ static void AllocateFlags() {
       "If true, flush-to-zero semantics are enabled in the code generated for "
       "GPUs."));
   flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_disable_multi_streaming",
-      bool_setter_for(&DebugOptions::set_xla_gpu_disable_multi_streaming),
-      flag_values->xla_gpu_disable_multi_streaming(),
-      "If true, multi-streaming in the GPU backend is disabled."));
-  flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_max_kernel_unroll_factor",
       int32_setter_for(&DebugOptions::set_xla_gpu_max_kernel_unroll_factor),
       flag_values->xla_gpu_max_kernel_unroll_factor(),
@@ -448,9 +441,10 @@ static void AllocateFlags() {
       flag_values->xla_cpu_use_acl(),
       "Generate calls to ACL (Arm Compute Library) in the CPU backend."));
   flag_objects->push_back(tensorflow::Flag(
-      "xla_cpu_use_jitrt",
-      bool_setter_for(&DebugOptions::set_xla_cpu_use_jitrt),
-      flag_values->xla_cpu_use_jitrt(), "Enable JitRt in the CPU backend."));
+      "xla_cpu_use_xla_runtime",
+      bool_setter_for(&DebugOptions::set_xla_cpu_use_xla_runtime),
+      flag_values->xla_cpu_use_xla_runtime(),
+      "Enable XLA Runtime in the CPU backend."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_crash_on_verification_failures",
       bool_setter_for(
@@ -727,10 +721,10 @@ static void AllocateFlags() {
       "If specified, dumps HLO before and after optimization passes in the "
       "pass pipelines that match this regular expression."));
   flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_jitrt_executable",
-      bool_setter_for(&DebugOptions::set_xla_gpu_jitrt_executable),
-      flag_values->xla_gpu_jitrt_executable(),
-      "Whether to enable XLIR to compile gpu programs to JitRt."));
+      "xla_gpu_enable_xla_runtime_executable",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
+      flag_values->xla_gpu_enable_xla_runtime_executable(),
+      "Whether to enable XLA runtime for XLA:GPU backend"));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_nccl_termination_timeout_seconds",
       int64_setter_for(
@@ -794,8 +788,8 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
 void ResetThreadLocalFuel() {
   absl::call_once(flags_init, &AllocateFlags);
 
-  thread_fuel.reset(
-      new absl::node_hash_map<std::string, std::atomic<int64_t>>());
+  thread_fuel = std::make_unique<
+      absl::node_hash_map<std::string, std::atomic<int64_t>>>();
   CHECK(initial_fuel != nullptr);
   for (const auto& kv : *initial_fuel) {
     thread_fuel->emplace(kv.first, kv.second);

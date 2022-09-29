@@ -71,7 +71,8 @@ void AnnotateParameterReplicationPass::runOnOperation() {
             mirrored_index.cast<IntegerAttr>().getInt());
       }
     }
-    auto func = llvm::cast<func::FuncOp>(m.lookupSymbol(cluster_func.func()));
+    auto func =
+        llvm::cast<func::FuncOp>(m.lookupSymbol(cluster_func.getFunc()));
     for (auto entry : llvm::enumerate(cluster_func.getOperands())) {
       auto operand = SkipIdentityAndReadVariable(entry.value());
       auto block_arg = operand.dyn_cast<BlockArgument>();
@@ -81,7 +82,7 @@ void AnnotateParameterReplicationPass::runOnOperation() {
           continue;
         }
       } else if (!operand.getParentRegion()->isProperAncestor(
-                     &replicate.body())) {
+                     &replicate.getBody())) {
         // Not a replication-invariant operand.
         continue;
       }

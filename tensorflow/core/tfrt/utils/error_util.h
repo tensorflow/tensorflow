@@ -74,7 +74,7 @@ inline llvm::Error MakeStatusError(tensorflow::Status status) {
   return MakeStringError(MakeStatusString(status));
 }
 
-tensorflow::Status TfStatusFromAbslStatus(absl::Status status);
+absl::Status AbslStatusFromTfStatus(tensorflow::Status status);
 
 }  // namespace tfrt
 

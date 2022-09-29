@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 
+#include <vector>
+
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -24,6 +26,13 @@ namespace profiler {
 
 std::vector<const XPlane*> FindTensorCorePlanes(const XSpace& xspace) {
   return FindPlanes(xspace, [](const XPlane& xplane) {
+    static const LazyRE2 re = {kTpuPlaneRegex};
+    return RE2::FullMatch(xplane.name(), *re);
+  });
+}
+
+std::vector<XPlane*> FindMutableTensorCorePlanes(XSpace* xspace) {
+  return FindMutablePlanes(xspace, [](const XPlane& xplane) {
     static const LazyRE2 re = {kTpuPlaneRegex};
     return RE2::FullMatch(xplane.name(), *re);
   });

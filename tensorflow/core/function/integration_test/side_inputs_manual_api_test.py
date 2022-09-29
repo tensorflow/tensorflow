@@ -79,7 +79,7 @@ class SideInputsTest(parameterized.TestCase):
 
     x = capture_type(1)  # pylint: disable=unused-variable
     self.assertEqual(f(), tf_f())
-    self.assertLen(tf_f._stateful_fn._captures_container, 1)
+    self.assertLen(tf_f._variable_creation_fn._captures_container, 1)
 
   @unittest.skip("Feature not implemented")
   def test_local_capture(self):

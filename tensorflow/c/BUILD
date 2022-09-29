@@ -678,7 +678,7 @@ tf_cuda_library(
         "//conditions:default": [
             ":c_api_internal",
             ":tf_tensor",
-            "//tensorflow/stream_executor:stream",
+            "//tensorflow/compiler/xla/stream_executor:stream_executor",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
             "//tensorflow/core:protos_all_cc",

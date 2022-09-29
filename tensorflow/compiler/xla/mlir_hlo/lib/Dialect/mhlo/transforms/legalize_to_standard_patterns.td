@@ -79,6 +79,6 @@ def : Pat<(HLO_RemOp HLO_IntTensor:$l, HLO_IntTensor:$r),
           (Arith_RemSIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 
-def : Pat<(HLO_SelectOp HLO_PredTensor:$pred, HLO_Tensor:$tv, HLO_Tensor:$fv),
+def : Pat<(HLO_SelectOp $pred, $tv, $fv),
           (SelectOp $pred, $tv, $fv),
           [(IsSameSizeConstraint $pred, $tv), (IsSameSizeConstraint $tv, $fv)]>;

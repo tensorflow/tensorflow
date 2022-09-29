@@ -17,8 +17,6 @@ import abc
 import threading
 import warnings
 
-import six
-
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
@@ -556,9 +554,11 @@ def _generate_shared_name(prefix):
 
 
 @tf_export("data.Iterator", v1=[])
-@six.add_metaclass(abc.ABCMeta)
-class IteratorBase(collections_abc.Iterator, trackable.Trackable,
-                   composite_tensor.CompositeTensor):
+class IteratorBase(
+    collections_abc.Iterator,
+    trackable.Trackable,
+    composite_tensor.CompositeTensor,
+    metaclass=abc.ABCMeta):
   """Represents an iterator of a `tf.data.Dataset`.
 
   `tf.data.Iterator` is the primary mechanism for enumerating elements of a

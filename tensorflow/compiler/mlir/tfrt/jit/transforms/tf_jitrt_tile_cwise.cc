@@ -27,7 +27,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TILEFILL
+#define GEN_PASS_DEF_TILECWISE
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using mlir::failure;
@@ -88,7 +89,7 @@ bool isNonTiledCwiseGeneric(Operation *op) {
   if (linalg_op) {
     if (!linalg_op.hasTensorSemantics()) return false;
     return llvm::all_of(linalg_op.iterator_types(), [](auto type) {
-      return mlir::isParallelIterator(type);
+      return mlir::linalg::isParallelIterator(type);
     });
   }
   if (auto fill_op = mlir::dyn_cast<FillOp>(op)) {
@@ -131,7 +132,7 @@ void Tile(mlir::func::FuncOp func, int64_t tile_size,
   func.walk([](LinalgOp op) { removeTransformationAttr(op); });
 }
 
-struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
+struct TileCWisePass : public impl::TileCWiseBase<TileCWisePass> {
   TileCWisePass() = default;
   explicit TileCWisePass(int64_t tile_size) { cwise_tile_size = tile_size; }
 
@@ -141,7 +142,7 @@ struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
   }
 };
 
-struct TileFillPass : public TileFillBase<TileFillPass> {
+struct TileFillPass : public impl::TileFillBase<TileFillPass> {
   TileFillPass() = default;
   explicit TileFillPass(int64_t tile_size) { cwise_tile_size = tile_size; }
 

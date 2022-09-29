@@ -173,6 +173,10 @@ class TensorDescriptor : public GPUObjectDescriptor {
       DataType data_type, TensorStorageType storage_type,
       const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
 
+  friend TensorDescriptor CreateConstantHWVec4TensorDescriptor(
+      DataType data_type, TensorStorageType storage_type, int width, int height,
+      const uint8_t* data);
+
   absl::Status PerformReadSelector(
       const GpuInfo& gpu_info, const std::vector<std::string>& args,
       const std::vector<std::string>& template_args, std::string* result) const;
@@ -194,22 +198,21 @@ class TensorDescriptor : public GPUObjectDescriptor {
 
   std::string StorageTypeToAddressType() const;
 
-  absl::Status PerformWriteSelector(
-      const GpuInfo& gpu_info, const std::vector<std::string>& args,
-      const std::vector<std::string>& template_args, std::string* result) const;
+  absl::Status PerformWriteSelector(const GpuInfo& gpu_info,
+                                    const std::vector<std::string>& args,
+                                    std::string* result) const;
 
-  absl::Status PerformWriteLinearSelector(
-      const GpuInfo& gpu_info, const std::vector<std::string>& args,
-      const std::vector<std::string>& template_args, std::string* result) const;
+  absl::Status PerformWriteLinearSelector(const GpuInfo& gpu_info,
+                                          const std::vector<std::string>& args,
+                                          std::string* result) const;
 
-  absl::Status PerformWrite2DSelector(
-      const GpuInfo& gpu_info, const std::vector<std::string>& args,
-      const std::vector<std::string>& template_args, std::string* result) const;
+  absl::Status PerformWrite2DSelector(const GpuInfo& gpu_info,
+                                      const std::vector<std::string>& args,
+                                      std::string* result) const;
 
   std::string Read(const GpuInfo& gpu_info, DataType read_as_type,
                    const std::vector<std::string>& coords) const;
-  std::string Write(const GpuInfo& gpu_info, DataType write_type,
-                    const std::string& var_name,
+  std::string Write(const GpuInfo& gpu_info, const std::string& var_name,
                     const std::vector<std::string>& coords) const;
 
   absl::Status MaybeGetDataTypeFromTemplateArgs(
@@ -243,6 +246,8 @@ class TensorDescriptor : public GPUObjectDescriptor {
                                              const std::string& sc,
                                              const std::string& bc) const;
   std::vector<std::string> GetPhysicalCoordsLinear(const std::string& x) const;
+  std::vector<std::string> GetPhysicalCoordsHW(const std::string& x,
+                                               const std::string& y) const;
 
   bool ParseCoordsFromArgs(const std::vector<std::string>& args, int offset,
                            std::string* xc, std::string* yc, std::string* zc,
@@ -260,6 +265,7 @@ class TensorDescriptor : public GPUObjectDescriptor {
   // totally different.
   Layout layout_ =
       Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
+                        // HW and LINEAR (for constant objects only)
 
   // applicable only for TEXTURE_2D.
   // When Texture 2d created from buffer, we can use it as texture or as buffer.
@@ -298,6 +304,10 @@ TensorDescriptor CreateConstantLinearTensorDescriptor(
 TensorDescriptor CreateConstantLinearTensorDescriptor(
     const GpuInfo& gpu_info, DataType data_type,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
+
+TensorDescriptor CreateConstantHWVec4TensorDescriptor(
+    DataType data_type, TensorStorageType storage_type, int width, int height,
+    const uint8_t* data);
 
 template <DataType T>
 void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWC, T>& src) {

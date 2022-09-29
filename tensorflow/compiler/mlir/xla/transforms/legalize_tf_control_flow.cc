@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 using mlir::PassRegistration;
@@ -44,8 +43,12 @@ using mlir::PassRegistration;
 namespace mlir {
 namespace mhlo {
 namespace {
+
+#define GEN_PASS_DEF_LEGALIZETFCONTROLFLOW
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
 class LegalizeTFControlFlow
-    : public LegalizeTFControlFlowBase<LegalizeTFControlFlow> {
+    : public impl::LegalizeTFControlFlowBase<LegalizeTFControlFlow> {
  public:
   void runOnOperation() override;
 };
@@ -83,8 +86,7 @@ void ReplaceBlockArgumentsWithImplicitOperands(
       arg.replaceAllUsesWith(implicit_operands[implicit_operand_index++]);
     }
 
-    region.front().eraseArguments(
-        llvm::to_vector(llvm::seq<unsigned>(0, region.getNumArguments())));
+    region.front().eraseArguments(0, region.getNumArguments());
   }
 }
 
@@ -141,9 +143,9 @@ void LowerIf(TF::IfOp op) {
   // Import the regions for both the true and false cases. These regions
   // must be updated to tuple the return results together and use the xla hlo
   // return op.
-  ImportXlaRegion(op.then_function(), &if_op.true_branch(), loc,
+  ImportXlaRegion(op.then_function(), &if_op.getTrueBranch(), loc,
                   /*tuple_return=*/false, /*tuple_arg=*/false);
-  ImportXlaRegion(op.else_function(), &if_op.false_branch(), loc,
+  ImportXlaRegion(op.else_function(), &if_op.getFalseBranch(), loc,
                   /*tuple_return=*/false, /*tuple_arg=*/false);
 
   // Replace the uses of block-arguments of the IfOp with the
@@ -167,7 +169,7 @@ void LowerCase(TF::CaseOp op) {
   // Import the regions for all branches.
   for (unsigned i = 0; i < op.num_branches(); ++i) {
     mlir::func::FuncOp branch_func = op.branch_function(i);
-    ImportXlaRegion(branch_func, &case_op.branches()[i], loc,
+    ImportXlaRegion(branch_func, &case_op.getBranches()[i], loc,
                     /*tuple_return=*/false, /*tuple_arg=*/false);
   }
 
@@ -193,9 +195,9 @@ void LowerWhile(TF::WhileOp op) {
       builder.create<mhlo::WhileOp>(loc, op.getResultTypes(), inputs);
 
   // Import the regions for both the cond and body.
-  ImportXlaRegion(op.body_function(), &while_op.body(), loc,
+  ImportXlaRegion(op.body_function(), &while_op.getBody(), loc,
                   /*tuple_return=*/false, /*tuple_arg=*/false);
-  ImportXlaRegion(op.cond_function(), &while_op.cond(), loc,
+  ImportXlaRegion(op.cond_function(), &while_op.getCond(), loc,
                   /*tuple_return=*/false, /*tuple_arg=*/false);
 
   op->replaceAllUsesWith(while_op);
@@ -321,8 +323,8 @@ void LowerIfRegion(TF::IfRegionOp op) {
   // `tf.IfRegion` op.
   builder.setInsertionPoint(op);
   auto if_op = builder.create<mhlo::IfOp>(loc, op.getResultTypes(), op.cond());
-  if_op.true_branch().takeBody(op.then_branch());
-  if_op.false_branch().takeBody(op.else_branch());
+  if_op.getTrueBranch().takeBody(op.then_branch());
+  if_op.getFalseBranch().takeBody(op.else_branch());
 
   // Replace all uses of `op` results with that of `mhlo.IfOp`.
   op->replaceAllUsesWith(if_op);
@@ -345,7 +347,7 @@ void LowerCaseRegion(TF::CaseRegionOp op) {
   builder.setInsertionPoint(op);
   auto case_op = builder.create<mhlo::CaseOp>(
       loc, op.getResultTypes(), op.branch_index(), op.branches().size());
-  for (auto region : llvm::zip(case_op.branches(), op.branches()))
+  for (auto region : llvm::zip(case_op.getBranches(), op.branches()))
     std::get<0>(region).takeBody(std::get<1>(region));
 
   // Replace all uses of `op` results with that of `mhlo.CaseOp`.
@@ -377,7 +379,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
 
   // Rewrite cond and associated block arguments and terminator. Ownership of
   // cond region is transfered over from `tf.WhileRegion` to `mhlo.while`.
-  Region& cond = while_op.cond();
+  Region& cond = while_op.getCond();
   cond.takeBody(op.cond());
   Block& cond_block = cond.front();
   builder.setInsertionPointToStart(&cond_block);
@@ -393,7 +395,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
 
   // Rewrite body and associated block arguments and terminator. Ownership of
   // body region is transfered over from `tf.WhileRegion` to `mhlo.while`.
-  Region& body = while_op.body();
+  Region& body = while_op.getBody();
   body.takeBody(op.body());
   Block& body_block = body.front();
   builder.setInsertionPointToStart(&body_block);

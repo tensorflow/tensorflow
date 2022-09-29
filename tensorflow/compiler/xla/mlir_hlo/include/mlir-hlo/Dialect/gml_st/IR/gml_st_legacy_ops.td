@@ -124,13 +124,13 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
 
   let extraClassDeclaration = [{
     /// Number of loops
-    unsigned getNumLoops() { return step().size(); }
+    unsigned getNumLoops() { return getStep().size(); }
 
     /// Number of input operands
-    unsigned getNumInputs() { return inputs().size(); }
+    unsigned getNumInputs() { return getInputs().size(); }
 
     /// Number of output operands
-    unsigned getNumOutputs() { return outputs().size(); }
+    unsigned getNumOutputs() { return getOutputs().size(); }
 
     /// Number of operands controlling the loop: lbs, ubs, steps
     unsigned getNumControlOperands() { return 3 * getNumLoops(); }
@@ -139,16 +139,16 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
       return getBody()->getArguments().take_front(getNumLoops());
     }
     ValueRange getRegionInputArgs() {
-      return getBody()->getArguments().slice(getNumLoops(), inputs().size());
+      return getBody()->getArguments().slice(getNumLoops(), getInputs().size());
     }
     ValueRange getRegionOutputArgs() {
-      return getBody()->getArguments().take_back(outputs().size());
+      return getBody()->getArguments().take_back(getOutputs().size());
     }
 
     void setDistributionTypes(Builder& b, ArrayRef<StringRef> types) {
       assert(types.size() == getNumLoops() &&
              "expected distribution type for every dimension");
-      distribution_typesAttr(b.getStrArrayAttr(types));
+      setDistributionTypesAttr(b.getStrArrayAttr(types));
     }
 
     void setLowerBounds(ValueRange lowerBounds) {
@@ -199,8 +199,8 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
       // Check whether the operand index is in bounds of `outputs()` arg.
       int operandIndex = opOperand.getOperandNumber();
       int outputIndexStart =
-          getNumControlOperands() + inputs().size();
-      int outputIndexEnd = outputIndexStart + outputs().size();
+          getNumControlOperands() + getInputs().size();
+      int outputIndexEnd = outputIndexStart + getOutputs().size();
       if (operandIndex < outputIndexStart || operandIndex >= outputIndexEnd)
         return OpResult();
 
@@ -223,7 +223,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
                                 getLoc());
       getOperation()->setAttr(
           LoopOp::getOperandSegmentSizeAttr(),
-          builder.getI32VectorAttr(
+          builder.getDenseI32ArrayAttr(
               {numLoops, numLoops, numLoops, numInputs + 1, numOutputs}));
       return getOperation()->getOpOperand(getNumControlOperands() + numInputs);
     }
@@ -240,7 +240,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
                                 operand.getType(), getLoc());
       getOperation()->setAttr(
           LoopOp::getOperandSegmentSizeAttr(),
-          builder.getI32VectorAttr(
+          builder.getDenseI32ArrayAttr(
               {numLoops, numLoops, numLoops, numInputs, numOutputs + 1}));
       return getOperation()->getOpOperand(getNumControlOperands() + numInputs +
                                           numOutputs);
@@ -267,19 +267,19 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
       getBody()->eraseArgument(operandIndex - 2 * numLoops);
       getOperation()->setAttr(
           LoopOp::getOperandSegmentSizeAttr(),
-          builder.getI32VectorAttr(
+          builder.getDenseI32ArrayAttr(
               {numLoops, numLoops, numLoops, numInputs, numOutputs}));
     }
 
     OpOperand* findInputOperand(Value value) {
-      OperandRange::iterator it = llvm::find(inputs(), value);
-      if (it == inputs().end()) return nullptr;
+      OperandRange::iterator it = llvm::find(getInputs(), value);
+      if (it == getInputs().end()) return nullptr;
       return it.getBase();
     }
 
     OpOperand* findOutputOperand(Value value) {
-      OperandRange::iterator it = llvm::find(outputs(), value);
-      if (it == outputs().end()) return nullptr;
+      OperandRange::iterator it = llvm::find(getOutputs(), value);
+      if (it == getOutputs().end()) return nullptr;
       return it.getBase();
     }
 
@@ -296,17 +296,17 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
     static constexpr StringRef getParallelIteratorTypeName() {
       return "parallel";
     }
-    static constexpr StringRef getDistributionTypesAttrName() {
+    static constexpr StringRef getDistributionTypesAttrStrName() {
       return "distribution_types";
     }
-    static constexpr StringRef getIteratorTypesAttrName() {
+    static constexpr StringRef getIteratorTypesAttrStrName() {
       return "iterator_types";
     }
 
 
     /// Return whether the loop dimension is parallel or not.
     bool isParallelDimension(unsigned dim) {
-      StringAttr attr = this->iterator_types()[dim].cast<StringAttr>();
+      StringAttr attr = this->getIteratorTypes()[dim].cast<StringAttr>();
       return attr.getValue() == getParallelIteratorTypeName();
     }
   }];

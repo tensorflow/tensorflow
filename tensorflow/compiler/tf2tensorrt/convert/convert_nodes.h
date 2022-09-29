@@ -31,11 +31,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_tensor_proxy.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
@@ -45,19 +45,6 @@ namespace tensorrt {
 
 namespace convert {
 using ::stream_executor::port::StatusOr;
-
-#define TFTRT_INTERNAL_ERROR_AT_NODE(node)                           \
-  do {                                                               \
-    return errors::Internal("TFTRT::", __FUNCTION__, ":", __LINE__,  \
-                            " failed to add TRT layer, at: ", node); \
-  } while (0)
-
-#define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
-  do {                                           \
-    if (ptr == nullptr) {                        \
-      TFTRT_INTERNAL_ERROR_AT_NODE(node);        \
-    }                                            \
-  } while (0)
 
 struct EngineConnection {
   // Constructs a non-control edge.
@@ -213,6 +200,12 @@ class TrtNodeValidator {
                                const std::vector<TRT_TensorOrWeights>& inputs,
                                TRT_TensorOrWeights* output);
 
+  // Convert a VariableV2 node to a TRT_TensorOrWeights.
+  Status ConvertVariableToWeights(
+      const NodeDef& const_node_def,
+      const std::vector<TRT_TensorOrWeights>& inputs,
+      TRT_TensorOrWeights* output);
+
   // Convert the output tensor at 'output_port' of 'node_def' to a
   // TRT_TensorOrWeights which will be later used as an input to other nodes and
   // passed to ValidateNode() below.
@@ -273,6 +266,10 @@ class Converter {
   // 'batch_size'.
   Status AddInputTensor(const string& name, nvinfer1::DataType dtype,
                         const nvinfer1::Dims& dims, int batch_size);
+
+  // Store the ResourceHandle as a TRT_TensorOrWeights object. This can be
+  // later used as input to other nodes.
+  Status AddInputResource(const string& name, const ResourceHandle& resource);
 
   // Mark the tensors with names specified by source_tensor_name as output of
   // the TRT network, and set their names in the TRT network as dest_node_name.
@@ -374,13 +371,14 @@ class Converter {
   //   only insert a new dim if size_for_added_dims[i] >= 0.
   Status DynamicReshape(ITensorProxyPtr input,
                         std::vector<std::pair<int, int>> slices,
-                        OpConverterParams* params, ITensorProxyPtr* output,
+                        const OpConverterParams* params,
+                        ITensorProxyPtr* output,
                         std::vector<int> size_for_added_dims = {},
                         std::optional<int> op_instance = std::nullopt);
 
   // Inserts a singleton dimension at axis for a dynamic shape tensor.
   Status DynamicExpandDims(ITensorProxyPtr input, const nvinfer1::Dims& dims,
-                           int axis, OpConverterParams* params,
+                           int axis, const OpConverterParams* params,
                            ITensorProxyPtr* output,
                            std::optional<int> op_instance = std::nullopt);
 
@@ -389,7 +387,7 @@ class Converter {
   // The input_dims argument stores the TRT dimensions of the input tensor,
   // where the dimensions to be squeezed are replaced by 0.
   Status SqueezeTensor(ITensorProxyPtr input, std::vector<int>* input_dims,
-                       OpConverterParams* params, ITensorProxyPtr* output,
+                       const OpConverterParams* params, ITensorProxyPtr* output,
                        std::optional<int> op_instance = std::nullopt);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
@@ -530,7 +528,8 @@ const UnaryOperationMapType* UnaryOperationMap();
 const UnaryOperationMapType* UnaryBooleanOperationMap();
 
 // Map of all supported ActivationTypes.
-const OperationMap<nvinfer1::ActivationType>* ActivationTypeMap();
+using ActivationTypeMapType = OperationMap<nvinfer1::ActivationType>;
+const ActivationTypeMapType* ActivationTypeMap();
 
 // Map from Tensorflow binary operation names to TensorRT binary operations
 // types.
@@ -552,17 +551,29 @@ absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {
 // Adds a matrix multiplication operation to the TensorRT graph. The "params"
 // pointer is only used to access the TRT network builder. The inputs and
 // parameters for the op are fully specified by input_[a|b] and transpose_[a|b].
-StatusOr<ITensorProxyPtr> ConvertMatMulImpl(OpConverterParams* params,
+StatusOr<ITensorProxyPtr> ConvertMatMulImpl(const OpConverterParams* params,
                                             TRT_TensorOrWeights input_a,
                                             TRT_TensorOrWeights input_b,
                                             bool transpose_a, bool transpose_b);
 
 std::string convert_range_error_msg(float start, float limit, float delta);
 std::string convert_range_expected_msg(const NodeDef& node_def);
+std::string bool_weight_error_msg(const NodeDef& node_def);
+std::string unexpected_type_error_msg(nvinfer1::DataType type_being_checked,
+                                      nvinfer1::DataType type_expected,
+                                      const NodeDef& node_def, int idx = 0);
+std::string then_else_dtypes_error_msg(nvinfer1::DataType type_then,
+                                       nvinfer1::DataType type_else,
+                                       const NodeDef& node_def);
+std::string batch_size_error(const string& name, const string& comment);
 
 inline bool find_name(const string& name, const std::vector<string> names) {
   return std::find(names.begin(), names.end(), name) != names.end();
 }
+
+Status check_type(nvinfer1::DataType type_being_checked,
+                  nvinfer1::DataType type_expected, const NodeDef& node_def,
+                  int idx = 0);
 
 }  // namespace convert
 }  // namespace tensorrt

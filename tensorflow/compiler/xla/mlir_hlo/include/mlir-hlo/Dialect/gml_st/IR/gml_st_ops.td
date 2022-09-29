@@ -21,26 +21,33 @@ limitations under the License.
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td"
-include "mlir-hlo/Dialect/gml_st/IR/gml_st_extension_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
-def GMLST_MaterializeOp : GMLST_Op<"materialize", [
-    NoSideEffect,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let arguments = (ins AnyShaped:$source, AnySet:$set);
-  let results = (outs AnyType:$result);
+def RankedTensorOrVector : AnyTypeOf<[AnyRankedTensor, AnyVector], "", "::mlir::ShapedType">;
+def RankedTensorOrVectorOrScalar : AnyTypeOf<[AnyRankedTensor, AnyVector, AnyFloat, AnyInteger]>;
+
+def GMLST_MaterializeOp : GMLST_Op<"materialize", [NoSideEffect]> {
+  let arguments = (ins RankedTensorOrVector:$source, AnySet:$set);
+  let results = (outs RankedTensorOrVectorOrScalar:$result);
+
+  let builders = [OpBuilder<(ins "Value":$source, "Value":$set)>];
+
   let assemblyFormat = [{
     $source`[` $set `]` attr-dict `:` type($source) `[` type($set) `]`
+      `to` type($result)
   }];
-  let hasVerifier = 0;
 }
 
 def GMLST_OffsetOp : GMLST_Op<"offset", [NoSideEffect]> {
   let summary = [{Returns the offset of a tile in a given dimension}];
-  let arguments = (ins AnySet:$tile, Index:$dim);
+  let description = [{
+    Returns the composed offset of a tile in a given dimension relative to the
+    root space.
+  }];
+  let arguments = (ins AnySet:$subset, Index:$dim);
   let results = (outs Index:$result);
   let assemblyFormat = [{
-    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
+    $subset `[` $dim `]` attr-dict `:` qualified(type($subset))
   }];
   let hasVerifier = 0;
   let hasFolder = 1;
@@ -48,6 +55,10 @@ def GMLST_OffsetOp : GMLST_Op<"offset", [NoSideEffect]> {
 
 def GMLST_SizeOp : GMLST_Op<"size", [NoSideEffect]> {
   let summary = [{Returns the size of a tile in a given dimension}];
+  let description = [{
+    Returns the composed size of a tile in a given dimension relative to the
+    root space.
+  }];
   let arguments = (ins GMLST_TileType:$tile, Index:$dim);
   let results = (outs Index:$result);
   let assemblyFormat = [{
@@ -59,6 +70,10 @@ def GMLST_SizeOp : GMLST_Op<"size", [NoSideEffect]> {
 
 def GMLST_StrideOp : GMLST_Op<"stride", [NoSideEffect]> {
   let summary = [{Returns the stride of a tile in a given dimension}];
+  let description = [{
+    Returns the composed stride of a tile in a given dimension relative to the
+    root space.
+  }];
   let arguments = (ins GMLST_TileType:$tile, Index:$dim);
   let results = (outs Index:$result);
   let assemblyFormat = [{
@@ -75,12 +90,12 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
       RecursiveSideEffects,
       SingleBlockImplicitTerminator<"gml_st::SetYieldOp">
     ])> {
-  let results = (outs Variadic<AnyRankedTensor>:$results);
+  let results = (outs Variadic<RankedTensorOrVector>:$results);
   let regions = (region SizedRegion<1>:$region);
 
   code extraBaseClassDeclaration = [{
     /// Number of loops
-    unsigned getNumLoops() { return step().size(); }
+    unsigned getNumLoops() { return getStep().size(); }
 
     /// Number of operands controlling the loop: lbs, ubs, steps
     unsigned getNumControlOperands() { return 3 * getNumLoops(); }
@@ -204,7 +219,7 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     /// Number of output operands
-    unsigned getNumOutputs() { return outputs().size(); }
+    unsigned getNumOutputs() { return getOutputs().size(); }
 
     /// Get the region output args.
     Block::BlockArgListType getRegionOutputArgs() {
@@ -267,9 +282,9 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
       : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
     ```
   }];
-  let arguments = (ins Variadic<AnyType>:$srcs,
-                       Variadic<AnyType>:$dsts,
-                       Variadic<AnyType>:$sets,
+  let arguments = (ins Variadic<RankedTensorOrVectorOrScalar>:$srcs,
+                       Variadic<RankedTensorOrVector>:$dsts,
+                       Variadic<AnySet>:$sets,
                        BoolArrayAttr:$accumulatorFlags);
   let regions = (region VariadicRegion<SizedRegion<1>>:$accumulators);
   let hasCustomAssemblyFormat = 1;
@@ -290,34 +305,11 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
 
   let extraClassDeclaration = [{
 
-    unsigned getNumUpdates() { return srcs().size(); }
-
-    // Methods for `srcs` arguments.
-    OpOperand* getSrcOperand(unsigned i) {
-      return &getOperation()->getOpOperand(3 * i);
-    }
-
-    SmallVector<OpOperand*> getSrcOperands() {
-      SmallVector<OpOperand*> operands;
-      for (unsigned i = 0, e = getNumOperands(); i < e; i += 3)
-        operands.push_back(&getOperation()->getOpOperand(i));
-      return operands;
-    }
-
-    bool isSrcOperand(OpOperand& operand) {
-      return operand.getOperandNumber() % 3 == 0;
-    }
+    unsigned getNumUpdates() { return getSrcs().size(); }
 
     // Methods for `dst` arguments.
     OpOperand* getDstOperand(unsigned i) {
-      return &getOperation()->getOpOperand(3 * i + 1);
-    }
-
-    SmallVector<OpOperand*> getDstOperands() {
-      SmallVector<OpOperand*> operands;
-      for (unsigned i = 1, e = getNumOperands(); i < e; i += 3)
-        operands.push_back(&getOperation()->getOpOperand(i));
-      return operands;
+      return &getOperation()->getOpOperand(getNumUpdates() + i);
     }
 
     FailureOr<OpResult> getTiedOpResult(OpOperand &opOperand) {
@@ -325,29 +317,15 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
 
       auto parent = getOperation()->getBlock()->getParentOp();
       if (isa<ParallelOp>(parent) || isa<ForOp>(parent)) {
-        return parent->getResult(0);
+        return parent->getResult(opOperand.getOperandNumber() -
+                                 getNumUpdates());
       }
       return failure();
     }
 
     bool isDstOperand(OpOperand& operand) {
-      return operand.getOperandNumber() % 3 == 1;
-    }
-
-    // Methods for `set` arguments.
-    OpOperand* getSetOperand(unsigned i) {
-      return &getOperation()->getOpOperand(3 * i + 2);
-    }
-
-    SmallVector<OpOperand*> getSetOperands() {
-      SmallVector<OpOperand*> operands;
-      for (unsigned i = 2, e = getNumOperands(); i < e; i += 3)
-        operands.push_back(&getOperation()->getOpOperand(i));
-      return operands;
-    }
-
-    bool isSetOperand(OpOperand& operand) {
-      return operand.getOperandNumber() % 3 == 2;
+      return operand.getOperandNumber() >= getNumUpdates() &&
+             operand.getOperandNumber() < getNumUpdates() * 2;
     }
   }];
 }

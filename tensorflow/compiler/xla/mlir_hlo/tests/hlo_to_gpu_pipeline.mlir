@@ -1,18 +1,20 @@
-// RUN: mlir-hlo-opt --split-input-file %s \
-// RUN:  --hlo-to-gpu-pipeline="tile-sizes=256 unroll-factors=4" \
+// RUN: mlir-hlo-opt -split-input-file %s \
+// RUN:  -hlo-to-gpu-pipeline="block-tile=1024 warp-tile=128 thread-tile=4" \
 // RUN: | FileCheck %s
 
 // CHECK:       gpu.container_module
-// CHECK-LABEL: func @simple_op
+// CHECK-LABEL: func.func @simple_op
 func.func @simple_op(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>) {
   %0 = bufferization.to_tensor %arg0 : memref<2048xf32>
   %1 = mhlo.log %0 : tensor<2048xf32>
   // CHECK-DAG:  %[[ONE:.*]] = arith.constant 1
-  // CHECK-DAG:  %[[BLOCK:.*]] = arith.constant 256
+  // CHECK-DAG:  %[[BLOCK:.*]] = arith.constant 8
+  // CHECK-DAG:  %[[WARP:.*]] = arith.constant 32
   // CHECK-DAG:  %[[GRID:.*]] = arith.constant 2
   // CHECK:      gpu.launch_func @[[MODULE:.*]]::@[[KERNEL:.*]] blocks
   // CHECK-SAME: in (%[[GRID]], %[[ONE]], %[[ONE]])
-  // CHECK-SAME: threads in (%[[BLOCK]], %[[ONE]], %[[ONE]])
+  // CHECK-SAME: threads in (%[[WARP]], %[[BLOCK]], %[[ONE]])
+  // CHECK-SAME: args({{.*}} : memref<2048xf32>, {{.*}} : memref<2048xf32>)
   memref.tensor_store %1, %arg1 : memref<2048xf32>
   "lmhlo.terminator"() : () -> ()
 }
@@ -23,17 +25,19 @@ func.func @simple_op(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>) {
 // -----
 
 // CHECK:       gpu.container_module
-// CHECK-LABEL: func @fusion
+// CHECK-LABEL: func.func @fusion
 func.func @fusion(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>) {
   %0 = bufferization.to_tensor %arg0 : memref<2048xf32>
   %1 = mhlo.abs %0 : tensor<2048xf32>
   %2 = mhlo.add %1, %1 : tensor<2048xf32>
   // CHECK-DAG:  %[[ONE:.*]] = arith.constant 1
-  // CHECK-DAG:  %[[BLOCK:.*]] = arith.constant 256
+  // CHECK-DAG:  %[[BLOCK:.*]] = arith.constant 8
+  // CHECK-DAG:  %[[WARP:.*]] = arith.constant 32
   // CHECK-DAG:  %[[GRID:.*]] = arith.constant 2
   // CHECK:      gpu.launch_func @[[MODULE:.*]]::@[[KERNEL:.*]] blocks
   // CHECK-SAME: in (%[[GRID]], %[[ONE]], %[[ONE]])
-  // CHECK-SAME: threads in (%[[BLOCK]], %[[ONE]], %[[ONE]])
+  // CHECK-SAME: threads in (%[[WARP]], %[[BLOCK]], %[[ONE]])
+  // CHECK-SAME: args({{.*}} : memref<2048xf32>, {{.*}} : memref<2048xf32>)
   memref.tensor_store %2, %arg1 : memref<2048xf32>
   "lmhlo.terminator"() : () -> ()
 }
@@ -43,22 +47,23 @@ func.func @fusion(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>) {
 // CHECK-NOT: llvm.return
 // CHECK:     %[[ADD:.*]] = llvm.fadd %[[ABS]], %[[ABS]]
 
+
 // -----
 
 // CHECK:       gpu.container_module
-// CHECK-LABEL: func @multidimensional
-// We are not smart enough yet to unroll multidimensional tensors
-// 4x4x4x4x4x4 == 4 * 4^4 * 4 == 4 * 2^8 * 4 == 16 * 256 threads with 1 element each
-func.func @multidimensional(%arg0: memref<4x4x4x4x4x4xf32>, %arg1: memref<4x4x4x4x4x4xf32>) {
-  %0 = bufferization.to_tensor %arg0 : memref<4x4x4x4x4x4xf32>
-  %1 = mhlo.log %0 : tensor<4x4x4x4x4x4xf32>
-  // CHECK-DAG:  %[[ONE:.*]] = arith.constant 1 :
-  // CHECK-DAG:  %[[BLOCK:.*]] = arith.constant 256 :
-  // CHECK-DAG:  %[[GRID:.*]] = arith.constant 16 :
+// CHECK-LABEL: func.func @imperfect_tiling
+func.func @imperfect_tiling(%arg0: memref<2051xf32>, %arg1: memref<2051xf32>) {
+  %0 = bufferization.to_tensor %arg0 : memref<2051xf32>
+  %1 = mhlo.log %0 : tensor<2051xf32>
+  // CHECK-DAG:  %[[ONE:.*]] = arith.constant 1
+  // CHECK-DAG:  %[[BLOCK:.*]] = arith.constant 8
+  // CHECK-DAG:  %[[WARP:.*]] = arith.constant 32
+  // CHECK-DAG:  %[[GRID:.*]] = arith.constant 3
   // CHECK:      gpu.launch_func @[[MODULE:.*]]::@[[KERNEL:.*]] blocks
   // CHECK-SAME: in (%[[GRID]], %[[ONE]], %[[ONE]])
-  // CHECK-SAME: threads in (%[[BLOCK]], %[[ONE]], %[[ONE]])
-  memref.tensor_store %1, %arg1 : memref<4x4x4x4x4x4xf32>
+  // CHECK-SAME: threads in (%[[WARP]], %[[BLOCK]], %[[ONE]])
+  // CHECK-SAME: args({{.*}} : memref<2051xf32>, {{.*}} : memref<2051xf32>)
+  memref.tensor_store %1, %arg1 : memref<2051xf32>
   "lmhlo.terminator"() : () -> ()
 }
 // CHECK: gpu.module @[[MODULE]] attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>}

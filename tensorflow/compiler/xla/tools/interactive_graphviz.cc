@@ -43,12 +43,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/subprocess.h"
 #if defined(PLATFORM_GOOGLE)
 #include "util/readline/readline.h"
 #endif
@@ -435,7 +435,7 @@ void OpenUrl(const Options& opts, absl::string_view url) {
       absl::StartsWithIgnoreCase(url, "file://")) {
     const char* browser_bin = opts.browser.empty() ? "/usr/bin/sensible-browser"
                                                    : opts.browser.c_str();
-    tensorflow::SubProcess p;
+    tsl::SubProcess p;
     p.SetProgram(browser_bin, {browser_bin, std::string(url)});
     p.Start();
   } else {
@@ -454,7 +454,7 @@ void RenderAndDisplayGraph(
     const std::function<StatusOr<std::string>(RenderedGraphFormat)>& renderer) {
   StatusOr<std::string> url_result = renderer(RenderedGraphFormat::kUrl);
   if (url_result.ok()) {
-    std::string url = url_result.ValueOrDie();
+    std::string url = url_result.value();
     OpenUrl(opts, url);
     return;
   }
@@ -467,7 +467,7 @@ void RenderAndDisplayGraph(
     std::cerr << "Trying as HTML..." << std::endl;
   }
 
-  auto* env = tensorflow::Env::Default();
+  auto* env = tsl::Env::Default();
   StatusOr<std::string> html_result = renderer(RenderedGraphFormat::kHtml);
   if (!html_result.ok()) {
     std::cerr << "Failed to render graph as HTML: " << html_result.status()
@@ -487,11 +487,11 @@ void RenderAndDisplayGraph(
   // Try to create a unique file inside of temp_dirs.front().  Notably, this
   // file's name must end with ".html", otherwise web browsers will treat it as
   // plain text, so we can't use Env::CreateUniqueFileName().
-  std::string temp_file_path = tensorflow::io::JoinPath(
+  std::string temp_file_path = tsl::io::JoinPath(
       temp_dirs.front(),
       absl::StrFormat("interactive_graphviz.%d.html", env->NowMicros()));
-  auto status = tensorflow::WriteStringToFile(
-      env, temp_file_path, std::move(html_result).ValueOrDie());
+  auto status = tsl::WriteStringToFile(env, temp_file_path,
+                                       std::move(html_result).value());
   if (status.ok()) {
     OpenUrl(opts, absl::StrCat("file://", temp_file_path));
     return;
@@ -698,47 +698,46 @@ void RealMain(const Options& opts) {
   std::unique_ptr<HloModule> module;
   if (!opts.hlo_snapshot.empty()) {
     HloSnapshot snapshot;
-    TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                            opts.hlo_snapshot, &snapshot))
+    TF_CHECK_OK(
+        tsl::ReadBinaryProto(tsl::Env::Default(), opts.hlo_snapshot, &snapshot))
         << "Can't open, read, or parse HloSnapshot proto at "
         << opts.hlo_snapshot;
     auto config =
         HloModule::CreateModuleConfigFromProto(snapshot.hlo().hlo_module(),
                                                xla::GetDebugOptionsFromFlags())
-            .ValueOrDie();
-    module = HloModule::CreateFromProto(snapshot.hlo().hlo_module(), config)
-                 .ValueOrDie();
+            .value();
+    module =
+        HloModule::CreateFromProto(snapshot.hlo().hlo_module(), config).value();
   } else if (!opts.hlo_proto.empty()) {
     module = HloRunner::ReadModuleFromBinaryProtoFile(
                  opts.hlo_proto, xla::GetDebugOptionsFromFlags())
-                 .ValueOrDie();
+                 .value();
   } else if (!opts.hlo_text.empty()) {
     module = HloRunner::ReadModuleFromHloTextFile(
                  opts.hlo_text, xla::GetDebugOptionsFromFlags())
-                 .ValueOrDie();
+                 .value();
   } else if (!opts.hlo_module_proto.empty()) {
     module = HloRunner::ReadModuleFromModuleBinaryProtofile(
                  opts.hlo_module_proto, xla::GetDebugOptionsFromFlags())
-                 .ValueOrDie();
+                 .value();
   }
 
   // If a platform was specified, compile the module for that platform.
   if (!opts.platform.empty()) {
-    se::Platform* platform =
-        PlatformUtil::GetPlatform(opts.platform).ValueOrDie();
+    se::Platform* platform = PlatformUtil::GetPlatform(opts.platform).value();
     LOG(INFO) << "Compiling module for " << platform->Name();
 
     se::StreamExecutor* executor =
-        platform->ExecutorForDevice(/*ordinal=*/0).ValueOrDie();
-    auto compiler = Compiler::GetForPlatform(platform).ValueOrDie();
+        platform->ExecutorForDevice(/*ordinal=*/0).value();
+    auto compiler = Compiler::GetForPlatform(platform).value();
     module = compiler
                  ->RunHloPasses(std::move(module), executor,
                                 /*device_allocator=*/nullptr)
-                 .ValueOrDie();
+                 .value();
     auto executable = compiler
                           ->RunBackend(std::move(module), executor,
                                        /*device_allocator=*/nullptr)
-                          .ValueOrDie();
+                          .value();
     InteractiveDumpGraphs(opts, executable->module());
   } else {
     InteractiveDumpGraphs(opts, *module);
@@ -770,7 +769,7 @@ int main(int argc, char** argv) {
   };
   std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  tsl::port::InitMain(argv[0], &argc, &argv);
   if (argc != 1 || !parse_ok || need_help) {
     LOG(QFATAL) << usage;
   }

@@ -268,7 +268,7 @@ ENTRY convolution {
   ROOT convolution = f32[2,4,4,1]{3,2,1,0} convolution(p1, reverse), window={size=4x4 pad=3_3x3_3}, dim_labels=fb01_o01i->f01b, feature_group_count=2
 }
 )")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(auto fake_arguments, MakeFakeArguments(module.get()));
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(

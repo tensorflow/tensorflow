@@ -15,18 +15,109 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 
 // Implements legalization and post-legalization optimization helper functions
 
 namespace mlir {
 namespace tosa {
+
+LogicalResult getDynamicDims(PatternRewriter& rewriter, Operation* op,
+                             Value value, llvm::SmallVector<Value>& dims) {
+  auto value_ty = value.getType().dyn_cast<ShapedType>();
+  if (!value_ty || !value_ty.hasRank()) return failure();
+
+  dims.resize(value_ty.getRank());
+  RankedTensorType dim_ty =
+      tensorflow::GetTypeFromTFTensorShape({}, rewriter.getI32Type());
+
+  for (int i = 0, s = value_ty.getRank(); i < s; ++i) {
+    if (!value_ty.isDynamicDim(i)) {
+      dims[i] = rewriter.create<tosa::ConstOp>(
+          op->getLoc(), dim_ty,
+          SplatElementsAttr::get(dim_ty, value_ty.getDimSize(i)));
+      continue;
+    }
+
+    // TODO(suderman): This should be changed to TOSA operations when TOSA has
+    // a TOSA dimension op.
+    Value dim = rewriter.create<tensor::DimOp>(op->getLoc(), value, i);
+    dim = rewriter.create<arith::IndexCastOp>(op->getLoc(),
+                                              rewriter.getI32Type(), dim);
+    dim = rewriter.create<tensor::FromElementsOp>(op->getLoc(), dim_ty,
+                                                  ValueRange{dim});
+    dims[i] = dim;
+  }
+
+  return success();
+}
+
+llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
+                                                  Operation* op,
+                                                  Value input_value,
+                                                  ShapedType output_type,
+                                                  llvm::ArrayRef<Value> dims) {
+  auto e_ty = input_value.getType().cast<ShapedType>().getElementType();
+  llvm::SmallVector<int64_t> static_dims;
+
+  if (output_type.hasRank()) {
+    static_dims.append(output_type.getShape().begin(),
+                       output_type.getShape().end());
+  } else {
+    static_dims.resize(dims.size(), -1);
+  }
+
+  int64_t dyn_count = 0;
+  for (int i = 0, s = dims.size(); i < s; ++i) {
+    auto dim = dims[i];
+    SplatElementsAttr dim_attr;
+    if (matchPattern(dim, m_Constant(&dim_attr))) {
+      if (dim_attr.getType().cast<ShapedType>().getRank() != 0) {
+        (void)rewriter.notifyMatchFailure(
+            op, "dim for building tosa::ReshapeOp should be rank-0");
+        return llvm::None;
+      }
+      int64_t size = dim_attr.getSplatValue<APInt>().getSExtValue();
+
+      // Check that static shapes agree.
+      if (size != ShapedType::kDynamicSize &&
+          static_dims[i] != ShapedType::kDynamicSize &&
+          size != static_dims[i]) {
+        (void)rewriter.notifyMatchFailure(
+            op, "mismatch reshape static dim when creating tosa::ReshapeOp");
+        return llvm::None;
+      }
+
+      static_dims[i] = size == ShapedType::kDynamicSize ? static_dims[i] : size;
+    }
+
+    if (static_dims[i] == ShapedType::kDynamicSize) dyn_count++;
+  }
+
+  if (dyn_count > 1) {
+    (void)rewriter.notifyMatchFailure(
+        op, "multiple dynamic shapes when creating tosa::ReshapeOp");
+    return llvm::None;
+  }
+
+  ArrayAttr shape_attr = rewriter.getI64ArrayAttr(static_dims);
+  auto output_ty = tensorflow::GetTypeFromTFTensorShape(static_dims, e_ty);
+  return rewriter
+      .create<tosa::ReshapeOp>(op->getLoc(), output_ty, input_value, shape_attr)
+      .getResult();
+}
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
@@ -182,9 +273,9 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
   auto element_qtype =
       UniformQuantizedType::get(true, rewriter.getIntegerType(8),
                                 rewriter.getF32Type(), 1.0f, 0, -128, 127);
-  auto const_type = RankedTensorType::get({256}, element_qtype);
-  auto storage_type =
-      RankedTensorType::get({256}, element_qtype.getStorageType());
+  auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
+  auto storage_type = tensorflow::GetTypeFromTFTensorShape(
+      {256}, element_qtype.getStorageType());
   auto const_attr =
       DenseElementsAttr::get(storage_type, llvm::makeArrayRef(table));
 
@@ -225,9 +316,9 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
   auto element_qtype =
       UniformQuantizedType::get(true, rewriter.getIntegerType(16),
                                 rewriter.getF32Type(), 1.0f, 0, -32768, 32767);
-  auto const_type = RankedTensorType::get({513}, element_qtype);
-  auto storage_type =
-      RankedTensorType::get({513}, element_qtype.getStorageType());
+  auto const_type = tensorflow::GetTypeFromTFTensorShape({513}, element_qtype);
+  auto storage_type = tensorflow::GetTypeFromTFTensorShape(
+      {513}, element_qtype.getStorageType());
   auto const_attr =
       DenseElementsAttr::get(storage_type, llvm::makeArrayRef(table));
 
@@ -241,8 +332,10 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
 void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
                             double input_scale, int32_t input_zp,
                             std::function<double(double)> func,
-                            Value& upper_const, Value& lower_const) {
-  SmallVector<int16_t, 513> upper_table, lower_table;
+                            Value& first_const, Value& second_const,
+                            Value& third_const, Value& fourth_const) {
+  SmallVector<int16_t, 513> first_table, second_table, third_table,
+      fourth_table;
 
   double output_inv_scale = static_cast<double>(1L << 31);
 
@@ -258,41 +351,55 @@ void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
       rescaled = static_cast<int64_t>(1L << 31) - 1;
     }
 
-    int32_t upper = (rescaled >> 16) & 0xFFFF;
-    // TABLE output is signed 16 bits with range [-32768, 32767]
-    // Lower 16 bits are unsigned and ranges [0, 65536]
-    // Need to adjust value with offset 0x8000 in table generation
-    // Legalization should add this back before recovering 32-bit value
-    int32_t lower = (rescaled & 0xFFFF) - 0x8000;
+    // Only copy the 8-bit groups
+    int32_t first = (rescaled >> 24) & 0xFF;
+    int32_t second = (rescaled >> 16) & 0xFF;
+    int32_t third = (rescaled >> 8) & 0xFF;
+    int32_t fourth = (rescaled)&0xFF;
 
-    upper_table.push_back(upper);
-    lower_table.push_back(lower);
+    first_table.push_back(first);
+    second_table.push_back(second);
+    third_table.push_back(third);
+    fourth_table.push_back(fourth);
   }
 
   auto element_qtype =
       UniformQuantizedType::get(true, rewriter.getIntegerType(16),
                                 rewriter.getF32Type(), 1.0f, 0, -32768, 32767);
-  auto const_type = RankedTensorType::get({513}, element_qtype);
-  auto storage_type =
-      RankedTensorType::get({513}, element_qtype.getStorageType());
+  auto const_type = tensorflow::GetTypeFromTFTensorShape({513}, element_qtype);
+  auto storage_type = tensorflow::GetTypeFromTFTensorShape(
+      {513}, element_qtype.getStorageType());
 
-  auto upper_const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(upper_table));
-  auto lower_const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(lower_table));
+  auto first_const_attr =
+      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(first_table));
+  auto second_const_attr =
+      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(second_table));
+  auto third_const_attr =
+      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(third_table));
+  auto fourth_const_attr =
+      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(fourth_table));
 
-  upper_const =
-      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, upper_const_attr)
+  first_const =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, first_const_attr)
           .getResult();
-  lower_const =
-      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, lower_const_attr)
+  second_const =
+      rewriter
+          .create<tosa::ConstOp>(op->getLoc(), const_type, second_const_attr)
+          .getResult();
+  third_const =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, third_const_attr)
+          .getResult();
+  fourth_const =
+      rewriter
+          .create<tosa::ConstOp>(op->getLoc(), const_type, fourth_const_attr)
           .getResult();
 }
 
 // Create a 32-bit float constant operator from a float
 Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
                                   float val) {
-  auto const_type = RankedTensorType::get({}, rewriter.getF32Type());
+  auto const_type =
+      tensorflow::GetTypeFromTFTensorShape({}, rewriter.getF32Type());
   auto const_attr = DenseElementsAttr::get(const_type, val);
 
   auto const_op =
@@ -303,7 +410,8 @@ Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
 // Create a 32-bit integer constant operator from an int
 Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
                                   int32_t val) {
-  auto const_type = RankedTensorType::get({}, rewriter.getIntegerType(32));
+  auto const_type =
+      tensorflow::GetTypeFromTFTensorShape({}, rewriter.getIntegerType(32));
   auto const_attr = DenseElementsAttr::get(const_type, val);
 
   auto const_op =
@@ -473,8 +581,8 @@ llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
     return llvm::None;
   }
 
-  auto const_type =
-      RankedTensorType::get(shape, rewriter.getIntegerType(sizeof(T) * 8));
+  auto const_type = tensorflow::GetTypeFromTFTensorShape(
+      shape, rewriter.getIntegerType(sizeof(T) * 8));
   auto const_attr = DenseElementsAttr::get(const_type, vec);
 
   auto const_op =
@@ -497,7 +605,7 @@ llvm::Optional<Value> getConstTensor<APInt>(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  auto const_type = RankedTensorType::get(
+  auto const_type = tensorflow::GetTypeFromTFTensorShape(
       shape, rewriter.getIntegerType(vec[0].getBitWidth()));
   auto const_attr = DenseElementsAttr::get(const_type, vec);
 
@@ -521,7 +629,8 @@ llvm::Optional<Value> getConstTensor<float>(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  auto const_type = RankedTensorType::get(shape, rewriter.getF32Type());
+  auto const_type =
+      tensorflow::GetTypeFromTFTensorShape(shape, rewriter.getF32Type());
   auto const_attr = DenseElementsAttr::get(const_type, vec);
 
   auto const_op =
@@ -557,7 +666,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // This should be investigate for whether it is still necessary due to quant
   // type stripping changing.
   func.walk([&](tosa::ConstOp op) {
-    auto ety = op.value().getType().getElementType();
+    auto ety = op.getValue().getType().getElementType();
     auto new_ty = op.getType().cast<ShapedType>().clone(ety);
     op.getResult().setType(new_ty);
   });

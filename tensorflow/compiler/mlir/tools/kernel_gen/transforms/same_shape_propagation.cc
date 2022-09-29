@@ -186,7 +186,7 @@ namespace transforms {
 
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PROPAGATESHAPEKNOWLEDGETOKERNELS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 // A basic shape equality inference. This should be superceeded by a proper
@@ -199,7 +199,7 @@ class ShapeEqualityKnowledge {
   void build(func::FuncOp function) {
     function.walk([&](Operation *op) {
       if (auto reshape = dyn_cast<memref::ReshapeOp>(op)) {
-        registerAssociation(ShapeValue{reshape.getShape()},
+        registerAssociation(ShapeValue{(Value)reshape.getShape()},
                             reshape.getResult());
         return;
       }
@@ -225,7 +225,7 @@ class ShapeEqualityKnowledge {
         // Construct a symbol representing the allocated shape.
         SmallVector<ValueOrConst, 4> shape;
         ShapedType type = alloc.getResult().getType().cast<ShapedType>();
-        fillShapeFromAllocLike(alloc.dyn_sizes(), type, shape);
+        fillShapeFromAllocLike(alloc.getDynSizes(), type, shape);
         registerAssociation(ShapeValue{shape}, alloc.getResult());
         return;
       }
@@ -314,7 +314,7 @@ class ShapeEqualityKnowledge {
 /// shape information of the left-most argument inside of the kernel function.
 /// That way, llvm can CSE index computations on same-shaped inputs.
 struct PropagateShapeKnowledgeToKernels
-    : public PropagateShapeKnowledgeToKernelsBase<
+    : public impl::PropagateShapeKnowledgeToKernelsBase<
           PropagateShapeKnowledgeToKernels> {
   void runOnOperation() override {
     ShapeEqualityKnowledge knowledge;
@@ -330,7 +330,7 @@ struct PropagateShapeKnowledgeToKernels
       llvm::SmallVector<std::pair<Value, int>, 4> seen_memrefs;
       // Position of the kernel argument we are currently at.
       int kernel_p = 0;
-      for (auto operand : launch.operands()) {
+      for (auto operand : launch.getKernelOperands()) {
         auto memref = operand.getType().dyn_cast<MemRefType>();
         if (!memref) {
           // Scalar argument, advance kernel position by one.

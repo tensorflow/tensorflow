@@ -26,15 +26,15 @@ namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
-constexpr absl::string_view kTestOpName = "test_op_name";
+constexpr int64_t kTestOpKey = 1;
 constexpr uint64_t kTestCost = 1234;
 constexpr uint64_t kTestAvgCost = 1851;
 
 TEST(CostRecorderTest, RecordCostTest) {
   CostRecorder recorder = CostRecorder(nullptr);
 
-  recorder.RecordCost(kTestOpName, kTestCost);
-  recorder.RecordCost(kTestOpName, kTestCost);
+  recorder.RecordCost(kTestOpKey, kTestCost);
+  recorder.RecordCost(kTestOpKey, kTestCost);
 
   EXPECT_EQ(recorder.size(), 1);
 }
@@ -60,8 +60,8 @@ TEST(CostRecorderTest, ProtoRecordsTest) {
   CostRecorder recorder = CostRecorder(nullptr);
 
   // Records the cost of op.
-  recorder.RecordCost(kTestOpName, kTestCost);
-  recorder.RecordCost(kTestOpName, 2 * kTestCost);
+  recorder.RecordCost(kTestOpKey, kTestCost);
+  recorder.RecordCost(kTestOpKey, 2 * kTestCost);
   ASSERT_EQ(recorder.size(), 1);
 
   // Writes op's cost to the disk.
@@ -76,9 +76,8 @@ TEST(CostRecorderTest, ProtoRecordsTest) {
   TF_CHECK_OK(tensorflow::ReadTextProto(
       tensorflow::Env::Default(), measured_cost_path, &op_cost_map_proto));
 
-  EXPECT_EQ(
-      op_cost_map_proto.op_cost_map().find(std::string(kTestOpName))->second,
-      kTestAvgCost);
+  EXPECT_EQ(op_cost_map_proto.op_cost_map().find(kTestOpKey)->second,
+            kTestAvgCost);
 }
 
 }  // namespace

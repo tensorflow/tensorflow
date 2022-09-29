@@ -15,11 +15,48 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_UNIFORM_QUANT_OPS_MATH_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_UNIFORM_QUANT_OPS_MATH_UTILS_H_
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
+
+namespace internal {
+
+// Multiply by the effective quantized multiplier and shift.
+// Caller is responsible for guaranteeing:
+// quantized_multiplier >= 0
+// shift >= -31 && shift <= 30
+// The usage of this function is restricted to "multiply by quantized_multiplier
+// and shift which were calcluated from QuantizeMultiplier() function below",
+// so the conditions are expected to be met.
+//
+// Reference (TFLite MultiplyByQuantizedMultiplier with TFLITE_SINGLE_ROUNDING):
+// https://github.com/tensorflow/tensorflow/blob/47c640a961874f644cd071752835c7b792450bb8/tensorflow/lite/kernels/internal/common.h#L145
+// Above implementation refers from ruy MultiplyByQuantizedMultiplier
+// (https://github.com/google/ruy/blob/97ebb72aa0655c0af98896b317476a5d0dacad9c/ruy/apply_multiplier.cc)
+//
+// After mutiplying fixed point quantized_multiplier, apply single rounding
+// operation (addition of 'round' to result and then shift right by
+// total_shift). where round=(1 << (30 - shift)) and total_shift=(31 - shift)
+inline int32_t MultiplyByQuantizedMultiplier(int32_t x,
+                                             int32_t quantized_multiplier,
+                                             int shift) {
+  const int64_t total_shift = 31 - shift;
+  const int64_t round = static_cast<int64_t>(1) << (total_shift - 1);
+  int64_t result = x * static_cast<int64_t>(quantized_multiplier) + round;
+  result = result >> total_shift;
+
+  result = std::clamp(
+      result, static_cast<int64_t>(std::numeric_limits<int32_t>::min()),
+      static_cast<int64_t>(std::numeric_limits<int32_t>::max()));
+  return static_cast<int32_t>(result);
+}
+
+}  // namespace internal
 
 // Quantize eigen Tensor input_tensor using given inv_scale and zero_point,
 // using the formula:
@@ -70,6 +107,40 @@ void AsymmetricQuantize(const Tensor& tensor, int apply_offset, int apply_size,
                         int32_t quantization_min_val,
                         int32_t quantization_max_val, float& scale,
                         int32_t& zero_point, Tensor& quantized_tensor);
+
+// Given double_multiplier, quantize it where it is represented by two int32_t,
+// quantized_multiplier and shift.
+//
+// double_multiplier must be a positive finite number. Otherwise returns
+// InvalidArgument.
+//
+// Output quantized_multiplier is clamped to range [0, INT32_MAX],
+// and shift is clamped to range [-31, 30].
+Status QuantizeMultiplier(double double_multiplier,
+                          int32_t& quantized_multiplier, int32_t& shift);
+
+// Requantize input_val given quantized effective_muliplier|shift and
+// input|output zero_point.
+// Effective multiplier and shift should be calculated from effective scale
+// which is:
+// (product of input scales) / (product of output scales).
+template <typename Tin, typename Tout>
+Tout AffineRequantizeWithQuantizedMultiplierAndShift(
+    Tin input_val, int32_t effective_quantized_multiplier, int effective_shift,
+    int32_t input_zero_point, int32_t output_zero_point,
+    int32_t quantization_min_val, int32_t quantization_max_val) {
+  const int32_t input = static_cast<int32_t>(input_val) - input_zero_point;
+
+  const int32_t unclamped =
+      internal::MultiplyByQuantizedMultiplier(
+          input, effective_quantized_multiplier, effective_shift) +
+      output_zero_point;
+
+  // Clamp with [quantization_min_val, quantization_max_val].
+  return static_cast<Tout>(
+      std::max<int32_t>(std::min<int32_t>(unclamped, quantization_max_val),
+                        quantization_min_val));
+}
 
 }  // namespace tensorflow
 

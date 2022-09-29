@@ -36,8 +36,17 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
+
+# Each field may contain one of the following types of Tensors.
+_FieldValue = Union[ops.Tensor, ragged_tensor.RaggedTensor, 'StructuredTensor',
+                    extension_type.ExtensionType]
+# Function that takes a FieldValue as input and returns the transformed
+# FieldValue.
+_FieldFn = Callable[[_FieldValue], _FieldValue]
 
 
+@tf_export('experimental.StructuredTensor')
 class StructuredTensor(extension_type.BatchableExtensionType):
   """A multidimensional collection of structures with the same schema.
 
@@ -59,7 +68,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   ### Examples
 
   >>> # A scalar StructuredTensor describing a single person.
-  >>> s1 = StructuredTensor.from_pyval(
+  >>> s1 = tf.experimental.StructuredTensor.from_pyval(
   ...     {"age": 82, "nicknames": ["Bob", "Bobby"]})
   >>> s1.shape
   TensorShape([])
@@ -67,7 +76,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   <tf.Tensor: shape=(), dtype=int32, numpy=82>
 
   >>> # A vector StructuredTensor describing three people.
-  >>> s2 = StructuredTensor.from_pyval([
+  >>> s2 = tf.experimental.StructuredTensor.from_pyval([
   ...     {"age": 12, "nicknames": ["Josaphine"]},
   ...     {"age": 82, "nicknames": ["Bob", "Bobby"]},
   ...     {"age": 42, "nicknames": ["Elmo"]}])
@@ -82,8 +91,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   A *field path* is a tuple of field names, specifying the path to a nested
   field.
   """
-  _fields: Mapping[str, Union[ops.Tensor, ragged_tensor.RaggedTensor,
-                              'StructuredTensor', extension_type.ExtensionType]]
+  _fields: Mapping[str, _FieldValue]
   _ragged_shape: dynamic_ragged_shape.DynamicRaggedShape
 
   __name__ = 'tf.StructuredTensor'
@@ -95,19 +103,12 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   # sub-levels (embedded) StructuredTensor's.
   FieldName = Union[str, Sequence[str]]
 
-  # Each field may contain one of the following types of Tensors.
-  FieldValue = Union[ops.Tensor, ragged_tensor.RaggedTensor, 'StructuredTensor']
-
-  # Function that takes a FieldValue as input and returns the transformed
-  # FieldValue.
-  FieldFn = Callable[[FieldValue], FieldValue]
-
   # pylint: enable=invalid-name
 
   #=============================================================================
   # Constructor & Factory Methods
   #=============================================================================
-  def __init__(self, fields: Mapping[str, FieldValue],
+  def __init__(self, fields: Mapping[str, _FieldValue],
                ragged_shape: dynamic_ragged_shape.DynamicRaggedShape):
     self._fields = fields
     self._ragged_shape = ragged_shape
@@ -190,15 +191,15 @@ class StructuredTensor(extension_type.BatchableExtensionType):
 
     Examples:
 
-      >>> StructuredTensor.from_fields({'x': 1, 'y': [1, 2, 3]})
+      >>> tf.experimental.StructuredTensor.from_fields({'x': 1, 'y': [1, 2, 3]})
       <StructuredTensor(
         fields={
           "x": tf.Tensor(1, shape=(), dtype=int32),
           "y": tf.Tensor([1 2 3], shape=(3,), dtype=int32)},
         shape=())>
 
-      >>> StructuredTensor.from_fields({'foo': [1, 2], 'bar': [3, 4]},
-      ...                              shape=[2])
+      >>> tf.experimental.StructuredTensor.from_fields(
+      ...     {'foo': [1, 2], 'bar': [3, 4]}, shape=[2])
       <StructuredTensor(
         fields={
           "bar": tf.Tensor([3 4], shape=(2,), dtype=int32),
@@ -263,7 +264,8 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     Returns:
       A `StructuredTensor`.
     Examples:
-      >>> StructuredTensor.from_fields_and_rank({'x': 1, 'y': [1, 2, 3]}, 0)
+      >>> tf.experimental.StructuredTensor.from_fields_and_rank(
+      ...     {'x': 1, 'y': [1, 2, 3]}, 0)
       <StructuredTensor(
         fields={
           "x": tf.Tensor(1, shape=(), dtype=int32),
@@ -299,7 +301,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
 
   def with_updates(
       self,
-      updates: Dict[FieldName, Union[FieldValue, FieldFn, None]],
+      updates: Dict[FieldName, Union[_FieldValue, _FieldFn, None]],
       validate: bool = False
   ) -> 'StructuredTensor':
     """Creates a new `StructuredTensor` with the updated fields.
@@ -356,7 +358,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
 
     Examples:
 
-    >>> shoes_us = StructuredTensor.from_pyval([
+    >>> shoes_us = tf.experimental.StructuredTensor.from_pyval([
     ...    {"age": 12, "nicknames": ["Josaphine"],
     ...       "shoes": {"sizes": [8.0, 7.5, 7.5]}},
     ...    {"age": 82, "nicknames": ["Bob", "Bobby"],
@@ -391,7 +393,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   def _with_updates_impl(
       self,
       error_prefix: Tuple[str],
-      updates: List[Tuple[FieldName, Union[FieldValue, FieldFn]]],
+      updates: List[Tuple[FieldName, Union[_FieldValue, _FieldFn]]],
       validate: bool) -> 'StructuredTensor':
     """Recursive part of `with_updates` implementation."""
     # Get current fields.
@@ -402,8 +404,8 @@ class StructuredTensor(extension_type.BatchableExtensionType):
       return str(error_prefix + (name,))
 
     # Apply value if a function or the value itself.
-    def apply_value(name: str, value: Union['FieldValue',
-                                            'FieldFn']) -> 'FieldValue':
+    def apply_value(name: str, value: Union[_FieldValue,
+                                            _FieldFn]) -> _FieldValue:
       if callable(value):
         # `value` is actually a transforming function.
         if name not in new_fields:
@@ -506,7 +508,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     >>> d = [
     ...  {'docs': [{'tokens':[1, 2]}, {'tokens':[3]}]},
     ...  {'docs': [{'tokens':[7]}]}]
-    >>> st = StructuredTensor.from_pyval(d)
+    >>> st = tf.experimental.StructuredTensor.from_pyval(d)
     >>> st2 =st.promote(('docs','tokens'), 'docs_tokens')
     >>> st2[0]['docs_tokens']
     <tf.Tensor: shape=(3,), dtype=int32, numpy=array([1, 2, 3], dtype=int32)>
@@ -587,25 +589,25 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     >>> x = {'a': 1, 'b': ['foo', 'bar', 'baz']}       # shape = [] (scalar)
 
     >>> s1 = [[x, x, x, x], [x, x, x, x]]              # shape = [2, 4]
-    >>> StructuredTensor.from_pyval(s1).row_partitions
+    >>> tf.experimental.StructuredTensor.from_pyval(s1).row_partitions
     (tf.RowPartition(row_splits=[0 4 8]),)
 
     >>> s2 = [[x, x], [x, x], [x, x], [x, x]]          # shape = [4, 2]
-    >>> StructuredTensor.from_pyval(s2).row_partitions
+    >>> tf.experimental.StructuredTensor.from_pyval(s2).row_partitions
     (tf.RowPartition(row_splits=[0 2 4 6 8]),)
 
     >>> s3 = [[x, x, x], [], [x, x, x, x], [x]]        # shape = [2, None]
-    >>> StructuredTensor.from_pyval(s3).row_partitions
+    >>> tf.experimental.StructuredTensor.from_pyval(s3).row_partitions
     (tf.RowPartition(row_splits=[0 3 3 7 8]),)
 
     >>> s4 = [[[x, x], [x, x]], [[x, x], [x, x]]]      # shape = [2, 2, 2]
-    >>> StructuredTensor.from_pyval(s4).row_partitions
+    >>> tf.experimental.StructuredTensor.from_pyval(s4).row_partitions
     (tf.RowPartition(row_splits=[0 2 4]),
      tf.RowPartition(row_splits=[0 2 4 6 8]))
 
 
     >>> s5 = [[[x, x], [x]], [[x, x]], [[x, x], [x]]]  # shape = [3, None, None]
-    >>> StructuredTensor.from_pyval(s5).row_partitions
+    >>> tf.experimental.StructuredTensor.from_pyval(s5).row_partitions
     (tf.RowPartition(row_splits=[0 2 3 5]),
      tf.RowPartition(row_splits=[0 2 3 5 7 8]))
 
@@ -817,7 +819,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
 
     Requires that all fields are Eager tensors.
 
-    >>> StructuredTensor.from_fields(
+    >>> tf.experimental.StructuredTensor.from_fields(
     ...     {'a': [1, 2, 3]}, [3]).to_pyval()
     [{'a': 1}, {'a': 2}, {'a': 3}]
 
@@ -858,7 +860,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   def from_pyval(cls, pyval, typespec=None):
     """Constructs a StructuredTensor from a nested Python structure.
 
-    >>> StructuredTensor.from_pyval(
+    >>> tf.experimental.StructuredTensor.from_pyval(
     ...     {'a': [1, 2, 3], 'b': [[4, 5], [6, 7]]})
     <StructuredTensor(
         fields={
@@ -1051,7 +1053,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     Requires that this StructuredTensor have an outer dimension (i.e.,
     `self.shape.rank > 0`).
 
-    >>> st = StructuredTensor.from_pyval(
+    >>> st = tf.experimental.StructuredTensor.from_pyval(
     ...     [{'foo': 12}, {'foo': 33}, {'foo': 99}])
     >>> partition = RowPartition.from_row_lengths([2, 0, 1])
     >>> st.partition_outer_dimension(partition)
@@ -1078,7 +1080,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     Returns a copy of this RaggedTensor with the specified range of dimensions
     flattened into a single dimension, with elements in row-major order.
 
-    >>> st = StructuredTensor.from_pyval(
+    >>> st = tf.experimental.StructuredTensor.from_pyval(
     ...     [[{'foo': 12}, {'foo': 33}], [], [{'foo': 99}]])
     >>> st.merge_dims(0, 1)
     <StructuredTensor(
@@ -1509,7 +1511,7 @@ def _partition_outer_dimension(value, row_partition):
     >>> _partition_outer_dimension(tf.constant([1, 2, 3]), partition)
     <tf.RaggedTensor [[1, 2], [], [3]]>
 
-    >>> struct_value = StructuredTensor.from_pyval(
+    >>> struct_value = tf.experimental.StructuredTensor.from_pyval(
     ...     [{'x': 1}, {'x': 2}, {'x': 3}])
     >>> _partition_outer_dimension(struct_value, partition)
     <StructuredTensor(

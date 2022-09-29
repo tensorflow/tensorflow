@@ -688,18 +688,20 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
-# TODO: enable when supported in the pipeline
-# gpu_kernel_library(
-#     name = "gpu_atanh_kernels_experimental",
-#     op = "atanh",
-#     tile_size = "256",
-#     types = [
-#         "f32",
-#         "f64",
-#     ],
-#     unroll_factors = "4",
-#     jit_i64_indexed_for_large_tensors_types = ["f16"],
-# )
+gpu_kernel_library(
+    name = "gpu_atanh_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = ["f16"],
+    op = "atanh",
+    test_tags = [
+        "noasan",  # TODO(b/248071004): JIT-compiled code will not be instrumented.
+    ],
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
 
 gpu_kernel_library(
     name = "gpu_conj_kernels",
@@ -1542,9 +1544,8 @@ gpu_kernel_library(
         "f16",
         "f32",
         "f64",
-        # TODO(b/190374484): Enable it for complex types once it is supported.
-        # "c64",
-        # "c128",
+        "c64",
+        "c128",
     ],
 )
 
@@ -1566,9 +1567,8 @@ gpu_kernel_library(
         "f16",
         "f32",
         "f64",
-        # TODO(b/190374484): Enable it for complex types once it is supported.
-        # "c64",
-        # "c128",
+        "c64",
+        "c128",
     ],
 )
 

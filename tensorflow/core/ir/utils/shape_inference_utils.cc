@@ -81,9 +81,17 @@ NamedAttrList GetAllAttributesFromOperation(Operation* op) {
 }
 
 // Extracts a PartialTensorShape from the MLIR type.
+// Some MLIR shapes may fail to be represented as PartialTensorShape, e.g.
+// those where num_elements overflows.
+// TODO(tlongeri): Should num_elements overflow be handled by the MLIR
+// verifier? Are there other cases?
 Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
   if (auto ranked_type = t.dyn_cast<RankedTensorType>()) {
-    return tensorflow::PartialTensorShape(ranked_type.getShape());
+    tensorflow::PartialTensorShape shape;
+    const tensorflow::Status status =
+        tensorflow::PartialTensorShape::BuildPartialTensorShape(
+            ranked_type.getShape(), &shape);
+    if (status.ok()) return shape;
   }
   return None;
 }

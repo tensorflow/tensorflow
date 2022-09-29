@@ -216,6 +216,26 @@ func.func @clamp(%arg0: tensor<1xi32>) -> tensor<1xindex> {
 
 // -----
 
+// CHECK: func @uniform_dequantize
+func.func @uniform_dequantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xindex> {
+  %0 = mhlo.uniform_dequantize(%arg) : (tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<16x16xf32>) -> tensor<16x16xindex>
+// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [16, 16], element_type0 = f32} : (tensor<16x16xf32>) -> tensor<16x16xindex>
+  func.return %1 : tensor<16x16xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @fft
+func.func @fft(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xindex> {
+  %0 = "mhlo.fft"(%arg0) { fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type FFT> } : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>>
+  %1 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xindex>
+// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [3, 9], element_type0 = complex<f32>} : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xindex>
+  func.return %1 : tensor<3x9xindex>
+}
+
 #CSR = #sparse_tensor.encoding<{
   dimLevelType = ["dense", "compressed"]
 }>
@@ -339,6 +359,59 @@ func.func @unknown_bounds(%arg0: tensor<?x?xf32, #mhlo.type_extensions<bounds = 
 func.func @unranked_input(%arg0: tensor<*xf32>, %arg1: tensor<i32>) -> tensor<*xindex> {
   %result = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<*xf32>, tensor<i32>) -> tensor<*xf32>
 
+  // CHECK: types0 = tensor<*xf32>
+  %1 = "mhlo_test.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// This test covers all cases (except the "Error out" case) for type inference
+// of binary op with bounds
+// See PairwiseSameOperandAndResultType::inferDimWithBound()
+// CHECK-LABEL: @add_bounds
+func.func @add_bounds(
+  %arg0: tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>,
+  %arg1: tensor<3x?x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>) -> tensor<*xindex> {
+  %result1 = "mhlo.add"(%arg0, %arg1) : (
+    tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>,
+    tensor<3x?x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>)
+    -> tensor<?x?x?x?x?x?x?xf32>
+  %result2 = "mhlo.add"(%arg1, %arg0) : (
+    tensor<3x?x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>,
+    tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>)
+    -> tensor<?x?x?x?x?x?x?xf32>
+
+  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, -1, -1, 3, 3, 3]>>
+  %1 = "mhlo_test.get_return_types"(%result1) : (tensor<?x?x?x?x?x?x?xf32>) -> tensor<*xindex>
+
+  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #mhlo.type_extensions<bounds = [-1, -1, -1, -1, 3, 3, 3]>>
+  %2 = "mhlo_test.get_return_types"(%result2) : (tensor<?x?x?x?x?x?x?xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// This test covers "Error out" case for type inference of binary op with bounds
+// See PairwiseSameOperandAndResultType::inferDimWithBound()
+func.func @add_bounds_mismatch(
+  %arg0: tensor<3xf32, #mhlo.type_extensions<bounds = [-1]>>,
+  %arg1: tensor<?xf32, #mhlo.type_extensions<bounds = [2]>>) -> tensor<*xindex> {
+  // expected-error@+1 {{requires compatible types for all operands and results}}
+  %result = "mhlo.add"(%arg0, %arg1) : (
+    tensor<3xf32, #mhlo.type_extensions<bounds = [-1]>>,
+    tensor<?xf32, #mhlo.type_extensions<bounds = [2]>>) -> tensor<?xf32>
+  %1 = "mhlo_test.get_return_types"(%result) : (tensor<?xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @add_bounds_unranked
+func.func @add_bounds_unranked(
+  %arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xindex> {
+  %result = "mhlo.add"(%arg0, %arg1) : (
+    tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   // CHECK: types0 = tensor<*xf32>
   %1 = "mhlo_test.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>

@@ -46,10 +46,6 @@ namespace mlir {
 namespace TF {
 namespace {
 
-constexpr ResourceId kUnknownResourceId =
-    ResourceAliasAnalysis::Info::kUnknownResourceId;
-static_assert(kUnknownResourceId < 0, "kUnknownResourceId must be < 0");
-
 // A collection of Resource IDs. Note that `kUnknownResourceId` is smaller than
 // all other resource IDs which are nonnegative (see check above) so it will
 // always be the first element of a `ResourceIdSet` (we make use of this).
@@ -577,28 +573,28 @@ void SideEffectAnalysisInfo::AnalyzeRegion(Region* region) {
 }
 
 ResourceIdSet
-SideEffectAnalysisInfo::GetConflictingIds(ResourceId resource_id,
-                                          bool is_fetch_op)  const {
-  ResourceIdSet conflicting_ids;
+SideEffectAnalysisInfo::GetDependentIds(ResourceId resource_id,
+                                        bool is_fetch_op)  const {
+  ResourceIdSet dependent_ids;
   if (resource_id == kUnknownResourceId) {
-    // Unknown resource has potential conflict with all other resources, except
+    // Unknown resource has potential dependence on all other resources, except
     // those that are only self-dependent. For `Fetch` op make every resource
-    // conflicting in any case to ensure that all side-effecting ops in
+    // dependent in any case to ensure that all side-effecting ops in
     // `Graph` feed into `Fetch` (its terminator).
     for (auto& entry : per_resource_access_info_) {
       ResourceId other_id = entry.getFirst();
       if (!op_side_effect_collector_.IsOnlySelfDependent(other_id) ||
           is_fetch_op)
-        conflicting_ids.insert(other_id);
+        dependent_ids.insert(other_id);
     }
   } else {
-    conflicting_ids.insert(resource_id);
-    // Resource has potential conflict with unknown resource, if not only
+    dependent_ids.insert(resource_id);
+    // Resource has potential dependence on unknown resource, if not only
     // self-dependent.
     if (!op_side_effect_collector_.IsOnlySelfDependent(resource_id))
-      conflicting_ids.insert(kUnknownResourceId);
+      dependent_ids.insert(kUnknownResourceId);
   }
-  return conflicting_ids;
+  return dependent_ids;
 }
 
 void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
@@ -617,9 +613,7 @@ void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
 
   // Traverse all resource IDs and their associated side effects.
   bool had_unknown_resource_read = false;
-  for (auto pair : side_effects_by_resource_id) {
-    ResourceId resource_id = pair.first;
-    const SideEffects& side_effects = pair.second;
+  for (const auto& [resource_id, side_effects] : side_effects_by_resource_id) {
     const bool read_only = side_effects.IsReadOnly();
     VLOG(2) << "  Processing resource ID: " << resource_id
             << ", read-only effect: " << read_only;
@@ -631,12 +625,12 @@ void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
     // Effect is dominated by previous unknown resource read effect.
     if (read_only && had_unknown_resource_read) continue;
 
-    ResourceIdSet conflicting_ids = GetConflictingIds(
+    ResourceIdSet dependent_ids = GetDependentIds(
         resource_id, isa<tf_executor::FetchOp>(op));
 
-    // Add predecessors for conflicting IDs.
+    // Add predecessors for dependent IDs.
     bool is_unknown_access_indirectly_tracked = false;
-    for (ResourceId id : conflicting_ids) {
+    for (ResourceId id : dependent_ids) {
       // Handle unknown resource later, access might already be indirectly
       // tracked by another resource access.
       if (id == kUnknownResourceId) continue;
@@ -646,7 +640,7 @@ void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
           IsUnknownAccessIndirectlyTrackedByResource(id, read_only);
     }
     // Add predecessors for unknown resource if necessary.
-    if (conflicting_ids.contains(kUnknownResourceId) &&
+    if (dependent_ids.contains(kUnknownResourceId) &&
         !is_unknown_access_indirectly_tracked)
       AddPredecessorsForAccess(kUnknownResourceId, op, read_only);
     // Update resource access.

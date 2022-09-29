@@ -160,7 +160,7 @@ se::Platform* XlaDevice::Metadata::platform() const { return platform_; }
 
 xla::LocalClient* XlaDevice::Metadata::client() const {
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(platform_);
-  return client.ValueOrDie();
+  return client.value();
 }
 
 const DeviceType& XlaDevice::Metadata::jit_device_type() const {
@@ -271,7 +271,7 @@ Allocator* XlaDevice::GetAllocatorLocked(AllocatorAttributes attr) {
   if (xla_allocator_ == nullptr) {
     // TODO(b/78468222): This can fail, at least when the backend is GPU and
     // there is no GPU on the host.
-    xla::Backend* backend = GetOrCreateClient().ValueOrDie()->mutable_backend();
+    xla::Backend* backend = GetOrCreateClient().value()->mutable_backend();
     xla_allocator_ = XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
         backend, device_ordinal_);
   }

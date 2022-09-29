@@ -184,24 +184,25 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_compatibility_binary_embed",
+    srcs = [":gpu_compatibility_binary.cc"],
+    hdrs = [":gpu_compatibility_binary.h"],
+)
+
+cc_library(
     name = "gpu_compatibility",
-    srcs = [
-        "gpu_compatibility.cc",
-        "gpu_compatibility_binary.cc",
-        "gpu_compatibility_binary.h",
-    ],
-    hdrs = [
-        "gpu_compatibility.h",
-    ],
+    srcs = ["gpu_compatibility.cc"],
+    hdrs = ["gpu_compatibility.h"],
     deps = [
         ":canonicalize_value",
         ":android_info",
         ":database_fbs",
         ":devicedb",
+        ":gpu_compatibility_binary_embed",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-        "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow/lite/delegates/gpu:delegate_options",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
     ] + tflite_extra_gles_deps(),
 )

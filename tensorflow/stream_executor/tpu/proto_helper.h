@@ -16,68 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_PROTO_HELPER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_PROTO_HELPER_H_
 
-#include <cstddef>
-
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-
-extern "C" {
-
-void StreamExecutor_Tpu_FreeSerializedProto(const TpuSerializedProto* proto);
-
-}  // extern "C"
-
-namespace stream_executor {
-namespace tpu {
-
-using SerializedProto = TpuSerializedProto;
-
-// Serializes a `proto` and put the result in the given `SerializedProtoType*`
-// argument.
-//
-// Users should call SerializedProto_Free on `serialized_proto` afterwards.
-template <class ProtoType, class SerializedProtoType>
-inline void SerializeProto(const ProtoType& proto,
-                           SerializedProtoType* serialized_proto) {
-  auto size = proto.ByteSizeLong();
-  auto bytes = new char[size];
-  CHECK(proto.SerializeToArray(bytes, size));
-  serialized_proto->size = size;
-  serialized_proto->bytes = bytes;
-}
-
-// Serializes a proto and return the result as a SerializedProto value.
-//
-// Users should call SerializedProto_Free on the return value afterwards.
-template <class ProtoType>
-inline SerializedProto SerializeProto(const ProtoType& proto) {
-  SerializedProto serialized_proto;
-  SerializeProto(proto, &serialized_proto);
-  return serialized_proto;
-}
-
-// Deserializes a buffer and return the corresponding proto. If the buffer is
-// empty, return an empty proto.
-template <class ProtoType, class SerializedProtoType>
-inline ProtoType DeserializeProto(const SerializedProtoType& serialized_proto) {
-  ProtoType proto;
-  if (serialized_proto.bytes != nullptr) {
-    CHECK_GT(serialized_proto.size, 0);
-    CHECK(proto.ParseFromArray(serialized_proto.bytes, serialized_proto.size))
-        << "Invalid buffer, failed to deserialize buffer.";
-  }
-  return proto;
-}
-
-// Releases the memory allocated for serialized protos.
-template <class SerializedProtoType>
-inline void SerializedProto_Free(const SerializedProtoType& serialized_proto) {
-  CHECK_NE(serialized_proto.bytes, nullptr);
-  CHECK_GT(serialized_proto.size, 0);
-  delete[] serialized_proto.bytes;
-}
-
-}  // namespace tpu
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_PROTO_HELPER_H_

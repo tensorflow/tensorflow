@@ -128,11 +128,11 @@ def analyze_test_latency(test_results: model_handler.TestResultCollection,
   if base_result is None:
     raise ValueError(
         f"No {'CPU' if use_cpu_baseline else 'GPU'} baseline found!")
-  base_mean_time = np.asscalar(np.mean(base_result.model_latency))
+  base_mean_time = np.mean(base_result.model_latency).item()
   column_names = ["time(ms)", "speedup"]
   rows = []
   for result in test_results.results:
-    mean_time = np.asscalar(np.mean(result.model_latency))
+    mean_time = np.mean(result.model_latency).item()
     rows.append([mean_time * 1000.0, base_mean_time / mean_time])
   return DataFrame(column_names=column_names, rows=rows)
 
@@ -163,7 +163,7 @@ def analyze_test_numerics(test_results: model_handler.TestResultCollection,
       for idx, tensor in enumerate(result.output_tensors):
         name = base_result.output_names[idx]
         cpu_tensor = base_result.output_tensors[idx]
-        metric_value = np.asscalar(func1(func0(tensor, cpu_tensor)))
+        metric_value = func1(func0(tensor, cpu_tensor)).item()
         columns[-1][-1][name] = metric_value
   return DataFrame(column_names=column_names, columns=columns)
 

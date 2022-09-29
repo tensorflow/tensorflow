@@ -46,8 +46,8 @@ func.func @incompatible_maps() {
   %0 = memref.alloc() : memref<42xf32>
   %1 = memref.alloc() : memref<21xf32>
   %2 = memref.reinterpret_cast %0 to offset: [0], sizes: [21], strides: [2]
-      : memref<42xf32> to memref<21xf32, offset: 0, strides: [2]>
-  memref.copy %2, %1 : memref<21xf32, offset: 0, strides: [2]> to memref<21xf32>
+      : memref<42xf32> to memref<21xf32, strided<[2], offset: 0>>
+  memref.copy %2, %1 : memref<21xf32, strided<[2], offset: 0>> to memref<21xf32>
   memref.dealloc %0 : memref<42xf32>
   "use.use"(%1) : (memref<21xf32>) -> ()
   memref.dealloc %1 : memref<21xf32>
@@ -62,13 +62,13 @@ func.func @compatible_maps() {
   %0 = memref.alloc() : memref<42xf32>
   %1 = memref.alloc() : memref<42xf32>
   %2 = memref.reinterpret_cast %0 to offset: [0], sizes: [21], strides: [2]
-      : memref<42xf32> to memref<21xf32, offset: 0, strides: [2]>
+      : memref<42xf32> to memref<21xf32, strided<[2], offset: 0>>
   %3 = memref.reinterpret_cast %1 to offset: [0], sizes: [21], strides: [2]
-      : memref<42xf32> to memref<21xf32, offset: 0, strides: [2]>
-  memref.copy %2, %3 : memref<21xf32, offset: 0, strides: [2]>
-      to memref<21xf32, offset: 0, strides: [2]>
+      : memref<42xf32> to memref<21xf32, strided<[2], offset: 0>>
+  memref.copy %2, %3 : memref<21xf32, strided<[2], offset: 0>>
+      to memref<21xf32, strided<[2], offset: 0>>
   memref.dealloc %0 : memref<42xf32>
-  "use.use"(%3) : (memref<21xf32, offset: 0, strides: [2]>) -> ()
+  "use.use"(%3) : (memref<21xf32, strided<[2], offset: 0>>) -> ()
   memref.dealloc %1 : memref<42xf32>
   func.return
 }
@@ -81,14 +81,14 @@ func.func @conflicting_alias_use() {
   %0 = memref.alloc() : memref<42xf32>
   %1 = memref.alloc() : memref<42xf32>
   %2 = memref.reinterpret_cast %0 to offset: [0], sizes: [21], strides: [2]
-      : memref<42xf32> to memref<21xf32, offset: 0, strides: [2]>
+      : memref<42xf32> to memref<21xf32, strided<[2], offset: 0>>
   %3 = memref.reinterpret_cast %1 to offset: [0], sizes: [21], strides: [2]
-      : memref<42xf32> to memref<21xf32, offset: 0, strides: [2]>
-  memref.copy %2, %3 : memref<21xf32, offset: 0, strides: [2]>
-      to memref<21xf32, offset: 0, strides: [2]>
+      : memref<42xf32> to memref<21xf32, strided<[2], offset: 0>>
+  memref.copy %2, %3 : memref<21xf32, strided<[2], offset: 0>>
+      to memref<21xf32, strided<[2], offset: 0>>
   "use.use"(%0) : (memref<42xf32>) -> ()
   memref.dealloc %0 : memref<42xf32>
-  "use.use"(%3) : (memref<21xf32, offset: 0, strides: [2]>) -> ()
+  "use.use"(%3) : (memref<21xf32, strided<[2], offset: 0>>) -> ()
   memref.dealloc %1 : memref<42xf32>
   func.return
 }

@@ -130,7 +130,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   assert(metadata_str && "Missing compilation metadata");
   tensorflow::tpu::TPUCompileMetadataProto metadata;
   metadata.ParseFromString(std::string(metadata_str.getValue()));
-  int64_t num_replicas = replicate.n();
+  int64_t num_replicas = replicate.getN();
   // Find the formattable operands of `execute`, which must be mirrored
   // variables (arguments of `replicate`), and must be pass-throughs from while
   // operands.
@@ -225,7 +225,7 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
     MutableArrayRef<TF::VarHandleOp> new_inputs,
     const llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>&
         devices) {
-  int64_t num_replicas = replicate.n();
+  int64_t num_replicas = replicate.getN();
   assert(new_inputs.size() == num_replicas);
 
   // As model parallelism is not yet supported, we assume that all ops are
@@ -320,7 +320,7 @@ void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
 
   auto launch = builder->create<tf_device::LaunchOp>(
       loc, builder->getStringAttr(device), op->getResultTypes());
-  launch.body().push_back(new Block);
+  launch.getBody().push_back(new Block);
 
   builder->setInsertionPointToEnd(&launch.GetBody());
   builder->create<tf_device::ReturnOp>(loc, op->getResults());
@@ -334,27 +334,30 @@ void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
 // Performs the transformation for a replicate op inside a while loop.
 void HandleReplicateOp(TF::WhileRegionOp while_op,
                        tf_device::ReplicateOp replicate) {
-  int64_t num_replicas = replicate.n();
+  int64_t num_replicas = replicate.getN();
   if (num_replicas == 1) return;
-  tf_device::LaunchOp execute_launch;
-  for (auto execute_launch_op :
-       replicate.GetBody().getOps<tf_device::LaunchOp>()) {
-    if (!execute_launch_op.WrapsSingleOp() ||
-        !llvm::isa<TF::TPUExecuteAndUpdateVariablesOp>(
-            execute_launch_op.GetBody().front()))
-      continue;
 
+  // Set execute_launch when there is exactly one
+  // TPUExecuteAndUpdateVariablesOp. More than one means there is model
+  // parallelism, which is not supported with TPUReshardVariables. None
+  // means there is no TPU computation.
+  tf_device::LaunchOp execute_launch;
+  TF::TPUExecuteAndUpdateVariablesOp execute;
+  replicate.walk([&](TF::TPUExecuteAndUpdateVariablesOp execute_op) {
+    execute_launch =
+        llvm::dyn_cast<tf_device::LaunchOp>(execute_op->getParentOp());
     if (execute_launch == nullptr) {
-      execute_launch = execute_launch_op;
-    } else {
-      // We only support one execute op inside replicate.
-      execute_launch = nullptr;
-      break;
+      // This pass requires execute_op to be wrapped in a launch.
+      return WalkResult::interrupt();
     }
-  }
-  if (!execute_launch) return;
-  auto execute = llvm::cast<TF::TPUExecuteAndUpdateVariablesOp>(
-      execute_launch.GetBody().front());
+    if (execute == nullptr) {
+      execute = execute_op;
+      return WalkResult::advance();
+    }
+    execute = nullptr;
+    return WalkResult::interrupt();
+  });
+  if (!execute) return;
   auto compile =
       SkipIdentity(execute.key(), /*allow_other_use=*/true).getDefiningOp();
   if (!compile) return;
@@ -370,7 +373,7 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   if (execute_arg_to_outer_args.empty()) return;
 
   // Extract the replicated devices.
-  auto devices_attr = replicate.devices();
+  auto devices_attr = replicate.getDevices();
   if (!devices_attr) return;
 
   auto device_map = devices_attr.getValue();
@@ -411,7 +414,7 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   auto reformat_op = builder.create<TF::TPUReshardVariablesOp>(
       execute_launch.getLoc(), llvm::ArrayRef<Type>{}, reformat_operands);
   WrapOpInLaunch(&builder, execute_launch.getLoc(), reformat_op,
-                 execute_launch.device());
+                 execute_launch.getDevice());
 
   // Build the replicated unformat op after the loop. First prepare building the
   // replicate op.
@@ -441,7 +444,7 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   default_key_tensor.vec<tensorflow::tstring>()(2) = kDefaultShardingValue;
   auto default_state_key = builder.create<TF::ConstOp>(
       while_op.getLoc(),
-      tensorflow::ConvertTensor(default_key_tensor, &builder).ValueOrDie());
+      tensorflow::ConvertTensor(default_key_tensor, &builder).value());
   // With all replicated inputs, now build the replicate op.
   auto unformat_replicate = builder.create<tf_device::ReplicateOp>(
       while_op.getLoc(), num_replicas, devices, unformat_replicate_operands,
@@ -468,7 +471,7 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   auto unformat_op = builder.create<TF::TPUReshardVariablesOp>(
       while_op.getLoc(), llvm::ArrayRef<Type>{}, unformat_operands);
   WrapOpInLaunch(&builder, execute_launch.getLoc(), unformat_op,
-                 execute_launch.device());
+                 execute_launch.getDevice());
   builder.create<tf_device::ReturnOp>(while_op.getLoc(), ArrayRef<Value>{});
 }
 
@@ -485,11 +488,7 @@ void TPUVariableRuntimeReformattingPass::runOnOperation() {
       replicate = nullptr;
       return WalkResult::interrupt();
     });
-    // Model parallelism is not supported, and can be detected when a
-    // `tf_device.parallel_execute` op in the `tf_device.replicate` is present.
-    if (replicate &&
-        replicate.GetBody().getOps<tf_device::ParallelExecuteOp>().empty())
-      HandleReplicateOp(while_op, replicate);
+    if (replicate) HandleReplicateOp(while_op, replicate);
   });
 }
 

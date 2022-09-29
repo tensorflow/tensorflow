@@ -632,7 +632,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
 
   def testInvalidSeqRaiseErrorForFractionalMaxPoolGrad(self):
     with self.assertRaises(errors.InvalidArgumentError):
-      with self.cached_session() as _:
+      with self.cached_session():
         overlapping = True
         orig_input = constant_op.constant(
             .453409232, shape=[1, 7, 13, 1], dtype=dtypes.float32)
@@ -644,6 +644,24 @@ class FractionalMaxPoolGradTest(test.TestCase):
             0, shape=[5], dtype=dtypes.int64)
         col_pooling_sequence = constant_op.constant(
             0, shape=[5], dtype=dtypes.int64)
+        t = gen_nn_ops.FractionalMaxPoolGrad(
+            orig_input=orig_input,
+            orig_output=orig_output,
+            out_backprop=out_backprop,
+            row_pooling_sequence=row_pooling_sequence,
+            col_pooling_sequence=col_pooling_sequence,
+            overlapping=overlapping)
+        self.evaluate(t)
+
+  def testOverLargeSeqRaiseErrorForFractionalMaxPoolGrad(self):
+    with self.assertRaises(errors.InvalidArgumentError):
+      with self.cached_session():
+        overlapping = False
+        orig_input = [[[[1, 1, 1, 1, 1]]]]
+        orig_output = [[[[1, 1, 1]]]]
+        out_backprop = [[[[3], [3], [6]]]]
+        row_pooling_sequence = [-0x4000000, 1, 1]
+        col_pooling_sequence = [-0x4000000, 1, 1]
         t = gen_nn_ops.FractionalMaxPoolGrad(
             orig_input=orig_input,
             orig_output=orig_output,

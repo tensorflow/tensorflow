@@ -109,7 +109,7 @@ class Lockable {
   bool is_unlocked_ ABSL_GUARDED_BY(mutex_) = true;
 };
 
-TF_LIB_GTL_DEFINE_INT_TYPE(OpId, int64_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(OpId, int64_t);
 
 struct NcclComm : public Lockable<ncclComm_t> {
   NcclComm() : Lockable(nullptr) {}

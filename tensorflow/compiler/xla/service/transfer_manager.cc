@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 using absl::StrCat;
 
@@ -405,7 +405,7 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
                         allocator->Allocate(shaped_buffer.device_ordinal(),
                                             GetByteSizeRequirement(subshape),
                                             /*retry_on_failure=*/true,
-                                            subshape.layout().memory_space()));
+                                            LayoutUtil::MemorySpace(subshape)));
     // Move the allocated buffer into the ScopedShapedBuffer, which owns it.
     memory_base = memory.Release();
   }

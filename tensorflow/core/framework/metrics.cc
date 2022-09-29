@@ -224,6 +224,11 @@ auto* build_graph_time_usecs = monitoring::Counter<0>::New(
     "spent optimizing the graph with Grappler, and time spent pruning the "
     "sub-graph.");
 
+auto* function_graph_optimization_time_usecs = monitoring::Counter<0>::New(
+    "/tensorflow/core/function_graph_optimization_time_usecs",
+    "The amount of time TensorFlow has spent optimizing function graphs, in "
+    "microseconds. ");
+
 auto* xla_compilations = monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilations",
     "The number of XLA compilations used to collect "
@@ -483,6 +488,15 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs) {
   }
 }
 
+void UpdateFunctionGraphOptimizationTime(const uint64 running_time_usecs) {
+  if (running_time_usecs > 0) {
+    static auto* function_graph_optimization_time_usecs_cell =
+        function_graph_optimization_time_usecs->GetCell();
+    function_graph_optimization_time_usecs_cell->IncrementBy(
+        running_time_usecs);
+  }
+}
+
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs) {
   if (distribution_time_usecs > 0) {
     tpu_variable_distribution_time_usecs->GetCell()->IncrementBy(
@@ -528,16 +542,6 @@ TestDelta::TestDelta(const string& name, const string& label)
 void TestDelta::Reset() { last_value_ = cell_->value(); }
 
 int64 TestDelta::Get() { return cell_->value() - last_value_; }
-
-void UpdateTfMlirGraphOptimizationPassStateCounter(
-    const std::string& pass_state, const std::string& processing_state) {
-  static auto* metric = monitoring::Counter<2>::New(
-      "/tensorflow/core/tf_mlir_update_graph_optimization_pass_state_counter",
-      "Tracks changes in a graph's UpdateTfMlirGraphOptimizationPassState",
-      "PassState", "ProcessingState");
-
-  metric->GetCell(pass_state, processing_state)->IncrementBy(1);
-}
 
 void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,

@@ -48,7 +48,7 @@ class GraphOptimizer {
 
   // Routine called to allow an algorithm to propose a rewritten graph
   // for the graph, feeds and fetches in "item" to run more efficiently
-  // on "cluster". If the returned status is Status::OK() then
+  // on "cluster". If the returned status is OkStatus() then
   // *optimized_graph contains the rewritten graph.
   // Returns an error status if it failed to generate a solution.
   //

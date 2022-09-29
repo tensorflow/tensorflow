@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_SIMPLE_SELECTORS_H_
 
 #include <memory>
+#include <set>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -84,7 +86,8 @@ std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
                                            const OperationDef& op_def,
                                            const GpuInfo& gpu_info);
 
-void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
+void SelectSoftmax(const GpuInfo& gpu_info, const BHWC& shape,
+                   const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr);
 
 void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,

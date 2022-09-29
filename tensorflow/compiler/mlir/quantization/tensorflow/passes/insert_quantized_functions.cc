@@ -32,17 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
-// NOLINTNEXTLINE
-llvm::cl::opt<mlir::quant::QuantizationMethod> quantization_method_opt(
-    "quant-insert-library-quantization-method",
-    llvm::cl::init(mlir::quant::QuantizationMethod::kPostTrainingQuantization),
-    llvm::cl::desc("Insert library for the quantization method."),
-    llvm::cl::values(
-        clEnumValN(mlir::quant::QuantizationMethod::kPostTrainingQuantization,
-                   "ptq", "Post-training static-range quantization"),
-        clEnumValN(mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
-                   "drq", "Post-training dynamic-range quantizaiton")));
-
 namespace mlir {
 namespace quant {
 namespace {
@@ -53,16 +42,16 @@ class InsertQuantizedFunctionsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertQuantizedFunctionsPass)
 
-  explicit InsertQuantizedFunctionsPass() {
-    quantization_method_ = quantization_method_opt;
-    op_set_ =
-        (quantization_method_ == QuantizationMethod::kDynamicRangeQuantization)
-            ? OpSet::UNIFORM_QUANTIZED
-            : OpSet::TF;
-  }
+  explicit InsertQuantizedFunctionsPass() {}
   explicit InsertQuantizedFunctionsPass(QuantizationMethod quantization_method,
-                                        const OpSet& op_set)
-      : quantization_method_(quantization_method), op_set_(op_set) {}
+                                        const OpSet& op_set) {
+    quantization_method_ = quantization_method;
+    op_set_ = op_set;
+  }
+  InsertQuantizedFunctionsPass(const InsertQuantizedFunctionsPass& other) {
+    quantization_method_ = other.quantization_method_;
+    op_set_ = other.op_set_;
+  }
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in the textual format (on
@@ -87,10 +76,25 @@ class InsertQuantizedFunctionsPass
   llvm::StringRef GetFunctionLibrary(QuantizationMethod quantization_method,
                                      OpSet op_set);
 
-  QuantizationMethod quantization_method_ =
-      QuantizationMethod::kPostTrainingQuantization;
+  Option<QuantizationMethod> quantization_method_{
+      *this, "quantization-method",
+      llvm::cl::init(QuantizationMethod::kPostTrainingQuantization),
+      llvm::cl::desc("Choose quantization method."),
+      llvm::cl::values(
+          clEnumValN(QuantizationMethod::kPostTrainingQuantization, "ptq",
+                     "Post-training static-range quantization"),
+          clEnumValN(QuantizationMethod::kDynamicRangeQuantization, "drq",
+                     "Post-training dynamic-range quantizaiton"))};
 
-  OpSet op_set_;
+  Option<OpSet> op_set_{
+      *this, "target-opset", llvm::cl::init(OpSet::TF),
+      llvm::cl::desc("Choose target opset."),
+      llvm::cl::values(
+          clEnumValN(OpSet::TF, "TF",
+                     "Uses TF ops that mimic quantization behavior"),
+          clEnumValN(OpSet::XLA, "XLA", "Uses TF XLA ops"),
+          clEnumValN(OpSet::UNIFORM_QUANTIZED, "UNIFORM_QUANTIZED",
+                     "Uses TF Uniform Quantized ops"))};
 };
 
 llvm::StringRef InsertQuantizedFunctionsPass::GetFunctionLibrary(

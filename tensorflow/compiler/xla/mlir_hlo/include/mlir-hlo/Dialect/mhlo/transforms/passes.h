@@ -19,8 +19,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "llvm/ADT/ArrayRef.h"
-
 namespace mlir {
 
 class ModuleOp;
@@ -36,6 +34,16 @@ class FusionOp;
 }  // namespace lmhlo
 
 namespace mhlo {
+
+#define GEN_PASS_DECL_CHLOLEGALIZETOHLOPASS
+#define GEN_PASS_DECL_EXPANDHLOTUPLESPASS
+#define GEN_PASS_DECL_GROUPREDUCTIONDIMENSIONSPASS
+#define GEN_PASS_DECL_LEGALIZEMHLOTOTHLOPASS
+#define GEN_PASS_DECL_RANKSPECIALIZATIONTOSCFPASS
+#define GEN_PASS_DECL_HLOLEGALIZETOSTABLEHLOPASS
+#define GEN_PASS_DECL_HLOCANONICALIZESCATTERPASS
+#define GEN_PASS_DECL_STABLEHLOLEGALIZETOHLOPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 
 /// Lowers HLO control flow ops to SCF.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeControlFlowPass();
@@ -54,9 +62,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeSparseChloToLinalgPass();
 
-// canonicalize reduction ops to be suitable for codegen.
+// Canonicalize reduction ops to be suitable for codegen.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createHloCanonicalizeReductionPass();
+
+// Rewrites scatter into transposes, reshapes and a simpler scatter.
+std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeScatterPass();
 
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.
@@ -73,10 +84,13 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToArithmeticPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeHloShapeOpsToStandardPass();
 
-// Lowers from HLO dialect to Linalg dialect.
+/// Lowers from MHLO dialect to THLO dialect.
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass();
+
+/// Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass();
 
-// Lowers from HLO dialects dim operations.
+/// Lowers from HLO dialects dim operations.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeShapeComputationsPass();
 
@@ -146,6 +160,12 @@ std::unique_ptr<OperationPass<ModuleOp>> createConvertToSignlessPass();
 
 /// Creates pass for rewriting sparse mhlo ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createSparseRewritingPass();
+
+// Legalizes from the MHLO dialect to the StableHLO dialect.
+std::unique_ptr<OperationPass<ModuleOp>> createHloLegalizeToStablehloPass();
+
+// Legalizes from the StableHLO dialect to the MHLO dialect.
+std::unique_ptr<OperationPass<ModuleOp>> createStablehloLegalizeToHloPass();
 
 }  // namespace mhlo
 }  // namespace mlir

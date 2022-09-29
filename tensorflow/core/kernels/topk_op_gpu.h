@@ -561,7 +561,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
     To32Bit(values).device(d) =
         To32Bit(temp_values.matrix<T>()).slice(slice_indices, slice_sizes);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace impl
@@ -591,7 +591,7 @@ struct TopKFunctor<GPUDevice, T> {
         return errors::Internal(
             "Could not launch TopKKernel: ", cudaGetErrorString(err), ".");
       } else {
-        return Status::OK();
+        return OkStatus();
       }
     }
   }

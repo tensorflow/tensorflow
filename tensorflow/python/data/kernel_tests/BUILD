@@ -166,6 +166,17 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "counter_test",
+    size = "small",
+    srcs = ["counter_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/data/kernel_tests:test_base",
+    ],
+)
+
+tf_py_test(
     name = "dataset_spec_test",
     size = "small",
     srcs = ["dataset_spec_test.py"],
@@ -417,6 +428,25 @@ tf_py_test(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "ignore_errors_test",
+    size = "small",
+    srcs = ["ignore_errors_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:ignore_errors_op",
+        "//tensorflow/python/data/ops:options",
         "//third_party/py/numpy",
     ],
 )
@@ -793,7 +823,6 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 
@@ -1096,6 +1125,20 @@ py_strict_test(
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_strict_test(
+    name = "rebatch_test",
+    srcs = ["rebatch_test.py"],
+    deps = [
+        ":checkpoint_test_base",
+        ":test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "@absl_py//absl/testing:parameterized",
     ],
 )

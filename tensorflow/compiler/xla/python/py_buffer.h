@@ -202,6 +202,61 @@ class PyBuffer {
   PyBuffer* prev_;
 };
 
+// A batched version of python wrapper around a list of PjRtBuffers.
+class PyShardedBuffer {
+ public:
+  static PyShardedBuffer CreateFromPyBuffers(
+      absl::Span<const PyBuffer::object> py_buffers);
+
+  PyShardedBuffer(std::shared_ptr<PyClient> client,
+                  std::vector<std::shared_ptr<PjRtBuffer>> buffers,
+                  std::shared_ptr<Traceback> traceback, bool sticky = false)
+      : client_(std::move(client)),
+        buffers_(std::move(buffers)),
+        traceback_(std::move(traceback)),
+        sticky_(sticky) {}
+
+  std::vector<PyBuffer::object> GetPyBuffers() const {
+    std::vector<PyBuffer::object> results;
+    results.reserve(buffers_.size());
+    for (const auto& pjrt_buffer : buffers_) {
+      auto py_buffer = PyBuffer::Make(client_, pjrt_buffer, traceback_);
+      if (sticky_) {
+        TF_CHECK_OK(py_buffer.buf()->set_sticky_device(pjrt_buffer->device()));
+      }
+      results.push_back(std::move(py_buffer));
+    }
+    return results;
+  }
+
+  PyBuffer::object GetPyBuffer(int device_id) const {
+    const auto& pjrt_buffer = buffers_.at(device_id);
+    auto py_buffer = PyBuffer::Make(client_, pjrt_buffer, traceback_);
+    if (sticky_) {
+      TF_CHECK_OK(py_buffer.buf()->set_sticky_device(pjrt_buffer->device()));
+    }
+    return py_buffer;
+  }
+
+  PrimitiveType dtype() const {
+    return buffers_.at(0)->on_device_shape().element_type();
+  }
+
+  PjRtBuffer* GetPjRtBuffer(int device_id) const {
+    return buffers_.at(device_id).get();
+  }
+
+  int num_devices() const { return buffers_.size(); }
+
+  Status BlockHostUntilReady();
+
+ private:
+  std::shared_ptr<PyClient> client_;
+  std::vector<std::shared_ptr<PjRtBuffer>> buffers_;
+  std::shared_ptr<Traceback> traceback_;
+  bool sticky_ = false;
+};
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_PY_BUFFER_H_

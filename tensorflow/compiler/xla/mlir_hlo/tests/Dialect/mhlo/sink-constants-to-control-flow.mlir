@@ -11,7 +11,7 @@ func.func @sink_const_to_while(%arg0: tensor<i64>) -> tensor<i64> {
   %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<i64>):
     // CHECK: %[[C0:.+]] = mhlo.constant dense<1> : tensor<i64>
-    // CHECK: "mhlo.compare"(%[[C0]], %[[ITER_ARG]])
+    // CHECK: mhlo.compare LT, %[[C0]], %[[ITER_ARG]]
     %1 = "mhlo.compare"(%c0, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i64>, tensor<i64>) -> tensor<i1>
     "mhlo.return"(%1) : (tensor<i1>) -> ()
   },  {

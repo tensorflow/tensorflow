@@ -54,6 +54,8 @@ namespace TF {
 
 namespace {
 
+constexpr char kDeviceAttr[] = "device";
+
 struct DecomposeReduceDatasetPass
     : public DecomposeReduceDatasetPassBase<DecomposeReduceDatasetPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -193,6 +195,10 @@ IfRegionOp CreateOptionalDatasetIf(
   auto reduce_call =
       builder.create<mlir::func::CallOp>(loc, reduce_func, reduce_fn_args);
 
+  // Both the device attribute and compile_device_type attribute should be
+  // propagated to the reduce function call.
+  reduce_call->setAttr(kDeviceAttr,
+                       reduce_dataset->getAttrOfType<StringAttr>(kDeviceAttr));
   reduce_call->setAttr(
       TF::kCompileDeviceTypeAttr,
       reduce_dataset->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr));

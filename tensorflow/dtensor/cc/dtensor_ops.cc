@@ -49,26 +49,6 @@ REGISTER_OP("CopyToMesh")
     .Attr("T: type")
     .SetShapeFn(UnchangedShape);
 
-// Queries the generated sharded prefix that is used to in SaveV2 op in a
-// multi-client setup. Should take exact same inputs as the original SaveV2 is
-// invoked or the value returned won't match the ones generated.
-REGISTER_OP("DTensorShardedPrefix")
-    .Input("prefix: string")
-    .Input("tensor_names: string")
-    .Input("shape_and_slices: string")
-    .Input("mesh: string")
-    .Input("layouts: string")
-    .Input("tensors: dtypes")
-    .Attr("dtypes: list(type)")
-    .Output("output: string")
-    .SetShapeFn([](InferenceContext* c) {
-      // Always output a one d vector of strings.
-      // We could calculate the exact numbers of output here as well but that's
-      // the whole logic of the op itself.
-      c->set_output(0, c->Vector(c->UnknownDim()));
-      return OkStatus();
-    });
-
 // DTensorRestoreV2 that is pretty much RestoreV2 but with extra global shapes
 // and layouts.
 REGISTER_OP("DTensorRestoreV2")

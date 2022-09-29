@@ -22,6 +22,10 @@ limitations under the License.
 
 namespace mlir {
 namespace tfg {
+
+#define GEN_PASS_DECL_REGIONTOFUNCTIONAL
+#include "tensorflow/core/transforms/passes.h.inc"
+
 // Creates a conversion pass from region control-flow to functional
 // control-flow. If `force_control_capture` is set, then all region control-flow
 // ops are guaranteed to be converted to functional form by capturing implicit

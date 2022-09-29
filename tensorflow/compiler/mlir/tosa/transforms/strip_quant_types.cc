@@ -50,7 +50,11 @@ namespace mlir {
 namespace tosa {
 namespace {
 
-class StripQuantTypes : public TosaStripQuantTypesPassBase<StripQuantTypes> {
+#define GEN_PASS_DEF_TOSASTRIPQUANTTYPESPASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
+class StripQuantTypes
+    : public impl::TosaStripQuantTypesPassBase<StripQuantTypes> {
  public:
   explicit StripQuantTypes() {}
   void runOnOperation() override;

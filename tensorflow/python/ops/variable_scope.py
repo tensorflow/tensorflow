@@ -2151,7 +2151,8 @@ class variable_scope:
   it will behave as if reuse is always set to `AUTO_REUSE`.)
 
   See the
-  [model migration guide](www.tensorflow.org/guide/migrate/model_mapping)
+  [model migration guide](
+      https://www.tensorflow.org/guide/migrate/model_mapping)
   for more info on
   migrating code that relies on `variable_scope`-based variable reuse.
 
@@ -2751,6 +2752,8 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
   synchronization = kwargs.get("synchronization", None)
   aggregation = kwargs.get("aggregation", None)
   shape = kwargs.get("shape", None)
+  experimental_enable_variable_lifting = kwargs.get(
+      "experimental_enable_variable_lifting", None)
 
   return resource_variable_ops.ResourceVariable(
       initial_value=initial_value,
@@ -2765,7 +2768,9 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
       distribute_strategy=distribute_strategy,
       synchronization=synchronization,
       aggregation=aggregation,
-      shape=shape)
+      shape=shape,
+      experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+      )
 
 
 variables.default_variable_creator = default_variable_creator

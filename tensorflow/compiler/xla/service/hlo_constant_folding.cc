@@ -137,6 +137,14 @@ StatusOr<bool> HloConstantFolding::Run(
         continue;
       }
 
+      // Don't fold across async execution thread if it's not supposed to be
+      // changed by this pass.
+      if (instruction->IsAsynchronous() &&
+          instruction->async_execution_thread() !=
+              instruction->parent()->execution_thread()) {
+        continue;
+      }
+
       // Do not fold FFT. Evaluating it may significantly increase compile time.
       if (instruction->opcode() == HloOpcode::kFft) {
         continue;

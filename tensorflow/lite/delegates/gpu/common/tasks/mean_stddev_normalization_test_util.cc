@@ -171,7 +171,7 @@ absl::Status MeanStddevNormalizationLargeVectorTest(
     auto data_type = DeduceDataTypeFromPrecision(precision);
     for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps =
-          precision == CalculationsPrecision::F32 ? 0.0f : 8.60e-4f;
+          precision == CalculationsPrecision::F32 ? 5.0e-7f : 8.60e-4f;
       OperationDef op_def;
       op_def.precision = precision;
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});

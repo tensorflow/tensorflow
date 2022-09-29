@@ -12,6 +12,7 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        "//smartass/brain/inference/...",
         # copybara:uncomment "//smartass/brain/ops/...",
         "//tensorflow/c/eager/...",
         "//tensorflow/compiler/mlir/tfrt/...",
@@ -92,7 +93,7 @@ cc_library(
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/runtime_fallback/util:type_util",
-        "//tensorflow/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
@@ -136,6 +137,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],
@@ -197,7 +199,6 @@ cc_library(
     srcs = ["tfrt_graph_execution_state.cc"],
     hdrs = ["tfrt_graph_execution_state.h"],
     deps = [
-        ":graph_partition",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:compilation_passes",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",

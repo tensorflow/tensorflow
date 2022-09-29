@@ -161,6 +161,9 @@ genrule(
         "@nsync//:LICENSE",
         "@png//:LICENSE",
         "@snappy//:COPYING",
+        "@stablehlo//:LICENSE",
+        "@tf_runtime//:LICENSE",
+        "@tf_runtime//third_party/llvm_derived:LICENSE",
         "@zlib//:zlib.h",
     ] + select({
         "//tensorflow:android": [],
@@ -233,6 +236,9 @@ genrule(
         "@nsync//:LICENSE",
         "@png//:LICENSE",
         "@snappy//:COPYING",
+        "@stablehlo//:LICENSE",
+        "@tf_runtime//:LICENSE",
+        "@tf_runtime//third_party/llvm_derived:LICENSE",
         "@zlib//:zlib.h",
     ] + select({
         "//tensorflow:android": [],

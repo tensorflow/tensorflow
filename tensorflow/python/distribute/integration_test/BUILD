@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow/tsl/platform/default:distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 

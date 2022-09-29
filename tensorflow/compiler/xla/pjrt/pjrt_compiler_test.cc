@@ -41,7 +41,7 @@ TEST(PjRtCompilerTest, CompilerNotRegistered) {
   XlaComputation computation;
   auto res = PjRtCompile(options, computation, topology);
 
-  EXPECT_TRUE(tensorflow::errors::IsNotFound(res.status()));
+  EXPECT_TRUE(tsl::errors::IsNotFound(res.status()));
 }
 
 TEST(PjRtCompilerTest, CompilerRegistered) {
@@ -58,7 +58,12 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
     StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
         CompileOptions options, const XlaComputation& computation,
         const PjRtDeviceTopology& topology, PjRtClient* client) override {
-      return tensorflow::errors::Unimplemented("test compiler!");
+      return tsl::errors::Unimplemented("test compiler!");
+    }
+    StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+        CompileOptions options, mlir::ModuleOp module,
+        const PjRtDeviceTopology& topology, PjRtClient* client) override {
+      return tsl::errors::Unimplemented("test compiler!");
     }
   };
   std::unique_ptr<PjRtCompiler> compiler = std::make_unique<PjRtTestCompiler>();
@@ -68,7 +73,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
   XlaComputation computation;
   auto res = PjRtCompile(options, computation, topology);
 
-  EXPECT_TRUE(tensorflow::errors::IsUnimplemented(res.status()));
+  EXPECT_TRUE(tsl::errors::IsUnimplemented(res.status()));
 }
 
 }  // namespace

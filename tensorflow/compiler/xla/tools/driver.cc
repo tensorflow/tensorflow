@@ -278,27 +278,26 @@ class BufferTable {
 // Example of input:
 //
 // BufferAssignment:
-// allocation 0: 0x27017c46b600, size 32768, parameter 0, shape f32[256,32] at
+// allocation 0: size 32768, parameter 0, shape f32[256,32] at
 // ShapeIndex {}:
 //  value: <3 parameter @0> (size=32768,offset=0): f32[256,32]{1,0}
-// allocation 1: 0x27017c46b6b0, size 128, output shape is f32[32],
+// allocation 1: size 128, output shape is f32[32],
 // maybe-live-out:
 //  value: <5 reduce @0> (size=128,offset=0): f32[32]{0}
-// allocation 2: 0x27017c46b760, size 4, constant:
+// allocation 2: size 4, constant:
 //  value: <4 init_value @0> (size=4,offset=0): f32[]
-// allocation 3: 0x27017c46b810, size 4, thread-local:
+// allocation 3: size 4, thread-local:
 //  value: <0 x.1 @0> (size=4,offset=0): f32[]
-// allocation 4: 0x27017c46b8c0, size 4, thread-local:
+// allocation 4: size 4, thread-local:
 //  value: <1 y.1 @0> (size=4,offset=0): f32[]
-// allocation 5: 0x27017c46b970, size 4, output shape is f32[], thread-local:
+// allocation 5: size 4, output shape is f32[], thread-local:
 //  value: <2 add.1 @0> (size=4,offset=0): f32[]
 BufferAssignment ParseBufferAssignment(const std::string& fname) {
   BufferAssignment assignment;
   std::ifstream infile(fname);
   std::string line;
   while (std::getline(infile, line)) {
-    std::regex allocation_line_r(
-        "allocation ([0-9]+): .+, size ([0-9]+), (.+)");
+    std::regex allocation_line_r("allocation ([0-9]+): size ([0-9]+), (.+)");
     std::smatch match;
     if (std::regex_search(line, match, allocation_line_r)) {
       Log("Matched allocation description: " + line);

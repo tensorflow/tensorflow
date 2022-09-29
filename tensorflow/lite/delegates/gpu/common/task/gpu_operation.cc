@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
+#include <algorithm>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_replace.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
@@ -75,6 +78,266 @@ std::string GetElementWiseCode(const OperationDef& op_def) {
   c += "  args.dst_tensor.Write(src, X, Y, Z);\n";
   c += "} \n";
   return c;
+}
+
+bool NeedsBroadcast(const TensorDescriptor& desc, const BHWC& shape) {
+  bool needs_broadcast = shape.w == 1 || shape.h == 1 || shape.c == 1;
+  if (desc.HasAxis(Axis::BATCH)) {
+    needs_broadcast = needs_broadcast || shape.b == 1;
+  }
+  return needs_broadcast;
+}
+
+std::string GetStringWithoutComments(const std::string& code) {
+  std::string result;
+  result.reserve(code.size());
+  for (size_t i = 0; i < code.size(); ++i) {
+    // skip long comment /*...*/
+    if (code[i] == '/' && i + 1 < code.size() && code[i + 1] == '*') {
+      i = i + 3;
+      for (; i < code.size() && (code[i - 1] != '*' && code[i] != '/'); ++i) {
+      }
+      continue;
+    }
+    // skip short comment //...
+    if (code[i] == '/' && i + 1 < code.size() && code[i + 1] == '/') {
+      i = i + 2;
+      for (; i < code.size() && code[i] != '\n'; ++i) {
+      }
+      if (i != code.size()) {
+        // i is '\n'
+        result.push_back(code[i]);
+      }
+      continue;
+    }
+    result.push_back(code[i]);
+  }
+  return result;
+}
+
+bool IsWordSymbol(char symbol) {
+  return absl::ascii_isalnum(symbol) || symbol == '_';
+}
+
+// Word is a token consisting of ascii_isalnum symbols or '_'
+// (see above IsWordSymbol(char symbol))
+// ReplaceAllWords replace all specified word-tokens(old_word) with new_word
+void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
+                     std::string* str) {
+  for (size_t position = str->find(old_word); position != std::string::npos;
+       position = str->find(old_word, position)) {
+    const char prev = position == 0 ? '.' : (*str)[position - 1];
+    const char next = position + old_word.size() < str->size()
+                          ? (*str)[position + old_word.size()]
+                          : '.';
+    if (IsWordSymbol(prev) || IsWordSymbol(next)) {
+      position += 1;
+      continue;
+    }
+    str->replace(position, old_word.size(), new_word);
+    position += new_word.size();
+  }
+}
+
+struct LinkableContext {
+  std::string code;
+  TensorDescriptor* tensor_desc;
+};
+
+absl::Status ResolveLinking(
+    const GpuInfo& gpu_info,
+    const std::map<std::string, LinkableContext>& linkables,
+    std::string* code) {
+  std::map<std::string, LinkableContext> useful_linkables;
+  for (const auto& linkable : linkables) {
+    if (!linkable.second.code.empty()) {
+      useful_linkables[linkable.first] = linkable.second;
+    }
+  }
+  if (useful_linkables.empty()) {
+    return absl::OkStatus();
+  }
+  constexpr char kArgsPrefix[] = "args.";
+  for (size_t position = code->find(kArgsPrefix); position != std::string::npos;
+       position = code->find(kArgsPrefix, position)) {
+    const size_t args_pos = position;
+    position += strlen(kArgsPrefix);
+    const std::string object_name = GetNextWord(*code, position);
+    position += object_name.size();
+    auto linkable = useful_linkables.find(object_name);
+    if (linkable == useful_linkables.end()) {
+      continue;
+    }
+    char next = (*code)[position];
+    position += 1;
+    if (next != '.') {
+      continue;
+    }
+    const std::string selector_name = GetNextWord(*code, position);
+    position += selector_name.size();
+    if (selector_name != "Write") {
+      continue;
+    }
+    next = (*code)[position];
+    std::vector<std::string> template_args;
+    if (next == '<') {
+      size_t close_bracket_pos;
+      RETURN_IF_ERROR(ParseArgsInsideBrackets(
+          *code, position, &close_bracket_pos, &template_args));
+      position = close_bracket_pos;
+      next = (*code)[position];
+    }
+    if (next != '(') {
+      return absl::NotFoundError(absl::StrCat("Expected ( after ", object_name,
+                                              ".", selector_name, " call"));
+    }
+    std::vector<std::string> function_args;
+    size_t close_bracket_pos;
+    RETURN_IF_ERROR(ParseArgsInsideBrackets(*code, position, &close_bracket_pos,
+                                            &function_args));
+
+    std::string value_name, x_coord, y_coord, z_coord, s_coord, b_coord;
+    RETURN_IF_ERROR(
+        linkable->second.tensor_desc->GetLinkingContextFromWriteSelector(
+            function_args, &value_name, &x_coord, &y_coord, &z_coord, &s_coord,
+            &b_coord));
+    const std::string new_value_name = value_name + "_final";
+    const std::string out_var_declaration =
+        GetTypeDeclaration(gpu_info,
+                           linkable->second.tensor_desc->GetDataType(), 4) +
+        " " + new_value_name + ";\n";
+    std::string prefix;
+    size_t space_pos = args_pos - 1;
+    while (space_pos >= 0 &&
+           ((*code)[space_pos] == ' ' || (*code)[space_pos] == '\t')) {
+      prefix += (*code)[space_pos];
+      space_pos -= 1;
+    }
+    function_args[0] = new_value_name;
+    std::string write_code = kArgsPrefix + object_name + ".Write";
+    if (!template_args.empty()) {
+      write_code += std::string("<") + template_args[0];
+      for (int i = 1; i < template_args.size(); ++i) {
+        write_code += ", " + template_args[i];
+      }
+      write_code += ">";
+    }
+    write_code += std::string("(") + function_args[0];
+    for (int i = 1; i < function_args.size(); ++i) {
+      write_code += ", " + function_args[i];
+    }
+    write_code += ")";
+    std::string patch =
+        "{\n" + absl::Substitute(linkable->second.code, out_var_declaration) +
+        "\n" + write_code + ";\n}";
+    patch = absl::StrReplaceAll(patch, {{"\n", "\n" + prefix},
+                                        {"in_value", value_name},
+                                        {"out_value", new_value_name},
+                                        {"X_COORD", x_coord},
+                                        {"Y_COORD", y_coord},
+                                        {"Z_COORD", z_coord},
+                                        {"S_COORD", s_coord},
+                                        {"B_COORD", b_coord}});
+    code->replace(args_pos, close_bracket_pos - args_pos, patch);
+    position = args_pos + patch.size();
+  }
+  return absl::OkStatus();
+}
+
+// resolve constructions of type: args.object_name::const_expr_name
+// Example: 'args.dst_tensor::type' can be replaced with 'float4'
+absl::Status ResolveConstExprPass(const GpuInfo& gpu_info,
+                                  const Arguments& args, std::string* code) {
+  std::string result;
+  size_t position = 0;
+  constexpr char kArgsPrefix[] = "args.";
+  size_t next_position = code->find(kArgsPrefix);
+  while (next_position != std::string::npos) {
+    size_t arg_pos = next_position;
+    next_position += strlen(kArgsPrefix);
+    std::string object_name = GetNextWord(*code, next_position);
+    if (next_position + object_name.size() > code->size() - 2) {
+      next_position = code->find(kArgsPrefix, next_position);
+      continue;
+    }
+    char next0 = (*code)[next_position + object_name.size()];
+    char next1 = (*code)[next_position + object_name.size() + 1];
+    if (next0 == ':' && next1 == ':') {
+      next_position += object_name.size() + 2;
+      std::string const_expr_name = GetNextWord(*code, next_position);
+      next_position += const_expr_name.size();
+      std::string patch;
+      tflite::gpu::GPUObjectDescriptor* desc_ptr;
+      RETURN_IF_ERROR(args.GetDescriptor(object_name, &desc_ptr));
+      RETURN_IF_ERROR(
+          desc_ptr->PerformConstExpr(gpu_info, const_expr_name, &patch));
+      code->replace(arg_pos, next_position - arg_pos, patch);
+      position = arg_pos + patch.size();
+    } else {
+      position = arg_pos + strlen(kArgsPrefix);
+    }
+    next_position = code->find(kArgsPrefix, position);
+  }
+  return absl::OkStatus();
+}
+
+// resolve constructions of type: args.object_name.method_name(list of args)
+// Example: 'args.bias.Read(S)' can be replaced with 'args.bias_buffer[S]'
+absl::Status ResolveSelectorsPass(const GpuInfo& gpu_info,
+                                  const Arguments& args, std::string* code) {
+  std::string result;
+  size_t position = 0;
+  constexpr char kArgsPrefix[] = "args.";
+  size_t next_position = code->find(kArgsPrefix);
+  while (next_position != std::string::npos) {
+    size_t arg_pos = next_position;
+    next_position += strlen(kArgsPrefix);
+    std::string object_name = GetNextWord(*code, next_position);
+    char next = (*code)[next_position + object_name.size()];
+    if (next == '.') {
+      next_position += object_name.size() + 1;
+      std::string selector_name = GetNextWord(*code, next_position);
+      next_position += selector_name.size();
+      next = (*code)[next_position];
+      std::vector<std::string> template_args;
+      if (next == '<') {
+        size_t close_bracket_pos;
+        RETURN_IF_ERROR(ParseArgsInsideBrackets(
+            *code, next_position, &close_bracket_pos, &template_args));
+        next_position = close_bracket_pos;
+        next = (*code)[next_position];
+      }
+      if (next != '(') {
+        return absl::NotFoundError(absl::StrCat(
+            "Expected ( after ", object_name, ".", selector_name, " call"));
+      }
+      std::vector<std::string> function_args;
+      size_t close_bracket_pos;
+      RETURN_IF_ERROR(ParseArgsInsideBrackets(
+          *code, next_position, &close_bracket_pos, &function_args));
+      for (auto& arg : function_args) {
+        RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, args, &arg));
+      }
+      std::string patch;
+      GPUObjectDescriptor* desc_ptr;
+      RETURN_IF_ERROR(args.GetDescriptor(object_name, &desc_ptr));
+      auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
+      RETURN_IF_ERROR(desc_ptr->PerformSelector(
+          gpu_info, selector_name, function_args, template_args, &patch));
+      for (const auto& member_name : names) {
+        const std::string new_name =
+            kArgsPrefix + object_name + "_" + member_name;
+        ReplaceAllWords(member_name, new_name, &patch);
+      }
+
+      code->replace(arg_pos, close_bracket_pos - arg_pos, patch);
+      position = arg_pos + patch.size();
+    } else {
+      position = arg_pos + strlen(kArgsPrefix);
+    }
+    next_position = code->find(kArgsPrefix, position);
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -139,6 +402,9 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       dst_tensors_names_(std::move(operation.dst_tensors_names_)),
       work_groups_count_(operation.work_groups_count_),
       elementwise_(operation.elementwise_),
+      elementwise_inputs_(operation.elementwise_inputs_),
+      second_elementwise_tensor_name_(
+          operation.second_elementwise_tensor_name_),
       linkable_count_(operation.linkable_count_),
       elementwise_code_(std::move(operation.elementwise_code_)) {}
 
@@ -161,10 +427,114 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     dst_tensors_names_ = std::move(operation.dst_tensors_names_);
     std::swap(work_groups_count_, operation.work_groups_count_);
     elementwise_ = operation.elementwise_;
+    std::swap(elementwise_inputs_, operation.elementwise_inputs_);
+    std::swap(second_elementwise_tensor_name_,
+              operation.second_elementwise_tensor_name_);
     std::swap(linkable_count_, operation.linkable_count_);
     elementwise_code_ = std::move(operation.elementwise_code_);
   }
   return *this;
+}
+
+//    input       input
+//      |           |
+//    elem0         |
+//      |    -->  elem
+//    elem1         |
+//      |           |
+//    output      output
+// GPUOperation* operation is elem1
+// *this is elem0
+absl::Status GPUOperation::FuseSimpleElemWithSimpleElem(
+    const GpuInfo& gpu_info, GPUOperation* operation) {
+  GPUOperation& elem0 = *this;
+  GPUOperation& elem1 = *operation;
+  elem0.definition_.dst_tensors[0] = elem1.definition_.dst_tensors[0];
+  const auto link_value_type = elem1.definition_.src_tensors[0].GetDataType();
+  elem0.linkable_count_ += (elem1.linkable_count_ + 1);
+  std::string unique_postfix = absl::StrCat("_link", elem0.linkable_count_);
+  elem1.args_.RenameArgs(unique_postfix, &elem1.elementwise_code_);
+  const std::string link_value_name = "interm_value" + unique_postfix;
+  const std::string value_declaration =
+      "\n" + GetTypeDeclaration(gpu_info, link_value_type, 4) + " " +
+      link_value_name + ";\n";
+  elem1.elementwise_code_ = absl::StrReplaceAll(
+      elem1.elementwise_code_, {{"in_value", link_value_name}});
+  elem0.elementwise_code_ = absl::StrReplaceAll(
+      elem0.elementwise_code_, {{"out_value", link_value_name}});
+  elem0.elementwise_code_ =
+      absl::Substitute(elem0.elementwise_code_, value_declaration);
+  elem0.elementwise_code_ += "\n" + elem1.elementwise_code_;
+  return args_.Merge(std::move(elem1.args_), unique_postfix);
+}
+
+//      input           input
+//     /    \             |
+//  elem0    |            |
+//     \    /      -->  elem
+//     elem1              |
+//       |                |
+//     output           output
+// GPUOperation* operation is elem1
+// *this is elem0
+absl::Status GPUOperation::Fuse2InputElemWithSimpleElemAsFirstInput(
+    const GpuInfo& gpu_info, GPUOperation* operation) {
+  GPUOperation& elem0 = *this;
+  GPUOperation& elem1 = *operation;
+  const auto link_value_type = elem0.definition_.dst_tensors[0].GetDataType();
+  elem0.definition_.dst_tensors[0] = elem1.definition_.dst_tensors[0];
+  elem0.linkable_count_ += (elem1.linkable_count_ + 1);
+  std::string unique_postfix = absl::StrCat("_link", elem0.linkable_count_);
+  elem1.args_.RenameArgs(unique_postfix, &elem1.elementwise_code_);
+  const std::string link_value_name = "interm_value" + unique_postfix;
+  const std::string value_declaration =
+      "\n" + GetTypeDeclaration(gpu_info, link_value_type, 4) + " " +
+      link_value_name + ";\n";
+  elem0.elementwise_code_ = absl::StrReplaceAll(
+      elem0.elementwise_code_, {{"out_value", link_value_name}});
+  elem0.elementwise_code_ =
+      absl::Substitute(elem0.elementwise_code_, value_declaration);
+  elem1.elementwise_code_ = absl::StrReplaceAll(elem1.elementwise_code_,
+                                                {{"in_value", link_value_name},
+                                                 {"READ_SECOND_VALUE", ""},
+                                                 {"in2_value", "in_value"}});
+  elem0.elementwise_code_ += "\n" + elem1.elementwise_code_;
+  return elem0.args_.Merge(std::move(elem1.args_), unique_postfix,
+                           {elem1.second_elementwise_tensor_name_});
+}
+
+//      input           input
+//     /    \             |
+//    |    elem0          |
+//     \    /      -->  elem
+//     elem1              |
+//       |                |
+//     output           output
+// GPUOperation* operation is elem1
+// *this is elem0
+absl::Status GPUOperation::Fuse2InputElemWithSimpleElemAsSecondInput(
+    const GpuInfo& gpu_info, GPUOperation* operation43) {
+  GPUOperation& elem0 = *this;
+  GPUOperation& elem1 = *operation43;
+  const auto link_value_type = elem0.definition_.dst_tensors[0].GetDataType();
+  elem0.definition_.dst_tensors[0] = elem1.definition_.dst_tensors[0];
+  elem0.linkable_count_ += (elem1.linkable_count_ + 1);
+  std::string unique_postfix = absl::StrCat("_link", elem0.linkable_count_);
+  elem1.args_.RenameArgs(unique_postfix, &elem1.elementwise_code_);
+  const std::string link_value_name = "interm_value" + unique_postfix;
+  const std::string value_declaration =
+      "\n" + GetTypeDeclaration(gpu_info, link_value_type, 4) + " " +
+      link_value_name + ";\n";
+  elem0.elementwise_code_ = absl::StrReplaceAll(
+      elem0.elementwise_code_, {{"out_value", link_value_name}});
+  elem0.elementwise_code_ =
+      absl::Substitute(elem0.elementwise_code_, value_declaration);
+  elem1.elementwise_code_ = absl::StrReplaceAll(
+      elem1.elementwise_code_,
+      {{"in2_value", link_value_name}, {"READ_SECOND_VALUE", ""}});
+  elem0.elementwise_code_ += "\n" + elem1.elementwise_code_;
+  return elem0.args_.Merge(std::move(elem1.args_), unique_postfix,
+                           {elem1.second_elementwise_tensor_name_});
 }
 
 absl::Status GPUOperation::AddOperation(const GpuInfo& gpu_info,
@@ -172,19 +542,39 @@ absl::Status GPUOperation::AddOperation(const GpuInfo& gpu_info,
   const auto prev_type = definition_.dst_tensors[0].GetDataType();
   definition_.dst_tensors[0] = operation->definition_.dst_tensors[0];
   linkable_count_ += (operation->linkable_count_ + 1);
-  std::string code = "{\n" + operation->elementwise_code_ + "\n}";
+  std::string code = operation->elementwise_code_;
   std::string unique_postfix = absl::StrCat("_link", linkable_count_);
+  code = absl::StrReplaceAll(
+      code, {{"interm_value", "interm_value" + unique_postfix}});
   operation->args_.RenameArgs(unique_postfix, &code);
+  operation->second_elementwise_tensor_name_ += unique_postfix;
   if (elementwise_code_.empty()) {
     elementwise_code_ = code;
+    elementwise_inputs_ = operation->elementwise_inputs_;
+    second_elementwise_tensor_name_ =
+        operation->second_elementwise_tensor_name_;
   } else {
+    if (operation->elementwise_inputs_ == 2) {
+      if (elementwise_inputs_ == 2) {
+        // if we have fusion of 2 2-input elementwise ops, we will get 3-input
+        // elementwise, but currently we support only max 2-input elementwise.
+        // So we will resolve one input here.
+        RETURN_IF_ERROR(ResolveSecondElementwiseInput());
+      }
+      second_elementwise_tensor_name_ =
+          operation->second_elementwise_tensor_name_;
+      elementwise_inputs_ = 2;
+    }
     const std::string new_value_name = "interm_value" + unique_postfix;
     code = absl::StrReplaceAll(code, {{"in_value", new_value_name}});
     elementwise_code_ =
         absl::StrReplaceAll(elementwise_code_, {{"out_value", new_value_name}});
-    elementwise_code_ = "{\n" + GetTypeDeclaration(gpu_info, prev_type, 4) +
-                        " " + new_value_name + ";\n" + elementwise_code_ +
-                        "\n" + code + "\n}\n";
+    const std::string out_var_declaration =
+        "\n" + GetTypeDeclaration(gpu_info, prev_type, 4) + " " +
+        new_value_name + ";\n";
+    elementwise_code_ =
+        absl::Substitute(elementwise_code_, out_var_declaration);
+    elementwise_code_ = elementwise_code_ + "\n" + code;
   }
   RETURN_IF_ERROR(args_.Merge(std::move(operation->args_), unique_postfix));
   for (int i = 0; i < operation->src_tensors_names_.size(); ++i) {
@@ -197,6 +587,38 @@ absl::Status GPUOperation::AddOperation(const GpuInfo& gpu_info,
     dst_tensors_names_.push_back(operation->dst_tensors_names_[i] +
                                  unique_postfix);
   }
+  return absl::OkStatus();
+}
+
+absl::Status GPUOperation::ResolveSecondElementwiseInput() {
+  if (elementwise_inputs_ != 2) {
+    return absl::FailedPreconditionError(
+        "Can not apply ResolveSecondElementwiseInput for non 2 input "
+        "elementwise");
+  }
+  TensorDescriptor* tensor_desc;
+  RETURN_IF_ERROR(
+      GetTensorDescriptor(second_elementwise_tensor_name_, &tensor_desc));
+  std::string coords = "X_COORD, Y_COORD, S_COORD";
+  if (tensor_desc->HasAxis(Axis::BATCH)) {
+    coords += ", B_COORD";
+  }
+  const std::string read_code = "args." + second_elementwise_tensor_name_ +
+                                "::type second_value = args." +
+                                second_elementwise_tensor_name_ + ".Read(" +
+                                coords + ");\n";
+  elementwise_code_ = absl::StrReplaceAll(
+      elementwise_code_,
+      {{"in2_value", "second_value"}, {"READ_SECOND_VALUE", read_code}});
+  elementwise_inputs_ = 1;
+  return absl::OkStatus();
+}
+
+absl::Status GPUOperation::GetTensorDescriptor(const std::string& tensor_name,
+                                               TensorDescriptor** resutl) {
+  GPUObjectDescriptor* desc_ptr;
+  RETURN_IF_ERROR(args_.GetDescriptor(tensor_name, &desc_ptr));
+  *resutl = static_cast<TensorDescriptor*>(desc_ptr);
   return absl::OkStatus();
 }
 
@@ -214,13 +636,6 @@ void GPUOperation::AddSrcBuffer(const std::string& buffer_name,
   args_.AddObjectRef(buffer_name, AccessType::READ, std::move(desc_new));
 }
 
-void GPUOperation::AddSrcTexture2D(const std::string& texture_name,
-                                   const Texture2DDescriptor& desc) {
-  src_tensors_names_.push_back(texture_name);
-  auto desc_new = std::make_unique<Texture2DDescriptor>(desc);
-  args_.AddObjectRef(texture_name, AccessType::READ, std::move(desc_new));
-}
-
 void GPUOperation::AddDstTensor(const std::string& tensor_name,
                                 const TensorDescriptor& desc) {
   dst_tensors_names_.push_back(tensor_name);
@@ -229,6 +644,9 @@ void GPUOperation::AddDstTensor(const std::string& tensor_name,
 }
 
 absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
+  if (elementwise_inputs_ == 2) {
+    RETURN_IF_ERROR(ResolveSecondElementwiseInput());
+  }
   if (elementwise_) {
     src_tensors_names_.insert(src_tensors_names_.begin(), "src_tensor");
     args_.AddObjectRef(
@@ -241,9 +659,20 @@ absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
         std::make_unique<TensorDescriptor>(definition_.dst_tensors[0]));
 
     code_ = GetElementWiseCode(definition_);
+    elementwise_ = false;
   }
-  RETURN_IF_ERROR(args_.Compile(
-      gpu_info, {{dst_tensors_names_[0], elementwise_code_}}, &code_));
+  std::map<std::string, LinkableContext> linkables;
+  if (!elementwise_code_.empty()) {
+    TensorDescriptor* dst_tensor_desc;
+    RETURN_IF_ERROR(
+        GetTensorDescriptor(dst_tensors_names_[0], &dst_tensor_desc));
+    linkables[dst_tensors_names_[0]] = {elementwise_code_, dst_tensor_desc};
+  }
+  RETURN_IF_ERROR(ResolveLinking(gpu_info, linkables, &code_));
+  RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, args_, &code_));
+  RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, args_, &code_));
+  code_ = GetStringWithoutComments(code_);
+  RETURN_IF_ERROR(args_.Compile(gpu_info, &code_));
   CalculateConstArgsSize();
   return absl::OkStatus();
 }
@@ -327,32 +756,105 @@ GPUOperation CreateGpuOperation(const OperationDef& definition,
   if (definition.src_tensors.size() > 1 &&
       op.elementwise_code_.find("in2_value")) {
     const auto second_tensor_def = definition.src_tensors[1];
-    const std::string x_coord = second_shape.w == 1 ? "0" : "X_COORD";
-    const std::string y_coord = second_shape.h == 1 ? "0" : "Y_COORD";
-    const std::string s_coord = second_shape.c == 1 ? "0" : "S_COORD";
-    std::string coords = absl::StrCat(x_coord, ", ", y_coord, ", ", s_coord);
-    if (second_tensor_def.HasAxis(Axis::BATCH)) {
-      const std::string b_coord = second_shape.b == 1 ? "0" : "B_COORD";
-      coords += ", " + b_coord;
+    if (NeedsBroadcast(second_tensor_def, second_shape)) {
+      const std::string x_coord = second_shape.w == 1 ? "0" : "X_COORD";
+      const std::string y_coord = second_shape.h == 1 ? "0" : "Y_COORD";
+      const std::string s_coord = second_shape.c == 1 ? "0" : "S_COORD";
+      std::string coords = absl::StrCat(x_coord, ", ", y_coord, ", ", s_coord);
+      if (second_tensor_def.HasAxis(Axis::BATCH)) {
+        const std::string b_coord = second_shape.b == 1 ? "0" : "B_COORD";
+        coords += ", " + b_coord;
+      }
+      std::string read_value_code = absl::StrCat(
+          "args.src_tensor_1::type in2_value = args.src_tensor_1.Read(", coords,
+          ");\n");
+      if (second_shape.c == 1) {
+        read_value_code += "  in2_value.y = in2_value.x;\n";
+        read_value_code += "  in2_value.z = in2_value.x;\n";
+        read_value_code += "  in2_value.w = in2_value.x;\n";
+      }
+      op.elementwise_code_ =
+          "$0{" + read_value_code + op.elementwise_code_ + "}";
+      op.elementwise_code_ = absl::StrReplaceAll(
+          op.elementwise_code_, {{"in2_value", "second_value"}});
+      op.elementwise_inputs_ = 1;
+    } else {
+      op.elementwise_code_ =
+          "$0{READ_SECOND_VALUE" + op.elementwise_code_ + "}";
+      op.elementwise_inputs_ = 2;
+      op.second_elementwise_tensor_name_ = "src_tensor_1";
     }
-    std::string read_value_code = absl::StrCat(
-        "args.src_tensor_1::type in2_value = args.src_tensor_1.Read(", coords,
-        ");\n");
-    if (second_shape.c == 1) {
-      read_value_code += "  in2_value.y = in2_value.x;\n";
-      read_value_code += "  in2_value.z = in2_value.x;\n";
-      read_value_code += "  in2_value.w = in2_value.x;\n";
-    }
-    op.elementwise_code_ = read_value_code + op.elementwise_code_;
+  } else {
+    op.elementwise_code_ = "$0{" + op.elementwise_code_ + "}";
+    op.elementwise_inputs_ = 1;
   }
   op.args_ = std::move(descriptor.args);
   for (int i = 1; i < definition.src_tensors.size(); ++i) {
     const std::string tensor_name = "src_tensor_" + std::to_string(i);
-    auto src_desc = definition.src_tensors[i];
-    op.AddSrcTensor(tensor_name, src_desc);
+    op.AddSrcTensor(tensor_name, definition.src_tensors[i]);
   }
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
   return op;
+}
+
+absl::Status Fuse2InputElemWith2SimpleElem(const GpuInfo& gpu_info,
+                                           GPUOperation&& elem0,
+                                           GPUOperation&& elem1,
+                                           GPUOperation&& elem_root,
+                                           GPUOperation* result) {
+  int linkable_count = std::max(elem0.linkable_count_, elem1.linkable_count_);
+  linkable_count = std::max(linkable_count, elem_root.linkable_count_);
+  linkable_count += 1;
+
+  std::string unique_postfix = absl::StrCat("_link", linkable_count);
+  elem0.args_.RenameArgs(unique_postfix + "l", &elem0.elementwise_code_);
+  elem1.args_.RenameArgs(unique_postfix + "r", &elem1.elementwise_code_);
+  elem_root.args_.RenameArgs(unique_postfix, &elem_root.elementwise_code_);
+  const std::string link_left_value_name = "interm_value_left" + unique_postfix;
+  const std::string link_right_value_name =
+      "interm_value_right" + unique_postfix;
+  const auto link_left_value_type =
+      elem0.definition_.dst_tensors[0].GetDataType();
+  const std::string left_value_declaration =
+      "\n" + GetTypeDeclaration(gpu_info, link_left_value_type, 4) + " " +
+      link_left_value_name + ";\n";
+  const auto link_right_value_type =
+      elem1.definition_.dst_tensors[0].GetDataType();
+  const std::string right_value_declaration =
+      "\n" + GetTypeDeclaration(gpu_info, link_right_value_type, 4) + " " +
+      link_right_value_name + ";\n";
+  elem0.elementwise_code_ = absl::StrReplaceAll(
+      elem0.elementwise_code_, {{"out_value", link_left_value_name}});
+  elem1.elementwise_code_ = absl::StrReplaceAll(
+      elem1.elementwise_code_, {{"out_value", link_right_value_name}});
+  elem0.elementwise_code_ =
+      absl::Substitute(elem0.elementwise_code_, left_value_declaration);
+  elem1.elementwise_code_ =
+      absl::Substitute(elem1.elementwise_code_, right_value_declaration);
+  elem_root.elementwise_code_ = absl::StrReplaceAll(
+      elem_root.elementwise_code_, {{"in_value", link_left_value_name},
+                                    {"READ_SECOND_VALUE", ""},
+                                    {"in2_value", link_right_value_name}});
+
+  OperationDef new_definition = elem0.definition_;
+  new_definition.dst_tensors[0] = elem_root.definition_.dst_tensors[0];
+
+  *result = GPUOperation(new_definition);
+  result->elementwise_ = true;
+  result->elementwise_inputs_ = 1;
+  result->tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  result->elementwise_code_ = elem0.elementwise_code_ + "\n" +
+                              elem1.elementwise_code_ + "\n" +
+                              elem_root.elementwise_code_;
+  result->linkable_count_ = linkable_count;
+  RETURN_IF_ERROR(
+      result->args_.Merge(std::move(elem0.args_), unique_postfix + "l"));
+  RETURN_IF_ERROR(
+      result->args_.Merge(std::move(elem1.args_), unique_postfix + "r"));
+  RETURN_IF_ERROR(
+      result->args_.Merge(std::move(elem_root.args_), unique_postfix,
+                          {elem_root.second_elementwise_tensor_name_}));
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

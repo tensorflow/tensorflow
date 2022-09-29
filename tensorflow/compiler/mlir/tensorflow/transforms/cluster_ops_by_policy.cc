@@ -572,7 +572,7 @@ tf_device::ClusterOp CreateClusterOp(Cluster &cluster, StringAttr policy) {
 
   // Create block in cluster_op's region and move 'cluster.operations' into
   // it.
-  auto block = builder.createBlock(&cluster_op.body());
+  auto block = builder.createBlock(&cluster_op.getBody());
   auto block_end = block->end();
   for (auto op : cluster.operations) op->moveBefore(block, block_end);
 

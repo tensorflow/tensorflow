@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -39,7 +38,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORLOWERSENDRECV
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kMissingMeshErrorMsg[] =
     "Failed to extract mesh for DTensorMergeCluster pass. "
@@ -157,7 +159,7 @@ void PropagateDeviceIdToClusters(mlir::ModuleOp module) {
 // into a single cluster. After this pass, exactly one tf_device.Cluster op
 // exists for each device mesh.
 struct DTensorLowerSendRecv
-    : public DTensorLowerSendRecvBase<DTensorLowerSendRecv> {
+    : public impl::DTensorLowerSendRecvBase<DTensorLowerSendRecv> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder op_builder(&context);

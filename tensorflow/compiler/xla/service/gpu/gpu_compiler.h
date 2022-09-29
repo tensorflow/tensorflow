@@ -30,12 +30,56 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace gpu {
+
+// TODO(b/232263665): It should be shared between GPU and CPU.
+class XlaRuntimeAotCompilationResult : public AotCompilationResult {
+ public:
+  static StatusOr<std::unique_ptr<XlaRuntimeAotCompilationResult>> FromString(
+      const std::string& serialized) {
+    XlaRuntimeExecutableProto xla_runtime_executable;
+    if (!xla_runtime_executable.ParseFromString(serialized)) {
+      return InternalError("Failed to parse serialized JitRtExecutableProto.");
+    }
+    return std::unique_ptr<XlaRuntimeAotCompilationResult>(
+        new XlaRuntimeAotCompilationResult(std::move(xla_runtime_executable)));
+  }
+
+  XlaRuntimeAotCompilationResult(HloModuleProto hlo,
+                                 const std::string& obj_file,
+                                 const std::string& mlir_module,
+                                 EntryFunctionAttributes entry_func_attrs,
+                                 const std::string& gpu_asm_text,
+                                 absl::Span<const uint8_t> gpu_binary) {
+    *xla_runtime_executable_.mutable_hlo_module_proto() = hlo;
+    *xla_runtime_executable_.mutable_entry_func_attrs() = entry_func_attrs;
+    xla_runtime_executable_.set_obj_file(obj_file);
+    xla_runtime_executable_.set_mlir_module(mlir_module);
+    xla_runtime_executable_.set_gpu_asm_text(gpu_asm_text);
+    xla_runtime_executable_.set_gpu_binary(gpu_binary.data(),
+                                           gpu_binary.size());
+  }
+
+  StatusOr<std::string> SerializeAsString() const override {
+    return xla_runtime_executable_.SerializeAsString();
+  }
+
+  StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      Compiler* compiler, se::StreamExecutor* executor) const override;
+
+ private:
+  explicit XlaRuntimeAotCompilationResult(
+      XlaRuntimeExecutableProto jitrt_executable)
+      : xla_runtime_executable_(std::move(jitrt_executable)) {}
+
+  XlaRuntimeExecutableProto xla_runtime_executable_;
+};
 
 // The GPU compiler generates efficient GPU executables.
 class GpuCompiler : public LLVMCompiler {
@@ -72,6 +116,16 @@ class GpuCompiler : public LLVMCompiler {
   se::Platform::Id PlatformId() const override { return platform_id_; }
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
+
+  // Returns a (deserialized) AotCompilationResult from a serialized
+  // AotCompilationResult.
+  StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
+      const std::string& serialized_aot_result) override {
+    return XlaRuntimeAotCompilationResult::FromString(serialized_aot_result);
+  }
+
+  StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+      Executable* executable) const override;
 
  protected:
   virtual Status OptimizeHloPostLayoutAssignment(
@@ -123,8 +177,6 @@ class GpuCompiler : public LLVMCompiler {
   GpuCompiler(const GpuCompiler&) = delete;
   GpuCompiler& operator=(const GpuCompiler&) = delete;
 };
-
-GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec);
 
 // Compile `hlo_module` using XLA GPU and return the LLVM module thus generated.
 // The GpuExecutable (and the Thunks that are part of it) are not returned.

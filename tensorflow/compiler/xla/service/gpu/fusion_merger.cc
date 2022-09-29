@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
-#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -160,6 +160,7 @@ class FusionInstructionMerger {
   int num_fail_net_bytes_transferred_ratio_ = 0;
   int num_fail_inefficient_fusion_emitter_ = 0;
   int num_fail_fusion_too_large_ = 0;
+  int num_fail_uncoalesced_read_ = 0;
 
   FusionInstructionMerger(const FusionInstructionMerger&) = delete;
   FusionInstructionMerger& operator=(const FusionInstructionMerger&) = delete;
@@ -239,11 +240,29 @@ Status FusionInstructionMerger::Run() {
           << " not_loop_fusion: " << num_fail_not_loop_fusion_
           << " merge_all_users: " << num_fail_merge_all_users_
           << " expensive_instruction: " << num_fail_expensive_fused_instruction_
+          << " uncoalesced_read: " << num_fail_uncoalesced_read_
           << " net_bytes_transferred: " << num_fail_net_bytes_transferred_ratio_
           << " inefficient_fusion_emitter: "
           << num_fail_inefficient_fusion_emitter_
           << " fusion_too_large: " << num_fail_fusion_too_large_ << " }";
   return OkStatus();
+}
+
+bool TransposesMostData(const HloInstruction& fusion) {
+  float score = 0;
+
+  for (const HloInstruction* instr : fusion.fused_instructions()) {
+    if (IsPhysicallyTransposing(*instr)) {
+      score += 1.0 * ShapeUtil::ElementsIn(instr->shape()) /
+               ShapeUtil::ElementsIn(fusion.shape());
+      if (score >= 0.5) {
+        VLOG(3) << fusion.ToString() << " transpose ratio exceeds " << score;
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 FusionDecision FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
@@ -264,14 +283,27 @@ FusionDecision FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     return "not a loop fusion";
   }
 
+  bool has_reduction_user = false;
   for (const HloInstruction* user : fusion->users()) {
-    FusionDecision fusible = IsProducerConsumerFusible(*fusion, *user)
-                                 .And({user->opcode() != HloOpcode::kBitcast,
-                                       "not fusing bitcast ops"});
+    if (user->opcode() == HloOpcode::kBitcast) {
+      ++num_fail_merge_all_users_;
+      return "not fusing bitcast ops";
+    }
+    FusionDecision fusible = IsProducerConsumerFusible(*fusion, *user);
     if (!fusible) {
       ++num_fail_merge_all_users_;
       return fusible;
     }
+    if (IsInputFusibleReduction(*user)) {
+      has_reduction_user = true;
+    }
+  }
+
+  // We do not want to worsen reduction's memory access pattern by connecting
+  // it to a producer which transposes most data.
+  if (has_reduction_user && TransposesMostData(*fusion)) {
+    ++num_fail_uncoalesced_read_;
+    return "would read mostly uncoalesced";
   }
 
   // Skip 'fusion' instruction if merging it into all users would result in a

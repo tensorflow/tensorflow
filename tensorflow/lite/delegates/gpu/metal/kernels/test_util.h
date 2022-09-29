@@ -19,6 +19,7 @@ limitations under the License.
 #import <Metal/Metal.h>
 
 #include <map>
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -41,9 +42,9 @@ class MetalExecutionEnvironment : public TestExecutionEnvironment {
   std::vector<TensorStorageType> GetSupportedStorages(
       DataType data_type) const override;
 
-  const GpuInfo& GetGpuInfo() const { return device_.GetInfo(); }
+  const GpuInfo& GetGpuInfo() const override { return device_.GetInfo(); }
 
-  absl::Status ExecuteGPUOperation(
+  absl::Status ExecuteGpuOperationInternal(
       const std::vector<TensorDescriptor*>& src_cpu,
       const std::vector<TensorDescriptor*>& dst_cpu,
       std::unique_ptr<GPUOperation>&& operation) override;

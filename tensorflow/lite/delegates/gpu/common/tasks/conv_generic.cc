@@ -283,16 +283,14 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
       AddSrcBuffer("weights", desc);
     } else {
       TensorDescriptor desc{weights_type, TensorStorageType::TEXTURE_2D,
-                            Layout::HWC};
+                            Layout::HW};
       definition_.src_tensors[1] = desc;
       definition_.src_tensors.push_back(desc);
       definition_.src_tensors.push_back(desc);
       definition_.src_tensors.push_back(desc);
       for (int i = 0; i < 4; ++i) {
-        Texture2DDescriptor desc;
-        desc.element_type = definition_.src_tensors[1 + i].GetDataType();
         const std::string name = "weights" + std::to_string(i);
-        AddSrcTexture2D("weights" + std::to_string(i), desc);
+        AddSrcTensor(name, definition_.src_tensors[1 + i]);
       }
     }
   }
@@ -1669,6 +1667,16 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
       conv_params.block_size = int4(2, 1, 1, 1);
     } else {
       conv_params.block_size = int4(1, 1, 1, 1);
+    }
+    if (dst_shape) {
+      if (dst_shape->w == 1) {
+        conv_params.block_size.y *= conv_params.block_size.x;
+        conv_params.block_size.x = 1;
+      }
+      if (dst_shape->h == 1) {
+        conv_params.block_size.x *= conv_params.block_size.y;
+        conv_params.block_size.y = 1;
+      }
     }
     conv_params.src_depth_loop_size = 1;
     MaliInfo mali_info = gpu_info.mali_info;

@@ -8,7 +8,9 @@ tensorflow/compiler/mlir/glob_lit_test.bzl:
 tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.bzl:
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
-tensorflow/core/platform/default/build_config/BUILD:
+tensorflow/compiler/xla/stream_executor/build_defs.bzl:
+tensorflow/core/tfrt/mla/mla_test_utils.h:
+tensorflow/core/tfrt/mla/mla_utils.h:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
 tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
@@ -34,6 +36,7 @@ tensorflow/lite/core/shims/BUILD:
 tensorflow/lite/core/shims/c/builtin_op_data.h:
 tensorflow/lite/core/shims/c/c_api.h:
 tensorflow/lite/core/shims/c/c_api_experimental.h:
+tensorflow/lite/core/shims/c/c_api_types.h:
 tensorflow/lite/core/shims/c/common.h:
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h:
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/gpu_plugin.h:
@@ -147,6 +150,7 @@ tensorflow/tools/toolchains/win_1803/py36/BUILD:
 tensorflow/tools/toolchains/win_1803/py37/BUILD:
 tensorflow/tools/toolchains/win_1803/py38/BUILD:
 tensorflow/tools/toolchains/win_1803/py39/BUILD:
+tensorflow/tsl/platform/default/build_config/BUILD:
 tensorflow/virtual_root_template_v1.__init__:.py
 tensorflow/virtual_root_template_v2.__init__:.py
 third_party/BUILD:
@@ -266,6 +270,9 @@ third_party/nccl/nccl_configure.bzl:
 third_party/nccl/system.BUILD.tpl:
 third_party/nlohmann_json.BUILD:
 third_party/opt_einsum.BUILD:
+third_party/ortools/BUILD:
+third_party/ortools/glpk.BUILD:
+third_party/ortools/ortools.patch:
 third_party/png.BUILD:
 third_party/png_fix_rpi.patch:
 third_party/pprof.BUILD:
@@ -284,6 +291,7 @@ third_party/repo.bzl:
 third_party/six.BUILD:
 third_party/snappy.BUILD:
 third_party/sqlite.BUILD:
+third_party/stablehlo/BUILD:
 third_party/systemlibs/BUILD.tpl:
 third_party/systemlibs/BUILD:
 third_party/systemlibs/absl_py.BUILD:

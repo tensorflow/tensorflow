@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -37,10 +37,10 @@ cc_library(
         "//tensorflow/compiler/xla/python/tpu_driver:recording_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/core/framework:allocator",
-        "//tensorflow/core/platform:casts",
-        "//tensorflow/core/platform:env",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/framework:allocator",
+        "//tensorflow/tsl/platform:casts",
+        "//tensorflow/tsl/platform:env",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",

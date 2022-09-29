@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -32,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -493,6 +494,62 @@ TEST_F(HloCostAnalysisTest, ReduceWindow) {
   EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 2 * 4);
 }
 
+TEST_F(HloCostAnalysisTest, ReduceWindowWithOverlaps) {
+  XlaBuilder builder("reduce_window");
+  auto input =
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {8, 8}), "input");
+  ReduceWindow(input, ConstantR0<float>(&builder, 0), add_, {4, 5}, {2, 1},
+               Padding::kValid);
+
+  auto hlo_module = BuildHloGraph(&builder);
+  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+  int n_output_elements = 3 * 4;
+
+  // Run HLO cost analysis.
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(root->Accept(&analysis));
+
+  // Each of the output elements are generated from reducing [4x5] elements.
+  EXPECT_EQ(analysis.flop_count(), n_output_elements * (4 * 5 - 1));
+
+  EXPECT_EQ(analysis.bytes_accessed(),
+            sizeof(float) * (8 * 8 + 1 + n_output_elements));
+
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 8 * 8);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(float) * 1);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root),
+            sizeof(float) * n_output_elements);
+}
+
+TEST_F(HloCostAnalysisTest, ReduceWindowSingleDimReduceBroadcast) {
+  absl::string_view hlo_text = R"(
+ HloModule fusion.50
+
+region_0.868 {
+  Arg_1.870 = f32[] parameter(1)
+  Arg_0.869 = f32[] parameter(0)
+  ROOT maximum.871 = f32[] maximum(Arg_0.869, Arg_1.870)
+}
+
+ENTRY fusion.50 {
+  constant.367 = f32[] constant(-inf)
+  param0 = f32[2,3,1024,1024]{2,3,1,0} parameter(0)
+  ROOT reduce-window.159 = f32[2,3,1024,1024]{2,3,1,0} reduce-window(param0, constant.367), window={size=1x1x1x2047 pad=0_0x0_0x0_0x1023_1023}, to_apply=region_0.868
+}
+)";
+  auto hlo_module = ParseAndReturnUnverifiedModule(hlo_text).value();
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+  EXPECT_EQ(analysis.flop_count(), (2 * 3 * 1024) + (1024 - 1));
+  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0),
+            sizeof(float) * 2 * 3 * 1024 * 1024);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(float) * 1);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root),
+            sizeof(float) * 2 * 3 * 1024 * 1024);
+}
+
 TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {
   XlaBuilder builder("reduce_window_variadic");
   auto elem_shape = ShapeUtil::MakeShape(F32, {});
@@ -929,6 +986,38 @@ ENTRY entry {
             sizeof(float) * 2 * 2 * 2);
 }
 
+TEST_F(FusionCostAnalysis, IgnoreUnusedParameterShape) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p0 = (s8[3], s8[100]) parameter(0)
+  gte0 = s8[3] get-tuple-element(p0), index=0
+  c1 = s8[3] constant(0)
+  a1 = s8[3] add(gte0, c1)
+  ROOT r1 = s8[3] add(a1, c1)
+}
+
+ENTRY e {
+  param0 = (s8[3], s8[100]) parameter(0)
+  ROOT r0 = s8[3] fusion(param0), kind=kInput, calls=f
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(root->Accept(&analysis));
+
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), 3);
+  // 2-element tuple (pointers) + its 3-element shape #0
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 2 * kPointerSize + 3);
+  EXPECT_EQ(analysis.bytes_accessed(*root), 2 * kPointerSize + 3 + 3);
+  EXPECT_EQ(analysis.bytes_accessed(), 2 * kPointerSize + 3 + 3);
+}
+
 TEST_F(FusionCostAnalysis, InfeedOutfeed) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -1228,7 +1317,7 @@ TEST_F(HloCostAnalysisTest, MultioutputScatter) {
     Tuple(&builder, {Add(x0, y0), Add(x1, y1)});
     auto computation_status = builder.Build();
     TF_CHECK_OK(computation_status.status());
-    return std::move(computation_status).ValueOrDie();
+    return std::move(computation_status).value();
   }();
   Scatter({operand0, operand1}, indices, {values0, values1}, add, dim_numbers);
 
@@ -1248,6 +1337,38 @@ TEST_F(HloCostAnalysisTest, MultioutputScatter) {
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 3), sizeof(float) * 2 * 3);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 4), sizeof(int32_t) * 2 * 3);
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 2 * sizeof(float) * 2 * 3);
+}
+
+TEST_F(FusionCostAnalysis, Broadcast) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p0 = s8[] parameter(0)
+  c1 = s8[] constant(0)
+  a1 = s8[] add(p0, c1)
+  b1 = s8[10000] broadcast(a1), dimensions={}
+  b2 = s8[10000] broadcast(c1), dimensions={}
+  ROOT r1 = s8[10000] add(b1, b2)
+}
+
+ENTRY e {
+  param0 = s8[] parameter(0)
+  ROOT r0 = s8[10000] fusion(param0), kind=kInput, calls=f
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(root->Accept(&analysis));
+
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), 10000);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 1);
+  EXPECT_EQ(analysis.bytes_accessed(*root), 10000 + 1);
+  EXPECT_EQ(analysis.bytes_accessed(), 10000 + 1);
 }
 
 }  // namespace

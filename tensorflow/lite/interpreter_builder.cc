@@ -31,10 +31,10 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/internal/signature_def.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/profiling/platform_profiler.h"
@@ -603,11 +603,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       }
       if (auto* buffer = (*buffers)[tensor->buffer()]) {
         if (auto* array = buffer->data()) {
-          if (size_t size = array->size()) {
-            *buffer_size = size;
-            *buffer_data = reinterpret_cast<const char*>(array->data());
-            return kTfLiteOk;
-          }
+          *buffer_size = array->size();
+          *buffer_data = reinterpret_cast<const char*>(array->data());
+          return kTfLiteOk;
         }
       }
       return kTfLiteOk;

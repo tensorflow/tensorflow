@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -46,6 +45,9 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
+
+#define GEN_PASS_DEF_PROPAGATESTATICSHAPESTOKERNELPASS
+#include "mlir-hlo/Transforms/passes.h.inc"
 
 namespace {
 
@@ -70,7 +72,7 @@ class PropagateStaticShapesPattern : public OpRewritePattern<LLVM::LLVMFuncOp> {
 };
 
 class PropagateStaticShapesToKernelPass
-    : public PropagateStaticShapesToKernelPassBase<
+    : public impl::PropagateStaticShapesToKernelPassBase<
           PropagateStaticShapesToKernelPass> {
  public:
   explicit PropagateStaticShapesToKernelPass(Type pointerType)
@@ -149,9 +151,9 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
       llvm::make_filter_range(llvm::map_range(*symUses, mapper), filter));
   if (launchOps.empty())
     return rewriter.notifyMatchFailure(funcOp, "no gpu.launch_func uses");
-  OperandRange operands = launchOps.begin()->operands();
+  OperandRange operands = launchOps.begin()->getKernelOperands();
   if (llvm::any_of(launchOps, [&](gpu::LaunchFuncOp op) {
-        return op.operands().getTypes() != operands.getTypes();
+        return op.getKernelOperands().getTypes() != operands.getTypes();
       })) {
     return rewriter.notifyMatchFailure(funcOp, "operand types mismatch");
   }

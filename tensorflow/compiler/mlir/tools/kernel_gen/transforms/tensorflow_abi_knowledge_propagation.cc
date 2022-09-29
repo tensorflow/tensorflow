@@ -38,11 +38,11 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PROPAGATETFABIKNOWLEDGETOKERNELS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct PropagateTfAbiKnowledgeToKernelsPass
-    : public PropagateTfAbiKnowledgeToKernelsBase<
+    : public impl::PropagateTfAbiKnowledgeToKernelsBase<
           PropagateTfAbiKnowledgeToKernelsPass> {
   void runOnOperation() override {
     func::FuncOp function = getOperation();
@@ -94,7 +94,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       OpBuilder b = OpBuilder::atBlockBegin(&kernel.getBody().front());
       llvm::SmallDenseMap<int64_t, Value> constants;
       auto loc = kernel.getLoc();
-      for (auto operand : launch.operands()) {
+      for (auto operand : launch.getKernelOperands()) {
         auto memref = operand.getType().dyn_cast<MemRefType>();
         if (!memref) {
           // Scalar argument, advance kernel position by one.

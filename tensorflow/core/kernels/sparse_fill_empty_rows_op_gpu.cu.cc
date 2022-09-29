@@ -31,10 +31,10 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/rocm/rocm_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_activation.h"
 using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
@@ -199,7 +199,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
                                                     TensorShape({0}), &unused));
       }
       done();
-      return Status::OK();
+      return OkStatus();
     }
 
     // The algorithm as currently implemented is summarized as follows:
@@ -420,7 +420,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     context->device()
         ->tensorflow_accelerator_device_info()
         ->event_mgr->ThenExecute(stream, async_finish_computation);
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -448,7 +448,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     } else {
       *reverse_index_map = nullptr;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ArgSortByRows(OpKernelContext* context, const GPUDevice& device,
@@ -579,7 +579,7 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
           temp_storage_bytes, ", status: ", GpuGetErrorString(gpuprim_status));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

@@ -32,9 +32,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -111,9 +111,8 @@ Status ParseOneProfileOutputLine(
       &parsed_line.bytes_per_sec, &parsed_line.bytes_per_cycle,
       &parsed_line.opcode);
   if (!matched) {
-    return tensorflow::errors::InvalidArgument(
-        "Input did not match regexp.  Input: ", line,
-        ", Regexp: ", regexp_pattern);
+    return tsl::errors::InvalidArgument("Input did not match regexp.  Input: ",
+                                        line, ", Regexp: ", regexp_pattern);
   }
 
   if (!absl::c_linear_search(opcodes_to_ignore, parsed_line.opcode)) {

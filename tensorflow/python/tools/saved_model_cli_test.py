@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for SavedModelCLI tool."""
 import contextlib
+import io
 import os
 import pickle
 import platform
@@ -22,7 +23,6 @@ import sys
 
 from absl.testing import parameterized
 import numpy as np
-from six import StringIO
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
@@ -45,7 +45,7 @@ SAVED_MODEL_PATH = ('cc/saved_model/testdata/half_plus_two/00000123')
 
 @contextlib.contextmanager
 def captured_output():
-  new_out, new_err = StringIO(), StringIO()
+  new_out, new_err = io.StringIO(), io.StringIO()
   old_out, old_err = sys.stdout, sys.stderr
   try:
     sys.stdout, sys.stderr = new_out, new_err
@@ -718,20 +718,26 @@ Concrete Functions:
     with captured_output() as (out, _):
       saved_model_cli.scan(args)
     output = out.getvalue().strip()
-    self.assertTrue('does not contain denylisted ops' in output)
+    self.assertIn(('MetaGraph with tag set [\'serve\'] does not contain the '
+                   'default denylisted ops: {\''), output)
+    self.assertIn('\'ReadFile\'', output)
+    self.assertIn('\'WriteFile\'', output)
+    self.assertIn('\'PrintV2\'', output)
 
-  def testScanCommandFoundDenylistedOp(self):
+  def testScanCommandFoundCustomDenylistedOp(self):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
-    args = self.parser.parse_args(
-        ['scan', '--dir', base_path, '--tag_set', 'serve'])
-    op_denylist = saved_model_cli._OP_DENYLIST
-    saved_model_cli._OP_DENYLIST = set(['VariableV2'])
+    args = self.parser.parse_args([
+        'scan', '--dir', base_path, '--tag_set', 'serve', '--op_denylist',
+        'VariableV2,Assign,Relu6'
+    ])
     with captured_output() as (out, _):
       saved_model_cli.scan(args)
-    saved_model_cli._OP_DENYLIST = op_denylist
     output = out.getvalue().strip()
-    self.assertTrue('\'VariableV2\'' in output)
+    self.assertIn(('MetaGraph with tag set [\'serve\'] contains the following'
+                   ' denylisted ops:'), output)
+    self.assertTrue(('{\'VariableV2\', \'Assign\'}' in output) or
+                    ('{\'Assign\', \'VariableV2\'}' in output))
 
   def testAOTCompileCPUWrongSignatureDefKey(self):
     if not test.is_built_with_xla():

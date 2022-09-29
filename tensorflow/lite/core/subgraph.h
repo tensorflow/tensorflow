@@ -144,6 +144,9 @@ class Subgraph {
       bool is_variable = false, const size_t ndims_signature = 0,
       const int* dims_signature = nullptr);
 
+  // Get all tensors in the subgraph.
+  TfLiteTensor* tensors() { return context_.tensors; }
+
   // Get a mutable tensor data structure.
   TfLiteTensor* tensor(int tensor_index) {
     if (tensor_index < 0 ||
@@ -238,6 +241,12 @@ class Subgraph {
   // AllocateTensors needs to be called before next invocation.
   TfLiteStatus ReleaseNonPersistentMemory();
 
+  // WARNING: Experimental interface, subject to change
+  // This API releases memory held by the given subgraph. This method is
+  // designed to release memory of control flow subgraphs.
+  // AllocateTensors needs to be called before next invocation.
+  TfLiteStatus ReleaseMemory();
+
   // Update allocations for all tensors. This will redim dependent tensors using
   // the input tensor dimensionality as given. This is relatively expensive.
   // If you know that your sizes are not changing, you need not call this.
@@ -280,19 +289,7 @@ class Subgraph {
   // Ensure the data in `tensor.data` is readable. In case delegate is used,
   // it might require to copy the data from delegate buffer to raw memory.
   // WARNING: This is an experimental API and subject to change.
-  TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
-    TfLiteTensor* t = &tensors_[tensor_index];
-    TF_LITE_ENSURE(&context_, t != nullptr);
-    if (t->data_is_stale) {
-      TF_LITE_ENSURE(&context_, t->delegate != nullptr);
-      TF_LITE_ENSURE(&context_, t->buffer_handle != kTfLiteNullBufferHandle);
-      TF_LITE_ENSURE(&context_, t->delegate->CopyFromBufferHandle != nullptr);
-      TF_LITE_ENSURE_STATUS(t->delegate->CopyFromBufferHandle(
-          &context_, t->delegate, t->buffer_handle, t));
-      t->data_is_stale = false;
-    }
-    return kTfLiteOk;
-  }
+  TfLiteStatus EnsureTensorDataIsReadable(int tensor_index);
 
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;
@@ -379,10 +376,16 @@ class Subgraph {
   // information about tenosrs and ops.
   void DumpMemoryPlannerDebugInfo() const;
 
+  typedef struct SubgraphAllocInfo {
+    size_t arena_size;
+    size_t arena_persist_size;
+    size_t dynamic_size;
+    size_t resource_size;
+  } SubgraphAllocInfo;
+
   // WARNING: This is an experimental API and subject to change.
   // Returns memory allocation status.
-  void GetMemoryAllocInfo(size_t* arena_size, size_t* arena_persist_size,
-                          size_t* dynamic_size) const;
+  void GetMemoryAllocInfo(SubgraphAllocInfo* alloc_info) const;
 
   // WARNING: This is an experimental API and subject to change.
   // Set the given `InterpreterOptions` object.
@@ -730,15 +733,15 @@ class Subgraph {
   // tensors if configured.
   void MaybeReleaseDynamicTensors(const TfLiteNode& node, size_t node_index);
 
-  // The state of the Interpreter.
+  // The state of the Subgraph.
   enum State {
-    // The interpreter isn't ready to be invoked.
+    // The Subgraph isn't ready to be invoked.
     // `AllocateTensor` need to be called to enter an invokable state.
     kStateUninvokable = 0,
-    // The interpreter is ready to be invoked.
+    // The Subgraph is ready to be invoked.
     kStateInvokable,
-    // The interpreter is ready to be invoked, and graph can't be further
-    // modified. The interpreter will enter this state when calling
+    // The Subgraph is ready to be invoked, and graph can't be further
+    // modified. The Subgraph will enter this state when calling
     // `ModifyGraphWithDelegate` and the delegate doesn't support dynamic
     // tensors.
     kStateInvokableAndImmutable,

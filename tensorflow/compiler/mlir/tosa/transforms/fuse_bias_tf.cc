@@ -38,7 +38,10 @@ namespace mlir {
 namespace tosa {
 namespace {
 
-class FuseBiasTF : public TosaFusebiasTFPassBase<FuseBiasTF> {
+#define GEN_PASS_DEF_TOSAFUSEBIASTFPASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
+class FuseBiasTF : public impl::TosaFusebiasTFPassBase<FuseBiasTF> {
  public:
   explicit FuseBiasTF() {}
   void runOnOperation() override;

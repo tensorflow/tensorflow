@@ -35,6 +35,12 @@ def GMLST_TileType : GMLST_Set<"Tile"> {
   let assemblyFormat = "`<` custom<ShapeTypeDimensionsList>($shape) `>`";
   let extraClassDeclaration = [{
     unsigned getRank() const { return getShape().size(); }
+    bool hasStaticShape() const {
+      return llvm::none_of(getShape(), ShapedType::isDynamic);
+    }
+    int64_t getNumElements() const {
+      return ShapedType::getNumElements(getShape());
+    }
   }];
 }
 
@@ -56,9 +62,14 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
                        I64ArrayAttr:$static_sizes);
   let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
-    custom<OperandsOrIntegersSizesList>($dynamic_sizes, $static_sizes)
+    custom<DynamicIndexList>($dynamic_sizes, $static_sizes,
+                               "ShapedType::kDynamicSize")
     attr-dict `:` qualified(type($result))
   }];
+  let builders = [
+    OpBuilder<(ins "ArrayRef<OpFoldResult>":$sizes,
+                    CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+  ];
   let extraClassDeclaration = [{
     unsigned getNumDynamicEntriesUpToIdx(unsigned idx);
     mlir::Value getDynamicSize(unsigned idx);
@@ -75,11 +86,16 @@ def GMLST_PointOp : GMLST_Op<"point", [
   let results = (outs GMLST_PointType:$result);
   let assemblyFormat = [{
     $superset
-    custom<OperandsOrIntegersOffsetsOrStridesList>($dynamic_indices, $static_indices)
+    custom<DynamicIndexList>($dynamic_indices, $static_indices,
+                               "ShapedType::kDynamicStrideOrOffset")
     attr-dict `:` qualified(type($superset)) `to` qualified(type($result))
   }];
+  let builders = [
+    OpBuilder<(ins "Value":$superset, "ArrayRef<OpFoldResult>":$offsets,
+                   CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+  ];
   let extraClassDeclaration = [{
-    unsigned getRank() { return static_indices().size(); }
+    unsigned getRank() { return getStaticIndices().size(); }
   }];
   let hasVerifier = 1;
 }
@@ -100,17 +116,24 @@ def GMLST_TileOp : GMLST_Op<"tile", [
   let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
     $superset
-    custom<OperandsOrIntegersOffsetsOrStridesList>($offsets, $static_offsets)
-    custom<OperandsOrIntegersSizesList>($sizes, $static_sizes)
-    custom<OperandsOrIntegersOffsetsOrStridesList>($strides, $static_strides)
+    custom<DynamicIndexList>($offsets, $static_offsets,
+                               "ShapedType::kDynamicStrideOrOffset")
+    custom<DynamicIndexList>($sizes, $static_sizes,
+                               "ShapedType::kDynamicSize")
+    custom<DynamicIndexList>($strides, $static_strides,
+                               "ShapedType::kDynamicStrideOrOffset")
     attr-dict `:` qualified(type($superset)) `to` qualified(type($result))
   }];
-
+  let builders = [
+   OpBuilder<(ins "Value":$superset, "ArrayRef<OpFoldResult>":$offsets,
+      "ArrayRef<OpFoldResult>":$sizes, "ArrayRef<OpFoldResult>":$strides,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+  ];
   let extraClassDeclaration = [{
     /// Return the expected rank of each of the`static_offsets`, `static_sizes`
     /// and `static_strides` attributes.
     std::array<unsigned, 3> getArrayAttrMaxRanks() {
-      unsigned rank = superset().getType().cast<TileType>().getRank();
+      unsigned rank = getSuperset().getType().cast<TileType>().getRank();
       return {rank, rank, rank};
     }
     /// Return the number of leading operands before the `offsets`, `sizes` and

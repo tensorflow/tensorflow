@@ -476,17 +476,6 @@ py_library(
     ],
 )
 
-py_strict_library(
-    name = "traceback_utils",
-    srcs = ["traceback_utils.py"],
-    compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        ":tf_decorator",
-    ],
-)
-
 tf_py_test(
     name = "traceback_utils_test",
     size = "small",

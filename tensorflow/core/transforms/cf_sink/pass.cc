@@ -23,19 +23,23 @@ limitations under the License.
 #include "mlir/IR/Dominance.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/ControlFlowSinkUtils.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
 namespace {
 
-class ControlFlowSinkPass : public ControlFlowSinkBase<ControlFlowSinkPass> {
+#define GEN_PASS_DEF_CONTROLFLOWSINK
+#include "tensorflow/core/transforms/passes.h.inc"
+
+class ControlFlowSinkPass
+    : public impl::ControlFlowSinkBase<ControlFlowSinkPass> {
  public:
   // Initialize the pass by getting a cached identifier to the name attribute.
   LogicalResult initialize(MLIRContext *context) override {

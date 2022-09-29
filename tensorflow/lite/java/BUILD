@@ -185,6 +185,7 @@ aar_with_jni(
     android_library = ":tensorflowlite_gpu_impl",
     headers = [
         "//tensorflow/lite/delegates/gpu:delegate.h",
+        "//tensorflow/lite/delegates/gpu:delegate_options.h",
     ],
 )
 

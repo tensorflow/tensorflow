@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -23,8 +22,11 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
-
 namespace mhlo {
+
+#define GEN_PASS_DEF_LEGALIZEGATHERTOTORCHINDEXSELECTPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
@@ -32,13 +34,13 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
 
   LogicalResult matchAndRewrite(GatherOp gather,
                                 PatternRewriter &rewriter) const override {
-    auto startIndices = gather.start_indices();
+    auto startIndices = gather.getStartIndices();
     auto startIndicesTy = startIndices.getType().cast<ShapedType>();
     if (!startIndicesTy.hasRank()) {
       return rewriter.notifyMatchFailure(gather, "unranked start_indices");
     }
 
-    auto operand = gather.operand();
+    auto operand = gather.getOperand();
     auto operandTy = operand.getType().cast<ShapedType>();
     if (!operandTy.hasRank()) {
       return rewriter.notifyMatchFailure(gather, "unranked operand");
@@ -48,7 +50,7 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
 
     // We can use torch_index_select if the last dimension represents the
     // gather indices.
-    auto dimensionNumbers = gather.dimension_numbers();
+    auto dimensionNumbers = gather.getDimensionNumbers();
     if (dimensionNumbers.getIndexVectorDim() != indexVectorDim) {
       return rewriter.notifyMatchFailure(
           gather, "index_vector_dim not last dimension of start_indices");
@@ -87,7 +89,7 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
     }
 
     for (const auto &it :
-         llvm::enumerate(gather.slice_sizes().getValues<APInt>())) {
+         llvm::enumerate(gather.getSliceSizes().getValues<APInt>())) {
       // First shape value must be 1.
       if (it.index() == 0) {
         if (it.value().getSExtValue() != 1) {
@@ -118,7 +120,7 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
     auto torchIndexSelect = rewriter.create<TorchIndexSelectOp>(
         gather.getLoc(),
         RankedTensorType::get(indexSelectShape, operandTy.getElementType()),
-        operand, gather.start_indices(), rewriter.getI64IntegerAttr(0),
+        operand, gather.getStartIndices(), rewriter.getI64IntegerAttr(0),
         rewriter.getI64IntegerAttr(0));
 
     rewriter.replaceOpWithNewOp<ReshapeOp>(gather, gather.getType(),
@@ -129,7 +131,7 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
 };
 
 struct LegalizeGatherToTorchIndexSelectPass
-    : public LegalizeGatherToTorchIndexSelectPassBase<
+    : public impl::LegalizeGatherToTorchIndexSelectPassBase<
           LegalizeGatherToTorchIndexSelectPass> {
   /// Perform the lowering of standard dialect operations to approximations.
   void runOnOperation() override {

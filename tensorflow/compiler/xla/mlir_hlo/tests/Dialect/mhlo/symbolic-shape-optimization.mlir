@@ -193,7 +193,7 @@ func.func @multiple_reductions_and_reshape(%arg0: tensor<?x?x?x?xi64>) -> tensor
   // CHECK: %[[RED1_:.*]] = tensor.expand_shape %[[RED1]] {{\[}}[0, 1, 2], [3]{{\]}} : tensor<?x1xi64> into tensor<1x1x?x1xi64>
   // CHECK: %[[RED2:.*]] = mhlo.reduce(%[[RED1_]]
   // TODO(b/225204462): This should also become a shape expansion.
-  // CHECK: %[[RED2_:.*]] = "mhlo.reshape"(%[[RED2]]) : (tensor<1xi64>) -> tensor<1x1x1x1xi64>
+  // CHECK: %[[RED2_:.*]] = mhlo.reshape %[[RED2]] : (tensor<1xi64>) -> tensor<1x1x1x1xi64>
   // CHECK: return %[[RED2_]]
   %0 = mhlo.constant dense<9223372036854775807> : tensor<i64>
   %c1 = arith.constant 1 : index
@@ -390,7 +390,7 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>,
     // CHECK: %[[SHAPE:.*]] = mhlo.compute_reshape_shape %{{.*}}, %[[DYN_SHAPE]]
     %20 = mhlo.compute_reshape_shape %2, %arg2
         : index, tensor<4xi32> -> tensor<4xi32>
-    // CHECK: "mhlo.dynamic_reshape"(%arg1, %[[SHAPE]])
+    // CHECK: mhlo.dynamic_reshape %arg1, %[[SHAPE]]
     %21 = "mhlo.dynamic_reshape"(%arg1, %20)
         : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
     // CHECK: shape.assuming_yield
@@ -437,9 +437,9 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>,
 // CHECK-LABEL: @optimize_1dx1d_constraint
 func.func @optimize_1dx1d_constraint(
   %arg0: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
   %arg1: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
 ) -> !shape.witness {
   %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
@@ -453,7 +453,7 @@ func.func @optimize_1dx1d_constraint(
 // CHECK-LABEL: @optimize_1dx1d_constraint_with_static_shape
 func.func @optimize_1dx1d_constraint_with_static_shape(
   %arg0: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[10]> : tensor<1xi64>},
+    {rt.symbolic_shape = dense<[10]> : tensor<1xi64>},
   %arg1: tensor<10xf32>
 ) -> !shape.witness {
   %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
@@ -469,7 +469,7 @@ func.func @optimize_1dx1d_constraint_with_static_shape(
 func.func @optimize_1dx1d_constraint_with_const_shape(
   %arg0: tensor<512xf32>,
   %arg1: tensor<?x512xf32>
-    {jitrt.symbolic_shape = dense<[-2,512]> : tensor<2xi64>}
+    {rt.symbolic_shape = dense<[-2,512]> : tensor<2xi64>}
 ) -> !shape.witness {
   %0 = shape.const_shape [512] : tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?x512xf32> -> tensor<2xindex>
@@ -482,8 +482,8 @@ func.func @optimize_1dx1d_constraint_with_const_shape(
 
 // CHECK-LABEL: @optimize_1dx1d_bcast
 func.func @optimize_1dx1d_bcast(
-    %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
-    %arg1: tensor<?xf32> {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>})
+    %arg0: tensor<?xf32> {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    %arg1: tensor<?xf32> {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>})
     -> tensor<?xf32> {
   %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
@@ -504,7 +504,7 @@ func.func @optimize_1dx1d_bcast(
 func.func @optimize_1dx2d_bcast_const_shape(
     %arg0: tensor<512xf32>,
     %arg1: tensor<?x512xf32>
-    {jitrt.symbolic_shape = dense<[-2, 512]> : tensor<2xi64>})
+    {rt.symbolic_shape = dense<[-2, 512]> : tensor<2xi64>})
     -> tensor<?x512xf32> {
   %0 = shape.const_shape [512] : tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?x512xf32> -> tensor<2xindex>
@@ -524,11 +524,11 @@ func.func @optimize_1dx2d_bcast_const_shape(
 // CHECK-LABEL: @optimize_1dx1dx1d_bcast
 func.func @optimize_1dx1dx1d_bcast(
     %arg0: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
     %arg1: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
     %arg2: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>}) -> tensor<?xf32> {
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>}) -> tensor<?xf32> {
   %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
   %2 = shape.shape_of %arg2 : tensor<?xf32> -> tensor<1xindex>
@@ -550,9 +550,9 @@ func.func @optimize_1dx1dx1d_bcast(
 // CHECK-LABEL: @optimize_2dx1d_bcast
 func.func @optimize_2dx1d_bcast(
     %arg0: tensor<10x?xf32>
-    {jitrt.symbolic_shape = dense<[10, -2]> : tensor<2xi64>},
+    {rt.symbolic_shape = dense<[10, -2]> : tensor<2xi64>},
     %arg1: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>})
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>})
     -> (tensor<10x?xf32>, tensor<10x?xf32>) {
   %0 = shape.shape_of %arg0 : tensor<10x?xf32> -> tensor<2xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
@@ -578,9 +578,9 @@ func.func @optimize_2dx1d_bcast(
 // CHECK-LABEL: @optimize_3dx3d_bcast
 func.func @optimize_3dx3d_bcast(
     %arg0: tensor<?x1x?xf32>
-    {jitrt.symbolic_shape = dense<[-2, 1, -3]> : tensor<3xi64>},
+    {rt.symbolic_shape = dense<[-2, 1, -3]> : tensor<3xi64>},
     %arg1: tensor<1x?x1xf32>
-    {jitrt.symbolic_shape = dense<[1, -4, 1]> : tensor<3xi64>})
+    {rt.symbolic_shape = dense<[1, -4, 1]> : tensor<3xi64>})
     -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>) {
   %0 = shape.shape_of %arg0 : tensor<?x1x?xf32> -> tensor<3xindex>
   %1 = shape.shape_of %arg1 : tensor<1x?x1xf32> -> tensor<3xindex>
@@ -606,10 +606,10 @@ func.func @optimize_3dx3d_bcast(
 // CHECK-LABEL: @optimize_10d_all_cases
 func.func @optimize_10d_all_cases(
     %arg0: tensor<1x1x1x8x8x8x?x?x?x?xf32>
-    {jitrt.symbolic_shape = dense<[1, 1,  1, 8, 8,  8, -2, -3, -4, -5]>
+    {rt.symbolic_shape = dense<[1, 1,  1, 8, 8,  8, -2, -3, -4, -5]>
     : tensor<10xi64>},
     %arg1: tensor<1x8x?x1x8x?x1x8x?x?xf32>
-    {jitrt.symbolic_shape = dense<[1, 8, -6, 1, 8, -7,  1,  8, -8, -5]>
+    {rt.symbolic_shape = dense<[1, 8, -6, 1, 8, -7,  1,  8, -8, -5]>
     : tensor<10xi64>}) -> tensor<?x?x?x?x?x?x?x?x?x?xf32> {
   %0 = shape.shape_of %arg0 : tensor<1x1x1x8x8x8x?x?x?x?xf32>
       -> tensor<10xindex>
@@ -649,9 +649,9 @@ func.func @empty_bcast(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<0xind
 // CHECK-SAME:  %[[ARG1:.*]]: tensor<1x8x1x?x1x?xf32>
 func.func @simplifiable_bcast(
     %arg0 : tensor<?x1x1x4x?x?x1xf32>
-    {jitrt.symbolic_shape = dense<[-2, 1, 1, 4, -2, -3,  1]> : tensor<7xi64>},
+    {rt.symbolic_shape = dense<[-2, 1, 1, 4, -2, -3,  1]> : tensor<7xi64>},
     %arg1 : tensor<1x8x1x?x1x?xf32>
-    {jitrt.symbolic_shape = dense<[    1, 8, 1, -2,  1, -4]> : tensor<6xi64>})
+    {rt.symbolic_shape = dense<[    1, 8, 1, -2,  1, -4]> : tensor<6xi64>})
     -> tensor<7xindex> {
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1

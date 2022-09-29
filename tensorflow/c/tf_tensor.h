@@ -113,6 +113,10 @@ TF_CAPI_EXPORT extern void TF_DeleteTensor(TF_Tensor*);
 // Return the type of a tensor element.
 TF_CAPI_EXPORT extern TF_DataType TF_TensorType(const TF_Tensor*);
 
+// Set a new shape for the Tensor.
+TF_CAPI_EXPORT extern void TF_SetShape(TF_Tensor* tensor, const int64_t* dims,
+                                       int num_dims);
+
 // Return the number of dimensions that the tensor has.
 TF_CAPI_EXPORT extern int TF_NumDims(const TF_Tensor*);
 

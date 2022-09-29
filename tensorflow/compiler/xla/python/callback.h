@@ -22,6 +22,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
+#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -55,6 +56,13 @@ class CpuCallback {
         args_(std::move(args)),
         results_(std::move(results)),
         transpose_cache_(/*capacity=*/16) {}
+
+  ~CpuCallback() {
+    // The destructor may be called without GIL held. In that case, we defer it
+    // to GlobalPyRefManager.
+    pybind11::object object = std::move(callable_);
+    GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&object, 1));
+  }
 
   const std::vector<Arg>& args() const { return args_; }
   size_t num_args() const { return args_.size(); }

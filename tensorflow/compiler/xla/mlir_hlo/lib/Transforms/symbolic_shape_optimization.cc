@@ -25,7 +25,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -39,6 +38,9 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
+
+#define GEN_PASS_DEF_SYMBOLICSHAPEOPTIMIZATION
+#include "mlir-hlo/Transforms/passes.h.inc"
 
 using ShapeOrValueInfo = ShapeComponentAnalysis::ShapeOrValueInfo;
 using Symbol = ShapeComponentAnalysis::Symbol;
@@ -174,8 +176,8 @@ struct AnnotateExpandingDimensionsInDynamicBroadcastInDim
     ShapeComponentAnalysis analysis;
     llvm::SmallSetVector<int64_t, 4> knownExpandingDims, knownNonexpandingDims;
     if (failed(analyzeDynamicBroadcastInDimExpandingBehavior(
-            analysis, op.operand(), op.output_dimensions(), &knownExpandingDims,
-            &knownNonexpandingDims))) {
+            analysis, op.getOperand(), op.getOutputDimensions(),
+            &knownExpandingDims, &knownNonexpandingDims))) {
       return failure();
     }
 
@@ -185,8 +187,8 @@ struct AnnotateExpandingDimensionsInDynamicBroadcastInDim
       if (!src) return;
       for (auto it : *src) dst.insert(it.getLimitedValue());
     };
-    insertAll(knownExpandingDims, op.known_expanding_dimensions());
-    insertAll(knownNonexpandingDims, op.known_nonexpanding_dimensions());
+    insertAll(knownExpandingDims, op.getKnownExpandingDimensions());
+    insertAll(knownNonexpandingDims, op.getKnownNonexpandingDimensions());
 
     // Fail pattern application if there is nothing new to annotate.
     auto isEqual = [](llvm::SmallSetVector<int64_t, 4> &set,
@@ -196,17 +198,18 @@ struct AnnotateExpandingDimensionsInDynamicBroadcastInDim
                return set.count(it.getLimitedValue());
              });
     };
-    if (op.known_expanding_dimensions() && op.known_nonexpanding_dimensions() &&
-        isEqual(knownExpandingDims, *op.known_expanding_dimensions()) &&
-        isEqual(knownNonexpandingDims, *op.known_nonexpanding_dimensions())) {
+    if (op.getKnownExpandingDimensions() &&
+        op.getKnownNonexpandingDimensions() &&
+        isEqual(knownExpandingDims, *op.getKnownExpandingDimensions()) &&
+        isEqual(knownNonexpandingDims, *op.getKnownNonexpandingDimensions())) {
       return failure();
     }
 
     // Annotate op in place.
     rewriter.startRootUpdate(op);
-    op.known_expanding_dimensionsAttr(
+    op.setKnownExpandingDimensionsAttr(
         rewriter.getI64TensorAttr(knownExpandingDims.takeVector()));
-    op.known_nonexpanding_dimensionsAttr(
+    op.setKnownNonexpandingDimensionsAttr(
         rewriter.getI64TensorAttr(knownNonexpandingDims.takeVector()));
     rewriter.finalizeRootUpdate(op);
     return success();
@@ -221,7 +224,8 @@ struct RemoveComputeReshapeShape final
   LogicalResult matchAndRewrite(mhlo::ComputeReshapeShapeOp op,
                                 PatternRewriter &rewriter) const override {
     ShapeComponentAnalysis shapeComponentAnalysis;
-    auto dynamicShape = shapeComponentAnalysis.GetValueInfo(op.dynamic_shape());
+    auto dynamicShape =
+        shapeComponentAnalysis.GetValueInfo(op.getDynamicShape());
     if (!dynamicShape) return failure();
 
     if (llvm::any_of(*dynamicShape, [](const auto &dim) {
@@ -229,7 +233,7 @@ struct RemoveComputeReshapeShape final
         })) {
       return failure();
     }
-    rewriter.replaceOp(op, op.dynamic_shape());
+    rewriter.replaceOp(op, op.getDynamicShape());
     return success();
   }
 };
@@ -289,13 +293,14 @@ struct RemoveRedundantCstrReshapable final
     // Get shape analysis info for the number of elements.
     ShapeComponentAnalysis shapeComponentAnalysis;
     auto numElementsInfo =
-        shapeComponentAnalysis.GetValueInfo(op.num_elements());
+        shapeComponentAnalysis.GetValueInfo(op.getNumElements());
     if (!numElementsInfo) return failure();
     assert(numElementsInfo->size() == 1 && "expect one value for a scalar");
     auto numElements = numElementsInfo->front();
 
     // Get shape analysis info for the dynamic shape.
-    auto dynShapeDims = shapeComponentAnalysis.GetValueInfo(op.dynamic_shape());
+    auto dynShapeDims =
+        shapeComponentAnalysis.GetValueInfo(op.getDynamicShape());
     if (!dynShapeDims) return failure();
 
     // We can handle two cases:
@@ -375,7 +380,7 @@ LogicalResult materializeReshapeAsScalarExpand(RankedTensorType operandTy,
   SmallVector<int64_t> unitDims(resultTy.getRank(), 1);
   auto expandedTy = RankedTensorType::get(unitDims, resultTy.getElementType());
   Value expandedScalar = rewriter.create<tensor::ExpandShapeOp>(
-      loc, expandedTy, op.operand(), ArrayRef<ReassociationIndices>{});
+      loc, expandedTy, op.getOperand(), ArrayRef<ReassociationIndices>{});
   if (expandedScalar.getType() != resultTy) {
     expandedScalar =
         rewriter.create<tensor::CastOp>(loc, resultTy, expandedScalar);
@@ -390,7 +395,7 @@ LogicalResult materializeReshapeAsScalarCollapse(RankedTensorType operandTy,
                                                  PatternRewriter &rewriter) {
   assert(resultTy.getRank() == 0 && "expect scalar result");
   auto loc = op.getLoc();
-  Value operand = op.operand();
+  Value operand = op.getOperand();
   SmallVector<int64_t> unitDims(operandTy.getRank(), 1);
   auto castedOperandTy =
       RankedTensorType::get(unitDims, operandTy.getElementType());
@@ -418,7 +423,7 @@ SymbolicProduct eliminateCommonFactors(SymbolicProduct &a, SymbolicProduct &b) {
   SymbolicProduct gcd;
 
   // Eliminate common concrete factors.
-  gcd.concrete = llvm::GreatestCommonDivisor64(a.concrete, b.concrete);
+  gcd.concrete = std::gcd(a.concrete, b.concrete);
   a.concrete /= gcd.concrete;
   b.concrete /= gcd.concrete;
 
@@ -662,9 +667,9 @@ LogicalResult materializeReshapeAsExpandAndCollapse(
     RankedTensorType resultTy, mhlo::DynamicReshapeOp op,
     PatternRewriter &rewriter) {
   // Require sucessful shape analysis for operand and result shape.
-  auto operandShapeInfo = shapeAnalysis.GetShapeInfo(op.operand());
+  auto operandShapeInfo = shapeAnalysis.GetShapeInfo(op.getOperand());
   if (!operandShapeInfo) return failure();
-  auto resultShapeInfo = shapeAnalysis.GetValueInfo(op.output_shape());
+  auto resultShapeInfo = shapeAnalysis.GetValueInfo(op.getOutputShape());
   if (!resultShapeInfo) return failure();
 
   // Identify dimension groups and the intermediate expanded type.
@@ -678,7 +683,7 @@ LogicalResult materializeReshapeAsExpandAndCollapse(
 
   // Materialize cast, expand, collapse, and cast, as needed.
   auto loc = op.getLoc();
-  Value interm = op.operand();
+  Value interm = op.getOperand();
   auto castedOperandTy = RankedTensorType::get(
       concretizeOperandShape(operandTy.getShape(), *operandShapeInfo),
       operandTy.getElementType());
@@ -711,7 +716,7 @@ struct DynamicReshapeToExpandAndCollapseShape final
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
-    auto operandTy = op.operand().getType().dyn_cast<RankedTensorType>();
+    auto operandTy = op.getOperand().getType().dyn_cast<RankedTensorType>();
     if (!operandTy) return failure();
     auto resultTy = op.getType().dyn_cast<RankedTensorType>();
     if (!resultTy) return failure();
@@ -782,7 +787,8 @@ struct CstrBroadcastableOpLowering
 };
 
 class SymbolicShapeOptimizationPass final
-    : public SymbolicShapeOptimizationBase<SymbolicShapeOptimizationPass> {
+    : public impl::SymbolicShapeOptimizationBase<
+          SymbolicShapeOptimizationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<linalg::LinalgDialect>();
   }

@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/proto_serialization.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -44,7 +44,7 @@ ExecutionInput::~ExecutionInput() {
 Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
   const Shape& input_shape = shape();
   if (!ShapeUtil::DynamicShapeIsCompatible(input_shape, dynamic_shape)) {
-    return tensorflow::errors::InvalidArgument(
+    return tsl::errors::InvalidArgument(
         "Cannot set dynamic shape: ", input_shape.DebugString(), " vs. ",
         dynamic_shape.DebugString());
   }
@@ -67,9 +67,9 @@ StatusOr<ShapedBuffer> ExecutionInput::ToShapedBuffer(
         index_buffer.second.AsOwningDeviceMemory();
     if (mem != nullptr && (mem->allocator() != allocator ||
                            mem->device_ordinal() != device_ordinal)) {
-      return tensorflow::errors::InvalidArgument(
-          "Device buffer at index ", index_buffer.first.ToString(),
-          " has mismatching allocator/device");
+      return tsl::errors::InvalidArgument("Device buffer at index ",
+                                          index_buffer.first.ToString(),
+                                          " has mismatching allocator/device");
     }
     shaped_buffer.set_buffer(index_buffer.second.AsDeviceMemoryBase(),
                              index_buffer.first);
@@ -267,7 +267,7 @@ Status ExecuteWrapperAfterExecution(
         &stream->parent()->GetDeviceDescription();
     std::shared_ptr<HloExecutionProfile> profile = state.profile_ptr;
     stream->ThenDoHostCallback([profile, device_description]() {
-      XLA_LOG_LINES(tensorflow::INFO,
+      XLA_LOG_LINES(tsl::INFO,
                     profile->ToString(device_description->clock_rate_ghz()));
     });
   }

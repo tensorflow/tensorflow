@@ -107,6 +107,7 @@ class TensorInterface : public AbstractTensorInterface {
   bool CanMove() const override;
   std::string SummarizeValue() const override;
 
+  void SetShape(const int64_t* dims, int num_dims);
   Status ToTensor(tensorflow::Tensor* dst) const;
   Status BitcastFrom(const TensorInterface& from, DataType type,
                      const int64_t* new_dims, int num_new_dims);
@@ -125,6 +126,8 @@ inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
+
+TF_Tensor* TF_TensorFromTensorShallow(const Tensor& src, Status* status);
 
 namespace internal {
 

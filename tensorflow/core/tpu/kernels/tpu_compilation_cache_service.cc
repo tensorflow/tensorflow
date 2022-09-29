@@ -136,7 +136,7 @@ void TpuCompilationCacheService::GetTpuProgram(GetTpuProgramCall* call) {
   }
 
   call->response =
-      ::grpc::ByteBuffer{&buffer_slices.ValueOrDie()[0], buffer_slices->size()};
+      ::grpc::ByteBuffer{&buffer_slices.value()[0], buffer_slices->size()};
   return call->SendResponse(::grpc::Status());
 }
 

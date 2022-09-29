@@ -21,9 +21,13 @@ limitations under the License.
 
 #include "tensorflow/core/platform/protobuf.h"
 
-namespace tensorflow {
-class Env;
+namespace tsl {
 class Status;
+class Env;
+}  // namespace tsl
+namespace tensorflow {
+using tsl::Env;
+using tsl::Status;
 
 // Gets a `DescriptorPool` object from the `descriptor_source`. This may be:
 //

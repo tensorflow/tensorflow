@@ -20,7 +20,6 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
-#include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -29,12 +28,17 @@ limitations under the License.
 using ::mlir::scf::ParallelOp;
 
 namespace mlir {
+
+#define GEN_PASS_DEF_COLLAPSEPARALLELLOOPSTO1DPASS
+#include "mlir-hlo/Transforms/passes.h.inc"
+
 namespace {
 
 // This is the implementation of the CollapseParallelLoopsTo1D pass declared in
 //  include/mlir-hlo/Transforms/passes.td
 struct CollapseParallelLoopsTo1D
-    : public CollapseParallelLoopsTo1DPassBase<CollapseParallelLoopsTo1D> {
+    : public impl::CollapseParallelLoopsTo1DPassBase<
+          CollapseParallelLoopsTo1D> {
   void runOnOperation() override;
 };
 
@@ -44,7 +48,7 @@ struct CollapseParallelLoopsTo1D
 using namespace mlir;
 
 void mlir::CollapseParallelLoopsTo1D::runOnOperation() {
-  getOperation().walk([&](ParallelOp op) {
+  getOperation()->walk([&](ParallelOp op) {
     unsigned numLoops = op.getNumLoops();
     if (numLoops == 1) return;
     std::vector<unsigned> combinedLoops(numLoops);
@@ -53,7 +57,6 @@ void mlir::CollapseParallelLoopsTo1D::runOnOperation() {
   });
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-mlir::createCollapseParallelLoopsTo1DPass() {
+std::unique_ptr<OperationPass<>> mlir::createCollapseParallelLoopsTo1DPass() {
   return std::make_unique<CollapseParallelLoopsTo1D>();
 }

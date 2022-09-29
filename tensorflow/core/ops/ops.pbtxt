@@ -12125,43 +12125,6 @@ op {
   is_stateful: true
 }
 op {
-  name: "DTensorShardedPrefix"
-  input_arg {
-    name: "prefix"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "tensor_names"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "shape_and_slices"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "mesh"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "layouts"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "tensors"
-    type_list_attr: "dtypes"
-  }
-  output_arg {
-    name: "output"
-    type: DT_STRING
-  }
-  attr {
-    name: "dtypes"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-}
-op {
   name: "DataFormatDimMap"
   input_arg {
     name: "x"
@@ -29394,6 +29357,7 @@ op {
     allowed_values {
       list {
         type: DT_UINT8
+        type: DT_INT8
         type: DT_INT32
         type: DT_INT64
       }
@@ -38538,6 +38502,13 @@ op {
   output_arg {
     name: "output"
     type_attr: "dtype"
+  }
+  attr {
+    name: "rounds"
+    type: "int"
+    default_value {
+      i: 4
+    }
   }
   attr {
     name: "dtype"
@@ -53838,6 +53809,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -54419,6 +54391,7 @@ op {
     }
     allowed_values {
       list {
+        type: DT_INT8
         type: DT_INT32
         type: DT_INT64
       }
@@ -61511,6 +61484,159 @@ op {
   }
 }
 op {
+  name: "UniformQuantizedClipByValue"
+  input_arg {
+    name: "operand"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "min"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "max"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "zero_points"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "quantization_max_val"
+    type: "int"
+  }
+}
+op {
+  name: "UniformQuantizedDot"
+  input_arg {
+    name: "lhs"
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "lhs_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "lhs_zero_points"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "rhs_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "rhs_zero_points"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "output_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "output_zero_points"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "lhs_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "lhs_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "lhs_quantization_max_val"
+    type: "int"
+  }
+  attr {
+    name: "rhs_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "rhs_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "rhs_quantization_max_val"
+    type: "int"
+  }
+  attr {
+    name: "output_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "output_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "output_quantization_max_val"
+    type: "int"
+  }
+}
+op {
   name: "UniformQuantizedDotHybrid"
   input_arg {
     name: "lhs"
@@ -61572,6 +61698,83 @@ op {
   }
   attr {
     name: "rhs_quantization_max_val"
+    type: "int"
+  }
+}
+op {
+  name: "UniformRequantize"
+  input_arg {
+    name: "input"
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "input_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "input_zero_points"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "output_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "output_zero_points"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "input_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "input_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "input_quantization_max_val"
+    type: "int"
+  }
+  attr {
+    name: "output_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "output_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "output_quantization_max_val"
     type: "int"
   }
 }

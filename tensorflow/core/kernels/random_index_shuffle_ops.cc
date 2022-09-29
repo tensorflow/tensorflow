@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -33,8 +34,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
-
 namespace {
+
+constexpr absl::string_view kRounds = "rounds";
 
 template <typename DType>
 std::array<uint32_t, 3> CastSeedFrom(const Tensor& seed_t, const int row) {
@@ -65,7 +67,9 @@ template <typename IntType>
 class RandomIndexShuffleOp : public OpKernel {
  public:
   explicit RandomIndexShuffleOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr(kRounds, &rounds_));
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& index_t = context->input(0);
@@ -122,12 +126,14 @@ class RandomIndexShuffleOp : public OpKernel {
       OP_REQUIRES_OK(context,
                      GetSeed(seed_t, seed_t.dims() == 1 ? 0 : i, &seed));
       const auto new_index =
-          tensorflow::random::index_shuffle(index, seed, max_index);
+          tensorflow::random::index_shuffle(index, seed, max_index, rounds_);
       new_index_t->flat<IntType>()(i) = static_cast<IntType>(new_index);
     }
   }
 
  private:
+  int32_t rounds_;  // Number of rounds for the block cipher.
+
   TF_DISALLOW_COPY_AND_ASSIGN(RandomIndexShuffleOp);
 };
 

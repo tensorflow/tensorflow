@@ -148,7 +148,6 @@ cc_library(
     name = "create_dtensor_mlir_passes",
     hdrs = [
         "create_dtensor_mlir_passes.h",
-        "dtensor_mlir_passes_classes.h",
     ],
     deps = [
         ":device_utils",
@@ -173,6 +172,7 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:TensorDialect",
+        "@stablehlo//:chlo_ops",
     ],
     alwayslink = 1,
 )
@@ -215,6 +215,7 @@ cc_library(
         ":collectives_common",
         ":create_dtensor_mlir_passes",
         ":device_utils",
+        ":dtensor_location",
         ":dtensor_passes_inc_gen",
         ":dtensor_send_recv",
         ":group_assignment",
@@ -298,11 +299,11 @@ tf_cc_test(
     srcs = ["group_assignment_test.cc"],
     deps = [
         ":group_assignment",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/dtensor/cc:dstatus",
-        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -318,12 +319,12 @@ cc_library(
     deps = [
         ":tf_dtensor_dialect",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/proto:layout_proto_cc",
-        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",

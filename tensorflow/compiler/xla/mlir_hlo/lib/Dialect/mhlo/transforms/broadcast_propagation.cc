@@ -24,7 +24,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -37,6 +36,10 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+#define GEN_PASS_DEF_BROADCASTPROPAGATIONPASS
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+
 namespace {
 
 // To avoid duplicate broadcasts, we collect all the intended broadcasts ahead
@@ -101,7 +104,7 @@ bool allowsForElementwiseBroadcastPropagation(Operation *op) {
       op->hasTrait<mlir::OpTrait::Elementwise>() && op->getNumResults() == 1) {
     return true;
   }
-  if (op && op->hasTrait<mlir::mhlo::OpTrait::BroadcastingElementwise>() &&
+  if (op && op->hasTrait<hlo::OpTrait::BroadcastingElementwise>() &&
       op->getNumResults() == 1) {
     return true;
   }
@@ -149,8 +152,8 @@ void findBroadcastIntents(
   // Derive the broadcast intent associated with the root broadcast operation.
   // Add it to the worklist to seed the analysis.
   rootBcastIntent = {root.getResult().getType().cast<RankedTensorType>(),
-                     root.operand(), root.output_dimensions(),
-                     root.broadcast_dimensions()};
+                     root.getOperand(), root.getOutputDimensions(),
+                     root.getBroadcastDimensions()};
   addToWorklistIfNew(rootBcastIntent);
 
   // We use result vector of broadcast intents as a worklist, the first `i`
@@ -172,10 +175,10 @@ void findBroadcastIntents(
     if (auto producerBcastOp =
             llvm::dyn_cast<DynamicBroadcastInDimOp>(producerOp)) {
       DenseIntElementsAttr composedBcastDims = composeBroadcastDimensionsAttr(
-          builder, producerBcastOp.broadcast_dimensions(),
+          builder, producerBcastOp.getBroadcastDimensions(),
           it.broadcastDimensions.cast<DenseIntElementsAttr>());
       BroadcastIntent bcastedOperandIntent = {
-          it.resultType, producerBcastOp.operand(), it.outputDimensions,
+          it.resultType, producerBcastOp.getOperand(), it.outputDimensions,
           composedBcastDims};
 
       // Record dependency and "recur".
@@ -417,7 +420,7 @@ struct BroadcastPropagationPattern
 };
 
 struct BroadcastPropagationPass
-    : public BroadcastPropagationPassBase<BroadcastPropagationPass> {
+    : public impl::BroadcastPropagationPassBase<BroadcastPropagationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect>();
   }

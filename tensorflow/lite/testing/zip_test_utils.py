@@ -75,6 +75,8 @@ MAP_TF_TO_NUMPY_TYPE = {
     tf.float32: np.float32,
     tf.float16: np.float16,
     tf.float64: np.float64,
+    tf.complex64: np.complex64,
+    tf.complex128: np.complex128,
     tf.int32: np.int32,
     tf.uint32: np.uint32,
     tf.uint8: np.uint8,

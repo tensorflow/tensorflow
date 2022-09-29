@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_LINALG_CUDA_SPARSE_H_
-#define TENSORFLOW_CORE_KERNELS_LINALG_CUDA_SPARSE_H_
+#ifndef TENSORFLOW_CORE_UTIL_CUDA_SPARSE_H_
+#define TENSORFLOW_CORE_UTIL_CUDA_SPARSE_H_
 
 // This header declares the class GpuSparse, which contains wrappers of
 // cuSparse libraries for use in TensorFlow kernels.
@@ -46,7 +46,7 @@ using gpusparseSpMMAlg_t = cusparseSpMMAlg_t;
 
 #elif TENSORFLOW_USE_ROCM
 
-#include "tensorflow/stream_executor/rocm/hipsparse_wrapper.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/hipsparse_wrapper.h"
 
 using gpusparseStatus_t = hipsparseStatus_t;
 using gpusparseOperation_t = hipsparseOperation_t;
@@ -590,4 +590,4 @@ class GpuSparseCsrSortingConversionInfo {
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#endif  // TENSORFLOW_CORE_KERNELS_LINALG_CUDA_SPARSE_H_
+#endif  // TENSORFLOW_CORE_UTIL_CUDA_SPARSE_H_

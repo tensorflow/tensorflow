@@ -1,7 +1,6 @@
 # Fallback from TFRT to TF kernels and related utilities.
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_oss",
     "tf_cc_test",
     "tf_cuda_library",
 )
@@ -256,9 +255,10 @@ tf_cuda_library(
     compatible_with = [],
     # Only build this library with --config=cuda.
     tags = [
+        "manual",
         "no_oss",
         "requires_cuda",
-    ] + if_oss(["manual"]),
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":tensor_util",

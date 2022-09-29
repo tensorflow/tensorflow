@@ -16,14 +16,19 @@ limitations under the License.
 #ifndef MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H
 #define MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H
 
+#include <string>
+
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
 
 namespace mlir {
 struct GmlStPipelineOptions
     : public mlir::PassPipelineOptions<GmlStPipelineOptions> {
-  ListOption<int64_t> tileSizes{
-      *this, "tile-sizes", llvm::cl::desc("Tiling sizes for the tiling pass")};
+  Option<std::string> tileSizes{
+      *this, "tile-sizes",
+      llvm::cl::desc(
+          "Tile sizes in the format `[[d0,d1,...],[d0_,d1_,...],...]`. This "
+          "allows to express nested tiling sizes.")};
   Option<bool> fuse{*this, "fuse",
                     llvm::cl::desc("Fuse into GmlSt loop nests."),
                     llvm::cl::init(false)};

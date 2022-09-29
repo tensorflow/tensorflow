@@ -14,15 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include <atomic>
+#include <iterator>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -34,13 +35,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
@@ -49,7 +44,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/group_assignment.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -60,6 +54,11 @@ namespace tensorflow {
 namespace dtensor {
 
 namespace {
+#define GEN_PASS_DEF_DTENSORALLREDUCELOWERING
+#define GEN_PASS_DEF_DTENSORREDUCESCATTERLOWERING
+#define GEN_PASS_DEF_DTENSORALLGATHERLOWERING
+#define GEN_PASS_DEF_DTENSORALLSCATTERLOWERING
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 namespace ops_util = ::mlir::TF::collection_ops_util;
 constexpr int32 kUninitializedGroupKey = 0;
@@ -163,23 +162,24 @@ mlir::Operation* EmitCollectiveReduce(
 
   // Create a scalar group key by slicing device_id_to_group_key with
   // device_id.
+  auto group_key_loc = DT_LOC2(loc, "group_key");
   auto group_key_slice = builder.create<mlir::TF::SliceOp>(
-      loc, EffectivelyScalarR1Type(builder.getIntegerType(32)),
+      group_key_loc, EffectivelyScalarR1Type(builder.getIntegerType(32)),
       /*input=*/IntConst(builder, loc, device_id_to_group_key),
       /*begin=*/device_id,
       /*size=*/IntConst(builder, loc, {1}));
   auto group_key_reshape = builder.create<mlir::TF::ReshapeOp>(
-      loc, /*tensor=*/group_key_slice.getResult(),
+      group_key_loc, /*tensor=*/group_key_slice.getResult(),
       /*shape=*/ops_util::GetR1Const({}, builder, loc));
   group_key_scalar = group_key_reshape.getResult();
 
   // Generate a unique instance key for this collective.
-  mlir::Value instance_key_scalar =
-      ops_util::CreateScalarConst(static_cast<int32>(key_base), builder, loc);
+  mlir::Value instance_key_scalar = ops_util::CreateScalarConst(
+      static_cast<int32>(key_base), builder, DT_LOC2(loc, "instance_key"));
 
   const bool is_mean_op = reduce_op_str == kReduceOpMean;
-  mlir::Value group_size_scalar =
-      ops_util::CreateScalarConst(host_group_size, builder, loc);
+  mlir::Value group_size_scalar = ops_util::CreateScalarConst(
+      host_group_size, builder, DT_LOC2(loc, "group_size"));
   auto collective_reduce = builder.create<mlir::TF::CollectiveReduceV2Op>(
       loc, /*output_type=*/input.getType(), input, group_size_scalar,
       group_key_scalar, instance_key_scalar,
@@ -240,7 +240,7 @@ mlir::LogicalResult LowerAllReduceOpImpl(
     // groups in one program reducing over all hosts and reducing over pairs
     // of hosts, we need unique ids for each case.
     mlir::Value device_id = ops_util::ReshapeScalarToSizeType(
-        builder, DeviceId(all_reduce.getResult()).ValueOrDie(), loc);
+        builder, DeviceId(all_reduce.getResult()).value(), loc);
     // TODO(b/188076080): Clean up device id.
     mlir::Value start_device_id = ops_util::GetR1Const(
         {(*output_layout).mesh().min_global_device_id()}, builder, loc);
@@ -505,10 +505,9 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
         if (!device_loc_or_status.ok())
           return all_gather.emitOpError()
                  << device_loc_or_status.status().error_message();
-        const DeviceLocation device_loc = device_loc_or_status.ValueOrDie();
-        const int32 mesh_idx = src_layout.mesh()
-                                   .idx_for_dim(src_layout.sharding_spec(i))
-                                   .ValueOrDie();
+        const DeviceLocation device_loc = device_loc_or_status.value();
+        const int32 mesh_idx =
+            src_layout.mesh().idx_for_dim(src_layout.sharding_spec(i)).value();
         const int64 device_offset = device_loc[mesh_idx];
         const int64 step = output_shape[i] / src_layout.num_shards()[i];
         device_id_to_begin_flat.push_back(step * device_offset);
@@ -527,7 +526,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
   if (!device_id_scalar_or_status.ok())
     return all_gather.emitOpError()
            << device_id_scalar_or_status.status().error_message();
-  const mlir::Value device_id_scalar = device_id_scalar_or_status.ValueOrDie();
+  const mlir::Value device_id_scalar = device_id_scalar_or_status.value();
   const mlir::Value device_id =
       ops_util::ReshapeScalarToSizeType(builder, device_id_scalar, loc);
   // TODO(b/188076080): Clean up device id.
@@ -570,7 +569,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
   if (!partitions_or_status.ok())
     return all_gather.emitOpError()
            << partitions_or_status.status().error_message();
-  auto partitions = partitions_or_status.ValueOrDie();
+  auto partitions = partitions_or_status.value();
   const int32 num_partitions = partitions.size();
   assert(num_partitions <= num_devices);
   if (num_partitions == num_devices) {
@@ -604,7 +603,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
   if (!device_type_or_status.ok())
     return all_gather.emitOpError()
            << device_type_or_status.status().error_message();
-  const std::string device_type = device_type_or_status.ValueOrDie();
+  const std::string device_type = device_type_or_status.value();
 
   // Support bool types by switching to Any reduce rather than Add. For each
   // position in the tensor, only one task in the reduction group can have a 1.
@@ -638,7 +637,7 @@ mlir::LogicalResult LowerAllScatterOp(
   if (!mesh_coordinates_status.ok())
     return all_scatter.emitOpError()
            << mesh_coordinates_status.status().error_message();
-  mlir::Value mesh_coordinates = mesh_coordinates_status.ValueOrDie();
+  mlir::Value mesh_coordinates = mesh_coordinates_status.value();
 
   // We need to compute the slice offset, which is dynamic based on the id.
   //
@@ -728,7 +727,7 @@ mlir::LogicalResult LowerAllScatterOp(
 }
 
 struct DTensorAllReduceLowering
-    : public DTensorAllReduceLoweringBase<DTensorAllReduceLowering> {
+    : public impl::DTensorAllReduceLoweringBase<DTensorAllReduceLowering> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::ModuleOp module = getOperation();
@@ -747,7 +746,8 @@ struct DTensorAllReduceLowering
 };
 
 struct DTensorReduceScatterLowering
-    : public DTensorReduceScatterLoweringBase<DTensorReduceScatterLowering> {
+    : public impl::DTensorReduceScatterLoweringBase<
+          DTensorReduceScatterLowering> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
   }
@@ -769,7 +769,7 @@ struct DTensorReduceScatterLowering
 };
 
 struct DTensorAllGatherLowering
-    : public DTensorAllGatherLoweringBase<DTensorAllGatherLowering> {
+    : public impl::DTensorAllGatherLoweringBase<DTensorAllGatherLowering> {
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
 
@@ -786,7 +786,7 @@ struct DTensorAllGatherLowering
 };
 
 struct DTensorAllScatterLowering
-    : public DTensorAllScatterLoweringBase<DTensorAllScatterLowering> {
+    : public impl::DTensorAllScatterLoweringBase<DTensorAllScatterLowering> {
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
 

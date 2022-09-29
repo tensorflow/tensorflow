@@ -13,7 +13,11 @@ package(
 )
 
 exports_files(
-    srcs = ["c/c_api.h"],
+    srcs = [
+        "c/c_api.h",
+        "c/c_api_experimental.h",
+        "c/c_api_opaque.h",
+    ],
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe/tasks:__subpackages__",
@@ -27,7 +31,7 @@ exports_files(
 FRAMEWORK_STABLE_LIB_HDRS = [
     "//tensorflow/lite:allocation.h",
     "//tensorflow/lite:context_util.h",
-    "//tensorflow/lite:core/macros.h",
+    "//tensorflow/lite/core:macros.h",
     "//tensorflow/lite:error_reporter.h",
     "//tensorflow/lite:mutable_op_resolver.h",
     "//tensorflow/lite:op_resolver.h",
@@ -36,7 +40,7 @@ FRAMEWORK_STABLE_LIB_HDRS = [
 
 FRAMEWORK_LIB_HDRS = FRAMEWORK_STABLE_LIB_HDRS + [
     "//tensorflow/lite:context.h",
-    "//tensorflow/lite:core/subgraph.h",
+    "//tensorflow/lite/core:subgraph.h",
     "//tensorflow/lite:graph_info.h",
     "//tensorflow/lite:optional_debug_tools.h",
 ]
@@ -129,6 +133,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
@@ -365,6 +370,18 @@ cc_library(
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = ["//tensorflow/lite/c:c_api_experimental"],
+)
+
+cc_library(
+    name = "c_api_types",
+    hdrs = ["c/c_api_types.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@mediapipe//mediapipe/tasks:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = ["//tensorflow/lite/c:c_api_types"],
 )
 
 cc_library(

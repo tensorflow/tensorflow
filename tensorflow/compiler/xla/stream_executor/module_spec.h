@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_MODULE_SPEC_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_MODULE_SPEC_H_
 
+#include <cstdint>
+
 #include "tensorflow/compiler/xla/stream_executor/lib/array_slice.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
@@ -30,7 +32,7 @@ namespace stream_executor {
 class MultiModuleLoaderSpec {
  public:
   bool has_cuda_cubin_in_memory() const { return has_cuda_cubin_in_memory_; }
-  port::ArraySlice<const uint8> cuda_cubin_in_memory() const {  // non-absl ok
+  port::ArraySlice<const uint8_t> cuda_cubin_in_memory() const {  // non-absl ok
     CHECK(has_cuda_cubin_in_memory());
     return {cuda_cubin_in_memory_.data(), cuda_cubin_in_memory_.size()};
   }
@@ -42,7 +44,7 @@ class MultiModuleLoaderSpec {
   }
 
   void AddCudaCubinInMemory(
-      port::ArraySlice<const uint8> cubin_bytes) {  // non-absl ok
+      port::ArraySlice<const uint8_t> cubin_bytes) {  // non-absl ok
     CHECK(!cubin_bytes.empty());
     has_cuda_cubin_in_memory_ = true;
     cuda_cubin_in_memory_ = cubin_bytes;
@@ -55,7 +57,7 @@ class MultiModuleLoaderSpec {
   }
 
  private:
-  port::ArraySlice<const uint8> cuda_cubin_in_memory_;  // non-absl ok
+  port::ArraySlice<const uint8_t> cuda_cubin_in_memory_;  // non-absl ok
   bool has_cuda_cubin_in_memory_ = false;
   const char* cuda_ptx_in_memory_;
   bool has_cuda_ptx_in_memory_ = false;

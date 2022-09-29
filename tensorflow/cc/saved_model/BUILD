@@ -62,7 +62,7 @@ cc_library(
         # tf_lib depending on the build platform.
         "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
-        "//tensorflow/core/util/tensor_bundle",
+        "//tensorflow/core/util/tensor_bundle:byteswaptensor",
     ]),
 )
 
@@ -149,6 +149,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/util/tensor_bundle",
+        "//tensorflow/core/util/tensor_bundle:byteswaptensor",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
@@ -177,7 +178,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/platform:test",
     ],
 )
@@ -381,10 +381,13 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     deps = [
+        ":constants",
+        "//tensorflow/core/graph/regularization:simple_delete",
+        "//tensorflow/core/graph/regularization:util",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/util/tensor_bundle:naming",
         "@com_google_protobuf//:protobuf_headers",
-        "//tensorflow/core/grappler:op_types",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/strings",
     ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
@@ -397,8 +400,7 @@ cc_library(
     visibility = ["//tensorflow/python/saved_model:__subpackages__"],
     deps = if_static([
         ":fingerprinting_impl",
-        "@com_google_protobuf//:protobuf_headers",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:protos_all_cc",
     ]) + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
 )

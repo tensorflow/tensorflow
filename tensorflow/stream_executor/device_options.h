@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Contains device-level options that can be specified at a platform level.
-// Example usage:
-//    auto device_options = DeviceOptions::Default();
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DEVICE_OPTIONS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DEVICE_OPTIONS_H_
 

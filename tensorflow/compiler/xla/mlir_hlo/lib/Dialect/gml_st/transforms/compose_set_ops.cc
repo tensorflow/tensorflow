@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -29,6 +28,9 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 namespace {
+
+#define GEN_PASS_DEF_COMPOSESETOPSPASS
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 struct ComposeSetPattern
     : public OpInterfaceRewritePattern<ComposeSetInterface> {
@@ -45,7 +47,8 @@ struct ComposeSetPattern
   }
 };
 
-class ComposeSetOpsPass : public ComposeSetOpsPassBase<ComposeSetOpsPass> {
+class ComposeSetOpsPass
+    : public impl::ComposeSetOpsPassBase<ComposeSetOpsPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
     registry.insert<arith::ArithmeticDialect, GmlStDialect>();
   }

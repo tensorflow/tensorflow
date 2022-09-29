@@ -20,7 +20,7 @@ load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowl
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 # copybara:comment_begin(oss-only)
-load("//tensorflow/core/platform/default:build_config.bzl", "tf_proto_library_py")
+load("//tensorflow/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
 # copybara:comment_end
 
 package(
@@ -197,6 +197,7 @@ cc_test(
         ":nnapi_plugin",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate_mock_test",
         "//tensorflow/lite/kernels:test_util",

@@ -35,8 +35,11 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -55,60 +58,53 @@ namespace quantization {
 namespace internal {
 namespace {
 
-Status PreprocessAndFreezeGraph(mlir::ModuleOp module,
-                                mlir::MLIRContext* context,
-                                llvm::Optional<Session*> session) {
-  mlir::PassManager pm_before_freezing_variables(context);
-  mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
-                                                    /*propagate=*/true);
-
-  mlir::TF::StandardPipelineOptions standard_pipeline_options;
-  standard_pipeline_options.enable_inliner = false;
-  standard_pipeline_options.form_clusters = false;
-  mlir::TF::CreateTFStandardPipeline(pm_before_freezing_variables,
-                                     standard_pipeline_options);
-
-  pm_before_freezing_variables.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFDevice::CreateDecomposeResourceOpsPass());
-
-  mlir::PassManager pm_after_freezing_variables(context);
-  pm_after_freezing_variables.addPass(mlir::TF::CreateTFShapeInferencePass());
-  pm_after_freezing_variables.addPass(mlir::createCanonicalizerPass());
-  pm_after_freezing_variables.addPass(mlir::createInlinerPass());
-
-  if (failed(pm_before_freezing_variables.run(module))) {
-    return statusHandler.ConsumeStatus();
-  }
-
-  if (session.has_value() && failed(mlir::tf_saved_model::FreezeVariables(
-                                 module, session.getValue()))) {
-    return statusHandler.ConsumeStatus();
-  }
-
-  if (failed(pm_after_freezing_variables.run(module))) {
-    return statusHandler.ConsumeStatus();
-  }
-
-  return OkStatus();
+void AddExportPasses(mlir::PassManager &pm) {
+  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::CreateFunctionalToExecutorDialectConversionPass());
+  pm.addPass(mlir::CreateBreakUpIslandsPass());
+  pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
 }
 
-// Converts MLIR ModuleOp to TensorFlow GraphDef. Returns InternalError status
-// when the GraphDef conversion fails.
-absl::StatusOr<GraphDef> ConvertMlirModuleToGraphDef(
-    const mlir::ModuleOp module_op) {
-  GraphExportConfig config{};
-  StatusOr<std::unique_ptr<GraphDef>> graph =
-      ConvertMlirToGraphdef(module_op, config);
-  if (!graph.ok()) {
-    return absl::InternalError("Failed to convert MLIR to GraphDef: " +
-                               graph.status().error_message());
+// Returns the name of the initializer node from a set of control return nodes.
+// Returns an empty string if no initializer node exists. This assumes that
+// there is only one node for initialization.
+std::string GetInitNodeName(
+    const absl::flat_hash_set<Node *> &control_ret_nodes) {
+  for (Node *control_ret_node : control_ret_nodes) {
+    if (absl::StrContains(control_ret_node->name(), kInitOpNamePrefix)) {
+      VLOG(1) << "Init node found: " << control_ret_node->name();
+      return control_ret_node->name();
+    }
   }
-  return *std::move(*graph);
+  return "";
+}
+
+// Converts MLIR ModuleOp to ExportedModel. Returns InternalError status
+// when the GraphDef conversion fails.
+absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
+    const mlir::ModuleOp module_op) {
+  const GraphExportConfig config{};
+  FunctionLibraryDefinition flib_def{OpRegistry::Global(),
+                                     FunctionDefLibrary()};
+  std::unique_ptr<Graph> graph;
+  absl::flat_hash_set<Node *> control_ret_nodes{};
+  if (const auto status = ConvertMlirToGraph(module_op, config, &graph,
+                                             &flib_def, &control_ret_nodes);
+      !status.ok()) {
+    return absl::InternalError("Failed to convert MLIR to GraphDef. " +
+                               status.error_message());
+  }
+
+  auto graph_def = std::make_unique<GraphDef>();
+  graph->ToGraphDef(graph_def.get());
+
+  return ExportedModel{*graph_def, GetInitNodeName(control_ret_nodes)};
 }
 
 }  // namespace
 
-absl::StatusOr<GraphDef> QuantizeQatModel(
+absl::StatusOr<ExportedModel> QuantizeQatModel(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags,
     const absl::string_view quant_opts_serialized) {
@@ -159,39 +155,8 @@ absl::StatusOr<GraphDef> QuantizeQatModel(
 
   mlir::PassManager pm(&context);
 
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateConvertFakeQuantToQdqPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateUnrollBatchMatMulPassPass());
-  // TODO(b/229995333): Add PrepareLiftingPass for QAT. In QAT, AffineOps are
-  // connected to FakeQuantOp instead of the ConstOp so need to add separate
-  // pattern for FakeQuantOp.
-  // pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
-  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      mlir::quant::QuantizationMethod::kQuantizationAwareTraining,
-      quantization_options.op_set()));
-  pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      mlir::quant::QuantizationMethod::kQuantizationAwareTraining));
-  pm.addPass(mlir::createSymbolDCEPass());
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-
-  // For XLA opset, the graph is inlined to take benefit of constant folding
-  // and the TF Conv/Matmul ops with cast-hack are converted to XLA ops.
-  if (quantization_options.op_set() == OpSet::XLA) {
-    pm.addPass(mlir::createInlinerPass());
-    pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
-    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
-  }
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
-
-  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::CreateFunctionalToExecutorDialectConversionPass());
-  pm.addPass(mlir::CreateBreakUpIslandsPass());
+  AddQuantizeQatPasses(pm, quantization_options);
+  AddExportPasses(pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -200,10 +165,10 @@ absl::StatusOr<GraphDef> QuantizeQatModel(
         diagnostic_handler.ConsumeStatus().error_message());
   }
 
-  return ConvertMlirModuleToGraphDef(*module_ref);
+  return ConvertMlirModuleToExportedModel(*module_ref);
 }
 
-absl::StatusOr<GraphDef> QuantizePtqModelPreCalibration(
+absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags) {
   const std::unordered_set<std::string> tag_set =
@@ -244,17 +209,9 @@ absl::StatusOr<GraphDef> QuantizePtqModelPreCalibration(
   }
 
   mlir::PassManager pm(&context);
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateUnrollBatchMatMulPassPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateInsertCustomAggregationOpsPass());
-  pm.addPass(mlir::quant::CreateIssueIDsOfCustomAggregationOpsPass());
-  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::CreateFunctionalToExecutorDialectConversionPass());
-  pm.addPass(mlir::CreateBreakUpIslandsPass());
+
+  AddQuantizePtqPreCalibrationPasses(pm);
+  AddExportPasses(pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -263,10 +220,10 @@ absl::StatusOr<GraphDef> QuantizePtqModelPreCalibration(
         diagnostic_handler.ConsumeStatus().error_message());
   }
 
-  return ConvertMlirModuleToGraphDef(*module_ref);
+  return ConvertMlirModuleToExportedModel(*module_ref);
 }
 
-absl::StatusOr<GraphDef> QuantizePtqModelPostCalibration(
+absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags,
     const absl::string_view quant_opts_serialized) {
@@ -310,33 +267,8 @@ absl::StatusOr<GraphDef> QuantizePtqModelPostCalibration(
 
   mlir::PassManager pm(&context);
 
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
-  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      mlir::quant::QuantizationMethod::kPostTrainingQuantization,
-      quantization_options.op_set()));
-  pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      mlir::quant::QuantizationMethod::kPostTrainingQuantization));
-  pm.addPass(mlir::createSymbolDCEPass());
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-
-  // For XLA opset, the graph is inlined to take benefit of constant folding
-  // and the TF Conv/Matmul ops with cast-hack are converted to XLA ops.
-  if (quantization_options.op_set() == OpSet::XLA) {
-    pm.addPass(mlir::createInlinerPass());
-    pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
-    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
-  }
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
-
-  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::CreateFunctionalToExecutorDialectConversionPass());
-  pm.addPass(mlir::CreateBreakUpIslandsPass());
+  AddQuantizePtqPostCalibrationPasses(pm, quantization_options);
+  AddExportPasses(pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -345,10 +277,10 @@ absl::StatusOr<GraphDef> QuantizePtqModelPostCalibration(
         diagnostic_handler.ConsumeStatus().error_message());
   }
 
-  return ConvertMlirModuleToGraphDef(*module_ref);
+  return ConvertMlirModuleToExportedModel(*module_ref);
 }
 
-absl::StatusOr<GraphDef> QuantizePtqDynamicRange(
+absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags,
     const absl::string_view quant_opts_serialized) {
@@ -399,21 +331,8 @@ absl::StatusOr<GraphDef> QuantizePtqDynamicRange(
 
   mlir::PassManager pm(&context);
 
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateUnrollBatchMatMulPassPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass());
-  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
-      quantization_options.op_set()));
-  pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      mlir::quant::QuantizationMethod::kDynamicRangeQuantization));
-  pm.addPass(mlir::createSymbolDCEPass());
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::CreateFunctionalToExecutorDialectConversionPass());
-  pm.addPass(mlir::CreateBreakUpIslandsPass());
+  AddQuantizePtqDynamicRangePasses(pm, quantization_options);
+  AddExportPasses(pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
@@ -422,7 +341,7 @@ absl::StatusOr<GraphDef> QuantizePtqDynamicRange(
         diagnostic_handler.ConsumeStatus().error_message());
   }
 
-  return ConvertMlirModuleToGraphDef(*module_ref);
+  return ConvertMlirModuleToExportedModel(*module_ref);
 }
 
 }  // namespace internal

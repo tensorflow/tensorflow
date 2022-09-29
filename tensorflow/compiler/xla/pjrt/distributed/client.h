@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.grpc.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace tensorflow {
 class CoordinationServiceAgent;
@@ -40,7 +40,7 @@ class DistributedRuntimeClient {
     int32_t node_id = -1;
 
     // Environment used for starting threads.
-    tensorflow::Env* env = tensorflow::Env::Default();
+    tsl::Env* env = tsl::Env::Default();
 
     // RPC timeout used for RPC that don't have their own timeouts.
     absl::Duration rpc_timeout = absl::Seconds(120);

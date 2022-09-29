@@ -19,3 +19,27 @@ filegroup(
         "@llvm-project//mlir:run_lit.sh",
     ],
 )
+
+cc_library(
+    name = "testlib_pipeline",
+    testonly = 1,
+    srcs = ["testlib_pipeline.cc"],
+    hdrs = ["testlib_pipeline.h"],
+    visibility = ["//tensorflow/compiler/xla:runtime"],
+    deps = [
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:passes",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:AsyncDialect",
+        "@llvm-project//mlir:AsyncToLLVM",
+        "@llvm-project//mlir:AsyncTransforms",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncToLLVM",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:Transforms",
+    ],
+)

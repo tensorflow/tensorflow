@@ -31,9 +31,11 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -322,6 +324,11 @@ class TensorListReserve : public OpKernel {
   void Compute(OpKernelContext* c) override {
     PartialTensorShape element_shape;
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(0), &element_shape));
+    OP_REQUIRES(
+        c, TensorShapeUtils::IsScalar(c->input(1).shape()),
+        errors::InvalidArgument(
+            "The num_elements to reserve must be a tensor size 1, but got ",
+            c->input(1).shape()));
     int32_t num_elements = c->input(1).scalar<int32>()();
     OP_REQUIRES(c, num_elements >= 0,
                 errors::InvalidArgument("The num_elements to reserve must be a "
@@ -368,6 +375,8 @@ class TensorListResize : public OpKernel {
   void Compute(OpKernelContext* c) override {
     const TensorList* input_list = nullptr;
     OP_REQUIRES_OK(c, GetInputList(c, 0, &input_list));
+    OP_REQUIRES(c, TensorShapeUtils::IsScalar(c->input(1).shape()),
+                errors::InvalidArgument("size must be a scalar"));
     int32_t size = c->input(1).scalar<int32>()();
     OP_REQUIRES(
         c, size >= 0,
@@ -397,6 +406,7 @@ class TensorListResize : public OpKernel {
     output_list.element_dtype = input_list->element_dtype;
     output_list.max_num_elements = input_list->max_num_elements;
     if (size > input_list->tensors().size()) {
+      output_list.tensors().reserve(size);
       output_list.tensors().insert(output_list.tensors().begin(),
                                    input_list->tensors().begin(),
                                    input_list->tensors().end());

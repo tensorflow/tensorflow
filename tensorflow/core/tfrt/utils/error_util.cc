@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/error_util.h"
 
+#include "tensorflow/core/platform/status.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 
@@ -34,36 +35,22 @@ tfrt::ErrorCode ConvertTfErrorCodeToTfrtErrorCode(
 }
 
 tensorflow::Status CreateTfErrorStatus(const DecodedDiagnostic& error) {
-  auto tf_error_code = tensorflow::error::Code::UNKNOWN;
-  switch (error.code) {
-    default:
-      tf_error_code = tensorflow::error::Code::INTERNAL;
-      LOG(INFO) << "Unsupported TFRT error code "
-                << ErrorName(error.code).str();
-      break;
-#define ERROR_TYPE(TFRT_ERROR, TF_ERROR)               \
-  case tfrt::ErrorCode::TFRT_ERROR:                    \
-    tf_error_code = tensorflow::error::Code::TF_ERROR; \
-    break;
-#include "tensorflow/core/tfrt/utils/error_type.def"  // NOLINT
-  }
-  return tensorflow::Status(tf_error_code, error.message);
+  return tensorflow::FromAbslStatus(error.status);
 }
 
 tensorflow::Status ToTfStatus(const tfrt::AsyncValue* av) {
   CHECK(av != nullptr && av->IsAvailable())  // Crash OK
       << "Expected a ready async value.";
   if (av->IsError()) {
-    return CreateTfErrorStatus(av->GetError());
+    return tensorflow::FromAbslStatus(av->GetError());
   }
   return ::tensorflow::OkStatus();
 }
 
-tensorflow::Status TfStatusFromAbslStatus(absl::Status status) {
-  if (status.ok()) return tensorflow::OkStatus();
-  return tensorflow::Status(
-      static_cast<tensorflow::error::Code>(status.raw_code()),
-      status.message());
+absl::Status AbslStatusFromTfStatus(tensorflow::Status status) {
+  if (status.ok()) return absl::OkStatus();
+  return absl::Status(static_cast<absl::StatusCode>(status.code()),
+                      status.error_message());
 }
 
 }  // namespace tfrt

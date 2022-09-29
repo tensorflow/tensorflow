@@ -52,9 +52,9 @@ using stream_executor::dnn::DimIndex;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace {
@@ -679,6 +679,24 @@ TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
+#define REGISTER_CPU_KERNEL(T)                                                 \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Conv3DBackpropInputV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      Conv3DCustomBackpropInputOp<CPUDevice, T>);                              \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")                        \
+                              .Device(DEVICE_CPU)                              \
+                              .Label("custom")                                 \
+                              .TypeConstraint<T>("T"),                         \
+                          Conv3DCustomBackpropInputOp<CPUDevice, T>);          \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")                        \
+                              .Device(DEVICE_CPU)                              \
+                              .Label("eigen_tensor")                           \
+                              .TypeConstraint<T>("T"),                         \
+                          Conv3DBackpropInputOp<CPUDevice, T>);
+
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
+#undef REGISTER_CPU_KERNEL
+
 // Backprop for filter that offloads computation to
 // Eigen::CuboidConvolutionBackwardFilter.
 template <typename Device, class T>
@@ -1156,6 +1174,25 @@ TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
+#define REGISTER_CPU_KERNEL(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropFilterV2")               \
+                              .Device(DEVICE_CPU)                      \
+                              .TypeConstraint<T>("T"),                 \
+                          Conv3DCustomBackpropFilterOp<CPUDevice, T>); \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropFilterV2")               \
+                              .Device(DEVICE_CPU)                      \
+                              .Label("custom")                         \
+                              .TypeConstraint<T>("T"),                 \
+                          Conv3DCustomBackpropFilterOp<CPUDevice, T>); \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropFilterV2")               \
+                              .Device(DEVICE_CPU)                      \
+                              .Label("eigen_tensor")                   \
+                              .TypeConstraint<T>("T"),                 \
+                          Conv3DBackpropFilterOp<CPUDevice, T>);
+
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
+#undef REGISTER_CPU_KERNEL
+
 // WARNING: Eigen::half is not trivially copyable and can't be used in
 // custom backprop filter kernel because of memcpy and memset in Im2col.
 #define REGISTER_CPU_KERNEL(T)                                                \
@@ -1370,8 +1407,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         << ", " << padding_planes << ")";
 
 #if GOOGLE_CUDA
-    const bool compute_in_nhwc = ComputeInNhwcEnabled(
-        DataTypeToEnum<T>::value, stream, /*is_conv2d=*/false);
+    const bool compute_in_nhwc =
+        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
 #else
     // fast NDHWC implementation is a CUDA only feature
     const bool compute_in_nhwc = false;
@@ -1766,8 +1803,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         << ", " << padding_planes << ")";
 
 #if GOOGLE_CUDA
-    const bool compute_in_nhwc = ComputeInNhwcEnabled(
-        DataTypeToEnum<T>::value, stream, /*is_conv2d=*/false);
+    const bool compute_in_nhwc =
+        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
 #else
     // fast NDHWC implementation is a CUDA only feature
     const bool compute_in_nhwc = false;

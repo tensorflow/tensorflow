@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/window_util.h"
 
+#include <functional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace window_util {

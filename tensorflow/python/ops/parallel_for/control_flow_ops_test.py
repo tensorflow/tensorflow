@@ -2841,6 +2841,52 @@ class VariableTest(PForTestCase):
     expected_result = [2, 3]
     self.assertAllEqual(result, expected_result)
 
+  @test_util.run_all_in_graph_and_eager_modes
+  def testStatelessCase(self):
+
+    def branch1(x):
+      return x
+
+    def branch2(x):
+      return x + 1
+
+    def branch3(x):
+      return x + 2
+
+    x = constant_op.constant(10)
+    elems = constant_op.constant([1, 0, 0, 0, 2, 1, 0, 2, 0, 1])
+    def loop_fn(z_i):
+      return cond_v2.indexed_case(
+          z_i, [lambda: branch1(x), lambda: branch2(x), lambda: branch3(x)])
+
+    result = pfor_control_flow_ops.vectorized_map(
+        loop_fn, elems, fallback_to_while_loop=False)
+
+    expected_result = [11, 10, 10, 10, 12, 11, 10, 12, 10, 11]
+    self.assertAllEqual(result, expected_result)
+
+  @test_util.run_all_in_graph_and_eager_modes
+  def testStatelessCaseUnstacked(self):
+
+    def branch1(x):
+      return x + 1
+
+    def branch2(x):
+      return x + 2
+
+    # Unstacked case input
+    case_input = constant_op.constant(1)
+    @def_function.function
+    def function(z_i):
+      return cond_v2.indexed_case(case_input,
+                                  [lambda: branch1(z_i), lambda: branch2(z_i)])
+
+    inputs = constant_op.constant([0, 1, 1, 0, 1, 0, 1, 0, 0])
+
+    result = pfor_control_flow_ops.vectorized_map(
+        function, inputs, fallback_to_while_loop=False)
+    expected_result = [2, 3, 3, 2, 3, 2, 3, 2, 2]
+    self.assertAllEqual(result, expected_result)
 
 if __name__ == "__main__":
   test.main()

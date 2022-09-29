@@ -322,21 +322,21 @@ struct ShapeVisitor {
   void backwardDynamicBroadcastInDimShape(mhlo::DynamicBroadcastInDimOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     backwardsWorklist.push_back(
-        ShapeOrValueInfo::getValueInfoOf(op.output_dimensions()));
+        ShapeOrValueInfo::getValueInfoOf(op.getOutputDimensions()));
   }
   void forwardDynamicBroadcastInDimShape(mhlo::DynamicBroadcastInDimOp op) {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
-    dims = lookup(ShapeOrValueInfo::getValueInfoOf(op.output_dimensions()));
+    dims = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOutputDimensions()));
   }
   void backwardDynamicReshapeShape(mhlo::DynamicReshapeOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     backwardsWorklist.push_back(
-        ShapeOrValueInfo::getValueInfoOf(op.output_shape()));
+        ShapeOrValueInfo::getValueInfoOf(op.getOutputShape()));
   }
   void forwardDynamicReshapeShape(mhlo::DynamicReshapeOp op) {
     auto rankedTy = op.getResult().getType().cast<RankedTensorType>();
     auto shapeDims =
-        lookup(ShapeOrValueInfo::getValueInfoOf(op.output_shape()));
+        lookup(ShapeOrValueInfo::getValueInfoOf(op.getOutputShape()));
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     dimsFromStaticShape(rankedTy, shapeDims, &dims);
   }
@@ -354,28 +354,30 @@ struct ShapeVisitor {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     for (const auto &dim : llvm::enumerate(lookup(
              ShapeOrValueInfo::getShapeInfoOf(reduceOp.operands().back())))) {
-      if (!llvm::is_contained(reduceOp.dimensions(), dim.index()))
+      if (!llvm::is_contained(reduceOp.getDimensions(), dim.index()))
         dims.push_back(dim.value());
     }
   }
   void backwardTransposeShape(mhlo::TransposeOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
-    backwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op.operand()));
+    backwardsWorklist.push_back(
+        ShapeOrValueInfo::getShapeInfoOf(op.getOperand()));
   }
   void forwardTransposeShape(mhlo::TransposeOp op) {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
-    auto in = lookup(ShapeOrValueInfo::getShapeInfoOf(op.operand()));
-    auto elem = op.permutation().cast<DenseIntElementsAttr>();
+    auto in = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getOperand()));
+    auto elem = op.getPermutation().cast<DenseIntElementsAttr>();
     for (const auto &val : elem) dims.push_back(in[val.getZExtValue()]);
   }
   void backwardSelectShape(mhlo::SelectOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
-    backwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op.on_true()));
+    backwardsWorklist.push_back(
+        ShapeOrValueInfo::getShapeInfoOf(op.getOnTrue()));
   }
   void forwardSelectShape(mhlo::SelectOp op) {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     // Forward the `on_true` operand, it has the same shape as the output.
-    dims = lookup(ShapeOrValueInfo::getShapeInfoOf(op.on_true()));
+    dims = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getOnTrue()));
   }
   void backwardSameOperandsAndResultShape(Value v) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(v));
@@ -388,13 +390,13 @@ struct ShapeVisitor {
         ShapeOrValueInfo::getShapeInfoOf(v.getDefiningOp()->getOperand(0)));
   }
   void backwardBlockArgumentShape(BlockArgument argument) {
-    // JitRT uses jitrt.symbolic_shape to describe identical dimensions. Make
+    // JitRT uses rt.symbolic_shape to describe identical dimensions. Make
     // use of that when it exists.
     //
     // Example:
     //   func @compute(
-    //     %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<-2> :
-    //     tensor<1xi64>}, %arg1: tensor<?xf32> {jitrt.symbolic_shape =
+    //     %arg0: tensor<?xf32> {rt.symbolic_shape = dense<-2> :
+    //     tensor<1xi64>}, %arg1: tensor<?xf32> {rt.symbolic_shape =
     //     dense<-2> : tensor<1xi64>})
     //   } { ... }
     //
@@ -407,7 +409,7 @@ struct ShapeVisitor {
     if (auto func = dyn_cast_or_null<func::FuncOp>(
             argument.getOwner()->getParentOp())) {
       if (auto shape = func.getArgAttrOfType<DenseIntElementsAttr>(
-              argument.getArgNumber(), "jitrt.symbolic_shape")) {
+              argument.getArgNumber(), "rt.symbolic_shape")) {
         auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(argument));
         auto id = getAffineSymbolExpr(0, argument.getContext());
         for (const auto &symbol : llvm::enumerate(shape.getValues<ssize_t>())) {
@@ -632,17 +634,19 @@ struct ShapeVisitor {
   }
   void backwardReshape(mhlo::ReshapeOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op));
-    backwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op.operand()));
+    backwardsWorklist.push_back(
+        ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
   }
   void forwardReshape(mhlo::ReshapeOp op) {
-    auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.operand()));
+    auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
     if (in.size() != 1) return forwardUnknown(op);
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
     dims.push_back({in[0].symbols, in[0].expr});
   }
   void backwardSlice(mhlo::SliceOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op));
-    backwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op.operand()));
+    backwardsWorklist.push_back(
+        ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
   }
   void forwardSlice(mhlo::SliceOp op) {
     // Only handle slices equivalent to an extract.
@@ -650,8 +654,8 @@ struct ShapeVisitor {
       return forwardUnknown(op);
     }
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
-    auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.operand()));
-    auto elem = op.start_indices().cast<DenseIntElementsAttr>();
+    auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
+    auto elem = op.getStartIndices().cast<DenseIntElementsAttr>();
     auto i = (*elem.begin()).getZExtValue();
     if (i >= in.size()) {  // Bounds check.
       return forwardUnknown(op);

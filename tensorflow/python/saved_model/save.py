@@ -37,7 +37,7 @@ from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
-from tensorflow.python.eager import function_saved_model_utils
+from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
@@ -147,13 +147,13 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
     for obj in trackable_objects:
       if isinstance(obj, asset.Asset):
         asset_paths[obj.asset_path] = obj
-      if isinstance(obj, function_saved_model_utils.TrackableConstant):
+      if isinstance(obj, saved_model_utils.TrackableConstant):
         constant_captures[obj.capture] = obj
 
     def _get_merged_trackable(x):
       if isinstance(x, asset.Asset):
         return asset_paths[x.asset_path]
-      if isinstance(x, function_saved_model_utils.TrackableConstant):
+      if isinstance(x, saved_model_utils.TrackableConstant):
         if x.capture in asset_paths:
           return asset_paths[x.capture]
         else:
@@ -711,7 +711,8 @@ def _trace_gradient_functions(graph, saveable_view):
             "Check the error log to see the error that was raised when "
             "converting a gradient function to a concrete function. You may "
             "need to update the custom gradient, or disable saving gradients "
-            "with the option tf.saved_model.SaveOptions(custom_gradients=False)"
+            "with the option "
+            "tf.saved_model.SaveOptions(experimental_custom_gradients=False)"
             f".\n\tProblematic op name: {op.name}\n\tGradient inputs: "
             f"{op.inputs}") from exc
 
@@ -827,7 +828,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
       return object_map[function](*args)
     # Registered saver/restore functions do not appear in `object_map`, because
     # they are not in the object graph.
-    return function_saved_model_utils.ExportedConcreteFunction(
+    return saved_model_utils.ExportedConcreteFunction(
         function, tensor_map)(*args)
 
   for obj in object_map.values():
@@ -838,9 +839,8 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
           object_map=object_map,
           to_graph=exported_graph,
           call_with_mapped_captures=call_with_mapped_captures))
-  saver = functional_saver.MultiDeviceSaver(named_saveable_objects,
-                                            registered_savers,
-                                            call_with_mapped_captures)
+  saver = functional_saver.MultiDeviceSaver.from_saveables(
+      named_saveable_objects, registered_savers, call_with_mapped_captures)
 
   with exported_graph.as_default():
     saver_def = saver.to_proto()
@@ -1303,7 +1303,7 @@ def save_and_return_nodes(obj,
         compat.as_str(export_dir),
         compat.as_str(constants.FINGERPRINT_FILENAME))
     fingerprint_proto = fingerprinting.CreateFingerprintDef(
-        saved_model_serialized)
+        saved_model_serialized, export_dir)
     file_io.atomic_write_string_to_file(fingerprint_path, fingerprint_proto)
 
   path = file_io.join(

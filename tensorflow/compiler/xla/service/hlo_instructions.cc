@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
@@ -44,7 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -466,23 +467,23 @@ namespace {
 // Currently implements a small subset of cases; feel free to add more as
 // needed.
 std::vector<std::string> AttributeProtoToStringVector(
-    const tensorflow::protobuf::Message& message) {
-  const tensorflow::protobuf::Reflection* reflection = message.GetReflection();
-  std::vector<const tensorflow::protobuf::FieldDescriptor*> fields;
+    const tsl::protobuf::Message& message) {
+  const tsl::protobuf::Reflection* reflection = message.GetReflection();
+  std::vector<const tsl::protobuf::FieldDescriptor*> fields;
   reflection->ListFields(message, &fields);
 
   std::vector<std::string> output;
-  for (const tensorflow::protobuf::FieldDescriptor* field : fields) {
+  for (const tsl::protobuf::FieldDescriptor* field : fields) {
     std::string s = absl::StrCat(field->name(), "=");
     CHECK(!field->is_repeated()) << "Repeated fields aren't implemented";
     switch (field->type()) {
-      case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
+      case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
         bool val = reflection->GetBool(message, field);
         absl::StrAppend(&s, val ? "true" : "false");
         break;
       }
-      case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
-        const tensorflow::protobuf::EnumValueDescriptor* evd =
+      case tsl::protobuf::FieldDescriptor::TYPE_ENUM: {
+        const tsl::protobuf::EnumValueDescriptor* evd =
             reflection->GetEnum(message, field);
         absl::StrAppend(&s, evd->name());
         break;
@@ -1557,12 +1558,12 @@ HloCallableInstruction::HloCallableInstruction(
 HloCallableInstruction::HloCallableInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
-    HloComputation* called_computation)
+    HloComputation* called_computation, absl::string_view prefix)
     : HloInstruction(opcode, shape) {
   for (auto operand : operands) {
     AppendOperand(operand);
   }
-  SetAndSanitizeName(HloOpcodeString(opcode));
+  SetAndSanitizeName(std::string(prefix) + HloOpcodeString(opcode));
   AppendComputation(called_computation);
 }
 
@@ -1623,6 +1624,12 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   VLOG(3) << "CloneAndAppendInstructionIntoCalledComputation:\n"
           << instruction_to_append->ToString();
   HloInstruction* clone = nullptr;
+  bool do_not_clone =
+      instruction_to_append->opcode() == HloOpcode::kTuple &&
+      std::find_if(instruction_to_append->users().begin(),
+                   instruction_to_append->users().end(), [](HloInstruction* u) {
+                     return u->opcode() != HloOpcode::kGetTupleElement;
+                   }) == instruction_to_append->users().end();
   if (called_computations().empty()) {
     // New fusion instruction. It should not be a multioutput instruction.
     CHECK(!add_output);
@@ -1641,7 +1648,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     bool in_operand_list =
         absl::c_linear_search(operands(), instruction_to_append);
     CHECK(add_output || in_operand_list);
-    if (instruction_to_append->opcode() == HloOpcode::kTuple) {
+    if (do_not_clone) {
       // We assume all uses of a kTuple operation are GTE ops. In this case, we
       // don't need to clone 'instruction_to_append'.
       CHECK(!in_operand_list);
@@ -1747,11 +1754,11 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
       TF_CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
     }
     int64_t index = tuple_elements.size();
-    if (instruction_to_append->opcode() == HloOpcode::kTuple) {
+    if (do_not_clone) {
       CHECK_EQ(clone, instruction_to_append);
-      index -= clone->operand_count();
+      index -= instruction_to_append->operand_count();
       std::vector<HloInstruction*> to_be_removed;
-      const auto& users = clone->users();
+      const auto& users = instruction_to_append->users();
       to_be_removed.reserve(users.size());
       for (auto old_gte : users) {
         CHECK_EQ(old_gte->opcode(), HloOpcode::kGetTupleElement);
@@ -1823,9 +1830,9 @@ HloFusionInstruction::HloFusionInstruction(const Shape& shape,
 HloFusionInstruction::HloFusionInstruction(
     const Shape& shape, FusionKind fusion_kind,
     absl::Span<HloInstruction* const> operands,
-    HloComputation* fusion_computation)
+    HloComputation* fusion_computation, absl::string_view prefix)
     : HloCallableInstruction(HloOpcode::kFusion, shape, operands,
-                             fusion_computation),
+                             fusion_computation, prefix),
       fusion_kind_(fusion_kind) {
   fusion_computation->SetFusionInstruction(this);
 }
@@ -1976,7 +1983,7 @@ void HloFusionInstruction::MergeFusionInstruction(
     TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
   CHECK_EQ(0, cloned_fusion->user_count());
-  TF_CHECK_OK(parent()->parent()->RemoveEmbeddedComputation(
+  TF_CHECK_OK(GetModule()->RemoveEmbeddedComputation(
       cloned_fusion->fused_instructions_computation()));
 }
 
@@ -2074,14 +2081,14 @@ const std::vector<HloInstruction*>& HloFusionInstruction::fused_parameters()
   return fused_instructions_computation()->parameter_instructions();
 }
 
-const tensorflow::gtl::iterator_range<UnwrappingIterator<
+const tsl::gtl::iterator_range<UnwrappingIterator<
     std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
 HloFusionInstruction::fused_instructions() const {
   const HloComputation* subcomp = fused_instructions_computation();
   return subcomp->instructions();
 }
 
-const tensorflow::gtl::iterator_range<
+const tsl::gtl::iterator_range<
     UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
 HloFusionInstruction::fused_instructions() {
   return fused_instructions_computation()->instructions();
@@ -2090,7 +2097,6 @@ HloFusionInstruction::fused_instructions() {
 int64_t HloFusionInstruction::fused_instruction_count() const {
   return fused_instructions_computation()->instruction_count();
 }
-
 
 std::vector<std::string> HloFusionInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {

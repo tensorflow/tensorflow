@@ -16,7 +16,6 @@
 import itertools
 import os
 from typing import List, Mapping, Optional
-import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -41,6 +40,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import save as saved_model_save
@@ -62,54 +62,6 @@ def parameter_combinations(test_parameters):
     for curr in itertools.product(*parameters.values()):
       real_parameters.append(dict(zip(keys, curr)))
   return real_parameters
-
-
-class MatmulModel(module.Module):
-  """A simple model with a single matmul.
-
-  Bias and activation function are optional.
-  """
-
-  def __init__(self,
-               has_bias: bool = False,
-               activation_fn: Optional[ops.Operation] = None) -> None:
-    """Initializes a MatmulModel.
-
-    Args:
-      has_bias: If True, creates and adds a bias term.
-      activation_fn: The activation function to be used. No activation function
-        if None.
-    """
-    self.has_bias = has_bias
-    self.activation_fn = activation_fn
-
-  @def_function.function(input_signature=[
-      tensor_spec.TensorSpec(
-          shape=(1, 4), dtype=dtypes.float32, name='input_tensor')
-  ])
-  def matmul(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
-    """Performs a matrix multiplication.
-
-    Depending on self.has_bias and self.activation_fn, it may add a bias term or
-    go through the activaction function.
-
-    Args:
-      input_tensor: Input tensor to matmul with the filter.
-
-    Returns:
-      A map of: output key -> output result.
-    """
-    filters = np.random.uniform(low=-1.0, high=1.0, size=(4, 3))
-    bias = np.random.uniform(low=-1.0, high=1.0, size=(3,))
-    out = math_ops.matmul(input_tensor, filters)
-
-    if self.has_bias:
-      out = nn_ops.bias_add(out, bias)
-
-    if self.activation_fn is not None:
-      out = self.activation_fn(out)
-
-    return {'output': out}
 
 
 class MultipleSignatureModel(module.Module):
@@ -253,15 +205,14 @@ class QuantizationMethodTest(quantize_model_test_base.QuantizedModelTest):
 
 class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
-  def _any_warning_contains(
-      self, substring: str,
-      warnings_list: List[warnings.WarningMessage]) -> bool:
+  def _any_warning_contains(self, substring: str,
+                            warnings_list: List['LogRecord']) -> bool:
     """Returns True if any of the warnings contains a given substring.
 
     Args:
       substring: A piece of string to check whether it exists in the warning
         message.
-      warnings_list: A list of `WarningMessage`s.
+      warnings_list: A list of `absl.logging.LogRecord`s.
 
     Returns:
       True if and only if the substring exists in any of the warnings in
@@ -318,6 +269,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             out, min=-0.3, max=0.4, num_bits=8, narrow_range=False)
         return {'output': q_out}
 
+    np.random.seed(1234)
     model = ConvModel()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -525,6 +477,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           out = activation_fn(out)
         return {'output': out}
 
+    np.random.seed(1234)
     model = ConvModel()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -632,6 +585,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           out = activation_fn(out)
         return {'output': out}
 
+    np.random.seed(1234)
     model = DepthwiseConvModel()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -673,27 +627,27 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertFalse(
         self._contains_op(output_meta_graphdef, 'FusedBatchNormV3'))
 
-  @parameterized.named_parameters(
-      ('none', None, False),
-      ('relu', nn_ops.relu, False),
-      ('relu6', nn_ops.relu6, False),
-      ('with_bias', None, True),
-      ('with_bias_and_relu', nn_ops.relu, True),
-      ('with_bias_and_relu6', nn_ops.relu6, True),
-  )
+  @parameterized.parameters(
+      parameter_combinations([{
+          'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
+          'has_bias': [True, False],
+          'target_opset': [quant_opts_pb2.XLA],
+      }]))
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_ptq_model(self, activation_fn: Optional[ops.Operation],
-                            has_bias: bool):
-    model = MatmulModel(has_bias, activation_fn)
+                            has_bias: bool, target_opset: quant_opts_pb2.OpSet):
+    np.random.seed(1234)
+    model = self._create_matmul_model(has_bias, activation_fn)
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(8):
+      for _ in range(500):
         yield {
             'input_tensor':
                 ops.convert_to_tensor(
-                    np.random.uniform(low=0, high=5, size=(1, 4)).astype('f4')),
+                    np.random.uniform(low=0.0, high=1.0,
+                                      size=(1, 1024)).astype('f4')),
         }
 
     tags = [tag_constants.SERVING]
@@ -717,6 +671,38 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(
         self._contains_quantized_function_call(output_meta_graphdef))
+
+    input_data = ops.convert_to_tensor(
+        np.random.uniform(low=0.0, high=1.0, size=(1, 1024)).astype('f4'))
+    expected_outputs = model.matmul(input_data)
+    got_outputs = converted_model.signatures['serving_default'](
+        input_tensor=ops.convert_to_tensor(input_data))
+    self.assertAllClose(expected_outputs, got_outputs, atol=0.1674)
+
+    # Check the converted model in the target opset.
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=target_opset)
+
+    output_directory = self.create_tempdir().full_path
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        quantization_options,
+        representative_dataset=data_gen())
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+
+    new_outputs = converted_model.signatures['serving_default'](
+        input_tensor=ops.convert_to_tensor(input_data))
+    # The difference between TF and target path is expected to be small (smaller
+    # or equal to 1 in the quantized domain).
+    self.assertAllClose(new_outputs, got_outputs, atol=0.1048)
+    self.assertAllClose(new_outputs, expected_outputs, atol=0.1023)
 
   @parameterized.named_parameters(
       ('use_constant', False),
@@ -763,7 +749,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_use_representative_samples_list(self):
-    model = MatmulModel()
+    model = self._create_matmul_model()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_savedmodel_dir)
 
@@ -774,7 +760,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     tags = {tag_constants.SERVING}
 
     representative_dataset: repr_dataset.RepresentativeDataset = [{
-        'input_tensor': random_ops.random_uniform(shape=(1, 4)),
+        'input_tensor': random_ops.random_uniform(shape=(1, 1024)),
     } for _ in range(8)]
 
     converted_model = quantize_model.quantize(
@@ -793,7 +779,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_use_ndarray_representative_dataset(self):
-    model = MatmulModel()
+    model = self._create_matmul_model()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_savedmodel_dir)
 
@@ -805,7 +791,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     # Use np.ndarrays instead of tf.Tensors for the representative dataset.
     representative_dataset = [{
-        'input_tensor': np.random.uniform(size=(1, 4)).astype(np.float32),
+        'input_tensor': np.random.uniform(size=(1, 1024)).astype(np.float32),
     } for _ in range(4)]
 
     converted_model = quantize_model.quantize(
@@ -825,7 +811,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_use_python_list_representative_dataset(self):
-    model = MatmulModel()
+    model = self._create_matmul_model()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_savedmodel_dir)
 
@@ -837,7 +823,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     # Use plain python lists as representative samples.
     representative_dataset = [{
-        'input_tensor': [[0.1, 0.2, 0.3, 0.4]],
+        'input_tensor': [[i * 0.1 for i in range(1024)]],
     } for _ in range(4)]
 
     converted_model = quantize_model.quantize(
@@ -857,7 +843,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_call_twice(self):
-    model = MatmulModel()
+    model = self._create_matmul_model()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_savedmodel_dir)
 
@@ -869,7 +855,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     signature_def_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
 
     representative_dataset: repr_dataset.RepresentativeDataset = [{
-        'input_tensor': random_ops.random_uniform(shape=(1, 4)),
+        'input_tensor': random_ops.random_uniform(shape=(1, 1024)),
     } for _ in range(8)]
 
     # Test the first run.
@@ -909,7 +895,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   # dataset) only in TF2 (eager mode).
   @test_util.run_v2_only
   def test_model_ptq_use_tf_dataset_for_representative_dataset(self):
-    model = MatmulModel()
+    model = self._create_matmul_model()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_savedmodel_dir)
 
@@ -920,7 +906,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     tags = {tag_constants.SERVING}
 
     representative_samples = [{
-        'input_tensor': random_ops.random_uniform(shape=(1, 4)),
+        'input_tensor': random_ops.random_uniform(shape=(1, 1024)),
     } for _ in range(8)]
 
     # Construct a tf.data.Dataset from the representative samples.
@@ -928,7 +914,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         lambda: representative_samples,
         output_signature={
             'input_tensor':
-                tensor_spec.TensorSpec(shape=(1, 4), dtype=dtypes.float32),
+                tensor_spec.TensorSpec(shape=(1, 1024), dtype=dtypes.float32),
         })
 
     converted_model = quantize_model.quantize(
@@ -947,7 +933,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_no_representative_sample_shows_warnings(self):
-    model = MatmulModel()
+    model = self._create_matmul_model()
     input_savedmodel_dir = self.create_tempdir('input').full_path
     output_savedmodel_dir = self.create_tempdir().full_path
     saved_model_save.save(model, input_savedmodel_dir)
@@ -957,24 +943,33 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
-    with warnings.catch_warnings(record=True) as warnings_list:
-      converted_model = quantize_model.quantize(
-          input_savedmodel_dir,
-          ['serving_default'],
-          tags,
-          output_savedmodel_dir,
-          quantization_options,
-          # Put no sample into the representative dataset to make calibration
-          # impossible.
-          representative_dataset=[])
+    with self.assertLogs(level='WARN') as warning_logs:
+      # Save the logger verbosity.
+      prev_log_level = logging.get_verbosity()
+      logging.set_verbosity(logging.WARN)
 
-      self.assertNotEmpty(warnings_list)
+      try:
+        converted_model = quantize_model.quantize(
+            input_savedmodel_dir,
+            ['serving_default'],
+            tags,
+            output_savedmodel_dir,
+            quantization_options,
+            # Put no sample into the representative dataset to make calibration
+            # impossible.
+            representative_dataset=[])
+      finally:
+        # Restore the logger verbosity.
+        logging.set_verbosity(prev_log_level)
+
+      self.assertNotEmpty(warning_logs.records)
 
       # Warning message should contain the function name.
-      self.assertTrue(self._any_warning_contains('matmul', warnings_list))
+      self.assertTrue(
+          self._any_warning_contains('matmul', warning_logs.records))
       self.assertTrue(
           self._any_warning_contains('does not have min or max values',
-                                     warnings_list))
+                                     warning_logs.records))
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
@@ -1041,24 +1036,34 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
-    with warnings.catch_warnings(record=True) as warnings_list:
-      converted_model = quantize_model.quantize(
-          input_saved_model_path, ['serving_default'],
-          tags,
-          output_directory,
-          quantization_options,
-          representative_dataset=data_gen())
+    with self.assertLogs(level='WARN') as warning_logs:
+      # Save the logger verbosity.
+      log_level = logging.get_verbosity()
+      logging.set_verbosity(logging.WARN)
 
-      self.assertNotEmpty(warnings_list)
+      try:
+        converted_model = quantize_model.quantize(
+            input_saved_model_path, ['serving_default'],
+            tags,
+            output_directory,
+            quantization_options,
+            representative_dataset=data_gen())
+      finally:
+        # Restore the logger verbosity.
+        logging.set_verbosity(log_level)
+
+      self.assertNotEmpty(warning_logs.records)
 
       # Warning message should contain the function name. The uncalibrated path
       # is when the condition is true, so 'cond_true' function must be part of
       # the warning message.
-      self.assertTrue(self._any_warning_contains('cond_true', warnings_list))
-      self.assertFalse(self._any_warning_contains('cond_false', warnings_list))
+      self.assertTrue(
+          self._any_warning_contains('cond_true', warning_logs.records))
+      self.assertFalse(
+          self._any_warning_contains('cond_false', warning_logs.records))
       self.assertTrue(
           self._any_warning_contains('does not have min or max values',
-                                     warnings_list))
+                                     warning_logs.records))
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
@@ -1505,27 +1510,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_model(self):
-
-    class SimpleMatmulModel(module.Module):
-
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
-      ])
-      def matmul(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
-        """Performs a matrix multiplication.
-
-        Args:
-          input_tensor: Input tensor to matmul with the filter.
-
-        Returns:
-          A map of: output key -> output result.
-        """
-        filters = np.random.uniform(
-            low=-1.0, high=1.0, size=(4, 3)).astype('f4')
-        out = math_ops.matmul(input_tensor, filters)
-        return {'output': out}
-
-    model = SimpleMatmulModel()
+    model = self._create_matmul_model()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
@@ -1549,39 +1534,13 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(
         self._contains_quantized_function_call(output_meta_graphdef))
+    self.assertTrue(
+        self._contains_op(output_meta_graphdef, 'UniformQuantizedDotHybrid'))
+    self.assertFalse(self._contains_op(output_meta_graphdef, 'MatMul'))
 
   @test_util.run_in_graph_and_eager_modes
   def test_conv_model(self):
-
-    class ConvModel(module.Module):
-
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
-      ])
-      def conv(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
-        """Performs a 2D convolution operation.
-
-        Args:
-          input_tensor: Input tensor to perform convolution on.
-
-        Returns:
-          A map of: output key -> output result.
-        """
-        filters = np.random.uniform(
-            low=-10, high=10, size=(2, 3, 3, 2)).astype('f4')
-        bias = np.random.uniform(low=0, high=10, size=(2)).astype('f4')
-        out = nn_ops.conv2d(
-            input_tensor,
-            filters,
-            strides=[1, 1, 2, 1],
-            dilations=[1, 1, 1, 1],
-            padding='SAME',
-            data_format='NHWC')
-        out = nn_ops.bias_add(out, bias, data_format='NHWC')
-        out = nn_ops.relu6(out)
-        return {'output': out}
-
-    model = ConvModel()
+    model = self._create_conv2d_model()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
 
@@ -1614,7 +1573,6 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   )
   @test_util.run_v2_only
   def test_gather_model(self, use_variable):
-
     model = self._create_gather_model(use_variable)
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -1668,8 +1626,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     tags = {tag_constants.SERVING}
     data_gen = self._create_data_generator(
         input_key='input', shape=input_placeholder.shape)
-    with self.assertRaisesRegex(RuntimeError,
-                                'Failed to retrieve MetaGraphDef'):
+    with self.assertRaisesRegex(ValueError, 'Failed to import SavedModel'):
       quantize_model.quantize(
           input_saved_model_path,
           signature_keys,
@@ -1677,6 +1634,43 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           output_directory,
           quantization_options,
           representative_dataset=data_gen)
+
+  @parameterized.named_parameters(
+      ('quantize', True, 0),
+      ('not_quantize', False, 10000),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_minimum_elements_for_weights(self, quantize, num_elements):
+    model = self._create_matmul_model()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
+        op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
+    quantization_options.min_num_elements_for_weights = num_elements
+
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              ['serving_default'], tags,
+                                              output_directory,
+                                              quantization_options)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    if quantize:
+      self.assertTrue(
+          self._contains_quantized_function_call(output_meta_graphdef))
+    else:
+      self.assertFalse(
+          self._contains_quantized_function_call(output_meta_graphdef))
 
   @parameterized.named_parameters(
       ('use_constant', False),
@@ -1721,7 +1715,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_non_empty_directory_raises_file_exists_error(self):
-    model = MatmulModel()
+    model = self._create_matmul_model()
 
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -1745,7 +1739,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_non_empty_directory_overwritten(self):
-    model = MatmulModel()
+    model = self._create_matmul_model()
 
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)

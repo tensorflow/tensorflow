@@ -1,7 +1,7 @@
 # Tools and utilities that aid in XLA development and usage.
 
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
@@ -37,6 +37,10 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/lib/io:buffered_inputstream",
+        "//tensorflow/tsl/lib/io:random_inputstream",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ],
@@ -56,6 +60,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -83,6 +88,8 @@ cc_library(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/lib/io:record_reader",
+        "//tensorflow/tsl/platform:logging",
         "//third_party/eigen3",
         "@com_google_absl//absl/types:span",
     ],
@@ -122,6 +129,8 @@ tf_cc_binary(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -133,6 +142,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 
@@ -146,6 +156,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 
@@ -164,6 +175,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -183,6 +195,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -198,6 +211,8 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -209,7 +224,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
+        "//tensorflow/tsl/platform:test",
     ],
 )
 
@@ -246,6 +261,8 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/core:protos_all_cc",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
@@ -269,7 +286,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:regexp",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:regexp",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -281,7 +300,8 @@ tf_cc_test(
         ":hlo_module_loader",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//tensorflow/core:test",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
     ],
 )
 
@@ -297,9 +317,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_runner_interface",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/stream_executor:platform",
-        "//tensorflow/stream_executor/lib",
+        "//tensorflow/compiler/xla/stream_executor:platform",
+        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:errors",
     ],
 )
 
@@ -342,9 +362,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -364,12 +384,13 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/core/platform:test",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/tsl/platform:test",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]),
@@ -403,7 +424,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//tensorflow/core:test",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -415,4 +437,14 @@ cc_library(
     srcs = ["driver.cc"],
     tags = ["nofixdeps"],
     deps = [],
+)
+
+tf_cc_binary(
+    name = "compute_cost",
+    srcs = ["compute_cost.cc"],
+    deps = [
+        ":hlo_module_loader",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/tsl/platform:platform_port",
+    ],
 )

@@ -73,6 +73,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -213,6 +214,26 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
                                          bool is_constant = false,
                                          bool is_intermediate = false) {
   mlir::Type elem_type = ConvertElementType(tensor.type, builder);
+  if (tensor.type == tflite::TensorType_VARIANT) {
+    llvm::SmallVector<mlir::TensorType> tensor_types;
+    if (tensor.variant_tensors.size() > 1) {
+      return errors::InvalidArgument(
+          "Have more than one nested type in `variant_tensors`.");
+    }
+    for (const auto& nested_tensor : tensor.variant_tensors) {
+      mlir::Type nested_elem_type =
+          ConvertElementType(nested_tensor->type, builder);
+      if (nested_tensor->has_rank) {
+        llvm::SmallVector<int64_t> shape(nested_tensor->shape.begin(),
+                                         nested_tensor->shape.end());
+        tensor_types.push_back(
+            tensorflow::GetTypeFromTFTensorShape(shape, nested_elem_type));
+      } else {
+        tensor_types.push_back(UnrankedTensorType::get(nested_elem_type));
+      }
+    }
+    elem_type = mlir::TF::VariantType::get(tensor_types, builder.getContext());
+  }
   if (IsQuantized(tensor)) {
     TF_ASSIGN_OR_RETURN(elem_type,
                         GetQuantizedType(tensor, builder, is_constant));
@@ -232,13 +253,13 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
   if (!tensor.shape_signature.empty()) {
     llvm::SmallVector<int64_t, 4> shape(tensor.shape_signature.begin(),
                                         tensor.shape_signature.end());
-    return RankedTensorType::get(shape, elem_type);
+    return tensorflow::GetTypeFromTFTensorShape(shape, elem_type);
   }
 
   if (!tensor.shape.empty()) {
     llvm::SmallVector<int64_t, 4> shape(tensor.shape.begin(),
                                         tensor.shape.end());
-    return RankedTensorType::get(shape, elem_type);
+    return tensorflow::GetTypeFromTFTensorShape(shape, elem_type);
   }
 
   return UnrankedTensorType::get(elem_type);
@@ -274,7 +295,7 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
   }
   // The layer stats contain only the first min/max pairs.
   mlir::ElementsAttr layer_stats = mlir::DenseFPElementsAttr::get(
-      mlir::RankedTensorType::get({2}, b.getF32Type()),
+      tensorflow::GetTypeFromTFTensorShape({2}, b.getF32Type()),
       {min_maxs[0], min_maxs[1]});
   mlir::ElementsAttr axis_stats;
   mlir::IntegerAttr axis;
@@ -282,7 +303,7 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
     llvm::SmallVector<int64_t, 4> axis_stats_shape{
         static_cast<int64_t>(mins.size()), 2};
     axis_stats = mlir::DenseFPElementsAttr::get(
-        mlir::RankedTensorType::get(axis_stats_shape, b.getF32Type()),
+        tensorflow::GetTypeFromTFTensorShape(axis_stats_shape, b.getF32Type()),
         min_maxs);
     // TODO(fengliuai): this quantization dimension isn't correct.
     axis = b.getI64IntegerAttr(tensor.quantization->quantized_dimension);
@@ -428,8 +449,8 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
     bit_width = itype.getWidth();
   } else if (auto qtype = elem_type.dyn_cast<QuantizedType>()) {
     bit_width = qtype.getStorageTypeIntegralWidth();
-    shaped_type = mlir::RankedTensorType::get(shaped_type.getShape(),
-                                              qtype.getStorageType());
+    shaped_type = tensorflow::GetTypeFromTFTensorShape(shaped_type.getShape(),
+                                                       qtype.getStorageType());
   } else {
     return errors::InvalidArgument("unsupported integer constant type");
   }
@@ -499,8 +520,8 @@ static mlir::ElementsAttr GetSplat(RankedTensorType type, int unique_index,
         type, builder.getFloatAttr(element_ty, unique_index));
 
   if (auto qtype = element_ty.dyn_cast<QuantizedType>()) {
-    mlir::RankedTensorType new_type =
-        RankedTensorType::get(type.getShape(), qtype.getStorageType());
+    mlir::RankedTensorType new_type = tensorflow::GetTypeFromTFTensorShape(
+        type.getShape(), qtype.getStorageType());
     return DenseElementsAttr::get(
         new_type, builder.getIntegerAttr(qtype.getStorageType(), unique_index));
   }
@@ -605,7 +626,7 @@ static StatusOr<Operation*> BuildSparseConstOp(
 
   auto value_type = shaped_type;
   if (IsQuantized(tensor)) {
-    value_type = RankedTensorType::get(
+    value_type = tensorflow::GetTypeFromTFTensorShape(
         shaped_type.getShape(), shaped_type.getElementType()
                                     .dyn_cast<mlir::quant::QuantizedType>()
                                     .getStorageType());
@@ -813,7 +834,7 @@ StatusOr<Operation*> ConvertOp(
       // converter and kernel, so we create the second operand, which is
       // required by the new converter, from the reshape op's option.
       auto new_shape = op.builtin_options.AsReshapeOptions()->new_shape;
-      auto shape_type = RankedTensorType::get(
+      auto shape_type = tensorflow::GetTypeFromTFTensorShape(
           {static_cast<int64_t>(new_shape.size())}, builder.getIntegerType(32));
 
       mlir::SmallVector<mlir::Attribute, 4> shape;
@@ -880,7 +901,7 @@ StatusOr<Operation*> ConvertOp(
               builder.getI32IntegerAttr(static_cast<int32_t>(size)));
           ++dim_size;
         }
-        auto shape_type = RankedTensorType::get(
+        auto shape_type = tensorflow::GetTypeFromTFTensorShape(
             {static_cast<int32_t>(dim_size)}, builder.getIntegerType(32));
         auto output_shape = mlir::DenseElementsAttr::get(shape_type, shape);
         auto shape_op = builder.create<tfl::ConstOp>(loc, output_shape);
@@ -1303,7 +1324,7 @@ StatusOr<FuncOp> ConvertSubgraph(
           return emitError(const_loc, op_or_err.status().ToString()),
                  op_or_err.status();
         }
-        vals_map[input_num] = op_or_err.ValueOrDie()->getResult(0);
+        vals_map[input_num] = op_or_err.value()->getResult(0);
       }
     }
 
@@ -1360,7 +1381,7 @@ StatusOr<FuncOp> ConvertSubgraph(
         return emitError(const_loc, op_or_err.status().ToString()),
                op_or_err.status();
       }
-      vals_map[index] = op_or_err.ValueOrDie()->getResult(0);
+      vals_map[index] = op_or_err.value()->getResult(0);
     }
     return_operands.push_back(vals_map[index]);
   }

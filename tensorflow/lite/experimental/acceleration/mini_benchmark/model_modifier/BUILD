@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 
@@ -39,6 +41,7 @@ cc_library(
         ":validation_graph_builder",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:decode_jpeg_status",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:jpeg_common",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:jpeg_header_parser",
@@ -57,7 +60,7 @@ cc_library(
     hdrs = ["validation_graph_builder.h"],
     deps = [
         ":grafter",
-        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
@@ -74,11 +77,47 @@ cc_binary(
     deps = [
         ":embedder",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:decode_jpeg",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
         "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "custom_validation_embedder",
+    srcs = ["custom_validation_embedder.cc"],
+    hdrs = ["custom_validation_embedder.h"],
+    deps = [
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "custom_validation_embedder_test",
+    srcs = ["custom_validation_embedder_test.cc"],
+    deps = [
+        ":custom_validation_embedder",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_model",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:mini_benchmark_test_helper",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:model_loader",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
