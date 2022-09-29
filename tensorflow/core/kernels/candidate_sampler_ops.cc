@@ -73,6 +73,12 @@ class BaseCandidateSamplerOp : public OpKernel {
 
     gtl::ArraySlice<int64_t> true_candidate(
         true_classes.matrix<int64_t>().data(), batch_size * num_true_);
+    for (const auto& index : true_candidate) {
+      OP_REQUIRES(context, index < sampler_->range(),
+                  errors::InvalidArgument(absl::StrCat(
+                      "True candidate index should be less than range(",
+                      sampler_->range(), "). Recieved ", index)));
+    }
     gtl::MutableArraySlice<int64_t> sampled_candidate(
         out_sampled_candidates->vec<int64_t>().data(), num_sampled_);
     gtl::MutableArraySlice<float> true_expected_count(
