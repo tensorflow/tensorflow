@@ -18,7 +18,6 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
@@ -127,19 +126,6 @@ class RangeSamplerOpsTest(test.TestCase):
     # Accounts for the fact that the same random seed may be picked
     # twice very rarely.
     self.assertLessEqual(num_same, 2)
-
-  def testOutOfBoundCheck(self):
-    with self.cached_session():
-      with self.assertRaises(errors.InvalidArgumentError):
-        candidates = candidate_sampling_ops.gen_candidate_sampling_ops.ThreadUnsafeUnigramCandidateSampler(
-            true_classes=[[0x100000, 1]],
-            num_true=2,
-            num_sampled=2,
-            unique=False,
-            range_max=2,
-            seed=2,
-            seed2=2)
-        self.evaluate(candidates)
 
 
 if __name__ == "__main__":
