@@ -24,7 +24,7 @@ def make_cumsum_tests(options):
   """Make a set of tests to do cumsum."""
 
   test_parameters = [{
-      "shape": [(3, 6), (8, 9, 7)],
+      "shape": [(3, 6), (8, 9, 7), (2, 4, 3, 5)],
       "dtype": [tf.int32, tf.int64, tf.float32],
       "axis": [0, 1],
       "exclusive": [True, False],
