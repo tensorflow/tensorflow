@@ -18,7 +18,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 
 #include "mlir-hlo/Transforms/rewriters.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"

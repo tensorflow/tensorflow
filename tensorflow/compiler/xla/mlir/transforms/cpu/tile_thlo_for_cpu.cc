@@ -16,7 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -35,7 +35,7 @@ namespace {
 struct TileThloForCpuPass
     : public impl::TileThloForCpuPassBase<TileThloForCpuPass> {
   void getDependentDialects(DialectRegistry &registry) const final {
-    registry.insert<mlir::gml_st::GmlStDialect, arith::ArithmeticDialect,
+    registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
                     tensor::TensorDialect>();
     mlir::gml_st::registerGmlStTilingInterfaceExternalModels(registry);
   }

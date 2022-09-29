@@ -28,7 +28,7 @@ cc_library(
     visibility = ["//tensorflow/compiler/xla:runtime"],
     deps = [
         "//tensorflow/compiler/xla/mlir/transforms/runtime:passes",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:AsyncToLLVM",
         "@llvm-project//mlir:AsyncTransforms",

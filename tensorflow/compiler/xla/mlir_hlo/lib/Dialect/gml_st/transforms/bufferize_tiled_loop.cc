@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
@@ -397,8 +397,7 @@ struct TiledLoopBufferizePass
     auto &context = getContext();
     ConversionTarget target(context);
     target.addLegalDialect<
-        mlir::arith::ArithmeticDialect,
-        mlir::bufferization::BufferizationDialect,
+        mlir::arith::ArithDialect, mlir::bufferization::BufferizationDialect,
         mlir::complex::ComplexDialect, mlir::lmhlo::LmhloDialect,
         mlir::AffineDialect, mlir::vector::VectorDialect,
         mlir::memref::MemRefDialect, mlir::func::FuncDialect,

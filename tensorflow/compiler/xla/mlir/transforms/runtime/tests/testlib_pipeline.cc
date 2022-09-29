@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Async/IR/Async.h"  // from @llvm-project
 #include "mlir/Dialect/Async/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -37,7 +37,7 @@ namespace runtime {
 void RegisterXlaRuntimeTestlibDialects(mlir::DialectRegistry& registry) {
   // Register MLIR dialects supported by the Xla runtime tests.
   registry
-      .insert<mlir::arith::ArithmeticDialect, mlir::async::AsyncDialect,
+      .insert<mlir::arith::ArithDialect, mlir::async::AsyncDialect,
               mlir::scf::SCFDialect, mlir::func::FuncDialect, RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.

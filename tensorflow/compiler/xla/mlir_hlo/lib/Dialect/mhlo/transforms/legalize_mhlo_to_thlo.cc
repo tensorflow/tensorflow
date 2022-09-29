@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -620,7 +620,7 @@ class LegalizeMHLOToTHLOPass
     ConversionTarget target(*ctx);
     // clang-format off
     target.addLegalDialect<
-        arith::ArithmeticDialect,
+        arith::ArithDialect,
         complex::ComplexDialect,
         linalg::LinalgDialect,
         math::MathDialect,

@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -124,7 +124,7 @@ void TileLoopsPass::runOnOperation() {
   // number of iterations.
   RewritePatternSet patterns(&getContext());
   getContext()
-      .getOrLoadDialect<arith::ArithmeticDialect>()
+      .getOrLoadDialect<arith::ArithDialect>()
       ->getCanonicalizationPatterns(patterns);
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();

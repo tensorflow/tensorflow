@@ -526,7 +526,7 @@ cc_library(
         ":stablehlo_enums_inc_gen",
         ":stablehlo_ops_inc_gen",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BytecodeReader",
         "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:ComplexDialect",

@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -128,7 +128,7 @@ class TFMhloTFLPass
   void getDependentDialects(DialectRegistry &registry) const override {
     mlir::mhlo::registerAllMhloDialects(registry);
     mlir::stablehlo::registerAllDialects(registry);
-    registry.insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
+    registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                     mlir::TFL::TensorFlowLiteDialect>();
   }
 
@@ -176,7 +176,7 @@ void TFMhloTFLPass::runOnOperation() {
   target.addIllegalDialect<shape::ShapeDialect>();
   target.addIllegalDialect<::mlir::mhlo::MhloDialect>();
   // Final expected dialects.
-  target.addLegalDialect<arith::ArithmeticDialect>();
+  target.addLegalDialect<arith::ArithDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<TFL::TensorFlowLiteDialect>();
 

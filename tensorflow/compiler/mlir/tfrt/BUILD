@@ -125,7 +125,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:symbolic_shape_optimization",
         "//tensorflow/core:ops",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",

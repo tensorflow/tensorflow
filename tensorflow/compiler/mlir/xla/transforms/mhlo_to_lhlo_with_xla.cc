@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -172,10 +172,9 @@ namespace {
 class XlaHloToLhloPass
     : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry
-        .insert<arith::ArithmeticDialect, bufferization::BufferizationDialect,
-                func::FuncDialect, memref::MemRefDialect, mhlo::MhloDialect,
-                lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
+    registry.insert<arith::ArithDialect, bufferization::BufferizationDialect,
+                    func::FuncDialect, memref::MemRefDialect, mhlo::MhloDialect,
+                    lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
   }
 
  public:
@@ -1707,9 +1706,8 @@ std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
 Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
   module.getContext()
-      ->loadDialect<arith::ArithmeticDialect,
-                    bufferization::BufferizationDialect, func::FuncDialect,
-                    memref::MemRefDialect, mhlo::MhloDialect,
+      ->loadDialect<arith::ArithDialect, bufferization::BufferizationDialect,
+                    func::FuncDialect, memref::MemRefDialect, mhlo::MhloDialect,
                     lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
 
   module->setLoc(mlir::NameLoc::get(

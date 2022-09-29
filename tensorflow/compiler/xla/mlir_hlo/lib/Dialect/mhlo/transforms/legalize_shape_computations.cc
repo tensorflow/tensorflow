@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -191,8 +191,8 @@ struct HloLegalizeShapeComputationsPass
     : public impl::HloLegalizeShapeComputationsPassBase<
           HloLegalizeShapeComputationsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<arith::ArithmeticDialect, math::MathDialect,
-                    func::FuncDialect, tensor::TensorDialect>();
+    registry.insert<arith::ArithDialect, math::MathDialect, func::FuncDialect,
+                    tensor::TensorDialect>();
   }
 
   void runOnOperation() override {
