@@ -270,6 +270,9 @@ third_party/nccl/nccl_configure.bzl:
 third_party/nccl/system.BUILD.tpl:
 third_party/nlohmann_json.BUILD:
 third_party/opt_einsum.BUILD:
+third_party/ortools/BUILD:
+third_party/ortools/glpk.BUILD:
+third_party/ortools/ortools.patch:
 third_party/png.BUILD:
 third_party/png_fix_rpi.patch:
 third_party/pprof.BUILD:
