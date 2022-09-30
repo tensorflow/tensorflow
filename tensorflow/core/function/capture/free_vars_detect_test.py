@@ -36,11 +36,8 @@ class FreeVarDetectionTest(parameterized.TestCase):
     def f(x):
       return x + 1
 
-    # a map: func_name -> free_vars
     func_map = free_vars_detect.detect_function_free_vars(f)
-    self.assertIn("f", func_map.keys())
-    free_vars = get_var_name(func_map["f"])
-    self.assertEmpty(free_vars)
+    self.assertEmpty(func_map)
 
   def test_func_local_var(self):
 
@@ -49,9 +46,7 @@ class FreeVarDetectionTest(parameterized.TestCase):
       return x + 1
 
     func_map = free_vars_detect.detect_function_free_vars(f)
-    self.assertIn("f", func_map.keys())
-    free_vars = get_var_name(func_map["f"])
-    self.assertEmpty(free_vars)
+    self.assertEmpty(func_map)
 
   def test_global_var_int(self):
     x = 1
@@ -63,6 +58,14 @@ class FreeVarDetectionTest(parameterized.TestCase):
     self.assertIn("f", func_map.keys())
     free_vars = get_var_name(func_map["f"])
     self.assertSequenceEqual(free_vars, ["x"])
+
+  def test_builtin_func(self):
+
+    def f(x):
+      return len(x)
+
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertEmpty(func_map)
 
   def test_global_var_dict(self):
     glob = {"a": 1}
@@ -101,16 +104,45 @@ class FreeVarDetectionTest(parameterized.TestCase):
   def test_lambda_wo_free_var(self):
     f = lambda x: x + x
     func_map = free_vars_detect.detect_function_free_vars(f)
-    self.assertIn("<lambda>", func_map.keys())
-    free_vars = get_var_name(func_map["<lambda>"])
-    self.assertEmpty(free_vars)
+    self.assertEmpty(func_map)
 
   def test_lambda_w_free_var(self):
     glob = 1
     f = lambda x: x + glob
     func_map = free_vars_detect.detect_function_free_vars(f)
-    self.assertIn("<lambda>", func_map.keys())
-    free_vars = get_var_name(func_map["<lambda>"])
+    self.assertIn("f", func_map.keys())
+    free_vars = get_var_name(func_map["f"])
+    self.assertSequenceEqual(free_vars, ["glob"])
+
+  def test_multi_lambda_w_free_var(self):
+    glob = 1
+    g = lambda x: x + glob
+    h = lambda: glob + 1
+
+    def f(x):
+      return g(x) + h()
+
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertLen(func_map, 3)
+    self.assertIn("f", func_map.keys())
+    self.assertIn("g", func_map.keys())
+    self.assertIn("h", func_map.keys())
+    free_vars = get_var_name(func_map["f"])
+    self.assertSequenceEqual(free_vars, ["g", "h"])
+    free_vars = get_var_name(func_map["g"])
+    self.assertSequenceEqual(free_vars, ["glob"])
+    free_vars = get_var_name(func_map["h"])
+    self.assertSequenceEqual(free_vars, ["glob"])
+
+  def test_lambda_inline(self):
+    glob = 1
+
+    def f(x):
+      return lambda: x + glob
+
+    func_map = free_vars_detect.detect_function_free_vars(f)
+    self.assertIn("f", func_map.keys())
+    free_vars = get_var_name(func_map["f"])
     self.assertSequenceEqual(free_vars, ["glob"])
 
   def test_glob_numpy_var(self):
@@ -160,6 +192,106 @@ class FreeVarDetectionTest(parameterized.TestCase):
     self.assertSequenceEqual(free_vars, ["g"])
     free_vars = get_var_name(func_map["g"])
     self.assertSequenceEqual(free_vars, ["x"])
+
+  def test_method(self):
+    x = 1
+
+    class Foo():
+
+      def f(self):
+        return x
+
+    foo = Foo()
+    func_map = free_vars_detect.detect_function_free_vars(foo.f)
+    self.assertLen(func_map.keys(), 1)
+    self.assertIn("Foo.f", func_map.keys())
+    free_vars = get_var_name(func_map["Foo.f"])
+    self.assertSequenceEqual(free_vars, ["x"])
+
+  def test_classmethod_w_method_call(self):
+    x = 0
+
+    class Foo():
+
+      def f(self):
+        return self.g
+
+      def g(self):
+        return [x]
+
+    foo = Foo()
+    func_map = free_vars_detect.detect_function_free_vars(foo.f)
+    self.assertLen(func_map.keys(), 2)
+
+    self.assertIn("Foo.f", func_map.keys())
+    free_vars = get_var_name(func_map["Foo.f"])
+    self.assertSequenceEqual(free_vars, ["self.g"])
+
+    self.assertIn("Foo.g", func_map.keys())
+    free_vars = get_var_name(func_map["Foo.g"])
+    self.assertSequenceEqual(free_vars, ["x"])
+
+  def test_classmethod_w_multiple_attributes(self):
+    glob = "dummy_value"
+
+    class Foo():
+
+      def f(self):
+        return self.g.h.x.y.z
+
+      def g(self):
+        return glob
+
+    foo = Foo()
+    func_map = free_vars_detect.detect_function_free_vars(foo.f)
+    self.assertLen(func_map.keys(), 2)
+
+    self.assertIn("Foo.f", func_map.keys())
+    free_vars = get_var_name(func_map["Foo.f"])
+    self.assertSequenceEqual(free_vars, ["self.g"])
+
+    self.assertIn("Foo.g", func_map.keys())
+    free_vars = get_var_name(func_map["Foo.g"])
+    self.assertSequenceEqual(free_vars, ["glob"])
+
+  def test_classmethod_decorator(self):
+    glob = 1
+
+    class Foo():
+
+      @classmethod
+      def f(cls):
+        return glob
+
+    func_map = free_vars_detect.detect_function_free_vars(Foo.f)
+    self.assertLen(func_map.keys(), 1)
+    self.assertIn("Foo.f", func_map.keys())
+    free_vars = get_var_name(func_map["Foo.f"])
+    self.assertSequenceEqual(free_vars, ["glob"])
+
+  def test_method_call_classmethod(self):
+    glob = 1
+
+    class Foo():
+
+      def f(self):
+        return self.g()
+
+      @classmethod
+      def g(cls):
+        return glob
+
+    foo = Foo()
+    func_map = free_vars_detect.detect_function_free_vars(foo.f)
+    self.assertLen(func_map.keys(), 2)
+
+    self.assertIn("Foo.f", func_map.keys())
+    free_vars = get_var_name(func_map["Foo.f"])
+    self.assertSequenceEqual(free_vars, ["self.g"])
+
+    self.assertIn("Foo.g", func_map.keys())
+    free_vars = get_var_name(func_map["Foo.g"])
+    self.assertSequenceEqual(free_vars, ["glob"])
 
   def test_global_var_from_renamed_outer_func(self):
     x = 1
