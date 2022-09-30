@@ -18,6 +18,7 @@ def repo(name):
         build_file = "//third_party/llvm:llvm.BUILD",
         patch_file = [
             "//third_party/llvm:build.patch",
+            "//third_party/llvm:mathextras.patch",
             "//third_party/llvm:toolchains.patch",
             "//third_party/llvm:temporary.patch",  # Cherry-picks and temporary reverts. Do not remove even if temporary.patch is empty.
         ],
