@@ -514,6 +514,13 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(empty_row_indicator_out,
                             np.array([0, 0, 1, 0, 1]).astype(np.bool_))
 
+  def testSparseFillEmptyRowsGradEmpty(self):
+    with test_util.use_gpu():
+      grad, _ = self.evaluate(
+          sparse_ops.sparse_fill_empty_rows_grad(
+              reverse_index_map=[], grad_values=[]))
+      self.assertAllEqual(grad, [])
+
   @test_util.run_deprecated_v1
   def testFillFloat(self):
     with self.session():
