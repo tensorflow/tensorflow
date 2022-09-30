@@ -1780,19 +1780,6 @@ cc_library(
     ],
 )
 
-tf_cc_test(
-    name = "gpu_compiler_test",
-    srcs = ["gpu_compiler_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":horizontal_loop_fusion",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/service:hlo_matchers",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-    ],
-)
-
 cc_library(
     name = "nvptx_compiler",
     srcs = if_cuda_is_configured([
