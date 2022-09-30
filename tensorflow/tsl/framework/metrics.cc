@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/tsl/framework/metrics.h"
 
 #include <cstdint>
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/lib/monitoring/counter.h"
-#include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
+#include "tensorflow/tsl/lib/monitoring/counter.h"
+#include "tensorflow/tsl/lib/monitoring/gauge.h"
+#include "tensorflow/tsl/lib/monitoring/sampler.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace metrics {
 namespace {
 
@@ -362,7 +362,7 @@ void RecordTFDataServiceJobsCreated(
     const tensorflow::data::ProcessingModeDef& processing_mode,
     bool is_coordinated_read) {
   const std::string sharding_policy_str =
-      data::ProcessingModeDef::ShardingPolicy_Name(
+      tensorflow::data::ProcessingModeDef::ShardingPolicy_Name(
           processing_mode.sharding_policy());
   const std::string coordinated_read_str =
       is_coordinated_read ? "true" : "false";
@@ -378,7 +378,7 @@ void RecordTFDataServiceClientIterators(
   const std::string deployment_mode_str =
       tensorflow::data::DeploymentMode_Name(deployment_mode);
   const std::string sharding_policy_str =
-      data::ProcessingModeDef::ShardingPolicy_Name(
+      tensorflow::data::ProcessingModeDef::ShardingPolicy_Name(
           processing_mode.sharding_policy());
   const std::string coordinated_read_str =
       is_coordinated_read ? "true" : "false";
@@ -403,7 +403,8 @@ void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
 
-void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
+void RecordTFDataAutoShard(const string& id,
+                           tensorflow::data::AutoShardPolicy policy,
                            int64 num_workers, int64 num_replicas) {
   tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64_t>(policy));
   tf_data_auto_shard->GetCell(id, "num_workers")->Set(num_workers);
@@ -591,4 +592,4 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
 }
 
 }  // namespace metrics
-}  // namespace tensorflow
+}  // namespace tsl

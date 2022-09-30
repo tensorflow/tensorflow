@@ -28,6 +28,13 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "framework_internal_impl_srcs",
+    srcs = [
+        "metrics.cc",
+    ],
+)
+
 # Files needed for core:framework_internal_impl.
 filegroup(
     name = "framework_internal_private_hdrs",
@@ -36,6 +43,7 @@ filegroup(
         "allocator_registry.h",
         "cancellation.h",
         "device_type.h",
+        "metrics.h",
         "numeric_types.h",
         "tracking_allocator.h",
         "type_traits.h",
@@ -65,6 +73,8 @@ filegroup(
     srcs = [
         "cancellation.cc",
         "cancellation.h",
+        "metrics.cc",
+        "metrics.h",
     ],
 )
 
@@ -274,6 +284,24 @@ cc_library(
 )
 
 cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/tsl/lib/monitoring:counter",
+        "//tensorflow/tsl/lib/monitoring:gauge",
+        "//tensorflow/tsl/lib/monitoring:sampler",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "type_traits",
     hdrs = ["type_traits.h"],
     visibility = [
@@ -342,6 +370,7 @@ exports_files(
         "bfc_allocator.cc",
         "bfc_allocator.h",
         "device_type.h",
+        "metrics.h",
         "shared_counter.h",
         "tracking_allocator.h",
     ],
