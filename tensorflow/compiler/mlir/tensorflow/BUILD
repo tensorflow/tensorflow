@@ -1005,6 +1005,7 @@ cc_library(
         "transforms/lower_variable_ops_to_ml_program.cc",
         "transforms/optimize_global_tensors.cc",
         "transforms/remove_vars_in_session_initializer.cc",
+        "transforms/strip_saved_module_metadata.cc",
     ],
     hdrs = [
         "transforms/tf_saved_model_passes.h",

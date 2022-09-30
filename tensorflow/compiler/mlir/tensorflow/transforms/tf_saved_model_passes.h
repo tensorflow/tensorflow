@@ -57,6 +57,9 @@ std::unique_ptr<Pass> CreateLowerGlobalsToMlProgramPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLowerVariableOpsToMlProgramPass();
 
+// Strips saved_model attributes from a module and its functions.
+std::unique_ptr<OperationPass<ModuleOp>> CreateStripSavedModuleMetadataPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 
