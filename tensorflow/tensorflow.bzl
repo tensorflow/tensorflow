@@ -2137,9 +2137,20 @@ check_deps = rule(
     },
 )
 
-def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [], copts = [], **kwargs):
-    """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels.
-      """
+def tf_custom_op_library(
+        name,
+        srcs = [],
+        gpu_srcs = [],
+        deps = [],
+        gpu_deps = None,
+        linkopts = [],
+        copts = [],
+        **kwargs):
+    """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels."""
+
+    if not gpu_deps:
+        gpu_deps = []
+
     deps = deps + if_cuda_or_rocm([
         clean_dep("//tensorflow/core:stream_executor_headers_lib"),
     ]) + if_cuda([
@@ -2161,7 +2172,7 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             srcs = gpu_srcs,
             copts = copts + tf_copts() + _cuda_copts() + rocm_copts() +
                     if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
-            deps = deps,
+            deps = deps + gpu_deps,
             **kwargs
         )
         deps = deps + [":" + basename + "_gpu"]
