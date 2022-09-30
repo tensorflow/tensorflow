@@ -312,6 +312,45 @@ def _create_feed_dict_from_input_data(
   return feed_dict
 
 
+# TODO(b/249918070): Implement a progress bar.
+def _log_sample_num_for_calibration(
+    representative_dataset: repr_dataset.RepresentativeDataset,
+) -> repr_dataset.RepresentativeDataset:
+  """Logs the sample number for calibration.
+
+  If in debug logging level, the "sample number / total num samples" is logged
+  for every 5 iterations.
+
+  This is often useful when tracking the progress of the calibration step which
+  is often slow and may look stale if there's no logs being printed.
+
+  Args:
+    representative_dataset: The representative dataset.
+
+  Yields:
+    The representative samples from `representative_dataset` without any
+    modification.
+  """
+  num_samples: Optional[int] = repr_dataset.get_num_samples(
+      representative_dataset)
+  if num_samples is None:
+    total_num_samples = '?'
+    logging.info('Representative dataset size unknown.')
+  else:
+    total_num_samples = str(num_samples)
+    logging.info('Using representative dataset of size: %d', total_num_samples)
+
+  sample_num = 1
+  for sample in representative_dataset:
+    # Log the sample number for every 5 iterations.
+    logging.log_every_n(
+        logging.DEBUG, 'Running representative sample for calibration: %d / %s',
+        5, sample_num, total_num_samples)
+    yield sample
+
+    sample_num += 1
+
+
 def _run_function_for_calibration_graph_mode(
     sess: session.Session, signature_def: meta_graph_pb2.SignatureDef,
     representative_dataset: repr_dataset.RepresentativeDataset) -> None:
@@ -335,7 +374,9 @@ def _run_function_for_calibration_graph_mode(
 
   sample_validator = _create_sample_validator(
       expected_input_keys=signature_def.inputs.keys())
-  for sample in map(sample_validator, representative_dataset):
+
+  for sample in map(sample_validator,
+                    _log_sample_num_for_calibration(representative_dataset)):
     # Create a mapping from input tensor name to the input tensor value.
     # ex) "Placeholder:0" -> [0, 1, 2]
     feed_dict = _create_feed_dict_from_input_data(sample, signature_def)
@@ -422,7 +463,8 @@ def _run_function_for_calibration_eager_mode(
   sample_validator = _create_sample_validator(
       expected_input_keys=keyword_args.keys())
 
-  for sample in map(sample_validator, representative_dataset):
+  for sample in map(sample_validator,
+                    _log_sample_num_for_calibration(representative_dataset)):
     # Convert any non-Tensor values from the sample to Tensors.
     # This conversion is required because the model saved in `model_dir` is
     # saved using TF1 SavedModelBuilder, which doesn't save the

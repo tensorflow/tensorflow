@@ -228,7 +228,7 @@ pytype_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/client:session",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python/platform",
         "//tensorflow/python/types",
     ],
 )
