@@ -1924,6 +1924,8 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
               name=name,
               graph_mode=self._in_graph_mode)
           handle._parent_trackable = weakref.ref(self)
+          handle._name = handle_name + ":0"
+          handle._unique_id = unique_id
         # pylint: disable=protected-access
         if (self._in_graph_mode and initial_value is not None and
             initial_value.op._get_control_flow_context() is not None):
@@ -2040,7 +2042,8 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
     g = ops.get_default_graph()
     self._handle = g.as_graph_element(
         ops.prepend_name_scope(
-            variable_def.variable_name, import_scope=import_scope))
+            variable_def.variable_name, import_scope=import_scope),
+        allow_operation=False)
     self._shape = tensor_shape.TensorShape(self._handle.op.get_attr("shape"))
     self._handle_name = self._handle.name
     self._unique_id = self._handle_name
@@ -2101,8 +2104,16 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
       # using tf.placeholder.
       handle_data = handle_data_util.create_handle_data(shape, dtype)
       handle_data_util.set_handle_data(handle, handle_data)
+    # pylint: disable=protected-access
+    if hasattr(handle, "_name") and isinstance(handle._name, str):
+      handle_name = handle._name.rstrip(":0")
+    else:
+      handle_name = None
+    # pylint: enable=protected-access
+    unique_id = getattr(handle, "_unique_id", None)
     super().__init__(
-        trainable=trainable, shape=shape, dtype=dtype, handle=handle)
+        trainable=trainable, shape=shape, dtype=dtype, handle=handle,
+        unique_id=unique_id, handle_name=handle_name)
 
 
 class UninitializedVariable(BaseResourceVariable):
@@ -2175,6 +2186,8 @@ class UninitializedVariable(BaseResourceVariable):
             graph_mode=self._in_graph_mode,
             initial_value=extra_handle_data)
         handle._parent_trackable = weakref.ref(self)
+        handle._name = handle_name + ":0"
+        handle._unique_id = unique_id
 
         if self._in_graph_mode:
           # We only need to add the read_variable_op in TF1.
