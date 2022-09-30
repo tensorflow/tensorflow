@@ -64,8 +64,8 @@ tf_cc_test(
     srcs = ["timespan_test.cc"],
     deps = [
         ":timespan",
-        "//tensorflow/core/platform:test_main",
         "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 

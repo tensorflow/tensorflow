@@ -213,10 +213,10 @@ tf_cc_tests(
         ":int_type",
         ":iterator_range",
         ":map_util",
-        "//tensorflow/core/platform:test_main",
         "//tensorflow/tsl/platform:hash",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/platform:types",
     ],
 )
