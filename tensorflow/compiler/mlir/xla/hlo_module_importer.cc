@@ -56,7 +56,7 @@ Status HloModuleImporter::Import(const xla::HloModule& module) {
         *computation, module_, &function_map_, &builder_,
         /*is_main*/ computation == module_entry_computation));
 
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 Status HloModuleImporter::Import(const xla::HloModuleProto& module_proto) {

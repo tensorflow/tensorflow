@@ -47,8 +47,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 using llvm::APInt;
 using llvm::makeArrayRef;
@@ -141,7 +141,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
     std::string func_name, std::function<Status(sync_op)> mutate_op) {
   auto result_types = result_type.cast<mlir::TupleType>().getTypes();
   if (result_types.size() < 2) {
-    return tensorflow::errors::InvalidArgument(
+    return tsl::errors::InvalidArgument(
         "async_bundle must contain at least two values");
   }
   auto func_type =
@@ -182,13 +182,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncDone(
     const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
     mlir::Type result_type, mlir::OpBuilder* func_builder) {
   if (operands.size() != 1) {
-    return tensorflow::errors::InvalidArgument(
+    return tsl::errors::InvalidArgument(  // NOLINT
         "async-done must take only a single async_bundle operand");
   }
   auto async_start = operands[0].getDefiningOp<mlir::mhlo::AsyncStartOp>();
   if (!async_start)
-    return tensorflow::errors::InvalidArgument(
-        "*-start requires *-done as input");
+    return tsl::errors::InvalidArgument("*-start requires *-done as input");
   attributes.push_back(builder_->getNamedAttr(
       "called_computation",
       mlir::FlatSymbolRefAttr::get(builder_->getContext(),
@@ -358,7 +357,7 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   if (computation.root_instruction()->has_sharding()) {
     auto result = computation.root_instruction();
     if (function.getNumResults() != 1) {
-      return tensorflow::errors::Internal(absl::StrCat(
+      return tsl::errors::Internal(absl::StrCat(
           "Expected only a single result but got ", function.getNumResults()));
     }
     function.setResultAttr(
@@ -381,7 +380,7 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   return function;
 }
 
-tensorflow::Status HloFunctionImporter::ImportAsRegion(
+tsl::Status HloFunctionImporter::ImportAsRegion(
     const HloComputation& computation, mlir::Region* region,
     bool flatten_region_arg_tuple) {
   auto loc = region->getLoc();
@@ -510,7 +509,7 @@ Status HloFunctionImporter::ImportInstructions(
 
   CleanUpTupleOps(block, &builder);
 
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 StatusOr<Value> HloFunctionImporter::ImportInstructions(
@@ -1185,14 +1184,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // the former (tuple all-to-all) is not supported yet.
       auto all_to_all = Cast<HloAllToAllInstruction>(instruction);
       if (all_to_all->shape().IsTuple())
-        return tensorflow::errors::Unimplemented(
+        return tsl::errors::Unimplemented(
             "Importing tuple all-to-all HLO is not supported yet");
 
       // Check invariants of array all-to-all. This is a sanity check and is
       // verified by the HLO verifier.
       if (!all_to_all->split_dimension().has_value() || operands.size() != 1 ||
           all_to_all->replica_groups().empty())
-        return tensorflow::errors::InvalidArgument(
+        return tsl::errors::InvalidArgument(
             "Array all-to-all should have a split dimension, one operand and "
             "non-empty replica groups");
 
@@ -1263,7 +1262,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
               .getOperation();
 
         default:
-          return tensorflow::errors::InvalidArgument(absl::StrCat(
+          return tsl::errors::InvalidArgument(absl::StrCat(
               "Unsupported distribution: ",
               RandomDistributionToString(instruction->random_distribution())));
       }
@@ -1561,7 +1560,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto domain_kind = mlir::mhlo::symbolizeDomainKind(
           instruction->user_side_metadata().Kind());
       if (!domain_kind || *domain_kind != mlir::mhlo::DomainKind::sharding) {
-        return tensorflow::errors::InvalidArgument(
+        return tsl::errors::InvalidArgument(
             "Invalid domain kind in hlo -> mhlo import. Only 'sharding' is "
             "supported");
       }
@@ -1758,7 +1757,7 @@ StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(
   for (const auto& operand : instruction->operands()) {
     auto input_it = instruction_value_map_.find(operand);
     if (input_it == instruction_value_map_.end()) {
-      return tensorflow::errors::Internal(
+      return tsl::errors::Internal(
           absl::StrCat("Could not find input value: ", operand->name(),
                        " for instruction ", instruction->name()));
     }
@@ -1767,7 +1766,7 @@ StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(
   return operands;
 }
 
-tensorflow::Status HloFunctionImporter::GetMlirTypes(
+tsl::Status HloFunctionImporter::GetMlirTypes(
     const std::vector<HloInstruction*>& instructions,
     llvm::SmallVectorImpl<mlir::Type>* types) {
   for (auto instruction : instructions) {
@@ -1775,7 +1774,7 @@ tensorflow::Status HloFunctionImporter::GetMlirTypes(
                                            instruction->shape(), *builder_));
     types->push_back(ret_type);
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 StatusOr<Value> HloFunctionImporter::GetMlirValue(
@@ -1785,8 +1784,8 @@ StatusOr<Value> HloFunctionImporter::GetMlirValue(
     return lookup->second;
   }
 
-  return tensorflow::errors::Internal(absl::StrCat(
-      "Unable to find value for input: ", instruction->ToString()));
+  return tsl::errors::Internal(absl::StrCat("Unable to find value for input: ",
+                                            instruction->ToString()));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertComparisonDirection(
@@ -1913,7 +1912,7 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
     const xla::Shape& shape,
     llvm::SmallVectorImpl<mlir::Attribute>& flattened_attr) {
   if (shape.IsToken()) {
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
   if (shape.IsTuple()) {
     std::vector<mlir::Attribute> tuple_layouts;
@@ -1921,7 +1920,7 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
       TF_RETURN_IF_ERROR(
           ConvertShapeToMlirLayout(shape.tuple_shapes(i), flattened_attr));
     }
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
   if (shape.IsArray()) {
     const xla::Layout l = shape.layout();
@@ -1931,9 +1930,9 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
     }
     llvm::ArrayRef<mlir::Attribute> array_ref(minor_to_major);
     flattened_attr.push_back(builder_->getArrayAttr(array_ref));
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
-  return tensorflow::errors::Internal("Couldn't convert layout.");
+  return tsl::errors::Internal("Couldn't convert layout.");
 }
 
 }  // namespace xla

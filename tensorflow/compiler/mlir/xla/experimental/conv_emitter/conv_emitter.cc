@@ -601,7 +601,7 @@ Status ConvIsImplemented(const HloInstruction* conv) {
   if (window_util::HasDilation(conv->window())) {
     return Unimplemented("Dilation is not implemented.");
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 }  // namespace experimental

@@ -64,9 +64,10 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
-#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/tsl/platform/bfloat16.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace mlir {
 namespace mhlo {
@@ -1347,7 +1348,7 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
         int64_t pad_high_int64;
         int64_t input_size = input_ty.getDimSize(dim);
         if (input_size == ShapedType::kDynamicSize) return failure();
-        tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+        tsl::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
             input_size, filter_ty.getDimSize(i), dilation, stride, padding,
             &output_size, &pad_low_int64, &pad_high_int64);
         if (!status.ok()) return failure();

@@ -27,20 +27,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
 namespace {
 // Error collector that simply ignores errors reported.
-class NoOpErrorCollector : public tensorflow::protobuf::io::ErrorCollector {
+class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
  public:
   void AddError(int line, int column, const std::string& message) override {}
 };
 
 bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
-  tensorflow::protobuf::TextFormat::Parser parser;
+  tsl::protobuf::TextFormat::Parser parser;
   NoOpErrorCollector collector;
   parser.RecordErrorsTo(&collector);
   return hlo_proto->ParseFromString(contents) ||

@@ -162,7 +162,7 @@ Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
       HloToLhloModule(**assignment, **optimized_hlo_module, module),
       "converting HLO to LHLO");
 
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 namespace {
@@ -248,7 +248,7 @@ Status LhloDialectEmitter::CreateOperands(
   TF_RETURN_IF_ERROR(
       GetOrCreateView(instr, &operands, /*result_subset=*/{}, token_mode));
   num_results = operands.size() - num_arguments;
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 template <typename OpType>
@@ -459,7 +459,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return CreateOpInFusion(instr);
     default:
       llvm::errs() << instr->ToString();
-      return tensorflow::errors::Internal(
+      return tsl::errors::Internal(
           absl::StrCat("LHLO opcode ", xla::HloOpcodeString(instr->opcode()),
                        " is not supported."));
   }
@@ -489,7 +489,7 @@ Status WalkTuplePostOrder(Value v,
       for (Value sub_v : tuple.getVal()) {
         TF_RETURN_IF_ERROR(WalkTuplePostOrder(sub_v, visitor));
       }
-      return ::tensorflow::OkStatus();
+      return ::tsl::OkStatus();
     }
   }
   return visitor(v);
@@ -574,7 +574,7 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     TF_RETURN_IF_ERROR(GetOrCreateView(instr, &output));
     TF_RETURN_IF_ERROR(WalkTuplePostOrder(result, [&](Value v) mutable {
       region_builder.create<memref::TensorStoreOp>(loc, v, output[i++]);
-      return ::tensorflow::OkStatus();
+      return ::tsl::OkStatus();
     }));
     if (i != output.size()) {
       return xla::InternalError("output sizes don't match");
@@ -1009,7 +1009,7 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
     auto activation_attr = ::mlir::lmhlo_gpu::ActivationAttr::get(
         getLocation(custom_call).getContext(), activation);
     op.setActivationModeAttr(activation_attr);
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   };
 
   switch (kind) {
@@ -1135,7 +1135,7 @@ Status SetupCommonCollectiveOpAttributes(OpT op, const HloInstruction* instr,
   op.setConstrainLayoutAttr(
       builder.getBoolAttr(collective->constrain_layout()));
   SetupChannelIdAttribute(op, collective, builder);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 }  // namespace
 
@@ -1371,7 +1371,7 @@ Status LhloDialectEmitter::ImportAsLmhloRegion(xla::HloComputation* computation,
   TF_RETURN_IF_ERROR(
       computation->AcceptOrdered(this, schedule->instructions()));
   builder_.create<lmhlo::TerminatorOp>(builder_.getUnknownLoc());
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 StatusOr<lmhlo::CaseOp> LhloDialectEmitter::EmitCaseOp(
@@ -1476,11 +1476,11 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
     SmallVector<int64_t, 4> out_strides;
     auto out_memref_type = out_type.dyn_cast<MemRefType>();
     if (!out_memref_type)
-      return tensorflow::errors::Internal(
+      return tsl::errors::Internal(
           "Expected memref type when creating a view for leaf type of a "
           "tuple.");
     if (failed(getStridesAndOffset(out_memref_type, out_strides, out_offset)))
-      return tensorflow::errors::Internal(
+      return tsl::errors::Internal(
           "Failed to get strides and offset from the output type.");
     result = builder_.create<memref::ReinterpretCastOp>(
         loc, out_memref_type, result, out_offset, out_memref_type.getShape(),
@@ -1501,13 +1501,13 @@ Status LhloDialectEmitter::GetOrCreateViewImpl(
                               current_shape_index, values, token_mode));
       current_shape_index->pop_back();
     }
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
   if (current_shape.IsArray()) {
     TF_ASSIGN_OR_RETURN(auto v, GetOrCreateArrayView(instr, current_shape,
                                                      *current_shape_index));
     values->push_back(v);
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
   if (current_shape.IsToken()) {
     switch (token_mode) {
@@ -1518,7 +1518,7 @@ Status LhloDialectEmitter::GetOrCreateViewImpl(
 
       case TokenLoweringMode::kUseNull:
         values->push_back(Value{});
-        return ::tensorflow::OkStatus();
+        return ::tsl::OkStatus();
     }
   }
   return xla::InternalError("Unexpected shape kind for %s and shape index %s",
@@ -1610,7 +1610,7 @@ Status LhloDialectEmitter::Initialize() {
         TF_RET_CHECK(slice.offset() == 0);
         TF_RET_CHECK(slice.size() == alloc->size());
         allocation_to_output_info[alloc] = std::make_pair(&sub_shape, index);
-        return ::tensorflow::OkStatus();
+        return ::tsl::OkStatus();
       }));
 
   // The function signature will be composed of:
@@ -1696,7 +1696,7 @@ Status LhloDialectEmitter::Initialize() {
       builder_.create<lmhlo::TerminatorOp>(builder_.getUnknownLoc());
   builder_ = OpBuilder(return_op);
 
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {

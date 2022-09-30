@@ -33,7 +33,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace xla {
 
@@ -152,15 +153,15 @@ class HloFunctionImporter {
       const xla::HloComputation& computation, bool is_main);
 
   // Imports the given computation in the specified region.
-  tensorflow::Status ImportAsRegion(const HloComputation& computation,
-                                    mlir::Region* region,
-                                    bool flatten_region_arg_tuple = false);
+  tsl::Status ImportAsRegion(const HloComputation& computation,
+                             mlir::Region* region,
+                             bool flatten_region_arg_tuple = false);
 
   // Imports instructions from the given computation in the specified block.
   // Assumes that the block already has correct arguments populated.
-  tensorflow::Status ImportInstructions(const HloComputation& computation,
-                                        mlir::Block* block,
-                                        bool flatten_region_arg_tuple);
+  tsl::Status ImportInstructions(const HloComputation& computation,
+                                 mlir::Block* block,
+                                 bool flatten_region_arg_tuple);
   StatusOr<mlir::Value> ImportInstructionsImpl(
       const xla::HloComputation& computation,
       const llvm::SmallVectorImpl<mlir::Value>& arguments,

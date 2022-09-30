@@ -69,17 +69,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/types.h"
 
 using ::int64_t;
 using ::stream_executor::port::StatusOr;
-using ::tensorflow::int16;
-using ::tensorflow::int32;
-using ::tensorflow::int8;
-using ::tensorflow::uint16;
-using ::tensorflow::uint32;
-using ::tensorflow::uint64;
-using ::tensorflow::uint8;
+using ::tsl::int16;
+using ::tsl::int32;
+using ::tsl::int8;
+using ::tsl::uint16;
+using ::tsl::uint32;
+using ::tsl::uint64;
+using ::tsl::uint8;
 
 constexpr char kShapeIndicesAttr[] = "shape_indices";
 constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
@@ -1960,8 +1961,7 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
                                                   xla::Layout layout) {
   auto dense_attr = attr.dyn_cast<DenseElementsAttr>();
   if (!dense_attr)
-    return tensorflow::errors::Unimplemented(
-        "Only dense elements attr are supported");
+    return tsl::errors::Unimplemented("Only dense elements attr are supported");
 
   xla::Shape shape = xla::TypeToShape(dense_attr.getType());
 
@@ -1989,7 +1989,7 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F16, Eigen::half)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::BF16, Eigen::bfloat16)
     default:
-      return tensorflow::errors::Internal(absl::StrCat(
+      return tsl::errors::Internal(absl::StrCat(  // NOLINT
           "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));
   }
 #undef ELEMENTS_ATTR_TO_LITERAL
@@ -2716,8 +2716,8 @@ Status PrepareForExport(mlir::ModuleOp module) {
   mlir::PassManager pm(module.getContext());
   pm.addNestedPass<mlir::func::FuncOp>(mhlo::CreatePrepareForExport());
   if (failed(pm.run(module)))
-    return tensorflow::errors::Internal("Unable to optimize for XLA export");
-  return ::tensorflow::OkStatus();
+    return tsl::errors::Internal("Unable to optimize for XLA export");
+  return ::tsl::OkStatus();
 }
 
 }  // namespace
@@ -2729,9 +2729,8 @@ Status ConvertRegionToComputation(mlir::Region* region,
   xla::XlaBuilder module_builder("main");
   ConvertToHloModule converter(module, module_builder, true, true, options);
   if (failed(converter.LowerRegionAsComputation(region, func)))
-    return tensorflow::errors::Internal(
-        "failed to convert region to computation");
-  return ::tensorflow::OkStatus();
+    return tsl::errors::Internal("failed to convert region to computation");
+  return ::tsl::OkStatus();
 }
 
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
@@ -2747,7 +2746,7 @@ Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
   StringRef module_name = module.getName() ? *module.getName() : "main";
   hlo_module.set_name(module_name.str());
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
@@ -2764,9 +2763,9 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
   // xla_params should only include non-constant parameters the block arguments
   // correspond to.
   if (xla_params.size() != block.getArguments().size())
-    return tensorflow::errors::Internal("xla_params size (", xla_params.size(),
-                                        ") != block arguments size (",
-                                        block.getArguments().size(), ")");
+    return tsl::errors::Internal("xla_params size (", xla_params.size(),
+                                 ") != block arguments size (",
+                                 block.getArguments().size(), ")");
   for (BlockArgument& arg : block.getArguments()) {
     auto num = arg.getArgNumber();
     lowering[arg] = xla_params[num];
@@ -2792,7 +2791,7 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
     }
   }
 
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 }  // namespace mlir

@@ -69,10 +69,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace mlir {
 namespace mhlo {
@@ -515,7 +515,7 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
   // concurrently running each of the MLIR functions create a new device.
   step_container_ = std::make_unique<tensorflow::ScopedStepContainer>(
       /*step_id=*/0, cleanup);
-  tensorflow::Status status = step_container_->Create(
+  tsl::Status status = step_container_->Create(
       device_->resource_manager(),
       tensorflow::XlaContext::kXlaContextResourceName, context_);
   if (!status.ok()) {
@@ -524,9 +524,8 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
   }
   params_.step_container = step_container_.get();
 
-  tensorflow::StatusOr<int64_t> version_or =
-      tensorflow::GetTfGraphProducerVersion(
-          op_->getParentOfType<mlir::ModuleOp>());
+  tsl::StatusOr<int64_t> version_or = tensorflow::GetTfGraphProducerVersion(
+      op_->getParentOfType<mlir::ModuleOp>());
   if (!version_or.ok()) {
     return emitError(op_->getLoc()) << version_or.status().ToString();
   }
@@ -567,7 +566,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   if (failed(PrepareParams())) return failure();
 
   std::shared_ptr<const tensorflow::NodeProperties> props;
-  tensorflow::Status status = tensorflow::NodeProperties::CreateFromNodeDef(
+  tsl::Status status = tensorflow::NodeProperties::CreateFromNodeDef(
       *nodedef_or.value(),
       params_.function_library->GetFunctionLibraryDefinition(), &props);
   if (!status.ok()) {

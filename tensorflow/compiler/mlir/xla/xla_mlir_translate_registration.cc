@@ -134,7 +134,7 @@ Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
   auto hlo_module = computation.proto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
 
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
