@@ -12,6 +12,11 @@ cc_library(
     name = "math_util",
     hdrs = ["math_util.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//platforms/performance/tf_sim/utils:__subpackages__",
+        "//platforms/xla/service:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
     deps = [
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",

@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -106,7 +106,7 @@ XLA_TEST_F(BatchNormalizationTest, SquareTesseractElementwise) {
   auto x = ConstantLiteral(&builder, input_literal_);
   Square(x);
 
-  using tensorflow::MathUtil;
+  using tsl::MathUtil;
 
   Array4D<float> expected(kSamples, kZ, kY, kX);
   Array2D<float> expected_pz({
