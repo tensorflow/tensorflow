@@ -374,6 +374,7 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:types",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
 )
 
