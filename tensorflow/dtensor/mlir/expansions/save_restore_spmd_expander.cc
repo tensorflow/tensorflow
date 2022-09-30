@@ -521,8 +521,23 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
 
   auto new_operands = llvm::to_vector<4>(merge_v2.getOperands());
   new_operands.push_back(rank_1_zero->getResult(0));
+
+  auto zero_scalar = CreateZeroScalarConst(
+      builder, location,
+      device_id.getType().cast<mlir::TensorType>().getElementType());
+  if (!zero_scalar.has_value()) {
+    return errors::InvalidArgument(
+        "Failed to create a zero scalar const during MergeV2Checkpoint SPMD "
+        "expansion. Please file a bug to DTensor.");
+  }
+
+  mlir::TF::NotEqualOp not_equal = builder.create<mlir::TF::NotEqualOp>(
+      location, device_id, *zero_scalar,
+      /*incompatible_shape_error=*/builder.getBoolAttr(false));
+
   auto if_op = builder.create<mlir::TF::IfOp>(
-      location, then_func.getFunctionType().getResults(), /*cond=*/device_id,
+      location, then_func.getFunctionType().getResults(),
+      /*cond=*/not_equal.getResult(),
       /*input=*/new_operands,
       /*then_branch=*/then_func.getSymName(),
       /*else_branch=*/else_func.getSymName(), /*is_stateless=*/false);
