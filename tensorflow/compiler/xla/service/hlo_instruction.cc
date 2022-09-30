@@ -2304,16 +2304,6 @@ int64_t HloInstruction::operand_index(const HloInstruction* target) const {
   LOG(FATAL) << "target was not an operand: " << target->ToString();
 }
 
-int64_t HloInstruction::operand_index(HloOpcode target) const {
-  for (int64_t i = 0; i < operand_count(); ++i) {
-    if (operand(i)->opcode() == target) {
-      return i;
-    }
-  }
-  LOG(FATAL) << "none of the operands matches HloOpcode: "
-             << HloOpcodeString(target);
-}
-
 HloInstruction::InstructionVector HloInstruction::unique_operands() const {
   InstructionVector unique;
   absl::flat_hash_set<const HloInstruction*> seen;
