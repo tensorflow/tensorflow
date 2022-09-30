@@ -268,10 +268,15 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
       // the input is normalized.  If it is not, then the mantissa bits -
       // including the implicit one - will be shifted to zero.
       from_bits = (SetFromBit(kFromMantissaBits) | (from_bits & kMantissaMask));
-      if constexpr (!kTruncate) {
-        from_bits = RoundBitsToNearestEven(from_bits, exponent_shift);
+      ToBits bits = 0;
+      // To avoid UB, limit rounding and shifting to the full mantissa plus
+      // leading 1.
+      if (exponent_shift <= kFromMantissaBits + 1) {
+        if constexpr (!kTruncate) {
+          from_bits = RoundBitsToNearestEven(from_bits, exponent_shift);
+        }
+        bits = (from_bits >> exponent_shift);
       }
-      ToBits bits = (from_bits >> exponent_shift);
       // Insert sign and return.
       return Eigen::numext::bit_cast<To>(static_cast<ToBits>(bits | sign));
     }
