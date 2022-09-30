@@ -14,7 +14,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/xla/mlir/tools/gpu:xla-gpu-opt",
+        "//tensorflow/compiler/xla/mlir/tools:xla-gpu-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//mlir:run_lit.sh",
     ],
