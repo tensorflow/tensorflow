@@ -511,6 +511,14 @@ StatusOr<bool> HorizontalLoopFusionImpl::Run() {
   bool changed = false;
   XLA_VLOG_LINES(3, computation_->ToString());
 
+  for (HloInstruction* instr : computation_->instructions()) {
+    if (!instr->control_successors().empty()) {
+      VLOG(1) << "Skipping HorizontalLoopFusion as there is control flow in "
+                 "the graph";
+      return false;
+    }
+  }
+
   // Traverse from use to def. Bitcasts are placed after h-fusions to resolve
   // shape mismatch but bitcasts could prevent future h-fusion from happening.
   // So, a bottom-up, use-to-def order should be more favorable. It also helps
