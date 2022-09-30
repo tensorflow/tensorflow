@@ -666,6 +666,14 @@ absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
     TensorDescriptor* dst_tensor_desc;
     RETURN_IF_ERROR(
         GetTensorDescriptor(dst_tensors_names_[0], &dst_tensor_desc));
+    if (definition_.dst_tensors[0].GetDataType() !=
+        dst_tensor_desc->GetDataType()) {
+      auto descriptor =
+          std::make_unique<TensorDescriptor>(definition_.dst_tensors[0]);
+      dst_tensor_desc = descriptor.get();
+      args_.AddObjectRef(dst_tensors_names_[0], AccessType::WRITE,
+                         std::move(descriptor));
+    }
     linkables[dst_tensors_names_[0]] = {elementwise_code_, dst_tensor_desc};
   }
   RETURN_IF_ERROR(ResolveLinking(gpu_info, linkables, &code_));
@@ -747,6 +755,22 @@ GPUOperation CreateGpuOperation(const OperationDef& definition,
   return CreateGpuOperation(definition, std::move(descriptor), second_shape);
 }
 
+std::string ReadValueCodeForBroadcast(const TensorDescriptor& desc,
+                                      const BHWC& shape, std::string name,
+                                      std::string postfix = "") {
+  const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
+  const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
+  const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
+  std::string coords = absl::StrCat(x_coord, ", ", y_coord, ", ", s_coord);
+  if (desc.HasAxis(Axis::BATCH)) {
+    const std::string b_coord = shape.b == 1 ? "0" : "B_COORD";
+    coords += ", " + b_coord;
+  }
+  return absl::Substitute(
+      "args.src_tensor_1$0::type $1 = args.src_tensor_1$0.Read($2);\n", postfix,
+      name, coords);
+}
+
 GPUOperation CreateGpuOperation(const OperationDef& definition,
                                 ElementwiseDescriptor&& descriptor,
                                 const BHWC& second_shape) {
@@ -757,17 +781,8 @@ GPUOperation CreateGpuOperation(const OperationDef& definition,
       op.elementwise_code_.find("in2_value")) {
     const auto second_tensor_def = definition.src_tensors[1];
     if (NeedsBroadcast(second_tensor_def, second_shape)) {
-      const std::string x_coord = second_shape.w == 1 ? "0" : "X_COORD";
-      const std::string y_coord = second_shape.h == 1 ? "0" : "Y_COORD";
-      const std::string s_coord = second_shape.c == 1 ? "0" : "S_COORD";
-      std::string coords = absl::StrCat(x_coord, ", ", y_coord, ", ", s_coord);
-      if (second_tensor_def.HasAxis(Axis::BATCH)) {
-        const std::string b_coord = second_shape.b == 1 ? "0" : "B_COORD";
-        coords += ", " + b_coord;
-      }
-      std::string read_value_code = absl::StrCat(
-          "args.src_tensor_1::type in2_value = args.src_tensor_1.Read(", coords,
-          ");\n");
+      std::string read_value_code = ReadValueCodeForBroadcast(
+          second_tensor_def, second_shape, "in2_value");
       if (second_shape.c == 1) {
         read_value_code += "  in2_value.y = in2_value.x;\n";
         read_value_code += "  in2_value.z = in2_value.x;\n";
@@ -835,7 +850,15 @@ absl::Status Fuse2InputElemWith2SimpleElem(const GpuInfo& gpu_info,
       elem_root.elementwise_code_, {{"in_value", link_left_value_name},
                                     {"READ_SECOND_VALUE", ""},
                                     {"in2_value", link_right_value_name}});
-
+  const BHWC second_shape = elem1.definition_.dst_tensors[0].GetBHWCShape();
+  const TensorDescriptor second_tensor_def = elem1.definition_.dst_tensors[0];
+  if (NeedsBroadcast(second_tensor_def, second_shape)) {
+    std::string read_value_code = ReadValueCodeForBroadcast(
+        second_tensor_def, second_shape, "second_value", unique_postfix);
+    elem_root.elementwise_code_ = absl::StrReplaceAll(
+        elem_root.elementwise_code_,
+        {{read_value_code, ""}, {"second_value", link_right_value_name}});
+  }
   OperationDef new_definition = elem0.definition_;
   new_definition.dst_tensors[0] = elem_root.definition_.dst_tensors[0];
 
@@ -851,9 +874,6 @@ absl::Status Fuse2InputElemWith2SimpleElem(const GpuInfo& gpu_info,
       result->args_.Merge(std::move(elem0.args_), unique_postfix + "l"));
   RETURN_IF_ERROR(
       result->args_.Merge(std::move(elem1.args_), unique_postfix + "r"));
-  RETURN_IF_ERROR(
-      result->args_.Merge(std::move(elem_root.args_), unique_postfix,
-                          {elem_root.second_elementwise_tensor_name_}));
   return absl::OkStatus();
 }
 

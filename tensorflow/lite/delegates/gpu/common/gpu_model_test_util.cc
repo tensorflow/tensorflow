@@ -16,12 +16,16 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/gpu_model_test_util.h"
 
 #include <cmath>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/cast.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_generic.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/reshape.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice.h"
 
 namespace tflite {
 namespace gpu {
@@ -92,8 +96,9 @@ absl::Status TestLinkingConvolutionAndCosOp(TestExecutionEnvironment* env) {
       }
 
       TensorFloat32 dst_tensor_v1;
-      RETURN_IF_ERROR(
-          env->ExecuteGpuModel({src_tensor}, {&dst_tensor_v1}, &gpu_model));
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src_tensor}, std::vector<TensorFloat32*>{&dst_tensor_v1},
+          &gpu_model));
 
       OperationDef op_def;
       op_def.precision = precision;
@@ -216,9 +221,9 @@ absl::Status TestLinkingConvolution2InputMul2InputMul(
       }
 
       TensorFloat32 dst_tensor_v1;
-      RETURN_IF_ERROR(
-          env->ExecuteGpuModel({src0_tensor, src1_tensor, src2_tensor},
-                               {&dst_tensor_v1}, &gpu_model));
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src0_tensor, src1_tensor, src2_tensor},
+          std::vector<TensorFloat32*>{&dst_tensor_v1}, &gpu_model));
 
       OperationDef op_def;
       op_def.precision = precision;
@@ -355,9 +360,9 @@ absl::Status TestLinkingConvolution2InputBroadcastMul2InputMul(
       }
 
       TensorFloat32 dst_tensor_v1;
-      RETURN_IF_ERROR(
-          env->ExecuteGpuModel({src0_tensor, src1_tensor, src2_tensor},
-                               {&dst_tensor_v1}, &gpu_model));
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src0_tensor, src1_tensor, src2_tensor},
+          std::vector<TensorFloat32*>{&dst_tensor_v1}, &gpu_model));
 
       OperationDef op_def;
       op_def.precision = precision;
@@ -494,9 +499,9 @@ absl::Status TestLinkingConvolution2InputMul2InputBroadcastMul(
       }
 
       TensorFloat32 dst_tensor_v1;
-      RETURN_IF_ERROR(
-          env->ExecuteGpuModel({src0_tensor, src1_tensor, src2_tensor},
-                               {&dst_tensor_v1}, &gpu_model));
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src0_tensor, src1_tensor, src2_tensor},
+          std::vector<TensorFloat32*>{&dst_tensor_v1}, &gpu_model));
 
       OperationDef op_def;
       op_def.precision = precision;
@@ -640,9 +645,9 @@ absl::Status TestLinkingConvolution2InputMul2InputMulCos(
       }
 
       TensorFloat32 dst_tensor_v1;
-      RETURN_IF_ERROR(
-          env->ExecuteGpuModel({src0_tensor, src1_tensor, src2_tensor},
-                               {&dst_tensor_v1}, &gpu_model));
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src0_tensor, src1_tensor, src2_tensor},
+          std::vector<TensorFloat32*>{&dst_tensor_v1}, &gpu_model));
 
       OperationDef op_def;
       op_def.precision = precision;
@@ -768,8 +773,9 @@ absl::Status TestLinkingConvolutionFirstTanh2InputDiff(
       }
 
       TensorFloat32 dst_tensor_v1;
-      RETURN_IF_ERROR(
-          env->ExecuteGpuModel({src_tensor}, {&dst_tensor_v1}, &gpu_model));
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src_tensor}, std::vector<TensorFloat32*>{&dst_tensor_v1},
+          &gpu_model));
 
       OperationDef op_def;
       op_def.precision = precision;
@@ -886,8 +892,9 @@ absl::Status TestLinkingConvolutionSecondTanh2InputDiff(
       }
 
       TensorFloat32 dst_tensor_v1;
-      RETURN_IF_ERROR(
-          env->ExecuteGpuModel({src_tensor}, {&dst_tensor_v1}, &gpu_model));
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src_tensor}, std::vector<TensorFloat32*>{&dst_tensor_v1},
+          &gpu_model));
 
       OperationDef op_def;
       op_def.precision = precision;
@@ -1021,8 +1028,9 @@ absl::Status TestLinkingConvolutionFirstTanhSecondCos2InputDiff(
       }
 
       TensorFloat32 dst_tensor_v1;
-      RETURN_IF_ERROR(
-          env->ExecuteGpuModel({src_tensor}, {&dst_tensor_v1}, &gpu_model));
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src_tensor}, std::vector<TensorFloat32*>{&dst_tensor_v1},
+          &gpu_model));
 
       OperationDef op_def;
       op_def.precision = precision;
@@ -1212,8 +1220,9 @@ absl::Status TestLinkingComplex0(TestExecutionEnvironment* env) {
       }
 
       TensorFloat32 dst_tensor_v1;
-      RETURN_IF_ERROR(
-          env->ExecuteGpuModel({src_tensor}, {&dst_tensor_v1}, &gpu_model));
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src_tensor}, std::vector<TensorFloat32*>{&dst_tensor_v1},
+          &gpu_model));
 
       OperationDef op_def;
       op_def.precision = precision;
@@ -1419,8 +1428,9 @@ absl::Status TestLinkingConvElem2InputAddElemsOp(
       }
 
       TensorFloat32 dst_tensor_v1;
-      RETURN_IF_ERROR(env->ExecuteGpuModel({src1_tensor, src0_tensor},
-                                           {&dst_tensor_v1}, &gpu_model));
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src1_tensor, src0_tensor},
+          std::vector<TensorFloat32*>{&dst_tensor_v1}, &gpu_model));
 
       OperationDef op_def;
       op_def.precision = precision;
@@ -1480,6 +1490,223 @@ absl::Status TestLinkingConvElem2InputAddElemsOp(
           std::make_unique<GPUOperation>(std::move(abs_operation)),
           abs_output->tensor.shape, &dst_tensor_v0));
 
+      RETURN_IF_ERROR(
+          PointWiseNear(dst_tensor_v0.data, dst_tensor_v1.data, 0.0f));
+    }
+  }
+  return absl::OkStatus();
+}
+
+//     input1
+//       |
+//     slice
+//       |
+//      cast
+//       |
+//      cast
+//       |
+//     output
+absl::Status TestLinkingSliceCastOp(TestExecutionEnvironment* env) {
+  GraphFloat32 graph;
+  auto input = graph.NewValue();
+  input->tensor.type = DataType::FLOAT32;
+  input->tensor.shape = BHWC(1, 1, 1, 4);
+
+  auto slice_node = graph.NewNode();
+  slice_node->operation.type = ToString(tflite::gpu::OperationType::SLICE);
+
+  SliceAttributes slice_attr;
+  slice_attr.strides = BHWC(1, 1, 1, 1);
+
+  slice_node->operation.attributes = slice_attr;
+  RETURN_IF_ERROR(graph.AddConsumer(slice_node->id, input->id));
+
+  auto cast_int_node = graph.NewNode();
+  cast_int_node->operation.type = ToString(OperationType::CAST);
+  tflite::gpu::Value* slice_output = nullptr;
+  RETURN_IF_ERROR(
+      ConnectTwoNodes(&graph, slice_node, cast_int_node, &slice_output));
+  slice_output->tensor.type = DataType::FLOAT32;
+  slice_output->tensor.shape = BHWC(1, 1, 1, 1);
+
+  tflite::gpu::Value* cast_int_output = nullptr;
+  RETURN_IF_ERROR(AddOutput(&graph, cast_int_node, &cast_int_output));
+  cast_int_output->tensor.type = DataType::INT32;
+  cast_int_output->tensor.shape = BHWC(1, 1, 1, 1);
+
+  RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&graph));
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      CreateGpuModelInfo create_info;
+      create_info.precision = precision;
+      create_info.storage_type = storage;
+
+      TensorFloat32 src_tensor;
+      src_tensor.shape = input->tensor.shape;
+      src_tensor.data.resize(src_tensor.shape.DimensionsProduct());
+      for (int i = 0; i < src_tensor.data.size(); ++i) {
+        src_tensor.data[i] = std::sin(i * 0.12345f);
+      }
+
+      GpuModel gpu_model;
+      RETURN_IF_ERROR(
+          GraphToGpuModel(graph, create_info, env->GetGpuInfo(), &gpu_model));
+      if (gpu_model.nodes.size() != 1) {
+        return absl::InternalError("Expected model with one node");
+      }
+      TensorInt32 dst_tensor_v1;
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src_tensor}, std::vector<TensorInt32*>{&dst_tensor_v1}, &gpu_model));
+
+      TensorFloat32 intermediate;
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+
+      StridedSlice slice_operation = CreateStridedSlice(op_def, slice_attr);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor,
+          std::make_unique<StridedSlice>(std::move(slice_operation)),
+          slice_output->tensor.shape, &intermediate));
+
+      OperationDef cast_int_op_def;
+      cast_int_op_def.precision = precision;
+      DataType int_data_type = DataType::INT32;
+      cast_int_op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      cast_int_op_def.dst_tensors.push_back(
+          {int_data_type, storage, Layout::HWC});
+
+      GPUOperation cast_int_operation =
+          CreateCast(cast_int_op_def, env->GetGpuInfo());
+      using TensorInt32 = Tensor<BHWC, DataType::INT32>;
+      TensorInt32 dst_tensor_v0;
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          std::vector<TensorFloat32>{intermediate},
+          std::make_unique<GPUOperation>(std::move(cast_int_operation)),
+          std::vector<BHWC>{slice_output->tensor.shape},
+          std::vector<TensorInt32*>{&dst_tensor_v0}));
+
+      if (dst_tensor_v0.data != dst_tensor_v1.data) {
+        return absl::InternalError("Expected output to be equal");
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+//       input
+//         |
+//      Reshape
+//       /   \
+//     Add   Add
+//       \   /
+//        Mul
+//         |
+//       output
+absl::Status TestLinkingAddAddMulOp(TestExecutionEnvironment* env) {
+  GraphFloat32 graph;
+  auto input = graph.NewValue();
+  input->tensor.type = DataType::FLOAT32;
+  input->tensor.shape = BHWC(1, 1, 5, 4);
+  auto reshape_node = graph.NewNode();
+  reshape_node->operation.type = ToString(tflite::gpu::OperationType::RESHAPE);
+  ReshapeAttributes reshape_attr;
+  reshape_attr.new_shape = BHWC(1, 1, 1, 20);
+  reshape_node->operation.attributes = reshape_attr;
+  RETURN_IF_ERROR(graph.AddConsumer(reshape_node->id, input->id));
+
+  ElementwiseAttributes add_attr;
+  add_attr.param = 1.0f;
+  auto add_left_node = graph.NewNode();
+  add_left_node->operation.type = ToString(tflite::gpu::OperationType::ADD);
+  add_left_node->operation.attributes = add_attr;
+  auto add_right_node = graph.NewNode();
+  add_right_node->operation.type = ToString(tflite::gpu::OperationType::ADD);
+  add_right_node->operation.attributes = add_attr;
+  tflite::gpu::Value* reshape_output = nullptr;
+  RETURN_IF_ERROR(
+      ConnectTwoNodes(&graph, reshape_node, add_left_node, &reshape_output));
+  reshape_output->tensor.type = DataType::FLOAT32;
+  reshape_output->tensor.shape = BHWC(1, 1, 1, 20);
+  RETURN_IF_ERROR(
+      ConnectTwoNodes(&graph, reshape_node, add_right_node, &reshape_output));
+
+  auto mul_node = graph.NewNode();
+  mul_node->operation.type = ToString(tflite::gpu::OperationType::MUL);
+  tflite::gpu::Value* add_left_output = nullptr;
+  RETURN_IF_ERROR(
+      ConnectTwoNodes(&graph, add_left_node, mul_node, &add_left_output));
+  add_left_output->tensor.type = DataType::FLOAT32;
+  add_left_output->tensor.shape = BHWC(1, 1, 1, 20);
+  tflite::gpu::Value* add_right_output = nullptr;
+  RETURN_IF_ERROR(
+      ConnectTwoNodes(&graph, add_right_node, mul_node, &add_right_output));
+  add_right_output->tensor.type = DataType::FLOAT32;
+  add_right_output->tensor.shape = BHWC(1, 1, 1, 20);
+
+  tflite::gpu::Value* mul_output = nullptr;
+  RETURN_IF_ERROR(AddOutput(&graph, mul_node, &mul_output));
+  mul_output->tensor.type = DataType::FLOAT32;
+  mul_output->tensor.shape = BHWC(1, 1, 1, 20);
+
+  RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&graph));
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      CreateGpuModelInfo create_info;
+      create_info.precision = precision;
+      create_info.storage_type = storage;
+
+      TensorFloat32 src_tensor;
+      src_tensor.shape = input->tensor.shape;
+      src_tensor.data.resize(src_tensor.shape.DimensionsProduct());
+      for (int i = 0; i < src_tensor.data.size(); ++i) {
+        src_tensor.data[i] = std::sin(i * 0.12345f);
+      }
+      GpuModel gpu_model;
+      RETURN_IF_ERROR(
+          GraphToGpuModel(graph, create_info, env->GetGpuInfo(), &gpu_model));
+      if (gpu_model.nodes.size() != 1) {
+        return absl::InternalError("Expected model with one node");
+      }
+      TensorFloat32 dst_tensor_v1;
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src_tensor}, std::vector<TensorFloat32*>{&dst_tensor_v1},
+          &gpu_model));
+      TensorFloat32 intermediate;
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+
+      GPUOperation reshape_operation = CreateReshape(op_def);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor,
+          std::make_unique<GPUOperation>(std::move(reshape_operation)),
+          reshape_output->tensor.shape, &intermediate));
+
+      TensorFloat32 add;
+      TensorFloat32 ones;
+      ones.shape = intermediate.shape;
+      ones.data = std::vector(ones.shape.DimensionsProduct(), 1.0f);
+      GPUOperation add_operation = CreateElementwiseTwoInput(
+          op_def, OperationType::ADD, reshape_output->tensor.shape);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          {intermediate, ones},
+          std::make_unique<GPUOperation>(std::move(add_operation)),
+          add_left_output->tensor.shape, &add));
+
+      TensorFloat32 dst_tensor_v0;
+      GPUOperation mul_operation = CreateElementwiseTwoInput(
+          op_def, OperationType::MUL, add_left_output->tensor.shape);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          {add, add}, std::make_unique<GPUOperation>(std::move(mul_operation)),
+          add_left_output->tensor.shape, &dst_tensor_v0));
       RETURN_IF_ERROR(
           PointWiseNear(dst_tensor_v0.data, dst_tensor_v1.data, 0.0f));
     }
