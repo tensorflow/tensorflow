@@ -28,6 +28,15 @@ func.func @exponential(%arg : tensor<10xf32>) -> tensor<10xf32> {
   return %0 : tensor<10xf32>
 }
 
+// CHECK-LABEL: @exponential_minus_one
+func.func @exponential_minus_one(%arg : tensor<10xf32>) -> tensor<10xf32> {
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1.000000e+00>
+  // CHECK-DAG: %[[VAR1:.*]] = "tosa.exp"(%arg0)
+  // CHECK-DAG: %[[VAR2:.*]] = "tosa.sub"(%[[VAR1]], %[[VAR0]])
+  %0 = "mhlo.exponential_minus_one"(%arg) : (tensor<10xf32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
+}
+
 // CHECK-LABEL: @floor
 func.func @floor(%arg : tensor<10xf32>) -> tensor<10xf32> {
   // CHECK: tosa.floor
@@ -50,6 +59,15 @@ func.func @log(%arg : tensor<10xf32>) -> tensor<10xf32> {
   // CHECK: tosa.log
   %0 = "mhlo.log"(%arg) : (tensor<10xf32>) -> tensor<10xf32>
   return %0 : tensor<10xf32>
+}
+
+// CHECK-LABEL: @log_plus_one
+func.func @log_plus_one(%arg : tensor<10xf16>) -> tensor<10xf16> {
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1.000000e+00>
+  // CHECK-DAG: %[[VAR1:.*]] = "tosa.add"(%arg0, %[[VAR0]])
+  // CHECK-DAG: %[[VAR2:.*]] = "tosa.log"(%[[VAR1]])
+  %0 = "mhlo.log_plus_one"(%arg) : (tensor<10xf16>) -> tensor<10xf16>
+  return %0 : tensor<10xf16>
 }
 
 // CHECK-LABEL: @negate
