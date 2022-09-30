@@ -3248,7 +3248,7 @@ name=None))
 
     >>> ds1 = tf.data.Dataset.random(seed=4).take(10)
     >>> ds2 = tf.data.Dataset.random(seed=4).take(10)
-    >>> print(list(ds2.as_numpy_iterator())==list(ds2.as_numpy_iterator()))
+    >>> print(list(ds1.as_numpy_iterator())==list(ds2.as_numpy_iterator()))
     True
 
     Args:
