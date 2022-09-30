@@ -389,6 +389,13 @@ Status Examples::Initialize(OpKernelContext* const context,
   OpInputList dense_features_inputs;
   TF_RETURN_IF_ERROR(
       context->input_list("dense_features", &dense_features_inputs));
+  for (int i = 0; i < dense_features_inputs.size(); ++i) {
+    if (!TensorShapeUtils::IsMatrix(dense_features_inputs[i].shape())) {
+      return errors::InvalidArgument("Dense features at index ", i,
+                                     " must be rank 2 but is rank ",
+                                     dense_features_inputs[i].dims());
+    }
+  }
 
   examples_.clear();
   examples_.resize(num_examples);
