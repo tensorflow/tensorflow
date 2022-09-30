@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load("//tensorflow/tsl/platform/default:distribute.bzl", "distribute_py_test")
 

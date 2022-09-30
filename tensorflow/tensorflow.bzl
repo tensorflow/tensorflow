@@ -777,7 +777,7 @@ def tf_cc_shared_object(
         )
 
 # buildozer: disable=function-docstring-args
-def tf_cc_shared_library(
+def tf_cc_shared_library_opensource(
         name,
         srcs = [],
         dynamic_deps = [],
@@ -816,7 +816,7 @@ def tf_cc_shared_library(
                 "-Wl,-soname," + soname,
             ],
         })
-        _tf_cc_shared_library(
+        _tf_cc_shared_library_opensource(
             name_os_full,
             additional_linker_inputs = additional_linker_inputs,
             copts = copts,
@@ -856,7 +856,7 @@ def tf_cc_shared_library(
             visibility = visibility,
         )
 
-def _tf_cc_shared_library(
+def _tf_cc_shared_library_opensource(
         name,
         additional_linker_inputs = None,
         copts = None,
@@ -2278,7 +2278,7 @@ _append_init_to_versionscript = rule(
 # This macro should only be used for pywrap_tensorflow_internal.so.
 # It was copied and refined from the original tf_py_wrap_cc_opensource rule.
 # buildozer: disable=function-docstring-args
-def pywrap_tensorflow_macro(
+def pywrap_tensorflow_macro_opensource(
         name,
         srcs = [],
         roots = [],
@@ -2336,7 +2336,7 @@ def pywrap_tensorflow_macro(
     })
     additional_linker_inputs = if_windows([], otherwise = ["%s.lds" % vscriptname])
 
-    tf_cc_shared_library(
+    tf_cc_shared_library_opensource(
         name = cc_shared_library_name,
         srcs = srcs,
         # framework_so is no longer needed as libtf.so is included via the extra_deps.
@@ -2872,7 +2872,7 @@ def pybind_library(
     )
 
 # buildozer: disable=function-docstring-args
-def pybind_extension(
+def pybind_extension_opensource(
         name,
         srcs,
         module_name = None,
@@ -3156,7 +3156,7 @@ def tf_python_pybind_static_deps(testonly = False):
     return if_oss(static_deps)
 
 # buildozer: enable=function-docstring-args
-def tf_python_pybind_extension(
+def tf_python_pybind_extension_opensource(
         name,
         srcs,
         module_name = None,
@@ -3171,7 +3171,7 @@ def tf_python_pybind_extension(
         testonly = False,
         visibility = None,
         win_def_file = None):
-    """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
+    """A wrapper macro for pybind_extension_opensource that is used in tensorflow/python/BUILD.
 
     Please do not use it anywhere else as it may behave unexpectedly. b/146445820
 
@@ -3180,7 +3180,7 @@ def tf_python_pybind_extension(
     """
     extended_deps = deps + if_mkl_ml(["//third_party/mkl:intel_binary_blob"])
     extended_deps += [] if dynamic_deps else if_windows([], ["//tensorflow:libtensorflow_framework_import_lib"]) + tf_binary_pybind_deps()
-    pybind_extension(
+    pybind_extension_opensource(
         name,
         srcs,
         module_name = module_name,
@@ -3197,8 +3197,8 @@ def tf_python_pybind_extension(
         win_def_file = win_def_file,
     )
 
-def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):
-    """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension.
+def tf_pybind_cc_library_wrapper_opensource(name, deps, visibility = None, **kwargs):
+    """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension_opensource.
 
     This wrapper ensures that cc libraries' and protos' headers are made
     available to pybind code, without creating ODR violations in the dynamically

@@ -1,20 +1,20 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_copts")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
+load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",

@@ -6,7 +6,7 @@ load(
     "tflite_custom_c_library",
     "tflite_self_contained_libs_test_suite",
 )
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(

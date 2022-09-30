@@ -7,7 +7,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen:friends"],

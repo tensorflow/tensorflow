@@ -1,7 +1,7 @@
 # Description:
 #    LLVM-based CPU backend for XLA.
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -16,7 +16,7 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(":build_defs.bzl", "runtime_copts")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available", "tf_proto_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
