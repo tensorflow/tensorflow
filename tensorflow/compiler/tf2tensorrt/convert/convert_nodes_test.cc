@@ -1273,8 +1273,7 @@ class OpConverterTest : public ::testing::Test {
       std::vector<PartialTensorShape> input_partial_shapes;
       TF_RETURN_IF_ERROR(
           GetNetworkInputShapes(converter_->network(), &input_partial_shapes));
-      profiles.InitProfiles(input_partial_shapes,
-                            ProfileStrategy::kImplicitBatchModeCompatible);
+      profiles.InitProfiles(input_partial_shapes, ProfileStrategy::kRange);
     }
     TF_RETURN_IF_ERROR(
         converter_->BuildCudaEngine(&engine_,
