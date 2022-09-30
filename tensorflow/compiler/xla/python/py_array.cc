@@ -148,8 +148,7 @@ void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
   PyArray py_array = self;
 
   if (!skip_checks) {
-    py_array.Check();
-    py_array.Rearrange();
+    py_array.CheckAndRearrange();
   }
 }
 
@@ -165,8 +164,7 @@ void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
   PyArray py_array = self;
 
   if (!skip_checks) {
-    py_array.Check();
-    py_array.Rearrange();
+    py_array.CheckAndRearrange();
   }
 }
 
@@ -185,8 +183,7 @@ PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
             std::move(pjrt_buffers));
 
   if (!skip_checks) {
-    Check();
-    Rearrange();
+    CheckAndRearrange();
   }
 }
 
@@ -198,9 +195,7 @@ const PyArray::Storage& PyArray::GetStorage() const {
   return *GetPyArrayStorageFromObject(reinterpret_cast<PyArrayObject*>(ptr()));
 }
 
-void PyArray::Check() { this->attr("_check")(); }
-
-void PyArray::Rearrange() { this->attr("_rearrange")(); }
+void PyArray::CheckAndRearrange() { this->attr("_check_and_rearrange")(); }
 
 py::object PyArray::arrays() {
   // For performance, we only keep pjrt buffers by default. But on python side

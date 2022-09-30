@@ -161,8 +161,7 @@ class PyArray : public pybind11::object {
   }
 
  private:
-  void Check();
-  void Rearrange();
+  void CheckAndRearrange();
 
   Storage& GetStorage();
   const Storage& GetStorage() const;
