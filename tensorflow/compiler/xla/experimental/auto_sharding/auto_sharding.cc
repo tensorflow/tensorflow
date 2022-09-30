@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "util/gtl/linked_hash_map.h"
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/linear_solver.pb.h"
 
@@ -111,7 +110,7 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
     const StrategyVector* src_strategies, const Shape& shape,
     size_t instruction_id, bool have_memory_cost,
     LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
-    ::gtl::linked_hash_map<int64_t, std::vector<ShardingStrategy>>&
+    StableHashMap<int64_t, std::vector<ShardingStrategy>>&
         trimmed_strategy_map) {
   std::unique_ptr<StrategyVector> strategies;
   if (src_strategies->is_tuple) {
@@ -857,7 +856,7 @@ void TrimOrGenerateStrategiesBasedOnUserSharding(
     const StrategyMap& strategy_map,
     const std::vector<HloInstruction*> instructions,
     const HloSharding& user_sharding, const ClusterEnvironment& cluster_env,
-    ::gtl::linked_hash_map<int64_t, std::vector<ShardingStrategy>>&
+    StableHashMap<int64_t, std::vector<ShardingStrategy>>&
         trimmed_strategy_map) {
   if (strategies->is_tuple) {
     for (size_t i = 0; i < strategies->childs.size(); ++i) {
@@ -1052,8 +1051,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
   // is useful when the operand is forced to use a user sharding, and the op
   // doesn't need to strictly follow it. We restore the trimmed strategies in
   // this situation.
-  ::gtl::linked_hash_map<int64_t, std::vector<ShardingStrategy>>
-      trimmed_strategy_map;
+  StableHashMap<int64_t, std::vector<ShardingStrategy>> trimmed_strategy_map;
   LeafStrategies leaf_strategies;
   AssociativeDotPairs associative_dot_pairs;
   absl::flat_hash_set<const HloInstruction*> undefined_set;
