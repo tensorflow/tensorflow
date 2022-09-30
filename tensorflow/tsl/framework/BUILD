@@ -182,6 +182,11 @@ cc_library(
         "allocator_retry.cc",
         "allocator_retry.h",
         "bfc_allocator.cc",
+        # metric is provided by libtensorflow_framework right now, including the
+        # header here avoids to depend directly on the metric library, which
+        # would lead to duplicated symbols later. The migration to cc_shared_library
+        # should clean this all up.
+        "metrics.h",
     ],
     hdrs = ["bfc_allocator.h"],
     features = ["parse_headers"],
@@ -189,20 +194,23 @@ cc_library(
     deps = [
         ":allocator",
         ":shared_counter",
-        "//tensorflow/core:framework",  # core/framework/metrics.h
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tsl/lib/core:bits",
+        "//tensorflow/tsl/lib/monitoring:counter",
+        "//tensorflow/tsl/lib/monitoring:gauge",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:numbers",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:str_util",
         "//tensorflow/tsl/platform:strcat",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
