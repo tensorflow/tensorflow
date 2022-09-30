@@ -1348,7 +1348,6 @@ def tf_cc_test(
         srcs,
         deps,
         data = [],
-        linkstatic = 0,
         extra_copts = [],
         suffix = "",
         linkopts = lrt_if_needed(),
@@ -1381,16 +1380,6 @@ def tf_cc_test(
                tf_binary_dynamic_kernel_dsos() +
                tf_binary_additional_srcs(),
         exec_properties = tf_exec_properties(kwargs),
-        # Nested select() statements seem not to be supported when passed to
-        # linkstatic, and we already have a cuda select() passed in to this
-        # function.
-        linkstatic = linkstatic or select({
-            # cc_tests with ".so"s in srcs incorrectly link on Darwin unless
-            # linkstatic=1 (https://github.com/bazelbuild/bazel/issues/3450).
-            # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-            clean_dep("//tensorflow:macos"): 1,
-            "//conditions:default": 0,
-        }),
         **kwargs
     )
 
