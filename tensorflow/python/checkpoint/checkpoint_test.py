@@ -1129,9 +1129,11 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   def test_save_in_graph_but_no_session(self):
     v = variables_lib.Variable(1.0)
     ckpt = trackable_utils.Checkpoint(v=v)
+    self.evaluate(v.initializer)
     prefix = pathlib.Path(self.get_temp_dir()) / "ckpt"
-    with self.assertRaisesRegex(RuntimeError, "create a session"):
-      ckpt.write(prefix)
+    with ops.default_session(None):
+      with self.assertRaisesRegex(RuntimeError, "create a session"):
+        ckpt.write(prefix)
 
 
 class SerializeToTensorTest(test.TestCase):
