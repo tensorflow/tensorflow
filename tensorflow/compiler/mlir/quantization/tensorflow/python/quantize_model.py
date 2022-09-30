@@ -910,6 +910,8 @@ def _dynamic_range_quantize(
   # Check default quantization option values for post-training dynamic range
   # quantization case.
   # TODO(b/242805842): Find good minimum_elements_for_weights number for server.
+   # please also update default value in tflite conveter:
+  # tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.cc;l=201
   if quantization_options.min_num_elements_for_weights == 0:
     (quantization_options.min_num_elements_for_weights
     ) = _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
