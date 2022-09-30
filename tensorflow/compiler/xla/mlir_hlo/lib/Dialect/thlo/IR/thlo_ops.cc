@@ -16,8 +16,10 @@ limitations under the License.
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 
 #include <algorithm>
+#include <functional>
 #include <iterator>
 #include <memory>
+#include <tuple>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -25,12 +27,14 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
+#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OpImplementation.h"
@@ -949,11 +953,66 @@ FailureOr<Value> GatherOp::generateResultTileValue(
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
+std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+                   mlir::ArrayRef<mlir::NamedAttribute>)>
+TransposeOp::getRegionBuilder() {
+  return [](mlir::ImplicitLocOpBuilder &b, mlir::Block &block,
+            mlir::ArrayRef<mlir::NamedAttribute>) {
+    b.create<mlir::thlo::YieldOp>(block.getArguments().back());
+  };
+}
+
+void TransposeOp::createRegion(::mlir::OpBuilder &opBuilder,
+                               ::mlir::OperationState &odsState) {
+  Region *region = odsState.addRegion();
+
+  SmallVector<Type> argTypes;
+  SmallVector<Location> argLocs;
+  for (auto t : odsState.operands) {
+    argTypes.push_back(getElementTypeOrSelf(t));
+    argLocs.push_back(opBuilder.getUnknownLoc());
+  }
+
+  // RAII.
+  OpBuilder::InsertionGuard guard(opBuilder);
+  Block *body =
+      opBuilder.createBlock(region, /*insertPt=*/{}, argTypes, argLocs);
+
+  ImplicitLocOpBuilder b(opBuilder.getUnknownLoc(), opBuilder);
+  getRegionBuilder()(b, *body, odsState.attributes.getAttrs());
+}
+
+void TransposeOp::build(::mlir::OpBuilder &odsBuilder,
+                        ::mlir::OperationState &odsState, Type resultType,
+                        Value input, Value init, DenseI64ArrayAttr permutation,
+                        ArrayRef<NamedAttribute> attributes) {
+  odsState.addOperands(input);
+  odsState.addOperands(init);
+  odsState.addAttribute(getPermutationAttrName(odsState.name), permutation);
+  odsState.addAttributes(attributes);
+  odsState.addTypes(resultType);
+
+  createRegion(odsBuilder, odsState);
+}
+
+void TransposeOp::build(::mlir::OpBuilder &odsBuilder,
+                        ::mlir::OperationState &odsState, Type resultType,
+                        Value input, Value init, ArrayRef<int64_t> permutation,
+                        ArrayRef<NamedAttribute> attributes) {
+  build(odsBuilder, odsState, resultType, input, init,
+        odsBuilder.getDenseI64ArrayAttr(permutation), attributes);
+}
+
 ParseResult TransposeOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseDstStyleOp(
-      parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
-        return parseDenseI64ArrayAttr(parser, attributes, "permutation");
-      });
+  if (failed(parseDstStyleOp(
+          parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+            return parseDenseI64ArrayAttr(parser, attributes, "permutation");
+          })))
+    return failure();
+
+  OpBuilder opBuilder(parser.getContext());
+  createRegion(opBuilder, result);
+  return success();
 }
 
 void TransposeOp::print(OpAsmPrinter &p) {
@@ -1011,6 +1070,24 @@ LogicalResult TransposeOp::verify() {
   }
   return verifyDestinationStyleOp(getOperation());
 }
+
+ArrayAttr TransposeOp::iterator_types() {
+  int64_t rank = getInit().getType().getRank();
+  return Builder(getContext())
+      .getStrArrayAttr(
+          SmallVector<StringRef>(rank, getParallelIteratorTypeName()));
+}
+
+ArrayAttr TransposeOp::getIndexingMaps() {
+  Builder builder(getContext());
+  int64_t rank = getInit().getType().getRank();
+  return builder.getAffineMapArrayAttr(
+      {builder.getMultiDimIdentityMap(rank),
+       AffineMap::getPermutationMap(
+           llvm::to_vector_of<unsigned>(getPermutation()), getContext())});
+}
+
+bool TransposeOp::hasIndexSemantics() { return false; }
 
 //===----------------------------------------------------------------------===//
 // ReductionOp

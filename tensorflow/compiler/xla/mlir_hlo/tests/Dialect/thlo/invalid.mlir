@@ -226,7 +226,7 @@ func.func @yield_op_inside_mhlo_reduce(
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%init: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %init, %arg3 : tensor<f32>
-    // expected-error @+1{{'thlo.yield' op expects parent op to be one of 'thlo.map, thlo.reduction, thlo.scatter'}}
+    // expected-error @+1{{'thlo.yield' op expects parent op to be one of}}
     thlo.yield %1: tensor<f32>
   }) {dimensions = dense<1> : tensor<1xi64>} :
     (tensor<5x4xf32>, tensor<f32>) -> tensor<5xf32>

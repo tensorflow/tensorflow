@@ -349,6 +349,37 @@ func.func @thlo_map(%lhs: tensor<256x512xf32>, %rhs: tensor<256x512xf32>,
 // CHECK-PARALLEL: gml_st.parallel
 // -----
 
+func.func @thlo_transpose(%input: tensor<256x512x64xf32>,
+                          %init: tensor<512x64x256xf32>)
+                          -> tensor<512x64x256xf32> {
+  %transpose = thlo.transpose
+      ins(%input:tensor<256x512x64xf32>)
+      outs(%init:tensor<512x64x256xf32>)
+      permutation = [1, 2, 0]
+      { op_label = "tile-2d" }
+  func.return %transpose : tensor<512x64x256xf32>
+}
+// CHECK-FOR-LABEL: func @thlo_transpose
+// CHECK-FOR-SAME:    %[[INPUT:[a-zA-Z0-9]*]]: tensor<256x512x64xf32>
+// CHECK-FOR-SAME:    %[[INIT:.*]]: tensor<512x64x256xf32>
+// CHECK-FOR:       %[[ZERO:.*]] = arith.constant 0
+// CHECK-FOR:       %[[RESULT:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) =
+// CHECK-FOR:         %[[INPUT_TILE:.*]] = gml_st.tile {{.*}} [%[[I]], %[[J]], 0]
+// CHECK-FOR:         %[[INPUT_SLICE:.*]] = gml_st.materialize
+// CHECK-FOR-SAME:       [%[[INPUT_TILE]]]
+// CHECK-FOR:         %[[INIT_TILE:.*]] = gml_st.tile {{.*}} [%[[J]], 0, %[[I]]]
+// CHECK-FOR:         %[[INIT_SLICE:.*]] = gml_st.materialize
+// CHECK-FOR-SAME:       [%[[INIT_TILE]]]
+// CHECK-FOR:         %[[RES_SLICE:.*]] = thlo.transpose
+// CHECK-FOR-SAME:       ins(%[[INPUT_SLICE]] :
+// CHECK-FOR-SAME:       outs(%[[INIT_SLICE]]
+// CHECK-FOR:         gml_st.set_yield %[[RES_SLICE]]
+
+// CHECK-PARALLEL-LABEL: func @thlo_transpose
+// CHECK-PARALLEL: gml_st.parallel
+
+// -----
+
 func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
     %arg : tensor<?x?xf32>) -> tensor<?x?x?xf32> {
   %bcast = thlo.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)

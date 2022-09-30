@@ -50,7 +50,7 @@ class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
 }
 
 def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
-    ParentOneOf<["MapOp", "ReductionOp", "ScatterOp"]>]>,
+    ParentOneOf<["MapOp", "ReductionOp", "ScatterOp", "TransposeOp"]>]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Yield operation for tHLO ops with regions.";
   let assemblyFormat = "attr-dict $values `:` type($values)";
@@ -173,7 +173,10 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
   }];
 }
 
-def THLO_TransposeOp : THLO_DstStyleOp<"transpose", []> {
+def THLO_TransposeOp : THLO_DstStyleOp<"transpose", [
+    DeclareOpInterfaceMethods<LinalgStructuredInterface, ["iterator_types"]>,
+    SingleBlockImplicitTerminator<"YieldOp">,
+]> {
   let summary = "Destination-style twin for `mhlo.transpose`";
   let description = [{
     Permutes the dimensions of `operand` according to the given `permutation`.
@@ -198,11 +201,30 @@ def THLO_TransposeOp : THLO_DstStyleOp<"transpose", []> {
   );
   let results = (outs TensorOrMemref:$result);
 
+  let regions = (region SizedRegion<1>:$region);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "Type":$resultType, "Value":$input, "Value":$init,
+        "DenseI64ArrayAttr":$permutation,
+        CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>,
+    OpBuilder<(ins "Type":$resultType, "Value":$input, "Value":$init,
+        "ArrayRef<int64_t>":$permutation,
+        CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>,
+  ];
+
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.
     mlir::ValueRange inputs() { return getOperands().take_front(1); }
     mlir::ValueRange getInputs() { return inputs(); }
     mlir::ValueRange getOutputs() { return getOperands().take_back(1); }
+
+    static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+        mlir::ArrayRef<mlir::NamedAttribute>)>
+      getRegionBuilder();
+
+    static void createRegion(::mlir::OpBuilder &opBuilder,
+                             ::mlir::OperationState & odsState);
   }];
 }
 

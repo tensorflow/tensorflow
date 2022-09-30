@@ -165,6 +165,8 @@ void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
         *ctx);
     thlo::ReductionOp::attachInterface<
         ExternalLinalgOpTilingInterface<thlo::ReductionOp>>(*ctx);
+    thlo::TransposeOp::attachInterface<
+        ExternalLinalgOpTilingInterface<thlo::TransposeOp>>(*ctx);
   });
 }
 
