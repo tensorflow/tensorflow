@@ -1485,7 +1485,6 @@ def tf_gpu_only_cc_test(
         tags = [],
         data = [],
         size = "medium",
-        linkstatic = 0,
         args = [],
         kernels = [],
         linkopts = []):
