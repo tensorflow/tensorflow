@@ -382,8 +382,11 @@ class HloComputation {
   ProgramShape ComputeProgramShape(bool include_ids = true) const;
 
   // Return whether `*this` and `other` are functionally equivalent.
-  bool Equal(const HloComputation& other, bool is_layout_sensitive) const {
-    return EqualInternal(other, is_layout_sensitive,
+  bool Equal(
+      const HloComputation& other, bool is_layout_sensitive,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          computations_comparator = nullptr) const {
+    return EqualInternal(other, is_layout_sensitive, computations_comparator,
                          /*ignore_channel_id_values=*/false,
                          /*ignore_execution_thread=*/false);
   }
@@ -391,17 +394,22 @@ class HloComputation {
   // Same as Equal() but ignores channel ID value mismatches on instructions, as
   // long as the two instructions both have channel IDs or neither has a channel
   // ID.
-  bool EqualIgnoringChannelIdValues(const HloComputation& other,
-                                    bool is_layout_sensitive) const {
-    return EqualInternal(other, is_layout_sensitive,
+  bool EqualIgnoringChannelIdValues(
+      const HloComputation& other, bool is_layout_sensitive,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          computations_comparator = nullptr) const {
+    return EqualInternal(other, is_layout_sensitive, computations_comparator,
                          /*ignore_channel_id_values=*/true,
                          /*ignore_execution_thread=*/false);
   }
 
-  bool EqualIgnoringExecutionThread(const HloComputation& other,
-                                    bool is_layout_sensitive,
-                                    bool ignore_channel_id_values) const {
-    return EqualInternal(other, is_layout_sensitive, ignore_channel_id_values,
+  bool EqualIgnoringExecutionThread(
+      const HloComputation& other, bool is_layout_sensitive,
+      bool ignore_channel_id_values,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          computations_comparator = nullptr) const {
+    return EqualInternal(other, is_layout_sensitive, computations_comparator,
+                         ignore_channel_id_values,
                          /*ignore_execution_thread=*/true);
   }
 
@@ -671,10 +679,11 @@ class HloComputation {
       std::unique_ptr<HloInstruction> instruction);
 
   // Internal helper for comparison with different options.
-  bool EqualInternal(const HloComputation& other, bool is_layout_sensitive,
-                     bool ignore_channel_id_values,
-                     bool ignore_execution_thread) const;
-
+  bool EqualInternal(
+      const HloComputation& other, bool is_layout_sensitive,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          computations_comparator,
+      bool ignore_channel_id_values, bool ignore_execution_thread) const;
   // Appends (fuses) HLOs in instructions_to_append into the called computation
   // of the caller.
   void AppendInstructionsIntoCalledComputation(
