@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef THLO_OPS
 #define THLO_OPS
 
-include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
 include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td"
 include "mlir/Dialect/Linalg/IR/LinalgInterfaces.td"
 include "mlir/IR/OpBase.td"
@@ -59,7 +58,6 @@ def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
 
 def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
     SameOperandsAndResultElementType,
-    DeclareOpInterfaceMethods<FusionInterface>,
     DeclareOpInterfaceMethods<TilingInterface>]> {
   let summary = "Destination-style twin for `mhlo.concatenate`";
   let arguments = (ins
@@ -77,7 +75,6 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
 }
 
 def THLO_DynamicBroadcastInDimOp : THLO_DstStyleOp<"dynamic_broadcast_in_dim", [
-    DeclareOpInterfaceMethods<FusionInterface>,
     DeclareOpInterfaceMethods<TilingInterface>,
     SameOperandsAndResultElementType]> {
   let summary = "Destination-style twin for `mhlo.dynamic_broadcast_in_dim`";

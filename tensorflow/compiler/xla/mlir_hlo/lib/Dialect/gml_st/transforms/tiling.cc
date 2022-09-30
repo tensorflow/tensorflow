@@ -43,7 +43,6 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-#define GEN_PASS_DEF_DEPRECATEDTILINGPASS
 #define GEN_PASS_DEF_TILINGPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
@@ -255,55 +254,6 @@ llvm::Optional<SmallVector<SmallVector<int64_t>>> parseNestedTileSizes(
   std::istringstream istream(str);
   return parseNestedTileSizes(istream);
 }
-
-struct DeprecatedTilingPass
-    : public impl::DeprecatedTilingPassBase<DeprecatedTilingPass> {
-  DeprecatedTilingPass()
-      : impl::DeprecatedTilingPassBase<DeprecatedTilingPass>() {
-    tileSizesOpt.setCallback(
-        [&](const std::string &str) { tileSizes = parseNestedTileSizes(str); });
-  }
-  explicit DeprecatedTilingPass(const std::string &tileSizesStr)
-      : impl::DeprecatedTilingPassBase<DeprecatedTilingPass>() {
-    tileSizes = parseNestedTileSizes(tileSizesStr);
-  }
-  explicit DeprecatedTilingPass(
-      const SmallVector<SmallVector<int64_t>> &tileSizes)
-      : impl::DeprecatedTilingPassBase<DeprecatedTilingPass>(),
-        tileSizes(tileSizes) {}
-
-  void getDependentDialects(DialectRegistry &registry) const final {
-    registry
-        .insert<linalg::LinalgDialect, tensor::TensorDialect, GmlStDialect>();
-  }
-
-  void runOnOperation() override {
-    func::FuncOp f = getOperation();
-
-    // If tile sizes were provided in string form, e.g. in lit tests, we might
-    // fail to parse them.
-    if (!tileSizes) {
-      f.emitError()
-          << "Unknown tiling sizes (not provided or failed to parse them from '"
-          << tileSizesOpt << "'";
-      return signalPassFailure();
-    }
-
-    // Assert our expectation to tile functions with unique ranked tensor
-    // results. This is important for the e2e tests to make sure that we
-    // actually test a tiled implementation.
-    FunctionType funcTy = f.getFunctionType();
-    bool isTilingTarget = funcTy.getNumResults() == 1 &&
-                          funcTy.getResults().front().isa<RankedTensorType>();
-    if (isTilingTarget) {
-      if (failed(tileUniqueFunctionResult(f, *tileSizes))) {
-        return signalPassFailure();
-      }
-    }
-  }
-
-  llvm::Optional<SmallVector<SmallVector<int64_t>>> tileSizes;
-};
 
 struct TilingResult {
   TilingInterface tiledOp;
@@ -562,20 +512,6 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
 };
 
 }  // namespace
-
-std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass() {
-  return std::make_unique<DeprecatedTilingPass>();
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
-    const SmallVector<SmallVector<int64_t>> &tileSizes) {
-  return std::make_unique<DeprecatedTilingPass>(tileSizes);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
-    const std::string &tileSizes) {
-  return std::make_unique<DeprecatedTilingPass>(tileSizes);
-}
 
 void populateTilingPatterns(MLIRContext *context, OpFilterFn filterFn,
                             const TilingOptions &opts,

@@ -98,7 +98,6 @@ add_mlir_library(MhloToThloConversion
   legalize_mhlo_to_thlo.cc
 
   DEPENDS
-  MLIRGmlStFusionInterfaceIncGen
   MLIRMhloPassIncGen
   THLODialect
 

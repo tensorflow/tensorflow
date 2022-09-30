@@ -24,14 +24,8 @@ limitations under the License.
 namespace mlir {
 struct GmlStPipelineOptions
     : public mlir::PassPipelineOptions<GmlStPipelineOptions> {
-  Option<std::string> tileSizes{
-      *this, "tile-sizes",
-      llvm::cl::desc(
-          "Tile sizes in the format `[[d0,d1,...],[d0_,d1_,...],...]`. This "
-          "allows to express nested tiling sizes.")};
-  Option<bool> fuse{*this, "fuse",
-                    llvm::cl::desc("Fuse into GmlSt loop nests."),
-                    llvm::cl::init(false)};
+  ListOption<int64_t> tileSizes{*this, "tile-sizes",
+                                llvm::cl::desc("Tile sizes")};
   Option<bool> lowerToLoops{
       *this, "lower-to-loops",
       llvm::cl::desc("Enable bufferization and lowering to SCF dialect for "

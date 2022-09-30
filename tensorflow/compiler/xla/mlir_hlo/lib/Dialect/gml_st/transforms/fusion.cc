@@ -17,8 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
@@ -38,7 +36,6 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-#define GEN_PASS_DEF_DEPRECATEDFUSIONPASS
 #define GEN_PASS_DEF_FUSIONPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
@@ -124,51 +121,6 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
     }
 
     return failure();
-  }
-};
-
-struct DeprecatedFusionPattern : public OpRewritePattern<MaterializeOp> {
-  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(MaterializeOp op,
-                                PatternRewriter& rewriter) const override {
-    Operation* def = op.getSource().getDefiningOp();
-    if (!def) return failure();
-
-    auto iface = llvm::dyn_cast<FusionInterface>(def);
-    if (!iface) return failure();
-
-    Value fused = iface.fuse(op.getLoc(), op.getSet(), rewriter);
-    if (!fused) return failure();
-
-    rewriter.replaceOp(op, fused);
-    return success();
-  }
-};
-
-class DeprecatedFusionPass
-    : public impl::DeprecatedFusionPassBase<DeprecatedFusionPass> {
-  void getDependentDialects(DialectRegistry& registry) const final {
-    registry.insert<scf::SCFDialect>();
-    registerFusionInterfaceExternalModels(registry);
-  }
-
-  void runOnOperation() final {
-    MLIRContext* ctx = &getContext();
-
-    // Populate patterns.
-    RewritePatternSet patterns(ctx);
-    // clang-format off
-    patterns.insert<
-        DimOpFissionPattern,
-        DimOpReificationPattern,
-        DeprecatedFusionPattern>(ctx);
-    // clang-format on
-
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
-      return signalPassFailure();
-    }
   }
 };
 
@@ -303,10 +255,6 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
 };
 
 }  // namespace
-
-std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedFusionPass() {
-  return std::make_unique<DeprecatedFusionPass>();
-}
 
 void populateFusionPatterns(MLIRContext* ctx, OpFilterFn filterFn,
                             RewritePatternSet* patterns) {

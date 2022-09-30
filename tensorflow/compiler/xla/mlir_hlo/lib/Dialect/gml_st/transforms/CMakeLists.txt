@@ -31,18 +31,6 @@ add_mlir_library(GmlStTilingInterface
   MLIRGmlStTilingInterfaceIncGen
 )
 
-add_mlir_library(GmlStFusionInterface
-  fusion_interface.cc
-
-  LINK_LIBS PUBLIC
-  MLIRArithDialect
-  MLIRIR
-  MLIRSupport
-
-  DEPENDS
-  MLIRGmlStFusionInterfaceIncGen
-)
-
 add_mlir_library(GmlStTilingInterfaceImpl
   tiling_interface_impl.cc
 
@@ -59,17 +47,6 @@ add_mlir_library(GmlStTilingInterfaceImpl
   MLIRIR
   MLIRSupport
   THLODialect
-)
-
-add_mlir_library(GmlStFusionInterfaceImpl
-  fusion_interface_impl.cc
-
-  LINK_LIBS PUBLIC
-  GmlStDialect
-  GmlStFusionInterface
-  MLIRArithDialect
-  MLIRIR
-  MLIRSupport
 )
 
 add_mlir_library(GmlStComposeSetInterface
@@ -113,8 +90,6 @@ add_mlir_library(GmlStPasses
 
   LINK_LIBS PUBLIC
   GmlStComposeSetInterface
-  GmlStFusionInterface
-  GmlStFusionInterfaceImpl
   GmlStTilingInterface
   GmlStTilingInterfaceImpl
   MhloDialect

@@ -81,6 +81,7 @@ add_mlir_library(MLIRHLOGmlStPipeline
 
   LINK_LIBS PUBLIC
   GmlStPasses
+  MLIRBufferTransforms
   MLIRLinalgTransforms
   MLIRPass
 )
