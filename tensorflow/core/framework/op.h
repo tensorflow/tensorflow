@@ -285,13 +285,12 @@ class OpDefBuilderWrapper {
     return *this;
   }
 
-  OpDefBuilderWrapper& SetForwardTypeFn(ForwardTypeInferenceFn fn) {
+  OpDefBuilderWrapper& SetForwardTypeFn(TypeInferenceFn fn) {
     builder_.SetForwardTypeFn(std::move(fn));
     return *this;
   }
 
-  OpDefBuilderWrapper& SetReverseTypeFn(int input_number,
-                                        ForwardTypeInferenceFn fn) {
+  OpDefBuilderWrapper& SetReverseTypeFn(int input_number, TypeInferenceFn fn) {
     builder_.SetReverseTypeFn(input_number, std::move(fn));
     return *this;
   }

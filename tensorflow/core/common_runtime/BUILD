@@ -669,9 +669,9 @@ cc_library(
 )
 
 cc_library(
-    name = "forward_type_inference",
-    srcs = ["forward_type_inference.cc"],
-    hdrs = ["forward_type_inference.h"],
+    name = "type_inference",
+    srcs = ["type_inference.cc"],
+    hdrs = ["type_inference.h"],
     copts = tf_copts(),
     visibility = default_package_visibility,
     deps = [
@@ -699,14 +699,14 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "forward_type_inference_test",
+    name = "type_inference_test",
     size = "small",
-    srcs = ["forward_type_inference_test.cc"],
+    srcs = ["type_inference_test.cc"],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session_internal",
-        ":forward_type_inference",
+        ":type_inference",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:client_session",
@@ -790,7 +790,6 @@ cc_library(
         ":device_set",
         ":executor",
         ":executor_factory",
-        ":forward_type_inference",
         ":function_body",
         ":function_def_utils",
         ":function_optimization_registry",
@@ -808,6 +807,7 @@ cc_library(
         ":rendezvous_util",
         ":replicate_per_replica_nodes",
         ":single_threaded_executor",
+        ":type_inference",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",

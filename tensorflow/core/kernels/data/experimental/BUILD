@@ -136,7 +136,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime:forward_type_inference",
+        "//tensorflow/core/common_runtime:type_inference",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/kernels/data:range_dataset_op",
         "//tensorflow/core/kernels/data:shard_dataset_op",

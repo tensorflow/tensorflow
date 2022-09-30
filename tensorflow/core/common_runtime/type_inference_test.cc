@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/forward_type_inference.h"
+#include "tensorflow/core/common_runtime/type_inference.h"
 
 #include <functional>
 #include <string>
@@ -45,11 +45,11 @@ Status Rewrite(std::unique_ptr<Graph>* graph) {
   opt_options.session_options = &session_options;
   opt_options.graph = graph;
   opt_options.flib_def = &flib_def;
-  ForwardTypeInferencePass pass;
+  TypeInferencePass pass;
   return pass.Run(opt_options);
 }
 
-TEST(ForwardTypeInferenceTest, BasicStraightline) {
+TEST(TypeInferenceTest, BasicStraightline) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   Scope root = Scope::NewRootScope().ExitOnError();
@@ -88,7 +88,7 @@ TEST(ForwardTypeInferenceTest, BasicStraightline) {
   }
 }
 
-TEST(ForwardTypeInferenceTest, CyclicGraphWithV1ControlFlow) {
+TEST(TypeInferenceTest, CyclicGraphWithV1ControlFlow) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   Scope root = Scope::NewRootScope().ExitOnError();
@@ -172,7 +172,7 @@ REGISTER_OP("TestTensorUnaryOp")
     .Input("i: variant")
     .Output("o: variant")
     .SetForwardTypeFn([](const TypeRefVector& input_types,
-                         const TypeRefMap& type_vars) {
+                         const FunctionTypeInferrer& call_infer) {
       FullTypeDef t;
       t.set_type_id(TFT_PRODUCT);
       t.add_args()->set_type_id(TFT_TENSOR);
@@ -183,7 +183,7 @@ REGISTER_OP("TestArrayUnaryOp")
     .Input("i: variant")
     .Output("o: variant")
     .SetForwardTypeFn([](const TypeRefVector& input_types,
-                         const TypeRefMap& type_vars) {
+                         const FunctionTypeInferrer& call_infer) {
       FullTypeDef t;
       t.set_type_id(TFT_PRODUCT);
       t.add_args()->set_type_id(TFT_ARRAY);
@@ -195,7 +195,7 @@ REGISTER_OP("TestMergeOp")
     .Input("i2: variant")
     .Output("o: variant")
     .SetForwardTypeFn([](const TypeRefVector& input_types,
-                         const TypeRefMap& type_vars) {
+                         const FunctionTypeInferrer& call_infer) {
       EXPECT_EQ(input_types.size(), 2);
       FullTypeDef t;
       t.set_type_id(TFT_PRODUCT);
@@ -209,7 +209,7 @@ REGISTER_OP("TestMergeOp")
       return t;
     });
 
-TEST(ForwardTypeInferenceTest, TernaryNodeWithIgnoredInputs) {
+TEST(TypeInferenceTest, TernaryNodeWithIgnoredInputs) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   Scope root = Scope::NewRootScope().ExitOnError();
@@ -257,7 +257,7 @@ TEST(ForwardTypeInferenceTest, TernaryNodeWithIgnoredInputs) {
   }
 }
 
-TEST(ForwardTypeInferenceTest, BinaryNodeWithUnorderedInputs) {
+TEST(TypeInferenceTest, BinaryNodeWithUnorderedInputs) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   Scope root = Scope::NewRootScope().ExitOnError();
@@ -316,7 +316,7 @@ TEST(ForwardTypeInferenceTest, BinaryNodeWithUnorderedInputs) {
   }
 }
 
-TEST(ForwardTypeInferenceTest, BinaryNodeWithCycleInput) {
+TEST(TypeInferenceTest, BinaryNodeWithCycleInput) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   Scope root = Scope::NewRootScope().ExitOnError();
@@ -390,7 +390,7 @@ TEST(ForwardTypeInferenceTest, BinaryNodeWithCycleInput) {
               ::testing::HasSubstr("expected compatible input types"));
 }
 
-TEST(WeakForwardTypeInferenceTest, AlwaysSucceeds) {
+TEST(WeakTypeInferenceTest, AlwaysSucceeds) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   Scope root = Scope::NewRootScope().ExitOnError();
@@ -424,7 +424,7 @@ TEST(WeakForwardTypeInferenceTest, AlwaysSucceeds) {
   opt_options.session_options = &session_options;
   opt_options.graph = &graph;
   opt_options.flib_def = &flib_def;
-  WeakForwardTypeInferencePass pass;
+  WeakTypeInferencePass pass;
 
   TF_ASSERT_OK(pass.Run(opt_options));
 }

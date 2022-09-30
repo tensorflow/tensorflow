@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/forward_type_inference.h"
+#include "tensorflow/core/common_runtime/type_inference.h"
 
 #include <functional>
+#include <list>
 #include <queue>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -33,11 +36,10 @@ namespace {
 
 int MAX_VISITS_PER_NODE = 3;
 
-typedef absl::flat_hash_map<
-    int, std::reference_wrapper<ForwardTypeInferenceFn const>>
+typedef absl::flat_hash_map<int, std::reference_wrapper<TypeInferenceFn const>>
     ForwardInferMap;
 typedef absl::flat_hash_map<
-    int, std::pair<int, std::reference_wrapper<ForwardTypeInferenceFn const>>>
+    int, std::pair<int, std::reference_wrapper<TypeInferenceFn const>>>
     ReverseInferMap;
 
 bool all_sources_closed(const Node& n, const absl::flat_hash_set<int>& closed,
@@ -94,8 +96,7 @@ std::vector<std::reference_wrapper<const FullTypeDef>> input_types(
   return input_types;
 }
 
-Status updated_inferred_type(Node* target, const FullTypeDef& t,
-                             bool& updated) {
+Status update_inferred_type(Node* target, const FullTypeDef& t, bool& updated) {
   if (t.type_id() == TFT_UNSET) {
     VLOG(3) << "  " << target->name() << " no inferred type";
     return OkStatus();
@@ -123,11 +124,21 @@ Status updated_inferred_type(Node* target, const FullTypeDef& t,
   return OkStatus();
 }
 
+StatusOr<FullTypeDef> run_inference(const string& fn_name,
+                                    const TypeRefVector& in_types) {
+  // TODO(b/224776031): Things remaining to implement:
+  //  * look up function by name
+  //  * execute pass on its graph
+  //  * get retnode types
+  //  * return them here
+  return OkStatus();
+}
+
 }  // namespace
 
-Status ForwardTypeInferencePass::Run(
+Status TypeInferencePass::Run(
     const GraphOptimizationPassOptions& options) {
-  VLOG(1) << "ForwardTypeInferencePass::Run";
+  VLOG(1) << "TypeInferencePass::Run";
 
   DCHECK(options.graph != nullptr);
   Graph* g = options.graph->get();
@@ -167,17 +178,15 @@ Status ForwardTypeInferencePass::Run(
     }
     VLOG(4) << "  " << n->name() << " has forward function";
 
-    // TODO(b/224775462): Populate with types from function references.
-    TypeRefMap type_vars;
     auto in_types = input_types(*n);
-    const auto& infer_ret = forward.at(n->id())(in_types, type_vars);
+    const auto& infer_ret = forward.at(n->id())(in_types, run_inference);
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         infer_ret.status(),
         absl::StrCat("while inferring type of node '", n->name(), "'"));
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        updated_inferred_type(n, *infer_ret, updated),
+        update_inferred_type(n, *infer_ret, updated),
         "while updating its output type.");
 
     return OkStatus();
@@ -189,11 +198,9 @@ Status ForwardTypeInferencePass::Run(
     }
     VLOG(4) << "  " << n->name() << " has reverse function";
 
-    // TODO(b/224775462): Populate with types from function references.
-    TypeRefMap type_vars;
     auto in_types = input_types(*n);
     auto rev_idx_and_fn = reverse.at(n->id());
-    const auto& infer_ret = rev_idx_and_fn.second(in_types, type_vars);
+    const auto& infer_ret = rev_idx_and_fn.second(in_types, run_inference);
 
     const Edge* e;
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -207,7 +214,7 @@ Status ForwardTypeInferencePass::Run(
                      "' via '", n->name(), "'"));
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        updated_inferred_type(e->src(), *infer_ret, updated),
+        update_inferred_type(e->src(), *infer_ret, updated),
         absl::StrCat("while updating its output type inferred from '",
                      n->name(), ","));
 
@@ -324,9 +331,9 @@ Status ForwardTypeInferencePass::Run(
   return OkStatus();
 }
 
-Status WeakForwardTypeInferencePass::Run(
+Status WeakTypeInferencePass::Run(
     const GraphOptimizationPassOptions& options) {
-  ForwardTypeInferencePass pass;
+  TypeInferencePass pass;
   const auto& pass_status = pass.Run(options);
   if (!pass_status.ok()) {
     LOG_FIRST_N(WARNING, 1)
@@ -339,6 +346,6 @@ Status WeakForwardTypeInferencePass::Run(
 
 // Note: This needs to run last because Placer needs it.
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 99999,
-                      WeakForwardTypeInferencePass);
+                      WeakTypeInferencePass);
 
 }  // namespace tensorflow

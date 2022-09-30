@@ -13,14 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_FORWARD_TYPE_INFERENCE_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_FORWARD_TYPE_INFERENCE_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_TYPE_INFERENCE_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_TYPE_INFERENCE_H_
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
 namespace tensorflow {
-
-// TODO(mdan): Rename to just type_inference.
 
 // Run a very basic type inference on the graph. It simply propagates type
 // information along edges, until reaching stability.
@@ -40,20 +38,20 @@ namespace tensorflow {
 // OpRegistrationData.fwd_type_fn function.
 //
 // TODO(mdan): Use a regular union-based algorithm instead?
-class ForwardTypeInferencePass : public GraphOptimizationPass {
+class TypeInferencePass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
-// A version of ForwardTypeInferencePass that prints a warning on error, instead
+// A version of TypeInferencePass that prints a warning on error, instead
 // of returning error status. This is done because there are a few graphs
 // currently in the wild which don't actually type check.
 // TODO(mdan): Turn this into an error, once all offenders are clean.
-class WeakForwardTypeInferencePass : public GraphOptimizationPass {
+class WeakTypeInferencePass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_FORWARD_TYPE_INFERENCE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_TYPE_INFERENCE_H_
