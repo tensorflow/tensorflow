@@ -638,6 +638,7 @@ def tflite_custom_c_library(
             "//tensorflow/lite/c:c_api.h",
             "//tensorflow/lite/c:c_api_experimental.h",
             "//tensorflow/lite/c:c_api_opaque.h",
+            "//tensorflow/lite/c:c_api_opaque_internal.h",
         ],
         copts = tflite_copts(),
         deps = [
