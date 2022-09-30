@@ -46,12 +46,6 @@ namespace {
 #define GEN_PASS_DEF_TILINGPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
-Value createPoint(OpBuilder &b, Location loc, Value superset, ValueRange ivs) {
-  ArrayAttr allDynamicOffsetsAttr = b.getI64ArrayAttr(
-      SmallVector<int64_t>(ivs.size(), ShapedType::kDynamicStrideOrOffset));
-  return b.create<PointOp>(loc, superset, ivs, allDynamicOffsetsAttr);
-}
-
 Value createTile(OpBuilder &b, Location loc, Value superset, ValueRange ivs,
                  ValueRange upperBounds, ValueRange steps,
                  ArrayRef<int64_t> tileSizes) {
@@ -88,15 +82,6 @@ Value createTile(OpBuilder &b, Location loc, Value superset, ValueRange ivs,
                           unitStridesAttr);
 }
 
-Value createTileOrPoint(OpBuilder &b, Location loc, Value space, ValueRange ivs,
-                        ValueRange upperBounds, ValueRange steps,
-                        ArrayRef<int64_t> tileSizes) {
-  if (llvm::all_of(tileSizes, [](int64_t d) { return d == 1; })) {
-    return createPoint(b, loc, space, ivs);
-  }
-  return createTile(b, loc, space, ivs, upperBounds, steps, tileSizes);
-}
-
 Value createNestedPloopTilingRecursively(
     OpBuilder &b, Location loc, Value init, Value source,
     ArrayRef<SmallVector<int64_t>> nestedTileSizes) {
@@ -123,8 +108,8 @@ Value createNestedPloopTilingRecursively(
   auto ploop = b.create<ParallelOp>(
       loc, sourceTy, lowerBounds, upperBounds, steps, llvm::None,
       [&](OpBuilder &b, Location loc, ValueRange ivs) {
-        Value subset = createTileOrPoint(b, loc, sourceSpace, ivs, upperBounds,
-                                         steps, nestedTileSizes.front());
+        Value subset = createTile(b, loc, sourceSpace, ivs, upperBounds, steps,
+                                  nestedTileSizes.front());
         Value innerResult = b.create<MaterializeOp>(loc, source, subset);
 
         // Recur if there are more tile sizes, and it's not a point yet.

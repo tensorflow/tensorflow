@@ -360,12 +360,14 @@ Value fuseConcatenateOpThroughPointRecursively(
     // Create operand point.
     SmallVector<int64_t> allDynamicOffsets(rankedTy.getRank(),
                                            ShapedType::kDynamicStrideOrOffset);
-    Value operandPoint = builder.create<gml_st::PointOp>(
-        loc, operandSpace, remainingOffsets,
-        builder.getI64ArrayAttr(allDynamicOffsets));
 
-    return builder.create<gml_st::MaterializeOp>(loc, leadingOperand,
-                                                 operandPoint);
+    auto sizeOrStride = builder.getI64ArrayAttr({1});
+    Value operandPoint = builder.create<gml_st::TileOp>(
+        loc, operandSpace, remainingOffsets, ValueRange{}, ValueRange{},
+        builder.getI64ArrayAttr(allDynamicOffsets), sizeOrStride, sizeOrStride);
+
+    return builder.create<gml_st::MaterializeOp>(loc, rankedTy.getElementType(),
+                                                 leadingOperand, operandPoint);
   }
 
   // For more than 1 operand, distinguish between the leading operand and the

@@ -45,73 +45,6 @@ func.func @set_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
 
 // -----
 
-func.func @set_point(%input: tensor<?x?xf32>) -> f32 {
-  %c0 = arith.constant 0 : index
-  %c1 = arith.constant 1 : index
-
-  %dim_0 = tensor.dim %input, %c0 : tensor<?x?xf32>
-  %dim_1 = tensor.dim %input, %c1 : tensor<?x?xf32>
-
-  %space = gml_st.space [%dim_0, %dim_1] : !gml_st.tile<?x?>
-  %pt = gml_st.point %space[0, 1] : !gml_st.tile<?x?> to !gml_st.point
-
-  %element = gml_st.materialize %input[%pt]
-    : tensor<?x?xf32>[!gml_st.point] to f32
-
-  return %element : f32
-}
-// CHECK-LABEL: func @set_point(
-// CHECK-SAME:    %[[ARG:.*]]: memref<?x?xf32>)
-// CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
-// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
-// CHECK-NEXT:  %[[ELEM:.*]] = memref.load %[[ARG]][%[[C0]], %[[C1]]]
-// CHECK-NEXT:  return %[[ELEM]] : f32
-
-// -----
-
-func.func @parallel_with_points(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
-                                %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  %c0 = arith.constant 0 : index
-  %c1 = arith.constant 1 : index
-
-  %dim_0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
-  %dim_1 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
-  %space = gml_st.space [%dim_0, %dim_1] : !gml_st.tile<?x?>
-
-  %result = gml_st.parallel (%i, %j) = (%c0, %c0)
-      to (%dim_0, %dim_1) step (%c1, %c1) {
-    %pt = gml_st.point %space [%i, %j] : !gml_st.tile<?x?> to !gml_st.point
-    %lhs_elem = gml_st.materialize %lhs[%pt] : tensor<?x?xf32>[!gml_st.point] to f32
-    %rhs_elem = gml_st.materialize %rhs[%pt] : tensor<?x?xf32>[!gml_st.point] to f32
-
-    %add_elem = arith.addf %lhs_elem, %rhs_elem : f32
-
-    gml_st.set_yield %add_elem into %init[%pt]
-      : f32 into tensor<?x?xf32>[!gml_st.point]
-  } : tensor<?x?xf32>
-  return %result : tensor<?x?xf32>
-}
-// CHECK-LABEL: func @parallel_with_points(
-// CHECK-SAME:    %[[LHS:.*]]: memref<?x?xf32>, %[[RHS:.*]]: memref<?x?xf32>,
-// CHECK-SAME:    %[[OUT:.*]]: memref<?x?xf32>) -> memref<?x?xf32> {
-// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-// CHECK:     %[[DIM_0:.*]] = memref.dim %[[LHS]], %[[C0]] : memref<?x?xf32>
-// CHECK:     %[[DIM_1:.*]] = memref.dim %[[LHS]], %[[C1]] : memref<?x?xf32>
-
-// CHECK:     gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
-// CHECK-SAME:    to (%[[DIM_0]], %[[DIM_1]]) step (%[[C1]], %[[C1]]) {
-
-// CHECK-DAG:   %[[RHS_EL:.*]] = memref.load %[[RHS]][%[[I]], %[[J]]]
-// CHECK-DAG:   %[[LHS_EL:.*]] = memref.load %[[LHS]][%[[I]], %[[J]]]
-// CHECK:       %[[ADD_EL:.*]] = arith.addf %[[LHS_EL]], %[[RHS_EL]] : f32
-// CHECK:       memref.store %[[ADD_EL]], %[[OUT]][%[[I]], %[[J]]]
-// CHECK:       gml_st.set_yield
-// CHECK:     }
-// CHECK:     return %[[OUT]] : memref<?x?xf32>
-
-// -----
-
 #map = affine_map<(d0, d1) -> (d0, d1)>
 func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
                                %init : tensor<?x?xf32>) -> tensor<?x?xf32> {
@@ -180,50 +113,6 @@ func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 // CHECK:       gml_st.set_yield
 // CHECK:     }
 // CHECK: return %[[OUT]] : memref<?x?xf32>
-
-// -----
-
-func.func @for_with_points(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
-                           %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  %c0 = arith.constant 0 : index
-  %c1 = arith.constant 1 : index
-
-  %dim_0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
-  %dim_1 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
-  %space = gml_st.space [%dim_0, %dim_1] : !gml_st.tile<?x?>
-
-  %result = gml_st.for (%i, %j) = (%c0, %c0)
-      to (%dim_0, %dim_1) step (%c1, %c1)
-      outs(%out_ = %init : tensor<?x?xf32>) {
-    %pt = gml_st.point %space [%i, %j] : !gml_st.tile<?x?> to !gml_st.point
-    %lhs_elem = gml_st.materialize %lhs[%pt] : tensor<?x?xf32>[!gml_st.point] to f32
-    %rhs_elem = gml_st.materialize %rhs[%pt] : tensor<?x?xf32>[!gml_st.point] to f32
-
-    %add_elem = arith.addf %lhs_elem, %rhs_elem : f32
-
-    gml_st.set_yield %add_elem into %out_[%pt]
-      : f32 into tensor<?x?xf32>[!gml_st.point]
-  } : tensor<?x?xf32>
-  func.return %result: tensor<?x?xf32>
-}
-
-// CHECK-LABEL: func @for_with_points(
-// CHECK-SAME:      %[[LHS:.*]]: memref<?x?xf32>, %[[RHS:.*]]: memref<?x?xf32>,
-// CHECK-SAME:      %[[OUT:.*]]: memref<?x?xf32>) -> memref<?x?xf32> {
-// CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG:     %[[C1:.*]] = arith.constant 1 : index
-// CHECK:         %[[DIM_0:.*]] = memref.dim %[[LHS]], %[[C0]] : memref<?x?xf32>
-// CHECK:         %[[DIM_1:.*]] = memref.dim %[[LHS]], %[[C1]] : memref<?x?xf32>
-
-// CHECK:         gml_st.for (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
-// CHECK-SAME:        to (%[[DIM_0]], %[[DIM_1]]) step (%[[C1]], %[[C1]]) {
-
-// CHECK-DAG:       %[[RHS_EL:.*]] = memref.load %[[RHS]][%[[I]], %[[J]]]
-// CHECK-DAG:       %[[LHS_EL:.*]] = memref.load %[[LHS]][%[[I]], %[[J]]]
-// CHECK:           %[[ADD_EL:.*]] = arith.addf %[[LHS_EL]], %[[RHS_EL]] : f32
-// CHECK:           memref.store %[[ADD_EL]], %[[OUT]][%[[I]], %[[J]]]
-// CHECK:           gml_st.set_yield
-// CHECK:         return %[[OUT]] : memref<?x?xf32>
 
 // -----
 

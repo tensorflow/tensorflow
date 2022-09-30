@@ -204,31 +204,9 @@ LogicalResult verifySubsetChain(Value set) {
   Operation *definingOp = set.getDefiningOp();
   if (isa<SpaceOp>(definingOp)) return success();
 
-  if (auto pt = dyn_cast<PointOp>(definingOp))
-    return success(pt.getSuperset().getDefiningOp<SpaceOp>() != nullptr);
-
   if (auto tile = dyn_cast<TileOp>(definingOp))
     return success(tile.getSuperset().getDefiningOp<SpaceOp>() != nullptr);
   return failure();
-}
-
-// TODO(pifon): Clean this up, for example, by using ViewLikeInterface.
-SmallVector<Value> getPointIndicesValues(OpBuilder &b, PointOp pointOp) {
-  SmallVector<Value> indices;
-  unsigned rank = pointOp.getRank();
-  indices.reserve(rank);
-  unsigned numDynamic = 0;
-  for (auto staticIndex :
-       pointOp.getStaticIndices().getAsRange<IntegerAttr>()) {
-    if (ShapedType::isDynamicStrideOrOffset(staticIndex.getInt())) {
-      indices.push_back(pointOp.getDynamicIndices()[numDynamic++]);
-    } else {
-      Value indexValue = b.create<arith::ConstantIndexOp>(pointOp.getLoc(),
-                                                          staticIndex.getInt());
-      indices.push_back(indexValue);
-    }
-  }
-  return indices;
 }
 
 // Returns a scalar or a memref type result of `gml_st.materialize` op after
@@ -261,11 +239,6 @@ FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref,
         tile.getMixedStrides());
     return subview;
   }
-  if (auto point = dyn_cast<PointOp>(setDefiningOp)) {
-    Value scalar =
-        b.create<memref::LoadOp>(loc, memref, getPointIndicesValues(b, point));
-    return scalar;
-  }
   return failure();
 }
 
@@ -281,12 +254,6 @@ LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
     return options.createMemCpy(b, loc, update, memref);
 
   // Create subviews or store ops for the set computation.
-  if (auto point = dyn_cast<PointOp>(setDefiningOp)) {
-    b.create<memref::StoreOp>(loc, update, memref,
-                              getPointIndicesValues(b, point));
-    return success();
-  }
-
   auto tile = dyn_cast<TileOp>(setDefiningOp);
   if (!tile) return failure();
 
