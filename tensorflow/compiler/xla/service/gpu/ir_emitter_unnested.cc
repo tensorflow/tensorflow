@@ -4829,8 +4829,20 @@ std::vector<std::vector<HloInstruction*>> GroupDisjointReductions(
   std::vector<HloInstruction*> roots = GetFusionRoots(fused_computation);
   HloInstructionMap<tensorflow::UnionFind<HloInstruction*>> disjoint_sets;
 
+  // TODO(b/249976438): we currently do not treat properly
+  // aliasing between inputs and outputs of the fusion, so for now put all
+  // non-reduction roots into one group to avoid read-after-write conflicts.
+  HloInstruction* FirstNonReductionRoot = nullptr;
+
   for (HloInstruction* root : roots) {
     disjoint_sets[root].Get() = root;
+    if (root->opcode() != HloOpcode::kReduce) {
+      if (!FirstNonReductionRoot) {
+        FirstNonReductionRoot = root;
+      } else {
+        disjoint_sets[FirstNonReductionRoot].Merge(&disjoint_sets[root]);
+      }
+    }
   }
 
   std::unique_ptr<HloReachabilityMap> reachability_map =
