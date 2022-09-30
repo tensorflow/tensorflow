@@ -54,7 +54,7 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,2,2]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[3,2,2]{2,1,0} custom-call([[P0]], [[P1]]),
-; CHECK:           custom_call_target="__cublas$gemm",
+; CHECK:           custom_call_target="__cublas${{(lt\$matmul|gemm)}}",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
 ; CHECK-DAG:         \"alpha_imag\":0
@@ -93,7 +93,7 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,2,2]{2,1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[3,2,2]{2,1,0} custom-call([[P0]], [[P1]]),
-; CHECK    :       custom_call_target="__cublas$gemm",
+; CHECK    :       custom_call_target="__cublas${{(lt\$matmul|gemm)}}",
 ; CHECK    :       backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
 ; CHECK-DAG:         \"alpha_imag\":0
