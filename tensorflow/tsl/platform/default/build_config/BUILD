@@ -4,6 +4,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 
+# TODO(jakeharmon): Determine if this will fail in TSL's github
 package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
@@ -28,15 +29,6 @@ cc_library(
 
 cc_library(
     name = "_empty_lib",
-    visibility = ["//visibility:private"],
-)
-
-alias(
-    name = "_cuda_runtime",
-    actual = select({
-        "//tensorflow:framework_shared_object": ":_empty_lib",
-        "//conditions:default": "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
-    }),
     visibility = ["//visibility:private"],
 )
 
@@ -128,7 +120,7 @@ cc_library(
         "@local_config_cuda//cuda:cudart",
     ],
     linkopts = select({
-        "//tensorflow:macos": [
+        "//tensorflow/tsl:macos": [
             "-Wl,-rpath,../local_config_cuda/cuda/lib",
             "-Wl,-rpath,../local_config_cuda/cuda/extras/CUPTI/lib",
         ],

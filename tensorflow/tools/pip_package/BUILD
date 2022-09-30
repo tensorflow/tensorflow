@@ -256,7 +256,7 @@ filegroup(
         ],
         "//conditions:default": [],
     }) + select({
-        "//tensorflow:with_numa_support": [
+        "//tensorflow/tsl:with_numa_support": [
             "@hwloc//:COPYING",
         ],
         "//conditions:default": [],

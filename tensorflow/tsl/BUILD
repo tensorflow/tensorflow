@@ -217,3 +217,23 @@ config_setting(
     define_values = {"no_default_logger": "true"},
     visibility = ["//visibility:public"],
 )
+
+config_setting(
+    name = "with_numa_support",
+    define_values = {"with_numa_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "fuchsia",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "fuchsia"},
+        {},
+    ),
+    values = if_oss(
+        # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
+        {"cpu": "fuchsia"},
+        {},
+    ),
+    visibility = ["//visibility:public"],
+)

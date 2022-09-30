@@ -300,7 +300,7 @@ cc_library(
     copts = tf_copts(),
     defines = ["TF_USE_SNAPPY"] + select({
         # TF Additional NUMA defines
-        "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
+        "//tensorflow/tsl:with_numa_support": ["TENSORFLOW_USE_NUMA"],
         "//conditions:default": [],
     }),
     features = ["-layering_check"],
@@ -321,7 +321,7 @@ cc_library(
         "@snappy",
     ] + select({
         # TF Additional NUMA dependencies
-        "//tensorflow:with_numa_support": [
+        "//tensorflow/tsl:with_numa_support": [
             # Don't merge in a single line
             "@hwloc",
         ],
@@ -374,7 +374,6 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:types",
-        "@local_config_rocm//rocm:rocm_headers",
     ],
 )
 
@@ -567,16 +566,6 @@ filegroup(
     visibility = ["//tensorflow/core/platform:__pkg__"],
 )
 
-package_group(
-    name = "core_and_platform_packages",
-    packages = [
-        "//tensorflow/core",
-        "//tensorflow/core/lib/gif",
-        "//tensorflow/core/lib/jpeg",
-        "//tensorflow/core/platform",
-    ],
-)
-
 exports_files(
     srcs = glob(
         ["*"],
@@ -595,5 +584,10 @@ exports_files(
         "logging.h",
         "test.cc",
     ],
-    visibility = [":core_and_platform_packages"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/gif:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+    ],
 )

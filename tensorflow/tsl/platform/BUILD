@@ -536,7 +536,7 @@ filegroup(
         "threadpool_interface.h",
         "tracing.h",
     ] + selects.with_or({
-        "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
+        "//tensorflow/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
             "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
@@ -1247,7 +1247,7 @@ cc_library(
     srcs = ["test_main.cc"],
     copts = tf_copts(),
     linkopts = select({
-        "//tensorflow:windows": [],
+        "//tensorflow/tsl:windows": [],
         "//conditions:default": ["-lm"],
     }),
     deps = [

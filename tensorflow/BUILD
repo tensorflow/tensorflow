@@ -315,6 +315,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove in favor of TSL version
 config_setting(
     name = "windows",
     # Internal builds query the target OS.
@@ -386,6 +387,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove in favor of TSL version
 selects.config_setting_group(
     name = "macos",
     match_any = [
@@ -408,6 +410,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove in favor of TSL version
 config_setting(
     name = "fuchsia",
     flag_values = if_google(
@@ -611,12 +614,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "with_numa_support",
-    define_values = {"with_numa_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
 # Crosses between framework_shared_object and a bunch of other configurations
 # due to limitations in nested select() statements.
 config_setting(
@@ -807,6 +804,7 @@ selects.config_setting_group(
     match_any = [
         ":android",
         ":chromiumos",
+        # TODO(jakeharmon): Move all platform configs to TSL with fuchsia (non-blocking)
         ":fuchsia",
         ":emscripten",
         ":ios",
