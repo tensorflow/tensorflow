@@ -753,8 +753,8 @@ tf_cc_test(
     srcs = ["dnn_test.cc"],
     deps = [
         ":dnn",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 

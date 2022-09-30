@@ -2034,6 +2034,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:notification",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
     ],

@@ -37,8 +37,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:sharding_propagation",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -60,6 +60,6 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
-        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/tsl/platform:platform_port",
     ],
 )

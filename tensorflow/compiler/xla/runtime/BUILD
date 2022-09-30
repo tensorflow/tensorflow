@@ -209,8 +209,9 @@ tf_cc_test(
         ":jit_executable",
         ":results",
         "//tensorflow/compiler/xla/mlir/transforms/runtime/tests:testlib_pipeline",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base:dynamic_annotations",
     ],
 )
@@ -319,9 +320,9 @@ tf_cc_test(
         ":logical_result",
         ":results",
         ":types",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 

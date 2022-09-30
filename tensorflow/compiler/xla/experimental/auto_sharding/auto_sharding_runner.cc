@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
-#include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/tsl/platform/init_main.h"
 
 namespace xla {
 namespace spmd {
@@ -52,7 +52,7 @@ Status RunAutoShardingPassFromFile(const std::string& file_name) {
 }  // namespace xla
 
 int main(int argc, char** argv) {
-  tensorflow::port::InitMain("Run AutoSharding Pass", &argc, &argv);
+  tsl::port::InitMain("Run AutoSharding Pass", &argc, &argv);
   QCHECK(argc == 2) << "Must specify a single input file";
   TF_CHECK_OK(xla::spmd::RunAutoShardingPassFromFile(argv[1]));
   return 0;
