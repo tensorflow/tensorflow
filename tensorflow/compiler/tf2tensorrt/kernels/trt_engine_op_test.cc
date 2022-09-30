@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/tsl/framework/fixedpoint/FixedPoint.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 

@@ -664,7 +664,6 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:types",
         "//tensorflow/tsl/framework:numeric_types",
-        "//third_party/eigen3",
     ],
 )
 

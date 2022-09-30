@@ -866,6 +866,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "//third_party/eigen3",
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/tsl/framework/fixedpoint",
     ] + select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
@@ -885,6 +886,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/tsl/framework/fixedpoint",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
     ],
@@ -7105,6 +7107,7 @@ cc_library(
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/framework/fixedpoint",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
         "//third_party/icu/data:conversion_data",
@@ -7169,7 +7172,6 @@ tf_kernel_library(
         ":pooling_ops",
         ":quantization_utils",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util:image_resizer_state",

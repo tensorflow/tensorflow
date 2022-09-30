@@ -1,15 +1,20 @@
-// This file is part of Eigen, a lightweight C++ template library
-// for linear algebra.
-//
-// Copyright (C) 2015 Benoit Steiner <benoit.steiner.goog@gmail.com>
-// Copyright (C) 2015 Benoit Jacob <benoitjacob@google.com>
-//
-// This Source Code Form is subject to the terms of the Mozilla
-// Public License v. 2.0. If a copy of the MPL was not distributed
-// with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
-#ifndef CXX11_SRC_FIXEDPOINT_MATMATPRODUCTNEON_H_
-#define CXX11_SRC_FIXEDPOINT_MATMATPRODUCTNEON_H_
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef TENSORFLOW_TSL_FRAMEWORK_FIXEDPOINT_MATMATPRODUCTNEON_H_
+#define TENSORFLOW_TSL_FRAMEWORK_FIXEDPOINT_MATMATPRODUCTNEON_H_
 
 namespace Eigen {
 namespace internal {
@@ -52,11 +57,14 @@ struct gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
 
 template <typename Index, typename DataMapper, int mr, int nr,
           bool ConjugateLhs, bool ConjugateRhs>
-EIGEN_DONT_INLINE void gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr,
-                                   ConjugateLhs, ConjugateRhs>::
-operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
-           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
-           Index strideB, Index offsetA, Index offsetB) {
+EIGEN_DONT_INLINE void
+gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs,
+            ConjugateRhs>::operator()(const DataMapper& res,
+                                      const QInt8* blockA, const QUInt8* blockB,
+                                      Index rows, Index depth, Index cols,
+                                      QInt32 alpha, Index strideA,
+                                      Index strideB, Index offsetA,
+                                      Index offsetB) {
   EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
 
@@ -89,4 +97,4 @@ operator()(const DataMapper& res, const QInt8* blockA, const QUInt8* blockB,
 }  // namespace internal
 }  // namespace Eigen
 
-#endif  // CXX11_SRC_FIXEDPOINT_MATMATPRODUCTNEON_H_
+#endif  // TENSORFLOW_TSL_FRAMEWORK_FIXEDPOINT_MATMATPRODUCTNEON_H_

@@ -215,6 +215,8 @@ filegroup(
         "//tensorflow/compiler/xla/service/cpu:runtime_hdrs",
         "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
+        "//tensorflow/tsl/framework:xla_cpu_runtime_hdrs",
+        "//tensorflow/tsl/framework/fixedpoint:xla_cpu_runtime_hdrs",
         "//tensorflow/tsl/platform:xla_cpu_runtime_srcs",
     ],
     visibility = ["//tensorflow/tools/pip_package:__pkg__"],
@@ -251,7 +253,10 @@ cc_library(
         ":xla_compiled_cpu_runtime_hdrs",
     ],
     copts = runtime_copts() + tf_openmp_copts(),
-    features = ["fully_static_link"],
+    features = [
+        "fully_static_link",
+        "-parse_headers",
+    ],
     linkstatic = 1,
     visibility = [":friends"],
     # Note, we specifically removed MKL and multithreaded dependencies so the
@@ -305,6 +310,7 @@ cc_library(
 #         "//tensorflow/core/framework:numeric_types",
 #         "//tensorflow/tsl/framework:numeric_types",
 #         "//tensorflow/tsl/framework:device_type",
+#         "//tensorflow/tsl/framework:fixedpoint_types",
 #         "//tensorflow/tsl/platform:bfloat16",
 #         "//tensorflow/tsl/platform:blocking_counter",
 #         "//tensorflow/tsl/platform:byte_order",

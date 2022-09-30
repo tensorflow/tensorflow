@@ -515,6 +515,7 @@ cc_library(
             "//tensorflow/core/platform:thread_annotations",
             "//tensorflow/core/platform:mutex",
             "//tensorflow/tsl/platform/default/build_config:minimal",
+            "//tensorflow/tsl/framework:fixedpoint_types",
             "//tensorflow/core/platform:types",
         ],
 )
@@ -1081,6 +1082,7 @@ cc_library(
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
 #         "//tensorflow/core/util:managed_stack_trace",
+#         "//tensorflow/tsl/framework/fixedpoint",
 #         "//tensorflow/core/util:stats_calculator_portable",
 #         "//tensorflow/core:mobile_additional_lib_deps",
 #     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),

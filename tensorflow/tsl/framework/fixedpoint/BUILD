@@ -1,0 +1,53 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+
+package(
+    default_visibility = ["//visibility:public"],
+    features = [
+        # Required since headers are not self-contained.
+        "-parse_headers",
+    ],
+    licenses = ["notice"],
+)
+
+cc_library(
+    name = "fixedpoint",
+    hdrs = [
+        "FixedPoint.h",
+        "MatMatProduct.h",
+        "MatMatProductAVX2.h",
+        "MatMatProductNEON.h",
+        "MatVecProduct.h",
+        "PacketMathAVX.h",
+        "PacketMathAVX2.h",
+        "PacketMathAVX512.h",
+        "TypeCastingAVX2.h",
+        "TypeCastingAVX512.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/tsl/framework:fixedpoint_types",
+        "//third_party/eigen3",
+    ],
+)
+
+filegroup(
+    name = "xla_cpu_runtime_hdrs",
+    srcs = [
+        "FixedPoint.h",
+        "MatMatProduct.h",
+        "MatMatProductAVX2.h",
+        "MatMatProductNEON.h",
+        "MatVecProduct.h",
+        "PacketMathAVX.h",
+        "PacketMathAVX2.h",
+        "PacketMathAVX512.h",
+        "TypeCastingAVX2.h",
+        "TypeCastingAVX512.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow:internal",
+    ],
+)

@@ -1,15 +1,24 @@
-// This file is part of Eigen, a lightweight C++ template library
-// for linear algebra.
-//
-// Copyright (C) 2015 Benoit Steiner <benoit.steiner.goog@gmail.com>
-//
-// This Source Code Form is subject to the terms of the Mozilla
-// Public License v. 2.0. If a copy of the MPL was not distributed
-// with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
-#ifndef CXX11_SRC_FIXEDPOINT_FIXEDPOINTTYPES_H_
-#define CXX11_SRC_FIXEDPOINT_FIXEDPOINTTYPES_H_
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef TENSORFLOW_TSL_FRAMEWORK_FIXEDPOINT_TYPES_H_
+#define TENSORFLOW_TSL_FRAMEWORK_FIXEDPOINT_TYPES_H_
+
+#include <stdint.h>
+
+#include <Eigen/Core>
 #include <cmath>
 #include <iostream>
 
@@ -43,7 +52,7 @@ struct scalar_product_traits<QInt32, double> {
   };
   typedef QInt32 ReturnType;
 };
-}
+}  // namespace internal
 
 // Wrap the 8bit int into a QInt8 struct instead of using a typedef to prevent
 // the compiler from silently type cast the mantissa into a bigger or a smaller
@@ -104,13 +113,18 @@ struct QInt32 {
 };
 
 EIGEN_STRONG_INLINE QInt8::QInt8(const QInt32 v)
-    : value(v.value > 127 ? 127 : (v.value < -128 ? -128 : v.value)) {}
+    : value(static_cast<int8_t>(
+          v.value > 127 ? 127 : (v.value < -128 ? -128 : v.value))) {}
 EIGEN_STRONG_INLINE QUInt8::QUInt8(const QInt32 v)
-    : value(v.value > 255 ? 255 : (v.value < 0 ? 0 : v.value)) {}
+    : value(static_cast<uint8_t>(v.value > 255 ? 255
+                                               : (v.value < 0 ? 0 : v.value))) {
+}
 EIGEN_STRONG_INLINE QInt16::QInt16(const QInt32 v)
-    : value(v.value > 32767 ? 32767 : (v.value < -32768 ? -32768 : v.value)) {}
+    : value(static_cast<int16_t>(
+          v.value > 32767 ? 32767 : (v.value < -32768 ? -32768 : v.value))) {}
 EIGEN_STRONG_INLINE QUInt16::QUInt16(const QInt32 v)
-    : value(v.value > 65535 ? 65535 : (v.value < 0 ? 0 : v.value)) {}
+    : value(static_cast<uint16_t>(
+          v.value > 65535 ? 65535 : (v.value < 0 ? 0 : v.value))) {}
 
 // Basic widening 8-bit operations: This will be vectorized in future CLs.
 EIGEN_STRONG_INLINE QInt32 operator*(const QInt8 a, const QInt8 b) {
@@ -337,4 +351,4 @@ EIGEN_STRONG_INLINE std::ostream& operator<<(std::ostream& os, QInt32 a) {
 
 }  // namespace Eigen
 
-#endif  // CXX11_SRC_FIXEDPOINT_FIXEDPOINTTYPES_H_
+#endif  // TENSORFLOW_TSL_FRAMEWORK_FIXEDPOINT_TYPES_H_

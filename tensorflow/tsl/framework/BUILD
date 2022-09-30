@@ -9,6 +9,9 @@ load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+
+# buildifier: disable=same-origin-load
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -17,9 +20,6 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -43,6 +43,7 @@ filegroup(
         "allocator_registry.h",
         "cancellation.h",
         "device_type.h",
+        "fixedpoint_types.h",
         "metrics.h",
         "numeric_types.h",
         "tracking_allocator.h",
@@ -60,6 +61,7 @@ filegroup(
         "allocator_registry.h",
         "cpu_allocator_impl.cc",
         "device_type.h",
+        "fixedpoint_types.h",
         "numeric_types.h",
         "tracking_allocator.cc",
         "tracking_allocator.h",
@@ -83,11 +85,18 @@ filegroup(
     srcs = [
         "allocator.h",
         "allocator_registry.h",
+        "fixedpoint_types.h",
         "numeric_types.h",
         "tracking_allocator.h",
         "type_traits.h",
     ],
     visibility = ["//tensorflow/core:__subpackages__"],
+)
+
+# Files needed for tf2xla build.
+filegroup(
+    name = "xla_cpu_runtime_hdrs",
+    srcs = ["fixedpoint_types.h"],
 )
 
 # Individual targets. These should be preferred over tensorflow/core:framework
@@ -276,8 +285,8 @@ cc_library(
         "//tensorflow/core:__subpackages__",
     ],
     deps = [
+        ":fixedpoint_types",
         "//tensorflow/tsl/platform:types",
-        "//third_party/eigen3",
     ],
 )
 
@@ -306,6 +315,16 @@ cc_library(
         "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "fixedpoint_types",
+    hdrs = ["fixedpoint_types.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//third_party/eigen3",
     ],
 )
 
