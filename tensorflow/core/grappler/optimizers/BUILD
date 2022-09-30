@@ -1173,7 +1173,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ] + if_rocm_is_configured([
-        "//tensorflow/core/platform:stream_executor",
+	 "//tensorflow/core/platform:stream_executor",
     ])
 )
 

@@ -716,7 +716,7 @@ Status ExportNonConversionReportToCSV(
                             "`. The file might be corrupted.");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 string GenerateNonConversionReport(
@@ -1285,7 +1285,7 @@ Status SegmentGraph(const Graph* tf_graph,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace segment

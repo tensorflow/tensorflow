@@ -28,6 +28,8 @@ from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import auto_control_deps_utils as acd
+from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
@@ -1509,7 +1511,45 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
                        "need to get a new output Tensor.")
 
 
-class ResourceVariable(BaseResourceVariable):
+class ResourceVariableGradient(
+    composite_tensor_gradient.CompositeTensorGradient):
+  """CompositeTensorGradient protocol for ResourceVariable."""
+
+  # TODO(b/246997907): update this method to return value.handle.
+  def get_gradient_components(self, value):
+    """Returns the components of `value` that should be included in gradients.
+
+    For a ResourceVariable, its gradient component is its handle tensor.
+    For now, we return the ResourceVariable because the gradient infrastructure
+    has special logics to handle ResourceVariables. We should remove those
+    special logics and return the handle tensor.
+
+    Args:
+      value: A `ResourceVariable`.
+
+    Returns:
+      `value` itself.
+    """
+    return value
+
+  def replace_gradient_components(self, value, component_grads):
+    """Replaces the gradient components in `value` with `component_grads`.
+
+    The gradient of a ResourceVariable is either None or a Tensor. So we don't
+    need `value`'s TypeSpec or non-gradient components in this method.
+
+    Args:
+      value: A `ResourceVariable` with its gradient components compatible with
+        `component_grads`.
+      component_grads: A `Tensor` or None as the gradient result.
+
+    Returns:
+      The `component_grads`, which is either a `Tensor` or None.
+    """
+    return component_grads
+
+
+class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
   """Variable based on resource handles.
 
   See the [Variables How To](https://tensorflow.org/guide/variables)
@@ -1681,6 +1721,18 @@ class ResourceVariable(BaseResourceVariable):
           distribute_strategy=distribute_strategy,
           validate_shape=validate_shape,
       )
+
+  # CompositeTensor method
+  @property
+  def _type_spec(self):
+    return VariableSpec.from_value(self)
+
+  # CompositeTensor method
+  def _shape_invariant_to_type_spec(self, shape):
+    return VariableSpec(shape, self.dtype, self.trainable)
+
+  # CompositeTensorGradient protocol
+  __composite_gradient__ = ResourceVariableGradient()
 
   def _init_from_args(
       self,

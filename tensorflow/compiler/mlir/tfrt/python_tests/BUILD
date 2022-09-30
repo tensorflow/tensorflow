@@ -267,10 +267,10 @@ py_strict_test(
     name = "tf_transpose_test",
     srcs = ["tf_transpose_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_oss",
         "no_pip",  # TODO(b/201803253): TFRT pybindings not in OSS.
-        "noasan",  # TODO(b/247012126)
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",

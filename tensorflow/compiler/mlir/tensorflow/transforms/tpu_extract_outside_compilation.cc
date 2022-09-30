@@ -264,7 +264,7 @@ tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
       loc_op->getLoc(), builder.getStringAttr(host_device),
       /*result_types=*/ArrayRef<Type>{});
 
-  launch_op.body().push_back(new Block);
+  launch_op.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&launch_op.GetBody());
   builder.create<tf_device::ReturnOp>(loc_op->getLoc(),
                                       llvm::ArrayRef<Value>{});
@@ -772,7 +772,7 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
   // compilation and the second for the original TPU cluster computation.
   const int num_regions = 2;
   auto parallel_execute_op = builder.create<tf_device::ParallelExecuteOp>(
-      tpu_cluster.getLoc(), num_regions, tpu_cluster.results().getTypes());
+      tpu_cluster.getLoc(), num_regions, tpu_cluster.getResults().getTypes());
   Block& host_computation_block =
       parallel_execute_op.GetRegionBlockWithIndex(0);
   builder.setInsertionPointToEnd(&host_computation_block);

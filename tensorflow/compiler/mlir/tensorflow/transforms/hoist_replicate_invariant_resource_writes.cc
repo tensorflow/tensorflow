@@ -58,7 +58,7 @@ SmallVector<Value> GetAccessedResources(Operation& op) {
 void MoveTailWritesAfterReplicate(
     tf_device::ReplicateOp replicate_op,
     llvm::ArrayRef<TF::AssignVariableOp> tail_assign_variable_ops) {
-  const auto num_replicas = replicate_op.n();
+  const auto num_replicas = replicate_op.getN();
   auto return_op = llvm::dyn_cast<tf_device::ReturnOp>(
       replicate_op.getRegion().front().getTerminator());
 

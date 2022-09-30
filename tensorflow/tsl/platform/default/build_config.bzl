@@ -779,7 +779,7 @@ def tf_additional_binary_deps():
     ) + if_rocm(
         [
             clean_dep("//tensorflow/compiler/xla/stream_executor:rocm_platform"),
-            clean_dep("//tensorflow/tsl/platform/default/build_config:rocm"),
+            clean_dep("//tensorflow/compiler/xla/stream_executor/rocm:rocm_rpath"),
         ],
     ) + if_mkl_ml(
         [

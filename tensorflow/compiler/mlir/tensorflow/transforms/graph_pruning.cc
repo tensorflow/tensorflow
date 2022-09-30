@@ -91,7 +91,7 @@ void VisitOp(GraphOp graph, Operation* op,
              llvm::SmallVectorImpl<Operation*>* ops_to_visit) {
   if (auto island = llvm::dyn_cast<IslandOp>(op)) {
     mlir::visitUsedValuesDefinedAbove(
-        island.body(), island.body(), [&](OpOperand* operand) {
+        island.getBody(), island.getBody(), [&](OpOperand* operand) {
           VisitOpOperand(graph, operand->get(), reachable_ops, ops_to_visit);
         });
   }

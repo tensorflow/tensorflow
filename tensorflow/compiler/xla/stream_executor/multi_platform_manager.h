@@ -31,7 +31,7 @@ limitations under the License.
 //   port::StatusOr<Platform*> platform_status =
 //      se::MultiPlatformManager::PlatformWithName("OpenCL");
 //   if (!platform_status.ok()) { ... }
-//   Platform* platform = platform_status.ValueOrDie();
+//   Platform* platform = platform_status.value();
 //   LOG(INFO) << platform->VisibleDeviceCount() << " devices visible";
 //   if (platform->VisibleDeviceCount() <= 0) { return; }
 //
@@ -43,7 +43,7 @@ limitations under the License.
 //                 << ": " << executor_status.status();
 //       continue;
 //     }
-//     LOG(INFO) << "found usable executor: " << executor_status.ValueOrDie();
+//     LOG(INFO) << "found usable executor: " << executor_status.value();
 //   }
 //
 // A few things to note:

@@ -86,6 +86,45 @@ namespace {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
 
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AbsOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AcosOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AcoshOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AsinOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AsinhOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AtanOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AtanhOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(BesselI0eOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(BesselI1eOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CheckNumericsOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CollectiveReduceOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ConjOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CoshOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CrossOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DataFormatDimMapOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DataFormatVecPermuteOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DigammaOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(EluOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(EluGradOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfcOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ExpOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Expm1Op);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FakeQuantWithMinMaxArgsOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FakeQuantWithMinMaxArgsGradientOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(InvOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(InvertOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LeakyReluOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LeakyReluGradOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LgammaOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Log1pOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogSoftmaxOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogicalNotOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MergeSummaryOp);
+
 //===----------------------------------------------------------------------===//
 // AddOp
 //===----------------------------------------------------------------------===//
@@ -1694,6 +1733,10 @@ static LogicalResult Verify(OpT op) {
     filter_channels = ty.getDimSize(idx);
   }
 
+  if (ShapedType::isDynamic(filter_channels) ||
+      ShapedType::isDynamic(input_channels))
+    return success();
+
   if (input_channels != -1 && filter_channels != -1 &&
       input_channels % filter_channels != 0)
     return op.emitOpError()
@@ -2537,21 +2580,6 @@ Type InferExpandDimsOpType(Value input, Value dim) {
 void ExpandDimsOp::build(OpBuilder &builder, OperationState &result,
                          Value input, Value dim) {
   return build(builder, result, InferExpandDimsOpType(input, dim), input, dim);
-}
-
-//===----------------------------------------------------------------------===//
-// Expm1Op
-//===----------------------------------------------------------------------===//
-
-LogicalResult Expm1Op::inferReturnTypeComponents(
-    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
-  ShapeAdaptor adaptor = operands.getShape(0);
-  ShapedTypeComponents component(adaptor.getElementType());
-  if (adaptor.hasRank()) adaptor.getDims(component);
-  inferredReturnShapes.push_back(component);
-  return success();
 }
 
 //===----------------------------------------------------------------------===//

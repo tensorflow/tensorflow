@@ -313,12 +313,12 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
 #if GOOGLE_CUDA
-  EXPECT_TRUE(plane.GetStat(kDevCapClockRateKHz).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapCoreCount).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapMemoryBandwidth).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapMemorySize).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMajor).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMinor).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapClockRateKHz).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapCoreCount).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapMemoryBandwidth).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapMemorySize).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapComputeCapMajor).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapComputeCapMinor).has_value());
 #endif
 
   // Check if the device events timestamps are set.
@@ -371,10 +371,10 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
 
   // These follow the order in which they were invoked above.
   const std::array<StatType, 4> expected_event_stat_type = {
-      kMemallocDetails,
-      kMemsetDetails,
-      kMemcpyDetails,
-      kMemFreeDetails,
+      StatType::kMemallocDetails,
+      StatType::kMemsetDetails,
+      StatType::kMemcpyDetails,
+      StatType::kMemFreeDetails,
   };
 
   int event_idx = 0;

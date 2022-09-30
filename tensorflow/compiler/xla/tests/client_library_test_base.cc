@@ -39,7 +39,7 @@ namespace {
 constexpr char kInterpreter[] = "interpreter";
 
 // Wrapper function that creates a nicer error message (than a bare
-// ValueOrDie()) if the platform we intend to test is not available.
+// value()) if the platform we intend to test is not available.
 LocalClient* GetOrCreateLocalClientOrDie(
     const LocalClientOptions& client_options) {
   StatusOr<LocalClient*> result =

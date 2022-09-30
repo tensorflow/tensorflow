@@ -1,7 +1,7 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
-load("//tensorflow:tensorflow.bzl", "check_deps", "tf_cc_test", "tf_copts", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "check_deps", "if_google", "tf_cc_test", "tf_copts", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
@@ -704,6 +704,29 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "stream_executor_cuda",
+    deps = if_google(
+        [
+            "//tensorflow/compiler/xla/stream_executor:stream_executor_bundle",
+        ] + select({
+            # copybara:uncomment_begin(different config setting in OSS)
+            # "//tools/cc_target_os:gce": [],
+            # copybara:uncomment_end_and_comment_begin
+            "//conditions:default": [
+                "@local_config_cuda//cuda:cudart_static",  # buildcleaner: keep
+                ":cuda_platform",
+            ],
+        }),
+        [
+            ":cudart_stub",
+        ] + select({
+            "//tensorflow:macos": ["IOKit"],
+            "//conditions:default": [],
+        }),
+    ),
+)
+
 # To avoid duplication, check that the C++ or python library does not depend on
 # the stream executor cuda plugins. Targets that want to use cuda APIs should
 # instead depend on the dummy plugins in //tensorflow/tsl/platform/default/build_config
@@ -737,6 +760,7 @@ tf_cuda_cc_test(
     deps = [
         ":cuda_activation",
         ":cuda_gpu_executor",
+        ":stream_executor_cuda",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",
@@ -745,7 +769,6 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/tsl/platform/default/build_config:stream_executor_cuda",
     ],
 )
 

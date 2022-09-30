@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_GAUGE_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_GAUGE_H_
 
+#include "tensorflow/core/lib/monitoring/collection_registry.h"
+#include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/tsl/lib/monitoring/gauge.h"
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {

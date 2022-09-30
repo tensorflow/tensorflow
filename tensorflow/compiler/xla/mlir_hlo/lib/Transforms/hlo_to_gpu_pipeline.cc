@@ -22,7 +22,6 @@ limitations under the License.
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
-#include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
@@ -42,22 +41,28 @@ using ::mlir::gpu::GPUModuleOp;
 // not yet clear how exactly it will look like. The goal is to merge this with
 // the unified kernel generator + autofusion + XLA Next pipeline once we have
 // it, and once this code stabilizes.
-void mlir::createHloToGpuPipeline(OpPassManager &pm,
-                                  ArrayRef<int64_t> tileSizes,
-                                  ArrayRef<int64_t> unrollFactors) {
+void mlir::createHloToGpuPipeline(OpPassManager& pm,
+                                  ArrayRef<int64_t> blockTileDim,
+                                  ArrayRef<int64_t> warpTileDim,
+                                  ArrayRef<int64_t> threadTileDim) {
   pm.addNestedPass<FuncOp>(hlo::createUnbufferizePass());
 
-  // HLO -> Loops
+  // HLO -> Linalg
   pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
-  SmallVector<SmallVector<int64_t>> tilingSizes = {
-      SmallVector<int64_t>(tileSizes.begin(), tileSizes.end()),
-      SmallVector<int64_t>(unrollFactors.begin(), unrollFactors.end()),
-      // Force the innermost ploop to be a point to avoid temp alloc()s.
-      // TODO(csigg): vectorize instead.
-      SmallVector<int64_t>(tileSizes.size(), 1)};
+  // TODO(b/244313563): This is a workaround to avoid temporary allocs within
+  // threads. It works for as long as all of our operations are cwise. Vectorize
+  // the inner loops instead.
+  pm.addNestedPass<FuncOp>(createLinalgElementwiseOpFusionPass());
 
-  pm.addNestedPass<FuncOp>(gml_st::createDeprecatedTilingPass(tilingSizes));
-  pm.addNestedPass<FuncOp>(gml_st::createDeprecatedFusionPass());
+  // Tiling
+  pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+      /*distribute=*/true, SmallVector<int64_t>(blockTileDim)));
+  pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+      /*distribute=*/true, SmallVector<int64_t>(warpTileDim)));
+  pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+      /*distribute=*/true, SmallVector<int64_t>(threadTileDim)));
+  pm.addNestedPass<FuncOp>(createScalarizationPass());
+
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addNestedPass<FuncOp>(gml_st::createComposeSetOpsPass());
@@ -69,16 +74,10 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   pm.addPass(createCSEPass());
   pm.addNestedPass<FuncOp>(bufferization::createBufferDeallocationPass());
 
-  // Convert Linalg + GmlSt to SCF loops.
-  pm.addNestedPass<FuncOp>(createConvertLinalgToLoopsPass());
-  pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass());
-  pm.addNestedPass<FuncOp>(gml_st::createGmlStToScfPass());
-
-  // Loops -> GPU
-  pm.addNestedPass<FuncOp>(createGpuMapParallelLoopsPass());
-  pm.addNestedPass<FuncOp>(createLoopInvariantCodeMotionPass());
-  pm.addNestedPass<FuncOp>(createParallelLoopToGpuPass());
+  // Linalg + GmlSt -> GPU
+  pm.addNestedPass<FuncOp>(createGmlStToGpuPass());
   pm.addNestedPass<FuncOp>(arith::createArithmeticExpandOpsPass());
+  pm.addNestedPass<FuncOp>(createConvertLinalgToLoopsPass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addPass(createGpuLauchSinkIndexComputationsPass());
   constexpr llvm::StringRef kGpuDataLayoutSpec =
@@ -88,6 +87,7 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   pm.addNestedPass<GPUModuleOp>(createLowerAffinePass());
   pm.addNestedPass<GPUModuleOp>(createCanonicalizerPass());
   pm.addNestedPass<GPUModuleOp>(createConvertSCFToCFPass());
+
   // GPU -> low-level IR
 #if TENSORFLOW_USE_ROCM
   pm.addNestedPass<GPUModuleOp>(createGpuKernelToRocdlPass());
@@ -95,6 +95,7 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   pm.addNestedPass<GPUModuleOp>(createGpuKernelToNvvmPass());
 #endif
   pm.addPass(createPropagateStaticShapesToKernelPass());
+  pm.addNestedPass<GPUModuleOp>(createCSEPass());
   // Some instructions crash ptxas down the line if they have debug info
   // attached.
   pm.addNestedPass<GPUModuleOp>(createStripDebugInfoPass());

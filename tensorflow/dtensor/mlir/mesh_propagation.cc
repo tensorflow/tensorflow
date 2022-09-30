@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -47,7 +46,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORMESHPROPAGATION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Extracts mesh of `block_arg` by parsing function argument attributes of it's
 // enclosing function. Mesh is inferred either using `tf._layout` or `tf._mesh`
@@ -199,7 +201,7 @@ mlir::LogicalResult InferMeshFromInputs(
     return result;
 
   mlir::visitUsedValuesDefinedAbove(
-      cluster.body(), cluster.body(), [&](mlir::OpOperand* operand) {
+      cluster.getBody(), cluster.getBody(), [&](mlir::OpOperand* operand) {
         if (mlir::failed(result)) return;
         absl::optional<Mesh> extracted_config;
 
@@ -436,7 +438,7 @@ mlir::LogicalResult AnnotateFunctionReturnValuesWithMeshInformation(
 
 // MLIR pass that propagates mesh information to tf_device.Cluster ops.
 struct DTensorMeshPropagation
-    : public DTensorMeshPropagationBase<DTensorMeshPropagation> {
+    : public impl::DTensorMeshPropagationBase<DTensorMeshPropagation> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder builder(&context);

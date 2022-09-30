@@ -71,6 +71,17 @@ void AddTensorDataToMap(TfLiteTensor* tensor,
   output_map.emplace(TfLiteTensorName(tensor), std::move(char_output));
 }
 
+// Returns whether the tensor is embedded with data.
+inline bool HasTensorData(ModelLoader* model_loader, const Subgraph& graph,
+                          int index) {
+  // TODO(b/247752800): Find a better approach to see if data is embedded,
+  // regardless of how the model is loaded.
+  const TfLiteTensor* tensor = graph.tensor(index);
+  return tensor->allocation != nullptr ||
+         (model_loader->IsLoadedFromFlatbufferBuilder() &&
+          tensor->data.data != nullptr);
+}
+
 constexpr int64_t kMicrosInSecond = 1000 * 1000;
 constexpr int64_t kNanosInMicro = 1000;
 
@@ -133,13 +144,14 @@ MinibenchmarkStatus Validator::CheckGoldenOutput(Results* results_out) {
     return kMinibenchmarkValidationSubgraphHasTooFewOutputs;
   }
 
-  // Check if we have golden output embedded or need to run CPU for it. If
-  // the data is embedded, there is already an allocation for it from the model.
-  // We can skip running it on CPU.
-  if (validation_entrypoint_->tensor(validation_entrypoint_->inputs()[0])
-          ->allocation) {
+  // Check if we have golden output embedded or need to run CPU for it.  If
+  // embedded, we can skip running it on CPU.
+  if (HasTensorData(model_loader_.get(), *validation_entrypoint_,
+                    validation_entrypoint_->inputs()[0])) {
     return kMinibenchmarkSuccess;
   }
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+                  "Running on CPU to get golden output for comparison.");
 
   // Create the interpreter to run on CPU.
   tflite::InterpreterBuilder(*model_loader_->GetModel(),
@@ -283,8 +295,8 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
   if (validation_entrypoint_->inputs().empty()) {
     return kMinibenchmarkValidationSubgraphHasTooFewInputs;
   }
-  if (!validation_entrypoint_->tensor(validation_entrypoint_->inputs().back())
-           ->allocation) {
+  if (!HasTensorData(model_loader_.get(), *validation_entrypoint_,
+                     validation_entrypoint_->inputs().back())) {
     return kMinibenchmarkValidationInputMissing;
   }
   if (validation_entrypoint_->AllocateTensors() != kTfLiteOk) {

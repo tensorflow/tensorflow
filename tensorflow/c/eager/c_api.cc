@@ -248,7 +248,7 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
                                                 TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM)
-  status->status = tensorflow::Status::OK();
+  status->status = tensorflow::OkStatus();
 #else   // !defined(IS_MOBILE_PLATFORM)
   status->status = tensorflow::unwrap(ctx)->AsyncWait();
 #endif  // !IS_MOBILE_PLATFORM
@@ -1146,6 +1146,10 @@ TFE_TensorHandle* DefaultCustomDevicePack(TFE_Context* context,
 }  // namespace
 
 extern "C" {
+
+bool TFE_IsCustomDevice(TFE_Context* ctx, const char* device_name) {
+  return tensorflow::unwrap(ctx)->IsCustomDevice(device_name);
+}
 
 void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
                               const char* device_name, void* device_info,

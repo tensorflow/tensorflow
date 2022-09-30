@@ -42,7 +42,7 @@ TEST(DialectUtilityTest, TestLookupControlDependency) {
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
-  auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
+  auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
 
   Value copy = ret_op.getOperand(0);
   Value ctl = LookupControlDependency(copy);
@@ -77,7 +77,7 @@ TEST(DialectUtilityTest, TestLookupDataValue) {
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
-  auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
+  auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
 
   Value ctl = ret_op.getOperand(1);
   Optional<Value> produce = LookupDataValue(ctl);
@@ -112,7 +112,7 @@ TEST(DialectUtilityTest, TestLookupDataValueNoData) {
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
-  auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
+  auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
 
   Value ctl = ret_op.getOperand(1);
   Optional<Value> no_data = LookupDataValue(ctl);

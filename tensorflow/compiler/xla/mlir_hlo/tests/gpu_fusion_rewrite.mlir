@@ -22,6 +22,18 @@ func.func @log(
 // -----
 
 // Check that no index computations are emitted for flattened tensor.
+// We do however, need some index computations to convert from warp and thread
+// indices to offset in input/output that that thread should operate on.
+// TODO(b/247482325): Optimize this better if needed.
+// CHECK-DAG: %[[C0:.*]] = llvm.mlir.constant(0 : i32)
+// CHECK-DAG: %[[C1:.*]] = llvm.mlir.constant(1 : i32)
+// CHECK-DAG: %[[C32:.*]] = llvm.mlir.constant(32 : index)
+// CHECK-DAG: %[[TIDX:.*]] = nvvm.read.ptx.sreg.tid.x
+// CHECK-DAG: %[[TIDY:.*]] = nvvm.read.ptx.sreg.tid.y
+// CHECK-DAG: %[[TMP1:.*]] = llvm.mul %[[TIDY]], %[[C32]]
+// CHECK-DAG: %[[TMP2:.*]] = llvm.mul %[[TMP1]], %[[C1]]
+// CHECK-DAG: %[[WARPOFS:.*]] = llvm.add %[[TMP2]], %[[C0]]
+// CHECK: llvm.add %[[WARPOFS]], %[[TIDX]]
 // CHECK-NOT: llvm.mul
 // CHECK-NOT: llvm.add
 // CHECK-LABEL: func.func @multidimensional

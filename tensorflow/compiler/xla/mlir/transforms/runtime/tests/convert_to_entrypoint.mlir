@@ -71,18 +71,36 @@ func.func @function_call_to_custom_call(%arg0: memref<?xf32>) -> memref<?xf32>
   return %0 : memref<?xf32>
 }
 
-// Direct custom call prototype declaration.
-// CHECK-NOT: func private @direct_custom_call(memref<?xf32>)
-func.func private @direct_custom_call(%arg0: memref<?xf32>)
-  attributes { rt.direct_custom_call = "target" }
+// Dynamic custom call prototype declaration.
+// CHECK-NOT: func private @dynamic_custom_call(memref<?xf32>)
+func.func private @dynamic_custom_call(%arg0: memref<?xf32>)
+  attributes { rt.dynamic, rt.custom_call = "target" }
 
-// CHECK: func @function_call_to_direct_custom_call(
+// CHECK: func @function_call_to_dynamic_custom_call(
 // CHECK:   %[[CTX:.*]]: !rt.execution_context,
 // CHECK:   %[[ARG:.*]]: memref<?xf32>
 // )
-func.func @function_call_to_direct_custom_call(%arg0: memref<?xf32>)
+func.func @function_call_to_dynamic_custom_call(%arg0: memref<?xf32>)
   attributes { rt.entrypoint } {
-  // CHECK: rt.custom_call direct %[[CTX]]["target"]
-  call @direct_custom_call(%arg0) : (memref<?xf32>) -> ()
+  // CHECK: rt.custom_call dynamic %[[CTX]]["target"]
+  call @dynamic_custom_call(%arg0) : (memref<?xf32>) -> ()
   return
+}
+
+// CHECK: func @function_call_to_traced_custom_call(
+// CHECK:   %[[CTX:.*]]: !rt.execution_context,
+// CHECK:   %[[ARG:.*]]: memref<?xf32>
+// )
+func.func @function_call_to_traced_custom_call(%arg0: memref<?xf32>)
+    -> memref<?xf32> attributes { rt.entrypoint } {
+  // CHECK: %[[RES:.*]]:2 = rt.trace #rt.hlo_trace<"fusion", "foo", 0>, %[[CTX]]
+  // CHECK-SAME: -> !rt.status, memref<?xf32> {
+  // CHECK-NEXT:   %[[STATUS:.*]], %[[RET:.*]] = custom_call %[[CTX]]["target"]
+  // CHECK-NOT:    #rt.hlo_trace
+  // CHECK-NEXT:   yield %[[STATUS]], %[[RET]] : !rt.status, memref<?xf32>
+  // CHECK-NEXT: }
+  // CHECK: rt.is_ok %[[RES]]#0
+  %0 = call @custom_call(%arg0) { rt.trace = #rt.hlo_trace<"fusion", "foo", 0> }
+    : (memref<?xf32>) -> memref<?xf32>
+  return %0 : memref<?xf32>
 }

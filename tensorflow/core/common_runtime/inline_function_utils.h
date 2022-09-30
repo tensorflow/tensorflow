@@ -150,7 +150,7 @@ struct InlineFunctionBodyOptions {
   string DebugString() const;
 };
 
-// Returns 'Status::OK()' iff the function '*fbody' can be inlined at 'node'
+// Returns 'OkStatus()' iff the function '*fbody' can be inlined at 'node'
 // based on the type signature of 'node' and 'fbody':
 //
 // (1) Caller node has the same number of inputs and outputs as the function.
@@ -168,7 +168,7 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
 // edges properly. "override_device" specifies whether inlining should replace
 // explicitly specified devices inside fbody with the callee's device.
 //
-// Returns 'Status::OK()' if function was successfully inlined into the graph.
+// Returns 'OkStatus()' if function was successfully inlined into the graph.
 // If function inlining is not possible returns an error with a reason, and
 // leaves the graph in unmodified state.
 Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,

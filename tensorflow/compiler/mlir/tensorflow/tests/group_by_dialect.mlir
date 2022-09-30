@@ -120,3 +120,16 @@ func.func @only_top_level() -> (i32, i32, i32, i32) {
 
 // CHECK: func @only_top_level
 // CHECK-NOT: call
+
+// -----
+
+func.func @leaves_processed_funcs_alone() -> (i32, i32)
+    attributes {dialect="foo"}
+{
+  %0 = "foo.constant"() { value = 0: i32 } : () -> i32
+  %1 = "foo.constant"() { value = 1: i32 } : () -> i32
+  func.return %0, %1: i32, i32
+}
+
+// CHECK: func @leaves_processed_funcs_alone
+// CHECK-NOT: call

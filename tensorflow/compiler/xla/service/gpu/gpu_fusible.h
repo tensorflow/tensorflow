@@ -115,6 +115,7 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
 // Whether the instructions are compatible for producer-consumer fusion
 // i.e. whether the producer and consumer are loop/input fusible and
 // they are not library calls.
+// Used both by instruction fusion and fusion-fusion merging.
 FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
                                          const HloInstruction& consumer);
 

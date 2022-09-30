@@ -210,7 +210,7 @@ MergedIsland* CoarseningAnalysis::GetOperandCandidateToMergeWith(
 
   // Check island control operands.
   for (IslandOp island : merged_island.islands) {
-    for (Value input : island.controlInputs()) {
+    for (Value input : island.getControlInputs()) {
       Operation* def = input.getDefiningOp();
       DCHECK_EQ(def->getParentOp(), graph);
       try_update_current_candidate(def);
@@ -261,14 +261,14 @@ MergedIsland* CoarseningAnalysis::GetResultCandidateToMergeWith(
 
   // Check island control results.
   for (IslandOp island : merged_island.islands) {
-    for (Operation* user : island.control().getUsers()) {
+    for (Operation* user : island.getControl().getUsers()) {
       DCHECK_EQ(user->getParentOp(), graph);
       try_update_current_candidate(user);
     }
 
     // Check island data results.
     Block& graph_body = llvm::cast<GraphOp>(graph).GetBody();
-    for (Value result : island.outputs()) {
+    for (Value result : island.getOutputs()) {
       for (Operation* user : result.getUsers()) {
         Operation* def = graph_body.findAncestorOpInBlock(*user);
         DCHECK_NE(def, nullptr);
@@ -322,7 +322,7 @@ void GetNewIslandResultsAndForwardResults(
 
   for (IslandOp island : merged_island.islands) {
     for (auto ret_vals :
-         llvm::zip(island.GetYield().getOperands(), island.outputs())) {
+         llvm::zip(island.GetYield().getOperands(), island.getOutputs())) {
       bool result_captured = false;
       Value inner_op_result = std::get<0>(ret_vals);
       Value island_result = std::get<1>(ret_vals);
@@ -357,7 +357,7 @@ IslandOp CreateNewIsland(const MergedIsland& merged_island,
   OpBuilder builder(merged_island.insert_point);
   auto new_island = builder.create<IslandOp>(
       merged_island.insert_point->getLoc(), result_types, operands);
-  new_island.body().push_back(new Block);
+  new_island.getBody().push_back(new Block);
   return new_island;
 }
 
@@ -367,7 +367,7 @@ YieldOp CreateNewIslandYieldOp(IslandOp new_island,
   llvm::SmallVector<Value, 8> yield_operands;
   yield_operands.reserve(results.size());
 
-  for (auto ret_vals : llvm::zip(results, new_island.outputs())) {
+  for (auto ret_vals : llvm::zip(results, new_island.getOutputs())) {
     const auto& old_result = std::get<0>(ret_vals);
 
     // Replace original island result with new island result.
@@ -408,7 +408,7 @@ void MergeIslands(const MergedIsland& merged_island,
     island_operands_and_results.operands.insert(island.operand_begin(),
                                                 island.operand_end());
   for (IslandOp island : merged_island.islands)
-    island_operands_and_results.operands.remove(island.control());
+    island_operands_and_results.operands.remove(island.getControl());
 
   // Collect results for the new merged island.
   GetNewIslandResultsAndForwardResults(merged_island,
@@ -428,7 +428,7 @@ void MergeIslands(const MergedIsland& merged_island,
 
   // Update control inputs to point to the new merged island.
   for (IslandOp island : merged_island.islands)
-    island.control().replaceAllUsesWith(new_island.control());
+    island.getControl().replaceAllUsesWith(new_island.getControl());
   for (IslandOp island : merged_island.islands) island->erase();
 }
 
@@ -441,11 +441,11 @@ void InsertDummyIslandForFetch(FetchOp fetch) {
   llvm::SmallVector<Value, 4> data_fetches;
   llvm::SmallVector<Type, 4> data_types;
   llvm::SmallVector<Value, 4> control_fetches;
-  data_fetches.reserve(fetch.fetches().size());
+  data_fetches.reserve(fetch.getFetches().size());
   data_types.reserve(data_fetches.capacity());
   control_fetches.reserve(data_fetches.capacity());
 
-  for (auto value : fetch.fetches()) {
+  for (auto value : fetch.getFetches()) {
     if (value.getType().isa<ControlType>()) {
       control_fetches.push_back(value);
     } else {
@@ -457,7 +457,7 @@ void InsertDummyIslandForFetch(FetchOp fetch) {
       fetch.getLoc(), data_types,
       /*control=*/ControlType::get(fetch.getContext()),
       /*controlInputs=*/control_fetches);
-  island.body().push_back(new Block);
+  island.getBody().push_back(new Block);
   OpBuilder::atBlockEnd(&island.GetBody())
       .create<YieldOp>(fetch.getLoc(), data_fetches);
   const int fetch_control_idx = data_fetches.size();

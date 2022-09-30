@@ -112,10 +112,18 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
 
 #define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
-#define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_LEGALIZETF
+#define GEN_PASS_DECL_LEGALIZETFCOLLECTIVE
+#define GEN_PASS_DECL_LEGALIZETFCONTROLFLOW
+#define GEN_PASS_DECL_LEGALIZETFMODULEPASS
+#define GEN_PASS_DECL_LEGALIZETFNOFALLBACK
+#define GEN_PASS_DECL_LEGALIZETFTYPESPASS
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
 
+#define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_LEGALIZETFCOMMUNICATIONPASS
+#define GEN_PASS_DECL_LEGALIZETFWITHTF2XLA
+#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
 }  // namespace mhlo
 }  // namespace mlir
 

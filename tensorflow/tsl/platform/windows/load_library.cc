@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/load_library.h"
+#include "tensorflow/tsl/platform/load_library.h"
 
 #include <Shlwapi.h>
+
 #undef StrCat  // Don't let StrCat be renamed to lstrcatA
 #include <errno.h>
 #include <fcntl.h>
@@ -24,12 +25,15 @@ limitations under the License.
 #include <windows.h>
 #undef ERROR
 
+#include <algorithm>
+#include <string>
+
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/windows/wide_char.h"
 
 #pragma comment(lib, "Shlwapi.lib")
 
-namespace tensorflow {
+namespace tsl {
 
 namespace internal {
 
@@ -72,4 +76,4 @@ string FormatLibraryFileName(const string& name, const string& version) {
 
 }  // namespace internal
 
-}  // namespace tensorflow
+}  // namespace tsl

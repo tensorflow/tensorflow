@@ -33,31 +33,13 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id);
 
 class GroupByDialectPass : public GroupByDialectPassBase<GroupByDialectPass> {
  public:
-  void runOnOperation() override {
-    mlir::func::FuncOp func = getOperation();
-    int function_id = 0;
+  void runOnOperation() override;
 
-    for (Block& block : func.getBody().getBlocks()) {
-      StringRef current_dialect("<none>");
-      std::vector<Operation*> ops;
-      for (Operation& op : block.getOperations()) {
-        StringRef dialect = op.getName().getDialectNamespace();
-        if (dialect != current_dialect) {
-          if (!top_level_dialects_.contains(current_dialect)) {
-            wrapOpsInFunction(ops, function_id++);
-          }
-          ops.clear();
-          current_dialect = dialect;
-        }
-        ops.push_back(&op);
-      }
-      if (!top_level_dialects_.contains(current_dialect)) {
-        wrapOpsInFunction(ops, function_id++);
-      }
-    }
-  }
+ private:
+  void processFunction(mlir::func::FuncOp func, int& counter);
 
-  llvm::SmallDenseSet<StringRef> top_level_dialects_ = {"glue", "func"};
+  llvm::SmallDenseSet<StringRef> top_level_dialects_ = {"ml_program", "glue",
+                                                        "func"};
 };
 
 // Compute the set of all values which are inputs to `ops`, but not generated
@@ -170,6 +152,38 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id) {
 }
 
 }  // namespace
+
+void GroupByDialectPass::processFunction(mlir::func::FuncOp func,
+                                         int& counter) {
+  // don't re-process functions we generated
+  if (func->getAttr("dialect")) return;
+
+  for (Block& block : func.getBody().getBlocks()) {
+    StringRef current_dialect("<none>");
+    std::vector<Operation*> ops;
+    for (Operation& op : block.getOperations()) {
+      StringRef dialect = op.getName().getDialectNamespace();
+      if (dialect != current_dialect) {
+        if (!top_level_dialects_.contains(current_dialect)) {
+          wrapOpsInFunction(ops, counter++);
+        }
+        ops.clear();
+        current_dialect = dialect;
+      }
+      ops.push_back(&op);
+    }
+    if (!top_level_dialects_.contains(current_dialect)) {
+      wrapOpsInFunction(ops, counter++);
+    }
+  }
+  counter++;
+}
+
+void GroupByDialectPass::runOnOperation() {
+  int counter = 0;
+  getOperation().walk(
+      [&](func::FuncOp func) { processFunction(func, counter); });
+}
 
 std::unique_ptr<Pass> CreateGroupByDialectPass() {
   return std::make_unique<GroupByDialectPass>();

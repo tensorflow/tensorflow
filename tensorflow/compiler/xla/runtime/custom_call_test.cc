@@ -159,7 +159,7 @@ static bool CustomCallFn(ExecutionContext* ctx, void** args, void** attrs,
 TEST(CustomCallTest, DirectCustomCall) {
   absl::string_view module = R"(
     func.func private @custom_call(%arg0: i32)
-      attributes { rt.direct_custom_call = "test.custom_call" }
+      attributes { rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0 = arith.constant 42 : i32
@@ -182,7 +182,7 @@ TEST(CustomCallTest, ScalarArgs) {
   absl::string_view module = R"(
     func.func private @custom_call(%arg0: i1, %arg1: i32, %arg2: i64,
                                    %arg3: f32, %arg4: f64)
-      attributes { rt.custom_call = "test.custom_call" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0 = arith.constant false
@@ -229,11 +229,11 @@ TEST(CustomCallTest, ScalarArgs) {
 TEST(CustomCallTest, ScalarRets) {
   absl::string_view module = R"(
     func.func private @custom_call_result() -> (i1, i32, i64, f32, f64)
-      attributes { rt.custom_call = "test.custom_call_result" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call_result" }
 
     func.func private @custom_call(%arg0: i1, %arg1: i32, %arg2: i64,
                                    %arg3: f32, %arg4: f64)
-      attributes { rt.custom_call = "test.custom_call" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0, %1, %2, %3, %4 = call @custom_call_result()
@@ -296,10 +296,10 @@ TEST(CustomCallTest, ScalarRets) {
 TEST(CustomCallTest, StatusOrRet) {
   absl::string_view module = R"(
     func.func private @custom_call_return(%arg0: i32) -> (i64)
-      attributes { rt.custom_call = "test.custom_call_return" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call_return" }
 
     func.func private @custom_call(%arg64 : i64)
-      attributes { rt.custom_call = "test.custom_call" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0 = arith.constant 42 : i32
@@ -335,10 +335,10 @@ TEST(CustomCallTest, StatusOrTupleRets) {
   absl::string_view module = R"(
     func.func private @custom_call_return(%arg0 : i64, %arg1 : i64) -> (i64,
                                                                         i64)
-      attributes { rt.custom_call = "test.custom_call_return" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call_return" }
 
     func.func private @custom_call(%arg0 : i64, %arg1 : i64)
-      attributes { rt.custom_call = "test.custom_call" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0 = arith.constant 42 : i64
@@ -385,7 +385,7 @@ TEST(CustomCallTest, StatusOrTupleRets) {
 TEST(CustomCallTest, OpaqueArgs) {
   absl::string_view module = R"(
     func.func private @use(%arg0: !rt.opaque)
-      attributes { rt.custom_call = "test.use" }
+      attributes { rt.dynamic, rt.custom_call = "test.use" }
 
     func.func @test(%arg0: !rt.opaque) {
       call @use(%arg0) : (!rt.opaque) -> ()
@@ -417,10 +417,10 @@ TEST(CustomCallTest, OpaqueArgs) {
 TEST(CustomCallTest, OpaqueArgsAndRets) {
   absl::string_view module = R"(
     func.func private @make() -> (!rt.opaque)
-      attributes { rt.custom_call = "test.make" }
+      attributes { rt.dynamic, rt.custom_call = "test.make" }
 
     func.func private @use(%arg0: !rt.opaque)
-      attributes { rt.custom_call = "test.use" }
+      attributes { rt.dynamic, rt.custom_call = "test.use" }
 
     func.func @test() {
       %0 = call @make() : () -> (!rt.opaque)
@@ -490,7 +490,7 @@ static std::unique_ptr<Type> ConvertArgTypeToOpaqueArg(ValueType arg) {
 TEST(CustomCallTest, CustomArgAsOpaqueArg) {
   absl::string_view module = R"(
     func.func private @use(%arg0: !testlib.value)
-      attributes { rt.custom_call = "test.use" }
+      attributes { rt.dynamic, rt.custom_call = "test.use" }
 
     func.func @test(%arg0: !testlib.value) {
       call @use(%arg0) : (!testlib.value) -> ()
@@ -560,7 +560,7 @@ static std::unique_ptr<Type> ConvertArgTypeToValueArg(ValueType arg) {
 TEST(CustomCallTest, CustomArg) {
   absl::string_view module = R"(
     func.func private @use(%arg0: !testlib.value)
-      attributes { rt.custom_call = "test.use" }
+      attributes { rt.dynamic, rt.custom_call = "test.use" }
 
     func.func @test(%arg0: !testlib.value) {
       call @use(%arg0) : (!testlib.value) -> ()
@@ -595,10 +595,10 @@ TEST(CustomCallTest, CustomArg) {
 TEST(CustomCallTest, CustomArgsAndRets) {
   absl::string_view module = R"(
     func.func private @make() -> (!testlib.value)
-      attributes { rt.custom_call = "test.make" }
+      attributes { rt.dynamic, rt.custom_call = "test.make" }
 
     func.func private @use(%arg0: !testlib.value)
-      attributes { rt.custom_call = "test.use" }
+      attributes { rt.dynamic, rt.custom_call = "test.use" }
 
     func.func @test() {
       %0 = call @make() : () -> (!testlib.value)
@@ -640,11 +640,11 @@ TEST(CustomCallTest, MemRefRets) {
   absl::string_view module = R"(
     func.func private @custom_call_result() -> (memref<2x2xf32>,
                                                 memref<?x?xf32>)
-      attributes { rt.custom_call = "test.custom_call_result" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call_result" }
 
     func.func private @custom_call(%arg0: memref<2x2xf32>,
                                    %arg1: memref<?x?xf32>)
-      attributes { rt.custom_call = "test.custom_call" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0, %1 = call @custom_call_result()
@@ -713,7 +713,7 @@ TEST(CustomCallTest, ArgSizeCheck) {
   // Try to pass two argument to a custom call that expects one.
   absl::string_view module = R"(
     func.func private @custom_call(%arg0: i32, %arg1: i32)
-      attributes { rt.custom_call = "test.custom_call" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0 = arith.constant 42 : i32
@@ -738,7 +738,7 @@ TEST(CustomCallTest, ArgTypeCheck) {
   // Try to pass `i64` argument to a custom call that expects `i32`.
   absl::string_view module = R"(
     func.func private @custom_call(%arg1: i64)
-      attributes { rt.custom_call = "test.custom_call" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0 = arith.constant 42 : i64
@@ -765,7 +765,7 @@ XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(EnumType);
 TEST(CustomCallTest, EnumAttr) {
   absl::string_view module = R"(
     func.func private @custom_call()
-      attributes { rt.custom_call = "test.custom_call" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       call @custom_call() { enum = #testlib.enum_type<Baz> }: () -> ()
@@ -823,7 +823,7 @@ XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(MyEnumType);
 TEST(CustomCallTest, MappedEnumAttr) {
   absl::string_view module = R"(
     func.func private @custom_call()
-      attributes { rt.custom_call = "test.custom_call" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       call @custom_call() { enum = #testlib.enum_type<Baz> }: () -> ()
@@ -879,7 +879,7 @@ XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
 TEST(CustomCallTest, StructAttr) {
   absl::string_view module = R"(
     func.func private @custom_call()
-      attributes { rt.custom_call = "test.custom_call" }
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       call @custom_call() {
@@ -1002,7 +1002,7 @@ template <RuntimeChecks checks>
 static void I32X1(State& state) {
   absl::string_view module = R"(
     func.func private @custom_call(%arg0: i32)
-      attributes { rt.direct_custom_call = "test.custom_call" }
+      attributes { rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0 = arith.constant 0 : i32
@@ -1060,7 +1060,7 @@ static void I32X12(State& state) {
                                    %arg3: i32, %arg4: i32, %arg5: i32,
                                    %arg6: i32, %arg7: i32, %arg8: i32,
                                    %arg9: i32, %arg10: i32, %arg11: i32)
-      attributes { rt.direct_custom_call = "test.custom_call" }
+      attributes { rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0 = arith.constant 0 : i32
@@ -1109,7 +1109,7 @@ template <RuntimeChecks checks>
 static void RetI32X1(State& state) {
   absl::string_view module = R"(
     func.func private @custom_call() -> i32
-      attributes { rt.direct_custom_call = "test.custom_call" }
+      attributes { rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0 = call @custom_call() : () -> (i32)
@@ -1162,7 +1162,7 @@ static void RetI32X12(State& state) {
   absl::string_view module = R"(
     func.func private @custom_call()
       -> (i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32)
-      attributes { rt.direct_custom_call = "test.custom_call" }
+      attributes { rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %11 = call @custom_call()
@@ -1205,7 +1205,7 @@ template <CustomCall::RuntimeChecks checks, typename MemrefType>
 static void MemrefX1(State& state) {
   absl::string_view module = R"(
     func.func private @custom_call(%arg0: memref<4x4xf32>)
-      attributes { rt.direct_custom_call = "test.custom_call" }
+      attributes { rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0 = memref.alloca() : memref<4x4xf32>
@@ -1286,7 +1286,7 @@ static void MemrefX12(State& state) {
       %arg3: memref<4x4xf32>, %arg4: memref<4x4xf32>, %arg5: memref<4x4xf32>,
       %arg6: memref<4x4xf32>, %arg7: memref<4x4xf32>, %arg8: memref<4x4xf32>,
       %arg9: memref<4x4xf32>, %arg10: memref<4x4xf32>, %arg11: memref<4x4xf32>
-    ) attributes { rt.direct_custom_call = "test.custom_call" }
+    ) attributes { rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       %0 = memref.alloca() : memref<4x4xf32>
@@ -1340,7 +1340,7 @@ template <CustomCall::RuntimeChecks checks>
 static void I32AttrX1(State& state) {
   absl::string_view module = R"(
     func.func private @custom_call()
-      attributes { rt.direct_custom_call = "test.custom_call" }
+      attributes { rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       call @custom_call() { attr0 = 42 : i32 }: () -> ()
@@ -1398,7 +1398,7 @@ template <CustomCall::RuntimeChecks checks>
 static void I32AttrX12(State& state) {
   absl::string_view module = R"(
     func.func private @custom_call()
-      attributes { rt.direct_custom_call = "test.custom_call" }
+      attributes { rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       call @custom_call()
@@ -1444,7 +1444,7 @@ template <CustomCall::RuntimeChecks checks>
 static void AggregateAttrX1(State& state) {
   absl::string_view module = R"(
     func.func private @custom_call()
-      attributes { rt.direct_custom_call = "test.custom_call" }
+      attributes { rt.custom_call = "test.custom_call" }
 
     func.func @test() {
       call @custom_call() {

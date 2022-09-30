@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/runtime/tracing.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
 namespace xla {
@@ -60,7 +61,7 @@ using mlir::func::FuncOp;
 
 using llvm::DenseMap;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_CONVERTRUNTIMETOLLVMPASS
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
 
 //===----------------------------------------------------------------------===//
@@ -318,7 +319,7 @@ static FailureOr<Value> EncodeAttributes(CustomCallAttrEncodingSet &encodings,
                                          ArrayRef<NamedAttribute> attrs) {
   // Forward attributes that are not part of the custom call operation itself.
   auto forward_attr = [](NamedAttribute attr) -> bool {
-    return attr.getName() != "callee" && attr.getName() != "direct";
+    return attr.getName() != "callee" && attr.getName() != "dynamic";
   };
 
   llvm::SmallVector<NamedAttribute> custom_call_attrs =
@@ -462,41 +463,40 @@ class CustomCallOpLowering : public OpConversionPattern<CustomCallOp> {
                               converted_ret_types);
     if (failed(rets)) return op.emitOpError() << "failed to encode results";
 
-    if (op.getDirect()) {
-      // Call custom call target directly.
+    // Creates a dynamic custom call resolved by name at run time.
+    auto call_dynamic = [&]() -> CallOp {
+      auto callee = Globals::OpaqueAddrOf(
+          b, globals_.GetOrCreate(b, op.getCallee(), "__rt_custom_call_name"));
+
+      return b.create<CallOp>(kCustomCall, TypeRange(rewriter.getI1Type()),
+                              ValueRange({adaptor.getCtx(), callee, *args,
+                                          *attrs, rets->result_array_ptr}));
+    };
+
+    // Creates a direct custom call resolved at link time.
+    auto call_direct = [&]() -> CallOp {
       auto type = RuntimeAPI::DirectCustomCallFunctionType(op.getContext());
       AddDeclaration(op->getParentOfType<ModuleOp>(), op.getCallee(), type);
 
-      OpBuilder::InsertionGuard guard(b);
-      b.setInsertionPointAfter(op);
-      auto call_op =
-          b.create<CallOp>(op.getCallee(), TypeRange(rewriter.getI1Type()),
-                           ValueRange({adaptor.getCtx(), *args, *attrs,
-                                       rets->result_array_ptr}));
-      auto load_rets = DecodeResults(call_op, b, ret_encoding_, ret_types,
-                                     converted_ret_types, rets->allocas);
-      if (failed(load_rets))
-        return op.emitOpError() << "failed to decode results";
-      rewriter.replaceOp(op, ValueRange(*load_rets));
-    } else {
-      // Otherwise pass the custom call callee to the generic custom call API.
-      auto callee = Globals::OpaqueAddrOf(
-          b,
-          globals_.GetOrCreate(b, op.getCallee(), "__rt_custom_call_callee"));
+      return b.create<CallOp>(op.getCallee(), TypeRange(rewriter.getI1Type()),
+                              ValueRange({adaptor.getCtx(), *args, *attrs,
+                                          rets->result_array_ptr}));
+    };
 
-      OpBuilder::InsertionGuard guard(b);
-      b.setInsertionPointAfter(op);
-      auto call_op =
-          b.create<CallOp>(kCustomCall, TypeRange(rewriter.getI1Type()),
-                           ValueRange({adaptor.getCtx(), callee, *args, *attrs,
-                                       rets->result_array_ptr}));
+    // Build a call operation and result decoding right after the original op.
+    OpBuilder::InsertionGuard guard(b);
+    b.setInsertionPointAfter(op);
 
-      auto load_rets = DecodeResults(call_op, b, ret_encoding_, ret_types,
-                                     converted_ret_types, rets->allocas);
-      if (failed(load_rets))
-        return op.emitOpError() << "failed to decode results";
-      rewriter.replaceOp(op, ValueRange(*load_rets));
-    }
+    CallOp call = op.getDynamic() ? call_dynamic() : call_direct();
+
+    // Load results written by custom call into the allocated storage and decode
+    // them back to the expected type (e.g. convert memref descriptor type).
+    FailureOr<SmallVector<Value>> decoded_results = DecodeResults(
+        call, b, ret_encoding_, ret_types, converted_ret_types, rets->allocas);
+    if (failed(decoded_results))
+      return op.emitOpError() << "failed to decode results";
+
+    rewriter.replaceOp(op, ValueRange(*decoded_results));
     return success();
   }
 
@@ -540,6 +540,45 @@ class SetErrorOpLowering : public OpConversionPattern<SetErrorOp> {
 };
 
 //===----------------------------------------------------------------------===//
+// Convert rt.trace to a pair of custom calls (start and end trace activity).
+//===----------------------------------------------------------------------===//
+
+class TraceOpLowering : public OpConversionPattern<TraceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TraceOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    Type status = StatusType::get(getContext());
+    Type activity_id = rewriter.getI64Type();
+
+    // Start the trace activity with the given annotation.
+    b.setInsertionPoint(op);
+    auto start = b.create<CustomCallOp>(TypeRange({status, activity_id}),
+                                        op.getCtx(), "xla.trace.activity_start",
+                                        /*dynamic=*/false, ValueRange());
+    start->setAttr("annotation", op.getAnnotation());
+
+    // End activity after executing the attached region.
+    b.setInsertionPointAfter(op);
+    b.create<CustomCallOp>(status, op.getCtx(), "xla.trace.activity_end",
+                           /*dynamic=*/false, start.getResults());
+
+    // Replace trace operation with inlined region.
+    b.setInsertionPointAfter(op);
+    auto terminator = cast<YieldOp>(op.getBody().front().getTerminator());
+    rewriter.mergeBlockBefore(terminator->getBlock(), op);
+    rewriter.replaceOp(op, terminator->getOperands());
+    rewriter.eraseOp(terminator);
+
+    return success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Convert rt.unsigned_cast to no-op.
 //===----------------------------------------------------------------------===//
 
@@ -559,7 +598,7 @@ class UnsignedCastOpLowering : public OpConversionPattern<UnsignedCastOp> {
 //===----------------------------------------------------------------------===//
 
 class ConvertRuntimeToLLVMPass
-    : public ConvertRuntimeToLLVMPassBase<ConvertRuntimeToLLVMPass> {
+    : public impl::ConvertRuntimeToLLVMPassBase<ConvertRuntimeToLLVMPass> {
  public:
   explicit ConvertRuntimeToLLVMPass(ConvertRuntimeToLLvmOpts opts)
       : opts_(std::move(opts)) {}
@@ -618,6 +657,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // Register mappings from the TypeID to type names.
   TypeIDNameRegistry type_id_names;
   PopulateCustomCallTypeIdNames(type_id_names);
+  PopulateTraceTypeIdNames(type_id_names);
   if (opts_.populate_type_id_names) opts_.populate_type_id_names(type_id_names);
 
   // A helper class to create unique global constants.
@@ -629,6 +669,9 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // Lower from the runtime operations to the runtime API function calls.
   patterns.add<SetOutputOpLowering, IsOkOpLowering>(llvm_converter, ctx);
   patterns.add<SetErrorOpLowering>(llvm_converter, ctx, globals);
+
+  // Lower tracing operation to a pair of push/pop custom calls.
+  patterns.add<TraceOpLowering>(llvm_converter, ctx);
 
   // Erase special signless-unsigned casting operation that we added to work
   // around the unsigned constants limitation.

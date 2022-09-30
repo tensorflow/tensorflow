@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -22,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 namespace mlir {
 
@@ -99,4 +103,112 @@ LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
 }
 
 }  // namespace mhlo
+
+namespace stablehlo {
+
+HloTypeConverter::HloTypeConverter() {
+  addConversion([&](Type type) -> Type {
+    // We cannot use an allowlist here because HLO dialects can be embedded
+    // into programs with other dialects which can involve other types.
+    // However, we restrict the use of types defined in the source dialect.
+    // This check is here only for exceptional situations, e.g. when we added
+    // a new type and forgot to update the converters in the subclass.
+    if (isSourceDialect(type.getDialect())) return {};
+    return type;
+  });
+  addConversion([&](RankedTensorType type) -> Type {
+    auto encoding = type.getEncoding();
+    if (!encoding) return type;
+
+    // Since this type converter can be used in all sorts of programs,
+    // we generally want to allow most of the encodings to pass through,
+    // However, we restrict the use of encodings defined in the source dialect.
+    if (isSourceDialect(encoding.getDialect())) {
+      auto convertedEncoding = convertSourceDialectEncoding(encoding);
+      if (!convertedEncoding) return {};
+      return RankedTensorType::get(type.getShape(), type.getElementType(),
+                                   convertedEncoding);
+    }
+    return type;
+  });
+  addConversion([&](TupleType type) -> Type {
+    SmallVector<Type> convertedTypes;
+    if (failed(convertTypes(type.getTypes(), convertedTypes))) return {};
+    return TupleType::get(type.getContext(), convertedTypes);
+  });
+}
+
+HloToStablehloTypeConverter::HloToStablehloTypeConverter()
+    : HloTypeConverter() {
+  // !mhlo.async_bundle is only used in mhlo.async_start, mhlo.async_update
+  // and mhlo.async_done which are private to XLA.
+  // This means that these ops are deliberately not part of StableHLO,
+  // and as a result this type is not part of StableHLO either.
+  addConversion([](mhlo::AsyncBundleType) -> Type { return {}; });
+  addConversion([](mhlo::TokenType type) -> Type {
+    return stablehlo::TokenType::get(type.getContext());
+  });
+}
+
+bool HloToStablehloTypeConverter::isSourceDialect(Dialect& dialect) {
+  return dialect.getNamespace() == mhlo::MhloDialect::getDialectNamespace();
+}
+
+Attribute HloToStablehloTypeConverter::convertSourceDialectEncoding(
+    Attribute attr) {
+  if (auto hloAttr = attr.dyn_cast_or_null<mhlo::TypeExtensionsAttr>()) {
+    return stablehlo::TypeExtensionsAttr::get(hloAttr.getContext(),
+                                              hloAttr.getBounds());
+  }
+  // Our guiding principle is to support all MHLO encodings in StableHLO.
+  // This check is here only for exceptional situations, e.g. when we added
+  // a new MHLO encoding and forgot to update the code above.
+  return {};
+}
+
+StablehloToHloTypeConverter::StablehloToHloTypeConverter()
+    : HloTypeConverter() {
+  addConversion([](stablehlo::TokenType stablehloType) -> Type {
+    return mhlo::TokenType::get(stablehloType.getContext());
+  });
+}
+
+bool StablehloToHloTypeConverter::isSourceDialect(Dialect& dialect) {
+  return dialect.getNamespace() ==
+         stablehlo::StablehloDialect::getDialectNamespace();
+}
+
+Attribute StablehloToHloTypeConverter::convertSourceDialectEncoding(
+    Attribute attr) {
+  if (auto stablehloAttr =
+          attr.dyn_cast_or_null<stablehlo::TypeExtensionsAttr>()) {
+    return mhlo::TypeExtensionsAttr::get(stablehloAttr.getContext(),
+                                         stablehloAttr.getBounds());
+  }
+  // Our guiding principle is to support all StableHLO encodings in MHLO.
+  // This check is here only for exceptional situations, e.g. when we added
+  // a new StableHLO encoding and forgot to update the code above.
+  return {};
+}
+
+void registerFuncOpsForTypeConversion(ConversionTarget& target,
+                                      RewritePatternSet& patterns,
+                                      TypeConverter& converter) {
+  target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+    return converter.isSignatureLegal(op.getFunctionType());
+  });
+  target.addDynamicallyLegalOp<func::CallOp>([&](func::CallOp op) {
+    return converter.isSignatureLegal(op.getCalleeType());
+  });
+  target.addDynamicallyLegalOp<func::ReturnOp>([&](func::ReturnOp op) {
+    return converter.isLegal(op.getOperandTypes());
+  });
+  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                 converter);
+  populateCallOpTypeConversionPattern(patterns, converter);
+  populateReturnOpTypeConversionPattern(patterns, converter);
+}
+
+}  // namespace stablehlo
+
 }  // namespace mlir

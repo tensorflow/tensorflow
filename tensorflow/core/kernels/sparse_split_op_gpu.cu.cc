@@ -121,7 +121,7 @@ Status LaunchSparseSplitSliceIndexesKernel(const GPUDevice& device,
                                            SliceIndexer<Index> slice_indexer,
                                            const Index* input_indices,
                                            int* slice_indexes) {
-  if (input_nnz == 0) return Status::OK();
+  if (input_nnz == 0) return OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(
       input_nnz, device, &SparseSplitSliceIndexesKernel<Index>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
@@ -194,7 +194,7 @@ Status LaunchSparseSplitScatterKernel(
     const Index* slice_ends, const Index* input_indices, const T* input_values,
     GpuDeviceArrayStruct<Index*> output_indices_data,
     GpuDeviceArrayStruct<T*> output_values_data) {
-  if (input_nnz == 0) return Status::OK();
+  if (input_nnz == 0) return OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(
       input_nnz, device, &SparseSplitScatterKernel<T, Index>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
@@ -371,7 +371,7 @@ struct SparseSplitFunctor<GPUDevice, T> {
     }
     TF_RETURN_IF_ERROR(output_indices->Finalize());
     TF_RETURN_IF_ERROR(output_values->Finalize());
-    return Status::OK();
+    return OkStatus();
   }
 };
 

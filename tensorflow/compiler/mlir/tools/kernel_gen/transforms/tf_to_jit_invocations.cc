@@ -89,7 +89,7 @@ struct TFToJITInvocationsPattern : public RewritePattern {
     {
       OpBuilder::InsertionGuard guard(rewriter);
       llvm::SmallVector<Location> locs(op->getNumOperands(), loc);
-      Block *block = rewriter.createBlock(&jit_compile_op.body(), {},
+      Block *block = rewriter.createBlock(&jit_compile_op.getBody(), {},
                                           op->getOperandTypes(), locs);
 
       // Map operands.
@@ -105,7 +105,7 @@ struct TFToJITInvocationsPattern : public RewritePattern {
 
     // Create JIT execute op.
     rewriter.replaceOpWithNewOp<tf_framework::JITExecuteOp>(
-        op, op_result.getType(), /*ctx=*/Value(), jit_compile_op.result(),
+        op, op_result.getType(), /*ctx=*/Value(), jit_compile_op.getResult(),
         op->getOperands());
     return success();
   }
@@ -152,7 +152,7 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
                   {
                     OpBuilder::InsertionGuard guard(rewriter);
                     Block *block = rewriter.createBlock(
-                        &jit_compile_op.body(), {}, operand_types,
+                        &jit_compile_op.getBody(), {}, operand_types,
                         SmallVector<Location>(operand_types.size(), loc));
                     for (auto it :
                          llvm::zip(op->getOperands(), block->getArguments()))
@@ -165,9 +165,9 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
                   }
                   auto jit_execute_op =
                       rewriter.create<tf_framework::JITExecuteOp>(
-                          loc, result_types, Value(), jit_compile_op.result(),
-                          op->getOperands());
-                  b.create<scf::YieldOp>(l, jit_execute_op.result());
+                          loc, result_types, Value(),
+                          jit_compile_op.getResult(), op->getOperands());
+                  b.create<scf::YieldOp>(l, jit_execute_op.getResult());
                 },
                 [&](OpBuilder &b, Location l) {
                   auto new_op = rewriter.clone(*op);
@@ -219,7 +219,7 @@ struct PackJITCompileOpPattern
                           tmp_module_builder.getUnitAttr());
     jit_function.getBody().takeBody(op.getBodyRegion());
     tmp_module_builder.setInsertionPointToEnd(&jit_function.getBody().front());
-    tmp_module_builder.create<func::ReturnOp>(loc, yield_op.result());
+    tmp_module_builder.create<func::ReturnOp>(loc, yield_op.getResult());
     rewriter.eraseOp(yield_op);
 
     // Serialize JIT module.
@@ -229,7 +229,7 @@ struct PackJITCompileOpPattern
 
     // Finally, create the new JIT compile op.
     rewriter.replaceOpWithNewOp<tf_framework::JITCompileFromStrOp>(
-        op, op->getResultTypes(), op.ctx(), rewriter.getStringAttr(code),
+        op, op->getResultTypes(), op.getCtx(), rewriter.getStringAttr(code),
         rewriter.getI64ArrayAttr(tile_sizes),
         rewriter.getI64ArrayAttr(unroll_factors),
         rewriter.getI64IntegerAttr(max_supported_rank),

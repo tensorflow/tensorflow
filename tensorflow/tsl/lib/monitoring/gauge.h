@@ -96,8 +96,8 @@ class Gauge {
 #include <memory>
 #include <string>
 
-#include "tensorflow/core/lib/monitoring/collection_registry.h"
-#include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/tsl/lib/monitoring/collection_registry.h"
+#include "tensorflow/tsl/lib/monitoring/metric_def.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -106,10 +106,6 @@ class Gauge {
 
 namespace tsl {
 namespace monitoring {
-using tensorflow::monitoring::CollectionRegistry;
-using tensorflow::monitoring::MetricCollectorGetter;
-using tensorflow::monitoring::MetricDef;
-using tensorflow::monitoring::MetricKind;
 // GaugeCell stores each value of a gauge.
 //
 // A cell can be passed off to a module which may repeatedly update it without

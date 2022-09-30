@@ -236,8 +236,9 @@ bool HasAnyUnnestedReductionRoot(HloComputation* computation);
 // Whether there is a fusion root triggering transposition emitter.
 bool HasAnyTiledTransposeRoot(HloComputation* computation);
 
-// Finds tiled transposition if one exists.
-std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr);
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr);
+
+std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr);
 
 }  // namespace gpu
 }  // namespace xla

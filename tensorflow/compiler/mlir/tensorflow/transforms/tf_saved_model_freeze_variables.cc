@@ -182,9 +182,11 @@ void ReplaceVarWithConstant(
 func::FuncOp GetSessionInitializerFunc(ModuleOp module) {
   auto session_init_op = tf_saved_model::GetSessionInitializerOp(module);
   SymbolTable symbol_table(module);
-  if (session_init_op && !session_init_op.initializers().empty()) {
+  if (session_init_op && !session_init_op.getInitializers().empty()) {
     func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
-        session_init_op.initializers()[0].cast<FlatSymbolRefAttr>().getValue());
+        session_init_op.getInitializers()[0]
+            .cast<FlatSymbolRefAttr>()
+            .getValue());
     return init_func_op;
   }
   return nullptr;

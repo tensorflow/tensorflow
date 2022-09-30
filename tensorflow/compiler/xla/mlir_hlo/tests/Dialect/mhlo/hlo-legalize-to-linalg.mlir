@@ -475,6 +475,33 @@ func.func @float_cmp_ne(%lhs: tensor<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @float_cmp_totalorder
+func.func @float_cmp_totalorder(%lhs: tensor<2x2xbf16>,
+                %rhs: tensor<2x2xbf16>) -> (tensor<2x2xi1>) {
+  %0 = "mhlo.compare"(%lhs, %rhs) {
+    comparison_direction = #mhlo<comparison_direction LT>,
+    compare_type = #mhlo<comparison_type TOTALORDER>
+  } : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xi1>
+  func.return %0 : tensor<2x2xi1>
+}
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i16
+// CHECK-DAG: %[[C32767:.*]] = arith.constant 32767 : i16
+// CHECK: linalg.init_tensor [2, 2] : tensor<2x2xi1>
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: bf16, %[[RHS_IN:.*]]: bf16, %{{.*}}: i1):
+// CHECK-NEXT:   %[[LHS_INT:.*]] = arith.bitcast %[[LHS_IN]] : bf16 to i16
+// CHECK-NEXT:   %[[LHS_CMP:.*]] = arith.cmpi slt, %[[LHS_INT]], %[[C0]] : i16
+// CHECK-NEXT:   %[[LHS_SUB:.*]] = arith.subi %[[C32767]], %[[LHS_INT]] : i16
+// CHECK-NEXT:   %[[LHS_SELECT:.*]] = arith.select %[[LHS_CMP]], %[[LHS_SUB]], %[[LHS_INT]] : i16
+// CHECK-NEXT:   %[[RHS_INT:.*]] = arith.bitcast %[[RHS_IN]] : bf16 to i16
+// CHECK-NEXT:   %[[RHS_CMP:.*]] = arith.cmpi slt, %[[RHS_INT]], %[[C0]] : i16
+// CHECK-NEXT:   %[[RHS_SUB:.*]] = arith.subi %[[C32767]], %[[RHS_INT]] : i16
+// CHECK-NEXT:   %[[RHS_SELECT:.*]] = arith.select %[[RHS_CMP]], %[[RHS_SUB]], %[[RHS_INT]] : i16
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.cmpi slt, %[[LHS_SELECT]], %[[RHS_SELECT]] : i16
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
 // CHECK-LABEL: func @int_cmp
 func.func @int_cmp(%lhs: tensor<2x2xi32>,
               %rhs: tensor<2x2xi32>) -> tensor<2x2xi1> {
@@ -1009,6 +1036,17 @@ func.func @reshape_3D_1D_semidynamic(%arg0: tensor<16x1x?xi32>) -> tensor<16xi32
 // CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<16x1x?xi32> to tensor<16x1x1xi32>
 // CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1, 2]] : tensor<16x1x1xi32> into tensor<16xi32>
 // CHECK: return %[[COLLAPSE:.*]] : tensor<16xi32>
+
+// -----
+
+// CHECK-LABEL: func @reshape_empty
+func.func @reshape_empty(%arg0: tensor<7x0xf64>) -> tensor<0x42x101xf64> {
+  %0 = mhlo.reshape %arg0 : (tensor<7x0xf64>) -> tensor<0x42x101xf64>
+  return %0 : tensor<0x42x101xf64>
+}
+
+// CHECK: %[[INIT:.*]] = linalg.init_tensor
+// CHECK: return %[[INIT]]
 
 // -----
 

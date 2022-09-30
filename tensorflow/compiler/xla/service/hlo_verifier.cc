@@ -138,7 +138,7 @@ Status CheckNestedComputationThreadNameEqual(const HloComputation* comp,
           called_cmp, skip_nested_async_op_check));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -1469,7 +1469,7 @@ Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
         async_shape.tuple_shapes(1).ToString(/*print_layout=*/true),
         computation_shape.result().ToString(/*print_layout=*/true));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
@@ -1504,7 +1504,7 @@ Status CheckCallableInstructionThreadName(const HloInstruction* instruction,
     TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(
         computation, skip_nested_async_op_check));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -1523,7 +1523,7 @@ Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
           param_shape.tuple_shapes(i).ToString(/*print_layout=*/true));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {

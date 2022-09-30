@@ -1015,12 +1015,21 @@ def _save_calibration_table(node):
 
 
 def _convert_to_tensor(inp):
-  if isinstance(inp, dict):
-    args = []
-    kwargs = {k: ops.convert_to_tensor(v) for k, v in inp.items()}
-  else:
-    args = map(ops.convert_to_tensor, inp)
-    kwargs = {}
+  try:
+    if isinstance(inp, dict):
+      args = []
+      kwargs = {k: ops.convert_to_tensor(v) for k, v in inp.items()}
+    else:
+      kwargs = {}
+      if isinstance(inp, (list, tuple)):
+        args = map(ops.convert_to_tensor, inp)
+      else:
+        args = [ops.convert_to_tensor(inp)]
+  except:
+    error_msg = "Failed to convert input to tensor."
+    logging.error(error_msg + "\ninp = `{0}`\n".format(inp))
+    raise RuntimeError(error_msg)
+
   return args, kwargs
 
 
@@ -1415,16 +1424,29 @@ class TrtGraphConverterV2(object):
     will be performed while we build the TensorRT engines.
 
     Args:
-      input_fn: a generator function that yields input data as a list or tuple
-        or dict, which will be used to execute the converted signature to
-        generate TRT engines. Example:
-        `def input_fn(): # Let's assume a network with 2 input tensors. We
-          generate 3 sets
-             # of dummy input data: input_shapes = [[(1, 16), (2, 16)], # 1st
-               input list [(2, 32), (4, 32)], # 2nd list of two tensors [(4,
-               32), (8, 32)]] # 3rd input list
-             for shapes in input_shapes: # return a list of input tensors yield
-               [np.zeros(x).astype(np.float32) for x in shapes]`
+      input_fn: a generator function that provides the input data as a single
+        array, OR a list or tuple of the arrays OR a dict, which will be used
+        to execute the converted signature to generate TRT engines.
+        Example 1:
+        `def input_fn():
+             # Let's assume a network with 1 input tensor.
+             # We generate 2 sets of dummy input data:
+             input_shapes = [(1, 16),    # 1st shape
+                             (2, 32)]    # 2nd shape
+             for shapes in input_shapes:
+                 # return an input tensor
+                 yield np.zeros(shape).astype(np.float32)'
+
+        Example 2:
+        `def input_fn():
+             # Let's assume a network with 2 input tensors.
+             # We generate 3 sets of dummy input data:
+             input_shapes = [[(1, 16), (2, 16)], # 1st input list
+                             [(2, 32), (4, 32)], # 2nd list of two tensors
+                             [(4, 32), (8, 32)]] # 3rd input list
+             for shapes in input_shapes:
+                 # return a list of input tensors
+                 yield [np.zeros(x).astype(np.float32) for x in shapes]`
 
     Raises:
       NotImplementedError: build() is already called.
@@ -1463,7 +1485,7 @@ class TrtGraphConverterV2(object):
     #   Builds TRT engines if self._need_trt_profiles is False.
     #   Builds TRT optimization profiles if self._need_trt_profiles is True.
     for inp in input_fn():
-      if not first_input:
+      if first_input is None:
         first_input = inp
       args, kwargs = _convert_to_tensor(inp)
       func(*args, **kwargs)
@@ -1484,11 +1506,8 @@ class TrtGraphConverterV2(object):
       # the inputs can be used because the shape of this input does not
       # determine the engine and instead the shapes collected in profiles
       # determine the engine.
-      if isinstance(first_input, dict):
-        self._converted_func(
-            **{k: ops.convert_to_tensor(v) for k, v in first_input.items()})
-      else:
-        self._converted_func(*map(ops.convert_to_tensor, first_input))
+      args, kwargs = _convert_to_tensor(first_input)
+      self._converted_func(*args, **kwargs)
 
     self._build_called_once = True
 

@@ -65,23 +65,42 @@ void AddExportPasses(mlir::PassManager &pm) {
   pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
 }
 
-// Converts MLIR ModuleOp to TensorFlow GraphDef. Returns InternalError status
-// when the GraphDef conversion fails.
-absl::StatusOr<GraphDef> ConvertMlirModuleToGraphDef(
-    const mlir::ModuleOp module_op) {
-  GraphExportConfig config{};
-  StatusOr<std::unique_ptr<GraphDef>> graph =
-      ConvertMlirToGraphdef(module_op, config);
-  if (!graph.ok()) {
-    return absl::InternalError("Failed to convert MLIR to GraphDef: " +
-                               graph.status().error_message());
+// Returns the name of the initializer node from a set of control return nodes.
+// Returns an empty string if no initializer node exists. This assumes that
+// there is only one node for initialization.
+std::string GetInitNodeName(
+    const absl::flat_hash_set<Node *> &control_ret_nodes) {
+  if (control_ret_nodes.empty()) {
+    return "";
   }
-  return *std::move(*graph);
+  return (*control_ret_nodes.begin())->name();
+}
+
+// Converts MLIR ModuleOp to ExportedModel. Returns InternalError status
+// when the GraphDef conversion fails.
+absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
+    const mlir::ModuleOp module_op) {
+  const GraphExportConfig config{};
+  FunctionLibraryDefinition flib_def{OpRegistry::Global(),
+                                     FunctionDefLibrary()};
+  std::unique_ptr<Graph> graph;
+  absl::flat_hash_set<Node *> control_ret_nodes{};
+  if (const auto status = ConvertMlirToGraph(module_op, config, &graph,
+                                             &flib_def, &control_ret_nodes);
+      !status.ok()) {
+    return absl::InternalError("Failed to convert MLIR to GraphDef. " +
+                               status.error_message());
+  }
+
+  auto graph_def = std::make_unique<GraphDef>();
+  graph->ToGraphDef(graph_def.get());
+
+  return ExportedModel{*graph_def, GetInitNodeName(control_ret_nodes)};
 }
 
 }  // namespace
 
-absl::StatusOr<GraphDef> QuantizeQatModel(
+absl::StatusOr<ExportedModel> QuantizeQatModel(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags,
     const absl::string_view quant_opts_serialized) {
@@ -142,10 +161,10 @@ absl::StatusOr<GraphDef> QuantizeQatModel(
         diagnostic_handler.ConsumeStatus().error_message());
   }
 
-  return ConvertMlirModuleToGraphDef(*module_ref);
+  return ConvertMlirModuleToExportedModel(*module_ref);
 }
 
-absl::StatusOr<GraphDef> QuantizePtqModelPreCalibration(
+absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags) {
   const std::unordered_set<std::string> tag_set =
@@ -197,10 +216,10 @@ absl::StatusOr<GraphDef> QuantizePtqModelPreCalibration(
         diagnostic_handler.ConsumeStatus().error_message());
   }
 
-  return ConvertMlirModuleToGraphDef(*module_ref);
+  return ConvertMlirModuleToExportedModel(*module_ref);
 }
 
-absl::StatusOr<GraphDef> QuantizePtqModelPostCalibration(
+absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags,
     const absl::string_view quant_opts_serialized) {
@@ -254,10 +273,10 @@ absl::StatusOr<GraphDef> QuantizePtqModelPostCalibration(
         diagnostic_handler.ConsumeStatus().error_message());
   }
 
-  return ConvertMlirModuleToGraphDef(*module_ref);
+  return ConvertMlirModuleToExportedModel(*module_ref);
 }
 
-absl::StatusOr<GraphDef> QuantizePtqDynamicRange(
+absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags,
     const absl::string_view quant_opts_serialized) {
@@ -318,7 +337,7 @@ absl::StatusOr<GraphDef> QuantizePtqDynamicRange(
         diagnostic_handler.ConsumeStatus().error_message());
   }
 
-  return ConvertMlirModuleToGraphDef(*module_ref);
+  return ConvertMlirModuleToExportedModel(*module_ref);
 }
 
 }  // namespace internal

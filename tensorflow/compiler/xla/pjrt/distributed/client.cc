@@ -470,37 +470,20 @@ DistributedRuntimeCoordinationServiceClient::
     ~DistributedRuntimeCoordinationServiceClient() {}
 
 xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
-  Status s = tsl::errors::Unknown("Connection not attempted yet.");
-  absl::Duration timeout =
+  const absl::Time deadline =
+      absl::Now() +
       absl::Milliseconds(config_.cluster_register_timeout_in_ms());
-  absl::Time deadline = absl::Now() + timeout;
-  int attempt = 0;
-  std::default_random_engine generator;
-  std::uniform_real_distribution<double> distribution(0.0, 1.0);
 
-  do {
-    ++attempt;
-    s = coord_agent_->Connect();
-    if (s.ok()) {
-      absl::Duration barrier_timeout = deadline - absl::Now();
-      // Note: `init_timeout` in client options may be set to 0 so that the
-      // client only attempts to connect once. In that case, we provide some
-      // buffer time to wait for all tasks.
-      barrier_timeout = std::max(barrier_timeout, min_connect_barrier_timeout_);
-      s = coord_agent_->WaitAtBarrier("PjRT_Client_Connect", barrier_timeout,
-                                      /*tasks=*/{});
-    }
-    // Exponential backoff with jitter. Note we will retry for `init_timeout`
-    // time in total; the `14` here corresponds to an ~16s maximum interval
-    // between connection attempts.
-
-    int backoff = 1 << std::min(14, attempt);
-    absl::SleepFor(absl::Milliseconds(backoff * distribution(generator)));
-  } while (!s.ok() && absl::Now() < deadline &&
-           // Retries are only made for RPC errors. If a valid service error is
-           // returned, fail immediately.
-           s.GetPayload(tensorflow::CoordinationErrorPayloadKey()) ==
-               std::nullopt);
+  Status s = coord_agent_->Connect();
+  if (s.ok()) {
+    absl::Duration barrier_timeout = deadline - absl::Now();
+    // Note: `init_timeout` in client options may be set to 0 so that the
+    // client only attempts to connect once. In that case, we provide some
+    // buffer time to wait for all tasks.
+    barrier_timeout = std::max(barrier_timeout, min_connect_barrier_timeout_);
+    s = coord_agent_->WaitAtBarrier("PjRT_Client_Connect", barrier_timeout,
+                                    /*tasks=*/{});
+  }
   if (s.ok()) {
     LOG(INFO) << "Connected to distributed JAX controller";
   } else {

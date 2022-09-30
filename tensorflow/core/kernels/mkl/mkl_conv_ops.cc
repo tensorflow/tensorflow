@@ -1850,8 +1850,10 @@ class MklQuantizedConvOp
 
     // Compute additional outputs: min/max scalars.
 
-    const float min_input = context->input(min_input_idx_).flat<float>()(0);
-    const float max_input = context->input(max_input_idx_).flat<float>()(0);
+    const float min_input =
+        context->input(min_input_idx_).template flat<float>()(0);
+    const float max_input =
+        context->input(max_input_idx_).template flat<float>()(0);
 
     Tensor* output_min = nullptr;
     Tensor* output_max = nullptr;
@@ -1861,9 +1863,9 @@ class MklQuantizedConvOp
       OP_REQUIRES_OK(context, context->allocate_output(2, {}, &output_max));
       // This is the case the convolution and requantization are fused.
       output_min->flat<float>()(0) =
-          context->input(min_freezed_output_idx_).flat<float>()(0);
+          context->input(min_freezed_output_idx_).template flat<float>()(0);
       output_max->flat<float>()(0) =
-          context->input(max_freezed_output_idx_).flat<float>()(0);
+          context->input(max_freezed_output_idx_).template flat<float>()(0);
     } else {
       const Tensor& min_filter = context->input(min_filter_idx_);
       const Tensor& max_filter = context->input(max_filter_idx_);
@@ -1904,17 +1906,19 @@ class MklQuantizedConvOp
     // into quint8. A post_op "output_scale" is added to do the conversion.
     if (std::is_same<Toutput, quint8>::value ||
         std::is_same<Toutput, qint8>::value) {
-      const float min_input = context->input(min_input_idx_).flat<float>()(0);
-      const float max_input = context->input(max_input_idx_).flat<float>()(0);
+      const float min_input =
+          context->input(min_input_idx_).template flat<float>()(0);
+      const float max_input =
+          context->input(max_input_idx_).template flat<float>()(0);
       const Tensor& min_filter_vector = context->input(min_filter_idx_);
       const Tensor& max_filter_vector = context->input(max_filter_idx_);
 
       // min_freezed_output and max_freezed_output are the actual range
       // for the output.
       const float min_freezed_output =
-          context->input(min_freezed_output_idx_).flat<float>()(0);
+          context->input(min_freezed_output_idx_).template flat<float>()(0);
       const float max_freezed_output =
-          context->input(max_freezed_output_idx_).flat<float>()(0);
+          context->input(max_freezed_output_idx_).template flat<float>()(0);
 
       float int_output_limit =
           std::is_same<Toutput, quint8>::value ? 255.0f : 127.0f;
@@ -1961,13 +1965,13 @@ class MklQuantizedConvOp
             (summand_dt == DT_QINT8) || (summand_dt == DT_QUINT8);
         DCHECK((summand_condition));
         const float min_freezed_output =
-            context->input(min_freezed_output_idx_).flat<float>()(0);
+            context->input(min_freezed_output_idx_).template flat<float>()(0);
         const float max_freezed_output =
-            context->input(max_freezed_output_idx_).flat<float>()(0);
+            context->input(max_freezed_output_idx_).template flat<float>()(0);
         const float min_freezed_summand =
-            context->input(min_summand_idx_).flat<float>()(0);
+            context->input(min_summand_idx_).template flat<float>()(0);
         const float max_freezed_summand =
-            context->input(max_summand_idx_).flat<float>()(0);
+            context->input(max_summand_idx_).template flat<float>()(0);
 
         float output_range = std::max(std::abs(min_freezed_output),
                                       std::abs(max_freezed_output));
@@ -2052,8 +2056,10 @@ class MklQuantizedConvOp
         TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
                            "Current fusion requires summand to be float"));
       // We need to compute scale for the summand
-      const float min_input = context->input(min_input_idx_).flat<float>()(0);
-      const float max_input = context->input(max_input_idx_).flat<float>()(0);
+      const float min_input =
+          context->input(min_input_idx_).template flat<float>()(0);
+      const float max_input =
+          context->input(max_input_idx_).template flat<float>()(0);
       const Tensor& min_filter_vector = context->input(min_filter_idx_);
       const Tensor& max_filter_vector = context->input(max_filter_idx_);
       const float* min_filter = min_filter_vector.flat<float>().data();
@@ -2103,8 +2109,10 @@ class MklQuantizedConvOp
           const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
     }
 
-    const float min_input = context->input(min_input_idx_).flat<float>()(0);
-    const float max_input = context->input(max_input_idx_).flat<float>()(0);
+    const float min_input =
+        context->input(min_input_idx_).template flat<float>()(0);
+    const float max_input =
+        context->input(max_input_idx_).template flat<float>()(0);
     const Tensor& min_filter_vector = context->input(min_filter_idx_);
     const Tensor& max_filter_vector = context->input(max_filter_idx_);
     const float* min_filter = min_filter_vector.flat<float>().data();

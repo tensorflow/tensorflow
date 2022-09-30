@@ -506,6 +506,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo_pass",
         "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
+        "//tensorflow/compiler/xla/mlir_hlo:sparse_chlo_legalize_to_linalg",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -690,7 +691,6 @@ cc_library(
     deps = [
         ":pjrt_client",
         ":pjrt_future",
-        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -701,6 +701,7 @@ cc_library(
         "//tensorflow/core/tpu:pjrt_api",
         "//tensorflow/core/tpu:tpu_initializer_helper",
         "//tensorflow/tsl/platform:status",
+        "@llvm-project//mlir:BytecodeWriter",
     ],
 )
 

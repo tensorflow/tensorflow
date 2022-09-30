@@ -14,6 +14,7 @@
 # ==============================================================================
 """Variable class."""
 
+import abc
 import enum
 import functools
 import itertools
@@ -179,7 +180,7 @@ def validate_synchronization_aggregation_trainable(synchronization, aggregation,
   return synchronization, aggregation, trainable
 
 
-class VariableMetaclass(type):
+class VariableMetaclass(abc.ABCMeta):
   """Metaclass to allow construction of tf.Variable to be overridden."""
 
   def _variable_v1_call(cls,

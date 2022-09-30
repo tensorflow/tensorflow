@@ -102,7 +102,7 @@ class ContextDeviceMemory {
           "setDeviceMemory", tensorflow::profiler::TraceMeLevel::kInfo);
       execution_context_->setDeviceMemory(device_memory_);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -338,7 +338,7 @@ static Status FunctionDefToGraphDef(FunctionLibraryRuntime::Handle handle,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<FunctionLibraryRuntime::Handle> TRTEngineOp::ConstructFunctionHandle(
@@ -556,7 +556,7 @@ Status CopyToHostAsync(OpKernelContext* ctx, std::vector<Tensor>* native_inputs,
   if (ret != 0) {
     return errors::Internal("Could not copy tensor for native segment input");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Copies native_tensor, which is in host memory to ctx->output(t), which is in
@@ -573,7 +573,7 @@ Status CopyToDeviceAsync(OpKernelContext* ctx, const Tensor& native_tensor,
   if (ret != 0) {
     return errors::Internal("Could not copy tensor for native segment output");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
@@ -770,7 +770,7 @@ Status TRTEngineOp::VerifyInputShapes(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static bool AllowEngineNativeSegmentExecution() {
@@ -900,8 +900,8 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       GetEngine(input_concrete_shapes, ctx, cache_res);
   OP_REQUIRES_OK_ASYNC(ctx, status.status(), dummy_async_helper);
 
-  EngineContext* engine_context = status.ValueOrDie().first;
-  int trt_context_idx = status.ValueOrDie().second;
+  EngineContext* engine_context = status.value().first;
+  int trt_context_idx = status.value().second;
   auto may_execute_native_segment = [&] {
     if (!AllowEngineNativeSegmentExecution()) {
       ctx->CtxFailure(
@@ -1039,7 +1039,7 @@ Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
       std::string(kTfTrtContainerName), std::string(resource_name), cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
-        return Status::OK();
+        return OkStatus();
       }});
 }
 
@@ -1180,7 +1180,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       if (!result.ok()) {
         return std::pair<EngineContext*, int>(&empty_context, 0);
       }
-      static_engine = std::move(result.ValueOrDie());
+      static_engine = std::move(result.value());
     }
 
     auto raw_static_engine = static_engine.get();
@@ -1254,8 +1254,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     if (!result.ok()) {
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
-    TrtUniquePtrType<nvinfer1::ICudaEngine> engine =
-        std::move(result.ValueOrDie());
+    TrtUniquePtrType<nvinfer1::ICudaEngine> engine = std::move(result.value());
     std::vector<ExecutionContext> exec_contexts;
     TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
         engine.get(), &exec_contexts));
@@ -1390,7 +1389,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
     VLOG(1) << "Calibration loop terminated " << this->name();
   }));
   VLOG(1) << "initialized calibrator resource";
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);

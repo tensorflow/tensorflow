@@ -32,19 +32,31 @@ namespace tensorflow {
 void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
   mlir::TF::CreateTFXLABridgePipeline(pm);
 
+  // Remove unused global tensors, or make then immutable if possible.
+  pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+
+  // This will add regions to IfOp/WhileOp (turning them into IfRegionOp
+  // and WhileRegionOp), but be aware that those regions will still contain
+  // calls.
+  pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
+
+  pm.addPass(mlir::tf_saved_model::CreateLowerVariableOpsToMlProgramPass());
+  pm.addPass(mlir::tf_saved_model::CreateLowerGlobalsToMlProgramPass());
+  pm.addPass(mlir::TF::CreateRemoveUnusedArgumentsPass());
+
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createSymbolDCEPass());
+
   // Has to be a non-empty string, so tf2xla fallbacks kick in.
   llvm::StringRef tf2xla_fallback_device_type = "cpu/gpu/tpu";
 
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
       tf2xla_fallback_device_type, /*prefer_tf2xla=*/false));
-
-  // Remove unused global tensors, or make then immutable if possible.
-  pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+  pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
 
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::tf_saved_model::CreateLowerVariableOpsToMlProgramPass());
-  pm.addPass(mlir::tf_saved_model::CreateLowerGlobalsToMlProgramPass());
 
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createSymbolDCEPass());

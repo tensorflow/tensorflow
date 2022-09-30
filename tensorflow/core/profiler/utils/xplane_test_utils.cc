@@ -57,9 +57,9 @@ XPlane* GetOrCreateTpuXPlane(XSpace* space, int32_t device_ordinal,
   std::string name = TpuPlaneName(device_ordinal);
   XPlane* xplane = FindOrAddMutablePlaneWithName(space, name);
   XPlaneBuilder builder(xplane);
-  builder.AddStatValue(
-      *builder.GetOrCreateStatMetadata(GetStatTypeStr(kDeviceTypeString)),
-      device_type);
+  builder.AddStatValue(*builder.GetOrCreateStatMetadata(
+                           GetStatTypeStr(StatType::kDeviceTypeString)),
+                       device_type);
   builder.AddStatValue(
       *builder.GetOrCreateStatMetadata("peak_teraflops_per_second"),
       peak_tera_flops_per_second);

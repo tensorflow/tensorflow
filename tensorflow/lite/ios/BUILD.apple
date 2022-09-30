@@ -212,6 +212,7 @@ cc_library(
         "swift_module=TensorFlowLiteC",
     ],
     deps = [
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:common",

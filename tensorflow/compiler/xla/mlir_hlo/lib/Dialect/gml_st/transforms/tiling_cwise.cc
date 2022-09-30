@@ -97,7 +97,7 @@ struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
     };
     auto fuseCwiseOperandsGreedilyFn = [](Operation *op) {
       Operation *producerOp =
-          llvm::cast<MaterializeOp>(op).source().getDefiningOp();
+          llvm::cast<MaterializeOp>(op).getSource().getDefiningOp();
       if (!isElementwiseLinalgGenericOp(producerOp)) return failure();
       return success();
     };

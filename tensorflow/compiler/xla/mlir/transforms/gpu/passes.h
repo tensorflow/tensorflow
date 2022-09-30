@@ -24,6 +24,13 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+#define GEN_PASS_DECL_CONVERTGPUTOGPURUNTIMEPASS
+#define GEN_PASS_DECL_CONVERTLMHLOGPUTOGPURUNTIMEPASS
+#define GEN_PASS_DECL_CONVERTLMHLOTOGPULAUNCHPASS
+#define GEN_PASS_DECL_CONVERTLMHLOTOGPURUNTIMEPASS
+#define GEN_PASS_DECL_CONVERTMEMREFGETGLOBALTOARGPASS
+#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
+
 class ThunkSequence;  // forward declare
 
 // Populate passes that lower MLIR modules from a combination of LMHLO and
@@ -65,6 +72,13 @@ createConvertLmhloToGpuRuntimePass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertLmhloGpuToGpuRuntimePass();
+
+//===----------------------------------------------------------------------===//
+// XLA runtime performance tracing passes.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAddHloTraceAnnotationsPass();
 
 //===-----------------------------------------------------------------------===/
 

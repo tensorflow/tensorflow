@@ -840,7 +840,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
        host_buffer_semantics, transpose{std::move(transpose)}]() {
         PjRtStreamExecutorBuffer::ScopedHold device_buffer(
             movable_device_buffer);
-        // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
+        // This function uses TF_CHECK_OK and value() since we have no way
         // to report failures from a callback. However, the operations here are
         // unlikely to fail and not recoverable even if we were to fail: DMAs to
         // memory that has already been allocated, and a possible Event
@@ -969,7 +969,7 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
                        literal, py_buffer{py_buffer.get()},
                        on_device_shape{py_buffer->on_device_shape()}]() {
     PjRtStreamExecutorBuffer::ScopedHold device_buffer(movable_device_buffer);
-    // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
+    // This function uses TF_CHECK_OK and value() since we have no way
     // to report failures from a callback. However, the operations here are
     // unlikely to fail and not recoverable even if we were to fail: DMAs to
     // memory that has already been allocated, and a possible Event
@@ -2477,22 +2477,6 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
       std::move(device_assignment), std::move(addressable_device_logical_ids),
       std::move(addressable_devices), this);
 
-  if (client()->platform()->Name() == "CUDA") {
-    // TODO(b/244260928): We should avoid compiling twice for local_executables
-    // and aot_executables when JitRt is enabled by default. If JitRt is not
-    // enabled, this will return a bad Status. To turn on JitRt, use the xla
-    // flag -xla_gpu_enable_xla_runtime_executable=true.
-    auto aot_compilation_result =
-        client()->CompileAheadOfTime(computation, argument_layout_pointers,
-                                     options.executable_build_options);
-
-    if (aot_compilation_result.ok()) {
-      executable->aot_executables_ = std::move(aot_compilation_result.value());
-    } else {
-      VLOG(1) << aot_compilation_result.status();
-    }
-  }
-
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(options.parameter_is_tupled_arguments));
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
@@ -2513,27 +2497,30 @@ StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
     const PjRtLoadedExecutable& executable) const {
   const PjRtStreamExecutorExecutable* se_executable =
       tensorflow::down_cast<const PjRtStreamExecutorExecutable*>(&executable);
-  if (se_executable->aot_executables_.empty()) {
-    return InternalError(
-        "No AOT compiled executable: Use XLA flag "
-        "--xla_gpu_enable_xla_runtime_executable to enabled AOT compilation");
-  }
 
-  if (se_executable->aot_executables_.size() != 1) {
+  absl::Span<const std::shared_ptr<LocalExecutable>> local_executables =
+      se_executable->executables();
+  if (local_executables.empty()) {
+    return InternalError("No local executable");
+  }
+  if (local_executables.size() != 1) {
     return Unimplemented(
         "PjRtStreamExecutorClient::SerializeExecutable unimplemented for MPMD "
         "executables");
   }
 
-  TF_ASSIGN_OR_RETURN(std::string result,
-                      se_executable->aot_executables_[0]->SerializeAsString());
+  Executable* built_executable = local_executables[0]->executable();
+  Compiler* compiler = client_->backend().compiler();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+                      compiler->Export(built_executable));
+  TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
 
-  if (result.empty()) {
+  if (serialized.empty()) {
     return Internal(
         "PjRtStreamExecutorClient::SerializeExecutable proto serialization "
         "failed");
   }
-  return result;
+  return serialized;
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>

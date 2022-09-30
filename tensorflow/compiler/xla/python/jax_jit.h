@@ -105,6 +105,10 @@ struct CallSignature {
   // arguments (sorted by keyword name).
   absl::InlinedVector<xla::PyArgSignature, 2> dynamic_arg_signatures;
 
+  // The sharding of the jax.Array arguments. This is only used by pjit with
+  // jax.Array enabled.
+  std::vector<pybind11::object> dynamic_arg_shardings;
+
   // Static arguments. Contains the positional arguments sorted in argument
   // order, followed by static keyword arguments in the order given by
   // `static_arg_names`.
@@ -135,9 +139,21 @@ template <typename H>
 H AbslHashValue(H h, const CallSignature& s) {
   h = H::combine(std::move(h), s.dynamic_arg_treedefs,
                  s.dynamic_arg_signatures);
+
+  DCHECK(s.dynamic_arg_shardings.empty() ||
+         s.dynamic_arg_shardings.size() == s.dynamic_arg_signatures.size());
+
+  // TODO(chky): For now, we are only hashing the pointer of shardings to avoid
+  // slow python hashing function. Consider implementing hashing function and
+  // equality checks in C++ in jax::Sharding and use those here.
+  for (const auto& sharding : s.dynamic_arg_shardings) {
+    h = H::combine(std::move(h), sharding.ptr());
+  }
+
   for (const auto& name : s.dynamic_arg_names) {
     h = H::combine(std::move(h), name.ptr());
   }
+
   h = H::combine(std::move(h), s.dynamic_arg_names.size());
   for (const auto& static_arg : s.static_args) {
     ssize_t hash;

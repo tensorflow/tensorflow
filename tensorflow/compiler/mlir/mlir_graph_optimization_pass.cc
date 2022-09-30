@@ -344,6 +344,15 @@ Status MlirV1CompatGraphOptimizationPass::Run(
       pass->GetPassState(options.device_set, options.session_options->config,
                          **options.graph, *options.flib_def);
 
+  // If we ever have more than one MlirV1CompatOptimization pass we need to
+  // ensure the logging only happens once per graph to avoid redundant logging
+  // (see how it is used in the MLIRFunctionOptimizationPass as an example)
+  // TODO(b/241853328): Remove LogGraphFeatures when fixed
+  LogGraphFeatures(**options.graph, options.flib_def,
+                   options.session_options->config,
+                   /*uses_uninitialized_resource_args=*/false,
+                   /*is_v1_compat=*/true);
+
   if (pass_state == MlirOptimizationPassState::Disabled) {
     LOG_FIRST_N(INFO, 1) << "MLIR V1 optimization pass is not enabled";
     return OkStatus();
@@ -375,14 +384,6 @@ Status MlirV1CompatGraphOptimizationPass::Run(
 
   llvm::StringRef name = pass->name();
   VLOG(2) << "Run MLIR V1 graph optimization pass: " << StringRefToView(name);
-  // If we ever have more than one MlirV1CompatOptimization pass we need to
-  // ensure the logging only happens once per graph to avoid redundant logging
-  // (see how it is used in the MLIRFunctionOptimizationPass as an example)
-  // TODO(b/241853328): Remove LogGraphFeatures when fixed
-  LogGraphFeatures(**options.graph, options.flib_def,
-                   options.session_options->config,
-                   /*uses_uninitialized_resource_args=*/false,
-                   /*is_v1_compat=*/true);
 
   if (VLOG_IS_ON(1)) {
     DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));

@@ -58,6 +58,7 @@ add_mlir_library(GmlStTilingInterfaceImpl
   MLIRTensorUtils
   MLIRIR
   MLIRSupport
+  THLODialect
 )
 
 add_mlir_library(GmlStFusionInterfaceImpl

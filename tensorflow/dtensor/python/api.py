@@ -497,3 +497,22 @@ def _reset() -> None:
     _dtensor_singleton.clear_tpu_core_ids()
   with _dtensor_singleton_lock:
     _dtensor_singleton = None
+
+
+# ----------------------------------------------------------------------------
+# Gradients
+
+
+@ops.RegisterGradient("Relayout")
+def _relayout_gradient(op, grad):
+  del op
+  return grad
+
+
+@ops.RegisterGradient("CopyToMesh")
+def _copy_to_mesh_gradient(op, grad):
+  grad = gen_dtensor_ops.copy_to_mesh(
+      grad,
+      layout=op.get_attr("source_layout"),
+      source_layout=op.get_attr("layout"))
+  return grad

@@ -63,13 +63,13 @@ LogicalResult VerifyTensorTypesCompatible(Type t1, Type t2) {
 
 LogicalResult GlobalTensorOp::verify() {
   GlobalTensorOp global_tensor = *this;
-  if (failed(VerifyTensorTypesCompatible(global_tensor.type(),
-                                         global_tensor.value().getType()))) {
+  if (failed(VerifyTensorTypesCompatible(global_tensor.getType(),
+                                         global_tensor.getValue().getType()))) {
     return global_tensor.emitError() << "'type' and 'value' attributes should "
                                         "have compatible tensor types";
   }
-  if (!global_tensor.is_mutable()) {
-    if (!global_tensor.type().cast<TensorType>().hasStaticShape()) {
+  if (!global_tensor.getIsMutable()) {
+    if (!global_tensor.getType().cast<TensorType>().hasStaticShape()) {
       return global_tensor.emitError()
              << "'type' attribute for immutable 'tf_saved_model.global_tensor' "
                 "should have a static shape";
@@ -83,7 +83,7 @@ LogicalResult SessionInitializerOp::verify() {
   mlir::SymbolTable symbol_table(
       session_initializer->getParentOfType<ModuleOp>());
 
-  for (auto sym_ref : session_initializer.initializers()) {
+  for (auto sym_ref : session_initializer.getInitializers()) {
     auto init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         sym_ref.cast<FlatSymbolRefAttr>().getValue());
 
@@ -159,7 +159,7 @@ static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
 
 Type GetBoundInputArgTypeFor(mlir::Operation *op) {
   if (auto global_tensor = llvm::dyn_cast<GlobalTensorOp>(op)) {
-    auto type = global_tensor.type().cast<TensorType>();
+    auto type = global_tensor.getType().cast<TensorType>();
     return RankedTensorType::get(
         {}, TF::ResourceType::get({type}, type.getContext()));
   }
@@ -295,7 +295,7 @@ static LogicalResult VerifySavedModelModule(
 
   auto is_init = [&session_initializers](mlir::func::FuncOp func) {
     if (session_initializers.empty()) return false;
-    auto init_syms = (*session_initializers.begin()).initializers();
+    auto init_syms = (*session_initializers.begin()).getInitializers();
     return std::any_of(
         init_syms.begin(), init_syms.end(), [&](Attribute sym_ref) {
           return sym_ref.cast<FlatSymbolRefAttr>().getValue() == func.getName();
@@ -461,7 +461,7 @@ class OptimizeSessionInitializerPattern
 
     SmallVector<func::FuncOp, 2> to_remove;
     SmallVector<mlir::Attribute, 2> to_keep;
-    for (auto sym_ref : op.initializers()) {
+    for (auto sym_ref : op.getInitializers()) {
       auto init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
           sym_ref.cast<FlatSymbolRefAttr>().getValue());
 
@@ -504,7 +504,7 @@ SmallVector<StringRef, 2> GetSessionInitializerExportedName(ModuleOp op) {
   SymbolTable symbol_table(op);
 
   SmallVector<StringRef, 2> results;
-  for (auto sym_ref : session_initializer_op.initializers()) {
+  for (auto sym_ref : session_initializer_op.getInitializers()) {
     auto init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         sym_ref.cast<FlatSymbolRefAttr>().getValue());
     auto exported_names = GetExportedNames(init_func_op);

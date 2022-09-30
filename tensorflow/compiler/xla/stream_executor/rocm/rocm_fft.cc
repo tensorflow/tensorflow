@@ -189,7 +189,7 @@ port::Status ROCMFftPlan::Initialize(
             return port::Status{port::error::INTERNAL,
                                 "Failed to create rocFFT 1d plan."};
           }
-          return port::Status::OK();
+          return tsl::OkStatus();
         case 2:
           // hipfftPlan2d
           ret = wrap::hipfftPlan2d(parent, &plan_, elem_count_[0],
@@ -199,7 +199,7 @@ port::Status ROCMFftPlan::Initialize(
             return port::Status{port::error::INTERNAL,
                                 "Failed to create rocFFT 2d plan."};
           }
-          return port::Status::OK();
+          return tsl::OkStatus();
         case 3:
           // hipfftPlan3d
           ret =
@@ -210,7 +210,7 @@ port::Status ROCMFftPlan::Initialize(
             return port::Status{port::error::INTERNAL,
                                 "Failed to create rocFFT 3d plan."};
           }
-          return port::Status::OK();
+          return tsl::OkStatus();
         default:
           LOG(ERROR) << "Invalid rank value for hipfftPlan. "
                         "Requested 1, 2, or 3, given: "
@@ -313,7 +313,7 @@ port::Status ROCMFftPlan::Initialize(
       return UpdateScratchAllocator(stream, scratch_allocator);
     }
   }
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 port::Status ROCMFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
@@ -344,7 +344,7 @@ port::Status ROCMFftPlan::UpdateScratchAllocator(
     return port::Status(port::error::INTERNAL,
                         "Failed to set work area for rocFFT plan.");
   }
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 ROCMFftPlan::~ROCMFftPlan() { wrap::hipfftDestroy(parent_, plan_); }

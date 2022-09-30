@@ -16,14 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_
 
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/path.h"
 
 namespace tsl {
-// TODO(aminim): remove after tensorflow/core/platform/path.h migration.
-namespace io {
-using namespace tensorflow::io;  // NOLINT
-}  // namespace io
 
 class PosixFileSystem : public FileSystem {
  public:

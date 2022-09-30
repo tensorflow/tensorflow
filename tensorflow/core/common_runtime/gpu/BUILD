@@ -77,7 +77,7 @@ cc_library(
 cc_library(
     name = "rocm",
     deps = [
-        "//tensorflow/tsl/platform/default/build_config:rocm",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_rpath",
     ],
 )
 
@@ -169,6 +169,7 @@ tf_cuda_library(
     cuda_deps = [
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         ":gpu_virtual_mem_allocator",
     ],
     deps = [

@@ -779,8 +779,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [
 
 def TFL_CeilOp: TFL_Op<"ceil", [
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Ceil operator";
 
   let description = [{
@@ -790,6 +789,13 @@ def TFL_CeilOp: TFL_Op<"ceil", [
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return TF::ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TFL_ConcatenationOp : TFL_Op<"concatenation",
@@ -939,8 +945,7 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
 
 def TFL_CosOp: TFL_Op<"cos", [
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Cosine operator";
 
   let description = [{
@@ -952,6 +957,14 @@ def TFL_CosOp: TFL_Op<"cos", [
   let results = (outs TFL_FpTensor:$y);
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return TF::ArraysAreCastCompatible(l, r);
+    }
+
+  }];
 }
 
 def TFL_CumsumOp: TFL_Op<"cumsum", [
@@ -1246,8 +1259,7 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
 
 def TFL_LocalResponseNormalizationOp : TFL_Op<"local_response_normalization", [
     TFL_OperandHasRank<0, 4>,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType,
+    TF_SameOperandsAndResultTypeResolveRef,
     NoSideEffect]> {
   let summary = "Local Response Normalization.";
 
@@ -1278,6 +1290,13 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
   );
 
   let hasOptions = 1;
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return TF::ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
@@ -1632,7 +1651,7 @@ def TFL_EqualOp: TFL_Op<"equal", [
 
 def TFL_ExpOp: TFL_Op<"exp", [
     NoSideEffect,
-    SameOperandsAndResultType]> {
+    TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Natural exponentiation operator";
 
   let description = [{
@@ -1644,6 +1663,13 @@ def TFL_ExpOp: TFL_Op<"exp", [
   let results = (outs TFL_FpTensor:$y);
 
   let hasOptions = 0b1;
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return TF::ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TFL_ExpandDimsOp: TFL_Op<"expand_dims", [
@@ -1757,8 +1783,7 @@ def TFL_FillOp: TFL_Op<"fill", [
 
 def TFL_FloorOp: TFL_Op<"floor", [
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Floor operator";
 
   let description = [{
@@ -1768,6 +1793,13 @@ def TFL_FloorOp: TFL_Op<"floor", [
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return TF::ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TFL_FloorDivOp : TFL_Op<"floor_div", [
@@ -2075,8 +2107,7 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
 
 def TFL_LogOp: TFL_Op<"log", [
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Natural logarithm operator";
 
   let description = [{
@@ -2088,6 +2119,13 @@ def TFL_LogOp: TFL_Op<"log", [
   let results = (outs TFL_FpTensor:$y);
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return TF::ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
@@ -2259,8 +2297,7 @@ def TFL_OneHotOp : TFL_Op<"one_hot", [
 
 def TFL_RoundOp: TFL_Op<"round", [
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Round operator";
 
   let description = [{
@@ -2274,6 +2311,13 @@ Rounds the values of a tensor to the nearest integer, element-wise.
   let results = (outs
     TFL_FpTensor:$y
   );
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return TF::ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TFL_SliceOp : TFL_Op<"slice", [
@@ -2491,8 +2535,7 @@ def TFL_MulOp : TFL_Op<"mul", [
 
 def TFL_NegOp: TFL_Op<"neg", [
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Negation operator";
 
   let description = [{
@@ -2506,6 +2549,13 @@ def TFL_NegOp: TFL_Op<"neg", [
   let hasOptions = 0b1;
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return TF::ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TFL_PackOp : TFL_Op<"pack", [
@@ -3097,8 +3147,7 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [
 
 def TFL_SinOp: TFL_Op<"sin", [
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Sine operator";
 
   let description = [{
@@ -3110,6 +3159,13 @@ def TFL_SinOp: TFL_Op<"sin", [
   let results = (outs TFL_FpTensor:$y);
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return TF::ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TFL_SoftmaxOp : TFL_Op<"softmax", [
@@ -3153,8 +3209,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
 
 def TFL_SqrtOp: TFL_Op<"sqrt", [
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Square root operator";
 
   let description = [{
@@ -3166,12 +3221,18 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [
   let results = (outs TFL_FpTensor:$y);
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return TF::ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TFL_SquareOp: TFL_Op<"square", [
     NoSideEffect,
-    SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Square operator";
 
   let description = [{
@@ -3185,6 +3246,13 @@ def TFL_SquareOp: TFL_Op<"square", [
   let hasOptions = 0b1;
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return TF::ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TFL_SubOp : TFL_Op<"sub", [

@@ -44,20 +44,20 @@ LogicalResult AssignDevicesInRegion(const Dialect* tf_dialect,
 
     auto device_attr = op->getAttr(kDeviceAttr);
     if (!device_attr) {
-      op->setAttr(kDeviceAttr, launch.deviceAttr());
+      op->setAttr(kDeviceAttr, launch.getDeviceAttr());
       return WalkResult::advance();
     }
 
     if (auto device_str_attr = device_attr.dyn_cast<StringAttr>()) {
       if (device_str_attr.getValue().empty()) {
-        op->setAttr(kDeviceAttr, launch.deviceAttr());
+        op->setAttr(kDeviceAttr, launch.getDeviceAttr());
         return WalkResult::advance();
-      } else if (device_str_attr.getValue() != launch.device()) {
+      } else if (device_str_attr.getValue() != launch.getDevice()) {
         return launch.emitOpError()
                << "inner op has conflicting 'device' attribute, "
                   "got '"
                << device_str_attr.getValue() << "' but expected '"
-               << launch.device() << "'";
+               << launch.getDevice() << "'";
       }
     } else {
       return launch.emitOpError()
@@ -76,7 +76,7 @@ LogicalResult HoistOpsAndAnnotateWithDevice(const Dialect* tf_dialect,
   launch.replaceAllUsesWith(launch.GetBody().getTerminator()->getOperands());
 
   // For all inner ops, assign the launch device as a `device` attribute.
-  if (failed(AssignDevicesInRegion(tf_dialect, launch, launch.body())))
+  if (failed(AssignDevicesInRegion(tf_dialect, launch, launch.getBody())))
     return failure();
 
   // Move all inner ops of the launch to the block containing the launch.

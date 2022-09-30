@@ -62,7 +62,8 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         const std::string graph_def_serialized =
             tensorflow::quantization::QuantizeQatModel(saved_model_path,
                                                        exported_names_str, tags,
-                                                       quant_opts_serialized);
+                                                       quant_opts_serialized)
+                .first;
 
         return py::bytes(graph_def_serialized);
       },
@@ -78,7 +79,8 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         const std::string graph_def_serialized =
             tensorflow::quantization::QuantizePtqDynamicRange(
                 saved_model_path, exported_names_str, tags,
-                quant_opts_serialized);
+                quant_opts_serialized)
+                .first;
 
         return py::bytes(graph_def_serialized);
       },
@@ -92,7 +94,8 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const absl::string_view tags) {
         const std::string graph_def_serialized =
             tensorflow::quantization::QuantizePtqModelPreCalibration(
-                saved_model_path, exported_names_str, tags);
+                saved_model_path, exported_names_str, tags)
+                .first;
 
         return py::bytes(graph_def_serialized);
       },
@@ -108,7 +111,8 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         const std::string graph_def_serialized =
             tensorflow::quantization::QuantizePtqModelPostCalibration(
                 saved_model_path, exported_names_str, tags,
-                quant_opts_serialized);
+                quant_opts_serialized)
+                .first;
 
         return py::bytes(graph_def_serialized);
       },

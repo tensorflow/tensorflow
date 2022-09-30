@@ -762,7 +762,7 @@ port::Status ReorganizeMemory(Stream* stream,
     i++;
   }
   fflush(stdout);
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 template <typename T>
@@ -797,7 +797,7 @@ port::Status ROCMBlas::AllocateStridedBuffer(
     *device_memory = DeviceMemory<MAPPED_T>(
         DeviceMemoryBase(raw_ptrs[0], matrix_batch_byte_size));
     reallocated = false;
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 
   if (scratch_allocator != nullptr) {
@@ -823,7 +823,7 @@ port::Status ROCMBlas::AllocateStridedBuffer(
   if (copy_data)
     return ReorganizeMemory(stream, device_memory, raw_ptrs, batch_count,
                             batch_stride, true);
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 
@@ -881,7 +881,7 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   port::Status a_allocation_status = AllocateStridedBuffer<T>(
       a_raw_ptrs, batch_count, batch_stride_a, scratch_allocator, stream,
       &a_temp, &a, true, reallocated_a);
-  if (a_allocation_status != port::Status::OK()) {
+  if (a_allocation_status != tsl::OkStatus()) {
     return a_allocation_status;
   }
 
@@ -890,7 +890,7 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   port::Status b_allocation_status = AllocateStridedBuffer<T>(
       b_raw_ptrs, batch_count, batch_stride_b, scratch_allocator, stream,
       &b_temp, &b, true, reallocated_b);
-  if (b_allocation_status != port::Status::OK()) {
+  if (b_allocation_status != tsl::OkStatus()) {
     return b_allocation_status;
   }
 
@@ -899,7 +899,7 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   port::Status c_allocation_status = AllocateStridedBuffer<T>(
       c_raw_ptrs, batch_count, batch_stride_c, scratch_allocator, stream,
       &c_temp, &c, true, reallocated_c);  // can disable copy if beta=0
-  if (c_allocation_status != port::Status::OK()) {
+  if (c_allocation_status != tsl::OkStatus()) {
     return c_allocation_status;
   }
 
@@ -919,7 +919,7 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   if (reallocated_c)
     return ReorganizeMemory(stream, &c, c_raw_ptrs, batch_count, batch_stride_c,
                             false);
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 bool ROCMBlas::DoBlasGemmBatched(

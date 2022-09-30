@@ -546,25 +546,31 @@ struct FnArgType<internal::Value<T>> {
 };
 
 // A template for counting regular arguments in the Ts pack.
+template <typename... Ts>
+struct NumArgs;
+
 template <typename T, typename... Ts>
-struct NumArgs {
+struct NumArgs<T, Ts...> {
   static constexpr int64_t value = !IsWrapped<T>::value + NumArgs<Ts...>::value;
 };
 
-template <typename T>
-struct NumArgs<T> {
-  static constexpr int64_t value = !IsWrapped<T>::value;
+template <>
+struct NumArgs<> {
+  static constexpr int64_t value = 0;
 };
 
 // A template for counting returns in the Ts pack.
+template <typename... Ts>
+struct NumRets;
+
 template <typename T, typename... Ts>
-struct NumRets {
+struct NumRets<T, Ts...> {
   static constexpr int64_t value = IsResult<T>::value + NumRets<Ts...>::value;
 };
 
-template <typename T>
-struct NumRets<T> {
-  static constexpr int64_t value = IsResult<T>::value;
+template <>
+struct NumRets<> {
+  static constexpr int64_t value = 0;
 };
 
 // Unwrap return type to get the type expected by result `Set` method.

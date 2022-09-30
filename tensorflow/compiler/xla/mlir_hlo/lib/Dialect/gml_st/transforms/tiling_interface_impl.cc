@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
+#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
@@ -27,9 +28,10 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-struct ExternalLinalgGenericTilingInterface
+template <typename LinalgOpTy>
+struct ExternalLinalgOpTilingInterface
     : public TilingInterface::ExternalModel<
-          ExternalLinalgGenericTilingInterface, linalg::GenericOp> {
+          ExternalLinalgOpTilingInterface<LinalgOpTy>, LinalgOpTy> {
   /// Return the destination operands.
   SmallVector<Value> getDestinationOperands(Operation *op, OpBuilder &) const {
     return cast<linalg::DestinationStyleOpInterface>(op).getOutputOperands();
@@ -37,9 +39,9 @@ struct ExternalLinalgGenericTilingInterface
 
   /// Return the loop iterator type.
   SmallVector<StringRef> getLoopIteratorTypes(Operation *op) const {
-    linalg::GenericOp genericOp = cast<linalg::GenericOp>(op);
+    auto linalgOp = cast<linalg::LinalgOp>(op);
     return llvm::to_vector(
-        llvm::map_range(genericOp.iterator_types(), [](Attribute strAttr) {
+        llvm::map_range(linalgOp.iterator_types(), [](Attribute strAttr) {
           return strAttr.cast<StringAttr>().getValue();
         }));
   }
@@ -152,8 +154,14 @@ struct ExternalLinalgGenericTilingInterface
 
 void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
   registry.addExtension(+[](MLIRContext *ctx, linalg::LinalgDialect *) {
-    linalg::GenericOp::attachInterface<ExternalLinalgGenericTilingInterface>(
+    linalg::GenericOp::attachInterface<
+        ExternalLinalgOpTilingInterface<linalg::GenericOp>>(*ctx);
+  });
+  registry.addExtension(+[](MLIRContext *ctx, thlo::THLODialect *) {
+    thlo::MapOp::attachInterface<ExternalLinalgOpTilingInterface<thlo::MapOp>>(
         *ctx);
+    thlo::ReductionOp::attachInterface<
+        ExternalLinalgOpTilingInterface<thlo::ReductionOp>>(*ctx);
   });
 }
 

@@ -32,18 +32,20 @@ namespace xla {
 //
 // TODO(chky): Consider replacing the usage of PyShardedBuffer with PyArray as
 // PyArray is more general.
-class PyArray {
+class PyArray : public pybind11::object {
  public:
-  static void RegisterTypes(pybind11::module& m);
+  PYBIND11_OBJECT(PyArray, pybind11::object, PyArray::IsPyArray);
 
-  // Only used in python
-  PyArray(pybind11::object aval, pybind11::object sharding,
-          absl::Span<const PyBuffer::object> py_buffers, bool committed,
-          bool skip_checks);
+  // "__init__" methods. Only used in python
+  static void PyInit(pybind11::object self, pybind11::object aval,
+                     pybind11::object sharding,
+                     absl::Span<const PyBuffer::object> py_buffers,
+                     bool committed, bool skip_checks);
 
-  PyArray(pybind11::object aval, pybind11::object sharding,
-          const std::vector<const PyArray*>& py_arrays, bool committed,
-          bool skip_checks);
+  static void PyInit(pybind11::object self, pybind11::object aval,
+                     pybind11::object sharding,
+                     absl::Span<const PyArray> py_arrays, bool committed,
+                     bool skip_checks);
 
   // Only used in C++
   PyArray(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
@@ -53,44 +55,96 @@ class PyArray {
           std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers, bool committed,
           bool skip_checks = true);
 
-  const pybind11::object& aval() const { return aval_; }
-  void set_aval(pybind11::object aval) { aval_ = std::move(aval); }
+  static Status RegisterTypes(pybind11::module& m);
 
-  const pybind11::object& sharding() const { return sharding_; }
+  struct Storage {
+    Storage(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
+            std::vector<int64_t> shape, pybind11::object sharding,
+            bool committed, std::shared_ptr<PyClient> py_client,
+            std::shared_ptr<Traceback> traceback,
+            std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers)
+        : aval(std::move(aval)),
+          weak_type(weak_type),
+          dtype(std::move(dtype)),
+          shape(std::move(shape)),
+          sharding(std::move(sharding)),
+          committed(committed),
+          py_client(std::move(py_client)),
+          traceback(std::move(traceback)),
+          pjrt_buffers(std::move(pjrt_buffers)) {}
+
+    pybind11::object aval;
+    bool weak_type = false;
+    pybind11::dtype dtype;
+    std::vector<int64_t> shape;
+
+    pybind11::object sharding;
+    pybind11::object npy_value = pybind11::none();
+    bool committed = false;
+
+    std::shared_ptr<PyClient> py_client;
+    std::shared_ptr<Traceback> traceback;
+    std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers;
+  };
+
+  const pybind11::object& aval() const { return GetStorage().aval; }
+  void set_aval(pybind11::object aval) { GetStorage().aval = std::move(aval); }
+
+  bool weak_type() const { return GetStorage().weak_type; }
+
+  const pybind11::dtype& dtype() const { return GetStorage().dtype; }
+  absl::Span<const int64_t> shape() const { return GetStorage().shape; }
+
+  const pybind11::object& sharding() const { return GetStorage().sharding; }
+
+  bool committed() const { return GetStorage().committed; }
+
+  const pybind11::object& npy_value() const { return GetStorage().npy_value; }
+  void set_npy_value(pybind11::object v) {
+    GetStorage().npy_value = std::move(v);
+  }
+
+  const std::shared_ptr<PyClient>& py_client() const {
+    return GetStorage().py_client;
+  }
+
+  const std::shared_ptr<Traceback>& traceback() const {
+    return GetStorage().traceback;
+  }
+
+  std::vector<std::shared_ptr<PjRtBuffer>>& pjrt_buffers() {
+    return GetStorage().pjrt_buffers;
+  }
+  const std::vector<std::shared_ptr<PjRtBuffer>>& pjrt_buffers() const {
+    return GetStorage().pjrt_buffers;
+  }
 
   pybind11::object arrays() const;
   Status set_arrays(pybind11::object obj);
 
-  bool committed() const { return committed_; }
-
-  const pybind11::object& npy_value() const { return npy_value_; }
-  void set_npy_value(pybind11::object v) { npy_value_ = std::move(v); }
-
-  const std::shared_ptr<PyClient>& py_client() const { return py_client_; }
-
   PjRtBuffer* GetBuffer(int device_id) const {
-    return pjrt_buffers_.at(device_id).get();
+    return pjrt_buffers().at(device_id).get();
   }
 
   const std::shared_ptr<PjRtBuffer>& GetSharedPtrBuffer(int device_id) const {
-    return pjrt_buffers_.at(device_id);
+    return pjrt_buffers().at(device_id);
   }
 
-  int num_shards() const { return pjrt_buffers_.size(); }
+  int num_shards() const { return pjrt_buffers().size(); }
 
   static pybind11::handle type() {
-    static pybind11::handle type = pybind11::type::handle_of<PyArray>();
-    return type;
+    DCHECK(type_);
+    return pybind11::handle(type_);
   }
 
-  bool weak_type() const { return weak_type_; }
-  const pybind11::dtype& dtype() const { return dtype_; }
-  absl::Span<const int64_t> shape() const { return shape_; }
+  static bool IsPyArray(pybind11::handle arg) {
+    return arg.get_type().is(PyArray::type());
+  }
 
   Status BlockUntilReady() const {
     pybind11::gil_scoped_release gil_release;
     Status status;
-    for (const auto& pjrt_buffer : pjrt_buffers_) {
+    for (const auto& pjrt_buffer : pjrt_buffers()) {
       auto s = pjrt_buffer->GetReadyFuture().Await();
       if (!s.ok()) status = std::move(s);
     }
@@ -101,158 +155,14 @@ class PyArray {
   void Check();
   void Rearrange();
 
-  pybind11::object aval_;
-  bool weak_type_ = false;
-  pybind11::dtype dtype_;
-  std::vector<int64_t> shape_;
+  Storage& GetStorage();
+  const Storage& GetStorage() const;
 
-  pybind11::object sharding_;
-  pybind11::object npy_value_ = pybind11::none();
-  bool committed_ = false;
+  static Status SetUpType();
 
-  std::shared_ptr<PyClient> py_client_;
-  std::shared_ptr<Traceback> traceback_;
-  std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers_;
+  inline static PyObject* type_ = nullptr;
 };
 
 }  // namespace xla
-
-namespace pybind11 {
-namespace detail {
-
-// A custom type_caster for PyArray. As of Sep 2022, the major overhead of
-// default pybind11 type_caster is from looking up type_info from a global hash
-// map. Since we know the type_info beforehand, we can make it more efficient by
-// avoiding the hash lookup.
-template <>
-struct type_caster<xla::PyArray> : type_caster_generic {
-  // NOLINTNEXTLINE
-  static constexpr auto name = const_name<xla::PyArray>();
-
-  using holder_type = std::unique_ptr<xla::PyArray>;
-
-  static_assert(sizeof(holder_type) <= sizeof(void*),
-                "PyArray's holder must have a simple layout (i.e. fit into the "
-                "one word)");
-  static_assert(alignof(holder_type) <= alignof(void*));
-
-  // Explicitly avoid looking up type_info in the global hash map, as we already
-  // know the type info.
-  type_caster() : type_caster_generic(/*type_info=*/nullptr) {}
-
-  struct SimpleLayoutValueAndHolder {
-    explicit SimpleLayoutValueAndHolder(instance* inst)
-        : simple_value_holder(inst->simple_value_holder) {}
-
-    xla::PyArray*& value_ptr() {
-      return reinterpret_cast<xla::PyArray*&>(simple_value_holder[0]);
-    }
-
-    holder_type& holder() {
-      return reinterpret_cast<holder_type&>(simple_value_holder[1]);
-    }
-
-    void** simple_value_holder;
-  };
-
-  static pybind11::detail::type_info* type_info() {
-    static auto* const type_info = pybind11::detail::get_type_info(
-        typeid(xla::PyArray), /*throw_if_missing=*/true);
-    return type_info;
-  }
-
-  // Python to C++ cast.
-  //
-  // Example:
-  //  py::object obj = ...;
-  //  auto* py_array_ptr = obj.cast<PyArray*>();
-  //  auto& py_array_ref = obj.cast<PyArray>();
-  //
-  bool load(handle src, bool) {
-    if (!src) return false;
-    if (src.get_type() != xla::PyArray::type()) return false;
-
-    SimpleLayoutValueAndHolder value_and_holder(
-        reinterpret_cast<instance*>(src.ptr()));
-
-    value = value_and_holder.value_ptr();
-
-    return true;
-  }
-
-  static PyObject* make_new_instance(PyTypeObject* type) {
-    PyObject* self = type->tp_alloc(type, 0);
-    auto* inst = reinterpret_cast<instance*>(self);
-    inst->simple_layout = true;
-    inst->simple_value_holder[0] = nullptr;
-    inst->simple_holder_constructed = false;
-    inst->simple_instance_registered = false;
-    inst->owned = true;
-    return self;
-  }
-
-  // C++ to python cast by move
-  //
-  // Example:
-  //  PyArray py_array(...);
-  //  py::object obj = py::cast(std::move(py_array));
-  //
-  static handle cast(xla::PyArray&& src, return_value_policy, handle) {
-    auto* type_info = type_caster::type_info();
-    auto obj = reinterpret_steal<object>(make_new_instance(type_info->type));
-
-    auto* inst = reinterpret_cast<instance*>(obj.ptr());
-    inst->owned = true;
-
-    SimpleLayoutValueAndHolder value_and_holder(inst);
-
-    value_and_holder.value_ptr() = new xla::PyArray(std::move(src));
-    new (std::addressof(value_and_holder.holder()))
-        holder_type(value_and_holder.value_ptr());
-    inst->simple_holder_constructed = true;
-
-    return obj.release();
-  }
-
-  // C++ to python cast by reference.
-  //
-  // Example:
-  //  PyArray py_array(...);
-  //  py::object obj = py::cast(&py_array);
-  //
-  static handle cast(xla::PyArray* src, return_value_policy policy, handle) {
-    DCHECK(src);
-
-    // Only reference semantic is supported.
-    DCHECK(policy == return_value_policy::automatic_reference ||
-           policy == return_value_policy::reference);
-
-    auto* type_info = type_caster::type_info();
-    auto obj = reinterpret_steal<object>(make_new_instance(type_info->type));
-
-    auto* inst = reinterpret_cast<instance*>(obj.ptr());
-    inst->owned = false;
-
-    SimpleLayoutValueAndHolder value_and_holder(inst);
-    value_and_holder.value_ptr() = src;
-
-    return obj.release();
-  }
-
-  template <typename T>
-  using cast_op_type = detail::cast_op_type<T>;
-
-  // NOLINTNEXTLINE(google-explicit-constructor)
-  operator xla::PyArray*() { return static_cast<xla::PyArray*>(value); }
-
-  // NOLINTNEXTLINE(google-explicit-constructor)
-  operator xla::PyArray&() {
-    DCHECK(value);
-    return *(static_cast<xla::PyArray*>(value));
-  }
-};
-
-}  // namespace detail
-}  // namespace pybind11
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_PY_ARRAY_H_

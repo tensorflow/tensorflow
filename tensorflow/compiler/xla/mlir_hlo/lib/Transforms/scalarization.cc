@@ -75,7 +75,15 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
 
     // Clone everything but terminator.
     Block *body = genericOp.getBody();
-    for (Operation &op : body->without_terminator()) rewriter.clone(op, bvm);
+    for (Operation &op : body->without_terminator()) {
+      // `linalg.index` can only result in 0 for scalar linalg.generic.
+      if (auto indexOp = dyn_cast<linalg::IndexOp>(op)) {
+        Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+        bvm.map(indexOp.getResult(), zero);
+        continue;
+      }
+      rewriter.clone(op, bvm);
+    }
 
     // Wrap every scalar result into a tensor using `tensor.from_elements`.
     SmallVector<Value> newResults;
@@ -101,18 +109,18 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
 
     // Extract update.
-    Value updates = scatterOp.updates();
+    Value updates = scatterOp.getUpdates();
     auto updatesType = updates.getType().dyn_cast<RankedTensorType>();
     if (!updatesType || !hasSingleElement(updatesType)) return failure();
     SmallVector<Value> updateIndices(updatesType.getRank(), zero);
     Value updateValue = rewriter.create<ExtractOp>(loc, updates, updateIndices);
 
     // Extract/compute index.
-    Value indices = scatterOp.indices();
+    Value indices = scatterOp.getIndices();
     auto indicesType = indices.getType().dyn_cast<RankedTensorType>();
     SmallVector<Value> indicesIndices(indicesType.getRank(), zero);
 
-    Value init = scatterOp.init();
+    Value init = scatterOp.getInit();
     auto initType = init.getType().dyn_cast<RankedTensorType>();
 
     SmallVector<Value> scatterIndices;

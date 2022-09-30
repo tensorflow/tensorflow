@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -271,6 +272,12 @@ class SpmdPartitioner : public HloModulePass {
   // replicated sharding.
   virtual bool CanSideEffectingHaveReplicatedSharding(
       const HloInstruction* hlo) {
+    if (hlo->opcode() == HloOpcode::kCustomCall) {
+      if (auto* partitioner =
+              GetCustomCallPartitioner(hlo->custom_call_target())) {
+        return partitioner->CanSideEffectingHaveReplicatedSharding();
+      }
+    }
     return hlo->opcode() == HloOpcode::kInfeed ||
            hlo->opcode() == HloOpcode::kOutfeed;
   }
@@ -380,6 +387,9 @@ class PartitionedHlo {
 
   // Returns the sharding of the SPMD instruction.
   const HloSharding& sharding() const { return hlo_->sharding(); }
+
+  // Returns the rank of the SPMD instruction.
+  const int64_t rank() const { return base_shape_.rank(); }
 
   // Original full shape of the data.
   const Shape& base_shape() const { return base_shape_; }

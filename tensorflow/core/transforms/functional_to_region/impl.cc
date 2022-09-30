@@ -166,7 +166,7 @@ struct ConvertForOp
 // if it has a computed gradient, or if it is marked for compilation (e.g. by
 // XLA).
 static bool CannotInline(GraphFuncOp func) {
-  return !func || func.generic() || func.gradient() ||
+  return !func || func.getGeneric() || func.getGradient() ||
          func.isMarkedForCompilation();
 }
 
@@ -189,10 +189,10 @@ static DictionaryAttr PreserveFunctionAttributes(GraphFuncOp func) {
     if (Attribute attr = func->getAttr(name))
       preserved_attrs.append(name, attr);
   };
-  preserve(func.descriptionAttrName());
-  preserve(func.is_statefulAttrName());
-  preserve(func.resource_arg_unique_ids_keysAttrName());
-  preserve(func.resource_arg_unique_ids_valuesAttrName());
+  preserve(func.getDescriptionAttrName());
+  preserve(func.getIsStatefulAttrName());
+  preserve(func.getResourceArgUniqueIdsKeysAttrName());
+  preserve(func.getResourceArgUniqueIdsValuesAttrName());
   // Propagate tf.* attributes.
   // TODO(jeffniu): `tf` dialect is not loaded.
   for (const NamedAttribute &attr : func->getAttrs())
@@ -207,7 +207,7 @@ static DictionaryAttr PreserveFunctionAttributes(GraphFuncOp func) {
   // Grappler changes the function name, the reference will only be valid in the
   // first subgraph, leading to a function-not-found error. Preserve the
   // original function name.
-  preserve(func.sym_nameAttrName());
+  preserve(func.getSymNameAttrName());
 
   return preserved_attrs.getDictionary(func.getContext());
 }
@@ -251,11 +251,11 @@ static RegionAttr PreserveAttributes(GraphFuncOp func, bool drop_args = false,
     return ArrayAttr::get(attrs.getContext(), others);
   };
 
-  ArrayAttr arg_attrs = drop_args || !func.arg_attrs()
+  ArrayAttr arg_attrs = drop_args || !func.getArgAttrs()
                             ? ArrayAttr::get(func.getContext(), {})
-                            : every_other(*func.arg_attrs());
-  ArrayAttr res_attrs = func.res_attrs()
-                            ? *func.res_attrs()
+                            : every_other(*func.getArgAttrs());
+  ArrayAttr res_attrs = func.getResAttrs()
+                            ? *func.getResAttrs()
                             : ArrayAttr::get(func.getContext(), {});
 
   if (!allow_empty && ArePreservedAttrsEmpty(func_attrs, arg_attrs, res_attrs))
@@ -314,16 +314,16 @@ void BasePattern::CloneAndRename(Region &from, Region &to,
 template <typename IfLikeOp, typename IfLikeRegionOp>
 LogicalResult ConvertIfLikeOp<IfLikeOp, IfLikeRegionOp>::matchAndRewrite(
     IfLikeOp op, PatternRewriter &rewriter) const {
-  GraphFuncOp then_func = this->LookupFunc(op.then_branch());
-  GraphFuncOp else_func = this->LookupFunc(op.else_branch());
+  GraphFuncOp then_func = this->LookupFunc(op.getThenBranch());
+  GraphFuncOp else_func = this->LookupFunc(op.getElseBranch());
   if (CannotInline(then_func) || CannotInline(else_func)) return failure();
 
   // Create the region-based op, passing in the required attributes.
   ValueRange args, ctls;
-  std::tie(args, ctls) = this->SplitControl(op.args());
+  std::tie(args, ctls) = this->SplitControl(op.getArgs());
   auto region_op = rewriter.create<IfLikeRegionOp>(
-      op.getLoc(), op.getResultTypes(), op.cond(), ctls,
-      op.then_branch().getAttrs(), op.else_branch().getAttrs(),
+      op.getLoc(), op.getResultTypes(), op.getCond(), ctls,
+      op.getThenBranch().getAttrs(), op.getElseBranch().getAttrs(),
       PreserveAttributes(then_func, /*drop_args=*/true),
       PreserveAttributes(else_func, /*drop_args=*/true));
   util::ForwardNonIntrinsicAttributes(op, region_op);
@@ -346,11 +346,11 @@ LogicalResult ConvertIfLikeOp<IfLikeOp, IfLikeRegionOp>::matchAndRewrite(
     then_bv.map(then_ctl, ctl);
     else_bv.map(else_ctl, ctl);
   }
-  this->CloneAndRename(then_func.body(), region_op.then_region(), then_bv);
-  this->CloneAndRename(else_func.body(), region_op.else_region(), else_bv);
+  this->CloneAndRename(then_func.getBody(), region_op.getThenRegion(), then_bv);
+  this->CloneAndRename(else_func.getBody(), region_op.getElseRegion(), else_bv);
 
   // Replace the terminators `return` with `yield`.
-  TypeRange ret_types = region_op.outs().getTypes();
+  TypeRange ret_types = region_op.getOuts().getTypes();
   this->ReplaceReturnWithYield(region_op.then_block(), ret_types, rewriter);
   this->ReplaceReturnWithYield(region_op.else_block(), ret_types, rewriter);
   rewriter.replaceOp(op, region_op.getResults());
@@ -367,8 +367,8 @@ LogicalResult ConvertCaseLikeOp<CaseLikeOp, CaseLikeRegionOp>::matchAndRewrite(
   // Lookup all the branch functions and save their attributes.
   SmallVector<GraphFuncOp> branch_funcs;
   SmallVector<Attribute> branch_attrs;
-  branch_funcs.reserve(op.branches().size());
-  for (auto attr : op.branches().template getAsRange<FuncAttr>()) {
+  branch_funcs.reserve(op.getBranches().size());
+  for (auto attr : op.getBranches().template getAsRange<FuncAttr>()) {
     GraphFuncOp branch_func = this->LookupFunc(attr);
     if (CannotInline(branch_func)) return failure();
     branch_funcs.push_back(branch_func);
@@ -388,10 +388,11 @@ LogicalResult ConvertCaseLikeOp<CaseLikeOp, CaseLikeRegionOp>::matchAndRewrite(
 
   // Create the region-based op, passing in the required attributes.
   ValueRange args, ctls;
-  std::tie(args, ctls) = this->SplitControl(op.args());
+  std::tie(args, ctls) = this->SplitControl(op.getArgs());
   auto region_op = rewriter.create<CaseLikeRegionOp>(
-      op.getLoc(), op.getResultTypes(), op.branch_index(), ctls,
-      rewriter.getArrayAttr(branch_attrs), region_attrs, op.branches().size());
+      op.getLoc(), op.getResultTypes(), op.getBranchIndex(), ctls,
+      rewriter.getArrayAttr(branch_attrs), region_attrs,
+      op.getBranches().size());
   util::ForwardNonIntrinsicAttributes(op, region_op);
 
   // Move the regions over and replace the block arguments.
@@ -401,21 +402,21 @@ LogicalResult ConvertCaseLikeOp<CaseLikeOp, CaseLikeRegionOp>::matchAndRewrite(
   for (auto &arg : llvm::enumerate(args)) {
     for (auto it : llvm::zip(branch_funcs, bvs)) {
       BlockArgument branch_arg =
-          GraphFuncOp::getDataValue(std::get<0>(it).body(), arg.index());
+          GraphFuncOp::getDataValue(std::get<0>(it).getBody(), arg.index());
       BlockAndValueMapping &bv = std::get<1>(it);
       bv.map(branch_arg, arg.value());
       bv.map(GraphFuncOp::getControlTokenOf(branch_arg),
              LookupControlDependency(arg.value()));
     }
   }
-  for (auto it : llvm::zip(branch_funcs, region_op.branches(), bvs)) {
-    this->CloneAndRename(std::get<0>(it).body(), std::get<1>(it),
+  for (auto it : llvm::zip(branch_funcs, region_op.getBranches(), bvs)) {
+    this->CloneAndRename(std::get<0>(it).getBody(), std::get<1>(it),
                          std::get<2>(it));
   }
 
   // Replace the terminators `return` with `yield`.
-  TypeRange ret_types = region_op.outs().getTypes();
-  for (Region &branch : region_op.branches())
+  TypeRange ret_types = region_op.getOuts().getTypes();
+  for (Region &branch : region_op.getBranches())
     this->ReplaceReturnWithYield(branch.front(), ret_types, rewriter);
   rewriter.replaceOp(op, region_op.getResults());
   return success();
@@ -429,28 +430,29 @@ template <typename WhileLikeOp, typename WhileLikeRegionOp>
 LogicalResult
 ConvertWhileLikeOp<WhileLikeOp, WhileLikeRegionOp>::matchAndRewrite(
     WhileLikeOp op, PatternRewriter &rewriter) const {
-  GraphFuncOp cond_func = this->LookupFunc(op.cond());
-  GraphFuncOp body_func = this->LookupFunc(op.body());
+  GraphFuncOp cond_func = this->LookupFunc(op.getCond());
+  GraphFuncOp body_func = this->LookupFunc(op.getBody());
   if (CannotInline(cond_func) || CannotInline(body_func)) return failure();
 
   // Note that `tfg.While` may not have the same input and output types. We will
   // need to insert casts.
   // TODO(jeffniu): Change this to call the infer return types builder.
   ValueRange init, ctls;
-  std::tie(init, ctls) = this->SplitControl(op.args());
+  std::tie(init, ctls) = this->SplitControl(op.getArgs());
   auto region_op = rewriter.create<WhileLikeRegionOp>(
       op.getLoc(), op.getResultTypes(), init, ctls,
-      op.parallel_iterationsAttr(), op.cond().getAttrs(), op.body().getAttrs(),
-      PreserveAttributes(cond_func), PreserveAttributes(body_func));
+      op.getParallelIterationsAttr(), op.getCond().getAttrs(),
+      op.getBody().getAttrs(), PreserveAttributes(cond_func),
+      PreserveAttributes(body_func));
   util::ForwardNonIntrinsicAttributes(op, region_op);
 
   // Just copy the function bodies into the regions. `RegionBranchOpInterface`
   // requires that we re-order the block arguments such that the control tokens
   // all come after the data arguments.
-  this->CloneAndReorderArgs(init.getTypes(), cond_func.body(),
-                            region_op.cond_region(), rewriter);
-  this->CloneAndReorderArgs(init.getTypes(), body_func.body(),
-                            region_op.body_region(), rewriter);
+  this->CloneAndReorderArgs(init.getTypes(), cond_func.getBody(),
+                            region_op.getCondRegion(), rewriter);
+  this->CloneAndReorderArgs(init.getTypes(), body_func.getBody(),
+                            region_op.getBodyRegion(), rewriter);
   this->ReplaceReturnWithYield(region_op.body_block(), init.getTypes(),
                                rewriter);
 
@@ -460,8 +462,8 @@ ConvertWhileLikeOp<WhileLikeOp, WhileLikeRegionOp>::matchAndRewrite(
   std::tie(ret_args, ret_ctls) = this->SplitControl(ret_op.getOperands());
   rewriter.setInsertionPoint(ret_op);
   rewriter.replaceOpWithNewOp<ConditionOp>(
-      ret_op, ret_args.front(), GetLoopRegionDataArgs(region_op.cond_region()),
-      ret_ctls);
+      ret_op, ret_args.front(),
+      GetLoopRegionDataArgs(region_op.getCondRegion()), ret_ctls);
   rewriter.replaceOp(op, region_op->getResults());
   return success();
 }
@@ -472,22 +474,23 @@ ConvertWhileLikeOp<WhileLikeOp, WhileLikeRegionOp>::matchAndRewrite(
 
 LogicalResult ConvertForOp::matchAndRewrite(tfg::ForOp op,
                                             PatternRewriter &rewriter) const {
-  GraphFuncOp body_func = LookupFunc(op.body());
+  GraphFuncOp body_func = LookupFunc(op.getBody());
   if (CannotInline(body_func)) return failure();
 
   // Note that `For` may not have the same input and output typse, although
   // `ForRegion` does. We will need to insert casts.
   ValueRange init, ctls;
-  std::tie(init, ctls) = SplitControl(op.args());
+  std::tie(init, ctls) = SplitControl(op.getArgs());
   auto region_op = rewriter.create<ForRegionOp>(
-      op.getLoc(), op.getResultTypes(), op.start(), op.limit(), op.delta(),
-      init, ctls, op.body().getAttrs(), PreserveAttributes(body_func));
+      op.getLoc(), op.getResultTypes(), op.getStart(), op.getLimit(),
+      op.getDelta(), init, ctls, op.getBody().getAttrs(),
+      PreserveAttributes(body_func));
   util::ForwardNonIntrinsicAttributes(op, region_op);
 
   // Copy the function body into the region. One index type must be added.
   OperandRange args = op.getOperands().drop_front(2).drop_back(ctls.size());
-  CloneAndReorderArgs(args.getTypes(), body_func.body(),
-                      region_op.body_region(), rewriter);
+  CloneAndReorderArgs(args.getTypes(), body_func.getBody(),
+                      region_op.getBodyRegion(), rewriter);
   ReplaceReturnWithYield(region_op.body_block(), init.getTypes(), rewriter);
   rewriter.replaceOp(op, region_op->getResults());
   return success();

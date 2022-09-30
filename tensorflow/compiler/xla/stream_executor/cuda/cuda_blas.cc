@@ -1086,7 +1086,7 @@ port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
     }
     TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
                                                 output_profile_result, stream));
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 #endif
 
@@ -1467,7 +1467,7 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
             b_matrix, CUDA_R_16BF, ldb, static_cast<const float *>(beta),
             c_matrix, CUDA_R_16BF, ldc));
       }
-      return port::Status::OK();
+      return tsl::OkStatus();
     }
 #endif
     case dnn::kHalf: {

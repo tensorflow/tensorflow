@@ -43,14 +43,16 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORTPUINTEGRATION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Adds metadata used in TPU Compilation to `cluster` as attributes.
 void AddMetadataToTPUCluster(const Mesh& mesh_config,
@@ -108,7 +110,7 @@ mlir::LogicalResult CreateTPUCluster(
 
   auto cluster = builder->create<mlir::tf_device::ClusterOp>(
       tpu_call.getLoc(), function->getCallableResults());
-  cluster.body().push_back(new mlir::Block);
+  cluster.getBody().push_back(new mlir::Block);
 
   auto& function_body = function_block.getOperations();
   cluster.GetBody().getOperations().splice(
@@ -127,7 +129,7 @@ mlir::LogicalResult CreateTPUCluster(
 }
 
 struct DTensorTPUIntegration
-    : public DTensorTPUIntegrationBase<DTensorTPUIntegration> {
+    : public impl::DTensorTPUIntegrationBase<DTensorTPUIntegration> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
     registry.insert<mlir::tf_device::TensorFlowDeviceDialect>();

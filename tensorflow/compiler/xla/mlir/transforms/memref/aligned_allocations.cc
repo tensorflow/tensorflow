@@ -27,11 +27,11 @@ namespace runtime {
 
 using namespace mlir;  // NOLINT
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_ALIGNEDALLOCATIONSPASS
 #include "tensorflow/compiler/xla/mlir/transforms/memref/passes.h.inc"
 
 struct AlignedAllocationsPass
-    : public AlignedAllocationsPassBase<AlignedAllocationsPass> {
+    : public impl::AlignedAllocationsPassBase<AlignedAllocationsPass> {
   explicit AlignedAllocationsPass(int64_t alignment) { alignment_ = alignment; }
   void runOnOperation() override;
 };

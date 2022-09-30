@@ -1854,7 +1854,7 @@ void SetYieldOp::build(
   result.addOperands(srcs);
   result.addOperands(dsts);
   result.addOperands(sets);
-  result.addAttribute(SetYieldOp::accumulatorFlagsAttrName(result.name),
+  result.addAttribute(SetYieldOp::getAccumulatorFlagsAttrName(result.name),
                       accumulatorFlags);
 
   const auto *builderFnIt = accumulatorBuilderFns.begin();
@@ -2004,7 +2004,7 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
                              result.operands))
     return failure();
 
-  result.addAttribute(SetYieldOp::accumulatorFlagsAttrName(result.name),
+  result.addAttribute(SetYieldOp::getAccumulatorFlagsAttrName(result.name),
                       parser.getBuilder().getBoolArrayAttr(accumulatorFlags));
   return success();
 }

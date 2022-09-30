@@ -9,23 +9,21 @@ package(
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
-        # tensorflow/core/lib/random uses on gtl:array_slice
-        "//tensorflow/core/lib/random:__pkg__",
         # tensorflow/core/lib/strings:proto_serialization uses on gtl:inlined_vector
         "//tensorflow/core/lib/strings:__pkg__",
         "//tensorflow/tsl/lib/strings:__pkg__",
-        # tensorflow/core/lib/histogram uses array_slice
-        "//tensorflow/core/lib/histogram:__pkg__",
-        # tensorflow/core/framework uses array_slice, map_util, and flatmap
+        # tensorflow/core/framework uses map_util, and flatmap
         "//tensorflow/core/framework:__pkg__",
-        # tensorflow/core/util uses array_slice, inlined_vector
+        "//tensorflow/tsl/framework:__pkg__",
+        # tensorflow/core/util uses inlined_vector
         "//tensorflow/core/util:__pkg__",
-        # tensorflow/core/tfrt/utils uses array_slice, inlined_vector
+        # tensorflow/core/tfrt/utils uses inlined_vector
         "//tensorflow/core/tfrt/utils:__pkg__",
         # tensorflow/examples/custom_ops_doc/simple_hash_table uses map_util
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
-        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core/lib/gtl:__subpackages__",
+        "//tensorflow/tsl/profiler/utils:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -147,6 +145,7 @@ filegroup(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
+        "//tensorflow/tsl:__subpackages__",
     ],
 )
 

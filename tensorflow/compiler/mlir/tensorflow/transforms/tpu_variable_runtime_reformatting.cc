@@ -130,7 +130,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   assert(metadata_str && "Missing compilation metadata");
   tensorflow::tpu::TPUCompileMetadataProto metadata;
   metadata.ParseFromString(std::string(metadata_str.getValue()));
-  int64_t num_replicas = replicate.n();
+  int64_t num_replicas = replicate.getN();
   // Find the formattable operands of `execute`, which must be mirrored
   // variables (arguments of `replicate`), and must be pass-throughs from while
   // operands.
@@ -225,7 +225,7 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
     MutableArrayRef<TF::VarHandleOp> new_inputs,
     const llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>&
         devices) {
-  int64_t num_replicas = replicate.n();
+  int64_t num_replicas = replicate.getN();
   assert(new_inputs.size() == num_replicas);
 
   // As model parallelism is not yet supported, we assume that all ops are
@@ -320,7 +320,7 @@ void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
 
   auto launch = builder->create<tf_device::LaunchOp>(
       loc, builder->getStringAttr(device), op->getResultTypes());
-  launch.body().push_back(new Block);
+  launch.getBody().push_back(new Block);
 
   builder->setInsertionPointToEnd(&launch.GetBody());
   builder->create<tf_device::ReturnOp>(loc, op->getResults());
@@ -334,7 +334,7 @@ void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
 // Performs the transformation for a replicate op inside a while loop.
 void HandleReplicateOp(TF::WhileRegionOp while_op,
                        tf_device::ReplicateOp replicate) {
-  int64_t num_replicas = replicate.n();
+  int64_t num_replicas = replicate.getN();
   if (num_replicas == 1) return;
 
   // Set execute_launch when there is exactly one
@@ -373,7 +373,7 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   if (execute_arg_to_outer_args.empty()) return;
 
   // Extract the replicated devices.
-  auto devices_attr = replicate.devices();
+  auto devices_attr = replicate.getDevices();
   if (!devices_attr) return;
 
   auto device_map = devices_attr.getValue();
@@ -414,7 +414,7 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   auto reformat_op = builder.create<TF::TPUReshardVariablesOp>(
       execute_launch.getLoc(), llvm::ArrayRef<Type>{}, reformat_operands);
   WrapOpInLaunch(&builder, execute_launch.getLoc(), reformat_op,
-                 execute_launch.device());
+                 execute_launch.getDevice());
 
   // Build the replicated unformat op after the loop. First prepare building the
   // replicate op.
@@ -471,7 +471,7 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   auto unformat_op = builder.create<TF::TPUReshardVariablesOp>(
       while_op.getLoc(), llvm::ArrayRef<Type>{}, unformat_operands);
   WrapOpInLaunch(&builder, execute_launch.getLoc(), unformat_op,
-                 execute_launch.device());
+                 execute_launch.getDevice());
   builder.create<tf_device::ReturnOp>(while_op.getLoc(), ArrayRef<Value>{});
 }
 

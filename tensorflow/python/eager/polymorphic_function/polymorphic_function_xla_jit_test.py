@@ -718,35 +718,6 @@ class FunctionTest(xla_test.XLATestCase):
           v.device)['current'] if on_gpu else 0
       self.assertEqual(initial_usage, final_usage)
 
-  @test_util.disable_mlir_bridge('MLIR does not support resource update for'
-                                 ' signature with compile-time constant.')
-  def testUpdateVariableWithCompileTimeConstMemoryUsage(self):
-    with ops.device('device:{}:0'.format(self.device)):
-
-      on_gpu = 'gpu' in self.device.lower()
-      v = variables.Variable(random_ops.random_normal([1024, 1024]))
-
-      # test a signature of (compile-time const, arg, res_var). The compile-time
-      # const will be optimized away so that the kernel signature will become
-      # (arg, res_var).
-      @polymorphic_function.function(jit_compile=True)
-      def update_var(shape, arg):
-        v.assign_add(array_ops.broadcast_to(arg, shape))
-
-      arg = random_ops.random_normal([1])
-
-      gc.collect()
-      initial_usage = context.context().get_memory_info(
-          v.device)['current'] if on_gpu else 0
-      update_var(constant_op.constant([1024, 1024]), arg)
-      # Need to do update_var for a second time so that BFC Allocator could
-      # defragment the GPU memory.
-      update_var(constant_op.constant([1024, 1024]), arg)
-      gc.collect()
-      final_usage = context.context().get_memory_info(
-          v.device)['current'] if on_gpu else 0
-      self.assertEqual(initial_usage, final_usage)
-
   @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
                                  ' functions')
   def testUpdateVariableInClass(self):

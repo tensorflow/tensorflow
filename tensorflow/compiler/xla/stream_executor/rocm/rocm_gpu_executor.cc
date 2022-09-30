@@ -281,7 +281,7 @@ port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   TF_RETURN_IF_ERROR(GetKernelMetadata(rocm_kernel, &kernel_metadata));
   kernel->set_metadata(kernel_metadata);
   kernel->set_name(*kernelname);
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 port::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
@@ -292,7 +292,7 @@ port::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
 
   // TODO(ROCm) implement this feature in HIP
   kernel_metadata->set_shared_memory_bytes(value);
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
@@ -379,7 +379,7 @@ port::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
         &hip_module));
     *module_handle = ModuleHandle(const_cast<void*>(
         static_cast<const void*>(spec.cuda_cubin_in_memory().data())));
-    return port::Status::OK();
+    return tsl::OkStatus();
   } else {
     return port::InternalError("No HASCO binary found");
   }
@@ -412,7 +412,7 @@ port::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
             << " is already loaded as module " << *module;
   }
   gpu_binary_to_module_[hsaco] = {*module, module_refcount};
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 // This is a non-essential operation; if there's a failure, proceed without
@@ -594,7 +594,7 @@ port::Status GpuExecutor::RecordEvent(Stream* stream, Event* event) {
 port::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
   if (GpuDriver::WaitStreamOnEvent(context_, AsGpuStream(stream)->gpu_stream(),
                                    AsGpuEvent(event)->gpu_event())) {
-    return port::Status::OK();
+    return tsl::OkStatus();
   } else {
     return port::Status{
         port::error::INTERNAL,

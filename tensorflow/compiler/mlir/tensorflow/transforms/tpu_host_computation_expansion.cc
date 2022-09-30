@@ -62,7 +62,7 @@ bool IsTrivialUnaryOperation(Operation* op) {
 // TODO(b/158691733): Also handle ops inside function calls/control flows.
 void ExpandHeadOutsideCompiledOps(tf_device::ClusterOp cluster,
                                   OpBuilder* builder) {
-  Region* cluster_region = &cluster.body();
+  Region* cluster_region = &cluster.getBody();
   llvm::SmallSetVector<Operation*, 4> head_outside_compiled_ops;
 
   // Traverse the graph in topological order to find all outside compiled ops

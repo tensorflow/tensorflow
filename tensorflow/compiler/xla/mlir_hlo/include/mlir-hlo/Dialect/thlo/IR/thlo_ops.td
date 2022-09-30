@@ -30,7 +30,7 @@ def THLO_Dialect : Dialect {
   let name = "thlo";
   let cppNamespace = "::mlir::thlo";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 class THLO_Op<string mnemonic, list<Trait> traits> :
@@ -63,7 +63,7 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
     DeclareOpInterfaceMethods<TilingInterface>]> {
   let summary = "Destination-style twin for `mhlo.concatenate`";
   let arguments = (ins
-    Variadic<AnyTensor>:$operands,
+    Variadic<AnyTensor>:$inputs,
     AnyTensor:$init,
     I64Attr:$dimension
   );
@@ -71,8 +71,7 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.
-    mlir::ValueRange inputs() { return operands(); }
-    mlir::ValueRange getInputs() { return operands(); }
+    mlir::ValueRange inputs() { return getInputs(); }
     mlir::ValueRange outputs() { return getOperands().take_back(1); }
   }];
 }
@@ -201,6 +200,7 @@ def THLO_TransposeOp : THLO_DstStyleOp<"transpose", []> {
 }
 
 def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
+      DeclareOpInterfaceMethods<LinalgStructuredInterface, ["iterator_types"]>,
       SameVariadicOperandSize, SingleBlockImplicitTerminator<"YieldOp">
     ]> {
   let summary = "Destination-style twin for `mhlo.reduce`";
@@ -235,16 +235,22 @@ def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
 
   let extraClassDeclaration = [{
     // Implement functions necessary for DestinationStyleOpInterface.
-    mlir::ValueRange getInputs() { return inputs(); }
-    mlir::ValueRange outputs() { return inits(); }
-    unsigned getNumInputs() { return inputs().size(); };
-    unsigned getNumOutputs() { return inits().size(); };
+    mlir::ValueRange inputs() { return getInputs(); }
+    mlir::ValueRange outputs() { return getInits(); }
+    unsigned getNumInputs() { return getInputs().size(); };
+    unsigned getNumOutputs() { return getInits().size(); };
+    static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+                              mlir::ArrayRef<mlir::NamedAttribute>)>
+    getRegionBuilder() {
+      return nullptr;
+    }
   }];
 }
 
 def THLO_MapOp : THLO_DstStyleOp<"map", [
     SameOperandsAndResultShape,
-    SingleBlockImplicitTerminator<"YieldOp">
+    SingleBlockImplicitTerminator<"YieldOp">,
+    DeclareOpInterfaceMethods<LinalgStructuredInterface, ["iterator_types"]>
 ]> {
   let summary = "Destination-style twin for elementwise operations";
   let description = [{
@@ -275,8 +281,16 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.
-    mlir::ValueRange getInputs() { return inputs(); }
+    mlir::ValueRange inputs() { return getInputs(); }
     mlir::ValueRange outputs() { return getOperands().take_back(1); }
+    linalg::OpOperandVector getOpOperandsMatchingBBargs() { return getInputOperands(); }
+
+    static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+                              mlir::ArrayRef<mlir::NamedAttribute>)>
+    getRegionBuilder() {
+      return nullptr;
+    }
+
   }];
 }
 

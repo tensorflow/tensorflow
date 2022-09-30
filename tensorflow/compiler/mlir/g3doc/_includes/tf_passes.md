@@ -607,6 +607,43 @@ and will then replace the island with the wrapped call:
     return %0 : tensor<i32>
   }
 ```
+### `-tf-executor-update-control-dependencies`: Computes and applies all necessary control dependencies based on side effect analysis.
+This pass is intended to run after the split_into_island_per_op
+pass. That pass splits up multi-op islands into multiple individual islands
+wrapping a single op without applying any control deps between the new
+islands. So, this pass is needed in order to make preservation of the
+semantic ordering relationships between ops as determined by side effect
+analysis explicit in the IR.
+
+Example: original program:
+
+```mlir
+    func.func @example(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>, %arg1: tensor<32xf32>) -> (tensor<32xf32>) {
+      %graph = tf_executor.graph {
+        %read0, %read0_control = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        %assign0_control = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        %read1, %read1_control = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        %print, %print_control = tf_executor.island wraps "tf.Print"(%read1) { message = "read1 value" } : (tensor<32xf32>) -> (tensor<32xf32>)
+        tf_executor.fetch %read1#0 : tensor<32xf32>
+      }
+      func.return %graph : tensor<32xf32>
+    }
+```
+
+will be converted by this pass into:
+
+```mlir
+    func.func @example(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>, %arg1: tensor<32xf32>) -> tensor<32xf32> {
+      %0 = tf_executor.graph {
+        %read0, %read0_control = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        %assign0_control = tf_executor.island(%read0_control) wraps "tf.AssignVariableOp"(%arg0, %arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        %read1, %read1_control = tf_executor.island(%assign0_control) wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        %print, %print_control = tf_executor.island(%read1_control) wraps "tf.Print"(%read1) {message = "read1 value"} : (tensor<32xf32>) -> tensor<32xf32>
+        tf_executor.fetch %read1, %print_control : tensor<32xf32>, !tf_executor.control
+      }
+      return %0 : tensor<32xf32>
+    }
+```
 ### `-tf-functional-control-flow-to-cfg`: Transform functional control flow Ops to MLIR Control Form Graph (CFG) form
 ### `-tf-functional-control-flow-to-regions`: Transforms functional control flow operations to their region-based counterparts
 This pass transforms functional control flow operations in the TensorFlow
@@ -883,10 +920,11 @@ will be transformed into this functional operation
 ```
 ### `-tf-remove-unused-arguments`: Removes unused args from private functions & their callers.
 Removes arguments from functions that aren't used in the function
-body. Also adjusts the callers of said functions.
+body, outside of returns. Also adjusts the callers of said functions.
 
 For example, the code
   func.func @f(%arg0, %arg1) {
+    SomeOpThatUsesArg0(%arg0)
     return %arg0
   }
   ...
@@ -898,6 +936,54 @@ would be transformed into
   }
   ...
   call @x_1(x)
+
+Note that, in the above example, both args would be removed if there
+wasn't the "SomeOpThatUsesArg0(%arg0)" line.
+### `-tf-remove-unused-while-results`: Removes unused results from tf.WhileRegion ops
+Removes unused results from `tf.WhileRegion` ops along with the defining
+ops in the body, if it is safe to do so.
+Currently, the pass detects results with following properties:
+- the result is unused outside of the `tf.WhileRegion` op
+- the defining op of the result in the body can be safely removed
+- the operand corresponding to the result is not used by any other op in
+  the condition or body (in particular, there must not be intermediate
+  pass-through ops like `tf.Identity`)
+
+
+For example, the following pseudo MLIR code (types are left out for
+brevity)
+```mlir
+  func.func @remove_first_result(%arg0, %arg1) {
+    %0:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+    ^bb0(%arg2, %arg3):
+      %1 = "tf.OpA"() {is_stateless = true}
+      "tf.Yield"(%1)
+    }, {
+    ^bb0(%arg2, %arg3):
+      %1 = "tf.OpB"(%arg2) {is_stateless = true}
+      %2 = "tf.OpC"(%arg3) {is_stateless = true}
+      "tf.Yield"(%1, %2)
+    }) {is_stateless = true}
+    return %0#1
+  }
+```
+would be transformed to
+```mlir
+  func.func @remove_first_result(%arg0, %arg1) {
+    %0 = "tf.WhileRegion"(%arg1) ({
+    ^bb0(%arg3):
+      %1 = "tf.OpA"() {is_stateless = true}
+      "tf.Yield"(%1)
+    }, {
+    ^bb0(%arg3):
+      %1 = "tf.OpC"(%arg3) {is_stateless = true}
+      "tf.Yield"(%1)
+    }) {is_stateless = true}
+    return %0
+  }
+```
+(the first result can be removed along with its defining op `tf.OpB`).
+
 ### `-tf-replica-id-to-device-ordinal`: Set device ordinal with replica id
 This pass sets the device ordinal attribute of the ops using the replica id
 attribute. This is run immediately after the replica_to_island pass which
