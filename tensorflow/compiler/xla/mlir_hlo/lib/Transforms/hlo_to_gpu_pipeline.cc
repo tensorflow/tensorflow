@@ -61,6 +61,7 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
       /*distribute=*/true, SmallVector<int64_t>(warpTileDim)));
   pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
       /*distribute=*/true, SmallVector<int64_t>(threadTileDim)));
+  pm.addNestedPass<FuncOp>(gml_st::createTilingReductionPass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
 
   pm.addPass(createCanonicalizerPass());

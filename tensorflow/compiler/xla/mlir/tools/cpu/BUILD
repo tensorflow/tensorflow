@@ -17,6 +17,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_tiling_cwise",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_tiling_reduction",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:thlo",

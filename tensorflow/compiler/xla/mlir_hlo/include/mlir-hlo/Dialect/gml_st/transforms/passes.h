@@ -28,6 +28,7 @@ limitations under the License.
 #define GEN_PASS_DECL_TILINGPASS
 #define GEN_PASS_DECL_GMLSTTOGPUPASS
 #define GEN_PASS_DECL_TILINGCWISEPASS
+#define GEN_PASS_DECL_TILINGREDUCTIONPASS
 #define GEN_PASS_DECL_VECTORIZEGMLSTLOOPSPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
@@ -57,6 +58,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
     bool distribute, ArrayRef<int64_t> tileSizes);
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass();
+
+/// Pass to tile a linalg.generic reduction.
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingReductionPass();
 
 /// Pass to compose set operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createComposeSetOpsPass();
