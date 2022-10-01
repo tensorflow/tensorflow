@@ -1464,6 +1464,15 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime",
+    hdrs = ["runtime.h"],
+    deps = [
+        ":compiler",
+        ":hlo_proto_cc",
+    ],
+)
+
+cc_library(
     name = "llvm_compiler",
     srcs = ["llvm_compiler.cc"],
     hdrs = ["llvm_compiler.h"],
