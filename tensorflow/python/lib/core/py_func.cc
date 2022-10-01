@@ -83,8 +83,8 @@ bool IsCPUDevice(const Device* d) {
   return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
 }
 
-// Givens the 'call', prepares the token and inputs as a python tuple
-// that is appropriate for calling the trampoline.
+// Given the 'call', prepares the token and inputs as a python tuple that is
+// appropriate for calling the trampoline.
 Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
   int64_t n = call->ins.size();
   PyObject* lst = PyList_New(n);
@@ -119,8 +119,17 @@ Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
     PyList_SetItem(lst, i, arg);
   }
   *tuple = Py_BuildValue("(ssN)", call->token.c_str(), device_name, lst);
+<<<<<<< HEAD
   CHECK(*tuple);
   return Status::OK();
+=======
+  if (*tuple == nullptr) {
+    return errors::Internal(
+        "Failed to create python tuple. Please make sure `token` is a "
+        "well-formed UTF-8 string.");
+  }
+  return OkStatus();
+>>>>>>> 9f03a9d3baf (Replace CHECK with returning an InternalError on failing to create python tuple)
 }
 
 bool IsSingleNone(PyObject* obj) {
