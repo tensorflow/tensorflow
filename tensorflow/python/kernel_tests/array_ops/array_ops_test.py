@@ -1923,7 +1923,7 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
       test_quantize_and_dequantize_v4_grad()
 
 
-class QuantizeAndDequantizeV2TestTest(test_util.TensorFlowTestCase):
+class QuantizeAndDequantizeV2Test(test_util.TensorFlowTestCase):
 
   def testInvalidArgs(self):
     with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
