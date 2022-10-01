@@ -81,6 +81,7 @@ tf_py_test(
     name = "checkpoint_test",
     srcs = ["checkpoint_test.py"],
     tags = [
+        "no_pip",  # TODO(b/250108043)
         "no_windows",  # TODO(b/201457117)
         "notsan",  # TODO(b/74395663)
     ],
