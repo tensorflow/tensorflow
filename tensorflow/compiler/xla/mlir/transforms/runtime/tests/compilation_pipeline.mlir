@@ -5,7 +5,7 @@
 // ABI.
 
 // CHECK-LABEL: llvm.func @main(
-// CHECK-SAME:    %[[ARG0:arg[0-9]+]]: !llvm.ptr<i8>,
+// CHECK-SAME:    %[[ARG0:arg[0-9]+]]: !llvm.ptr,
 // CHECK-SAME:    %[[ARG1:arg[0-9]+]]: !llvm.ptr<f32>,
 // CHECK-SAME:    %[[ARG2:arg[0-9]+]]: !llvm.ptr<f32>,
 // CHECK-SAME:    %[[ARG3:arg[0-9]+]]: i64,
