@@ -1,4 +1,4 @@
-load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
+load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
 
 package(
     licenses = ["notice"],

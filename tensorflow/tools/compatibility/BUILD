@@ -4,7 +4,7 @@ load(
     "tf_cc_test",  # @unused
     "tf_copts",  # @unused
 )
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [

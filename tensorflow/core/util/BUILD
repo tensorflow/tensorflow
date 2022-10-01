@@ -20,13 +20,13 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_version_info_genrule")
+load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",

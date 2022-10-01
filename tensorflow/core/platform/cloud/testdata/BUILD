@@ -1,6 +1,6 @@
 # Cloud test data files.
 
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "filegroup")
 
 package(
     licenses = ["notice"],

@@ -6,10 +6,10 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load(
     "@llvm-project//mlir:tblgen.bzl",

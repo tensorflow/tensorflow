@@ -17,10 +17,10 @@
 #   Keras saving and loading libraries.
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.bzl", "py_strict_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_strict_test")
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],

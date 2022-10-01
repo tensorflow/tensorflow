@@ -6,7 +6,7 @@
 
 # buildifier: disable=same-origin-load
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",

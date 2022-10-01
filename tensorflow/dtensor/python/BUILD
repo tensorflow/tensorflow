@@ -1,6 +1,6 @@
 # DTensor Python API and libraries.
 
-load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
+load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 default_visibility = [

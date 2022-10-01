@@ -1,17 +1,17 @@
 # Description:
 # TensorFlow SavedModel.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_pybind_cc_library_wrapper")
+load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
 
 package(
     # TODO(drpng): change that to //third_party/tensorflow:internal

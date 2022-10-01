@@ -30,13 +30,13 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "if_nccl")
+load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 package(
     default_visibility = [":friends"],
