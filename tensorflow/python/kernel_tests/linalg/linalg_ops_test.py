@@ -261,6 +261,12 @@ class EyeTest(parameterized.TestCase, test.TestCase):
     self.assertAllEqual(eye_np, eye_tf)
 
   def testInvalidInput(self):
+    # Test case for GitHub issue 57790.
+    # Note in case of non-eager mode, the input value validation
+    # is going through a different path and will not hit the crash
+    # described in GitHub issue 57790.
+    if not context.executing_eagerly():
+      return
     with self.session():
       with self.assertRaises((errors.InvalidArgumentError, ValueError)):
         op = linalg_ops.eye(2752212975)
