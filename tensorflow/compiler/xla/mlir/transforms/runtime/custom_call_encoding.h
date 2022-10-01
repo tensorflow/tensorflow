@@ -316,10 +316,6 @@ class Globals {
   static mlir::Value AddrOf(mlir::ImplicitLocOpBuilder &b,
                             mlir::LLVM::GlobalOp global);
 
-  // Return the address of the global value casted to `!llvm.ptr<i8>`.
-  static mlir::Value OpaqueAddrOf(mlir::ImplicitLocOpBuilder &b,
-                                  mlir::LLVM::GlobalOp global);
-
   mlir::ModuleOp module() { return module_; }
 
  private:

@@ -124,8 +124,7 @@ Value PackString(Globals &g, ImplicitLocOpBuilder &b, std::string_view strref,
   int64_t size = strref.size();
 
   // Encoded string type: !llvm.struct<(i64, !llvm.ptr<array<i8 x len>>)>.
-  Type arr = LLVM::LLVMArrayType::get(b.getI8Type(), 1 + size);
-  Type ptr = LLVM::LLVMPointerType::get(arr);
+  Type ptr = LLVM::LLVMPointerType::get(ctx);
   Type type = LLVM::LLVMStructType::getLiteral(ctx, {b.getI64Type(), ptr});
 
   // Global constant initializer for the encoded string structure
@@ -178,7 +177,7 @@ static Value PackDenseElementsAttribute(Globals &g, ImplicitLocOpBuilder &b,
   Type element_type = dense.getElementType();
   Type data_arr_type =
       LLVM::LLVMArrayType::get(element_type, dense.getNumElements());
-  Type data_arr_ptr_type = LLVM::LLVMPointerType::get(data_arr_type);
+  Type data_arr_ptr_type = LLVM::LLVMPointerType::get(ctx);
   Type payload_type = LLVM::LLVMStructType::getLiteral(
       ctx, {b.getI64Type(), data_arr_ptr_type});
 
@@ -255,8 +254,7 @@ static Value PackArrayAttribute(Globals &g, ImplicitLocOpBuilder &b,
 
   // Encoded array type:
   // !llvm.struct<(i64, !llvm.ptr<array<element_type x size>)>>.
-  Type arr_type = LLVM::LLVMArrayType::get(element_type, size);
-  Type arr_ptr_type = LLVM::LLVMPointerType::get(arr_type);
+  Type arr_ptr_type = LLVM::LLVMPointerType::get(ctx);
   Type type =
       LLVM::LLVMStructType::getLiteral(ctx, {b.getI64Type(), arr_ptr_type});
 
@@ -343,7 +341,7 @@ static Value PackDenseArrayAttribute(Globals &g, ImplicitLocOpBuilder &b,
   // !llvm.struct<(i64, !llvm.ptr<array<element_type x size>>)>.
   Type element_type = base_array.getType().getElementType();
   Type arr_type = LLVM::LLVMArrayType::get(element_type, size);
-  Type arr_ptr_type = LLVM::LLVMPointerType::get(arr_type);
+  Type arr_ptr_type = LLVM::LLVMPointerType::get(ctx);
   Type type =
       LLVM::LLVMStructType::getLiteral(ctx, {b.getI64Type(), arr_ptr_type});
 
@@ -373,7 +371,7 @@ static Value PackEmptyArrayAttribute(Globals &g, ImplicitLocOpBuilder &b,
 
   // Encoded array type: !llvm.struct<(i64, !llvm.ptr<i8>)>.
   // The pointer is always null. We use i8 as a placeholder type.
-  Type data_type = LLVM::LLVMPointerType::get(b.getI8Type());
+  Type data_type = LLVM::LLVMPointerType::get(ctx);
   Type type =
       LLVM::LLVMStructType::getLiteral(ctx, {b.getI64Type(), data_type});
 
@@ -410,7 +408,7 @@ static FuncOp GetParentFunc(Value value) {
 
 // Packs value on the stack. Returns allocation holding the value.
 static LLVM::AllocaOp PackValue(ImplicitLocOpBuilder &b, Value value) {
-  Type ptr = LLVM::LLVMPointerType::get(value.getType());
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
 
   // Always create an `alloca` in the parent function entry block.
   // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
@@ -419,7 +417,7 @@ static LLVM::AllocaOp PackValue(ImplicitLocOpBuilder &b, Value value) {
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(&block);
     Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-    return b.create<LLVM::AllocaOp>(ptr, one, 0);
+    return b.create<LLVM::AllocaOp>(ptr, value.getType(), one, 0);
   }();
 
   b.create<LLVM::StoreOp>(value, mem);
@@ -518,14 +516,8 @@ mlir::FailureOr<mlir::LLVM::GlobalOp> Globals::TryGetOrCreate(
 
 /*static*/ Value Globals::AddrOf(ImplicitLocOpBuilder &b,
                                  LLVM::GlobalOp global) {
-  return b.create<LLVM::AddressOfOp>(
-      LLVM::LLVMPointerType::get(global.getType()), global.getSymName());
-}
-
-/*static*/ Value Globals::OpaqueAddrOf(ImplicitLocOpBuilder &b,
-                                       LLVM::GlobalOp global) {
-  return b.create<LLVM::BitcastOp>(LLVM::LLVMPointerType::get(b.getI8Type()),
-                                   AddrOf(b, global));
+  return b.create<LLVM::AddressOfOp>(LLVM::LLVMPointerType::get(b.getContext()),
+                                     global.getSymName());
 }
 
 //===----------------------------------------------------------------------===//
@@ -791,7 +783,7 @@ FailureOr<Value> EncodeAttributes(Globals &g, ImplicitLocOpBuilder &b,
   int64_t n_attrs = attrs.size();
 
   // We store encoded attribute as `!llvm.array<ptr<i8> x len>`.
-  Type ptr = LLVM::LLVMPointerType::get(b.getI8Type());
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
   Type type = LLVM::LLVMArrayType::get(ptr, 1 + n_attrs * 3);
 
   // Global initializer that encodes attributes as pointers.
@@ -808,8 +800,7 @@ FailureOr<Value> EncodeAttributes(Globals &g, ImplicitLocOpBuilder &b,
     // Prepare an array for encoding attributes.
     Value arr = b.create<LLVM::UndefOp>(type);
     auto insert_value = [&](Value value, int64_t offset) {
-      Value bcasted = b.createOrFold<LLVM::BitcastOp>(ptr, value);
-      arr = b.create<LLVM::InsertValueOp>(arr, bcasted, offset);
+      arr = b.create<LLVM::InsertValueOp>(arr, value, offset);
     };
 
     // Insert the number of encoded attributes.
@@ -840,10 +831,10 @@ FailureOr<Value> EncodeAttributes(Globals &g, ImplicitLocOpBuilder &b,
   if (failed(global)) return failure();
 
   // Get a pointer to the first element of the array: !llvm.ptr<ptr<i8>>.
-  Type ptr_ptr = mlir::LLVM::LLVMPointerType::get(ptr);
   Value c0 = b.create<ConstantOp>(b.getI64IntegerAttr(0));
   Value addr = Globals::AddrOf(b, *global);
-  Value gep = b.create<LLVM::GEPOp>(ptr_ptr, addr, ValueRange({c0, c0}));
+  Value gep =
+      b.create<LLVM::GEPOp>(ptr, global->getType(), addr, ValueRange({c0, c0}));
 
   // Return a pointer to the encoded attributes: `!llvm.ptr<ptr<i8>>` (void**).
   return gep;
@@ -901,6 +892,20 @@ FailureOr<EncodedArg> OpaqueArgEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
+static LLVM::LLVMStructType GetEncodeMemRefType(ImplicitLocOpBuilder &b,
+                                                MemRefType memref_ty) {
+  MLIRContext *ctx = b.getContext();
+
+  // Encode sizes together with strides as a single array.
+  int64_t sizes_and_strides_size = 2 * memref_ty.getRank();
+
+  // Encoded memref type: !llvm.struct<(i8, i8, ptr<i8>, array<... x i64>)>.
+  Type i8 = b.getI8Type();
+  Type ptr = LLVM::LLVMPointerType::get(ctx);
+  Type arr = LLVM::LLVMArrayType::get(b.getI64Type(), sizes_and_strides_size);
+  return LLVM::LLVMStructType::getLiteral(ctx, {i8, i8, ptr, arr});
+}
+
 // Encodes memref as LLVM struct value:
 //
 //   { i8: dtype, i8: rank, ptr<i8>: data,
@@ -913,17 +918,9 @@ FailureOr<EncodedArg> OpaqueArgEncoding::Encode(Globals &g,
 // rank, and dims, otherwise we also encode dynamic info
 static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
                           Value descriptor) {
-  MLIRContext *ctx = b.getContext();
   Location loc = b.getLoc();
 
-  // Encode sizes together with strides as a single array.
-  int64_t sizes_and_strides_size = 2 * memref_ty.getRank();
-
-  // Encoded memref type: !llvm.struct<(i8, i8, ptr<i8>, array<... x i64>)>.
-  Type i8 = b.getI8Type();
-  Type ptr = LLVM::LLVMPointerType::get(b.getI8Type());
-  Type arr = LLVM::LLVMArrayType::get(b.getI64Type(), sizes_and_strides_size);
-  Type type = LLVM::LLVMStructType::getLiteral(ctx, {i8, i8, ptr, arr});
+  auto type = GetEncodeMemRefType(b, memref_ty);
 
   // Helper to unpack MLIR strided memref descriptor value.
   std::optional<MemRefDescriptor> desc = std::nullopt;
@@ -947,7 +944,7 @@ static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
     strides.resize(memref_ty.getRank(), ShapedType::kDynamicStrideOrOffset);
 
   // Build encoded memref sizes + strides: !llvm.array<... x i64>
-  Value payload = b.create<LLVM::UndefOp>(arr);
+  Value payload = b.create<LLVM::UndefOp>(type.getBody()[3]);
   for (unsigned i = 0; i < memref_ty.getRank(); ++i) {
     int64_t dim_size = memref_ty.getDimSize(i);
     int64_t stride_size = strides[i];
@@ -977,6 +974,7 @@ static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
   // dynamic values into the struct after all statically know values leads to a
   // better canonicalization and cleaner final LLVM IR.
   if (desc.has_value()) {
+    auto ptr = LLVM::LLVMPointerType::get(b.getContext());
     Value data = b.create<LLVM::BitcastOp>(ptr, desc->alignedPtr(b, loc));
     memref = b.create<LLVM::InsertValueOp>(memref, data, 2);
   }
@@ -1022,9 +1020,9 @@ FailureOr<EncodedRet> ScalarRetEncoding::Encode(Globals &g,
   Encoded encoded;
   encoded.type_id = PackTypeId(g, b, ScalarRuntimeTypeId(converted));
 
-  Type ptr = LLVM::LLVMPointerType::get(converted);
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
   Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-  encoded.value = b.create<LLVM::AllocaOp>(ptr, one, 0);
+  encoded.value = b.create<LLVM::AllocaOp>(ptr, converted, one, 0);
 
   return encoded;
 }
@@ -1032,7 +1030,7 @@ FailureOr<EncodedRet> ScalarRetEncoding::Encode(Globals &g,
 FailureOr<Value> ScalarRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
                                            Type converted,
                                            LLVM::AllocaOp alloca) const {
-  return Value{b.create<LLVM::LoadOp>(alloca)};
+  return Value{b.create<LLVM::LoadOp>(converted, alloca)};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1059,9 +1057,9 @@ FailureOr<EncodedRet> OpaqueRetEncoding::Encode(Globals &g,
   Encoded encoded;
   encoded.type_id = PackTypeId(g, b, type_id_);
 
-  Type ptr = LLVM::LLVMPointerType::get(converted);
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
   Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-  encoded.value = b.create<LLVM::AllocaOp>(ptr, one, 0);
+  encoded.value = b.create<LLVM::AllocaOp>(ptr, converted, one, 0);
 
   return encoded;
 }
@@ -1069,7 +1067,7 @@ FailureOr<EncodedRet> OpaqueRetEncoding::Encode(Globals &g,
 FailureOr<Value> OpaqueRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
                                            Type converted,
                                            LLVM::AllocaOp alloca) const {
-  return Value{b.create<LLVM::LoadOp>(alloca)};
+  return Value{b.create<LLVM::LoadOp>(converted, alloca)};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1110,12 +1108,14 @@ FailureOr<Value> MemrefRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
   auto i64 = [&](int64_t i) { return b.getI64IntegerAttr(i); };
   auto memref_desc = MemRefDescriptor::undef(b, loc, converted);
 
-  Type ptr_type = LLVM::LLVMPointerType::get(b.getI8Type());
-  Type ptr_ptr_type = LLVM::LLVMPointerType::get(ptr_type);
+  LLVM::LLVMStructType alloca_type = GetEncodeMemRefType(b, memref_type);
+
+  Type ptr_type = LLVM::LLVMPointerType::get(b.getContext());
   Value c0 = b.create<ConstantOp>(i64(0));
   Value c2 = b.create<ConstantOp>(i64(2));
-  Value gep = b.create<LLVM::GEPOp>(ptr_ptr_type, alloca, ValueRange({c0, c2}));
-  Value data_ptr = b.create<LLVM::LoadOp>(gep);
+  Value gep = b.create<LLVM::GEPOp>(ptr_type, alloca_type, alloca,
+                                    ValueRange({c0, c2}));
+  Value data_ptr = b.create<LLVM::LoadOp>(ptr_type, gep);
   Value data_type_ptr =
       b.create<LLVM::BitcastOp>(memref_desc.getElementPtrType(), data_ptr);
   memref_desc.setAllocatedPtr(b, loc, data_type_ptr);
@@ -1130,14 +1130,14 @@ FailureOr<Value> MemrefRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
   }
 
   Value c3 = b.create<ConstantOp>(i64(3));
-  Type i64_ptr_type = LLVM::LLVMPointerType::get(b.getI64Type());
+  Type i64_ptr_type = LLVM::LLVMPointerType::get(b.getContext());
   for (unsigned i = 0; i < memref_type.getRank(); ++i) {
     int64_t dim_size = memref_type.getDimSize(i);
     Value ci = b.create<ConstantOp>(i64(i));
-    Value dim_gep =
-        b.create<LLVM::GEPOp>(i64_ptr_type, alloca, ValueRange({c0, c3, ci}));
+    Value dim_gep = b.create<LLVM::GEPOp>(i64_ptr_type, alloca_type, alloca,
+                                          ValueRange({c0, c3, ci}));
     Value dim = ShapedType::isDynamic(dim_size)
-                    ? Value{b.create<LLVM::LoadOp>(dim_gep)}
+                    ? Value{b.create<LLVM::LoadOp>(b.getI64Type(), dim_gep)}
                     : b.create<ConstantOp>(i64(dim_size));
 
     int64_t stride_size = strides[i];
