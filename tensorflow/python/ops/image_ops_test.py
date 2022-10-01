@@ -4031,6 +4031,15 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
 
     self._assertReturns(x, x_shape, y, y_shape)
 
+  def testImageResizeAntialiasWithInvalidInput(self):
+    with self.session():
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        op = image_ops.resize_images_v2(
+            images=np.ones((2, 2, 2, 2)),
+            size=[1801181592, 1846789676],
+            antialias=True)
+        self.evaluate(op)
+
 
 # half_pixel_centers not supported by XLA
 @test_util.for_all_test_methods(test_util.disable_xla, "b/127616992")
