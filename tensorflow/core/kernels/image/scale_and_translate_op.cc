@@ -323,10 +323,13 @@ class ScaleAndTranslateOp : public OpKernel {
     GetValues(context, 3, &row_translation, &col_translation);
 
     Tensor* output = nullptr;
+    TensorShape output_shape;
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(input.dim_size(0)));
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_height));
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_width));
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(input.dim_size(3)));
     OP_REQUIRES_OK(context, context->allocate_output(
-                                0,
-                                TensorShape({input.dim_size(0), output_height,
-                                             output_width, input.dim_size(3)}),
+                                0, output_shape,
                                 &output));
     if (!context->status().ok()) return;
 
