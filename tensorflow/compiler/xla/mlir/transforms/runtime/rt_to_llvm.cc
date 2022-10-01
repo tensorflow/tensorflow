@@ -39,7 +39,6 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -74,34 +73,53 @@ static constexpr const char *kSetError = "runtimeSetError";
 static constexpr const char *kCustomCall = "runtimeCustomCall";
 
 struct RuntimeAPI {
+  static LLVM::LLVMPointerType OpaquePointerType(MLIRContext *ctx) {
+    return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
+  }
+
+  static LLVM::LLVMPointerType CustomCallArgumentsType(MLIRContext *ctx) {
+    return LLVM::LLVMPointerType::get(RuntimeAPI::OpaquePointerType(ctx));
+  }
+
+  static LLVM::LLVMPointerType CustomCallAttributesType(MLIRContext *ctx) {
+    return LLVM::LLVMPointerType::get(RuntimeAPI::OpaquePointerType(ctx));
+  }
+
+  static LLVM::LLVMPointerType CustomCallResultsType(MLIRContext *ctx) {
+    return LLVM::LLVMPointerType::get(RuntimeAPI::OpaquePointerType(ctx));
+  }
+
   static FunctionType GetResultStorageFunctionType(MLIRContext *ctx) {
-    auto ptr = LLVM::LLVMPointerType::get(ctx);
+    auto execution_ctx = OpaquePointerType(ctx);
     auto i64 = IntegerType::get(ctx, 64);
-    return FunctionType::get(ctx, {/*execution_ctx=*/ptr, i64},
-                             {/*storage=*/ptr});
+    auto storage = OpaquePointerType(ctx);
+    return FunctionType::get(ctx, {execution_ctx, i64}, {storage});
   }
 
   static FunctionType SetErrorFunctionType(MLIRContext *ctx) {
-    auto ptr = LLVM::LLVMPointerType::get(ctx);
-    return FunctionType::get(ctx, {/*execution_ctx=*/ptr, /*error_msg=*/ptr},
-                             {});
+    auto execution_ctx = OpaquePointerType(ctx);
+    auto error_msg = OpaquePointerType(ctx);
+    return FunctionType::get(ctx, {execution_ctx, error_msg}, {});
   }
 
   static FunctionType CustomCallFunctionType(MLIRContext *ctx) {
-    auto ptr = LLVM::LLVMPointerType::get(ctx);
+    auto execution_ctx = OpaquePointerType(ctx);
+    auto callee = OpaquePointerType(ctx);
+    auto args = CustomCallArgumentsType(ctx);
+    auto attrs = CustomCallAttributesType(ctx);
+    auto rets = CustomCallResultsType(ctx);
     auto i1 = IntegerType::get(ctx, 1);
-    return FunctionType::get(ctx,
-                             {/*execution_ctx=*/ptr, /*callee=*/ptr,
-                              /*args=*/ptr, /*attrs=*/ptr, /*rets=*/ptr},
+    return FunctionType::get(ctx, {execution_ctx, callee, args, attrs, rets},
                              {i1});
   }
 
   static FunctionType DirectCustomCallFunctionType(MLIRContext *ctx) {
-    auto ptr = LLVM::LLVMPointerType::get(ctx);
+    auto execution_ctx = OpaquePointerType(ctx);
+    auto args = CustomCallArgumentsType(ctx);
+    auto attrs = CustomCallAttributesType(ctx);
+    auto rets = CustomCallResultsType(ctx);
     auto i1 = IntegerType::get(ctx, 1);
-    return FunctionType::get(
-        ctx, {/*execution_ctx=*/ptr, /*args=*/ptr, /*attrs=*/ptr, /*rets=*/ptr},
-        {i1});
+    return FunctionType::get(ctx, {execution_ctx, args, attrs, rets}, {i1});
   }
 };
 
@@ -145,7 +163,7 @@ class RuntimeTypeConverter : public TypeConverter {
 
   static llvm::Optional<Type> ConvertExecutionContextType(
       ExecutionContextType type) {
-    return LLVM::LLVMPointerType::get(type.getContext());
+    return LLVM::LLVMPointerType::get(IntegerType::get(type.getContext(), 8));
   }
 
   static llvm::Optional<Type> ConvertStatusType(StatusType type) {
@@ -174,7 +192,7 @@ class SetOutputOpLowering : public OpConversionPattern<SetOutputOp> {
     auto index = rewriter.create<ConstantOp>(loc, adaptor.getIndexAttr());
 
     // Get a pointer to the result value storage from the runtime.
-    auto result_ptr_ty = LLVM::LLVMPointerType::get(rewriter.getContext());
+    auto result_ptr_ty = RuntimeAPI::OpaquePointerType(rewriter.getContext());
     auto result_ptr = rewriter.create<CallOp>(
         loc, kGetResultStorage, TypeRange(result_ptr_ty),
         ValueRange({execution_ctx, index}));
@@ -185,9 +203,12 @@ class SetOutputOpLowering : public OpConversionPattern<SetOutputOp> {
       return rewriter.notifyMatchFailure(
           op, "failed to convert output type to LLVM type");
 
+    auto casted_result_ptr = rewriter.create<LLVM::BitcastOp>(
+        loc, LLVM::LLVMPointerType::get(stored_type), result_ptr.getResult(0));
+
     // Store the output value into the result value storage.
     auto value = adaptor.getValue();
-    rewriter.create<LLVM::StoreOp>(loc, value, result_ptr.getResult(0));
+    rewriter.create<LLVM::StoreOp>(loc, value, casted_result_ptr.getResult());
 
     // Erase the original runtime operation.
     rewriter.eraseOp(op);
@@ -248,13 +269,14 @@ static FailureOr<Value> EncodeArguments(
   }
 
   // We store encoded arguments as `!llvm.array<ptr<i8> x len>`.
-  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
+  Type ptr = LLVM::LLVMPointerType::get(b.getI8Type());
   Type type = LLVM::LLVMArrayType::get(ptr, 1 + encoded.size() * 2);
 
   // Prepare an array for encoding arguments.
   Value arr = b.create<LLVM::UndefOp>(type);
   auto insert_value = [&](Value value, int64_t offset) {
-    arr = b.create<LLVM::InsertValueOp>(arr, value, offset);
+    Value bcasted = b.createOrFold<LLVM::BitcastOp>(ptr, value);
+    arr = b.create<LLVM::InsertValueOp>(arr, bcasted, offset);
   };
 
   // Insert the number of encoded arguments.
@@ -277,15 +299,16 @@ static FailureOr<Value> EncodeArguments(
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(&block);
     Value c1 = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-    return b.create<LLVM::AllocaOp>(ptr, type, c1, 0);
+    return b.create<LLVM::AllocaOp>(LLVM::LLVMPointerType::get(type), c1, 0);
   }();
 
   // Store constructed arguments array on the stack and return a pointer to it.
   b.create<LLVM::StoreOp>(arr, mem);
 
   // Return a pointer to the first element of the arguments array.
+  Type ptr_ptr = mlir::LLVM::LLVMPointerType::get(ptr);
   Value c0 = b.create<ConstantOp>(b.getI64IntegerAttr(0));
-  Value gep = b.create<LLVM::GEPOp>(ptr, type, mem, ValueRange({c0, c0}));
+  Value gep = b.create<LLVM::GEPOp>(ptr_ptr, mem, ValueRange({c0, c0}));
   return gep;
 }
 
@@ -335,13 +358,14 @@ static FailureOr<EncodedResults> EncodeResults(
   }
 
   // We store encoded results as `!llvm.array<ptr<i8> x len>`.
-  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
+  Type ptr = LLVM::LLVMPointerType::get(b.getI8Type());
   Type type = LLVM::LLVMArrayType::get(ptr, 1 + encoded.size() * 2);
 
   // Prepare an array for encoding results.
   Value arr = b.create<LLVM::UndefOp>(type);
   auto insert_value = [&](Value value, int64_t offset) {
-    arr = b.create<LLVM::InsertValueOp>(arr, value, offset);
+    Value bcasted = b.createOrFold<LLVM::BitcastOp>(ptr, value);
+    arr = b.create<LLVM::InsertValueOp>(arr, bcasted, offset);
   };
 
   // Insert the number of encoded results.
@@ -366,15 +390,16 @@ static FailureOr<EncodedResults> EncodeResults(
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(&block);
     Value c1 = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-    return b.create<LLVM::AllocaOp>(ptr, type, c1, 0);
+    return b.create<LLVM::AllocaOp>(LLVM::LLVMPointerType::get(type), c1, 0);
   }();
 
   // Store constructed results array on the stack
   b.create<LLVM::StoreOp>(arr, mem);
 
   // Return a pointer to the first element of the results array.
+  Type ptr_ptr = LLVM::LLVMPointerType::get(ptr);
   Value c0 = b.create<ConstantOp>(b.getI64IntegerAttr(0));
-  Value gep = b.create<LLVM::GEPOp>(ptr, type, mem, ValueRange({c0, c0}));
+  Value gep = b.create<LLVM::GEPOp>(ptr_ptr, mem, ValueRange({c0, c0}));
   results.result_array_ptr = gep;
   return results;
 }
@@ -440,7 +465,7 @@ class CustomCallOpLowering : public OpConversionPattern<CustomCallOp> {
 
     // Creates a dynamic custom call resolved by name at run time.
     auto call_dynamic = [&]() -> CallOp {
-      auto callee = Globals::AddrOf(
+      auto callee = Globals::OpaqueAddrOf(
           b, globals_.GetOrCreate(b, op.getCallee(), "__rt_custom_call_name"));
 
       return b.create<CallOp>(kCustomCall, TypeRange(rewriter.getI1Type()),
@@ -499,7 +524,7 @@ class SetErrorOpLowering : public OpConversionPattern<SetErrorOp> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     // Get the error message (pointer to a null terminated string).
-    auto err = Globals::AddrOf(
+    auto err = Globals::OpaqueAddrOf(
         b, globals_.GetOrCreate(b, op.getError(), "__assert_failed"));
 
     // Call runtime API to report the error.
@@ -608,7 +633,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // Convert all async types to opaque pointers.
   llvm_converter.addConversion([](Type type) -> Optional<Type> {
     if (type.isa<async::TokenType, async::GroupType, async::ValueType>())
-      return LLVM::LLVMPointerType::get(type.getContext());
+      return LLVM::LLVMPointerType::get(IntegerType::get(type.getContext(), 8));
 
     return llvm::None;
   });
