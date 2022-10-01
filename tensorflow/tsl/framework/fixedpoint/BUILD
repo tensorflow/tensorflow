@@ -51,3 +51,38 @@ filegroup(
         "//tensorflow:internal",
     ],
 )
+
+# Files needed for core:mobile_srcs_no_runtime.
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "FixedPoint.h",
+        "MatMatProduct.h",
+        "MatMatProductAVX2.h",
+        "MatMatProductNEON.h",
+        "MatVecProduct.h",
+        "PacketMathAVX.h",
+        "PacketMathAVX2.h",
+        "PacketMathAVX512.h",
+        "TypeCastingAVX2.h",
+        "TypeCastingAVX512.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+)
+
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "FixedPoint.h",
+        "MatMatProduct.h",
+        "MatMatProductAVX2.h",
+        "MatMatProductNEON.h",
+        "MatVecProduct.h",
+        "PacketMathAVX.h",
+        "PacketMathAVX2.h",
+        "PacketMathAVX512.h",
+        "TypeCastingAVX2.h",
+        "TypeCastingAVX512.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+)

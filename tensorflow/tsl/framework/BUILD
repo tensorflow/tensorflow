@@ -75,6 +75,7 @@ filegroup(
     srcs = [
         "cancellation.cc",
         "cancellation.h",
+        "fixedpoint_types.h",
         "metrics.cc",
         "metrics.h",
     ],
