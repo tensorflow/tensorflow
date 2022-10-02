@@ -183,6 +183,14 @@ pylint --rcfile=tensorflow/tools/ci_build/pylintrc myfile.py
 Note `pylint --rcfile=tensorflow/tools/ci_build/pylintrc` should run from the
 top level tensorflow directory.
 
+Alternative: use pre-commit which introduces automated checks triggered on git events.
+
+To install:
+```bash
+pip pre-commit
+pre-commit install
+```
+
 #### Coding style for other languages
 
 * [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
