@@ -405,7 +405,7 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
       arith_mean += a
   ```
 
-  The state is represented by the variable's geo_mean and arith_mean. The
+  The state is represented by variables named geo_mean and arith_mean. The
   `extra_test`, `body`, `get_state` and `set_state` functions must bind to the
   original `geo_mean` and `arith_mean` symbols, using `nonlocal`.
 
@@ -1127,7 +1127,7 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
    1. the types of loop variables could be inferred (usually by staging one
        iteration)
    2. these types could be replaced by placeholders (e.g. zero values, for
-       tensors.)
+       tensors).
 
   Args:
     body: a function representing the loop body. See while_stmt.
@@ -1344,7 +1344,7 @@ def if_stmt(cond, body, orelse, get_state, set_state, symbol_names, nouts):
       state that branches may mutate through side effects. This function is not
       needed and should not be called when dispatching to code matching Python's
       default semantics. This is useful for checkpointing to avoid unintended
-      side effects when staging requires evaluating all code-paths.
+      side-effects when staging requires evaluating all code-paths.
     set_state: Function to set the values of all composite symbols modified
       within the conditional. This is the complement to get_state, used to
       restore checkpointed values. The single argument a tuple containing values
