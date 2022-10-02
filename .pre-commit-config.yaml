@@ -1,0 +1,36 @@
+# File introduces automated checks triggered on git events
+# to enable run `pip install pre-commit && pre-commit install`
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v3.2.0
+    hooks:
+      - id: trailing-whitespace
+      - id: check-docstring-first
+      - id: check-json
+      - id: check-added-large-files
+      - id: check-yaml
+      - id: debug-statements
+      - id: requirements-txt-fixer
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: sort-simple-yaml
+  - repo: local
+    hooks:
+      - id: pylint
+        name: pylint
+        entry: pylint
+        language: system
+        types: [ python ]
+        args:
+          [
+              "-rn", # Only display messages
+              "-sn", # Don't display the score
+              "--max-line-length=80",
+              "--ignore-imports=yes",
+              "-d duplicate-code",
+          ]
+  - repo: https://github.com/asottile/reorder_python_imports
+    rev: v3.8.3
+    hooks:
+    -   id: reorder-python-imports
