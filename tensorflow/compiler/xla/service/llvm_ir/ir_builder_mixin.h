@@ -111,6 +111,11 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
+  llvm::Value* Fence(Args&&... args) {
+    return mixin_builder()->CreateFence(std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
   llvm::Value* FMul(Args&&... args) {
     return mixin_builder()->CreateFMul(std::forward<Args>(args)...);
   }
