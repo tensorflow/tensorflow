@@ -546,13 +546,36 @@ Status WindowsFileSystem::DeleteDir(const string& name,
   return result;
 }
 
+static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath) {
+  TCHAR path[MAX_PATH];
+  HANDLE hFile = ::CreateFileW( linkPath.c_str(),
+    0,
+    0,  
+    0,
+    OPEN_EXISTING,
+    FILE_FLAG_BACKUP_SEMANTICS,
+    0);
+  if (INVALID_HANDLE_VALUE != hFile) {
+    auto rcode = GetFinalPathNameByHandle(hFile, path, MAX_PATH, FILE_NAME_NORMALIZED);
+    if (rcode) {
+        if (path[0] == '\\' && path[1] == '\\' && path[2] == '?' && path[3] == '\\')
+            return std::wstring(path + 4, path + rcode);
+        else
+            return std::wstring(path, path + rcode);
+    }
+  }
+
+  return std::wstring();
+}
+
 Status WindowsFileSystem::GetFileSize(const string& fname,
                                       TransactionToken* token, uint64* size) {
   string translated_fname = TranslateName(fname);
-  std::wstring ws_translated_dir = Utf8ToWideChar(translated_fname);
+  std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
+  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname);
   Status result;
   WIN32_FILE_ATTRIBUTE_DATA attrs;
-  if (TRUE == ::GetFileAttributesExW(ws_translated_dir.c_str(),
+  if (TRUE == ::GetFileAttributesExW(ws_final_fname.c_str(),
                                      GetFileExInfoStandard, &attrs)) {
     ULARGE_INTEGER file_size;
     file_size.HighPart = attrs.nFileSizeHigh;
