@@ -83,6 +83,11 @@
     *   Added group normalization layer `tf.keras.layers.GroupNormalization`.
     *   Added weight decay support for all Keras optimizers.
     *   Added Adafactor optimizer `tf.keras.optimizers.Adafactor`.
+    *   Added `warmstart_embedding_matrix` to `tf.keras.utils`.
+        This utility can be used to warmstart an embeddings matrix so you
+        reuse previously-learned word embeddings when working with a new set
+        of words which may include previously unseen words (the embedding
+        vectors for unseen words will be randomly initialized).
 
 *   `tf.Variable`:
 
