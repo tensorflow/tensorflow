@@ -2728,7 +2728,10 @@ tf_cc_test(
     srcs = ["direct_session_with_tracking_alloc_test.cc"],
     args = ["--heap_check="],  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_gpu"],
+    tags = [
+        "no_gpu",
+        "no_macos",  # TODO(b/250242601)
+    ],
     deps = [
         ":core",
         ":core_cpu",
