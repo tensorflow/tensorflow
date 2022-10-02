@@ -283,7 +283,7 @@ Status FindAndLoadTpuLibrary() {
   }
 
   InitializeCreateGcsFileSystemFnPtr();
-  return Status::OK();
+  return OkStatus();
 }
 
 #elif defined(LIBTPU_STATIC)
@@ -299,7 +299,7 @@ Status InitializeTpuLibrary() {
                    args.second.data());
 
   RegisterTpuPlatform();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FindAndLoadTpuLibrary() {
@@ -307,7 +307,7 @@ Status FindAndLoadTpuLibrary() {
   // Try to acquire exclusive access.
   TF_RETURN_IF_ERROR(TryAcquireTpuLock());
   TF_RETURN_IF_ERROR(InitializeTpuLibrary());
-  return Status::OK();
+  return OkStatus();
 }
 
 #else   // PLATFORM_GOOGLE

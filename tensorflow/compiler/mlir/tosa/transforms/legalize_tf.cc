@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
@@ -552,7 +553,7 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
       i64array.emplace_back(value);
     }
 
-    RankedTensorType filter_type = RankedTensorType::get(
+    RankedTensorType filter_type = tensorflow::GetTypeFromTFTensorShape(
         llvm::makeArrayRef(i64array), rewriter.getIntegerType(64));
 
     if (!getPaddingValuesFromPadType(
@@ -622,7 +623,7 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
       i64array.emplace_back(value);
     }
 
-    RankedTensorType filter_type = RankedTensorType::get(
+    RankedTensorType filter_type = tensorflow::GetTypeFromTFTensorShape(
         llvm::makeArrayRef(i64array), rewriter.getIntegerType(64));
 
     if (!getPaddingValuesFromPadType(
@@ -692,7 +693,7 @@ LogicalResult ConvertTFRankOp::matchAndRewrite(
   int32_t rank = input_type.getRank();
 
   RankedTensorType rank_type =
-      RankedTensorType::get({1}, rewriter.getIntegerType(32));
+      tensorflow::GetTypeFromTFTensorShape({1}, rewriter.getIntegerType(32));
   auto rank_attr = DenseElementsAttr::get(rank_type, {rank});
   auto rank_const = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                     rank_type, rank_attr);
@@ -722,7 +723,7 @@ LogicalResult ConvertTFShapeOp::matchAndRewrite(
     shape_arr.emplace_back(input_shape[i]);
   }
 
-  RankedTensorType shape_type = RankedTensorType::get(
+  RankedTensorType shape_type = tensorflow::GetTypeFromTFTensorShape(
       {static_cast<int32_t>(shape_arr.size())}, rewriter.getIntegerType(32));
   auto shape_attr =
       DenseElementsAttr::get(shape_type, llvm::makeArrayRef(shape_arr));
@@ -794,7 +795,7 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
   if (!matchPattern(tf_fill_op.value(), m_Constant(&value_elem)))
     return failure();
 
-  RankedTensorType fill_type = RankedTensorType::get(
+  RankedTensorType fill_type = tensorflow::GetTypeFromTFTensorShape(
       ArrayRef<int64_t>(dims_vals), value_elem.getType().getElementType());
   DenseElementsAttr fill_attr;
 
@@ -828,8 +829,8 @@ LogicalResult ConvertTFConv2DOp::matchAndRewrite(
 
   // Set up a zero attr for subsequent pattern replacement if required
   auto bias_dim = filter_type.getShape().back();
-  RankedTensorType bias_type =
-      RankedTensorType::get({bias_dim}, filter_type.getElementType());
+  RankedTensorType bias_type = tensorflow::GetTypeFromTFTensorShape(
+      {bias_dim}, filter_type.getElementType());
   auto bias_attr = rewriter.getZeroAttr(bias_type);
   auto bias = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(), bias_type,
                                               bias_attr.cast<ElementsAttr>());
@@ -917,8 +918,8 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
 
   auto filter_shape = filter_type.getShape();
   auto bias_dim = filter_shape[2] * filter_shape[3];
-  RankedTensorType bias_type =
-      RankedTensorType::get({bias_dim}, filter_type.getElementType());
+  RankedTensorType bias_type = tensorflow::GetTypeFromTFTensorShape(
+      {bias_dim}, filter_type.getElementType());
   auto bias_attr = rewriter.getZeroAttr(bias_type);
   auto bias = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(), bias_type,
                                               bias_attr.cast<ElementsAttr>());
@@ -958,8 +959,8 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
 
   auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(),
-      RankedTensorType::get(ArrayRef<int64_t>(a1_transpose_dims),
-                            filter_type.getElementType()),
+      tensorflow::GetTypeFromTFTensorShape(ArrayRef<int64_t>(a1_transpose_dims),
+                                           filter_type.getElementType()),
       tf_conv_op.filter(), a1_filter_transpose_perm.getValue());
 
   ArrayAttr stride;
@@ -1284,7 +1285,7 @@ LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
   }
 
   RankedTensorType epsilon_type =
-      RankedTensorType::get({1}, variance_type.getElementType());
+      tensorflow::GetTypeFromTFTensorShape({1}, variance_type.getElementType());
   auto epsilon_attr =
       DenseFPElementsAttr::get(epsilon_type, {tf_batchnorm_op.epsilon()});
   auto epsilon_const = CreateOpAndInfer<tosa::ConstOp>(
@@ -1358,7 +1359,7 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
   if (!variance_type) return failure();
 
   auto epsilon_type =
-      RankedTensorType::get({1}, variance_type.getElementType());
+      tensorflow::GetTypeFromTFTensorShape({1}, variance_type.getElementType());
   auto epsilon_attr =
       DenseFPElementsAttr::get(epsilon_type, {tf_batchnorm_op.epsilon()});
   auto epsilon_const = CreateOpAndInfer<tosa::ConstOp>(
@@ -1736,12 +1737,12 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   SmallVector<int64_t, 3> batch_output_shape(
       {1, output_type.getShape()[0], output_type.getShape()[1]});
 
-  RankedTensorType batch_a_type =
-      RankedTensorType::get(batch_a_shape, a_type.getElementType());
-  RankedTensorType batch_b_type =
-      RankedTensorType::get(batch_b_shape, b_type.getElementType());
-  RankedTensorType batch_output_type =
-      RankedTensorType::get(batch_output_shape, output_type.getElementType());
+  RankedTensorType batch_a_type = tensorflow::GetTypeFromTFTensorShape(
+      batch_a_shape, a_type.getElementType());
+  RankedTensorType batch_b_type = tensorflow::GetTypeFromTFTensorShape(
+      batch_b_shape, b_type.getElementType());
+  RankedTensorType batch_output_type = tensorflow::GetTypeFromTFTensorShape(
+      batch_output_shape, output_type.getElementType());
 
   // Need to reshape input and output since TOSA matmul only supports
   // [N, H, C] * [N, C, W] -> [N, H, W].
@@ -2245,12 +2246,12 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
     SmallVector<int64_t, 3> rank3_y_shape({N, C, W});
     SmallVector<int64_t, 3> rank3_output_shape({N, H, W});
 
-    RankedTensorType rank3_x_type =
-        RankedTensorType::get(rank3_x_shape, x_type.getElementType());
-    RankedTensorType rank3_y_type =
-        RankedTensorType::get(rank3_y_shape, y_type.getElementType());
-    RankedTensorType rank3_output_type =
-        RankedTensorType::get(rank3_output_shape, output_type.getElementType());
+    RankedTensorType rank3_x_type = tensorflow::GetTypeFromTFTensorShape(
+        rank3_x_shape, x_type.getElementType());
+    RankedTensorType rank3_y_type = tensorflow::GetTypeFromTFTensorShape(
+        rank3_y_shape, y_type.getElementType());
+    RankedTensorType rank3_output_type = tensorflow::GetTypeFromTFTensorShape(
+        rank3_output_shape, output_type.getElementType());
 
     auto op1_reshape_x = CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, op->getLoc(), rank3_x_type, tf_batch_matmul_op.x(),

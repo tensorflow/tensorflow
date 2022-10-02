@@ -35,7 +35,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathTransforms",

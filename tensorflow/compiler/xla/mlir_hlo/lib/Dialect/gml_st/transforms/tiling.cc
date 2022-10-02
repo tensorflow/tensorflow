@@ -29,8 +29,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/Arithmetic/Utils/Utils.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
@@ -43,15 +43,8 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-#define GEN_PASS_DEF_DEPRECATEDTILINGPASS
 #define GEN_PASS_DEF_TILINGPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
-
-Value createPoint(OpBuilder &b, Location loc, Value superset, ValueRange ivs) {
-  ArrayAttr allDynamicOffsetsAttr = b.getI64ArrayAttr(
-      SmallVector<int64_t>(ivs.size(), ShapedType::kDynamicStrideOrOffset));
-  return b.create<PointOp>(loc, superset, ivs, allDynamicOffsetsAttr);
-}
 
 Value createTile(OpBuilder &b, Location loc, Value superset, ValueRange ivs,
                  ValueRange upperBounds, ValueRange steps,
@@ -89,15 +82,6 @@ Value createTile(OpBuilder &b, Location loc, Value superset, ValueRange ivs,
                           unitStridesAttr);
 }
 
-Value createTileOrPoint(OpBuilder &b, Location loc, Value space, ValueRange ivs,
-                        ValueRange upperBounds, ValueRange steps,
-                        ArrayRef<int64_t> tileSizes) {
-  if (llvm::all_of(tileSizes, [](int64_t d) { return d == 1; })) {
-    return createPoint(b, loc, space, ivs);
-  }
-  return createTile(b, loc, space, ivs, upperBounds, steps, tileSizes);
-}
-
 Value createNestedPloopTilingRecursively(
     OpBuilder &b, Location loc, Value init, Value source,
     ArrayRef<SmallVector<int64_t>> nestedTileSizes) {
@@ -122,10 +106,10 @@ Value createNestedPloopTilingRecursively(
 
   // Create ploop.
   auto ploop = b.create<ParallelOp>(
-      loc, sourceTy, lowerBounds, upperBounds, steps,
+      loc, sourceTy, lowerBounds, upperBounds, steps, llvm::None,
       [&](OpBuilder &b, Location loc, ValueRange ivs) {
-        Value subset = createTileOrPoint(b, loc, sourceSpace, ivs, upperBounds,
-                                         steps, nestedTileSizes.front());
+        Value subset = createTile(b, loc, sourceSpace, ivs, upperBounds, steps,
+                                  nestedTileSizes.front());
         Value innerResult = b.create<MaterializeOp>(loc, source, subset);
 
         // Recur if there are more tile sizes, and it's not a point yet.
@@ -256,55 +240,6 @@ llvm::Optional<SmallVector<SmallVector<int64_t>>> parseNestedTileSizes(
   return parseNestedTileSizes(istream);
 }
 
-struct DeprecatedTilingPass
-    : public impl::DeprecatedTilingPassBase<DeprecatedTilingPass> {
-  DeprecatedTilingPass()
-      : impl::DeprecatedTilingPassBase<DeprecatedTilingPass>() {
-    tileSizesOpt.setCallback(
-        [&](const std::string &str) { tileSizes = parseNestedTileSizes(str); });
-  }
-  explicit DeprecatedTilingPass(const std::string &tileSizesStr)
-      : impl::DeprecatedTilingPassBase<DeprecatedTilingPass>() {
-    tileSizes = parseNestedTileSizes(tileSizesStr);
-  }
-  explicit DeprecatedTilingPass(
-      const SmallVector<SmallVector<int64_t>> &tileSizes)
-      : impl::DeprecatedTilingPassBase<DeprecatedTilingPass>(),
-        tileSizes(tileSizes) {}
-
-  void getDependentDialects(DialectRegistry &registry) const final {
-    registry
-        .insert<linalg::LinalgDialect, tensor::TensorDialect, GmlStDialect>();
-  }
-
-  void runOnOperation() override {
-    func::FuncOp f = getOperation();
-
-    // If tile sizes were provided in string form, e.g. in lit tests, we might
-    // fail to parse them.
-    if (!tileSizes) {
-      f.emitError()
-          << "Unknown tiling sizes (not provided or failed to parse them from '"
-          << tileSizesOpt << "'";
-      return signalPassFailure();
-    }
-
-    // Assert our expectation to tile functions with unique ranked tensor
-    // results. This is important for the e2e tests to make sure that we
-    // actually test a tiled implementation.
-    FunctionType funcTy = f.getFunctionType();
-    bool isTilingTarget = funcTy.getNumResults() == 1 &&
-                          funcTy.getResults().front().isa<RankedTensorType>();
-    if (isTilingTarget) {
-      if (failed(tileUniqueFunctionResult(f, *tileSizes))) {
-        return signalPassFailure();
-      }
-    }
-  }
-
-  llvm::Optional<SmallVector<SmallVector<int64_t>>> tileSizes;
-};
-
 struct TilingResult {
   TilingInterface tiledOp;
   Operation *loop;
@@ -386,6 +321,7 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
                            getValueOrCreateConstantIndexOp(builder, loc, lbs),
                            getValueOrCreateConstantIndexOp(builder, loc, ubs),
                            getValueOrCreateConstantIndexOp(builder, loc, steps),
+                           llvm::None,
                            [&](OpBuilder &nestedBuilder, Location bodyLoc,
                                ValueRange ivs) {
                              buildBody(nestedBuilder, bodyLoc, ivs);
@@ -444,10 +380,8 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     }
 
     // Implement adding accumulator to the gml_st.parallel terminator.
-    if (options.distribute &&
-        llvm::any_of(op.getLoopIteratorTypes(), [](StringRef type) {
-          return type == getReductionIteratorTypeName();
-        }))
+    if (options.distribute && llvm::count(op.getLoopIteratorTypes(),
+                                          utils::IteratorType::reduction) > 0)
       return failure();
 
     // 1. Get the range of the loops that are represented by the operation.
@@ -563,20 +497,6 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
 };
 
 }  // namespace
-
-std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass() {
-  return std::make_unique<DeprecatedTilingPass>();
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
-    const SmallVector<SmallVector<int64_t>> &tileSizes) {
-  return std::make_unique<DeprecatedTilingPass>(tileSizes);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> createDeprecatedTilingPass(
-    const std::string &tileSizes) {
-  return std::make_unique<DeprecatedTilingPass>(tileSizes);
-}
 
 void populateTilingPatterns(MLIRContext *context, OpFilterFn filterFn,
                             const TilingOptions &opts,

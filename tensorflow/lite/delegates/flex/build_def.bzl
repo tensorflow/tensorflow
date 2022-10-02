@@ -128,6 +128,7 @@ def tflite_flex_cc_library(
             defines = [
                 "SELECTIVE_REGISTRATION",
                 "SUPPORT_SELECTIVE_REGISTRATION",
+                "EIGEN_NEON_GEBP_NR=4",
             ] + tf_portable_full_lite_protos(
                 full = [],
                 lite = ["TENSORFLOW_LITE_PROTOS"],

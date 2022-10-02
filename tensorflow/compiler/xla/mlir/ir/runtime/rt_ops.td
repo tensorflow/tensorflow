@@ -27,6 +27,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.td"
 include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.td"
@@ -37,6 +38,30 @@ include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.td"
 
 class RT_Op<string mnemonic, list<Trait> traits = []> :
       Op<RuntimeDialect, mnemonic, traits> {
+}
+
+//===----------------------------------------------------------------------===//
+// ExportOp
+//===----------------------------------------------------------------------===//
+
+def RT_ExportOp : RT_Op<"export", [
+    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+    HasParent<"mlir::ModuleOp">]> {
+  let summary = "exports a function from the module";
+
+  let description = [{
+    Specifies an exported function that can be called externally by the XLA
+    runtime and becomes visible as an XLA executable function.
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$function_ref);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "mlir::func::FuncOp":$function_ref)>,
+  ];
+
+  let assemblyFormat = "$function_ref attr-dict";
 }
 
 //===----------------------------------------------------------------------===//

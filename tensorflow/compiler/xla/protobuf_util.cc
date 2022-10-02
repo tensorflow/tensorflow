@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {

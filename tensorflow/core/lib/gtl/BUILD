@@ -79,6 +79,7 @@ cc_library(
         "//tensorflow/core/lib/hash",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/gtl:flatmap",
     ],
 )
 
@@ -277,7 +278,6 @@ filegroup(
     srcs = [
         "cleanup_test.cc",
         "edit_distance_test.cc",
-        "flatmap_test.cc",
         "manual_constructor_test.cc",
         "top_n_test.cc",
     ],

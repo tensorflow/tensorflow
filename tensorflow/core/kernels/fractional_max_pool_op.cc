@@ -258,6 +258,18 @@ class FractionalMaxPoolGradOp : public OpKernel {
     OP_REQUIRES(context, tensor_out.NumElements() > 0,
                 errors::InvalidArgument("orig_output must not be empty, got ",
                                         tensor_out.DebugString()));
+    OP_REQUIRES(
+        context,
+        height_seq_tensor.NumElements() * width_seq_tensor.NumElements() <=
+            tensor_in.NumElements(),
+        errors::InvalidArgument(
+            "Pooling region has more elements than the input tensor. "
+            "row_pooling_sequence: ",
+            height_seq_tensor.DebugString(),
+            "col_pooling_sequence: ", width_seq_tensor.DebugString(),
+            "orig_input: ", tensor_in.DebugString()));
+
+    //
     std::vector<int64_t> input_size(tensor_in_and_out_dims);
     std::vector<int64_t> output_size(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {

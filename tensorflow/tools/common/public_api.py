@@ -49,6 +49,7 @@ class PublicAPIVisitor:
             # tensorflow/dtensor package.
             'dtensor',
             'python',
+            'tsl',  # TODO(tlongeri): Remove after TSL is moved out of TF.
         ],
         # Some implementations have this internal module that we shouldn't
         # expose.

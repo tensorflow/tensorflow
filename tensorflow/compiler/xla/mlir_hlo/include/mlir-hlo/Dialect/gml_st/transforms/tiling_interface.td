@@ -39,13 +39,9 @@ def TilingInterface : OpInterface<"TilingInterface"> {
       >,
       InterfaceMethod<
         /*desc=*/[{
-          Returns a list of `StringRef`s that describe the number of
-          loops and the iterator types of the operation. The list is
-          expected to use
-          `getParallelIteratorTypeName()`/`getReductionIteratorTypeName()`
-          from MLIR Structured Op Utils.
+          Returns a list of iterator types that describe the number of loops.
         }],
-        /*retType=*/"SmallVector<StringRef>",
+        /*retType=*/"SmallVector<utils::IteratorType>",
         /*methodName=*/"getLoopIteratorTypes",
         /*args=*/(ins)
       >,

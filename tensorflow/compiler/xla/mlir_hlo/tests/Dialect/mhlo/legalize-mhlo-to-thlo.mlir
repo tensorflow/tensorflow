@@ -162,111 +162,40 @@ func.func @unsupported_gather(%operand: tensor<3x3xf32>,
 // CHECK-LABEL: @unsupported_gather
 //       CHECK: mhlo.gather
 
-func.func @simple_scatter(%dst: tensor<3xi32>, %indices: tensor<1x1xi32>,
-                          %update: tensor<1xi32>) -> tensor<3xi32> {
+func.func @simple_scatter(%dst: tensor<3x3xf32>, %indices: tensor<2x2xi32>,
+                          %update: tensor<2x1x3xf32>) -> tensor<3x3xf32> {
   %0 = "mhlo.scatter"(%dst, %indices, %update) ({
-  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
-    %sum = mhlo.add %arg3, %arg4 : tensor<i32>
-    "mhlo.return"(%sum) : (tensor<i32>) -> ()
+  ^bb0(%in: tensor<f32>, %out: tensor<f32>):
+    %sum = mhlo.add %in, %out : tensor<f32>
+    "mhlo.return"(%sum) : (tensor<f32>) -> ()
   }) {
     scatter_dimension_numbers = #mhlo.scatter<
-      update_window_dims = [],
-      inserted_window_dims = [0],
-      scatter_dims_to_operand_dims = [0],
+      update_window_dims = [1, 2],
+      inserted_window_dims = [],
+      scatter_dims_to_operand_dims = [0, 1],
       index_vector_dim = 1,
     >,
     unique_indices = false,
     indices_are_sorted = false
-  } : (tensor<3xi32>, tensor<1x1xi32>, tensor<1xi32>) -> tensor<3xi32>
-  func.return %0 : tensor<3xi32>
+  } : (tensor<3x3xf32>, tensor<2x2xi32>, tensor<2x1x3xf32>) -> tensor<3x3xf32>
+  func.return %0 : tensor<3x3xf32>
 }
 
 // CHECK-LABEL: @simple_scatter
-// CHECK-SAME: (%[[DST:.*]]: tensor<3xi32>, %[[INDICES:.*]]: tensor<1x1xi32>,
-// CHECK-SAME:  %[[UPDATE:.*]]: tensor<1xi32>)
-//       CHECK: thlo.scatter ins(%[[INDICES]] : tensor<1x1xi32>,
-//  CHECK-SAME:                    %[[UPDATE]] : tensor<1xi32>)
-//  CHECK-SAME:                outs(%[[DST]] : tensor<3xi32>)
-//  CHECK-SAME:                (%[[UPD:.*]]: i32, %[[CUR:.*]]: i32) {
-//  CHECK-NEXT:    %[[CUR_T:.*]] = tensor.from_elements %[[CUR]] : tensor<i32>
-//  CHECK-NEXT:    %[[UPD_T:.*]] = tensor.from_elements %[[UPD]] : tensor<i32>
-//  CHECK-NEXT:    %[[CUR:.*]] = tensor.extract %[[CUR_T]][] : tensor<i32>
-//  CHECK-NEXT:    %[[UPD:.*]] = tensor.extract %[[UPD_T]][] : tensor<i32>
-//  CHECK-NEXT:    arith.addi %[[CUR]], %[[UPD]] : i32
+// CHECK-SAME: (%[[DST:.*]]: tensor<3x3xf32>, %[[INDICES:.*]]: tensor<2x2xi32>,
+// CHECK-SAME:  %[[UPDATE:.*]]: tensor<2x1x3xf32>)
+//       CHECK: thlo.scatter ins(%[[INDICES]] : tensor<2x2xi32>,
+//  CHECK-SAME:                    %[[UPDATE]] : tensor<2x1x3xf32>)
+//  CHECK-SAME:                outs(%[[DST]] : tensor<3x3xf32>)
+//  CHECK-SAME:                (%[[UPD:.*]]: f32, %[[CUR:.*]]: f32) {
+//  CHECK-NEXT:    %[[CUR_T:.*]] = tensor.from_elements %[[CUR]] : tensor<f32>
+//  CHECK-NEXT:    %[[UPD_T:.*]] = tensor.from_elements %[[UPD]] : tensor<f32>
+//  CHECK-NEXT:    %[[CUR:.*]] = tensor.extract %[[CUR_T]][] : tensor<f32>
+//  CHECK-NEXT:    %[[UPD:.*]] = tensor.extract %[[UPD_T]][] : tensor<f32>
+//  CHECK-NEXT:    arith.addf %[[CUR]], %[[UPD]] : f32
 //  CHECK-NEXT:    tensor.from_elements
 //  CHECK-NEXT:    tensor.extract
 
-func.func @scatter_wrong_update(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
-                          %arg2: tensor<1xi32>) -> tensor<3xi32> {
-  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
-  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
-    %sum = mhlo.subtract %arg3, %arg4 : tensor<i32>
-    "mhlo.return"(%sum) : (tensor<i32>) -> ()
-  }) {
-    scatter_dimension_numbers = #mhlo.scatter<
-      update_window_dims = [],
-      inserted_window_dims = [0],
-      scatter_dims_to_operand_dims = [0],
-      index_vector_dim = 1,
-    >,
-    unique_indices = false,
-    indices_are_sorted = false
-  } : (tensor<3xi32>, tensor<1x1xi32>, tensor<1xi32>) -> tensor<3xi32>
-  func.return %0 : tensor<3xi32>
-}
-
-// CHECK-LABEL: @scatter_wrong_update
-//       CHECK: thlo.scatter
-// CHECK-COUNT-2: tensor.from_elements
-// CHECK-COUNT-2: tensor.extract
-//    CHECK-NEXT: arith.subi
-//    CHECK-NEXT: tensor.from_elements
-//    CHECK-NEXT: tensor.extract
-
-func.func @scatter_wrong_index_vector_dim(
-              %arg0: tensor<3xi32>,
-              %arg1: tensor<1xi32>,
-              %arg2: tensor<1xi32>) -> tensor<3xi32> {
-  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
-  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
-    %sum = mhlo.add %arg3, %arg4 : tensor<i32>
-    "mhlo.return"(%sum) : (tensor<i32>) -> ()
-  }) {
-    scatter_dimension_numbers = #mhlo.scatter<
-      update_window_dims = [],
-      inserted_window_dims = [0],
-      scatter_dims_to_operand_dims = [0],
-      index_vector_dim = 1,
-    >,
-    unique_indices = false,
-    indices_are_sorted = false
-  } : (tensor<3xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
-  func.return %0 : tensor<3xi32>
-}
-
-// CHECK-LABEL: @scatter_wrong_index_vector_dim
-//       CHECK: mhlo.scatter
-
-func.func @scatter_wrong_dims(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
-                          %arg2: tensor<3x1xi32>) -> tensor<3xi32> {
-  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
-  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
-    %sum = mhlo.add %arg3, %arg4 : tensor<i32>
-    "mhlo.return"(%sum) : (tensor<i32>) -> ()
-  }) {
-    scatter_dimension_numbers = #mhlo.scatter<
-      update_window_dims = [0],
-      inserted_window_dims = [],
-      scatter_dims_to_operand_dims = [0],
-      index_vector_dim = 1,
-    >,
-    unique_indices = false,
-    indices_are_sorted = false
-  } : (tensor<3xi32>, tensor<1x1xi32>, tensor<3x1xi32>) -> tensor<3xi32>
-  func.return %0 : tensor<3xi32>
-}
-// CHECK-LABEL: @scatter_wrong_dims
-//       CHECK: mhlo.scatter
 
 // CHECK-LABEL: @reduce_add(
 func.func @reduce_add(

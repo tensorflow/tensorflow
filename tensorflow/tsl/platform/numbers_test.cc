@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/tsl/platform/numbers.h"
 
 #include <cmath>
 #include <string>
-#include "tensorflow/core/platform/test.h"
 
-namespace tensorflow {
+#include "tensorflow/tsl/platform/test.h"
+
+namespace tsl {
 namespace strings {
 
 // NOTE: most of the routines in numbers.h are tested indirectly through
@@ -380,4 +381,4 @@ TEST(safe_strtod, Double) {
 }
 
 }  // namespace strings
-}  // namespace tensorflow
+}  // namespace tsl

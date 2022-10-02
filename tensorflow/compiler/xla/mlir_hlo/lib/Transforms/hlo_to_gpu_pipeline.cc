@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
-#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
+#include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/Transforms/Passes.h"
@@ -61,6 +61,7 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
       /*distribute=*/true, SmallVector<int64_t>(warpTileDim)));
   pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
       /*distribute=*/true, SmallVector<int64_t>(threadTileDim)));
+  pm.addNestedPass<FuncOp>(gml_st::createTilingReductionPass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
 
   pm.addPass(createCanonicalizerPass());
@@ -76,7 +77,7 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
 
   // Linalg + GmlSt -> GPU
   pm.addNestedPass<FuncOp>(createGmlStToGpuPass());
-  pm.addNestedPass<FuncOp>(arith::createArithmeticExpandOpsPass());
+  pm.addNestedPass<FuncOp>(arith::createArithExpandOpsPass());
   pm.addNestedPass<FuncOp>(createConvertLinalgToLoopsPass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addPass(createGpuLauchSinkIndexComputationsPass());

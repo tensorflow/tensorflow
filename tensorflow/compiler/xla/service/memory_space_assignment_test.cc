@@ -5146,6 +5146,43 @@ ENTRY entry {
   EXPECT_EQ(cp_done2->operand(0)->opcode(), HloOpcode::kCollectivePermuteStart);
 }
 
+TEST_P(MemorySpaceAssignmentTest,
+       TupleInPlaceAsyncCollectivePermuteSameBuffer) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param = bf16[4]{0} parameter(0)
+  param2 = bf16[48]{0} parameter(1)
+  negate0.1 = bf16[48]{0} negate(param2)
+  negate0.2 = bf16[48]{0} negate(param2)
+  const0 = s32[] constant(0)
+  const1 = s32[] constant(1)
+  tuple0.0 = (s32[]) tuple(const0)
+  tuple0 = ((s32[]), (s32[])) tuple(tuple0.0, tuple0.0)
+  tuple1.0 = (s32[]) tuple(const1)
+  tuple1 = ((s32[]), (s32[])) tuple(tuple1.0, tuple1.0)
+  tuple2 = (bf16[48]{0}, bf16[48]{0}) tuple(negate0.1, negate0.1)
+  tuple3 = (bf16[48]{0}, bf16[48]{0}) tuple(negate0.2, negate0.2)
+  collective-permute-start.1 = ((bf16[48]{0}, bf16[48]{0}), (bf16[48]{0}, bf16[48]{0}), u32[], u32[]) collective-permute-start(tuple2, tuple3, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
+  negate2 = bf16[4]{0} negate(param)
+  negate3 = bf16[4]{0} negate(negate2)
+  negate4 = bf16[4]{0} negate(negate3)
+  collective-permute-done.1 = (bf16[48]{0}, bf16[48]{0}) collective-permute-done(collective-permute-start.1)
+  gte = bf16[48]{0} get-tuple-element(collective-permute-done.1), index=0
+  ROOT root = (bf16[48]{0}, bf16[4]{0}) tuple(gte, negate4)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  const HloInstruction* cp_done1 =
+      FindInstruction(module.get(), "collective-permute-done.1");
+  EXPECT_EQ(cp_done1->operand(0)->opcode(), HloOpcode::kCollectivePermuteStart);
+}
+
 TEST_P(MemorySpaceAssignmentTest, ReservedScopedMemory) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -6188,6 +6225,11 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
     EXPECT_EQ(cross_program_prefetches[0].first, 1);
     EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({}));
   }
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Dot(op::Parameter(0),
+                      op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                    op::Parameter(1))));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleTest) {
@@ -6673,7 +6715,9 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
-  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
+  EXPECT_THAT(FindInstruction(module.get(), "dup")->operand(0),
+              op::Parameter(0));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDup) {
@@ -6693,7 +6737,9 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDup) {
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
-  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
+  EXPECT_THAT(FindInstruction(module.get(), "dup")->operand(0),
+              op::Parameter(0));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
@@ -6717,6 +6763,9 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_THAT(FindInstruction(module.get(), "dup")->operand(0),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::Parameter(0)));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
@@ -6736,6 +6785,9 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_THAT(FindInstruction(module.get(), "dot")->operand(1),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::Parameter(0)));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
@@ -6753,7 +6805,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
-  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
@@ -7030,6 +7082,57 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
   EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
             0);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchBufferUnused) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+%fused_computation {
+  %param_0.2 = f32[32]{0} parameter(0)
+  %param_1.4 = s32[100]{0} parameter(1)
+  %custom-call.1 = s32[100]{0} custom-call(s32[100]{0} %param_1.4), custom_call_target="AssumeGatherIndicesInBound", operand_layout_constraints={s32[100]{0}}
+  %slice.1 = s32[32]{0} slice(s32[100]{0} %custom-call.1), slice={[0:32]}
+  %reshape.7 = s32[32]{0} reshape(s32[32]{0} %slice.1)
+  %transpose.5 = s32[32]{0} transpose(s32[32]{0} %reshape.7), dimensions={0}
+  %gather.1 = f32[32]{0} gather(f32[32]{0} %param_0.2, s32[32]{0} %transpose.5), offset_dims={}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1}
+  %transpose.4 = f32[32]{0} transpose(f32[32]{0} %gather.1), dimensions={0}
+  ROOT %reshape.6 = f32[32]{0} reshape(f32[32]{0} %transpose.4)
+}
+
+%i.reduce_sub_computation {
+  %rhs = s32[] parameter(1)
+  %lhs = s32[] parameter(0)
+  ROOT %add = s32[] add(s32[] %lhs, s32[] %rhs)
+}
+
+%fused_computation.1 {
+  %constant.4 = s32[] constant(0)
+  %broadcast.4 = s32[100]{0} broadcast(s32[] %constant.4), dimensions={}
+  %param_0.4 = s32[32]{0} parameter(0)
+  %pad.1 = s32[100]{0} pad(s32[32]{0} %param_0.4, s32[] %constant.4), padding=0_68
+  %constant.3 = s32[] constant(76031)
+  %broadcast.3 = s32[100]{0} broadcast(s32[] %constant.3), dimensions={}
+  ROOT %clamp.1 = s32[100]{0} clamp(s32[100]{0} %broadcast.4, s32[100]{0} %pad.1, s32[100]{0} %broadcast.3)
+}
+
+ENTRY %main {
+  %constant = s32[] constant(0)
+  %i = s32[32,1]{0,1} parameter(1)
+  %o = f32[32]{0} parameter(0)
+  %reduce = s32[32]{0} reduce(s32[32,1]{0,1} %i, s32[] %constant), dimensions={1}, to_apply=%i.reduce_sub_computation
+  %fusion.1 = s32[100]{0} fusion(s32[32]{0} %reduce), kind=kLoop, calls=%fused_computation.1
+  ROOT %fusion = f32[32]{0} fusion(f32[32]{0} %o, s32[100]{0} %fusion.1), kind=kCustom, calls=%fused_computation
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Fusion(op::AsyncCopy(kAlternateMemorySpace,
+                                       kDefaultMemorySpace, op::Parameter(0)),
+                         op::Fusion()));
 }
 
 using CostAnalysisPrefetchIntervalPickerTest = HloTestBase;

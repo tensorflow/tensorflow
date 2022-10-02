@@ -70,13 +70,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/io/record_reader.h"
-#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/lib/io/record_reader.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 namespace xla {
 namespace tools {
@@ -360,9 +360,9 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
   std::unique_ptr<tsl::RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
       std::string(filename.begin(), filename.end()), &file));
-  tensorflow::io::RecordReader reader(
+  tsl::io::RecordReader reader(
       file.get(),
-      tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
+      tsl::io::RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
 
   std::vector<HloSnapshot> snapshots;
   uint64_t offset = 0;
@@ -537,34 +537,33 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
 
 int main(int argc, char** argv) {
   xla::tools::Options opts;
-  std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("use_fake_data", &opts.use_fake_data,
-                       "Replay computation using fake data"),
-      tensorflow::Flag("print_result", &opts.print_result,
-                       "Print the result of the computation to stdout"),
-      tensorflow::Flag("num_runs", &opts.num_runs,
-                       "Number of times to run each computation"),
-      tensorflow::Flag("fake_infeed_shape", &opts.fake_infeed_shape,
-                       "Shape of fake data to construct for (infinite) infeed"),
-      tensorflow::Flag("fake_outfeed_shape", &opts.fake_outfeed_shape,
-                       "Shape of fake data to outfeed from computation"),
-      tensorflow::Flag("generate_fake_infeed", &opts.generate_fake_infeed,
-                       "Whether a fake infeed shape should be derived "
-                       "from the computation"),
-      tensorflow::Flag("generate_fake_outfeed", &opts.generate_fake_outfeed,
-                       "Whether a fake outfeed shape should be derived "
-                       "from the computation"),
-      tensorflow::Flag("intra_op_thread_pool_size",
-                       &opts.intra_op_thread_pool_size,
-                       "How many threads to use in the intra-op thread pool. "
-                       "Defaults to the number of CPUs."),
-      tensorflow::Flag("compile_only", &opts.compile_only,
-                       "Whether the input should only be compiled, as opposed "
-                       "to compiled and executed."),
+  std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("use_fake_data", &opts.use_fake_data,
+                "Replay computation using fake data"),
+      tsl::Flag("print_result", &opts.print_result,
+                "Print the result of the computation to stdout"),
+      tsl::Flag("num_runs", &opts.num_runs,
+                "Number of times to run each computation"),
+      tsl::Flag("fake_infeed_shape", &opts.fake_infeed_shape,
+                "Shape of fake data to construct for (infinite) infeed"),
+      tsl::Flag("fake_outfeed_shape", &opts.fake_outfeed_shape,
+                "Shape of fake data to outfeed from computation"),
+      tsl::Flag("generate_fake_infeed", &opts.generate_fake_infeed,
+                "Whether a fake infeed shape should be derived "
+                "from the computation"),
+      tsl::Flag("generate_fake_outfeed", &opts.generate_fake_outfeed,
+                "Whether a fake outfeed shape should be derived "
+                "from the computation"),
+      tsl::Flag("intra_op_thread_pool_size", &opts.intra_op_thread_pool_size,
+                "How many threads to use in the intra-op thread pool. "
+                "Defaults to the number of CPUs."),
+      tsl::Flag("compile_only", &opts.compile_only,
+                "Whether the input should only be compiled, as opposed "
+                "to compiled and executed."),
   };
   xla::AppendDebugOptionsFlags(&flag_list);
-  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  std::string usage = tsl::Flags::Usage(argv[0], flag_list);
+  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(argv[0], &argc, &argv);
   if (argc < 2 || !parse_ok) {
     LOG(QFATAL) << usage;

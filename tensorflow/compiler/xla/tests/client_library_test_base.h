@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/manifest_checking_test.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bitmap.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -144,7 +144,7 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // As above, but uses a bitmap to hold the predicate vector to avoid
   // deficiencies of vector<bool>.
   void ComputeAndCompareR1(XlaBuilder* builder,
-                           const tensorflow::core::Bitmap& expected,
+                           const tsl::core::Bitmap& expected,
                            absl::Span<GlobalData* const> arguments);
 
   template <typename NativeT>

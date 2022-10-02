@@ -180,7 +180,8 @@ signature_def['serving_default']:
     # Call with specific values to create new polymorphic function traces.
     dummy_model.func1(constant_op.constant(5), constant_op.constant(9), True)
     dummy_model(constant_op.constant(5))
-    save.save(dummy_model, saved_model_dir)
+    with self.cached_session():
+      save.save(dummy_model, saved_model_dir)
     self.parser = saved_model_cli.create_parser()
     args = self.parser.parse_args(['show', '--dir', saved_model_dir, '--all'])
     with captured_output() as (out, err):
@@ -261,7 +262,8 @@ Concrete Functions:
 
     saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
     dummy_model = DummyModel()
-    save.save(dummy_model, saved_model_dir)
+    with self.cached_session():
+      save.save(dummy_model, saved_model_dir)
     self.parser = saved_model_cli.create_parser()
     args = self.parser.parse_args(['show', '--dir', saved_model_dir, '--all'])
     with captured_output() as (out, err):
@@ -718,20 +720,26 @@ Concrete Functions:
     with captured_output() as (out, _):
       saved_model_cli.scan(args)
     output = out.getvalue().strip()
-    self.assertTrue('does not contain denylisted ops' in output)
+    self.assertIn(('MetaGraph with tag set [\'serve\'] does not contain the '
+                   'default denylisted ops: {\''), output)
+    self.assertIn('\'ReadFile\'', output)
+    self.assertIn('\'WriteFile\'', output)
+    self.assertIn('\'PrintV2\'', output)
 
-  def testScanCommandFoundDenylistedOp(self):
+  def testScanCommandFoundCustomDenylistedOp(self):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
-    args = self.parser.parse_args(
-        ['scan', '--dir', base_path, '--tag_set', 'serve'])
-    op_denylist = saved_model_cli._OP_DENYLIST
-    saved_model_cli._OP_DENYLIST = set(['VariableV2'])
+    args = self.parser.parse_args([
+        'scan', '--dir', base_path, '--tag_set', 'serve', '--op_denylist',
+        'VariableV2,Assign,Relu6'
+    ])
     with captured_output() as (out, _):
       saved_model_cli.scan(args)
-    saved_model_cli._OP_DENYLIST = op_denylist
     output = out.getvalue().strip()
-    self.assertTrue('\'VariableV2\'' in output)
+    self.assertIn(('MetaGraph with tag set [\'serve\'] contains the following'
+                   ' denylisted ops:'), output)
+    self.assertTrue(('{\'VariableV2\', \'Assign\'}' in output) or
+                    ('{\'Assign\', \'VariableV2\'}' in output))
 
   def testAOTCompileCPUWrongSignatureDefKey(self):
     if not test.is_built_with_xla():

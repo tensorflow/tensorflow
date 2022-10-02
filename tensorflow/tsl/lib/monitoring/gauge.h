@@ -74,7 +74,7 @@ class Gauge {
     return &default_gauge_cell_;
   }
 
-  Status GetStatus() { return Status::OK(); }
+  Status GetStatus() { return OkStatus(); }
 
  private:
   Gauge() {}

@@ -23,6 +23,7 @@ filegroup(
     testonly = True,
     data = [
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate",
+        "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
         "//tensorflow/compiler/mlir/lite/stablehlo:odml_to_stablehlo",
         "//tensorflow/compiler/mlir/lite/stablehlo:tf-mhlo-tfl-opt",
         "@llvm-project//llvm:FileCheck",

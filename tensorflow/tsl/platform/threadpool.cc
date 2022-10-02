@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/platform/context.h"
 #include "tensorflow/tsl/platform/blocking_counter.h"
+#include "tensorflow/tsl/platform/context.h"
 #include "tensorflow/tsl/platform/denormal.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mutex.h"
@@ -29,10 +29,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/tracing.h"
 
 namespace tsl {
-// TODO(aminim): remove after tensorflow/core/platform/context.h migration.
-using tensorflow::Context;
-using tensorflow::ContextKind;
-using tensorflow::WithContext;
 
 namespace thread {
 

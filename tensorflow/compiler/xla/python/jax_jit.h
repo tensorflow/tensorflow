@@ -68,8 +68,10 @@ struct JitState {
   std::optional<pybind11::function> post_hook;
 };
 
-JitState& GetGlobalState();
-JitState& GetLocalState();
+JitState& GlobalJitState();
+
+// Requires the GIL.
+JitState& ThreadLocalJitState();
 
 // Getters for JitState fields that first look in thread-local state, then
 // fallback to global state.

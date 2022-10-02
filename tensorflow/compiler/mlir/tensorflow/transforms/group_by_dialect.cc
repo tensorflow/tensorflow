@@ -29,14 +29,20 @@ namespace mlir {
 namespace TF {
 namespace {
 
-void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id);
+void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id,
+                       Operation* module);
 
 class GroupByDialectPass : public GroupByDialectPassBase<GroupByDialectPass> {
  public:
   void runOnOperation() override;
 
  private:
-  void processFunction(mlir::func::FuncOp func, int& counter);
+  void processFunction(mlir::func::FuncOp func, int& counter,
+                       llvm::SmallDenseSet<StringRef>& dialects,
+                       Operation* module);
+  void processRegion(mlir::Region& region, int& counter,
+                     llvm::SmallDenseSet<StringRef>& dialects,
+                     Operation* module);
 
   llvm::SmallDenseSet<StringRef> top_level_dialects_ = {"ml_program", "glue",
                                                         "func"};
@@ -48,27 +54,41 @@ void computeInputsOutputs(std::vector<Operation*>& ops,
                           std::vector<Value>* inputs,
                           std::vector<Value>* outputs) {
   // All operations.
-  llvm::DenseSet<Operation*> all_operations(ops.begin(), ops.end());
+  llvm::DenseSet<Operation*> all_operations;
 
   // All results of all ops.
   llvm::DenseSet<Value> all_internal_results;
-  for (Operation* op : ops) {
-    for (Value result : op->getResults()) {
-      all_internal_results.insert(result);
-    }
+  for (Operation* outer : ops) {
+    outer->walk([&](Operation* op) {
+      all_operations.insert(op);
+      for (Value result : op->getResults()) {
+        all_internal_results.insert(result);
+      }
+      // We treat block arguments of inner blocks as "results", too, in
+      // the sense that they're values produced inside this op.
+      for (Region& region : op->getRegions()) {
+        for (Block& block : region.getBlocks()) {
+          for (BlockArgument& arg : block.getArguments()) {
+            all_internal_results.insert(arg);
+          }
+        }
+      }
+    });
   }
 
   // All operand values in our set not produced as result by some op in our set.
   llvm::DenseSet<Value> inputs_seen;
-  for (Operation* op : ops) {
-    for (Value operand : op->getOperands()) {
-      if (!all_internal_results.contains(operand)) {
-        if (!inputs_seen.contains(operand)) {
-          inputs->push_back(operand);
-          inputs_seen.insert(operand);
+  for (Operation* outer : ops) {
+    outer->walk([&](Operation* op) {
+      for (Value operand : op->getOperands()) {
+        if (!all_internal_results.contains(operand)) {
+          if (!inputs_seen.contains(operand)) {
+            inputs->push_back(operand);
+            inputs_seen.insert(operand);
+          }
         }
       }
-    }
+    });
   }
 
   // All results in our set that have a user outside our set.
@@ -88,7 +108,8 @@ void computeInputsOutputs(std::vector<Operation*>& ops,
   }
 }
 
-void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id) {
+void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id,
+                       Operation* module) {
   if (ops.empty()) {
     return;
   }
@@ -113,14 +134,20 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id) {
   MLIRContext* context = ops[0]->getContext();
   StringRef dialect = ops[0]->getName().getDialectNamespace();
   OpBuilder builder(context);
-  builder.setInsertionPointToEnd(ops[0]->getParentOp()->getBlock());
+  // Every ModuleOp has at least one region and one block.
+  Block* first_block = &module->getRegion(0).front();
+  builder.setInsertionPointToEnd(first_block);
   auto func = builder.create<mlir::func::FuncOp>(
       ops[0]->getLoc(), dialect.str() + std::to_string(function_id),
       builder.getFunctionType(input_types, output_types));
   func->setAttr("dialect", builder.getStringAttr(dialect));
   auto block = func.addEntryBlock();
 
-  llvm::DenseSet<Operation*> all_operations(ops.begin(), ops.end());
+  llvm::DenseSet<Operation*> all_operations;
+  for (Operation* outer : ops) {
+    outer->walk([&](Operation* op) { all_operations.insert(op); });
+  }
+
   for (BlockArgument& arg : block->getArguments()) {
     inputs[arg.getArgNumber()].replaceUsesWithIf(arg, [=](OpOperand& o) {
       // Within the operations we're moving, we need to replace uses of
@@ -153,36 +180,49 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id) {
 
 }  // namespace
 
-void GroupByDialectPass::processFunction(mlir::func::FuncOp func,
-                                         int& counter) {
+void GroupByDialectPass::processFunction(
+    mlir::func::FuncOp func, int& counter,
+    llvm::SmallDenseSet<StringRef>& dialects, Operation* module) {
   // don't re-process functions we generated
   if (func->getAttr("dialect")) return;
+  processRegion(func.getBody(), counter, dialects, module);
+}
 
-  for (Block& block : func.getBody().getBlocks()) {
+void GroupByDialectPass::processRegion(mlir::Region& region, int& counter,
+                                       llvm::SmallDenseSet<StringRef>& dialects,
+                                       Operation* module) {
+  for (Block& block : region.getBlocks()) {
     StringRef current_dialect("<none>");
     std::vector<Operation*> ops;
     for (Operation& op : block.getOperations()) {
       StringRef dialect = op.getName().getDialectNamespace();
+      for (Region& region : op.getRegions()) {
+        // When processing nested operations, move all ops (except for func.*)
+        // that aren't of the parent dialect into a function or their own.
+        llvm::SmallDenseSet<StringRef> parent_dialect = {dialect, "func"};
+        processRegion(region, counter, parent_dialect, module);
+      }
       if (dialect != current_dialect) {
-        if (!top_level_dialects_.contains(current_dialect)) {
-          wrapOpsInFunction(ops, counter++);
+        if (!dialects.contains(current_dialect)) {
+          wrapOpsInFunction(ops, counter++, module);
         }
         ops.clear();
         current_dialect = dialect;
       }
       ops.push_back(&op);
     }
-    if (!top_level_dialects_.contains(current_dialect)) {
-      wrapOpsInFunction(ops, counter++);
+    if (!dialects.contains(current_dialect)) {
+      wrapOpsInFunction(ops, counter++, module);
     }
   }
-  counter++;
 }
 
 void GroupByDialectPass::runOnOperation() {
   int counter = 0;
-  getOperation().walk(
-      [&](func::FuncOp func) { processFunction(func, counter); });
+  Operation* module = getOperation();
+  module->walk([&](func::FuncOp func) {
+    processFunction(func, counter, top_level_dialects_, module);
+  });
 }
 
 std::unique_ptr<Pass> CreateGroupByDialectPass() {

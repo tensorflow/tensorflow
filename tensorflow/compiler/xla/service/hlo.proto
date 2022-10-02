@@ -742,8 +742,8 @@ message EntryFunctionAttributes {
   string result_xla_shape = 2;
 }
 
-// Encodes the underlying JitRt executable compiled from the XLA module.
-message JitRtExecutableProto {
+// Encodes the underlying Xla runtime executable compiled from the XLA module.
+message XlaRuntimeExecutableProto {
   HloModuleProto hlo_module_proto = 1;
 
   // XLA-specific attributes of the executable's entry function.

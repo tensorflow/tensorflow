@@ -12,9 +12,8 @@ load(
 
 package(
     default_visibility = [
-        # TODO(tlongeri): enable visibility within TSL as migration progresses
-        # # tensorflow/core/lib/io/table_builder.cc uses crc functionality
-        # "//tensorflow/core/lib/io:__pkg__",
+        # tensorflow/tsl/lib/io/table_builder.cc uses crc functionality
+        "//tensorflow/tsl/lib/io:__pkg__",
         # tensorflow/core/lib/hash aliases hash for now
         "//tensorflow/core/lib/hash:__pkg__",
     ],
@@ -63,9 +62,9 @@ tf_cc_test(
     srcs = ["crc32c_test.cc"],
     deps = [
         ":crc32c",
-        "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )

@@ -1,6 +1,21 @@
 // RUN: xla-runtime-opt -verify-diagnostics -split-input-file %s
 
 // -----
+// expected-error @+1 {{func.func op named 'foo' not found for export}}
+rt.export @foo
+
+// -----
+// expected-error @+1 {{unc.func op named 'foo' has multiple uses and can't be exported}}
+rt.export @foo
+
+func.func @foo() { return }
+
+func.func @bar() {
+  call @foo(): () -> ()
+  return
+}
+
+// -----
 // expected-error @+1 {{'func.func' op requires "rt.entrypoint" to be a unit attribute}}
 func.func private @verify_rt_entrypoint(%arg0: memref<?xf32>)
   attributes { rt.entrypoint = 1 } {

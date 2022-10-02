@@ -92,11 +92,9 @@ def _tfcompile_model_library_rule_impl(ctx):
         mnemonic = "TensorflowCompile",
     )
     out_files = [header_file, metadata_object_file, function_object_file, session_module_pb]
-    dep_files = [ctx.executable.tfcompile_tool]
     return [
         DefaultInfo(
             files = depset(out_files),
-            runfiles = ctx.runfiles(files = dep_files, transitive_files = depset(dep_files)),
         ),
         OutputGroupInfo(**output_dict),
     ]

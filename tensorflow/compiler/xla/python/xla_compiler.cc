@@ -54,7 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
 
 namespace xla {
 namespace {
@@ -81,8 +81,7 @@ static std::string UniquifyName(const std::string& name) {
 StatusOr<py::bytes> GetComputationSerializedProto(
     const XlaComputation& computation) {
   std::string result;
-  if (!tensorflow::SerializeToStringDeterministic(computation.proto(),
-                                                  &result)) {
+  if (!tsl::SerializeToStringDeterministic(computation.proto(), &result)) {
     return Unknown("Failed to serialize the HloModuleProto.");
   }
   return py::bytes(result);
@@ -91,7 +90,7 @@ StatusOr<py::bytes> GetComputationSerializedProto(
 // Converts a hlo module to a serialized HloModuleProto.
 StatusOr<py::bytes> GetHloModuleSerializedProto(const HloModule& module) {
   std::string result;
-  if (!tensorflow::SerializeToStringDeterministic(module.ToProto(), &result)) {
+  if (!tsl::SerializeToStringDeterministic(module.ToProto(), &result)) {
     return Unknown("Failed to serialize the HloModuleProto.");
   }
   return py::bytes(result);
@@ -577,7 +576,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
         DeviceAssignmentProto proto;
         TF_RETURN_IF_ERROR(da.Serialize(&proto));
         std::string result;
-        if (!tensorflow::SerializeToStringDeterministic(proto, &result)) {
+        if (!tsl::SerializeToStringDeterministic(proto, &result)) {
           return Unknown("Failed to serialize the DeviceAssignmentProto.");
         }
         return py::bytes(result);

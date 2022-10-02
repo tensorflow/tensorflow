@@ -1,5 +1,5 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load(
@@ -411,8 +411,8 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":status_casters",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/python:status_casters",
         "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_sharding_util",
@@ -540,8 +540,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -732,6 +732,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/lib/strings:proto_serialization",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/synchronization",
@@ -843,7 +844,6 @@ pybind_extension(
         "//tensorflow/compiler/xla/pjrt/distributed:service",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
         # Do NOT remove this dependency. The XLA Python extension must not
         # depend on any part of TensorFlow at runtime, **including**
         # libtensorflow_framework.so. The XLA module is deployed self-contained
@@ -861,7 +861,10 @@ pybind_extension(
         ":link_gpu_plugin": ["//tensorflow/compiler/xla/service:gpu_plugin"],
         "//conditions:default": [],
     }) + select({
-        ":tpu_enabled": ["//tensorflow/compiler/xla/pjrt:tpu_client"],
+        ":tpu_enabled": [
+            "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
+            "//tensorflow/compiler/xla/pjrt:tpu_client",
+        ],
         "//conditions:default": [],
     }) + select({
         ":plugin_device_enabled": [

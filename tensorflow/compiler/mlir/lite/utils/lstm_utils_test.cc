@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -94,7 +94,7 @@ class LstmUtilsTest : public ::testing::Test {
 
   void SetUp() override {
     context_ = std::make_unique<mlir::MLIRContext>();
-    context_->loadDialect<arith::ArithmeticDialect, mlir::func::FuncDialect,
+    context_->loadDialect<arith::ArithDialect, mlir::func::FuncDialect,
                           tensor::TensorDialect, mlir::TF::TensorFlowDialect,
                           TensorFlowLiteDialect>();
     builder_ = std::make_unique<mlir::Builder>(context_.get());

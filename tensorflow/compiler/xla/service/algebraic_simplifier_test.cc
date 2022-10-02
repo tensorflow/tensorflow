@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -8716,6 +8716,170 @@ TEST_F(AlgebraicSimplifierTest, BitcastCopyChainSmall) {
   ASSERT_TRUE(result);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Bitcast(m::Bitcast(m::Copy(m::Parameter(0))))));
+}
+
+// Reverse(Reverse(A)) ==> A.
+TEST_F(AlgebraicSimplifierTest, RemoveIdenticalNestedReverse) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      r0 = bf16[100,1,100,512] reverse(p0), dimensions={1,2}
+      ROOT r1 = bf16[100,1,100,512] reverse(r0), dimensions={1,2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Parameter(0)));
+}
+
+// Reverse(Reverse(A)) ==> Reverse(A).
+TEST_F(AlgebraicSimplifierTest, ShrinkNestedReverse) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      r0 = bf16[100,1,100,512] reverse(p0), dimensions={1,2,3}
+      ROOT r1 = bf16[100,1,100,512] reverse(r0), dimensions={1,2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Reverse(m::Parameter(0))));
+}
+
+// reverse(ElementWiseBinOp(x, constant)) ==> ElementWiseBinOp(reverse(x),
+// constant)
+TEST_F(AlgebraicSimplifierTest, SwapConstantEwboWithReverse) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      constant0 = bf16[] constant(1)
+      const = bf16[100,1,100,512] broadcast(constant0), dimensions={}
+      ewbo0 = bf16[100,1,100,512] add(p0, const)
+      ROOT r0 = bf16[100,1,100,512] reverse(ewbo0), dimensions={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Reverse(m::Parameter(0)),
+                                      m::Broadcast(m::Constant()))));
+}
+
+// reverse(ElementWiseBinOp(constant, x)) ==> ElementWiseBinOp(constant,
+// reverse(x))
+TEST_F(AlgebraicSimplifierTest, SwapConstantEwboWithReverse2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      constant0 = bf16[] constant(1)
+      const = bf16[100,1,100,512] broadcast(constant0), dimensions={}
+      ewbo0 = bf16[100,1,100,512] add(const, p0)
+      ROOT r0 = bf16[100,1,100,512] reverse(ewbo0), dimensions={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Broadcast(m::Constant()),
+                                      m::Reverse(m::Parameter(0)))));
+}
+
+// non-contiguous degenerate dimensions adding
+// reverse(DegenerateDimensionAddingReshape(x)) ==>
+// DegenerateDimensionAddingReshape(reverse(x))
+TEST_F(AlgebraicSimplifierTest,
+       SwapNonContiguousDegenerateDimensionAddingReshapeAndReverse) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {3, 4, 5}), "param0"));
+
+  HloInstruction* reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {1, 3, 1, 4, 1, 5}), param0));
+  std::vector<int64_t> dims{0, 1, 3, 4};
+  absl::Span<const int64_t> rev_dims = absl::MakeSpan(dims);
+  builder.AddInstruction(HloInstruction::CreateReverse(
+      ShapeUtil::MakeShape(F32, {1, 3, 1, 4, 1, 5}), reshape1, rev_dims));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  auto computation = m->AddEntryComputation(builder.Build());
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reverse(m::Reshape(m::Parameter(0)))));
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  ASSERT_TRUE(g);
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  std::vector<int64_t> after_rewrite_dims{0, 1};
+  absl::Span<const int64_t> after_rewrite_rev_dims =
+      absl::MakeSpan(after_rewrite_dims);
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Reverse())));
+  EXPECT_THAT(computation->root_instruction()->operand(0)->dimensions(),
+              after_rewrite_rev_dims);
+}
+
+// contiguous degenerate dimensions adding
+// reverse(DegenerateDimensionAddingReshape(x)) ==>
+// DegenerateDimensionAddingReshape(reverse(x))
+TEST_F(AlgebraicSimplifierTest,
+       SwapContiguousDegenerateDimensionAddingReshapeAndReverse) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {3, 4, 5}), "param0"));
+
+  HloInstruction* reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {3, 1, 1, 1, 4, 1, 5}), param0));
+  std::vector<int64_t> dims{0, 1, 3, 4};
+  absl::Span<const int64_t> rev_dims = absl::MakeSpan(dims);
+  builder.AddInstruction(HloInstruction::CreateReverse(
+      ShapeUtil::MakeShape(F32, {3, 1, 1, 1, 4, 1, 5}), reshape1, rev_dims));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  auto computation = m->AddEntryComputation(builder.Build());
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reverse(m::Reshape(m::Parameter(0)))));
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  ASSERT_TRUE(g);
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  std::vector<int64_t> after_rewrite_dims{0, 1};
+  absl::Span<const int64_t> after_rewrite_rev_dims =
+      absl::MakeSpan(after_rewrite_dims);
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Reverse())));
+  EXPECT_THAT(computation->root_instruction()->operand(0)->dimensions(),
+              after_rewrite_rev_dims);
 }
 
 }  // namespace

@@ -19,12 +19,12 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir-hlo/Transforms/passes.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -100,85 +100,147 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
   }
 };
 
+// Extracts a point using gml_st.materialize and gml_st.tile with 1 element.
+Value getPoint(OpBuilder &b, Location loc, Value tensor, Value space,
+               ArrayRef<Value> indices) {
+  IntegerAttr oneAttr = b.getIndexAttr(1);
+
+  auto tensorType = tensor.getType().cast<RankedTensorType>();
+  int64_t tensorRank = tensorType.getRank();
+
+  SmallVector<OpFoldResult> offsets(indices.begin(), indices.end());
+  SmallVector<OpFoldResult> sizes(tensorRank, oneAttr);
+  SmallVector<OpFoldResult> strides(tensorRank, oneAttr);
+
+  Value tile = b.create<gml_st::TileOp>(loc, space, offsets, sizes, strides);
+  return b.create<gml_st::MaterializeOp>(loc, tensorType.getElementType(),
+                                         tensor, tile);
+}
+
 struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(thlo::ScatterOp scatterOp,
                                 PatternRewriter &rewriter) const override {
-    Location loc = scatterOp.getLoc();
-    Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    if (scatterOp.getIndicesCount() != 1) return failure();
 
-    // Extract update.
+    Location loc = scatterOp.getLoc();
+    ImplicitLocOpBuilder b(loc, rewriter);
+
+    // Create the loop nest that spans window dimensions of `updates`.
     Value updates = scatterOp.getUpdates();
     auto updatesType = updates.getType().dyn_cast<RankedTensorType>();
-    if (!updatesType || !hasSingleElement(updatesType)) return failure();
-    SmallVector<Value> updateIndices(updatesType.getRank(), zero);
-    Value updateValue = rewriter.create<ExtractOp>(loc, updates, updateIndices);
+    int64_t updatesRank = updatesType.getRank();
 
-    // Extract/compute index.
+    SmallVector<OpFoldResult> updatesDimSizes =
+        tensor::getMixedSizes(b, loc, updates);
+    auto updatesDimValues =
+        getValueOrCreateConstantIndexOp(b, loc, updatesDimSizes);
+    Value updatesSpace = b.create<gml_st::SpaceOp>(updatesDimSizes);
+
     Value indices = scatterOp.getIndices();
-    auto indicesType = indices.getType().dyn_cast<RankedTensorType>();
-    SmallVector<Value> indicesIndices(indicesType.getRank(), zero);
 
     Value init = scatterOp.getInit();
     auto initType = init.getType().dyn_cast<RankedTensorType>();
 
-    SmallVector<Value> scatterIndices;
+    SmallVector<OpFoldResult> initDimSizes =
+        tensor::getMixedSizes(b, loc, init);
+    auto initDimValues = getValueOrCreateConstantIndexOp(b, loc, initDimSizes);
+    Value initSpace = b.create<gml_st::SpaceOp>(initDimSizes);
+
+    Value zero = b.create<arith::ConstantIndexOp>(0);
+    Value one = b.create<arith::ConstantIndexOp>(1);
+
+    // Extract scatter indices.
     Type indexType = rewriter.getIndexType();
-    for (int64_t i = 0, e = initType.getRank(); i < e; ++i) {
-      indicesIndices.back() = rewriter.create<arith::ConstantIndexOp>(loc, i);
-      Value index = rewriter.create<ExtractOp>(loc, indices, indicesIndices);
+    SmallVector<Value> scatterIndices;
+    SmallVector<Value> currentIndexInIndicesTensor(2, zero);
+    for (int64_t i = 0, e = scatterOp.getIndexVectorDim(); i < e; ++i) {
+      currentIndexInIndicesTensor.back() = b.create<arith::ConstantIndexOp>(i);
+      Value index = b.create<ExtractOp>(indices, currentIndexInIndicesTensor);
       if (index.getType() != indexType)
-        index = rewriter.create<arith::IndexCastOp>(loc, indexType, index);
+        index = b.create<arith::IndexCastOp>(indexType, index);
       scatterIndices.push_back(index);
     }
 
-    // Check if the computed index is within bounds.
-    Value indexIsInBounds = isValidIndex(rewriter, loc, init, scatterIndices);
-    Value maybeUpdatedInit =
-        rewriter
-            .create<scf::IfOp>(
-                loc, initType, indexIsInBounds,
-                [&](OpBuilder &thenBuilder, Location thenLoc) {
-                  // Extract the current value from the output tensor.
-                  Value currentValue =
-                      rewriter.create<ExtractOp>(loc, init, scatterIndices);
+    // Create a loop that spans the dimensions of the update slice.
+    SmallVector<Value> lbs, ubs, steps;
+    SmallVector<int64_t> loopIds;
+    for (int i = 1; i < updatesRank; ++i) {
+      if (updatesType.getDimSize(i) == 1) continue;
+      lbs.push_back(zero);
+      ubs.push_back(updatesDimValues[i]);
+      steps.push_back(one);
+      loopIds.push_back(i);
+    }
 
-                  // Combine update with the value in the output.
-                  Block *body = scatterOp.getBody();
-                  BlockAndValueMapping bvm;
-                  bvm.map(body->getArgument(0), updateValue);
-                  bvm.map(body->getArgument(1), currentValue);
+    auto loop = b.create<gml_st::ForOp>(
+        TypeRange(ValueRange{init}), lbs, ubs, steps, init,
+        [&](OpBuilder &nestedBuilder, Location bodyLoc, ValueRange ivs,
+            ValueRange loopInits) {
+          Value initBlockArg = loopInits.front();
 
-                  for (Operation &op : body->without_terminator())
-                    thenBuilder.clone(op, bvm);
+          SmallVector<Value> updateIndex(updatesRank, zero);
+          for (const auto &en : llvm::enumerate(loopIds))
+            updateIndex[en.value()] = ivs[en.index()];
 
-                  // Wrap every scalar result into a tensor using
-                  // `tensor.from_elements`.
-                  auto combinedValue =
-                      bvm.lookup(body->getTerminator()->getOperand(0));
-                  Value updatedInit = thenBuilder.create<InsertOp>(
-                      thenLoc, combinedValue, init, scatterIndices);
-                  rewriter.create<scf::YieldOp>(thenLoc, updatedInit);
-                },
-                [&](OpBuilder &elseBuilder, Location elseLoc) {
-                  elseBuilder.create<scf::YieldOp>(elseLoc, init);
-                })
-            .getResult(0);
-    rewriter.replaceOp(scatterOp, maybeUpdatedInit);
+          SmallVector<Value> initIndex =
+              to_vector(makeArrayRef(updateIndex).drop_front());
+          for (const auto &en : llvm::enumerate(scatterIndices)) {
+            initIndex[en.index()] = nestedBuilder.create<arith::AddIOp>(
+                bodyLoc, initIndex[en.index()], en.value());
+          }
+
+          Value indexIsInBounds =
+              isValidIndex(nestedBuilder, loc, initIndex, initDimValues, zero);
+          Value maybeUpdatedInit =
+              nestedBuilder
+                  .create<scf::IfOp>(
+                      loc, initType, indexIsInBounds,
+                      [&](OpBuilder &thenBuilder, Location thenLoc) {
+                        Value updateValue = getPoint(thenBuilder, loc, updates,
+                                                     updatesSpace, updateIndex);
+                        Value currentValue =
+                            getPoint(thenBuilder, loc, initBlockArg, initSpace,
+                                     initIndex);
+
+                        // Combine update with the value in the output.
+                        Block *body = scatterOp.getBody();
+                        BlockAndValueMapping bvm;
+                        bvm.map(body->getArgument(0), updateValue);
+                        bvm.map(body->getArgument(1), currentValue);
+
+                        for (Operation &op : body->without_terminator())
+                          thenBuilder.clone(op, bvm);
+
+                        // Wrap every scalar result into a tensor using
+                        // `tensor.from_elements`.
+                        auto combinedValue =
+                            bvm.lookup(body->getTerminator()->getOperand(0));
+                        Value updatedInit = thenBuilder.create<InsertOp>(
+                            thenLoc, combinedValue, initBlockArg, initIndex);
+                        thenBuilder.create<scf::YieldOp>(thenLoc, updatedInit);
+                      },
+                      [&](OpBuilder &elseBuilder, Location elseLoc) {
+                        elseBuilder.create<scf::YieldOp>(elseLoc, initBlockArg);
+                      })
+                  .getResult(0);
+
+          nestedBuilder.create<gml_st::SetYieldOp>(bodyLoc, maybeUpdatedInit,
+                                                   initBlockArg, initSpace);
+        });
+    rewriter.replaceOp(scatterOp, loop.getResults());
     return success();
   }
 
  private:
   // Return i1 value after checking that 0 <= indices < dims(tensor).
-  Value isValidIndex(OpBuilder &b, Location loc, Value tensor,
-                     ArrayRef<Value> indices) const {
+  Value isValidIndex(OpBuilder &b, Location loc, ArrayRef<Value> indices,
+                     ArrayRef<Value> tensorDims, Value zero) const {
     auto i1Type = b.getIntegerType(1);
     Value isValid = b.create<arith::ConstantOp>(
         loc, i1Type, IntegerAttr::get(i1Type, APInt(1, 1)));
 
-    Value zero = b.create<arith::ConstantIndexOp>(loc, 0);
-    SmallVector<Value> tensorDims = tensor::createDimValues(b, loc, tensor);
     for (auto [dim, index] : llvm::zip(tensorDims, indices)) {
       Value geZero =
           b.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sge, index, zero);

@@ -891,6 +891,32 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/protocolbuffers/upb/archive/9effcbcb27f0a665f9f345030188c0b291e32482.tar.gz"),
     )
 
+    tf_http_archive(
+        name = "com_github_glog_glog",
+        sha256 = "f28359aeba12f30d73d9e4711ef356dc842886968112162bc73002645139c39c",
+        strip_prefix = "glog-0.4.0",
+        urls = tf_mirror_urls("https://github.com/google/glog/archive/refs/tags/v0.4.0.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "com_google_ortools",
+        sha256 = "b87922b75bbcce9b2ab5da0221751a3c8c0bff54b2a1eafa951dbf70722a640e",
+        strip_prefix = "or-tools-7.3",
+        patch_file = ["//third_party/ortools:ortools.patch"],
+        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v7.3.tar.gz"),
+        repo_mapping = {"@com_google_protobuf_cc": "@com_google_protobuf"},
+    )
+
+    tf_http_archive(
+        name = "glpk",
+        sha256 = "9a5dab356268b4f177c33e00ddf8164496dc2434e83bd1114147024df983a3bb",
+        build_file = "//third_party/ortools:glpk.BUILD",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/ftp.gnu.org/gnu/glpk/glpk-4.52.tar.gz",
+            "http://ftp.gnu.org/gnu/glpk/glpk-4.52.tar.gz",
+        ],
+    )
+
 def workspace():
     # Check the bazel version before executing any repository rules, in case
     # those rules rely on the version we require here.

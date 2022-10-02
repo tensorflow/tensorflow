@@ -29,6 +29,21 @@ func.func @compare_ne(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<
   return %0 : tensor<10xi1>
 }
 
+// CHECK-LABEL: @divide
+func.func @divide(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi32> {
+  // CHECK: tosa.div
+  %0 = "mhlo.divide"(%arg0, %arg1) : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+  return %0 : tensor<10xi32>
+}
+
+// CHECK-LABEL: @divide_f32
+func.func @divide_f32(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
+  // tosa.div only supports i32, so this should not legalize.
+  // CHECK: mhlo.divide
+  %0 = "mhlo.divide"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
+}
+
 // CHECK-LABEL: @dot_vector_vector
 func.func @dot_vector_vector(%arg0 : tensor<3xf32>, %arg1 : tensor<3xf32>) -> tensor<f32> {
   // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 1, 3]}
@@ -90,6 +105,13 @@ func.func @multiply(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10
   return %0 : tensor<10xf32>
 }
 
+// CHECK-LABEL: @or
+func.func @or(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi32> {
+  // CHECK: tosa.bitwise_or
+  %0 = "mhlo.or"(%arg0, %arg1) : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+  return %0 : tensor<10xi32>
+}
+
 // CHECK-LABEL: @reduce_max
 func.func @reduce_max(%arg0: tensor<1x10xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
   // CHECK: tosa.reduce_max
@@ -114,9 +136,30 @@ func.func @reduce_sum(%arg0: tensor<5x4xf32>, %arg1: tensor<f32>) -> tensor<4xf3
   return %0 : tensor<4xf32>
 }
 
+// CHECK-LABEL: @shift_left
+func.func @shift_left(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
+  // CHECK: tosa.logical_left_shift
+  %0 = "mhlo.shift_left"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
+}
+
+// CHECK-LABEL: @shift_right_logical
+func.func @shift_right_logical(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
+  // CHECK: tosa.logical_right_shift
+  %0 = "mhlo.shift_right_logical"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
+}
+
 // CHECK-LABEL: @subtract
 func.func @subtract(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
   // CHECK: tosa.sub
   %0 = "mhlo.subtract"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
   return %0 : tensor<10xf32>
+}
+
+// CHECK-LABEL: @xor
+func.func @xor(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi32> {
+  // CHECK: tosa.bitwise_xor
+  %0 = "mhlo.xor"(%arg0, %arg1) : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+  return %0 : tensor<10xi32>
 }

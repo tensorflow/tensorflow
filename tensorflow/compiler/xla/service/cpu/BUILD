@@ -7,7 +7,8 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_openmp_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
+load("//tensorflow/tsl:tsl.bzl", "tf_copts")
 load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
@@ -18,7 +19,7 @@ load(
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load(":build_defs.bzl", "runtime_copts")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available", "tf_proto_library")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -46,7 +47,7 @@ cc_library(
     testonly = True,
     hdrs = ["test_target_triple_helper.h"],
     deps = [
-        "//tensorflow/core:test",
+        "//tensorflow/tsl/platform:test",
     ],
 )
 
@@ -126,6 +127,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:notification",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/memory",
@@ -201,9 +203,9 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:ArithmeticDialect",
-        "@llvm-project//mlir:ArithmeticToLLVM",
-        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ArithToLLVM",
+        "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:SCFToControlFlow",
@@ -368,7 +370,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:legalize_to_linalg",
         "//tensorflow/compiler/xla/mlir_hlo:lower_index_cast",
         "//tensorflow/compiler/xla/mlir_hlo:shape_simplification",
-        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexToStandard",
@@ -500,6 +502,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -554,7 +557,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
-        "//tensorflow/core/lib/math:math_util",
+        "//tensorflow/tsl/lib/math:math_util",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -680,7 +683,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",
-        "@llvm-project//mlir:ArithmeticUtils",
+        "@llvm-project//mlir:ArithUtils",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -1115,8 +1118,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
@@ -1135,8 +1138,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test",
         "//third_party/eigen3",
     ],
 )
@@ -1168,8 +1171,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
+        "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test",
     ],
 )
 
@@ -1364,8 +1368,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
+        "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test",
     ],
 )
 

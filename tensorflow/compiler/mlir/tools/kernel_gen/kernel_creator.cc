@@ -33,8 +33,8 @@ limitations under the License.
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
@@ -242,7 +242,7 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool embed_memref_prints,
 
   // Expand memref_reshape to its ranked form so that we can propagate
   // scalars and avoid allocation.
-  pm.addNestedPass<FuncOp>(mlir::arith::createArithmeticExpandOpsPass());
+  pm.addNestedPass<FuncOp>(mlir::arith::createArithExpandOpsPass());
   pm.addNestedPass<FuncOp>(mlir::memref::createExpandOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());

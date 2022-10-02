@@ -655,7 +655,7 @@ def tf_additional_lib_hdrs():
         "//tensorflow/tsl/platform/default:tracing_impl.h",
         "//tensorflow/tsl/platform/default:unbounded_work_queue.h",
     ] + select({
-        "//tensorflow:windows": [
+        "//tensorflow/tsl:windows": [
             "//tensorflow/tsl/platform/windows:intrinsics_port.h",
             "//tensorflow/tsl/platform/windows:stacktrace.h",
             "//tensorflow/tsl/platform/windows:subprocess.h",
@@ -676,6 +676,7 @@ def tf_protos_all_impl():
         clean_dep("//tensorflow/core/protobuf:autotuning_proto_cc_impl"),
         clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
         clean_dep("//tensorflow/core:protos_all_cc_impl"),
+        clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
     ]
 
 def tf_protos_all():
@@ -819,7 +820,7 @@ def tf_protobuf_compiler_deps():
 
 def tf_windows_aware_platform_deps(name):
     return select({
-        "//tensorflow:windows": [
+        "//tensorflow/tsl:windows": [
             "//tensorflow/tsl/platform/windows:" + name,
         ],
         "//conditions:default": [

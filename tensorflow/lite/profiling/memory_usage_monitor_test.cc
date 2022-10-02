@@ -51,7 +51,7 @@ class MemoryUsageMonitorTest : public ::testing::Test {
     bool IsSupported() override { return true; }
     MemoryUsage GetMemoryUsage() override {
       MemoryUsage result;
-      result.max_rss_kb = 5 * ((*sleep_cnt_) + 1) * 1024;
+      result.mem_footprint_kb = 5 * ((*sleep_cnt_) + 1) * 1024;
       return result;
     }
     void SleepFor(const absl::Duration& duration) override {

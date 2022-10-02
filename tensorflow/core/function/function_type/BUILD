@@ -22,6 +22,11 @@ py_strict_test(
     name = "function_type_test",
     srcs = ["function_type_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "nopip",
+    ],
     deps = [
         ":function_type",
         "//tensorflow/core/function/trace_type",

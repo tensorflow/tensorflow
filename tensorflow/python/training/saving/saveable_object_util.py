@@ -54,7 +54,7 @@ _VARIABLE_OPS = set(["Variable",
 def set_cpu0(device_string):
   """Creates a new device string based on `device_string` but using /CPU:0.
 
-  If the device is already on /CPU:0, this is a no-op.
+  If the device is already on /CPU:0 or it is a custom device, this is a no-op.
 
   Args:
     device_string: A device string.
@@ -62,6 +62,8 @@ def set_cpu0(device_string):
   Returns:
     A device string.
   """
+  if context.is_custom_device(device_string):
+    return device_string
   parsed_device = pydev.DeviceSpec.from_string(device_string)
   parsed_device = parsed_device.replace(device_type="CPU", device_index=0)
   return parsed_device.to_string()
@@ -862,4 +864,3 @@ def serialized_tensors_to_saveable_cache(serialized_tensors):
         trackable_utils.SERIALIZE_TO_TENSORS_NAME: [TrackableSaveable(
             obj, specs, object_name, local_names=local_names, prefix=prefix)]}
   return saveables_cache
-

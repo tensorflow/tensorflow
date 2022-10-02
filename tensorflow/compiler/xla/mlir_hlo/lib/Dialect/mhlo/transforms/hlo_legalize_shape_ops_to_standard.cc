@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -199,7 +199,7 @@ struct HloLegalizeShapeOpsToStandardPass
     : public impl::HloLegalizeShapeOpsToStandardPassBase<
           HloLegalizeShapeOpsToStandardPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<arith::ArithmeticDialect, shape::ShapeDialect,
+    registry.insert<arith::ArithDialect, shape::ShapeDialect,
                     tensor::TensorDialect>();
   }
 
@@ -207,7 +207,7 @@ struct HloLegalizeShapeOpsToStandardPass
     MLIRContext& ctx = getContext();
     RewritePatternSet patterns(&ctx);
     ConversionTarget target(ctx);
-    target.addLegalDialect<arith::ArithmeticDialect, tensor::TensorDialect,
+    target.addLegalDialect<arith::ArithDialect, tensor::TensorDialect,
                            shape::ShapeDialect>();
 
     target.addLegalOp<UnrealizedConversionCastOp>();

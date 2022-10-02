@@ -781,11 +781,10 @@ class CumsumOperationParser : public TFLiteOperationParser {
     const TfLiteTensor* axis_tensor = reader->GetInputTensor(1);
     const TfLiteIntArray* shape = input_tensor->dims;
     const int tflite_axis = GetTensorData<int32_t>(axis_tensor)[0];
-    const Axis axes[4] = {Axis::BATCH, Axis::WIDTH, Axis::HEIGHT,
+    const Axis axes[4] = {Axis::BATCH, Axis::HEIGHT, Axis::WIDTH,
                           Axis::CHANNELS};
     attr.axis = axes[tflite_axis + 4 - shape->size];
     node->operation.type = ToString(OperationType::CUMSUM);
-    Tensor<BHWC, DataType::FLOAT32> inputs;
     node->operation.attributes = std::move(attr);
     RETURN_IF_ERROR(reader->AddInput(node, 0));
     RETURN_IF_ERROR(reader->AddOutputs(node));

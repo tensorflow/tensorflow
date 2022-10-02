@@ -25,9 +25,11 @@ limitations under the License.
 
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/file_lock.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/custom_validation_embedder.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/runner.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
@@ -54,6 +56,16 @@ std::unique_ptr<FlatBufferBuilder> CopyModel(
 }  // namespace
 
 MinibenchmarkStatus ValidatorRunnerImpl::Init() {
+  if (storage_path_.empty() || data_directory_path_.empty() ||
+      benchmark_evaluator_ == nullptr) {
+    return kMinibenchmarkPreconditionNotMet;
+  }
+  MinibenchmarkStatus status = storage_.Read();
+  if (status != kMinibenchmarkSuccess) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "Storage::Read failed");
+    return status;
+  }
+
   std::unique_ptr<ModelLoader> model_loader =
       CreateModelLoaderFromPath(fd_or_model_path_);
   if (!model_loader) {
@@ -62,7 +74,7 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
   }
 
   // Check that the model can be loaded from disk.
-  MinibenchmarkStatus status = model_loader->Init();
+  status = model_loader->Init();
   if (status != kMinibenchmarkSuccess) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Could not load model: %d",
                          static_cast<int>(status));
@@ -185,6 +197,31 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
     }
   });
   detached_thread.detach();
+}
+
+std::vector<const BenchmarkEvent*> ValidatorRunnerImpl::GetSuccessfulResults() {
+  std::vector<const BenchmarkEvent*> results;
+  storage_.Read();
+  for (int i = 0; i < storage_.Count(); i++) {
+    const BenchmarkEvent* event = storage_.Get(i);
+    if (benchmark_evaluator_->IsValidationSuccessEvent(*event)) {
+      results.push_back(event);
+    }
+  }
+  return results;
+}
+
+int ValidatorRunnerImpl::GetNumCompletedResults() {
+  storage_.Read();
+  int num_results = 0;
+  for (int i = 0; i < storage_.Count(); i++) {
+    const BenchmarkEvent* event = storage_.Get(i);
+    if (event->event_type() == BenchmarkEventType_ERROR ||
+        (event->event_type() == BenchmarkEventType_END && event->result())) {
+      num_results++;
+    }
+  }
+  return num_results;
 }
 
 MinibenchmarkStatus

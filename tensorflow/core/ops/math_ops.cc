@@ -2174,7 +2174,7 @@ REGISTER_OP("_MklAddN")
                                         " with other shapes.");
       }
       c->set_output(0, cur);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Add two input tensors element wise using mkl kernel sum.

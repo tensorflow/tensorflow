@@ -32,10 +32,16 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
+#include "tensorflow/compiler/xla/runtime/diagnostics.h"
+#include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
+#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -49,31 +55,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/core/platform/random.h"
 
-#if XLA_ENABLE_XLIR
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
-#include "tensorflow/compiler/xla/runtime/diagnostics.h"
-#include "tensorflow/compiler/xla/runtime/executable.h"
-#include "tensorflow/compiler/xla/runtime/jit_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
-#include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
-#endif  // XLA_ENABLE_XLIR
-
 namespace xla {
 namespace gpu {
 
 bool IsJitRtExecutableEnabled(const HloModuleConfig& config) {
-#if !XLA_ENABLE_XLIR
-  CHECK(!config.debug_options().xla_gpu_enable_xla_runtime_executable())
-      << "Failed to enable XLA Runtime backend, because it was not compiled.";
-#endif  // !XLA_ENABLE_XLIR
   return config.debug_options().xla_gpu_enable_xla_runtime_executable();
 }
 
@@ -92,8 +85,6 @@ bool NeedsAsyncCommsStream(Thunk& thunk) {
 }
 
 }  // namespace
-
-#if XLA_ENABLE_XLIR
 
 class GpuExecutable::JitRtExecutable {
  public:
@@ -166,9 +157,16 @@ class GpuExecutable::JitRtExecutable {
 
   runtime::Executable& executable() {
     // Exactly one kind of `Executable` should be available at run time.
-    assert((default_executable_ || executable_) &&
-           !(default_executable_ && executable_));
-    return default_executable_ ? *default_executable_ : *executable_;
+    if (std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
+            executable_)) {
+      runtime::JitExecutable* jit_executable =
+          std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
+      return *jit_executable->DefaultExecutable();
+    } else {
+      runtime::Executable* aot_executable =
+          std::get<std::unique_ptr<runtime::Executable>>(executable_).get();
+      return *aot_executable;
+    }
   }
 
   // We pass a pointer to the buffer size to the compiled function, so we return
@@ -180,12 +178,15 @@ class GpuExecutable::JitRtExecutable {
   const DebugOptions& debug_options() const { return debug_options_; }
 
   StatusOr<std::string> GetObjFile() const {
-    if (!jit_executable_) {
-      return InternalError("JitExecutable is null");
+    if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
+            executable_)) {
+      return InternalError("No JitExecutable");
     }
 
+    runtime::JitExecutable* jit_executable =
+        std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
     std::unique_ptr<llvm::MemoryBuffer> obj_file =
-        jit_executable_->DefaultExecutable()->obj_file();
+        jit_executable->DefaultExecutable()->obj_file();
     if (!obj_file)
       return InternalError("xla_runtime_executable didn't save the obj file");
 
@@ -195,11 +196,14 @@ class GpuExecutable::JitRtExecutable {
   }
 
   StatusOr<std::string> GetMlirModule() const {
-    if (!jit_executable_) {
-      return InternalError("JitExecutable is null");
+    if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
+            executable_)) {
+      return InternalError("No JitExecutable");
     }
 
-    return jit_executable_->mlir_module();
+    runtime::JitExecutable* jit_executable =
+        std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
+    return jit_executable->mlir_module();
   }
 
  private:
@@ -207,27 +211,23 @@ class GpuExecutable::JitRtExecutable {
                   std::unique_ptr<runtime::JitExecutable> jit_executable,
                   DebugOptions debug_options)
       : buffer_sizes_(std::move(buffer_sizes)),
-        jit_executable_(std::move(jit_executable)),
-        default_executable_(&jit_executable_->DefaultExecutable().get()),
+        executable_(std::move(jit_executable)),
         debug_options_(std::move(debug_options)) {}
 
   JitRtExecutable(std::vector<int64_t> buffer_sizes,
                   std::unique_ptr<runtime::Executable> aot_executable,
                   DebugOptions debug_options)
       : buffer_sizes_(std::move(buffer_sizes)),
-        aot_executable_(std::move(aot_executable)),
-        executable_(aot_executable_.get()),
+        executable_(std::move(aot_executable)),
         debug_options_(std::move(debug_options)) {}
 
   std::vector<int64_t> buffer_sizes_;
 
-  // In JIT compilation mode the `JitExecutable` owns the default `Executable`.
-  std::unique_ptr<runtime::JitExecutable> jit_executable_;
-  runtime::Executable* default_executable_ = nullptr;
-
-  // In AOT compilation mode we directly own the `Executable`.
-  std::unique_ptr<runtime::Executable> aot_executable_;
-  runtime::Executable* executable_ = nullptr;
+  // In JIT compilation mode `JitExecutable` is used. In AOT compilation mode
+  // `Executable` is used.
+  std::variant<std::unique_ptr<runtime::JitExecutable>,
+               std::unique_ptr<runtime::Executable>>
+      executable_;
 
   DebugOptions debug_options_;
 
@@ -240,7 +240,6 @@ class GpuExecutable::JitRtExecutable {
   // Support for running collective operations.
   JitRtCollectiveSupport collectives_;
 };
-#endif  // XLA_ENABLE_XLIR
 
 StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
   auto executable = std::move(params.executable);
@@ -251,14 +250,12 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
     return result;
   }
 
-#if XLA_ENABLE_XLIR
   if (std::holds_alternative<OwnedJitRtProgram>(executable)) {
     auto& program = std::get<OwnedJitRtProgram>(executable);
     TF_ASSIGN_OR_RETURN(result->jitrt_executable_,
                         JitRtExecutable::Create(std::move(program)));
     return result;
   }
-#endif  // XLA_ENABLE_XLIR
 
   return InternalError("No XLA gpu executable was provided");
 }
@@ -312,9 +309,7 @@ GpuExecutable::~GpuExecutable() {
     }
   }
 
-#if XLA_ENABLE_XLIR
   delete jitrt_executable_;
-#endif
 }
 
 Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
@@ -604,7 +599,6 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
   return out.ConsumeResult();
 }
 
-#if XLA_ENABLE_XLIR
 static Status ExecuteJitRt(const std::string& module_name,
                            GpuExecutable::JitRtExecutable* jitrt_executable,
                            const ServiceExecutableRunOptions* run_options,
@@ -726,7 +720,6 @@ static Status ExecuteJitRt(const std::string& module_name,
       run_options, start_micros,
       block_host_until_done ? run_options->stream() : nullptr);
 }
-#endif  // XLA_ENABLE_XLIR
 
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     const ServiceExecutableRunOptions* run_options,
@@ -904,7 +897,6 @@ Status GpuExecutable::ExecuteThunksOrJitRt(
                          buffer_allocations, block_host_until_done);
   }
 
-#if XLA_ENABLE_XLIR
   if (jitrt_executable_) {
     // Match IrEmitter's temp buffer allocation for kernel launches. See
     // IrEmitterUnnested::BuildKernelThunkImpl().
@@ -921,7 +913,6 @@ Status GpuExecutable::ExecuteThunksOrJitRt(
                         binary_, buffer_allocations, allocations_.size(),
                         temp_buffer, block_host_until_done);
   }
-#endif  // XLA_ENABLE_XLIR
 
   return FailedPrecondition("Expected XLA gpu executable is not supplied.");
 }
@@ -1090,7 +1081,6 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     xla::EntryFunctionAttributes entry_func_attrs, DebugOptions debug_options,
     absl::string_view asm_text, absl::string_view binary,
     GpuVersion gpu_version, se::StreamExecutor* executor) {
-#if XLA_ENABLE_XLIR
   // Load MLIR module behind the compiled object file to recover XLA allocations
   // and output info details. Also recover buffer sizes from the entrypoint
   // function signature.
@@ -1173,28 +1163,16 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
                         std::move(binary_vector), gpu_version, entry_func_attrs,
                         name, result_xla_shape, std::move(allocations),
                         std::move(output_info), jitrt_executable));
-
-#else   // XLA_ENABLE_XLIR
-  return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
-#endif  // XLA_ENABLE_XLIR
 }
 
 StatusOr<std::string> GpuExecutable::GetObjFile() const {
-#if XLA_ENABLE_XLIR
   if (!jitrt_executable_) return Internal("xla_runtime_executable is null");
   return jitrt_executable_->GetObjFile();
-#else   // XLA_ENABLE_XLIR
-  return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
-#endif  // XLA_ENABLE_XLIR
 }
 
 StatusOr<std::string> GpuExecutable::GetMlirModule() const {
-#if XLA_ENABLE_XLIR
   if (!jitrt_executable_) return Internal("xla_runtime_executable is null");
   return jitrt_executable_->GetMlirModule();
-#else   // XLA_ENABLE_XLIR
-  return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
-#endif  // XLA_ENABLE_XLIR
 }
 
 }  // namespace gpu

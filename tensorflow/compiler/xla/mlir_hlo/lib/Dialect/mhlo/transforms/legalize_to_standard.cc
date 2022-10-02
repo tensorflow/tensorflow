@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -208,8 +208,8 @@ namespace {
 struct LegalizeToStandardPass
     : public impl::LegalizeToStandardPassBase<LegalizeToStandardPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<arith::ArithmeticDialect, math::MathDialect,
-                    func::FuncDialect>();
+    registry
+        .insert<arith::ArithDialect, math::MathDialect, func::FuncDialect>();
   }
 
   /// Perform the lowering to Standard dialect.

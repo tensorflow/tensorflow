@@ -1,6 +1,5 @@
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_oss",
     "tf_cuda_library",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -211,9 +210,10 @@ tf_cuda_library(
     compatible_with = [],
     # Only build this library with --config=cuda.
     tags = [
+        "manual",
         "no_oss",
         "requires_cuda",
-    ] + if_oss(["manual"]),
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":kernel_utils",

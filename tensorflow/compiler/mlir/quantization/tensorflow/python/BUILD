@@ -34,7 +34,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -43,6 +43,7 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Transforms",
         "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:constants",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
@@ -227,7 +228,7 @@ pytype_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/client:session",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python/platform",
         "//tensorflow/python/types",
     ],
 )

@@ -316,8 +316,8 @@ class PmapFunction {
     arguments.signature.function_name = function_name_;
 
     // Get dynamic argument signatures.
-    JitState& global_state = jax::GetGlobalState();
-    JitState& tls = jax::GetLocalState();
+    JitState& global_state = jax::GlobalJitState();
+    JitState& tls = jax::ThreadLocalJitState();
     const bool jax_enable_x64 = GetEnableX64();
     arguments.signature.jax_enable_x64 = jax_enable_x64;
     for (py::handle arg : arguments.flat_dynamic_args) {

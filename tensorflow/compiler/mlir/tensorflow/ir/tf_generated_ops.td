@@ -20357,6 +20357,35 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
   let hasVerifier = 1;
 }
 
+def TF_XlaCustomCallV2Op : TF_Op<"XlaCustomCallV2", [NoSideEffect]> {
+  let summary = "Emits an HLO `CustomCall` operation with multiple outputs.";
+
+  let description = [{
+As opposed to `XlaCustomCall`, this operation supports multiple outputs.
+
+See `CustomCall` specification at
+  https://tensorflow.org/xla/operation_semantics#customcall,
+and `mhlo.custom_call` specification at
+  https://tensorflow.org/mlir/hlo_ops#mhlocustom_call_mlirmhlocustomcallop.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A sequence of tensors with possibly different types.}]>:$operands,
+
+    StrAttr:$call_target_name,
+    StrAttr:$backend_config,
+    BoolAttr:$has_side_effect,
+    TF_ShapeAttrArray:$result_shapes
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandTypeListAttr operand_dtypes = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr result_dtypes = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_XlaDotOp : TF_Op<"XlaDot", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA DotGeneral operator, documented at";
 
@@ -20536,6 +20565,27 @@ Sorts a tensor. Currently only sorts in ascending order are supported.
 
   TF_DerivedOperandTypeAttr K = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr V = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_XlaLaunchOp : TF_Op<"XlaLaunch", [AttrSizedOperandSegments]> {
+  let summary = "XLA Launch Op. For use by the XLA JIT only.";
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$constants,
+    Variadic<TF_Tensor>:$args,
+    Variadic<TF_ResourceTensor>:$resources,
+
+    SymbolRefAttr:$function
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandSizeAttr Nresources = TF_DerivedOperandSizeAttr<2>;
+  TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedOperandTypeListAttr Tconstants = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF_XlaOptimizationBarrierOp : TF_Op<"XlaOptimizationBarrier", [NoSideEffect]> {

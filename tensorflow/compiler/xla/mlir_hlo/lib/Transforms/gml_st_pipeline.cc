@@ -18,6 +18,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Pass/Pass.h"
@@ -36,12 +38,11 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
 
   // Perform tiling, fusion, vectorization and other transformations.
   pm.addNestedPass<FuncOp>(
-      gml_st::createDeprecatedTilingPass(options.tileSizes));
-  if (options.fuse) {
-    pm.addNestedPass<FuncOp>(gml_st::createDeprecatedFusionPass());
-    pm.addPass(createCanonicalizerPass());
-    pm.addPass(createCSEPass());
-  }
+      gml_st::createTilingPass("", "", true, options.tileSizes));
+  pm.addNestedPass<FuncOp>(gml_st::createFusionPass());
+  pm.addNestedPass<FuncOp>(createScalarizationPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
   pm.addNestedPass<FuncOp>(gml_st::createComposeSetOpsPass());
 
   if (!options.lowerToLoops) return;
@@ -49,14 +50,18 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
   // Bufferization-related passes.
   pm.addNestedPass<FuncOp>(createLinalgInitTensorToAllocTensorPass());
   pm.addPass(hlo::createOneShotBufferizePass());
-  pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
+  pm.addPass(createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(bufferization::createBufferDeallocationPass());
 
   // Convert Linalg + GmlSt to SCF loops.
   pm.addNestedPass<FuncOp>(createConvertLinalgToLoopsPass());
   pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass());
   pm.addNestedPass<FuncOp>(gml_st::createGmlStToScfPass());
+
+  pm.addNestedPass<FuncOp>(createLowerAffinePass());
+  pm.addPass(createConvertSCFToCFPass());
+  pm.addPass(hlo::createGenericHostToLLVMPass());
 }
 
 }  // namespace mlir

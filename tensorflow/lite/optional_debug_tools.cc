@@ -26,8 +26,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {

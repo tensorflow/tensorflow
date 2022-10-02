@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/kernel_spec.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
 
@@ -59,7 +59,7 @@ RedzoneAllocator::RedzoneAllocator(Stream* stream,
       memory_limit_(memory_limit),
       redzone_size_(RoundUpToNearest(
           redzone_size,
-          static_cast<int64_t>(tensorflow::Allocator::kAllocatorAlignment))),
+          static_cast<int64_t>(tsl::Allocator::kAllocatorAlignment))),
       redzone_pattern_(redzone_pattern),
       memory_allocator_(memory_allocator),
       gpu_compilation_opts_(ptx_compilation_opts) {}

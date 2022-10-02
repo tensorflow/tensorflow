@@ -15,8 +15,7 @@
 """Represents the types of TF functions."""
 
 import inspect
-import types
-from typing import Any, Optional, Dict, Callable
+from typing import Any, Optional, Dict, Callable, Mapping
 
 from tensorflow.python.types import trace
 
@@ -65,12 +64,16 @@ class Parameter(inspect.Parameter):
             ", optional=" + repr(self.optional) + ", type_constraint=" +
             repr(self.type_constraint) + ")")
 
+  def __reduce__(self):
+    return (self.__class__, (self.name, self.kind, self.optional,
+                             self.type_constraint))
+
 
 class FunctionType(inspect.Signature):
   """Represents the parameters of a polymorphic function."""
 
   @property
-  def parameters(self) -> types.MappingProxyType[str, Any]:
+  def parameters(self) -> Mapping[str, Any]:
     return super().parameters
 
   # TODO(fmuham): Use this method instead of fullargspec and tf_inspect.

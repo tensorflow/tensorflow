@@ -18,8 +18,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/tsl/platform/cuda_libdevice_path.h"
+#include "tensorflow/tsl/platform/path.h"
 
 namespace xla {
 namespace gpu {

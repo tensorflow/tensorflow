@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -72,8 +72,8 @@ class ConvertLmhloToGpuRuntimePass
 
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
-        .insert<arith::ArithmeticDialect, cf::ControlFlowDialect,
-                func::FuncDialect, memref::MemRefDialect, scf::SCFDialect>();
+        .insert<arith::ArithDialect, cf::ControlFlowDialect, func::FuncDialect,
+                memref::MemRefDialect, scf::SCFDialect>();
   }
 };
 

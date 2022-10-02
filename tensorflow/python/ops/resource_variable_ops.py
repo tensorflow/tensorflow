@@ -1618,7 +1618,9 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
       synchronization=None,
       aggregation=None,
       shape=None,
-      handle=None):
+      handle=None,
+      experimental_enable_variable_lifting=None,
+      ):
     """Creates a variable.
 
     Args:
@@ -1676,6 +1678,15 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
       handle: (optional) The handle of a `tf.Variable`. If provided, only
         `trainable`, `shape`, `dtype`, and `handle` will be used to construct
         this `tf.Variable`.
+      experimental_enable_variable_lifting: Whether to lift the variable out if
+        it's in a `tf.function`. Default is `True`. When this argument
+        is `True`, variable creation will follow the behavior and
+        restrictions described
+        [here](https://www.tensorflow.org/guide/function#creating_tfvariables).
+        If this argument is `False`, that description doesn't apply,
+        and you can freely create and use the variable in the
+        `tf.function`, as if it's a "mutable `tf.Tensor`". You can't
+        return the variable though.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -1720,7 +1731,8 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
           shape=shape,
           distribute_strategy=distribute_strategy,
           validate_shape=validate_shape,
-      )
+          experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+          )
 
   # CompositeTensor method
   @property
@@ -1748,6 +1760,7 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
       distribute_strategy=None,
       shape=None,
       validate_shape=True,
+      experimental_enable_variable_lifting=None,
   ):
     """Creates a variable.
 
@@ -1799,6 +1812,15 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
+      experimental_enable_variable_lifting: Whether to lift the variable out if
+        it's in a `tf.function`. Default is `True`. When this argument
+        is `True`, variable creation will follow the behavior and
+        restrictions described
+        [here](https://www.tensorflow.org/guide/function#creating_tfvariables).
+        If this argument is `False`, that description doesn't apply,
+        and you can freely create and use the variable in the
+        `tf.function`, as if it's a "mutable `tf.Tensor`". You can't
+        return the variable though.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -1814,6 +1836,8 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
     synchronization, aggregation, trainable = (
         variables.validate_synchronization_aggregation_trainable(
             synchronization, aggregation, trainable, name))
+    if experimental_enable_variable_lifting is None:
+      experimental_enable_variable_lifting = True
     if initial_value is None:
       raise ValueError("The `initial_value` arg to `tf.Variable` must "
                        "be specified except when you are not providing a "
@@ -1848,6 +1872,11 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
+    if experimental_enable_variable_lifting:
+      maybe_init_scope = ops.init_scope
+    else:
+      maybe_init_scope = contextlib.nullcontext
+    with maybe_init_scope():
       with ops.name_scope(
           name,
           "Variable", [] if init_from_fn else [initial_value],
@@ -1858,7 +1887,7 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
           shared_name = handle_name
           unique_id = shared_name
         else:
-          # When in eager mode use a uid for the shared_name, to prevent
+          # When in eager mode, use a uid for the shared_name, to prevent
           # accidental sharing.
           unique_id = "%s_%d" % (handle_name, ops.uid())
           shared_name = None  # Never shared
@@ -1895,6 +1924,8 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
               name=name,
               graph_mode=self._in_graph_mode)
           handle._parent_trackable = weakref.ref(self)
+          handle._name = handle_name + ":0"
+          handle._unique_id = unique_id
         # pylint: disable=protected-access
         if (self._in_graph_mode and initial_value is not None and
             initial_value.op._get_control_flow_context() is not None):
@@ -1963,7 +1994,7 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
           # accessed to generate functions that are compatible with SavedModel.
           cached_value._cached_variable = weakref.ref(self)  # pylint: disable=protected-access
 
-        if not context.executing_eagerly():
+        if self._in_graph_mode:
           # Eager variables are only added to collections if they are part of an
           # eager variable store (otherwise in an interactive session they would
           # hog memory and cause OOM). This is done in ops/variable_scope.py.
@@ -2011,7 +2042,8 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
     g = ops.get_default_graph()
     self._handle = g.as_graph_element(
         ops.prepend_name_scope(
-            variable_def.variable_name, import_scope=import_scope))
+            variable_def.variable_name, import_scope=import_scope),
+        allow_operation=False)
     self._shape = tensor_shape.TensorShape(self._handle.op.get_attr("shape"))
     self._handle_name = self._handle.name
     self._unique_id = self._handle_name
@@ -2072,8 +2104,16 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
       # using tf.placeholder.
       handle_data = handle_data_util.create_handle_data(shape, dtype)
       handle_data_util.set_handle_data(handle, handle_data)
+    # pylint: disable=protected-access
+    if hasattr(handle, "_name") and isinstance(handle._name, str):
+      handle_name = handle._name.rstrip(":0")
+    else:
+      handle_name = None
+    # pylint: enable=protected-access
+    unique_id = getattr(handle, "_unique_id", None)
     super().__init__(
-        trainable=trainable, shape=shape, dtype=dtype, handle=handle)
+        trainable=trainable, shape=shape, dtype=dtype, handle=handle,
+        unique_id=unique_id, handle_name=handle_name)
 
 
 class UninitializedVariable(BaseResourceVariable):
@@ -2146,6 +2186,8 @@ class UninitializedVariable(BaseResourceVariable):
             graph_mode=self._in_graph_mode,
             initial_value=extra_handle_data)
         handle._parent_trackable = weakref.ref(self)
+        handle._name = handle_name + ":0"
+        handle._unique_id = unique_id
 
         if self._in_graph_mode:
           # We only need to add the read_variable_op in TF1.

@@ -189,7 +189,7 @@ StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
   return xla_assignment;
 }
 
-class CpuAllocator : public tensorflow::Allocator {
+class CpuAllocator : public tsl::Allocator {
  public:
   CpuAllocator() = default;
 
@@ -205,7 +205,7 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
     int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
-    std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
+    std::unique_ptr<tsl::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
     : platform_id_(tsl::Fingerprint64(platform_name)),
@@ -789,7 +789,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
       should_stage_host_to_device_transfers() ||
       !host_and_device_strides_equal) {
     void* ptr = host_memory_allocator()->AllocateRaw(
-        tensorflow::Allocator::kAllocatorAlignment, size);
+        tsl::Allocator::kAllocatorAlignment, size);
     staging_buffer = std::shared_ptr<void>(
         ptr, [host_memory_allocator = host_memory_allocator()](void* ptr) {
           host_memory_allocator->DeallocateRaw(ptr);

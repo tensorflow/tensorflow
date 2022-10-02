@@ -94,7 +94,7 @@ class Sampler {
     return &default_sampler_cell_;
   }
 
-  Status GetStatus() { return Status::OK(); }
+  Status GetStatus() { return OkStatus(); }
 
  private:
   Sampler(std::unique_ptr<Buckets> buckets) : buckets_(std::move(buckets)) {}

@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace spmd {
@@ -11528,13 +11528,13 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              op::Copy(op::AllReduce(op::DynamicUpdateSlice(
-                  _,
-                  op::AllReduce(op::Scatter(op::Shape("bf16[50048,1020]"),
-                                            op::Shape("s32[512,1024,1]"),
-                                            op::Shape("bf16[512,1024,1020]"))),
-                  _, _))));
+  EXPECT_THAT(
+      root, op::Copy(op::AllReduce(op::DynamicUpdateSlice(
+                _,
+                op::CollectivePermute(op::AllReduce(op::Scatter(
+                    op::Shape("bf16[50048,1020]"), op::Shape("s32[512,1024,1]"),
+                    op::Shape("bf16[512,1024,1020]")))),
+                _, _))));
 }
 
 TEST_F(SpmdPartitioningTest, ScatterPreferTrivialIfSmallerThanIndices) {

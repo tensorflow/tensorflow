@@ -361,8 +361,7 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
   }
 }
 
-/* static */ Literal LiteralUtil::CreateR1(
-    const tensorflow::core::Bitmap& values) {
+/* static */ Literal LiteralUtil::CreateR1(const tsl::core::Bitmap& values) {
   Literal literal(
       ShapeUtil::MakeShape(PRED, {static_cast<int64_t>(values.bits())}));
   literal.PopulateR1(values);

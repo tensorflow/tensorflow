@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
-#include "tensorflow/core/lib/math/math_util.h"
 namespace xla {
 
 namespace memory_space_assignment {
@@ -101,8 +101,44 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
   return false;
 }
 
+// Filters out buffer uses that cannot use the cross-program prefetch due to
+// aliasing with program output.
+std::vector<HloUse> FindCrossProgramPrefetchUses(
+    absl::Span<const HloUse> buffer_uses) {
+  std::vector<HloUse> uses;
+  if (buffer_uses.empty()) {
+    return uses;
+  }
+  const HloInstruction* root_instruction = buffer_uses.at(0)
+                                               .instruction->GetModule()
+                                               ->entry_computation()
+                                               ->root_instruction();
+  absl::c_for_each(buffer_uses, [&](auto& use) {
+    if (use.instruction == root_instruction) {
+      if (use.instruction->opcode() == HloOpcode::kTuple ||
+          use.instruction->opcode() == HloOpcode::kBitcast) {
+        return;
+      }
+      auto in_place_pairs =
+          HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction);
+      if (absl::c_any_of(
+              in_place_pairs,
+              [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
+                return in_place_pair.first.operand_number ==
+                           use.operand_number &&
+                       in_place_pair.first.operand_index == use.operand_index;
+              })) {
+        return;
+      }
+    }
+    uses.push_back(use);
+  });
+  return uses;
+}
+
 bool IsCrossProgramPrefetchCandidate(const HloValue& value,
                                      const Options& options) {
+  std::vector<HloUse> uses = FindCrossProgramPrefetchUses(value.GetUses());
   return value.defining_instruction()->parent() ==
              value.defining_instruction()->GetModule()->entry_computation() &&
          value.defining_instruction()->opcode() == HloOpcode::kParameter &&
@@ -110,9 +146,8 @@ bool IsCrossProgramPrefetchCandidate(const HloValue& value,
           value.shape().layout().memory_space() !=
               options.alternate_memory_space) &&
          value.index().size() <= 1 && value.shape().IsArray() &&
-         !value.GetUses().empty() &&
-         options.size_fn(value) <= options.max_size_in_bytes &&
-         absl::c_all_of(value.GetUses(), [&](const HloUse& use) {
+         !uses.empty() && options.size_fn(value) <= options.max_size_in_bytes &&
+         absl::c_all_of(uses, [&](const HloUse& use) {
            const HloInstruction* inst =
                use.instruction->operand(use.operand_number);
 
@@ -1065,7 +1100,8 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
       if (HloDataflowAnalysis::IsAsynchronousOperationDone(
               use.instruction->opcode())) {
         if (allocation_value->defining_instruction() ==
-            use.instruction->operand(0)) {
+                use.instruction->operand(0) &&
+            use.operand_index == allocation_value->defining_position().index) {
           last_allocation_value = allocation_value;
         }
       } else if (!HloDataflowAnalysis::IsAsynchronousOperationStart(
@@ -2131,7 +2167,8 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
 
   // Find the earliest use.
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
-  auto uses = buffer->GetUses();
+  auto uses = FindCrossProgramPrefetchUses(buffer->GetUses());
+  CHECK_GE(uses.size(), 1);
   auto use_schedule_compare = [&](const HloUse& lhs, const HloUse& rhs) {
     return instruction_schedule.at(lhs.instruction) <
            instruction_schedule.at(rhs.instruction);
@@ -2197,13 +2234,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
                /*resource=*/0.0,
                /*is_cross_program_prefetch=*/true);
 
-  HloInstruction* root_instruction =
-      module->entry_computation()->root_instruction();
-  absl::c_for_each(uses, [&](auto& use) {
-    if (use.instruction != root_instruction) {
-      allocations.back()->AddUse(use);
-    }
-  });
+  absl::c_for_each(uses, [&](auto& use) { allocations.back()->AddUse(use); });
   AliasedOffset* cross_program_prefetch_offset =
       GetAliasedOffset(*allocations.back());
 

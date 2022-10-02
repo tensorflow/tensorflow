@@ -125,7 +125,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:symbolic_shape_optimization",
         "//tensorflow/core:ops",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",
@@ -702,10 +702,6 @@ tf_cc_binary(
 tf_cc_binary(
     name = "lhlo-tfrt-opt",
     srcs = ["lhlo-tfrt-opt.cc"],
-    local_defines = select({
-        "//tensorflow/compiler/xla/service/gpu:is_xlir_enabled": ["XLA_ENABLE_XLIR=1"],
-        "//conditions:default": [],
-    }),
     tags = [
         "gpu",
         "no_oss",
