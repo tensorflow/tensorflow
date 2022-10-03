@@ -141,6 +141,61 @@ TEST(ExecutableTest, ScalarArgs) {
   EXPECT_EQ(result, 42);
 }
 
+TEST(ExecutableTest, AssertionFailure) {
+  absl::string_view module = R"(
+    func.func @test(%arg0: i32) {
+      %c42 = arith.constant 42 : i32
+      %0 = arith.cmpi ne, %c42, %arg0 : i32
+      cf.assert %0, "Oops, argument can't be 42"
+      return
+    }
+  )";
+
+  NoResultConverter converter;
+
+  {
+    ScalarArg arg0(int32_t{20});
+    EXPECT_TRUE(CompileAndExecute(module, {arg0}, converter).ok());
+  }
+
+  {
+    ScalarArg arg0(int32_t{42});
+    auto executed = CompileAndExecute(module, {arg0}, converter);
+    EXPECT_FALSE(executed.ok());
+    EXPECT_EQ(executed.message(), "Oops, argument can't be 42");
+  }
+}
+
+TEST(ExecutableTest, AssertionFailureOrResult) {
+  absl::string_view module = R"(
+    func.func @test(%arg0: i32) -> i32 {
+      %c42 = arith.constant 42 : i32
+      %0 = arith.cmpi ne, %c42, %arg0 : i32
+      cf.assert %0, "Oops, argument can't be 42"
+      %1 = arith.addi %arg0, %c42 : i32
+      return %1 : i32
+    }
+  )";
+
+  int32_t result = 0;
+  ResultConverterSet converter(AssertNoError, ReturnI32{&result});
+
+  {
+    ScalarArg arg0(int32_t{20});
+    EXPECT_TRUE(CompileAndExecute(module, {arg0}, converter).ok());
+    EXPECT_EQ(result, 62);
+  }
+
+  {
+    result = 0;
+    ScalarArg arg0(int32_t{42});
+    auto executed = CompileAndExecute(module, {arg0}, converter);
+    EXPECT_FALSE(executed.ok());
+    EXPECT_EQ(executed.message(), "Oops, argument can't be 42");
+    EXPECT_EQ(result, 0);
+  }
+}
+
 TEST(ExecutableTest, AsyncExecuteAndAwait) {
   absl::string_view module = R"(
     func.func @test(%arg0: i32, %arg1: i32) -> i32 {
