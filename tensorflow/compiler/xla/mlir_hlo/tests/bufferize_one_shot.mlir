@@ -269,7 +269,7 @@ func.func @tiled_add_broadcast(%A: tensor<1x?x12xf32>, %B: tensor<?x?x12xf32>,
     gml_st.yield %v_out : tensor<?x?x12xf32>
   }
   // CHECK: gml_st.loop
-  // CHECK-SAME: ins (%[[A:arg[0-9]]] = %{{[0-9]+}}: memref<?x?x12xf32
+  // CHECK-SAME: ins (%[[A:arg[0-9]]] = %{{[0-9a-zA-Z_]+}}: memref<?x?x12xf32
   // CHECK-SAME: outs (%[[C:arg[0-9]]] = %{{arg[0-9]}}: memref<?x?x12xf32>)
   // CHECK: memref.copy
   func.return %sum : tensor<?x?x12xf32>
