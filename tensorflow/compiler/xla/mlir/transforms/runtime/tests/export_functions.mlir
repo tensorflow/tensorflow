@@ -32,22 +32,6 @@ func.func @not_exported(%arg0: memref<?xf32>) -> memref<?xf32> {
   return %arg0 : memref<?xf32>
 }
 
-// CHECK: func @assert_to_error(
-// CHECK:   %[[CTX:.*]]: !rt.execution_context,
-// CHECK:   %[[ASSERT:.*]]: i1
-// CHECK: ) attributes {rt.exported} {
-rt.export @assert_to_error
-func.func @assert_to_error(%arg0: i1) {
-  // CHECK: cond_br %[[ASSERT]], ^[[OK:.*]], ^[[ERR:.*]]
-  // CHECK: ^[[OK]]:
-  // CHECK:   return
-  // CHECK: ^[[ERR]]:
-  // CHECK:   rt.set_error %[[CTX]], "Failed precondition"
-  // CHECK:   return
-  cf.assert %arg0, "Failed precondition"
-  return
-}
-
 // Custom call prototype declaration.
 // CHECK-NOT: func private @custom_call(memref<?xf32>)
 func.func private @custom_call(%arg0: memref<?xf32>) -> memref<?xf32>
@@ -62,11 +46,7 @@ func.func @function_call_to_custom_call(%arg0: memref<?xf32>) -> memref<?xf32> {
   // CHECK: %[[STATUS:.*]], %[[RES:.*]] = rt.custom_call %[[CTX]]["target"]
   // CHECK-SAME: (%[[ARG]]) {attr0 = 2 : i32, attr1 = 1.000000e+00 : f32}
   // CHECK: %[[IS_OK:.*]] = rt.is_ok %[[STATUS]]
-  // CHECK: cf.cond_br %[[IS_OK]], ^[[OK:.*]], ^[[ERR:.*]]
-  // CHECK: ^[[OK]]:
-  // CHECK:   rt.set_output %[[CTX]], 0, %[[RES]] : memref<?xf32>
-  // CHECK: ^[[ERR]]:
-  // CHECK:   rt.set_error %arg0, "custom call 'target' failed"
+  // CHECK: assert %[[IS_OK]], "custom call 'target' failed"
   %0 = call @custom_call(%arg0) { attr0 = 2 : i32 }
        : (memref<?xf32>) -> memref<?xf32>
   return %0 : memref<?xf32>

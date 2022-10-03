@@ -31,6 +31,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "convert_asserts.cc",
         "export_functions.cc",
         "rt_to_llvm.cc",
     ],

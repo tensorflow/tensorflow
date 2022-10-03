@@ -28,6 +28,7 @@ namespace xla {
 namespace runtime {
 
 #define GEN_PASS_DECL_EXPORTFUNCTIONS
+#define GEN_PASS_DECL_CONVERTASSERTS
 #define GEN_PASS_DECL_CONVERTRUNTIMETOLLVMPASS
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
 
@@ -39,6 +40,8 @@ static constexpr char const* kExportedAttrName = "rt.exported";
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateExportRuntimeFunctionsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateConvertAssertsPass();
 
 //===-----------------------------------------------------------------------===/
 // Conversions targeting `rt` dialect.

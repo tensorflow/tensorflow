@@ -89,6 +89,48 @@ def ExportFunctions : Pass<"xla-rt-export-functions", "mlir::ModuleOp"> {
   let dependentDialects = ["xla::runtime::RuntimeDialect"];
 }
 
+def ConvertAsserts : Pass<"xla-rt-convert-asserts", "ModuleOp"> {
+  let summary = "Converts asserts in exported functions to run-time errors";
+
+  let description = [{
+    Converts failed assertions to calls to the `rt.set_error` operation to
+    safely return errors to the caller. The default lowering of failed
+    assertions calls `std::abort`, which causes abnormal program termination.
+
+    This conversion only happens to exported runtime functions. These functions
+    have access to an `!rt.execution_context`, through which all results and
+    errors must be returned.
+
+    Example:
+
+      ```mlir
+      func @compute(%ctx: !rt.execution_context, %arg0: i1)
+          attributes { rt.exported } {
+        cf.assert %arg0, "Oops"
+        return
+      }
+      ```
+
+    converted to:
+
+      ```mlir
+      func @compute(%ctx: !rt.execution_context, %arg0: i1)
+          attributes { rt.exported } {
+        %0 = ... : i1
+        cond_br %0, ^ok, ^err
+      ^err:
+        rt.set_error %ctx, "Oops"
+        return
+      ^ok:
+        return
+      }
+      ```
+  }];
+
+  let constructor = "xla::runtime::CreateConvertAssertsPass()";
+  let dependentDialects = ["xla::runtime::RuntimeDialect"];
+}
+
 //===-----------------------------------------------------------------------===/
 // Conversions targeting `rt` dialect.
 //===-----------------------------------------------------------------------===/

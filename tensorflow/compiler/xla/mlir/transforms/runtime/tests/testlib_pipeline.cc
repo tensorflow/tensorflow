@@ -49,6 +49,7 @@ void CreateXlaRuntimeTestlibPipeline(mlir::OpPassManager& pm) {
 
   // Export functions to the XLA runtime.
   pm.addPass(CreateExportRuntimeFunctionsPass());
+  pm.addPass(CreateConvertAssertsPass());
 
   // Lower from high level async operations to async runtime.
   pm.addPass(mlir::createAsyncToAsyncRuntimePass());

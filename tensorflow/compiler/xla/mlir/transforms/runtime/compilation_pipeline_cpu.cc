@@ -79,6 +79,7 @@ void CreateDefaultXlaCpuRuntimeCompilationPipeline(
     mlir::OpPassManager& pm, const CpuPipelineOptions& opts) {
   // Convert entry function to the XLA entrypoint.
   pm.addPass(CreateExportRuntimeFunctionsPass());
+  pm.addPass(CreateConvertAssertsPass());
 
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createCanonicalizerPass());

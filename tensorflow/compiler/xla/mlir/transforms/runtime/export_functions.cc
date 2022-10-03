@@ -176,36 +176,6 @@ static void ConvertReturnOperations(func::FuncOp func, Value exec_ctx) {
   func.setType(type);
 }
 
-static void ConvertAssertOperations(func::FuncOp func, Value exec_ctx) {
-  // Collect all assert operations in the function body.
-  llvm::SmallVector<cf::AssertOp> asserts;
-  func.walk([&](cf::AssertOp op) {
-    if (op->getParentOp() == func) asserts.push_back(op);
-  });
-
-  // Rewrite all asserts to the Runtime API calls.
-  for (cf::AssertOp assert : asserts) {
-    ImplicitLocOpBuilder b(assert.getLoc(), assert);
-
-    // Split the block at the assert operation.
-    Block* block = assert->getBlock();
-    Block* ok = block->splitBlock(assert);
-
-    // Set up block for returning error.
-    Block* err = func.addBlock();
-    b.setInsertionPointToStart(err);
-    b.create<SetErrorOp>(exec_ctx, assert.getMsg());
-    b.create<func::ReturnOp>();
-
-    // Branch into the error block if assertion failed.
-    b.setInsertionPointToEnd(block);
-    b.create<cf::CondBranchOp>(assert.getArg(), ok, err);
-
-    // Erase the original assert operation.
-    assert.erase();
-  }
-}
-
 static Value PrependExecutionContextArgument(func::FuncOp func) {
   Type new_type = ExecutionContextType::get(func.getContext());
   DictionaryAttr attr = DictionaryAttr::get(func.getContext());
@@ -217,7 +187,6 @@ static void ConvertExportedFunction(func::FuncOp func) {
   Value exec_ctx = PrependExecutionContextArgument(func);
   ConvertCustomCallOperations(func, exec_ctx);
   ConvertReturnOperations(func, exec_ctx);
-  ConvertAssertOperations(func, exec_ctx);
 
   // After conversion mark exported function with an attribute.
   func->setAttr(kExportedAttrName, UnitAttr::get(func.getContext()));
