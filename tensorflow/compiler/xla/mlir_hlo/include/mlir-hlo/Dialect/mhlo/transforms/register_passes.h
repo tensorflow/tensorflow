@@ -27,6 +27,8 @@ class FuncOp;
 
 namespace mhlo {
 
+// TODO(csigg): this file is not following the passes.h patterns used elsewhere.
+
 std::unique_ptr<OperationPass<func::FuncOp>>
 createTestInferShapedTypeMethodsPass();
 std::unique_ptr<Pass> createTestMaterializeBroadcastsPass();

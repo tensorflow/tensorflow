@@ -17,14 +17,11 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_LHLO_TRANSFORMS_REGISTER_PASSES_H_
 
 #include "mlir-hlo/Dialect/lhlo/transforms/passes.h"
-#include "mlir/Pass/Pass.h"
 
 namespace mlir {
 namespace lmhlo {
 
-#define GEN_PASS_REGISTRATION
-#include "mlir-hlo/Dialect/lhlo/transforms/lmhlo_passes.h.inc"
-
+// TODO(csigg): Call wrapped function directly from call sites.
 inline void registerAllLmhloPasses() { registerLMHLOPasses(); }
 
 }  // namespace lmhlo

@@ -244,6 +244,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/transforms/runtime:calling_convention",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline_cpu",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
         "//tensorflow/compiler/xla/mlir_hlo:legalize_trigonometric_to_approximation",
         "//tensorflow/compiler/mlir/xla:hlo_to_mlir_hlo",
         "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
