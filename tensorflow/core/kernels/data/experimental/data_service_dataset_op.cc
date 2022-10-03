@@ -87,9 +87,6 @@ namespace data {
     DataServiceDatasetOp::kCrossTrainerCacheOptions;
 
 namespace {
-// Default interval between task list refreshes.
-constexpr int64_t kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
-
 constexpr char kDataServiceDatasetV1[] = "DataServiceDataset";
 constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
 constexpr char kDataServiceDatasetV3[] = "DataServiceDatasetV3";
@@ -97,6 +94,9 @@ constexpr char kDataServiceDatasetV4[] = "DataServiceDatasetV4";
 
 constexpr const char kParallelEpochs[] = "parallel_epochs";
 constexpr const char kDistributedEpoch[] = "distributed_epoch";
+
+// Default interval between task list refreshes.
+constexpr absl::Duration kDefaultTaskRefreshInterval = absl::Seconds(1);
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
@@ -106,22 +106,20 @@ constexpr const char kDistributedEpoch[] = "distributed_epoch";
 // to read from (in case workers are added or removed).
 class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int op_version, const std::string& dataset_id,
-          const ProcessingModeDef& processing_mode, const std::string& address,
-          const std::string& protocol,
-          const std::string& data_transfer_protocol,
-          const std::string& job_name, std::optional<int64_t> consumer_index,
-          std::optional<int64_t> num_consumers,
-          int64_t max_outstanding_requests, int64_t task_refresh_interval_ms,
-          const TargetWorkers target_workers,
-          const DataServiceMetadata& metadata,
-          IterationCounter* iteration_counter, bool owns_resource,
-          ResourceHandle iteration_counter_handle,
-          std::unique_ptr<CapturedFunction> captured_uncompress_func,
-          const std::optional<CrossTrainerCacheOptions>&
-              cross_trainer_cache_options,
-          const DataTypeVector& output_types,
-          const std::vector<PartialTensorShape>& output_shapes)
+  Dataset(
+      OpKernelContext* ctx, int op_version, const std::string& dataset_id,
+      const ProcessingModeDef& processing_mode, const std::string& address,
+      const std::string& protocol, const std::string& data_transfer_protocol,
+      const std::string& job_name, std::optional<int64_t> consumer_index,
+      std::optional<int64_t> num_consumers, int64_t max_outstanding_requests,
+      absl::Duration task_refresh_interval, const TargetWorkers target_workers,
+      const DataServiceMetadata& metadata, IterationCounter* iteration_counter,
+      bool owns_resource, ResourceHandle iteration_counter_handle,
+      std::unique_ptr<CapturedFunction> captured_uncompress_func,
+      const std::optional<CrossTrainerCacheOptions>&
+          cross_trainer_cache_options,
+      const DataTypeVector& output_types,
+      const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
         op_version_(op_version),
         dataset_id_(dataset_id),
@@ -134,7 +132,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         consumer_index_(consumer_index),
         num_consumers_(num_consumers),
         max_outstanding_requests_(max_outstanding_requests),
-        task_refresh_interval_ms_(task_refresh_interval_ms),
+        task_refresh_interval_(task_refresh_interval),
         target_workers_(target_workers),
         metadata_(metadata),
         iteration_counter_(iteration_counter),
@@ -163,13 +161,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     return std::make_unique<Iterator>(
         Iterator::Params{this,
                          name_utils::IteratorPrefix(kDatasetType, prefix)},
-        DataServiceParams{
-            dataset_id_, processing_mode_, address_, protocol_,
-            data_transfer_protocol_, job_name_,
-            /*repetition=*/iteration_counter_->GetAndIncrement(),
-            num_consumers_, consumer_index_, max_outstanding_requests_,
-            absl::Milliseconds(task_refresh_interval_ms_), target_workers_,
-            metadata_, cross_trainer_cache_options_});
+        DataServiceParams{dataset_id_, processing_mode_, address_, protocol_,
+                          data_transfer_protocol_, job_name_,
+                          /*repetition=*/iteration_counter_->GetAndIncrement(),
+                          num_consumers_, consumer_index_,
+                          max_outstanding_requests_, task_refresh_interval_,
+                          target_workers_, metadata_,
+                          cross_trainer_cache_options_});
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -263,7 +261,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // Attributes
     std::vector<std::pair<StringPiece, AttrValue>> attrs;
     AttrValue task_refresh_interval_hint_ms;
-    b->BuildAttrValue(task_refresh_interval_ms_,
+    b->BuildAttrValue(absl::ToInt64Milliseconds(task_refresh_interval_),
                       &task_refresh_interval_hint_ms);
     attrs.push_back(
         {kTaskRefreshIntervalHintMs, task_refresh_interval_hint_ms});
@@ -411,7 +409,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   const std::optional<int64_t> consumer_index_;
   const std::optional<int64_t> num_consumers_;
   const int64_t max_outstanding_requests_;
-  const int64_t task_refresh_interval_ms_;
+  const absl::Duration task_refresh_interval_;
   const TargetWorkers target_workers_;
   const DataServiceMetadata metadata_;
   IterationCounter* const iteration_counter_;  // Owned
@@ -441,10 +439,14 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
     return;
   }
 
+  int64_t task_refresh_interval_hint_ms = 0;
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kTaskRefreshIntervalHintMs,
-                                   &task_refresh_interval_hint_ms_));
-  if (task_refresh_interval_hint_ms_ == model::kAutotune) {
-    task_refresh_interval_hint_ms_ = kDefaultTaskRefreshIntervalMs;
+                                   &task_refresh_interval_hint_ms));
+  if (task_refresh_interval_hint_ms == model::kAutotune) {
+    task_refresh_interval_hint_ = kDefaultTaskRefreshInterval;
+  } else {
+    task_refresh_interval_hint_ =
+        absl::Milliseconds(task_refresh_interval_hint_ms);
   }
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
@@ -626,7 +628,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   DatasetBase* dataset = new Dataset(
       ctx, op_version_, dataset_id, processing_mode, address, protocol,
       data_transfer_protocol_, job_name, consumer_index, num_consumers,
-      max_outstanding_requests, task_refresh_interval_hint_ms_, target_workers_,
+      max_outstanding_requests, task_refresh_interval_hint_, target_workers_,
       *metadata, iteration_counter, owns_resource, iteration_counter_handle,
       std::move(captured_uncompress_func), cross_trainer_cache_options,
       data_service_output_types, data_service_output_shapes);
