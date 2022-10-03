@@ -21,6 +21,7 @@ from typing import List, Dict, Optional
 import numpy as np
 
 from tensorflow.dtensor.proto import layout_pb2
+from tensorflow.python import _pywrap_dtensor_device
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
@@ -30,10 +31,11 @@ from tensorflow.python.util.tf_export import tf_export
 UNSHARDED = 'unsharded'
 MATCH = 'match'
 
-tf_export('experimental.dtensor.UNSHARDED', v1=[]).export_constant(
-    __name__, 'UNSHARDED')
-tf_export('experimental.dtensor.MATCH', v1=[]).export_constant(
-    __name__, 'MATCH')
+tf_export(
+    'experimental.dtensor.UNSHARDED',
+    v1=[]).export_constant(__name__, 'UNSHARDED')
+tf_export(
+    'experimental.dtensor.MATCH', v1=[]).export_constant(__name__, 'MATCH')
 
 MeshDimension = collections.namedtuple('MeshDimension', ['name', 'size'])
 
@@ -47,7 +49,7 @@ def _compute_mesh_strides(mesh_dims: List[MeshDimension]) -> List[int]:
 
 
 @tf_export('experimental.dtensor.Mesh', v1=[])
-class Mesh(object):
+class Mesh(_pywrap_dtensor_device.Mesh):
   """Represents a Mesh configuration over a certain list of Mesh Dimensions.
 
   A mesh consists of named dimensions with sizes, which describe how a set of
@@ -65,6 +67,7 @@ class Mesh(object):
   single- or multi-client use cases.
   """
 
+  # TODO(panzf): remove this in the last step of Python/C++ unificiation effort
   _dim_dict: Dict[str, MeshDimension]
   _dim_names: List[str]
   _local_device_ids: List[int]
@@ -135,6 +138,23 @@ class Mesh(object):
       raise ValueError('global_device_ids must sequentially increase: %s' %
                        global_device_ids)
     # LINT.ThenChange(//tensorflow/dtensor/cc/dtensor_device.cc)
+
+    # TODO(b/242201545): This class is only for args type transformation for
+    # exported C++ Mesh class after the unification is complete. Any other
+    # logics should reside in the C++ layer.
+
+    # Transform args format for C++ Mesh constructor
+    global_device_ids_flatten = global_device_ids.flatten()
+    global_device_ids_shape = global_device_ids.shape
+    local_devices_str = [d.to_string() for d in local_devices]
+    if global_devices:
+      global_devices_str = [d.to_string() for d in global_devices]
+    else:
+      global_devices_str = []
+
+    super().__init__(mesh_name, dim_names, global_device_ids_shape,
+                     global_device_ids_flatten, global_devices_str,
+                     local_device_ids, local_devices_str)
 
     if len(dim_names) != global_device_ids.ndim:
       raise ValueError(
@@ -218,6 +238,12 @@ class Mesh(object):
         f'num_local_devices={self.num_local_devices()}), '
         f'size={self.size}>')
 
+  # TODO(panzf): change to pybind11 pickle implementation in the last step
+  def __reduce__(self):
+    return self.__class__, (self._dim_names, self._global_device_ids,
+                            self._local_device_ids, self._local_devices,
+                            self._name, self._global_devices)
+
   def as_proto(self) -> layout_pb2.MeshProto:
     """Returns mesh protobuffer."""
 
@@ -299,6 +325,8 @@ class Mesh(object):
     return Mesh(dims, global_device_ids, local_device_ids, local_devices, name,
                 global_devices)
 
+  # TODO(panzf): Remove this in the last step of C++/Python unification
+  # Removing this method depends on C++ Mesh implements all Python methods
   @staticmethod
   def from_string(mesh_str: str) -> 'Mesh':
     """Construct a mesh instance from input `proto`."""
@@ -433,25 +461,6 @@ class Mesh(object):
       The mesh strides as an integer tensor.
     """
     return self._strides
-
-  def to_string(self) -> str:
-    """Returns string representation of Mesh."""
-
-    # Get proto representation
-    mesh_proto = self.as_proto()
-    # Separate individual elements with ','.
-    name = mesh_proto.name
-    dim_str = ','.join(
-        dim.name + '=' + str(dim.size) for dim in mesh_proto.mesh_dimensions)
-    global_ids = ','.join(str(id) for id in mesh_proto.global_device_ids)
-    local_ids = ','.join(str(id) for id in mesh_proto.local_device_ids)
-    devices = ','.join(dev for dev in mesh_proto.local_devices)
-    components = [name, dim_str, global_ids, local_ids, devices]
-    if mesh_proto.global_devices:
-      global_devices = ','.join(dev for dev in mesh_proto.global_devices)
-      components.append(global_devices)
-    # Separate mesh components with '|'.
-    return '|'.join(components)
 
   def unravel_index(self):
     """Returns a dictionary from device ID to {dim_name: dim_index}.

@@ -3436,6 +3436,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
+        "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
@@ -3569,6 +3570,7 @@ filegroup(
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",  # quantization
         "//tensorflow/dtensor/cc:dtensor_device_cc",  # DTensor
+        "//tensorflow/dtensor/cc:tensor_layout",  # DTensor
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "//tensorflow/compiler/xla:status_macros",  # tfcompile
@@ -4277,6 +4279,7 @@ tf_pybind_cc_library_wrapper(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
+        "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
     ],

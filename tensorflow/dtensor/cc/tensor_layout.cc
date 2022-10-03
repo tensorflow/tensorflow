@@ -658,6 +658,42 @@ StatusOr<int32> Mesh::idx_for_dim(absl::string_view dim_name) const {
                                  " does not exist on mesh : ", ToString());
 }
 
+Mesh Mesh::CreateMesh(
+    const std::string& mesh_name, const std::vector<std::string>& dim_names,
+    const std::vector<std::int64_t>& global_device_ids_shape,
+    const std::vector<std::int64_t>& global_device_ids_flatten,
+    const std::vector<std::string>& global_devices_str,
+    const std::vector<std::int64_t>& local_device_ids,
+    const std::vector<std::string>& local_devices_str) {
+  Mesh mesh;
+  mesh.name_ = mesh_name;
+
+  mesh.mesh_dims_.resize(dim_names.size());
+
+  for (int i = 0; i < dim_names.size(); ++i) {
+    mesh.mesh_dims_[i].name = dim_names[i];
+    mesh.mesh_dims_[i].size = global_device_ids_shape[i];
+  }
+
+  for (const auto& id : global_device_ids_flatten) {
+    mesh.global_device_ids_.push_back(id);
+  }
+
+  for (const auto& d : global_devices_str) {
+    mesh.global_devices_.push_back(d);
+  }
+
+  for (const auto& id : local_device_ids) {
+    mesh.local_device_ids_.push_back(id);
+  }
+
+  for (const auto& d : local_devices_str) {
+    mesh.local_devices_.push_back(d);
+  }
+
+  return mesh;
+}
+
 StatusOr<Layout> Layout::GetLayout(
     const std::vector<std::string>& sharding_spec_strs, const Mesh& mesh) {
   // Re-format sharding specs.

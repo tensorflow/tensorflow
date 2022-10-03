@@ -78,6 +78,7 @@ pytype_strict_library(
     deps = [
         ":gen_dtensor_ops",
         "//tensorflow/dtensor/proto:layout_proto_py_pb2",
+        "//tensorflow/python:_pywrap_dtensor_device",
         "//tensorflow/python:config",
         "//tensorflow/python:device",
         "//tensorflow/python:framework_ops",
