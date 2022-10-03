@@ -493,7 +493,7 @@ StatusOr<bool> FuseElu(HloComputation* comp) {
     }
 
     if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
-          return absl::StrCat("FuseRelu: ", conv->ToString());
+          return absl::StrCat("FuseElu: ", conv->ToString());
         })) {
       continue;
     }
