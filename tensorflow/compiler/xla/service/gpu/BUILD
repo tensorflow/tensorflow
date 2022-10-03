@@ -2247,12 +2247,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
-<<<<<<< HEAD
-        "//tensorflow/core:core",
-        "//tensorflow/core:test",
-=======
         "//tensorflow/tsl/platform:test",
->>>>>>> upstream/master
     ] + if_cuda_is_configured([
         ":buffer_comparator",
         "//tensorflow/compiler/xla/stream_executor/cuda:stream_executor_cuda",

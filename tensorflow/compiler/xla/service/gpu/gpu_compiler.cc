@@ -200,19 +200,10 @@ limitations under the License.
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
 
-#if XLA_ENABLE_XLIR
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
-#include "tensorflow/compiler/xla/runtime/jit_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
-#endif  // XLA_ENABLE_XLIR
-
-=======
->>>>>>> upstream/master
 namespace xla {
 namespace gpu {
 namespace {

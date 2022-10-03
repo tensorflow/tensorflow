@@ -862,32 +862,7 @@ static inline Status TrsmImpl(GpuExecutor* gpu_executor, SolverFnT solver,
 
 TF_CALL_LAPACK_TYPES_NO_COMPLEX(TRSM_INSTANCE);
 
-<<<<<<< HEAD
 #define TRSM_BATCHED_INSTANCE(Scalar, type_prefix)                            \
-=======
-template <typename Scalar, typename SolverFnT>
-Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
-                         rocblas_handle rocm_blas_handle, int n,
-                         const Scalar* const host_a_dev_ptrs[], int lda,
-                         int* dev_pivots,
-                         const Scalar* const host_a_inverse_dev_ptrs[],
-                         int ldainv, DeviceLapackInfo* dev_lapack_info,
-                         int batch_size) {
-  mutex_lock lock(handle_map_mutex);
-  using ROCmScalar = typename ROCmComplexT<Scalar>::type;
-  ScopedActivateExecutorContext sac{gpu_executor};
-
-  GetrfBatched(n, host_a_dev_ptrs, lda, dev_pivots, dev_lapack_info,
-               batch_size);
-
-  GetriBatched(n, host_a_dev_ptrs, lda, dev_pivots, host_a_inverse_dev_ptrs,
-               ldainv, dev_lapack_info, batch_size);
-
-  return OkStatus();
-}
-
-#define MATINVBATCHED_INSTANCE(Scalar, type_prefix)                           \
->>>>>>> upstream/master
   template <>                                                                 \
   Status GpuSolver::TrsmBatched<Scalar>(                                      \
       rocblas_side side, rocblas_fill uplo, rocblas_operation trans,          \
