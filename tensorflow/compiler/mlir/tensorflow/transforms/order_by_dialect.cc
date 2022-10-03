@@ -41,31 +41,49 @@ class OrderByDialectPass : public OrderByDialectPassBase<OrderByDialectPass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OrderByDialectPass)
 
   void runOnOperation() override {
-    for (Block& block : getOperation().getBody()) {
-      auto ops = groupOperationsByDialect(block);
-      // Replace the block with the reordered block.
-      for (Operation* op : ops) {
-        op->remove();
-        block.push_back(op);
+    getOperation().walk([](Operation* function) {
+      for (Region& region : function->getRegions()) {
+        for (Block& block : region.getBlocks()) {
+          if (block.empty()) continue;
+          auto ops = groupOperationsByDialect(block);
+          // Replace the block with the reordered block.
+          for (Operation* op : ops) {
+            op->remove();
+            block.push_back(op);
+          }
+        }
       }
-    }
+    });
   }
 };
 
 // Similar to MLIR's topological sort (lib/Transforms/TopologicalSort.cpp)
 // but has an explicit scoring function to determine the next op to emit.
+// Note that this doesn't explicitly handle TF side effects. However,
+// it typically leaves the order of operations within a given dialect the
+// same, and different dialects tend to not access the same resources.
 std::vector<Operation*> groupOperationsByDialect(Block& block) {
   llvm::DenseMap<Operation*, int> remaining_incoming_edges;
   llvm::DenseMap<Operation*, int> position;
+  llvm::DenseMap<Operation*, Operation*> ancestor;
   SmallVector<Operation*> ready;
 
   int i = 0;
   for (Operation& op : block.getOperations()) {
-    remaining_incoming_edges[&op] = op.getNumOperands();
-    position[&op] = i++;
-    if (op.getNumOperands() == 0) {
+    int incoming_edges = 0;
+    op.walk([&](Operation* child) {
+      ancestor[child] = &op;
+      for (Value v : child->getOperands()) {
+        if (v.getParentBlock() == &block) {
+          incoming_edges++;
+        }
+      }
+    });
+    remaining_incoming_edges[&op] = incoming_edges;
+    if (incoming_edges == 0) {
       ready.push_back(&op);
     }
+    position[&op] = i++;
   }
 
   std::queue<Value> todo;
@@ -81,9 +99,9 @@ std::vector<Operation*> groupOperationsByDialect(Block& block) {
       Value value = todo.front();
       todo.pop();
       // All operations that have all their inputs available are good to go.
+      // Uses, not Users, in case getUsers ever dedups.
       for (OpOperand& operand : value.getUses()) {
-        // Uses, not Users, in case getUsers ever dedups.
-        Operation* user = operand.getOwner();
+        Operation* user = ancestor[operand.getOwner()];
         if (--remaining_incoming_edges[user] == 0) {
           ready.push_back(user);
         }
@@ -112,6 +130,11 @@ std::vector<Operation*> groupOperationsByDialect(Block& block) {
       if (best == nullptr || better(op, best)) {
         best = op;
       }
+    }
+
+    if (!best) {
+      assert(ready.empty());
+      return result;  // happens for unused results for ops in the todo list
     }
 
     // Consider this operation emitted, and make its results available.
