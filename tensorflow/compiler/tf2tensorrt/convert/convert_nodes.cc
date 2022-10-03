@@ -3267,7 +3267,7 @@ Status ConvertPool(const OpConverterParams* params) {
     return errors::InvalidArgument("Window dimensions are not within bounds");
   }
 
-  if (params->validation_only) return Status::OK();
+  if (params->validation_only) return OkStatus();
 
   if (data_format == "NHWC") {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
