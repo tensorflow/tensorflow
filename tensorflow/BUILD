@@ -25,10 +25,10 @@ load(
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_cc_shared_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "ADDITIONAL_API_INDEXABLE_SETTINGS")
+load("//tensorflow:tensorflow.default.bzl", "ADDITIONAL_API_INDEXABLE_SETTINGS")
 
 # copybara:uncomment_begin
 # load("//tools/build_defs/license:license.bzl", "license")
@@ -1004,6 +1004,13 @@ bzl_library(
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
     ],
+)
+
+bzl_library(
+    name = "tensorflow_default_bzl",
+    srcs = ["tensorflow.default.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [":tensorflow_bzl"],
 )
 
 # copybara:comment_begin(oss-only)

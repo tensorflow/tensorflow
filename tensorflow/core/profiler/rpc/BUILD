@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "tf_external_workspace_visible")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
 load(
     "//tensorflow/core/profiler/builds:build_config.bzl",
     "tf_profiler_alias",

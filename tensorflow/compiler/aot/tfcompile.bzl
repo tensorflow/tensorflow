@@ -22,13 +22,13 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_target_cpu")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_target_cpu")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_enabled")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_enabled")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_abilists")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists")
 
 def _tfcompile_model_library_rule_impl(ctx):
     header_file = ctx.outputs.header_out

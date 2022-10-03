@@ -5,7 +5,7 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_device_tracer_srcs",

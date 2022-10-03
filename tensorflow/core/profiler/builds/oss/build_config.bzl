@@ -9,7 +9,7 @@ def tf_profiler_alias(target_dir, name):
     return target_dir + "oss:" + name
 
 def tf_profiler_pybind_cc_library_wrapper(name, actual, **kwargs):
-    """Wrapper for cc_library used by tf_python_pybind_extension.
+    """Wrapper for cc_library used by tf_python_pybind_extension_opensource.
 
     This wrapper ensures that cc libraries headers are made available to pybind
     code, without creating ODR violations in the dynamically linked case.  The
