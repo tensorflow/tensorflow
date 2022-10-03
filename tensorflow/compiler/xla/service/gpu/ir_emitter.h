@@ -182,6 +182,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   void BindFusionArguments(const HloInstruction* fusion,
                            FusedIrEmitter* fused_emitter);
 
+  // Emit a fence for AMDGPU if necessary.
+  void MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering atomic_ordering,
+                               const char* sync_scope_id);
+
  private:
   // A helper method for EmitAtomicOperationForNestedComputation. Certain
   // computations, such as floating-point addition and integer maximization, can
