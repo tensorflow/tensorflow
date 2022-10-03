@@ -759,7 +759,7 @@ TF_CALL_ROCSOLV_TYPES(GETRS_BATCHED_INSTANCE);
                               ROCmComplex(dev_VT), ldvt,                 \
                               ROCmComplex(dev_workspace.mutable_data()), \
                               lwork, nullptr, dev_lapack_info));         \
-      return Status::OK();                                               \
+      return OkStatus();                                                 \
   }
 
 TF_CALL_HIP_LAPACK_TYPES_NO_COMPLEX(GESVD_INSTANCE);
@@ -783,7 +783,7 @@ Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
   GetriBatched(n, host_a_dev_ptrs, lda, dev_pivots, host_a_inverse_dev_ptrs,
                ldainv, dev_lapack_info, batch_size);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define MATINVBATCHED_INSTANCE(Scalar, type_prefix)                           \
@@ -819,7 +819,7 @@ Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
       using ROCmScalar = typename ROCmComplexT<Scalar>::type;                \
       TF_RETURN_IF_ROCBLAS_ERROR(BLAS_SOLVER_FN(trsv, type_prefix)(          \
         rocm_blas_handle_, uplo, trans, diag, n, A, lda, x, incx));          \
-      return Status::OK();                                                   \
+      return OkStatus();                                                     \
   }
 
 TF_CALL_LAPACK_TYPES_NO_COMPLEX(TRSV_INSTANCE);
@@ -892,7 +892,7 @@ TF_CALL_LAPACK_TYPES_NO_COMPLEX(TRSM_INSTANCE);
           reinterpret_cast<ROCmScalar**>(dev_a_dev_ptrs.mutable_data()),      \ 
           lda, reinterpret_cast<ROCmScalar**>(dev_b_dev_ptrs.mutable_data()), \
           ldb, batch_size));                                                  \
-    return Status::OK();                                                      \
+    return OkStatus();                                                        \
   }
   
 TF_CALL_LAPACK_TYPES_NO_COMPLEX(TRSM_BATCHED_INSTANCE);
