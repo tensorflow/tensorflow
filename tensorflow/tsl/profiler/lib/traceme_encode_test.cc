@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/tsl/profiler/lib/traceme_encode.h"
 
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/platform.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -60,4 +60,4 @@ TEST(TraceMeEncodeTest, NoNameTest) {
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

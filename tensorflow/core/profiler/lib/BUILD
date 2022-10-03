@@ -194,6 +194,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+        "//tensorflow/tsl/profiler/lib:traceme_encode",
+        "//tensorflow/tsl/profiler/lib:traceme",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder",
         "//tensorflow/core/profiler/utils:time_utils",
@@ -206,18 +208,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "traceme_encode_test",
-    srcs = ["traceme_encode_test.cc"],
-    deps = [
-        ":traceme_encode",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform",
+        "//tensorflow/tsl/profiler/lib:traceme_encode",
         "@com_google_absl//absl/strings",
     ],
 )

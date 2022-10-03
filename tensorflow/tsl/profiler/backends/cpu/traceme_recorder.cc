@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/backends/cpu/traceme_recorder.h"
+#include "tensorflow/tsl/profiler/backends/cpu/traceme_recorder.h"
 
 #include <stddef.h>
 
@@ -24,13 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace internal {
 
@@ -408,4 +408,4 @@ TraceMeRecorder::Events TraceMeRecorder::StopRecording() {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

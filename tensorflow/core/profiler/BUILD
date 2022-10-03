@@ -136,6 +136,7 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "//tensorflow/core/profiler/lib:mobile_srcs_no_runtime",
+        "//tensorflow/tsl/profiler/lib:mobile_srcs_no_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

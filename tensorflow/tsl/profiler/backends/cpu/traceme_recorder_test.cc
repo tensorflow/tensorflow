@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/backends/cpu/traceme_recorder.h"
+#include "tensorflow/tsl/profiler/backends/cpu/traceme_recorder.h"
 
 #include <atomic>
 #include <set>
@@ -23,20 +23,19 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/notification.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/notification.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/utils/math_utils.h"
+#include "tensorflow/tsl/profiler/utils/time_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
-using ::tensorflow::profiler::SpinForNanos;
 using ::testing::ElementsAre;
 
 MATCHER_P(Named, name, "") { return arg.name == name; }
@@ -73,9 +72,9 @@ TEST(RecorderTest, Multithreaded) {
   constexpr static int kNumThreads = 4;
 
   // Start several threads writing events.
-  tensorflow::Notification start;
-  tensorflow::Notification stop;
-  thread::ThreadPool pool(Env::Default(), "testpool", kNumThreads);
+  tsl::Notification start;
+  tsl::Notification stop;
+  thread::ThreadPool pool(tsl::Env::Default(), "testpool", kNumThreads);
   std::atomic<int> thread_count = {0};
   for (int i = 0; i < kNumThreads; i++) {
     pool.Schedule([&start, &stop, &thread_count] {
@@ -189,4 +188,4 @@ TEST(RecorderTest, Multithreaded) {
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

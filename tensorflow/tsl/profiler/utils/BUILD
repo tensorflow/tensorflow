@@ -4,7 +4,9 @@ load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
-    default_visibility = ["//tensorflow/core/profiler:internal"],
+    default_visibility = [
+        "//tensorflow/tsl/profiler:internal",
+    ],
     licenses = ["notice"],
 )
 
