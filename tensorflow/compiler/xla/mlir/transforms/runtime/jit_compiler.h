@@ -25,11 +25,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/calling_convention.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/specialization.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
@@ -70,11 +68,10 @@ class JitCompiler {
     // API to compile the LLVM module at run time
     // (https://llvm.org/docs/ORCv2.html).
     //
-    // This compilation pipeline must create the entrypoint function with an ABI
-    // compatible with the calling convention advertised to the XLA through
-    // the `calling_convention` type conversion, and for that it usually must
-    // include `xla-rt-convert-to-entrypoint ` pass to convert regular functions
-    // to "XLA entrypoints".
+    // This compilation pipeline must export functions invocable by the runtime
+    // (convert them to an ABI compatible with the calling convention advertised
+    // to XLA through the `calling_convention` type conversion), and for
+    // that it usually must include `xla-rt-export-functions` pass.
     std::function<void(mlir::PassManager&)> create_compilation_pipeline;
 
     // LLVM optimization level when JIT compiling a module.
@@ -89,14 +86,14 @@ class JitCompiler {
     // See `CallingConvention` documentation for details.
     CallingConvention calling_convention = DefaultCallingConvention();
 
-    // Type converter converts MLIR types to the corresponding run time types.
+    // Type converter converts MLIR types to the corresponding run-time types.
     // Executable uses its own type hierarchy, parallel to MLIR's, so that it
     // doesn't depend on any parts of the MLIR after compilation produces an
     // executable artifact, because keeping MLIR context alive can be expensive
     // in terms of memory usage.
     //
-    // As a side effect, it allows loading AOT compiled executables from the obj
-    // files without any dependencies on MLIR.
+    // As a side effect, it allows loading AOT compiled executables from the
+    // object files without any dependencies on MLIR.
     //
     // Default type converter knows how to convert canonical MLIR types
     // (memrefs, tensors, etc...). All user-defined types used at the compiled
@@ -104,8 +101,8 @@ class JitCompiler {
     // conversion.
     //
     // When we compile the input IR, we first apply the `calling_convention` to
-    // get the MLIR function type for the entrypoint, and then we convert it to
-    // the corresponding run time function type.
+    // get the MLIR function type of the exported function, and then we convert
+    // it to the corresponding run-time function type.
     TypeConverter type_converter;
   };
 
