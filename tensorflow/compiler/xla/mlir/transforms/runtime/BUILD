@@ -31,7 +31,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "convert_to_entrypoint.cc",
+        "export_functions.cc",
         "rt_to_llvm.cc",
     ],
     hdrs = ["passes.h"],
@@ -198,6 +198,7 @@ cc_library(
         ":passes",
         ":specialization",
         ":type_converter",
+        "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:constraints",
         "//tensorflow/compiler/xla/runtime:errors",

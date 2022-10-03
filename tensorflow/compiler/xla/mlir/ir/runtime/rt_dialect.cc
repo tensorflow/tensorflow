@@ -61,8 +61,8 @@ void RuntimeDialect::initialize() {
 
 mlir::LogicalResult RuntimeDialect::verifyOperationAttribute(
     mlir::Operation *op, mlir::NamedAttribute attribute) {
-  // Only functions can be marked as rt entrypoints.
-  if (attribute.getName() == "rt.entrypoint") {
+  // Only functions can be marked as exported.
+  if (attribute.getName() == "rt.exported") {
     if (!(attribute.getValue().isa<mlir::UnitAttr>())) {
       return op->emitOpError()
              << "requires " << attribute.getName() << " to be a unit attribute";

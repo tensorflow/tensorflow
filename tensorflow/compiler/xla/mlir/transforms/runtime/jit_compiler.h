@@ -25,9 +25,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/calling_convention.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/specialization.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
@@ -153,6 +155,9 @@ class JitCompiler {
     assert(entrypoint_ && "failed to resolve entrypoint function");
     return entrypoint_;
   }
+
+  // Marks function for export and makes it invocable by the runtime executable.
+  void Export(mlir::func::FuncOp func) const;
 
  private:
   JitCompiler(Options opts, std::string_view mlir_module,

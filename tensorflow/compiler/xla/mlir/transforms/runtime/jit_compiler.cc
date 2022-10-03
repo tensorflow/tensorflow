@@ -208,10 +208,9 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
       Executable::GetResultsMemoryLayout(*runtime_signature);
   if (!results_memory_layout.ok()) return results_memory_layout.status();
 
-  // Mark entry function with an attribute, so it can be converted to an Xla
-  // entrypoint (see `rt-convert-to-entrypoint` pass).
-  auto unit_attr = UnitAttr::get(entry_func.getContext());
-  entry_func->setAttr(kEntrypointAttrName, unit_attr);
+  // Mark entry function for export, so it can be invoked by the Xla runtime
+  // (see `xla-rt-export-functions` pass).
+  compiler->Export(entry_func);
 
   // Run the compilation pipeline to lower the module to LLVM dialect.
   if (failed(RunCompilationPipeline(compiler->module(), opts)))
@@ -302,6 +301,13 @@ absl::Status JitCompiler::Specialize(ArgumentsRef arguments,
     return Error("failed to run specialization pipeline");
 
   return absl::OkStatus();
+}
+
+void JitCompiler::Export(mlir::func::FuncOp func) const {
+  assert(module_ && "failed to parse the mlir module");
+  mlir::OpBuilder builder(*module_);
+  builder.setInsertionPoint(func);
+  builder.create<ExportOp>(func.getLoc(), func);
 }
 
 }  // namespace runtime

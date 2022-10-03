@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.h"
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
@@ -34,11 +35,11 @@ namespace runtime {
 
 using namespace mlir;  // NOLINT
 
-#define GEN_PASS_DEF_CONVERTTOENTRYPOINT
+#define GEN_PASS_DEF_EXPORTFUNCTIONS
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
 
-class ConvertToEntrypointPass
-    : public impl::ConvertToEntrypointBase<ConvertToEntrypointPass> {
+class ExportFunctionsPass
+    : public impl::ExportFunctionsBase<ExportFunctionsPass> {
   void runOnOperation() override;
 };
 
@@ -212,31 +213,34 @@ static Value PrependExecutionContextArgument(func::FuncOp func) {
   return func.getArgument(0);
 }
 
-static void ConvertToEntrypoint(func::FuncOp func) {
-  assert(func->hasAttr(kEntrypointAttrName));
-
+static void ConvertExportedFunction(func::FuncOp func) {
   Value exec_ctx = PrependExecutionContextArgument(func);
   ConvertCustomCallOperations(func, exec_ctx);
   ConvertReturnOperations(func, exec_ctx);
   ConvertAssertOperations(func, exec_ctx);
 
-  // After conversion !rt.execution_context is a marker of an entrypoint.
-  func->removeAttr(kEntrypointAttrName);
+  // After conversion mark exported function with an attribute.
+  func->setAttr(kExportedAttrName, UnitAttr::get(func.getContext()));
 }
 
-void ConvertToEntrypointPass::runOnOperation() {
-  llvm::SmallVector<func::FuncOp> entry_points;
+void ExportFunctionsPass::runOnOperation() {
+  llvm::SmallVector<ExportOp> exports;
+  llvm::SmallVector<func::FuncOp> exported;
 
-  // Collect entrypoint functions.
-  getOperation().walk([&](func::FuncOp op) {
-    if (op->hasAttr(kEntrypointAttrName)) entry_points.push_back(op);
+  // Collect exported functions.
+  SymbolTable sym_table(getOperation());
+  getOperation().walk([&](ExportOp op) {
+    exports.push_back(op);
+    exported.push_back(sym_table.lookup<func::FuncOp>(op.getFunctionRef()));
   });
 
-  llvm::for_each(entry_points, ConvertToEntrypoint);
+  // Convert all exported functions.
+  llvm::for_each(exported, ConvertExportedFunction);
+  llvm::for_each(exports, [](ExportOp op) { op.erase(); });
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateConvertToEntrypoint() {
-  return std::make_unique<ConvertToEntrypointPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateExportRuntimeFunctionsPass() {
+  return std::make_unique<ExportFunctionsPass>();
 }
 
 }  // namespace runtime

@@ -1,11 +1,11 @@
-// RUN: xla-runtime-opt %s --xla-rt-convert-to-entrypoint | FileCheck %s
+// RUN: xla-runtime-opt %s --xla-rt-export-functions | FileCheck %s
 
 // CHECK: func @single_result(
 // CHECK:   %[[CTX:.*]]: !rt.execution_context,
 // CHECK:   %[[ARG:.*]]: memref<?xf32>
-// CHECK: ) {
-func.func @single_result(%arg0: memref<?xf32>) -> memref<?xf32>
-  attributes { rt.entrypoint } {
+// CHECK: ) attributes {rt.exported} {
+rt.export @single_result
+func.func @single_result(%arg0: memref<?xf32>) -> memref<?xf32> {
   // CHECK: rt.set_output %[[CTX]], 0, %[[ARG]] : memref<?xf32>
   // CHECK: return
   return %arg0 : memref<?xf32>
@@ -14,19 +14,19 @@ func.func @single_result(%arg0: memref<?xf32>) -> memref<?xf32>
 // CHECK: func @two_results(
 // CHECK:   %[[CTX:.*]]: !rt.execution_context,
 // CHECK:   %[[ARG:.*]]: memref<?xf32>
-// CHECK: ) {
-func.func @two_results(%arg0: memref<?xf32>) -> (memref<?xf32>, memref<?xf32>)
-  attributes { rt.entrypoint } {
+// CHECK: ) attributes {rt.exported} {
+rt.export @two_results
+func.func @two_results(%arg0: memref<?xf32>) -> (memref<?xf32>, memref<?xf32>) {
   // CHECK: rt.set_output %[[CTX]], 0, %[[ARG]] : memref<?xf32>
   // CHECK: rt.set_output %[[CTX]], 1, %[[ARG]] : memref<?xf32>
   // CHECK: return
   return %arg0, %arg0 : memref<?xf32>, memref<?xf32>
 }
 
-// CHECK: func @not_an_entrypoint(
+// CHECK: func @not_exported(
 // CHECK:   %[[ARG:.*]]: memref<?xf32>
 // CHECK: ) -> memref<?xf32> {
-func.func @not_an_entrypoint(%arg0: memref<?xf32>) -> memref<?xf32> {
+func.func @not_exported(%arg0: memref<?xf32>) -> memref<?xf32> {
   // CHECK-NOT: rt.set_output
   // CHECK: return %[[ARG]]
   return %arg0 : memref<?xf32>
@@ -35,8 +35,9 @@ func.func @not_an_entrypoint(%arg0: memref<?xf32>) -> memref<?xf32> {
 // CHECK: func @assert_to_error(
 // CHECK:   %[[CTX:.*]]: !rt.execution_context,
 // CHECK:   %[[ASSERT:.*]]: i1
-// CHECK: ) {
-func.func @assert_to_error(%arg0: i1) attributes { rt.entrypoint } {
+// CHECK: ) attributes {rt.exported} {
+rt.export @assert_to_error
+func.func @assert_to_error(%arg0: i1) {
   // CHECK: cond_br %[[ASSERT]], ^[[OK:.*]], ^[[ERR:.*]]
   // CHECK: ^[[OK]]:
   // CHECK:   return
@@ -55,9 +56,9 @@ func.func private @custom_call(%arg0: memref<?xf32>) -> memref<?xf32>
 // CHECK: func @function_call_to_custom_call(
 // CHECK:   %[[CTX:.*]]: !rt.execution_context,
 // CHECK:   %[[ARG:.*]]: memref<?xf32>
-// )
-func.func @function_call_to_custom_call(%arg0: memref<?xf32>) -> memref<?xf32>
-  attributes { rt.entrypoint } {
+// CHECK: ) attributes {rt.exported} {
+rt.export @function_call_to_custom_call
+func.func @function_call_to_custom_call(%arg0: memref<?xf32>) -> memref<?xf32> {
   // CHECK: %[[STATUS:.*]], %[[RES:.*]] = rt.custom_call %[[CTX]]["target"]
   // CHECK-SAME: (%[[ARG]]) {attr0 = 2 : i32, attr1 = 1.000000e+00 : f32}
   // CHECK: %[[IS_OK:.*]] = rt.is_ok %[[STATUS]]
@@ -79,9 +80,9 @@ func.func private @dynamic_custom_call(%arg0: memref<?xf32>)
 // CHECK: func @function_call_to_dynamic_custom_call(
 // CHECK:   %[[CTX:.*]]: !rt.execution_context,
 // CHECK:   %[[ARG:.*]]: memref<?xf32>
-// )
-func.func @function_call_to_dynamic_custom_call(%arg0: memref<?xf32>)
-  attributes { rt.entrypoint } {
+// CHECK: ) attributes {rt.exported} {
+rt.export @function_call_to_dynamic_custom_call
+func.func @function_call_to_dynamic_custom_call(%arg0: memref<?xf32>) {
   // CHECK: rt.custom_call dynamic %[[CTX]]["target"]
   call @dynamic_custom_call(%arg0) : (memref<?xf32>) -> ()
   return
@@ -90,9 +91,10 @@ func.func @function_call_to_dynamic_custom_call(%arg0: memref<?xf32>)
 // CHECK: func @function_call_to_traced_custom_call(
 // CHECK:   %[[CTX:.*]]: !rt.execution_context,
 // CHECK:   %[[ARG:.*]]: memref<?xf32>
-// )
+// CHECK: ) attributes {rt.exported} {
+rt.export @function_call_to_traced_custom_call
 func.func @function_call_to_traced_custom_call(%arg0: memref<?xf32>)
-    -> memref<?xf32> attributes { rt.entrypoint } {
+    -> memref<?xf32> {
   // CHECK: %[[RES:.*]]:2 = rt.trace #rt.hlo_trace<"fusion", "foo", 0>, %[[CTX]]
   // CHECK-SAME: -> !rt.status, memref<?xf32> {
   // CHECK-NEXT:   %[[STATUS:.*]], %[[RET:.*]] = custom_call %[[CTX]]["target"]

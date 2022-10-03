@@ -45,8 +45,8 @@ void CreateDefaultXlaGpuRuntimeCompilationPipeline(
     mlir::OpPassManager& pm, const CompilationPipelineOptions& opts) {
   pm.addPass(mlir::createConvertSCFToCFPass());
 
-  // Convert entry function to the XLA entrypoint.
-  pm.addPass(CreateConvertToEntrypoint());
+  // Export functions to the XLA runtime.
+  pm.addPass(CreateExportRuntimeFunctionsPass());
 
   // Convert runtime operations and custom calls to LLVM dialect.
   ConvertRuntimeToLLvmOpts rt_to_llvm_opts = {

@@ -22,14 +22,12 @@ include "mlir/Pass/PassBase.td"
 // Transformations targeting `rt` dialect.
 //===-----------------------------------------------------------------------===/
 
-def ConvertToEntrypoint
-    : Pass<"xla-rt-convert-to-entrypoint", "mlir::ModuleOp"> {
-
-  let summary = "Converts function(s) to Xla runtime entrypoint(s)";
+def ExportFunctions : Pass<"xla-rt-export-functions", "mlir::ModuleOp"> {
+  let summary = "Exports function(s) to Xla runtime";
 
   let description = [{
-    Converts function with a `xla.entrypoint` unit attribute to an Xla
-    entrypoint, i.e.:
+    Converts functions marked for export with a `rt.export` operation to Xla
+    runtime ABI, and makes them invocable by the executable, i.e.:
      - first argument is an `!rt.execution_context`
      - all results returned via the `rt.set_result` operation
      - failed asserts set the results error via the `rt.set_error` operation
@@ -39,7 +37,7 @@ def ConvertToEntrypoint
        dynamic custom calls that are resolved at run time by name
 
     See the `ir/runtime/rt_ops.td` to find how Xla executable returns results
-    and errors usin the runtime APIs.
+    and errors using the runtime APIs.
 
     When converting function call to the custom call operation, custom call
     attributes will be a union of custom call function declaration attributes,
@@ -52,7 +50,9 @@ def ConvertToEntrypoint
       func @custom_call() -> memref<?xf32>
         attributes { rt.custom_call = "custom_call", attr = <value> }
 
-      func @compute(...) -> memref<?xf32> attributes { xla.entrypoint } {
+      rt.export @compute
+
+      func @compute(...) -> memref<?xf32> {
         %0 = ... : i1
         assert %0, "Oops"
         %1 = call @custom_call() { attr = <new_value> }: () -> memref<?xf32>
@@ -63,7 +63,8 @@ def ConvertToEntrypoint
     converted to:
 
       ```mlir
-      func @compute(%ctx: !rt.execution_context, ...) {
+      func @compute(%ctx: !rt.execution_context, ...)
+          attributes { rt.exported } {
         %0 = ... : i1
         cond_br %0, ^ok0, ^err0
       ^ok0:
@@ -84,7 +85,7 @@ def ConvertToEntrypoint
       ```
   }];
 
-  let constructor = "xla::runtime::CreateConvertToEntrypoint()";
+  let constructor = "xla::runtime::CreateExportRuntimeFunctionsPass()";
   let dependentDialects = ["xla::runtime::RuntimeDialect"];
 }
 
