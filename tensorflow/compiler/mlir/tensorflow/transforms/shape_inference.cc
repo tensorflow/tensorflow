@@ -839,8 +839,10 @@ ArrayRef<Operation*> ShapeInference::GetCallers(func::FuncOp fn) {
 }
 
 void ShapeInference::EnqueueCallers(func::FuncOp fn) {
-  for (auto user : GetCallers(fn))
-    enqueue(user->getParentOfType<func::FuncOp>());
+  for (auto user : GetCallers(fn)) {
+    auto func = user->getParentOfType<func::FuncOp>();
+    if (func) enqueue(func);
+  }
 }
 
 bool ShapeInference::UpdateTypeAndInsertIncompatibleUseCasts(Type new_type,
