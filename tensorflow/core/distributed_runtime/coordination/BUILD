@@ -139,6 +139,7 @@ cc_library(
     deps = [
         ":coordination_service_error_util",
         ":coordination_service_agent",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/time",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core:lib",
