@@ -111,7 +111,7 @@ class DirectSession : public Session {
   ::tensorflow::Status Close() override;
   ::tensorflow::Status LocalDeviceManager(const DeviceMgr** output) override {
     *output = device_mgr_.get();
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
 
   void ExportCostModels(CostModelManager::CostModelMap* cost_models) {
@@ -313,7 +313,7 @@ class DirectSession : public Session {
   ::tensorflow::Status CheckNotClosed() {
     mutex_lock l(closed_lock_);
     if (closed_) return errors::Cancelled("Session has been closed.");
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
 
   ::tensorflow::Status CheckGraphCreated(const char* method) {
@@ -322,7 +322,7 @@ class DirectSession : public Session {
       return errors::InvalidArgument(
           "Session was not created with a graph before ", method, "!");
     }
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
 
   ::tensorflow::Status CreateDebuggerState(

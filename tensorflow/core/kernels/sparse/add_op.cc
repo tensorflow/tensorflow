@@ -175,7 +175,7 @@ class CSRSparseMatrixAddFunctor {
       TF_RETURN_IF_ERROR(csr_geam.Compute(a_comp, b_comp, &c_comp, workspace));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -287,7 +287,7 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
     TF_RETURN_IF_ERROR(descrB_.Initialize());
     TF_RETURN_IF_ERROR(descrC_.Initialize());
     initialized_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
@@ -313,7 +313,7 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
         b.row_ptr.data(), b.col_ind.data(), descrC_.descr(), null_T, null_int,
         null_int, bufferSize));
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetOutputStructure(const ConstCSRComponent<T>& a,
@@ -343,7 +343,7 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
       return errors::Internal(
           "CSRAdd: CsrgeamNnz returned nnzTotalDevHostPtr < 0: ", *output_nnz);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Compute(const ConstCSRComponent<T>& a, const ConstCSRComponent<T>& b,
@@ -368,7 +368,7 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
         b.row_ptr.data(), b.col_ind.data(), descrC_.descr(), c->values.data(),
         c->row_ptr.data(), c->col_ind.data(), workspace));
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

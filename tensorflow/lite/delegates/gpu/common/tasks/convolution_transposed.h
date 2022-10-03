@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONVOLUTION_TRANSPOSED_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,8 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
@@ -75,10 +74,10 @@ class ConvolutionTransposed : public GPUOperation {
 
   ConvolutionTransposed(const OperationDef& definition,
                         const ConvolutionTransposedAttributes& attr,
-                        const GpuInfo& gpu_info, bool weights_are_buffer);
+                        const GpuInfo& gpu_info);
   ConvolutionTransposed(const OperationDef& definition,
                         const ConvolutionTransposed3DAttributes& attr,
-                        const GpuInfo& gpu_info, bool weights_are_buffer);
+                        const GpuInfo& gpu_info);
 
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -90,7 +89,6 @@ class ConvolutionTransposed : public GPUOperation {
 
   std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
                                                 const GpuInfo& gpu_info,
-                                                bool weights_are_buffer,
                                                 const int4& block_size);
   int4 stride_;
   int4 block_size_ = int4(1, 1, 1, 1);  // WHDS
@@ -114,19 +112,16 @@ void ConvolutionTransposed::UploadWeights(
     desc.size = weights_data.size();
     desc.data = std::move(weights_data);
     args_.AddObject("weights",
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     uint2 tex_size = Get2dResourceSize(weights_desc, weights.shape);
     int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
     for (int i = 0; i < 4; ++i) {
-      Texture2DDescriptor desc;
-      desc.element_type = weights_desc.type;
-      desc.size = int2(tex_size.x, tex_size.y);
-      desc.data.resize(sub_size);
-      memcpy(desc.data.data(), weights_data.data() + sub_size * i, sub_size);
-      const std::string name = "weights" + std::to_string(i);
-      args_.AddObject(name,
-                      absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+      TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+          weights_desc.type, TensorStorageType::TEXTURE_2D, tex_size.x,
+          tex_size.y, weights_data.data() + sub_size * i);
+      args_.AddObject("weights" + std::to_string(i),
+                      std::make_unique<TensorDescriptor>(std::move(desc)));
     }
   }
 }
@@ -148,19 +143,16 @@ void ConvolutionTransposed::UploadWeights(
     desc.size = weights_data.size();
     desc.data = std::move(weights_data);
     args_.AddObject("weights",
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     uint2 tex_size = Get2dResourceSize(weights_desc, weights.shape);
     int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
     for (int i = 0; i < 4; ++i) {
-      Texture2DDescriptor desc;
-      desc.element_type = weights_desc.type;
-      desc.size = int2(tex_size.x, tex_size.y);
-      desc.data.resize(sub_size);
-      memcpy(desc.data.data(), weights_data.data() + sub_size * i, sub_size);
-      const std::string name = "weights" + std::to_string(i);
-      args_.AddObject(name,
-                      absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+      TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+          weights_desc.type, TensorStorageType::TEXTURE_2D, tex_size.x,
+          tex_size.y, weights_data.data() + sub_size * i);
+      args_.AddObject("weights" + std::to_string(i),
+                      std::make_unique<TensorDescriptor>(std::move(desc)));
     }
   }
 }

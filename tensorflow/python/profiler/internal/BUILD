@@ -112,16 +112,18 @@ tf_python_pybind_extension(
     srcs = ["profiler_wrapper.cc"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow/core/profiler:internal",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/profiler:__pkg__",
     ],
     deps = [
         ":profiler_pywrap_impl",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/profiler/convert:repository",
+        "//tensorflow/core/profiler/convert:tool_options",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
         "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",
         "//tensorflow/python:pybind11_status",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
     ],
@@ -155,6 +157,8 @@ cc_library(
     srcs = ["profiler_pywrap_impl.cc"],
     hdrs = ["profiler_pywrap_impl.h"],
     visibility = [
+        # Do not change this visibility field.
+        # This library is referred in OSS world by github.com/pytorch/xla
         "//tensorflow/compiler/xla:__subpackages__",
     ],
     deps = [

@@ -124,10 +124,10 @@ class MultiDeviceIterator : public ResourceBase {
     ++incarnation_id_;
     *incarnation_id = incarnation_id_;
 
-    multi_device_buffer_ = absl::make_unique<MultiDeviceBuffer>(
+    multi_device_buffer_ = std::make_unique<MultiDeviceBuffer>(
         devices_.size(), max_buffer_size, incarnation_id_, std::move(iterator),
         this);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetNextFromShard(OpKernelContext* ctx, int shard_num,
@@ -144,7 +144,7 @@ class MultiDeviceIterator : public ResourceBase {
     IteratorContext iter_ctx(std::move(params));
     multi_device_buffer_->GetNextFromShard(&iter_ctx, shard_num, incarnation_id,
                                            std::move(callback));
-    return Status::OK();
+    return OkStatus();
   }
 
   const DataTypeVector& output_types() const { return output_types_; }
@@ -448,8 +448,8 @@ class MultiDeviceIterator : public ResourceBase {
     const size_t size_;
     const int64_t max_buffer_size_;
     const int64_t incarnation_id_;
-    const std::unique_ptr<IteratorBase> host_iterator_;
     CancellationManager cancellation_manager_;
+    const std::unique_ptr<IteratorBase> host_iterator_;
     MultiDeviceIterator* const parent_;  // Not owned.
     std::unique_ptr<Thread> background_thread_ TF_GUARDED_BY(mu_);
   };
@@ -515,8 +515,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
         OP_REQUIRES_OK(context, context->function_library()->Clone(
                                     &flib_def, &pflr, &flr));
-        auto function_handle_cache =
-            absl::make_unique<FunctionHandleCache>(flr);
+        auto function_handle_cache = std::make_unique<FunctionHandleCache>(flr);
         ResourceMgr* mgr = context->resource_manager();
         OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
 
@@ -548,7 +547,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
                                        output_shapes_, devices_,
                                        std::move(flib_def), std::move(pflr),
                                        flr, std::move(function_handle_cache));
-                                   return Status::OK();
+                                   return OkStatus();
                                  }));
           Status s = VerifyResource(resource);
           if (TF_PREDICT_FALSE(!s.ok())) {
@@ -576,7 +575,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         VerifyTypesMatch(output_types_, resource->output_types()));
     TF_RETURN_IF_ERROR(
         VerifyShapesCompatible(output_shapes_, resource->output_shapes()));
-    return Status::OK();
+    return OkStatus();
   }
 
   mutex mu_;
@@ -616,12 +615,12 @@ class AnonymousMultiDeviceIteratorOp
                         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
                         FunctionLibraryRuntime* lib,
                         MultiDeviceIterator** resource) override {
-    auto function_handle_cache = absl::make_unique<FunctionHandleCache>(lib);
+    auto function_handle_cache = std::make_unique<FunctionHandleCache>(lib);
     *resource =
         new MultiDeviceIterator(ctx->env(), output_dtypes_, output_shapes_,
                                 devices_, std::move(flib_def), std::move(pflr),
                                 lib, std::move(function_handle_cache));
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<string> devices_;

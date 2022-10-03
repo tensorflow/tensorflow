@@ -29,7 +29,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import server_lib
-from tensorflow.python.training.saving import saveable_hook
 from tensorflow.python.training.saving import saveable_object_util
 
 
@@ -54,7 +53,7 @@ class SaverTest(test.TestCase):
   def test_resource_variable(self):
     v1 = resource_variable_ops.ResourceVariable(2.)
     self.evaluate(v1.initializer)
-    saver = functional_saver._SingleDeviceSaver(
+    saver = functional_saver.MultiDeviceSaver.from_saveables(
         saveable_object_util.saveable_objects_for_op(v1, "x"))
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     self.evaluate(saver.save(constant_op.constant(prefix)))
@@ -65,7 +64,7 @@ class SaverTest(test.TestCase):
 
     v2 = resource_variable_ops.ResourceVariable(3.)
     self.evaluate(v2.initializer)
-    second_saver = functional_saver._SingleDeviceSaver(
+    second_saver = functional_saver.MultiDeviceSaver.from_saveables(
         saveable_object_util.saveable_objects_for_op(v2, "x"))
     self.evaluate(second_saver.restore(prefix))
     self.assertEqual(2., self.evaluate(v2))
@@ -74,7 +73,7 @@ class SaverTest(test.TestCase):
   def test_resource_variable_use_localhost(self):
     v1 = resource_variable_ops.ResourceVariable(2.)
     self.evaluate(v1.initializer)
-    saver = functional_saver._SingleDeviceSaver(
+    saver = functional_saver.MultiDeviceSaver.from_saveables(
         saveable_object_util.saveable_objects_for_op(v1, "x"))
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     self.evaluate(saver.save(constant_op.constant(prefix), self.local_options))
@@ -85,7 +84,7 @@ class SaverTest(test.TestCase):
 
     v2 = resource_variable_ops.ResourceVariable(3.)
     self.evaluate(v2.initializer)
-    second_saver = functional_saver._SingleDeviceSaver(
+    second_saver = functional_saver.MultiDeviceSaver.from_saveables(
         saveable_object_util.saveable_objects_for_op(v2, "x"))
     self.evaluate(second_saver.restore(prefix, self.local_options))
     self.assertEqual(2., self.evaluate(v2))
@@ -99,7 +98,7 @@ class SaverTest(test.TestCase):
 
   def test_to_proto(self):
     v1 = resource_variable_ops.ResourceVariable(2.)
-    saver = functional_saver.MultiDeviceSaver(
+    saver = functional_saver.MultiDeviceSaver.from_saveables(
         saveable_object_util.saveable_objects_for_op(v1, "x"))
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
 
@@ -120,7 +119,7 @@ class SaverTest(test.TestCase):
     self.assertEqual(2., self.evaluate(v1))
 
     v2 = resource_variable_ops.ResourceVariable(3.)
-    second_saver = functional_saver.MultiDeviceSaver(
+    second_saver = functional_saver.MultiDeviceSaver.from_saveables(
         saveable_object_util.saveable_objects_for_op(v2, "x"))
     second_saver.restore(save_path)
     self.assertEqual(2., self.evaluate(v2))
@@ -139,7 +138,7 @@ class SaverTest(test.TestCase):
       v2 = resource_variable_ops.ResourceVariable(2.)
 
     self.evaluate([v0.initializer, v1.initializer, v2.initializer])
-    saver = functional_saver.MultiDeviceSaver(
+    saver = functional_saver.MultiDeviceSaver.from_saveables(
         list(saveable_object_util.saveable_objects_for_op(v0, "v0")) +
         list(saveable_object_util.saveable_objects_for_op(v1, "v1")) +
         list(saveable_object_util.saveable_objects_for_op(v2, "v2")))
@@ -164,7 +163,7 @@ class SaverTest(test.TestCase):
       v2 = resource_variable_ops.ResourceVariable(2.)
 
     self.evaluate([v0.initializer, v1.initializer, v2.initializer])
-    saver = functional_saver.MultiDeviceSaver(
+    saver = functional_saver.MultiDeviceSaver.from_saveables(
         list(saveable_object_util.saveable_objects_for_op(v0, "v0")) +
         list(saveable_object_util.saveable_objects_for_op(v1, "v1")) +
         list(saveable_object_util.saveable_objects_for_op(v2, "v2")))
@@ -186,32 +185,6 @@ class SaverTest(test.TestCase):
       for op in ops.get_default_graph().get_operations():
         if op.type in ("SaveV2", "RestoreV2", "MergeV2Checkpoints"):
           self.assertEqual(LOCALHOST, op.device)
-
-  def test_callbacks_run(self):
-    #  Use dict because an int would be shadowed inside callback.
-    called = {
-        "save": 0,
-        "restore": 0,
-    }
-
-    class DummyHook(saveable_hook.SaveableHook):
-
-      def before_save(self):
-        called["save"] += 1
-
-      def after_restore(self):
-        called["restore"] += 1
-
-    saveable = DummyHook(name="dummy")
-
-    saver = functional_saver.MultiDeviceSaver([saveable])
-    prefix = os.path.join(self.get_temp_dir(), "ckpt")
-
-    self.evaluate(saver.save(constant_op.constant(prefix)))
-    self.assertEqual({"save": 1, "restore": 0}, called)
-
-    self.evaluate(saver.restore(prefix))
-    self.assertEqual({"save": 1, "restore": 1}, called)
 
 
 if __name__ == "__main__":

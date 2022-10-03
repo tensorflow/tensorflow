@@ -47,34 +47,11 @@ TfLiteStatus ActivationOpBuilder::PopulateSubGraph(
       output_depth_size;
   GetDims(&output_batch_size, &output_height_size, &output_width_size,
           &output_depth_size, context->tensors[outputs->data[0]].dims);
-  auto activation_output = AddOutput(sizeof(uint8_t), 4,
-                                     {output_batch_size, output_height_size,
-                                      output_width_size, output_depth_size});
-  auto activation_output_min = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  auto activation_output_max = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-
-  float output_min = -1, output_max = -1;
-  // Output min/max for requantization.
-  TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-      context->tensors[outputs->data[0]], &output_min, &output_max));
-  auto* output_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, (char*)&output_min, sizeof(output_min));
-  auto* output_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, (char*)&output_max, sizeof(output_max));
-
-  auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
-  requantize_op->SetOpType(OP_Requantize_8to8);
-  requantize_op->AddInput(activation_output);
-  requantize_op->AddInput(activation_output_min);
-  requantize_op->AddInput(activation_output_max);
-  requantize_op->AddInput(TensorID(output_min_const->GetID(), 0));
-  requantize_op->AddInput(TensorID(output_max_const->GetID(), 0));
-  node_output_ =
-      requantize_op->AddOutput(sizeof(uint8_t), 4,
-                               {output_batch_size, output_height_size,
-                                output_width_size, output_depth_size});
-  requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
-  requantize_op->AddOutput(sizeof(float), 4, kScalarShape);
+  node_output_ = AddOutput(sizeof(uint8_t), 4,
+                           {output_batch_size, output_height_size,
+                            output_width_size, output_depth_size});
+  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  AddOutput(sizeof(float), 4, {1, 1, 1, 1});
 
   return kTfLiteOk;
 }

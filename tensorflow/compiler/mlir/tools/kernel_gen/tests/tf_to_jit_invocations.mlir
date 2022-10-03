@@ -3,9 +3,9 @@
 // RUN:     max-supported-rank=32 enable-ftz=false cpu-codegen=false" | \
 // RUN: FileCheck %s
 
-// CHECK-LABEL: @unary_tanh_rint
+// CHECK-LABEL: @unary_tanh
 // CHECK-SAME: (%[[ARG:.*]]: tensor<*xf32>)
-func.func @unary_tanh_rint(%arg : tensor<*xf32>) -> tensor<*xf32> {
+func.func @unary_tanh(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[CALLABLE:.*]] = tf_framework.jit_compile_from_str
   // CHECK-SAME: "
   // CHECK-SAME: module {
@@ -13,8 +13,7 @@ func.func @unary_tanh_rint(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-SAME:     attributes {tf_entry}
   // CHECK-SAME:   {
   // CHECK-SAME:     %0 = \22tf.Tanh\22(%arg0)
-  // CHECK-SAME:     %1 = \22tf.Rint\22(%0)
-  // CHECK-SAME:     return %1
+  // CHECK-SAME:     return %0
   // CHECK-SAME:   }
   // CHECK-SAME: }
   // CHECK-SAME: "
@@ -28,8 +27,7 @@ func.func @unary_tanh_rint(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[RES:.*]] = tf_framework.jit_execute %[[CALLABLE]](%[[ARG]])
   // CHECK: return %[[RES]]
   %0 = "tf.Tanh"(%arg) : (tensor<*xf32>) -> tensor<*xf32>
-  %1 = "tf.Rint"(%0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %1 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----

@@ -284,7 +284,7 @@ class Im2ColConvFunctor {
               (kMaxChunkSize + (sizeof(T1) - 1)) / sizeof(T1);
 #endif
           *resource = new Im2ColBufferResource<T1, chunk_value_count>();
-          return Status::OK();
+          return OkStatus();
         };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
                                 "Conv2d", "im2col_buffer",

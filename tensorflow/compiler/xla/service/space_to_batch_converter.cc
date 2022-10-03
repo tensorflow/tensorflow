@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -44,15 +43,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -592,7 +590,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
           halo_region, MakePadHlo(halo_region, padding, padding_config_halo));
     }
 
-    if (halo_size == 0 && low_padding != 0) {
+    if ((halo_size == 0 && low_padding != 0) || low_padding < 0) {
       std::vector<int64_t> start_indices_activations_cut(rank, 0),
           end_indices_activations_cut(activations->shape().dimensions().begin(),
                                       activations->shape().dimensions().end());
@@ -1455,7 +1453,7 @@ void ConvolutionVisitor::PropagateOnBroadcast(HloInstruction* consumer,
   if (batch_is_broadcasted) {
     new_broadcast =
         MakeReshapeHlo(new_producer->shape().dimensions(), new_broadcast)
-            .ValueOrDie();
+            .value();
     VLOG(2) << "Created reshape of broadcast " << new_broadcast->ToString();
   }
 
@@ -1474,7 +1472,7 @@ void ConvolutionVisitor::RewriteBroadcastTree(
     if (instr->opcode() == HloOpcode::kBroadcast) {
       PropagateOnBroadcast(instr, producer);
     } else if (IsTrivialElementwise(instr)) {
-      Propagate(instr, /*producer=*/instr->mutable_operand(0)).ValueOrDie();
+      Propagate(instr, /*producer=*/instr->mutable_operand(0)).value();
     } else {
       LOG(FATAL) << "Unsupported opcode in RewriteBroadcastTree";
     }
@@ -2209,7 +2207,7 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
             final_selection,
             MakePadHlo(final_selection, padding, padding_config));
 
-        tensorflow::core::Bitmap b(batch_size * (new_space_size + halo_size));
+        tsl::core::Bitmap b(batch_size * (new_space_size + halo_size));
         for (int k = 0; k < batch_size * (new_space_size + halo_size); ++k) {
           const int64_t space_index = k % (new_space_size + halo_size);
           const int64_t batch_index = (k / (new_space_size + halo_size));
@@ -2315,7 +2313,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
 
   // Build a constant PRED to decide which elements in the split dimension
   // are from halo.
-  tensorflow::core::Bitmap b(new_batch_size * total_new_space);
+  tsl::core::Bitmap b(new_batch_size * total_new_space);
   for (int k = 0; k < new_batch_size * total_new_space; ++k) {
     auto radix = ToMixedRadix(k, bounds);
 
@@ -2451,7 +2449,7 @@ Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
             << batch_to_space->ToString();
     TF_CHECK_OK(computation_->ReplaceInstruction(old_conv, batch_to_space));
     VLOG(1) << "Replacement successful";
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t iteration_count = 0;
@@ -2531,7 +2529,7 @@ Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
@@ -2611,10 +2609,10 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   // original spatial dimension. Unlike for the first space-to-batch'ed
   // convolution, while propagating, we can use the last halo_size as available
   // spatial size.
-  // If the spatial size is less than the halo size required, we need to
-  // increase the spatial size.
+  // If the spatial size is less than the (halo size - low padding) required,
+  // we need to increase the spatial size.
   while (spatial_split_size * num_splits + c.halo_size - c.spatial_size < 0 ||
-         spatial_split_size < c.halo_size) {
+         spatial_split_size < c.halo_size - c.inherent_low_padding) {
     spatial_split_size += c.stride;
   }
 
@@ -2638,10 +2636,10 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
     // dimension size, we don't need reshaping. Instead, we determine the
     // additional space available, and adjust the required slice size (and
     // thereby the halo size).
-    VLOG(3)
-        << "Decreasing the spatial size while propagating spatial_split_size "
-        << spatial_split_size << " new_space_size " << new_space_size;
     if (spatial_split_size < new_space_size) {
+      VLOG(3)
+          << "Decreasing the spatial size while propagating spatial_split_size "
+          << spatial_split_size << " new_space_size " << new_space_size;
       // If there's a stride mismatch, we change the new_space_size be
       // smaller (equal to spatial_split_size).
       if (new_space_size % c.stride != 0 || c.base_dilation_factor != 1) {
@@ -2736,7 +2734,7 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   instr_to_dim_permute_map_[new_conv] = std::vector<int64_t>(transpose_dims);
 
   convs_to_visit_.erase(convolution);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvolutionVisitor::PropagateOnConcat(HloInstruction* concat) {
@@ -2757,7 +2755,7 @@ Status ConvolutionVisitor::PropagateOnConcat(HloInstruction* concat) {
   instr_to_dim_permute_map_[new_concat] =
       std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvolutionVisitor::PropagateOnReverse(HloInstruction* reverse) {
@@ -2778,7 +2776,7 @@ Status ConvolutionVisitor::PropagateOnReverse(HloInstruction* reverse) {
   instr_to_dim_permute_map_[new_reverse] =
       std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvolutionVisitor::PropagateOnPad(HloInstruction* pad) {
@@ -2807,7 +2805,7 @@ Status ConvolutionVisitor::PropagateOnPad(HloInstruction* pad) {
   instr_to_dim_permute_map_[new_pad] =
       std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<HloInstruction*> ConvolutionVisitor::TransposeAndMergeBatch(
@@ -3453,7 +3451,7 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
   absl::c_iota(trans_dims, 0);
   instr_to_dim_permute_map_[new_conv] = trans_dims;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 HloInstruction*
@@ -3628,7 +3626,7 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   if (!ConsumeFuel("space-to-batch-converter", [&] {
         return "Skipping space-to-batch propagation because fuel over\n";
       })) {
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Handling conv " << convolution->ToString();
 
@@ -3647,7 +3645,7 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
   // A very primitive cost model to thwart propagations on tiny shapes.
   if (c.spatial_size < 2 * ctrl_.number_of_splits) {
-    return Status::OK();
+    return OkStatus();
   }
 
   auto original_conv = convolution;
@@ -3840,19 +3838,21 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
   changed_ = true;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
 
-StatusOr<bool> SpaceToBatchConverter::Run(HloModule* module) {
+StatusOr<bool> SpaceToBatchConverter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       2, "SpaceToBatchConverter::Run(), before:\n" + module->ToString());
   bool changed = false;
 
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     ConvolutionVisitor visitor(ctrl_, comp);
-    if (visitor.Run().ValueOrDie()) {
+    if (visitor.Run().value()) {
       changed = true;
     }
     VLOG(1) << "Done operating on computation";

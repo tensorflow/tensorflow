@@ -32,7 +32,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_oss_py2",
         "no_oss_py35",
         "no_pip",
     ],
@@ -147,7 +146,6 @@ py_library(
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/estimator:util",
         "//tensorflow/python/summary",
-        "@six_archive//:six",
     ],
 )
 
@@ -233,7 +231,6 @@ pytype_library(
         ":tpu_feed",
         ":tpu_function",
         ":tpu_sharding",
-        "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/compiler/xla/python_api:xla_shape",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/protobuf/tpu:compilation_result_proto_py",
@@ -256,12 +253,12 @@ pytype_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/compiler/xla",
+        "//tensorflow/python/compiler/xla/experimental:xla_sharding",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/tpu:tensor_tracer_proto_py",
         "//tensorflow/python/tpu/ops",
         "//tensorflow/python/tpu/profiler",
-        "@six_archive//:six",
     ],
 )
 
@@ -298,7 +295,6 @@ pytype_library(
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
-        "@six_archive//:six",
     ],
 )
 
@@ -308,10 +304,10 @@ pytype_library(
     deps = [
         ":tpu_name_util",
         ":tpu_sharding",
-        "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/compiler/xla/experimental:xla_sharding",
         "//tensorflow/python/tpu/ops",
         "//tensorflow/python/user_ops:ops",
     ],
@@ -454,7 +450,6 @@ pytype_library(
         "//tensorflow/python:tpu_ops_gen",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "@six_archive//:six",
     ],
 )
 
@@ -582,7 +577,6 @@ pytype_library(
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/tpu/ops",
-        "@six_archive//:six",
     ],
 )
 
@@ -600,7 +594,6 @@ pytype_library(
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/tpu/ops",
-        "@six_archive//:six",
     ],
 )
 
@@ -612,7 +605,7 @@ pytype_strict_library(
         ":tpu_embedding_v2_utils",
         "//tensorflow/python:variables",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/util",
     ],
 )

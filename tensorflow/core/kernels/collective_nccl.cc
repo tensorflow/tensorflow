@@ -55,7 +55,7 @@ Status NcclBase::InitializeCollectiveParams(CollectiveParams* col_params) {
                             ", expected name ", expected_name);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status NcclBase::InitializeCollectiveContext(

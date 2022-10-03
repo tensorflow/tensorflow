@@ -16,11 +16,14 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 
 #include <memory>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -30,7 +33,7 @@ Status WithErrorSourcePayload(Status error) {
   error_source_proto.set_error_source(
       core::platform::ErrorSourceProto::EAGER_REMOTE_MGR);
   error.SetPayload(tensorflow::kErrorSource,
-                   absl::Cord(error_source_proto.SerializeAsString()));
+                   error_source_proto.SerializeAsString());
   return error;
 }
 }  // namespace
@@ -73,7 +76,7 @@ Status RemoteMgr::GetTensorHandleImpl(
 
   *handle = iter->second;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoteMgr::GetTensorHandle(
@@ -102,7 +105,7 @@ Status RemoteMgr::GetMirroredResourceShape(
 
   *handle = iter->second;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
@@ -118,7 +121,7 @@ Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
         "Found two different tensor handles with the same op_id:", *op_id,
         " and output_num:", *output_num));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoteMgr::DeleteTensorHandle(
@@ -129,7 +132,7 @@ Status RemoteMgr::DeleteTensorHandle(
     if (iter != remote_tensor_handle_map_.end()) {
       iter->second->Unref();
       remote_tensor_handle_map_.erase(iter);
-      return Status::OK();
+      return OkStatus();
     }
   }
   {
@@ -137,7 +140,7 @@ Status RemoteMgr::DeleteTensorHandle(
     auto iter = mirrored_resource_shape_map_.find(remote_handle);
     if (iter != mirrored_resource_shape_map_.end()) {
       mirrored_resource_shape_map_.erase(iter);
-      return Status::OK();
+      return OkStatus();
     }
   }
   return WithErrorSourcePayload(errors::InvalidArgument(
@@ -173,7 +176,7 @@ Status RemoteMgr::SerializeRemoteTensorHandle(
       dtype_and_shape.shape.AsProto(dtype_and_shape_proto->mutable_shape());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
@@ -211,7 +214,7 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
     (*out)->SetResourceHandleDtypeAndShape(std::move(dtypes_and_shapes));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {

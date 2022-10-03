@@ -162,7 +162,7 @@ static void ExportVersionAttr(VersionAttr attr, VersionDef *version) {
 Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
   TF_ASSIGN_OR_RETURN(GraphOp graph_op, ValidateModuleForExport(module));
   if (graph_op) {
-    ExportVersionAttr(graph_op.version(), graph->mutable_versions());
+    ExportVersionAttr(graph_op.getVersion(), graph->mutable_versions());
     for (Operation &op : *graph_op.getBody()) {
       TF_RETURN_IF_ERROR(ConvertOperation(&op, graph->mutable_node()->Add(),
                                           /*is_func=*/false));
@@ -173,12 +173,12 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
                                    Optional<GradientDef> &gradient) {
     // Generic functions are not on the hot path and skip the conversion to
     // Graph so just call the existing exporter.
-    if (func.generic()) {
+    if (func.getGeneric()) {
       TF_ASSIGN_OR_RETURN(*def, ConvertGenericFunctionToFunctionDef(func));
     } else {
       TF_ASSIGN_OR_RETURN(gradient, ExportFunction(func, def));
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   // TODO(jeffniu): Don't export functions in parallel if there are too few or
@@ -221,7 +221,7 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
     }
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // The only dialect attributes allowed have the "tf." prefix. This is a slightly
@@ -239,18 +239,18 @@ static Status ConvertAttributes(
     StringRef name = attr.getName().strref().drop_front(/*strlen("tf.")=*/3);
     TF_ASSIGN_OR_RETURN((*map)[name.str()], ConvertAttribute(attr.getValue()));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
     GraphFuncOp func, FunctionDef *def) {
-  std::string func_name = func.sym_name().str();
+  std::string func_name = func.getSymName().str();
 
   // TODO(jeffniu): Exploit the sorted order of the function attributes.
 
   // Get a gradient, if there is one.
   Optional<GradientDef> gradient;
-  if (Optional<StringRef> gradient_name = func.gradient()) {
+  if (Optional<StringRef> gradient_name = func.getGradient()) {
     gradient.emplace();
     gradient->set_gradient_func(gradient_name->str());
     gradient->set_function_name(func_name);
@@ -259,12 +259,12 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
   // Convert the first-class attributes.
   OpDef *signature = def->mutable_signature();
   signature->set_name(func_name);
-  if (Optional<StringRef> description = func.description())
+  if (Optional<StringRef> description = func.getDescription())
     signature->set_description(description->str());
-  signature->set_is_stateful(func.is_stateful());
+  signature->set_is_stateful(func.getIsStateful());
 
-  if (DenseIntElementsAttr keys = func.resource_arg_unique_ids_keysAttr()) {
-    DenseIntElementsAttr values = func.resource_arg_unique_ids_valuesAttr();
+  if (DenseIntElementsAttr keys = func.getResourceArgUniqueIdsKeysAttr()) {
+    DenseIntElementsAttr values = func.getResourceArgUniqueIdsValuesAttr();
     if (!values) {
       return InvalidArgument(
           "'resource_arg_unique_ids_keys' is present but "
@@ -286,7 +286,7 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
 
   // Convert the arguments.
   for (int i = 0, e = func.getNumArguments(); i < e; i += 2) {
-    auto attrs = func.arg_attrs().getValue()[i].cast<DictionaryAttr>();
+    auto attrs = func.getArgAttrs().getValue()[i].cast<DictionaryAttr>();
     TF_ASSIGN_OR_RETURN(OpDef::ArgDef &arg = *signature->add_input_arg(),
                         ConvertArgumentAttributes(attrs));
     DataType dtype;
@@ -304,7 +304,7 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
   }
 
   // Convert the results.
-  auto return_op = cast<ReturnOp>(func.getBody()->getTerminator());
+  auto return_op = cast<ReturnOp>(func.SingleBlock::getBody()->getTerminator());
   for (auto it :
        llvm::zip(func.getResultTypes(),
                  func.getAllResultAttrs().getAsRange<DictionaryAttr>(),
@@ -322,7 +322,7 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
 
   // Convert the control results.
   for (auto it :
-       llvm::zip(return_op.control_ret_attrs().getAsRange<DictionaryAttr>(),
+       llvm::zip(return_op.getControlRetAttrs().getAsRange<DictionaryAttr>(),
                  TFOp(return_op).getControlOperands())) {
     // The control result attributes contain only the name.
     DictionaryAttr attrs = std::get<0>(it);
@@ -339,7 +339,7 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
   }
 
   // Convert the body.
-  for (Operation &op : func.getBody()->without_terminator())
+  for (Operation &op : func.SingleBlock::getBody()->without_terminator())
     TF_RETURN_IF_ERROR(
         ConvertOperation(&op, def->add_node_def(), /*is_func=*/true));
 
@@ -440,7 +440,7 @@ Status ConvertToNodeDef(
       node->clear_experimental_debug_info();
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GraphDefExporter::ConvertOperation(Operation *op, NodeDef *node,
@@ -466,7 +466,7 @@ static StatusOr<std::string> GetValueName(
       return InvalidArgument("Expected block argument owner to be tfg.func");
     // If the block argument is a control token, use the attributes of the
     // associated data argument (which preceeds it).
-    auto attrs = func.arg_attrs()
+    auto attrs = func.getArgAttrs()
                      .getValue()[arg.getArgNumber() - is_control]
                      .cast<DictionaryAttr>();
     auto name_attr =
@@ -639,7 +639,7 @@ Status ConvertToFunctionDef(GraphFuncOp func,
       TF_RETURN_IF_ERROR(library.ReplaceGradient(*gradient));
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace tfg

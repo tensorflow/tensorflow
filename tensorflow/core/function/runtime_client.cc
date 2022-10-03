@@ -69,7 +69,7 @@ EagerContext& GlobalEagerContext() {
         /*rendezvous=*/nullptr,
         /*cluster_flr=*/nullptr,
         /*collective_executor_mgr=*/nullptr,
-        /*run_eager_op_as_function=*/false);
+        /*run_eager_op_as_function=*/true);
   }();
   return *global_ctx;
 }
@@ -148,7 +148,7 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name) {
         absl::StrCat("updating function ", fn.getName().str()));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<ReturnValues> Runtime::CallFunction(

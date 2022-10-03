@@ -23,7 +23,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -42,9 +41,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -63,7 +62,7 @@ class CpuGpuFusionTest : public HloTestBase {
   template <typename T, int Arity>
   void TestElementwise2D(
       HloOpcode opcode,
-      absl::optional<ComparisonDirection> direction = absl::nullopt) {
+      std::optional<ComparisonDirection> direction = std::nullopt) {
     // Create a variable for comparisons since they require the direction.
     bool is_compare = std::is_same<T, bool>::value;
     Array2D<float> operand_data[Arity];
@@ -270,7 +269,7 @@ XLA_TEST_F(CpuGpuFusionTest, RandomizedParallelPartition) {
   // Tests parallel partitioning of a fusion instruction.
   // Create shape with random outer dimension size to generate random parallel
   // partition counts for each test run.
-  const int seed = tensorflow::testing::RandomSeed();
+  const int seed = tsl::testing::RandomSeed();
   LOG(INFO) << "RandomizedParallelPartition seed: " << seed;
   std::mt19937 generator(seed);
   std::uniform_int_distribution<int> distribution(128, 1024);
@@ -650,23 +649,23 @@ XLA_TEST_F(CpuGpuFusionTest, DISABLED_ON_CPU(ReduceWindow)) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
   Window window;
   ASSERT_TRUE(
-      tensorflow::protobuf::TextFormat::ParseFromString("dimensions:{\n"
-                                                        "size:2\n"
-                                                        "stride:1\n"
-                                                        "padding_low:0\n"
-                                                        "padding_high:0\n"
-                                                        "window_dilation:1\n"
-                                                        "base_dilation:1\n"
-                                                        "}\n"
-                                                        "dimensions:{\n"
-                                                        "size:2\n"
-                                                        "stride:1\n"
-                                                        "padding_low:0\n"
-                                                        "padding_high:0\n"
-                                                        "window_dilation:1\n"
-                                                        "base_dilation:1\n"
-                                                        "}\n",
-                                                        &window));
+      tsl::protobuf::TextFormat::ParseFromString("dimensions:{\n"
+                                                 "size:2\n"
+                                                 "stride:1\n"
+                                                 "padding_low:0\n"
+                                                 "padding_high:0\n"
+                                                 "window_dilation:1\n"
+                                                 "base_dilation:1\n"
+                                                 "}\n"
+                                                 "dimensions:{\n"
+                                                 "size:2\n"
+                                                 "stride:1\n"
+                                                 "padding_low:0\n"
+                                                 "padding_high:0\n"
+                                                 "window_dilation:1\n"
+                                                 "base_dilation:1\n"
+                                                 "}\n",
+                                                 &window));
   auto nested_builder = HloComputation::Builder("mul");
   {
     auto x = nested_builder.AddInstruction(
@@ -725,6 +724,57 @@ XLA_TEST_F(CpuGpuFusionTest, SharedConstant) {
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>({8}),
                              ExecuteAndTransfer(std::move(hlo_module), {})));
+}
+
+// Test that fusion can handle elementwise ops with more than one user. This
+// test case needs deduplication to avoid exponential compile time.
+XLA_TEST_F(CpuGpuFusionTest, Fibonacci) {
+  const char* const kModuleStr = R"(
+  HloModule fibonacci
+
+  ENTRY main (f0: f32[5], f1: f32[5]) -> f32[5] {
+    %fib0 = f32[5] parameter(0)
+    %fib1 = f32[5] parameter(1)
+    %fib2 = f32[5] add(f32[5] %fib0, f32[5] %fib1)
+    %fib3 = f32[5] add(f32[5] %fib2, f32[5] %fib1)
+    %fib4 = f32[5] add(f32[5] %fib3, f32[5] %fib2)
+    %fib5 = f32[5] add(f32[5] %fib4, f32[5] %fib3)
+    %fib6 = f32[5] add(f32[5] %fib5, f32[5] %fib4)
+    %fib7 = f32[5] add(f32[5] %fib6, f32[5] %fib5)
+    %fib8 = f32[5] add(f32[5] %fib7, f32[5] %fib6)
+    %fib9 = f32[5] add(f32[5] %fib8, f32[5] %fib7)
+    %fib10 = f32[5] add(f32[5] %fib9, f32[5] %fib8)
+    %fib11 = f32[5] add(f32[5] %fib10, f32[5] %fib9)
+    %fib12 = f32[5] add(f32[5] %fib11, f32[5] %fib10)
+    %fib13 = f32[5] add(f32[5] %fib12, f32[5] %fib11)
+    %fib14 = f32[5] add(f32[5] %fib13, f32[5] %fib12)
+    %fib15 = f32[5] add(f32[5] %fib14, f32[5] %fib13)
+    %fib16 = f32[5] add(f32[5] %fib15, f32[5] %fib14)
+    %fib17 = f32[5] add(f32[5] %fib16, f32[5] %fib15)
+    %fib18 = f32[5] add(f32[5] %fib17, f32[5] %fib16)
+    %fib19 = f32[5] add(f32[5] %fib18, f32[5] %fib17)
+    %fib20 = f32[5] add(f32[5] %fib19, f32[5] %fib18)
+    %fib21 = f32[5] add(f32[5] %fib20, f32[5] %fib19)
+    %fib22 = f32[5] add(f32[5] %fib21, f32[5] %fib20)
+    %fib23 = f32[5] add(f32[5] %fib22, f32[5] %fib21)
+    %fib24 = f32[5] add(f32[5] %fib23, f32[5] %fib22)
+    %fib25 = f32[5] add(f32[5] %fib24, f32[5] %fib23)
+    %fib26 = f32[5] add(f32[5] %fib25, f32[5] %fib24)
+    %fib27 = f32[5] add(f32[5] %fib26, f32[5] %fib25)
+    %fib28 = f32[5] add(f32[5] %fib27, f32[5] %fib26)
+    %fib29 = f32[5] add(f32[5] %fib28, f32[5] %fib27)
+    %fib30 = f32[5] add(f32[5] %fib29, f32[5] %fib28)
+    %fib31 = f32[5] add(f32[5] %fib30, f32[5] %fib29)
+    %fib32 = f32[5] add(f32[5] %fib31, f32[5] %fib30)
+    %fib33 = f32[5] add(f32[5] %fib32, f32[5] %fib31)
+    %fib34 = f32[5] add(f32[5] %fib33, f32[5] %fib32)
+    ROOT %fib35 = f32[5] add(f32[5] %fib34, f32[5] %fib33)
+  })";
+  auto module = ParseAndReturnVerifiedModule(kModuleStr).value();
+  auto literal0 = LiteralUtil::CreateR1<float>({1, 2, 3, 4, 5});
+  auto literal1 = LiteralUtil::CreateR1<float>({1, 2, 3, 4, 5});
+  EXPECT_TRUE(
+      RunAndCompare(std::move(module), {&literal0, &literal1}, std::nullopt));
 }
 
 XLA_TEST_F(CpuGpuFusionTest, Add2D) {
@@ -826,16 +876,15 @@ XLA_TEST_F(FusionClientLibraryTest, ManyLayoutTransformations) {
 void BM_ParallelFusion(::testing::benchmark::State& state) {
   // Simple element-wise computation to benchmark parallel task partitioning.
 
-  se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
-  auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
+  se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
+  auto executors = PlatformUtil::GetStreamExecutors(platform).value();
   se::StreamExecutorMemoryAllocator allocator(platform, executors);
 
   const int64_t intra_op_parallelism_threads = 24;
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform);
   client_options.set_intra_op_parallelism_threads(intra_op_parallelism_threads);
-  auto client =
-      ClientLibrary::GetOrCreateLocalClient(client_options).ValueOrDie();
+  auto client = ClientLibrary::GetOrCreateLocalClient(client_options).value();
 
   int device_ordinal = client->default_device_ordinal();
 
@@ -858,26 +907,23 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
 
   auto x = Mul(param0, param1);
   Add(x, param2);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   // Transfer literals to device.
   auto param0_literal =
       LiteralUtil::CreateR2F32Linspace(1.0, 2.0, param0_dim0, param0_dim1);
   ScopedShapedBuffer buffer0 =
-      client->LiteralToShapedBuffer(param0_literal, device_ordinal)
-          .ConsumeValueOrDie();
+      client->LiteralToShapedBuffer(param0_literal, device_ordinal).value();
 
   auto param1_literal =
       LiteralUtil::CreateR2F32Linspace(1.0, 2.0, param1_dim0, param1_dim1);
   ScopedShapedBuffer buffer1 =
-      client->LiteralToShapedBuffer(param1_literal, device_ordinal)
-          .ConsumeValueOrDie();
+      client->LiteralToShapedBuffer(param1_literal, device_ordinal).value();
 
   auto param2_literal =
       LiteralUtil::CreateR2F32Linspace(1.0, 2.0, param2_dim0, param2_dim1);
   ScopedShapedBuffer buffer2 =
-      client->LiteralToShapedBuffer(param2_literal, device_ordinal)
-          .ConsumeValueOrDie();
+      client->LiteralToShapedBuffer(param2_literal, device_ordinal).value();
 
   // Build executable.
   auto executables =
@@ -886,15 +932,15 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
                     {&buffer0.on_host_shape(), &buffer1.on_host_shape(),
                      &buffer2.on_host_shape()},
                     ExecutableBuildOptions())
-          .ConsumeValueOrDie();
+          .value();
   auto executable = std::move(executables[0]);
 
   se::Stream stream(executors[device_ordinal]);
   stream.Init();
 
   // Initialize thread pool.
-  tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
-                                      intra_op_parallelism_threads);
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "XLAEigen",
+                               intra_op_parallelism_threads);
   Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
 
   // Initialize ExecutableRunOptions.

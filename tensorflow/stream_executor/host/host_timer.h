@@ -16,46 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_TIMER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_TIMER_H_
 
-#include <chrono>
-
-#include "tensorflow/stream_executor/stream_executor_internal.h"
-
-namespace stream_executor {
-namespace host {
-
-class HostTimer : public internal::TimerInterface {
- public:
-  HostTimer() {}
-  ~HostTimer() override {}
-
-  // Begins the timer at the present point in the stream.
-  bool Start(Stream* stream);
-
-  // Stops the timer at the present point in the stream.
-  bool Stop(Stream* stream);
-
-  // Returns the most recent value recorded for a start/stopcycle, in
-  // microseconds.
-  uint64_t Microseconds() const override;
-
-  // Returns the most recent value recorded for a start/stopcycle, in
-  // nanoseconds.
-  uint64_t Nanoseconds() const override;
-
- private:
-  using clock = std::chrono::high_resolution_clock;
-
-  clock::time_point start_time_;
-  clock::duration duration_;
-
-  // Actually starts (rather than enqueues starting) the timer.
-  void StartNow();
-
-  // Actually stops (rather than enqueues stopping) the timer.
-  void StopNow();
-};
-
-}  // namespace host
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_TIMER_H_

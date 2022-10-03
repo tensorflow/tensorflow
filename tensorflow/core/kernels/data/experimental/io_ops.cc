@@ -20,13 +20,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/strings/str_replace.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -99,7 +99,7 @@ Status SaveDatasetOp::DoCompute(OpKernelContext* ctx) {
   TF_RETURN_IF_ERROR(WriteMetadataFile(ctx->env(), path, run_id,
                                        dataset->output_dtypes(), num_elements,
                                        /*finalized=*/true));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
@@ -108,7 +108,7 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
                                 uint64* num_elements) {
   IteratorContext::Params params(ctx);
   auto function_handle_cache =
-      absl::make_unique<FunctionHandleCache>(params.flr);
+      std::make_unique<FunctionHandleCache>(params.flr);
   params.function_handle_cache = function_handle_cache.get();
   ResourceMgr resource_mgr;
   params.resource_mgr = &resource_mgr;
@@ -180,7 +180,7 @@ Status SaveDatasetOp::GetShardIndex(IteratorContext* ctx,
                                     int64_t* shard_index) {
   if (!use_shard_func_) {
     *shard_index = (*shard_index + 1) % GetCpuBudget();
-    return Status::OK();
+    return OkStatus();
   }
   std::vector<Tensor> output_tensors;
   TF_RETURN_IF_ERROR(function->RunWithBorrowedArgs(
@@ -191,7 +191,7 @@ Status SaveDatasetOp::GetShardIndex(IteratorContext* ctx,
     return errors::InvalidArgument("`shard_func` must return a scalar int64.");
   }
   *shard_index = output_tensors[0].flat<int64_t>()(0);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SaveDatasetOp::WriteMetadataFile(Env* env, const std::string& path,
@@ -229,7 +229,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -249,7 +249,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -301,7 +301,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
          std::make_pair(kShardFuncTarguments, shard_func_arguments_types_attr)},
         output));
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -401,7 +401,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
       }
 
       current_writer->Write(*out_tensors);
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -452,7 +452,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!use_shard_func) {
         *shard_index = (*shard_index + 1) % GetCpuBudget();
-        return Status::OK();
+        return OkStatus();
       }
       std::vector<Tensor> output_tensors;
       TF_RETURN_IF_ERROR(function->RunWithBorrowedArgs(
@@ -464,7 +464,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
             "`shard_func` must return a scalar int64.");
       }
       *shard_index = output_tensors[0].flat<int64_t>()(0);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status WriteMetadataFile(Env* env, const std::string& path, uint64 run_id,
@@ -568,7 +568,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -592,7 +592,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -627,7 +627,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
          std::make_pair(kReaderFuncTarguments,
                         reader_func_arguments_types_attr)},  // Attrs
         output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -678,19 +678,11 @@ class LoadDatasetOp::Dataset : public DatasetBase {
    private:
     Status InitializeInput(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      auto run_dir = snapshot_util::RunDirectory(dataset()->path_,
-                                                 dataset()->metadata_.run_id());
-
-      // Escape the run_dir in case it contains match characters that would be
-      // misinterpreted by GetMatchingPaths.
-      std::string escaped_run_dir =
-          absl::StrReplaceAll(run_dir, {{"[", "\\["},
-                                        {"]", "\\]"},
-                                        {"?", "\\?"},
-                                        {"*", "\\*"}});
+      auto run_dir = snapshot_util::RunDirectory(
+          TranslateFileName(dataset()->path_), dataset()->metadata_.run_id());
       std::vector<std::string> snapshot_shard_dirs;
       TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
-          io::JoinPath(escaped_run_dir,
+          io::JoinPath(run_dir,
                        strings::Printf("%s%s", "*",
                                        snapshot_util::kShardDirectorySuffix)),
           &snapshot_shard_dirs));
@@ -723,7 +715,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
       // We need to take a reference here as we will use the input_ and
       // its iterator.
       input_->Ref();
-      return Status::OK();
+      return OkStatus();
     }
 
     mutex mu_;

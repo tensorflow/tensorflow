@@ -83,7 +83,7 @@ Status SessionFactory::GetFactory(const SessionOptions& options,
 
   if (candidate_factories.size() == 1) {
     *out_factory = candidate_factories[0].second;
-    return Status::OK();
+    return OkStatus();
   } else if (candidate_factories.size() > 1) {
     // NOTE(mrry): This implementation assumes that the domains (in
     // terms of acceptable SessionOptions) of the registered

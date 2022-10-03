@@ -319,3 +319,22 @@ tpu_py_test(
         ":tpu_embedding_base_test",
     ],
 )
+
+tpu_py_test(
+    name = "tpu_initialization_test",
+    srcs = [
+        "tpu_initialization_test.py",
+    ],
+    disable_mlir_bridge = False,
+    disable_tfrt = False,
+    disable_v3_4chips = False,
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_oss",
+        "noasan",
+    ],
+    deps = [
+        "//tensorflow/python/tpu:tpu_py",
+    ],
+)

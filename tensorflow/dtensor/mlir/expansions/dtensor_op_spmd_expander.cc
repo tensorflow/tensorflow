@@ -60,7 +60,7 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
                                            mlir::TF::DTensorRecv dtensor_recv) {
   // If either one of the send/recv ops has already been lowered, then send/recv
   // configuration has already been verified.
-  if (!dtensor_send || !dtensor_recv) return Status::OK();
+  if (!dtensor_send || !dtensor_recv) return OkStatus();
 
   TF_ASSIGN_OR_RETURN(const absl::optional<Layout> send_layout_or_null,
                       ExtractLayoutFromOperand(dtensor_send.input()));
@@ -114,7 +114,7 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
     return errors::InvalidArgument(
         "tf.CopyToMesh op must be used to send data from/to host mesh.");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns whether to lower DTensorSend/DTensorRecv op to xla backend ops.
@@ -211,7 +211,7 @@ StatusOr<mlir::Operation*> RelayoutSPMDExpander::ExpandOp(mlir::Operation* op) {
                       layout_attr.str(),
                       value_or_status.status().error_message())
             .str());
-  mlir::Value output = value_or_status.ValueOrDie();
+  mlir::Value output = value_or_status.value();
   relayout.output().replaceAllUsesWith(output);
   relayout.erase();
   return output.getDefiningOp();

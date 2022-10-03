@@ -87,7 +87,7 @@ int GPUProcessState::BusIdForGPU(TfDeviceId tf_device_id) {
   // Return the NUMA node associated with the GPU's StreamExecutor.
   se::StreamExecutor* se = DeviceIdUtil::ExecutorForTfDeviceId(
                                DEVICE_GPU, GPUMachineManager(), tf_device_id)
-                               .ValueOrDie();
+                               .value();
   int numa_node = se->GetDeviceDescription().numa_node();
   // bus_id must be non-negative.  If the numa_node is not known,
   // use 0.
@@ -101,7 +101,7 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
     size_t total_bytes, const std::vector<TfDeviceId>& peer_gpu_ids) {
   auto executor = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                             platform_device_id)
-                      .ValueOrDie();
+                      .value();
 
   // FIXME(imintz): Observed OOM issues when using the virtual memory
   // allocators. This should be reenabled when resolved.
@@ -136,7 +136,7 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
                alloc_visitors, {}, *gpu_context, platform_device_id,
                /*virtual_address_space_size=*/total_bytes * 2,
                platform_peer_gpu_ids_vec)
-        .ValueOrDie()
+        .value()
         .release();
   }
 #else
@@ -327,7 +327,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
     if (gpu_allocators_[i].allocator != nullptr) {
       se = DeviceIdUtil::ExecutorForTfDeviceId(DEVICE_GPU, GPUMachineManager(),
                                                TfDeviceId(i))
-               .ValueOrDie();
+               .value();
       break;
     }
   }

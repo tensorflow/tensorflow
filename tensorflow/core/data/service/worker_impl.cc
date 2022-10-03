@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "grpcpp/create_channel.h"
 #include "absl/algorithm/container.h"
@@ -82,7 +83,7 @@ Status MoveElementToResponse(std::vector<Tensor>&& element,
       UncompressedElement* uncompressed = resp.mutable_uncompressed();
       component.AsProtoTensorContent(uncompressed->add_components());
     }
-    return Status::OK();
+    return OkStatus();
   }
   Variant& variant = element[0].scalar<Variant>()();
   CompressedElement* compressed = variant.get<CompressedElement>();
@@ -93,7 +94,7 @@ Status MoveElementToResponse(std::vector<Tensor>&& element,
         variant.TypeName());
   }
   *resp.mutable_compressed() = *compressed;
-  return Status::OK();
+  return OkStatus();
 }
 
 WorkerConfig ApplyWorkerDefaults(const WorkerConfig& config) {
@@ -163,7 +164,7 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
   worker_address_ = worker_address;
   transfer_address_ = transfer_address;
 
-  dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
+  dispatcher_ = std::make_unique<DataServiceDispatcherClient>(
       config_.dispatcher_address(), config_.protocol());
   TF_RETURN_IF_ERROR(dispatcher_->Initialize());
 
@@ -186,19 +187,17 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
       {}, "data-service-worker-heartbeat", [this]() { HeartbeatThread(); }));
   mutex_lock l(mu_);
   registered_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 void DataServiceWorkerImpl::Stop() {
-  std::vector<std::shared_ptr<Task>> tasks;
+  absl::flat_hash_map<int64_t, std::shared_ptr<Task>> tasks;
   {
     mutex_lock l(mu_);
     cancelled_ = true;
-    for (const auto& entry : tasks_) {
-      tasks.push_back(entry.second);
-    }
+    tasks.swap(tasks_);
   }
-  for (auto& task : tasks) {
+  for (const auto& [task_id, task] : tasks) {
     StopTask(*task);
   }
   // At this point there are no outstanding requests in this RPC handler.
@@ -222,7 +221,7 @@ Status DataServiceWorkerImpl::ValidateWorkerConfig() const {
                       config_.worker_tags().end(), ", "),
         "}");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceWorkerImpl::GetElementResult(
@@ -254,7 +253,7 @@ Status DataServiceWorkerImpl::GetElementResult(
         VLOG(3) << "Task is already finished";
         result->end_of_sequence = true;
         result->skip = false;
-        return Status::OK();
+        return OkStatus();
       }
       // Perhaps the worker hasn't gotten the task from the dispatcher yet.
       // Return Unavailable so that the client knows to continue retrying.
@@ -277,7 +276,7 @@ Status DataServiceWorkerImpl::GetElementResult(
     pending_completed_tasks_.insert(request->task_id());
     task_completion_cv_.notify_one();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
@@ -294,13 +293,13 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
   if (task) {
     VLOG(1) << "Received request to process already-processed task "
             << task->task_def.task_id();
-    return Status::OK();
+    return OkStatus();
   }
-  task = absl::make_unique<Task>(task_def);
+  task = std::make_unique<Task>(task_def);
   VLOG(3) << "Began processing for task " << task_def.task_id()
           << " with processing mode "
           << task_def.processing_mode_def().DebugString();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceWorkerImpl::EnsureTaskInitialized(
@@ -313,21 +312,21 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
 
   mutex_lock l(task.mu);
   if (task.initialized) {
-    return Status::OK();
+    return OkStatus();
   }
   TF_ASSIGN_OR_RETURN(DatasetDef dataset_def, GetDatasetDef(task.task_def));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<standalone::Dataset> dataset,
                       MakeDataset(dataset_def, task.task_def));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<standalone::Iterator> iterator,
                       MakeDatasetIterator(*dataset, task.task_def));
-  auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
+  auto task_iterator = std::make_unique<StandaloneTaskIterator>(
       std::move(dataset), std::move(iterator));
   TF_RETURN_IF_ERROR(TaskRunner::Create(
       config_, task.task_def, std::move(task_iterator), task.task_runner));
 
   task.initialized = true;
   VLOG(3) << "Created iterator for task " << task.task_def.task_id();
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
@@ -381,7 +380,7 @@ DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
     std::vector<std::unique_ptr<SplitProvider>> split_providers;
     split_providers.reserve(task_def.num_split_providers());
     for (int i = 0; i < task_def.num_split_providers(); ++i) {
-      split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
+      split_providers.push_back(std::make_unique<DataServiceSplitProvider>(
           config_.dispatcher_address(), config_.protocol(),
           task_def.iteration_id(), i, config_.dispatcher_timeout_ms()));
     }
@@ -420,7 +419,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
         MoveElementToResponse(std::move(result.components), *response));
     VLOG(3) << "Producing an element for task " << request->task_id();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceWorkerImpl::GetWorkerTasks(
@@ -433,7 +432,7 @@ Status DataServiceWorkerImpl::GetWorkerTasks(
     task_info->set_task_id(task->task_def.task_id());
     task_info->set_iteration_id(task->task_def.iteration_id());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
@@ -480,7 +479,7 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
     pending_completed_tasks_.erase(update.task_id());
   }
   VLOG(3) << "Sent " << task_progress.size() << " task updates ";
-  return Status::OK();
+  return OkStatus();
 }
 
 void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
@@ -559,7 +558,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   for (const auto& task : tasks_to_delete) {
     StopTask(*task);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void DataServiceWorkerImpl::DeleteLocalTask(const TaskInfo& task_info)

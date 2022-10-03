@@ -340,7 +340,7 @@ class GraphBuilder(object):
 
   def _add_new_node(self, ast_node):
     """Grows the graph by adding a CFG node following the current leaves."""
-    if ast_node is self.node_index:
+    if ast_node in self.node_index:
       raise ValueError('%s added twice' % ast_node)
     # Assumption: All CFG nodes have identical life spans, because the graph
     # owns them. Nodes should never be used outside the context of an existing

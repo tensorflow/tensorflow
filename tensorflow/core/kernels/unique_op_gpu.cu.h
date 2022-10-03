@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -129,7 +129,7 @@ Status GatherOutputsAndInvertPermutation(const GPUDevice& d, int64_t uniq_size,
                                          const TIndex* segment_ends, T* output,
                                          TIndex* inv_sorted_unique_perm,
                                          TIndex* count) {
-  if (uniq_size == 0) return Status::OK();
+  if (uniq_size == 0) return OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(
       uniq_size, d, &GatherOutputsAndInvertPermutationKernel<T, TIndex>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);

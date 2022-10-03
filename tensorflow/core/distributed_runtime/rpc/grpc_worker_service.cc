@@ -432,7 +432,7 @@ GrpcWorker::GrpcWorker(WorkerEnv* worker_env, const ConfigProto& config)
 
 void GrpcWorker::EnableResponseCache() {
   VLOG(3) << "Enabling gRPC tensor response cache.";
-  response_cache_ = absl::make_unique<GrpcResponseCache>();
+  response_cache_ = std::make_unique<GrpcResponseCache>();
 }
 
 // GrpcRecvTensorAsync: unlike the other Worker methods, which use protocol
@@ -730,7 +730,7 @@ void GrpcWorker::LoggingAsync(const LoggingRequest* request,
       }
     }
   }
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void GrpcWorker::CleanupGraphAsync(const CleanupGraphRequest* request,

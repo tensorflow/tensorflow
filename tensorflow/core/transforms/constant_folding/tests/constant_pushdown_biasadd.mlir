@@ -1,7 +1,7 @@
 // RUN: tfg-transforms-opt -tfg-constant-folding %s | FileCheck %s
 
 module  {
-  tfg.graph #tf_type.version<producer = 1010, min_consumer = 0> {
+  tfg.func @test() {
     %Const, %ctl = Const name("c_mat") {dtype = f32, value = dense<2.000000e+00> : tensor<2x2xf32>} : () -> (tensor<2x2xf32>)
     %Const_0, %ctl_1 = Const name("c_vec") {dtype = f32, value = dense<3.000000e+00> : tensor<2xf32>} : () -> (tensor<2xf32>)
     // CHECK: %[[PLACEHOLDER:.*]], {{.*}} name("x_mat")
@@ -42,5 +42,6 @@ module  {
     %BiasAdd_37, %ctl_38 = BiasAdd(%Const, %Add_35) name("parent6") {T = f32, data_format = "NHWC"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> (tensor<2x2xf32>)
     %Add_39, %ctl_40 = Add(%Placeholder, %Const_0) name("child7") {T = f32} : (tensor<2x2xf32>, tensor<2xf32>) -> (tensor<2x2xf32>)
     %BiasAdd_41, %ctl_42 = BiasAdd(%Add_39, %Const_0) name("parent7") {T = f32, data_format = "NHWC"} : (tensor<2x2xf32>, tensor<2xf32>) -> (tensor<2x2xf32>)
+    return
   }
 }

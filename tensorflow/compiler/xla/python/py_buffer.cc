@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "pybind11/pybind11.h"
@@ -171,7 +172,7 @@ pybind11::tuple PyBuffer::python_shape() const {
 
 pybind11::dtype PyBuffer::python_dtype() const {
   PrimitiveType primitive = buffer()->on_device_shape().element_type();
-  return PrimitiveTypeToDtype(primitive).ValueOrDie();
+  return PrimitiveTypeToDtype(primitive).value();
 }
 
 ClientAndPtr<PjRtDevice> PyBuffer::device() const {
@@ -265,7 +266,7 @@ Status PyBuffer::CopyToHostAsync() {
                          host_value->ready.Notify();
                        });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
@@ -352,6 +353,41 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
   return result;
 }
 
+PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
+    absl::Span<const PyBuffer::object> py_buffers) {
+  PyBuffer* first_py_buffer = py_buffers.at(0).buf();
+  auto client = first_py_buffer->client();
+  auto traceback = first_py_buffer->traceback();
+  bool sticky = first_py_buffer->sticky_device() != nullptr;
+
+  auto check_sticky = [&](const PyBuffer::object& buf) {
+    if (sticky) return buf.buf()->sticky_device() != nullptr;
+    return buf.buf()->sticky_device() == nullptr;
+  };
+
+  std::vector<std::shared_ptr<PjRtBuffer>> results;
+  results.reserve(py_buffers.size());
+  for (const auto& py_buffer : py_buffers) {
+    // Either all device buffers are sticky or none of them are sticky.
+    DCHECK(check_sticky(py_buffer));
+    results.push_back(py_buffer.buf()->shared_ptr_buffer());
+  }
+
+  return PyShardedBuffer(std::move(client), std::move(results),
+                         std::move(traceback), sticky);
+}
+
+Status PyShardedBuffer::BlockHostUntilReady() {
+  GlobalPyRefManager()->CollectGarbage();
+  py::gil_scoped_release gil_release;
+  Status status = OkStatus();
+  for (const auto& buffer : buffers_) {
+    auto s = buffer->GetReadyFuture().Await();
+    if (!s.ok()) status = std::move(s);
+  }
+  return status;
+}
+
 // PEP 3118 buffer protocol implementation.
 
 namespace {
@@ -423,7 +459,7 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
         external_reference_hold->OpaqueDeviceMemoryDataPointer();
     view->buf = const_cast<void*>(root_ptr);
     auto extra =
-        absl::make_unique<ExtraBufferInfo>(std::move(external_reference_hold));
+        std::make_unique<ExtraBufferInfo>(std::move(external_reference_hold));
     view->itemsize = ShapeUtil::ByteSizeOfPrimitiveType(shape->element_type());
     view->len = ShapeUtil::ByteSizeOf(*shape);
     view->readonly = 1;
@@ -447,7 +483,7 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     }
     TF_RETURN_IF_ERROR(buffer.BlockHostUntilReady());
     view->internal = extra.release();
-    return Status::OK();
+    return OkStatus();
   }();
   if (!status.ok()) {
     // numpy.asarray(...) silents the PyExc_BufferError. Adding a log here helps
@@ -557,6 +593,16 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   // critical.
   using jax::property;
   using jax::property_readonly;
+  type.attr("__array__") = py::cpp_function(
+      [](PyBuffer::object self, py::object dtype, py::object context) {
+        py::object array = ValueOrThrow(self.buf()->AsNumPyArray(self));
+        if (!dtype.is_none()) {
+          return array.attr("astype")(dtype);
+        }
+        return array;
+      },
+      py::is_method(type), py::arg("dtype") = py::none(),
+      py::arg("context") = py::none());
   type.attr("__array_priority__") =
       property_readonly([](py::object self) -> int { return 100; });
   type.attr("_device") = property(
@@ -573,10 +619,10 @@ Status PyBuffer::RegisterTypes(py::module& m) {
         return self.buf()->SetAval(std::move(aval));
       });
   type.attr("weak_type") = property(
-      [](PyBuffer::object self) -> absl::optional<bool> {
+      [](PyBuffer::object self) -> std::optional<bool> {
         return self.buf()->weak_type();
       },
-      [](PyBuffer::object self, absl::optional<bool> weak_type) {
+      [](PyBuffer::object self, std::optional<bool> weak_type) {
         return self.buf()->set_weak_type(weak_type);
       });
   type.attr("device_buffer") =
@@ -588,7 +634,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   type.attr("dtype") = property_readonly([](PyBuffer::object self) {
     PrimitiveType primitive =
         self.buf()->buffer()->on_device_shape().element_type();
-    return PrimitiveTypeToDtype(primitive).ValueOrDie();
+    return PrimitiveTypeToDtype(primitive).value();
   });
   type.attr("size") =
       property_readonly([](PyBuffer::object self) -> StatusOr<int64_t> {
@@ -647,9 +693,6 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   type.attr("copy_to_host_async") = py::cpp_function(
       [](PyBuffer::object self) { return self.buf()->CopyToHostAsync(); },
       py::is_method(type));
-  type.attr("to_py") = py::cpp_function(
-      [](PyBuffer::object self) { return self.buf()->AsNumPyArray(self); },
-      py::is_method(type));
   type.attr("xla_shape") = py::cpp_function(
       [](PyBuffer::object self) { return self.buf()->shape(); },
       py::is_method(type));
@@ -678,7 +721,22 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       [](PyBuffer::object self) { return self.buf()->Clone(); },
       py::is_method(type));
   type.attr("__module__") = m.attr("__name__");
-  return Status::OK();
+
+  py::class_<PyShardedBuffer>(m, "ShardedBuffer")
+      .def(py::init(&PyShardedBuffer::CreateFromPyBuffers))
+      .def("get_device_buffers", &PyShardedBuffer::GetPyBuffers)
+      .def("get_device_buffer", &PyShardedBuffer::GetPyBuffer)
+      .def("__len__", &PyShardedBuffer::num_devices)
+      .def("block_until_ready", &PyShardedBuffer::BlockHostUntilReady)
+      .def_static("create_sharded_buffer",
+                  &PyShardedBuffer::CreateFromPyBuffers)
+      .def_property_readonly("dtype", [](const PyShardedBuffer& self) {
+        return PrimitiveTypeToDtype(self.dtype()).value();
+      });
+
+  py::implicitly_convertible<std::vector<PyBuffer::object>, PyShardedBuffer>();
+
+  return OkStatus();
 }
 
 }  // namespace xla

@@ -21,19 +21,21 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/list_kernels.h"
 
+#include <algorithm>
+#include <iterator>
 #include <limits>
+#include <memory>
+#include <utility>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
-#include "tensorflow/core/kernels/concat_lib.h"
-#include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/util.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -44,11 +46,14 @@ Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
     if ((t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) ||
         (t.dtype() == DT_INT64 && t.scalar<int64_t>()() == -1)) {
       *out = PartialTensorShape();
-      return Status::OK();
+      return OkStatus();
     }
     return errors::InvalidArgument(
         "The only valid scalar shape tensor is the fully unknown shape "
         "specified as -1.");
+  } else if (t.shape().dims() != 1) {
+    return errors::InvalidArgument("Shape must be at most rank 1 but is rank ",
+                                   t.shape().dims());
   }
   if (t.dtype() == DT_INT32) {
     return PartialTensorShape::MakePartialShape(t.vec<int32>().data(),
@@ -70,7 +75,7 @@ Status GetElementShapeFromInput(OpKernelContext* c,
   // compatible and store the merged shape in `element_shape`.
   PartialTensorShape tmp = *element_shape;
   TF_RETURN_IF_ERROR(tmp.MergeWith(tensor_list.element_shape, element_shape));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetInputList(OpKernelContext* c, int index, const TensorList** list) {
@@ -85,7 +90,7 @@ Status GetInputList(OpKernelContext* c, int index, const TensorList** list) {
         c->input(index).scalar<Variant>()().DebugString(), "'");
   }
   *list = l;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ForwardInputOrCreateNewList(OpKernelContext* c, int32_t input_index,
@@ -110,7 +115,7 @@ Status ForwardInputOrCreateNewList(OpKernelContext* c, int32_t input_index,
       // Woohoo, forwarding succeeded!
       c->set_output(output_index, *output_tensor);
       *output_list = tmp_out;
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -123,7 +128,7 @@ Status ForwardInputOrCreateNewList(OpKernelContext* c, int32_t input_index,
   output_tensor->scalar<Variant>()() = input_list.Copy();
 
   *output_list = output_tensor->scalar<Variant>()().get<TensorList>();
-  return Status::OK();
+  return OkStatus();
 }
 
 class EmptyTensorList : public OpKernel {
@@ -319,6 +324,11 @@ class TensorListReserve : public OpKernel {
   void Compute(OpKernelContext* c) override {
     PartialTensorShape element_shape;
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(0), &element_shape));
+    OP_REQUIRES(
+        c, TensorShapeUtils::IsScalar(c->input(1).shape()),
+        errors::InvalidArgument(
+            "The num_elements to reserve must be a tensor size 1, but got ",
+            c->input(1).shape()));
     int32_t num_elements = c->input(1).scalar<int32>()();
     OP_REQUIRES(c, num_elements >= 0,
                 errors::InvalidArgument("The num_elements to reserve must be a "
@@ -365,6 +375,8 @@ class TensorListResize : public OpKernel {
   void Compute(OpKernelContext* c) override {
     const TensorList* input_list = nullptr;
     OP_REQUIRES_OK(c, GetInputList(c, 0, &input_list));
+    OP_REQUIRES(c, TensorShapeUtils::IsScalar(c->input(1).shape()),
+                errors::InvalidArgument("size must be a scalar"));
     int32_t size = c->input(1).scalar<int32>()();
     OP_REQUIRES(
         c, size >= 0,
@@ -394,6 +406,7 @@ class TensorListResize : public OpKernel {
     output_list.element_dtype = input_list->element_dtype;
     output_list.max_num_elements = input_list->max_num_elements;
     if (size > input_list->tensors().size()) {
+      output_list.tensors().reserve(size);
       output_list.tensors().insert(output_list.tensors().begin(),
                                    input_list->tensors().begin(),
                                    input_list->tensors().end());
@@ -669,6 +682,32 @@ REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_CPU, TensorList,
                                          TensorListZerosLike<CPUDevice>);
+
+static Status TensorListDeviceCopy(
+    const TensorList& from, TensorList* to,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
+  to->element_shape = from.element_shape;
+  to->element_dtype = from.element_dtype;
+  to->max_num_elements = from.max_num_elements;
+  to->tensors().reserve(from.tensors().size());
+  for (const Tensor& t : from.tensors()) {
+    to->tensors().emplace_back(t.dtype());
+    if (t.dtype() != DT_INVALID) {
+      TF_RETURN_IF_ERROR(copy(t, &to->tensors().back()));
+    }
+  }
+  return OkStatus();
+}
+
+#define REGISTER_LIST_COPY(DIRECTION)                                         \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(TensorList, DIRECTION, \
+                                                       TensorListDeviceCopy)
+
+REGISTER_LIST_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
+REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
+REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(TensorList, TensorList::kTypeName);
 
 #define REGISTER_TENSOR_LIST_OPS_DEFAULT(T)                                \
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                          \

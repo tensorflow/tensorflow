@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
 load(
@@ -23,7 +23,7 @@ tf_proto_library(
     srcs = ["tpu_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
+    create_grpc_library = True,
     protodeps = [
         ":tpu_driver_proto",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -43,8 +43,7 @@ cc_library(
         "tpu_driver.h",
     ],
     deps = [
-        "@com_google_absl//absl/types:optional",
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -62,12 +61,13 @@ cc_library(
     hdrs = ["grpc_tpu_driver.h"],
     deps = [
         ":tpu_driver",
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         ":tpu_service_proto_cc",
+        ":tpu_service_cc_grpc_proto",
         ":tpu_driver_proto_cc",
     ] + tf_grpc_cc_dependencies() + external_deps(),
     alwayslink = 1,
@@ -81,7 +81,7 @@ cc_library(
         ":tpu_driver",
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -101,14 +101,14 @@ cc_library(
     deps = [
         ":tpu_driver",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/types:optional",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         ":tpu_driver_proto_cc",
         ":tpu_service_proto_cc",
+        ":tpu_service_cc_grpc_proto",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
     ] + external_deps(),
     alwayslink = 1,
@@ -126,6 +126,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:semaphore",
         "//tensorflow/compiler/xla/pjrt:worker_thread",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/core:protos_all_cc",
     ] + tf_grpc_cc_dependencies() + external_deps(),
     alwayslink = 1,

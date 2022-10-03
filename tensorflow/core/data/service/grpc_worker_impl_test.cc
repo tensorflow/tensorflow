@@ -50,7 +50,6 @@ using ::grpc::Channel;
 using ::grpc::ChannelArguments;
 using ::grpc::ChannelCredentials;
 using ::grpc::ClientContext;
-using ::tensorflow::data::testing::RangeSquareDataset;
 
 constexpr const char kHostAddress[] = "localhost";
 constexpr const char kProtocol[] = "grpc";
@@ -89,7 +88,7 @@ class GrpcWorkerImplTest : public ::testing::Test {
     std::shared_ptr<Channel> channel =
         ::grpc::CreateCustomChannel(GetWorkerAddress(), credentials, args);
     worker_client_stub_ = WorkerService::NewStub(channel);
-    return Status::OK();
+    return OkStatus();
   }
 
   std::string GetDispatcherAddress() const {

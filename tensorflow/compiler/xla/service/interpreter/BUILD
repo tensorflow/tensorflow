@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -33,6 +33,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:cholesky_expander",
         "//tensorflow/compiler/xla/service:comparison_expander",
         "//tensorflow/compiler/xla/service:compiler",
@@ -57,9 +58,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:triangular_solve_expander",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
+        "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/tsl/platform:status",
     ],
     alwayslink = True,  # Contains compiler registration
 )
@@ -91,10 +92,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
-        "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:stream",
-        "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/types:optional",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor/lib",
     ],
 )
 
@@ -120,9 +120,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
@@ -148,10 +149,11 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor/host:host_stream",
+        "//tensorflow/compiler/xla/stream_executor/host:host_timer",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_headers_lib",
-        "//tensorflow/stream_executor/host:host_stream",
-        "//tensorflow/stream_executor/host:host_timer",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/types:span",
     ],
 )

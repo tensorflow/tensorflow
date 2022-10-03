@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -28,12 +29,10 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
@@ -44,8 +43,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_array.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mem.h"
 
 namespace xla {
 namespace {
@@ -54,7 +54,7 @@ using absl::StrCat;
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 // Literals can be used as DMA targets, which can require alignment. We
-// force a tensorflow::Allocator::kAllocatorAlignment-byte minimum
+// force a tsl::Allocator::kAllocatorAlignment-byte minimum
 // alignment.
 constexpr int kMinimumAlignment = 64;
 
@@ -121,7 +121,7 @@ const Shape& ScalarShapeImpl() {
                 "Not a valid type for a scalar.");
   static const Shape* shape = [] {
     auto shape = new Shape(kType, {}, {}, {});
-    shape->mutable_layout()->set_format(DENSE);
+    shape->mutable_layout();
     return shape;
   }();
   return *shape;
@@ -184,7 +184,7 @@ const Shape* TryInternShape(const Shape& shape) {
     return &NilShape();
   }
   if (shape.IsArray() && shape.dimensions_size() == 0 && shape.is_static() &&
-      shape.layout().tiles_size() == 0) {
+      shape.layout().tiles_size() == 0 && shape.layout().memory_space() == 0) {
     return &ScalarShape(shape.element_type());
   }
   return nullptr;
@@ -276,7 +276,7 @@ Literal::Literal(const Shape& shape, bool allocate_arrays,
   if (const Shape* intered_shape_ptr = TryInternShape(shape)) {
     shape_ = intered_shape_ptr;
   } else {
-    shape_ = absl::make_unique<Shape>(shape);
+    shape_ = std::make_unique<Shape>(shape);
   }
   CHECK(leaf_array_value_state != ArrayValueState::kKnown ||
         LayoutUtil::HasLayout(*shape_));
@@ -341,7 +341,7 @@ int32_t LiteralBase::GetDynamicSize(int64_t dim_index,
   return piece(shape_index).GetDynamicSize(dim_index);
 }
 
-absl::optional<int64_t> LiteralBase::GetFirstInteger() const {
+std::optional<int64_t> LiteralBase::GetFirstInteger() const {
   switch (shape().element_type()) {
     case U8:
       return GetFirstElement<uint8_t>();
@@ -352,7 +352,7 @@ absl::optional<int64_t> LiteralBase::GetFirstInteger() const {
     case U64: {
       int64_t v = GetFirstElement<uint64_t>();
       if (v < 0) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       return v;
     }
@@ -365,7 +365,7 @@ absl::optional<int64_t> LiteralBase::GetFirstInteger() const {
     case S64:
       return GetFirstElement<int64_t>();
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -428,7 +428,7 @@ Status MutableLiteralBase::CopySliceFromInternal(
                             stride_config.dimensions, stride_config.step,
                             copy_proc);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MutableLiteralBase::CopyElementFrom(
@@ -451,7 +451,7 @@ Status MutableLiteralBase::CopyElementFrom(
   if (dest_address != source_address) {
     memcpy(dest_address, source_address, primitive_size);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ StatusOr<Literal> MutableLiteralBase::CreateFromProto(
@@ -488,10 +488,10 @@ Status MutableLiteralBase::CopyElementFrom(
                 ShapeUtil::TupleElementCount(piece->subshape()),
                 proto_element->tuple_literals_size());
           }
-          return Status::OK();
+          return OkStatus();
         }
         if (piece->subshape().element_type() == TOKEN) {
-          return Status::OK();
+          return OkStatus();
         }
 
         CHECK(piece->subshape().IsArray());
@@ -503,7 +503,7 @@ Status MutableLiteralBase::CopyElementFrom(
           TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
         }
 
-        return Status::OK();
+        return OkStatus();
       }));
 
   return std::move(literal);
@@ -588,8 +588,8 @@ void LiteralBase::Piece::AllocateBuffers() {
   if (bytes > kMaxInlinedBytes) {
     CHECK_EQ(buffer(), nullptr);
     rep_.emplace<ArrayRep>();
-    set_buffer(static_cast<char*>(
-        tensorflow::port::AlignedMalloc(bytes, kMinimumAlignment)));
+    set_buffer(
+        static_cast<char*>(tsl::port::AlignedMalloc(bytes, kMinimumAlignment)));
   } else {
     rep_.emplace<InlinedRep>();
   }
@@ -597,7 +597,7 @@ void LiteralBase::Piece::AllocateBuffers() {
 
 void LiteralBase::Piece::DeallocateBuffers() {
   if (auto* array_rep = GetArrayRep()) {
-    tensorflow::port::AlignedFree(array_rep->data);
+    tsl::port::AlignedFree(array_rep->data);
     rep_.emplace<Uninitialized>();
   }
 }
@@ -612,7 +612,7 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
       DeallocateBuffers();
     }
     array_value_state_ = src.array_value_state_;
-    return Status::OK();
+    return OkStatus();
   } else {
     CHECK(src.array_value_state_ == ArrayValueState::kKnown);
     if (array_value_state_ == ArrayValueState::kUndetermined ||
@@ -664,7 +664,7 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
     memcpy(dynamic_size_buffer(), src.dynamic_size_buffer(),
            src.dynamic_size_buffer_bytes());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void MutableLiteralBase::SetDynamicSize(int64_t dim_index, int32_t size) {
@@ -677,10 +677,6 @@ void MutableLiteralBase::SetDynamicSize(int64_t dim_index,
   Shape* subshape =
       ShapeUtil::GetMutableSubshape(mutable_shape_do_not_use(), shape_index);
   CHECK_GE(subshape->dimensions(dim_index), size);
-  if (subshape->dimensions(dim_index) == size) {
-    subshape->set_dynamic_dimension(dim_index, false);
-    return;
-  }
   subshape->set_dynamic_dimension(dim_index, true);
   CHECK_EQ(&piece(shape_index).subshape(), subshape);
 
@@ -712,7 +708,7 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
   return mutable_root_piece().ForEachMutableSubpieceWithStatus(
       [&](const ShapeIndex& index, Piece* piece) {
         if (!piece->subshape().IsArray()) {
-          return Status::OK();
+          return OkStatus();
         }
 
         // Determine if this index is in the part of this literal that we want
@@ -725,7 +721,7 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
           }
         }
         if (!in_subtree_to_copy) {
-          return Status::OK();
+          return OkStatus();
         }
         // Construct the index of the corresponding piece in the source literal.
         ShapeIndex src_piece_index = src_shape_index;
@@ -736,7 +732,7 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
         TF_RETURN_IF_ERROR(
             piece->CopyFrom(src_literal.piece(src_piece_index),
                             /*only_dynamic_bound=*/only_dynamic_bound));
-        return Status::OK();
+        return OkStatus();
       });
 }
 
@@ -770,7 +766,7 @@ Status Literal::MoveFrom(Literal&& src_literal,
   src_literal.root_piece_ = Piece();
   src_literal.root_piece_.set_subshape(src_literal.shape_.get());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
@@ -837,7 +833,7 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
       shape().element_type());
 }
 
-void MutableLiteralBase::PopulateR1(const tensorflow::core::Bitmap& values) {
+void MutableLiteralBase::PopulateR1(const tsl::core::Bitmap& values) {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(element_count(), values.bits());
@@ -886,7 +882,9 @@ Literal LiteralBase::ToBoundedDynamic(const Shape& bounded_shape) const {
           return;
         }
         for (int64_t i = 0; i < subshape.rank(); ++i) {
-          result.SetDynamicSize(i, subshape.dimensions(i));
+          if (bounded_shape.is_dynamic_dimension(i)) {
+            result.SetDynamicSize(i, subshape.dimensions(i));
+          }
         }
       });
   TF_CHECK_OK(result.CopyFrom(*this, {}, {}, /*only_dynamic_bound=*/true));
@@ -934,9 +932,14 @@ StatusOr<Literal> LiteralBase::Broadcast(
   const char* source_data = static_cast<const char*>(untyped_data());
   const int64_t primitive_size =
       ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
-  for (int64_t i = 0; i < dimensions.size(); ++i) {
-    int64_t dynamic_size = GetDynamicSize(i);
-    result.SetDynamicSize(dimensions[i], dynamic_size);
+  if (shape().is_dynamic()) {
+    for (int64_t i = 0; i < dimensions.size(); ++i) {
+      if (shape().is_dynamic_dimension(i)) {
+        // Set any dynamic sizes in the new literal.
+        int64_t dynamic_size = GetDynamicSize(i);
+        result.SetDynamicSize(dimensions[i], dynamic_size);
+      }
+    }
   }
 
   ShapeUtil::ForEachIndex(
@@ -962,6 +965,7 @@ StatusOr<Literal> LiteralBase::Reshape(
     return InvalidArgument("Reshape does not support tuples.");
   }
   if (shape().is_dynamic()) {
+    // TODO(b/243182930): We should consider supporting dynamic reshape.
     return Unimplemented("Dynamic reshape is not implemented.");
   }
   Literal output;
@@ -1017,8 +1021,14 @@ Literal LiteralBase::Transpose(absl::Span<const int64_t> permutation) const {
     layout->add_minor_to_major(inverse_permutation[index]);
   }
   Literal new_literal(permuted_shape);
-  for (int64_t i = 0; i < shape().rank(); i++) {
-    new_literal.SetDynamicSize(inverse_permutation[i], GetDynamicSize(i));
+  if (shape().is_dynamic()) {
+    for (int64_t i = 0; i < shape().rank(); i++) {
+      if (shape().is_dynamic_dimension(i)) {
+        // Set the dynamic size of any dynamic dimension in the transposed
+        // literal.
+        new_literal.SetDynamicSize(inverse_permutation[i], GetDynamicSize(i));
+      }
+    }
   }
   DCHECK_EQ(ShapeUtil::ByteSizeOf(new_literal.shape()),
             ShapeUtil::ByteSizeOf(shape()));
@@ -1170,7 +1180,7 @@ std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
   }
 }
 
-absl::optional<int64_t> LiteralBase::GetIntegralAsS64(
+std::optional<int64_t> LiteralBase::GetIntegralAsS64(
     absl::Span<const int64_t> multi_index) const {
   CHECK(LayoutUtil::IsDenseArray(shape()));
   switch (shape().element_type()) {
@@ -1193,11 +1203,11 @@ absl::optional<int64_t> LiteralBase::GetIntegralAsS64(
     case U64:
       return Get<uint64_t>(multi_index);
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
-absl::optional<double> LiteralBase::GetAsDouble(
+std::optional<double> LiteralBase::GetAsDouble(
     absl::Span<const int64_t> multi_index) const {
   CHECK(LayoutUtil::IsDenseArray(shape()));
   switch (shape().element_type()) {
@@ -1210,11 +1220,11 @@ absl::optional<double> LiteralBase::GetAsDouble(
     case BF16:
       return static_cast<double>(Get<bfloat16>(multi_index));
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
-absl::optional<complex128> LiteralBase::GetAsComplex128(
+std::optional<complex128> LiteralBase::GetAsComplex128(
     absl::Span<const int64_t> multi_index) const {
   switch (shape().element_type()) {
     case BF16:
@@ -1232,7 +1242,7 @@ absl::optional<complex128> LiteralBase::GetAsComplex128(
     case S8:
       return {Get<int8_t>(multi_index)};
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -1262,7 +1272,7 @@ Status MutableLiteralBase::SetIntegralAsS64(
       return FailedPrecondition("Array element type is not integral: %s",
                                 PrimitiveType_Name(shape().element_type()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
@@ -1285,7 +1295,7 @@ Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
       return FailedPrecondition("Array element type is not floating: %s",
                                 PrimitiveType_Name(shape().element_type()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -1726,6 +1736,23 @@ StatusOr<Literal> LiteralBase::BitcastConvert(const Shape& dest_shape) const {
   Literal out(dest_shape);
   std::memcpy(out.root_piece_.buffer(), root_piece().buffer(),
               root_piece().size_bytes());
+
+  // Perform the reshape on little endian encoding even on big endian machines.
+  if (!tensorflow::port::kLittleEndian) {
+    // Swap byte ordering as per the input data type.
+    size_t input_elem_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
+    TF_RETURN_IF_ERROR(tensorflow::ByteSwapArray(
+        const_cast<char*>(out.root_piece().buffer()), input_elem_size,
+        out.root_piece().size_bytes() / input_elem_size));
+    // Swap byte ordering as per the output data type.
+    size_t output_elem_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(dest_shape.element_type());
+    TF_RETURN_IF_ERROR(tensorflow::ByteSwapArray(
+        const_cast<char*>(out.root_piece().buffer()), output_elem_size,
+        out.root_piece().size_bytes() / output_elem_size));
+  }
+
   return out;
 }
 
@@ -2102,7 +2129,7 @@ bool LiteralBase::IsAllFirst() const {
   absl::InlinedVector<int64_t, 4> start_indices(/*n=*/shape().rank(), 0);
   absl::InlinedVector<int64_t, 4> end_indices(/*n=*/shape().rank(), 1);
   Literal first = Slice(start_indices, end_indices);
-  return IsAll(first.Reshape({}).ValueOrDie());
+  return IsAll(first.Reshape({}).value());
 }
 
 bool LiteralBase::IsR1Iota() const {
@@ -2161,17 +2188,17 @@ bool LiteralBase::IsR1Iota() const {
 }
 
 // Returns a stride if the literal is a strided iota, i.e., iota multiplied by a
-// stride. Only applicable for integer iotas. Returns absl::nullopt if the
+// stride. Only applicable for integer iotas. Returns std::nullopt if the
 // literal is not a strided iota.
-absl::optional<int64_t> LiteralBase::IsR1StridedIota() const {
+std::optional<int64_t> LiteralBase::IsR1StridedIota() const {
   if (!shape().IsArray() || shape().rank() != 1) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const int64_t elements = ShapeUtil::ElementsIn(shape());
   const PrimitiveType type = shape().element_type();
   if (elements <= 1 || !primitive_util::IsIntegralType(type)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   auto get_element_at = [&](const int64_t idx) -> int64_t {
@@ -2202,12 +2229,12 @@ absl::optional<int64_t> LiteralBase::IsR1StridedIota() const {
   // to be zero).
   int64_t stride = get_element_at(1);
   if (stride == 0) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   for (int64_t idx = 0; idx < elements; ++idx) {
     if (get_element_at(idx) != idx * stride) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -2374,7 +2401,7 @@ Status CopyFromRepeatedField(absl::Span<NativeT> dest,
         dest.size(), src.size());
   }
   std::copy(src.begin(), src.end(), dest.begin());
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -2477,7 +2504,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       return InvalidArgument("Is called on unsupported shape: %s",
                              ShapeUtil::HumanString(subshape()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool LiteralBase::Piece::IsKnown() const {
@@ -2623,7 +2650,7 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(MutableLiteralBase* literal)
 MutableBorrowingLiteral::MutableBorrowingLiteral(
     MutableBorrowingLiteral literal, const ShapeIndex& view_root)
     : MutableLiteralBase() {
-  shape_ = absl::make_unique<Shape>(literal.piece(view_root).subshape());
+  shape_ = std::make_unique<Shape>(literal.piece(view_root).subshape());
   CHECK(LayoutUtil::HasLayout(*shape_));
 
   root_piece_ = new Piece();
@@ -2635,7 +2662,7 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(
 MutableBorrowingLiteral::MutableBorrowingLiteral(const char* src_buf_ptr,
                                                  const Shape& shape)
     : MutableLiteralBase() {
-  shape_ = absl::make_unique<Shape>(shape);
+  shape_ = std::make_unique<Shape>(shape);
   CHECK(LayoutUtil::HasLayout(*shape_));
   CHECK(!shape_->IsTuple());
 
@@ -2647,7 +2674,7 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(const char* src_buf_ptr,
 MutableBorrowingLiteral::MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs,
                                                  const Shape& shape)
     : MutableLiteralBase() {
-  shape_ = absl::make_unique<Shape>(shape);
+  shape_ = std::make_unique<Shape>(shape);
   if (!shape_->IsTuple()) {
     CHECK_EQ(src_buf_ptrs.size(), 1);
     root_piece_ = new Piece();
@@ -2700,7 +2727,7 @@ void BorrowingLiteral::BuildPieceSubtree(const Shape& shape, Piece* piece) {
 }
 
 BorrowingLiteral::BorrowingLiteral(const char* src_buf_ptr, const Shape& shape)
-    : LiteralBase(), shape_(absl::make_unique<Shape>(shape)) {
+    : LiteralBase(), shape_(std::make_unique<Shape>(shape)) {
   CHECK(shape_->IsArray());
   CHECK(LayoutUtil::HasLayout(*shape_));
 
@@ -2711,7 +2738,7 @@ BorrowingLiteral::BorrowingLiteral(const char* src_buf_ptr, const Shape& shape)
 
 BorrowingLiteral::BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
                                    const Shape& shape)
-    : LiteralBase(), shape_(absl::make_unique<Shape>(shape)) {
+    : LiteralBase(), shape_(std::make_unique<Shape>(shape)) {
   CHECK(shape_->IsTuple());
   CHECK(!ShapeUtil::IsNestedTuple(*shape_));
   CHECK_EQ(src_buf_ptrs.size(), ShapeUtil::TupleElementCount(*shape_));

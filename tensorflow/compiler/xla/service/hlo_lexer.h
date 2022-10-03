@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
 
@@ -161,7 +161,7 @@ class HloLexer {
   TokKind LexNumberOrPattern();
   TokKind LexString();
 
-  absl::optional<int64_t> LexNanPayload(absl::string_view& consumable);
+  std::optional<int64_t> LexNanPayload(absl::string_view& consumable);
 
   absl::string_view buf_;
   const char* current_ptr_;

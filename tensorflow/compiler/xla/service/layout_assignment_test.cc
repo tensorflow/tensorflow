@@ -40,8 +40,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -297,7 +297,7 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   AlgebraicSimplifierOptions options(
       [](const Shape&, const Shape&) { return false; });
   options.set_is_layout_sensitive(true);
-  EXPECT_TRUE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
   HloInstruction* root = m->entry_computation()->root_instruction();
   // Verify layout of the root and the root's operands.
   EXPECT_TRUE(ShapeUtil::Equal(result_shape, root->shape()));
@@ -589,7 +589,7 @@ TEST_F(LayoutAssignmentTest, TransposeIsBitcastFail) {
   LayoutUtil::ClearLayout(hlo->mutable_shape());
   EXPECT_DEATH(ShapeUtil::TransposeIsBitcast(hlo->operand(0)->shape(),
                                              hlo->shape(), hlo->dimensions()),
-               "LayoutUtil::HasLayout");
+               "has_layout");
 }
 
 // ReshapeIsBitcast shouldn't be called without layout information.
@@ -606,7 +606,7 @@ TEST_F(LayoutAssignmentTest, ReshapeIsBitcastFail) {
   LayoutUtil::ClearLayout(hlo->mutable_shape());
   EXPECT_DEATH(
       ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(), hlo->shape()),
-      "LayoutUtil::HasLayout");
+      "has_layout");
 }
 
 // Check that the computation below doesn't crash the compiler.
@@ -643,14 +643,14 @@ TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
           .compiler()
           ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
-          .ConsumeValueOrDie();
+          .value();
 
-  EXPECT_EQ(Status::OK(), backend()
-                              .compiler()
-                              ->RunBackend(std::move(compiled_module),
-                                           backend().default_stream_executor(),
-                                           /*device_allocator=*/nullptr)
-                              .status());
+  EXPECT_EQ(OkStatus(), backend()
+                            .compiler()
+                            ->RunBackend(std::move(compiled_module),
+                                         backend().default_stream_executor(),
+                                         /*device_allocator=*/nullptr)
+                            .status());
 }
 
 // A GTE inside of a fusion node inherits the layout of its operand (which
@@ -929,7 +929,7 @@ TEST_F(LayoutAssignmentTest, CopySliceOperandToAvoidImplicitLayoutChange) {
           .compiler()
           ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
-          .ConsumeValueOrDie();
+          .value();
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {1, 0});
@@ -961,7 +961,7 @@ TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
           .compiler()
           ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
-          .ConsumeValueOrDie();
+          .value();
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {1, 0});
@@ -994,7 +994,7 @@ TEST_F(LayoutAssignmentTest, CopyConcatOperandToAvoidImplicitLayoutChange) {
           .compiler()
           ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
-          .ConsumeValueOrDie();
+          .value();
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {3, 5}, {1, 0});
@@ -1027,7 +1027,7 @@ TEST_F(LayoutAssignmentTest,
           .compiler()
           ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
-          .ConsumeValueOrDie();
+          .value();
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -1051,7 +1051,7 @@ TEST_F(LayoutAssignmentTest, PropagatingLayoutFromResultToOperand) {
           .compiler()
           ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
                          /*device_allocator=*/nullptr)
-          .ConsumeValueOrDie();
+          .value();
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {0, 1});

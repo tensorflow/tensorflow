@@ -85,7 +85,7 @@ void RemoveVariablesInSessionInitializerPass::runOnOperation() {
 
   SymbolTable symbol_table(module);
 
-  for (auto sym_ref : session_init_op.initializers()) {
+  for (auto sym_ref : session_init_op.getInitializers()) {
     func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         sym_ref.cast<FlatSymbolRefAttr>().getValue());
 

@@ -40,7 +40,7 @@ StatusOr<mlir::func::FuncOp> EmitConvolutionForwardAsMlir(
     HloInstruction* conv, absl::string_view function_name,
     mlir::MLIRContext* context);
 
-// Returns Status::OK() if convolution can be implemented by this emitter.
+// Returns OkStatus() if convolution can be implemented by this emitter.
 Status ConvIsImplemented(const HloInstruction* conv);
 
 }  // namespace experimental

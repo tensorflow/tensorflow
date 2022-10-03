@@ -236,7 +236,7 @@ TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorIndex(
 /// (ii) only using Interpreter APIs.
 ///
 /// NOTE:
-/// * Only use one of the above options to run inference, i.e, avoid mixing both
+/// * Only use one of the above options to run inference, i.e. avoid mixing both
 ///   SignatureRunner APIs and Interpreter APIs to run inference as they share
 ///   the same underlying data (e.g. updating an input tensor “A” retrieved
 ///   using the Interpreter APIs will update the state of the input tensor “B”

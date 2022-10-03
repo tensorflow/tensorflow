@@ -21,23 +21,26 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/numbers.h"
+#include "tensorflow/compiler/xla/pjrt/host_callback.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
-#include "tensorflow/compiler/xla/pjrt/transpose.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/python/callback.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/pprof_profile_builder.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
-#include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
-#include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/python/py_client_gpu.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 
@@ -164,14 +167,14 @@ Status PyClient::Defragment() {
             pjrt_client_
                 ->BufferFromHostLiteral(*tmp_buffer.host_copy,
                                         tmp_buffer.py_buffer->buffer_->device())
-                .ValueOrDie();
+                .value();
         TF_CHECK_OK(new_copy->BlockHostUntilReady());
         tmp_buffer.py_buffer->buffer_.reset(new_copy.release());
       }
 
       // TODO(skyewm): delete executables?
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
@@ -276,8 +279,8 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
   TF_ASSIGN_OR_RETURN(
       auto buffers, pjrt_client_->MakeCrossHostReceiveBuffers(
                         shapes, device,
-                        [&done, &recv_descriptors_or, &mu](
-                            StatusOr<PjRtCrossHostRecvState>&& recv_state_or) {
+                        [&done, &recv_descriptors_or,
+                         &mu](StatusOr<PjRtCrossHostRecvState> recv_state_or) {
                           absl::MutexLock l(&mu);
                           if (recv_state_or.ok()) {
                             py::gil_scoped_acquire gil;
@@ -313,9 +316,10 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
 }
 
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
-    const XlaComputation& computation, CompileOptions options) {
-  std::unique_ptr<PjRtExecutable> executable;
-  absl::optional<std::string> fingerprint;
+    const XlaComputation& computation, CompileOptions options,
+    std::vector<pybind11::capsule> host_callbacks) {
+  std::unique_ptr<PjRtLoadedExecutable> executable;
+  std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(executable,
@@ -326,13 +330,14 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
   auto traceback = Traceback::Get();
   return std::make_shared<PyExecutable>(
       shared_from_this(), std::move(executable), std::move(traceback),
-      std::move(fingerprint));
+      std::move(fingerprint), std::move(host_callbacks));
 }
 
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
-    std::string mlir_module, CompileOptions options) {
-  std::unique_ptr<PjRtExecutable> executable;
-  absl::optional<std::string> fingerprint;
+    std::string mlir_module, CompileOptions options,
+    std::vector<pybind11::capsule> host_callbacks) {
+  std::unique_ptr<PjRtLoadedExecutable> executable;
+  std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
     mlir::MLIRContext context;
@@ -346,7 +351,7 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
   auto traceback = Traceback::Get();
   return std::make_shared<PyExecutable>(
       shared_from_this(), std::move(executable), std::move(traceback),
-      std::move(fingerprint));
+      std::move(fingerprint), std::move(host_callbacks));
 }
 
 StatusOr<py::bytes> PyClient::SerializeExecutable(
@@ -355,9 +360,10 @@ StatusOr<py::bytes> PyClient::SerializeExecutable(
 }
 
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
-    const std::string& serialized, CompileOptions options) {
-  std::unique_ptr<PjRtExecutable> executable;
-  absl::optional<std::string> fingerprint;
+    const std::string& serialized, CompileOptions options,
+    std::vector<pybind11::capsule> host_callbacks) {
+  std::unique_ptr<PjRtLoadedExecutable> executable;
+  std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(executable, pjrt_client_->DeserializeExecutable(
@@ -368,7 +374,7 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
   auto traceback = Traceback::Get();
   return std::make_shared<PyExecutable>(
       shared_from_this(), std::move(executable), std::move(traceback),
-      std::move(fingerprint));
+      std::move(fingerprint), std::move(host_callbacks));
 }
 
 namespace {
@@ -461,7 +467,7 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
       auto* device_label = sample->add_label();
       device_label->set_key(device_string_id);
       device_label->set_str(
-          builder.StringId(entry.first.device->DebugString()));
+          builder.StringId(std::string(entry.first.device->DebugString())));
     } else {
       kind_label->set_str(executable_string_id);
     }
@@ -471,144 +477,9 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
 
 namespace {
 
-class CpuCallback {
- public:
-  struct Arg {
-    PrimitiveType type;                    // XLA type
-    py::dtype dtype;                       // NumPy type, for array types.
-    absl::InlinedVector<int64_t, 4> dims;  // Dimensions, for array types.
-    std::vector<ssize_t> strides;          // Byte strides, for array types.
-  };
-  struct Result {
-    PrimitiveType type;  // XLA type
-    // Expected output shape, for array types
-    absl::InlinedVector<int64_t, 4> expected_dims;
-    // Expected output byte strides, for array types. If the strides do not
-    // match the output will be transposed into the expected layout.
-    std::vector<int64_t> expected_strides;
-    // The desired order of output dimensions in major-to-minor order.
-    absl::InlinedVector<int64_t, 4> reversed_layout;
-    // Size of the array in bytes.
-    size_t size_in_bytes;
-  };
-
-  explicit CpuCallback(py::function callable, std::vector<Arg> args,
-                       std::vector<Result> results)
-      : callable_(std::move(callable)),
-        args_(std::move(args)),
-        results_(std::move(results)),
-        transpose_cache_(/*capacity=*/16) {}
-
-  void Call(void* result, void** arg_ptrs, XlaCustomCallStatus* status);
-
- private:
-  py::function callable_;
-  std::vector<Arg> const args_;
-  std::vector<Result> const results_;
-  TransposePlanCache transpose_cache_;
-};
-
-void CpuCallback::Call(void* result, void** arg_ptrs,
-                       XlaCustomCallStatus* status) {
-  absl::Span<void* const> inputs(arg_ptrs, args_.size());
-  absl::Span<void* const> outputs(reinterpret_cast<void**>(result),
-                                  results_.size());
-
-  py::gil_scoped_acquire gil;
-  py::tuple args(inputs.size());
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    if (args_[i].type == TOKEN) {
-      args[i] = py::none();
-    } else {
-      args[i] = py::array(args_[i].dtype, args_[i].dims, args_[i].strides,
-                          const_cast<void*>(inputs[i]));
-      args[i].attr("flags").attr("writeable") = Py_False;
-    }
-  }
-  py::object result_tuple;
-  try {
-    result_tuple = callable_(*py::reinterpret_borrow<py::args>(args));
-  } catch (py::error_already_set& e) {
-    PyErr_Clear();
-    std::string error_message = e.what();
-    XlaCustomCallStatusSetFailure(status, error_message.c_str(),
-                                  error_message.length());
-    return;
-  }
-  if (!PyTuple_Check(result_tuple.ptr())) {
-    throw xla::XlaRuntimeError(
-        absl::StrFormat("CPU callback expected a tuple result, got %s",
-                        static_cast<std::string>(py::repr(result_tuple))));
-  }
-  if (PyTuple_Size(result_tuple.ptr()) != results_.size()) {
-    throw xla::XlaRuntimeError(
-        absl::StrFormat("CPU callback expected a tuple with %d results, got %d",
-                        results_.size(), PyTuple_Size(result_tuple.ptr())));
-  }
-  for (size_t i = 0; i < results_.size(); ++i) {
-    py::object output = py::reinterpret_borrow<py::object>(
-        PyTuple_GetItem(result_tuple.ptr(), i));
-    if (results_[i].type == TOKEN) {
-      if (!output.is_none()) {
-        throw xla::XlaRuntimeError(absl::StrFormat(
-            "Token output from Python callback should be None, got %s",
-            static_cast<std::string>(py::repr(output))));
-      }
-      continue;
-    }
-    py::array array = py::cast<py::array>(std::move(output));
-    static_assert(sizeof(ssize_t) == sizeof(int64_t),
-                  "Expected ssize_t to be of equal size to int64_t");
-    absl::Span<int64_t const> dims(
-        reinterpret_cast<const int64_t*>(array.shape()), array.ndim());
-    if (dims != results_[i].expected_dims) {
-      throw xla::XlaRuntimeError(absl::StrFormat(
-          "Mismatched result shape for %d-th return value from CPU callback; "
-          "expected array with dimensions %s, got %s",
-          i, absl::StrJoin(results_[i].expected_dims, ","),
-          absl::StrJoin(dims, ",")));
-    }
-    absl::Span<int64_t const> strides(
-        reinterpret_cast<const int64_t*>(array.strides()), array.ndim());
-    if (strides == results_[i].expected_strides) {
-      std::memcpy(outputs[i], array.data(), results_[i].size_in_bytes);
-    } else {
-      StatusOr<std::shared_ptr<TransposePlan>> plan =
-          transpose_cache_.GetOrCreate(
-              primitive_util::ByteWidth(results_[i].type), dims,
-              results_[i].reversed_layout,
-              /*input_layout=*/TransposePlan::Striding{strides});
-      if (!plan.ok()) {
-        throw xla::XlaRuntimeError(plan.status().ToString());
-      }
-      plan.ValueOrDie()->Execute(array.data(), outputs[i]);
-    }
-  }
-}
-
-extern "C" void XlaPythonCpuCallback(void* output, void** inputs,
-                                     XlaCustomCallStatus* status) {
-  CpuCallback* callback =
-      absl::bit_cast<CpuCallback*>(*static_cast<uintptr_t*>(inputs[0]));
-  callback->Call(output, inputs + 1, status);
-}
-
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
-                                             &XlaPythonCpuCallback);
-
-}  // namespace
-
-StatusOr<std::pair<uint64_t, pybind11::object>>
-PyClient::GetEmitPythonCallbackDescriptor(
-    pybind11::function callable, absl::Span<Shape const> operand_shapes,
-    absl::Span<Shape const> result_shapes) {
-  if (pjrt_client_->platform_id() != CpuId()) {
-    return Unimplemented("EmitPythonCallback is only implemented on CPU");
-  }
-
+StatusOr<std::vector<CpuCallback::Arg>> CreateCallbackArgs(
+    absl::Span<Shape const> operand_shapes) {
   std::vector<CpuCallback::Arg> callback_args(operand_shapes.size());
-  static_assert(sizeof(uintptr_t) == sizeof(uint64_t),
-                "Expected 64-bit pointers");
   for (int i = 0; i < operand_shapes.size(); ++i) {
     Shape shape = operand_shapes[i];
 
@@ -620,6 +491,7 @@ PyClient::GetEmitPythonCallbackDescriptor(
       absl::c_copy(shape.dimensions(), callback_args[i].dims.begin());
       callback_args[i].strides = ByteStridesForShape(layout);
       callback_args[i].type = shape.element_type();
+      callback_args[i].size_in_bytes = ShapeUtil::ByteSizeOf(layout);
       TF_ASSIGN_OR_RETURN(callback_args[i].dtype,
                           PrimitiveTypeToDtype(shape.element_type()));
     } else if (shape.IsToken()) {
@@ -631,7 +503,11 @@ PyClient::GetEmitPythonCallbackDescriptor(
           shape.ToString());
     }
   }
+  return callback_args;
+}
 
+StatusOr<std::vector<CpuCallback::Result>> CreateCallbackResults(
+    absl::Span<Shape const> result_shapes) {
   std::vector<CpuCallback::Result> callback_results(result_shapes.size());
   for (int i = 0; i < result_shapes.size(); ++i) {
     if (result_shapes[i].IsArray()) {
@@ -657,6 +533,75 @@ PyClient::GetEmitPythonCallbackDescriptor(
           result_shapes[i].ToString());
     }
   }
+  return callback_results;
+}
+
+}  // namespace
+
+StatusOr<pybind11::object> PyClient::MakePythonCallbackUsingHostSendAndRecv(
+    pybind11::function callable, absl::Span<Shape const> operand_shapes,
+    absl::Span<Shape const> result_shapes,
+    absl::Span<uint16_t const> send_channel_ids,
+    absl::Span<uint16_t const> recv_channel_ids) {
+  static_assert(sizeof(uintptr_t) == sizeof(uint64_t),
+                "Expected 64-bit pointers");
+
+  TF_ASSIGN_OR_RETURN(auto callback_args, CreateCallbackArgs(operand_shapes));
+  TF_ASSIGN_OR_RETURN(auto callback_results,
+                      CreateCallbackResults(result_shapes));
+
+  auto callback = std::make_shared<CpuCallback>(
+      std::move(callable), callback_args, callback_results);
+
+  auto* host_callback = new HostCallback;
+
+  auto assign_arg_info = [](absl::Span<Shape const> shapes,
+                            absl::Span<uint16_t const> channel_ids,
+                            std::vector<HostCallbackArgInfo>& arg_infos) {
+    DCHECK_EQ(shapes.size(), channel_ids.size());
+    arg_infos.reserve(shapes.size());
+    for (int i = 0; i < shapes.size(); ++i) {
+      HostCallbackArgInfo host_callback_arg_info;
+      host_callback_arg_info.channel_id = channel_ids[i];
+      const auto& shape = shapes[i];
+      Shape layout =
+          (shape.has_layout() ? shape
+                              : LayoutUtil::GetWithDefaultLayout(shape));
+      host_callback_arg_info.shape = layout;
+      arg_infos.push_back(std::move(host_callback_arg_info));
+    }
+  };
+
+  assign_arg_info(operand_shapes, send_channel_ids, host_callback->operands);
+  assign_arg_info(result_shapes, recv_channel_ids, host_callback->results);
+
+  host_callback->callback = [callback = std::move(callback)](void** outputs,
+                                                             void** inputs) {
+    return callback->PrepareAndCall(outputs, inputs);
+  };
+
+  py::capsule callback_capsule(
+      host_callback, [](void* ptr) { delete static_cast<HostCallback*>(ptr); });
+
+  return callback_capsule;
+}
+
+StatusOr<std::pair<uint64_t, pybind11::object>>
+PyClient::GetEmitPythonCallbackDescriptor(
+    pybind11::function callable, absl::Span<Shape const> operand_shapes,
+    absl::Span<Shape const> result_shapes) {
+  PjRtPlatformId platform_id = pjrt_client_->platform_id();
+  if (platform_id != GpuId() && platform_id != CpuId()) {
+    return Unimplemented(
+        "EmitPythonCallback is only implemented on CPU and GPU");
+  }
+
+  static_assert(sizeof(uintptr_t) == sizeof(uint64_t),
+                "Expected 64-bit pointers");
+
+  TF_ASSIGN_OR_RETURN(auto callback_args, CreateCallbackArgs(operand_shapes));
+  TF_ASSIGN_OR_RETURN(auto callback_results,
+                      CreateCallbackResults(result_shapes));
 
   auto callback = std::make_unique<CpuCallback>(
       std::move(callable), callback_args, callback_results);
@@ -671,7 +616,7 @@ PyClient::GetEmitPythonCallbackDescriptor(
 StatusOr<XlaOp> PyClient::EmitPythonCallbackFromDescriptor(
     XlaBuilder& builder, uint64_t descriptor, absl::Span<XlaOp const> operands,
     absl::Span<Shape const> result_shapes,
-    absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
+    std::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
   std::vector<Shape> custom_call_arg_layouts(operands.size() + 1);
   custom_call_arg_layouts[0] =
       ShapeUtil::MakeShapeWithDescendingLayout(U64, {});
@@ -724,21 +669,26 @@ StatusOr<XlaOp> PyClient::EmitPythonCallbackFromDescriptor(
   }
   custom_call_args[0] = ConstantR0<std::uint64_t>(&builder, descriptor);
   Shape result_shape = ShapeUtil::MakeTupleShape(result_shapes_with_layout);
-  XlaOp result = CustomCallWithLayout(
-      &builder, "xla_python_cpu_callback", custom_call_args, result_shape,
-      custom_call_arg_layouts,
-      /*opaque=*/"", has_side_effect,
-      /*output_operand_aliasing=*/{},
-      /*literal=*/nullptr,
-      /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
-      /*api_version=*/API_VERSION_STATUS_RETURNING);
+  std::string callback_str = std::to_string(descriptor);
+  std::string callback_name = "xla_python_cpu_callback";
+  if (pjrt_client_->platform_id() == GpuId()) {
+    callback_name = "xla_python_gpu_callback";
+  }
+  XlaOp result =
+      CustomCallWithLayout(&builder, callback_name, custom_call_args,
+                           result_shape, custom_call_arg_layouts,
+                           /*opaque=*/callback_str.data(), has_side_effect,
+                           /*output_operand_aliasing=*/{},
+                           /*literal=*/nullptr,
+                           /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+                           /*api_version=*/API_VERSION_STATUS_RETURNING);
   return result;
 }
 
 StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
     pybind11::function callable, XlaBuilder& builder,
     absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
-    absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
+    std::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
   std::vector<Shape> operand_shapes(operands.size());
   for (int i = 0; i < operands.size(); ++i) {
     TF_ASSIGN_OR_RETURN(Shape shape, builder.GetShape(operands[i]));
@@ -757,5 +707,16 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
                           operand_shapes, has_side_effect));
   return std::make_pair(callback_op, keepalive);
 }
+
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
+                                             &XlaPythonCpuCallback);
+
+#if TENSORFLOW_USE_ROCM
+XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_gpu_callback",
+                                         &XlaPythonGpuCallback, "ROCM");
+#elif defined(GOOGLE_CUDA)
+XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_gpu_callback",
+                                         &XlaPythonGpuCallback, "CUDA");
+#endif  // TENSORFLOW_USE_ROCM
 
 }  // namespace xla

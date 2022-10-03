@@ -637,13 +637,13 @@ OpDefBuilder& OpDefBuilder::SetTypeConstructor(OpTypeConstructor c) {
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::SetForwardTypeFn(ForwardTypeInferenceFn f) {
+OpDefBuilder& OpDefBuilder::SetForwardTypeFn(TypeInferenceFn f) {
   op_reg_data_.fwd_type_fn = f;
   return *this;
 }
 
 OpDefBuilder& OpDefBuilder::SetReverseTypeFn(int input_number,
-                                             ForwardTypeInferenceFn f) {
+                                             TypeInferenceFn f) {
   op_reg_data_.rev_type_fn = f;
   op_reg_data_.rev_type_input = input_number;
   return *this;
@@ -687,7 +687,7 @@ Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
     TF_RETURN_IF_ERROR(op_reg_data->type_ctor(op_def));
   }
 
-  if (errors.empty()) return Status::OK();
+  if (errors.empty()) return OkStatus();
   return errors::InvalidArgument(absl::StrJoin(errors, "\n"));
 }
 

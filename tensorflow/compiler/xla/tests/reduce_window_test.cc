@@ -18,7 +18,6 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -37,9 +36,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -1678,7 +1677,7 @@ ENTRY reduce-window-identity {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, std::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowIdentityNoPadding) {
@@ -1698,7 +1697,7 @@ ENTRY reduce-window-identity {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, std::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowS32) {
@@ -1717,7 +1716,7 @@ ENTRY %reduce-window (parameter.0: s32[81,8], parameter.1: s32[]) -> s32[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, std::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowS64) {
@@ -1736,7 +1735,7 @@ ENTRY %reduce-window (parameter.0: s64[81,8], parameter.1: s64[]) -> s64[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, std::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowF16) {
@@ -1755,7 +1754,7 @@ ENTRY %reduce-window (parameter.0: f16[81,8], parameter.1: f16[]) -> f16[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, std::nullopt));
 }
 
 XLA_TEST_F(ReduceWindowTextTest, R4OnlyDilation) {

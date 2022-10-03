@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -tf-layout-assignment -verify-diagnostics | FileCheck %s --dump-input=always
 
 module attributes {
-  tf.devices = {"/device:GPU:0" = {cc_major = 6 : i32, cc_minor = 0 : i32}}
+  tf.devices = {"/device:GPU:0" = #tf_type.gpu_device_metadata<cc_major = 6, cc_minor = 0>}
 } {
 
 // CHECK-LABEL: func @transposeConv2D_3x3_f16

@@ -15,17 +15,17 @@ limitations under the License.
 
 // This file defines helpers useful when creating or manipulating lhlo/hlo.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -49,25 +49,33 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
 mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
     const GatherDimensionNumbers& input, mlir::Builder builder);
 
-// Converts the given XLA shape for tensors to the template MLIR type. Note that
-// any dynamic bounds in the input shape is lost and those dimensions are fully
-// dynamic in the MLIR type.
+// Converts the given XLA shape for tensors to the template MLIR type.
 template <typename TypeT>
-static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& shape,
+static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
                                                 mlir::Builder builder) {
   auto element_type_or =
-      ConvertPrimitiveTypeToMLIRType(shape.element_type(), builder);
+      ConvertPrimitiveTypeToMLIRType(xla_ty.element_type(), builder);
   if (!element_type_or.ok()) return element_type_or.status();
 
-  auto dimensions = shape.dimensions();
-  llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
-  for (auto element : llvm::enumerate(shape.dynamic_dimensions())) {
-    bool is_dynamic = element.value();
-    if (is_dynamic) {
-      array[element.index()] = mlir::ShapedType::kDynamicSize;
+  bool is_dynamic = false;
+  int64_t rank = xla_ty.rank();
+  llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamicSize);
+  llvm::SmallVector<int64_t, 4> bounds(rank, mlir::ShapedType::kDynamicSize);
+  for (int64_t dim = 0; dim < rank; ++dim) {
+    int64_t dim_size = xla_ty.dimensions(dim);
+    if (xla_ty.is_dynamic_dimension(dim)) {
+      bounds[dim] = dim_size;
+      is_dynamic = true;
+    } else {
+      shape[dim] = dim_size;
     }
   }
-  return TypeT::get(array, element_type_or.ValueOrDie());
+  using mlir::mhlo::TypeExtensionsAttr;
+  TypeExtensionsAttr extensions;
+  if (is_dynamic) {
+    extensions = TypeExtensionsAttr::get(builder.getContext(), bounds);
+  }
+  return TypeT::get(shape, element_type_or.value(), extensions);
 }
 
 StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
@@ -77,15 +85,13 @@ template <>
 inline StatusOr<mlir::MemRefType> ConvertTensorShapeToType(
     const Shape& shape, mlir::Builder builder) {
   if (shape.is_dynamic()) {
-    return tensorflow::errors::FailedPrecondition(
+    return tsl::errors::FailedPrecondition(  // NOLINT
         "MemRefType don't support dynamic shapes");
   }
   return ConvertTensorShapeToMemRefType(shape, builder);
 }
 
-// Converts the given XLA shape to the template MLIR type. Note that  any
-// dynamic bounds in the input shape is lost and those dimensions are fully
-// dynamic in the MLIR type.
+// Converts the given XLA shape to the template MLIR type.
 template <typename TypeT>
 static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
                                                mlir::Builder builder) {
@@ -109,4 +115,4 @@ static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_

@@ -44,7 +44,7 @@ class Window : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(
+    return std::make_unique<Iterator>(
         Iterator::Params{this, name_utils::IteratorPrefix(kWindow, prefix)});
   }
 
@@ -75,10 +75,10 @@ class Window : public DatasetBase {
   string DebugString() const override { return kWindow; }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return Status::OK();
+    return OkStatus();
   }
 
-  Status CheckExternalState() const override { return Status::OK(); }
+  Status CheckExternalState() const override { return OkStatus(); }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -101,7 +101,7 @@ class Window : public DatasetBase {
     }
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {}, {std::make_pair(0, input_nodes)}, {}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -119,14 +119,14 @@ class Window : public DatasetBase {
         *end_of_sequence = false;
         *out_tensors = dataset()->elements_[i_++];
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -135,7 +135,7 @@ class Window : public DatasetBase {
       int64_t i;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &i));
       i_ = size_t(i);
-      return Status::OK();
+      return OkStatus();
     }
 
     mutex mu_;
@@ -189,7 +189,7 @@ Status NewWindow(std::vector<std::vector<Tensor>> elements,
   *out_dataset = new Window(std::move(elements), std::move(output_types),
                             std::move(output_shapes));
   (*out_dataset)->Initialize(/*metadata=*/{});
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace data

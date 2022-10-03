@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 
 #include <functional>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -64,8 +65,8 @@ namespace xla {
 //     - WithElementType: instr.shape().element_type() matches the given type
 //     - WithNumOperands
 //     - WithOperand: operand at the given index matches the given pattern
-//     - WithOperandIfPresent: instr has > i operands, and the i'th one matches
-//       the given pattern
+//     - WithOperandIfPresent: instr has fewer than i operands or the i'th one
+//       matches the given pattern
 //     - IsConstant
 //     - IsNonConstant
 //     - IsConstantScalar/IsEffectiveConstantScalar: Optionally accepts a value,
@@ -85,7 +86,6 @@ namespace xla {
 //     - IsScalar/IsEffectiveScalar/IsArray/IsTuple
 //     - IsDenseArray
 //     - WithLayout: layout shape's layout matches the given pattern (e.g.
-//       Layout().WithDenseFormat())
 //     - WithLayoutEqualTo: shape's layout equals the argument (i.e. another
 //       Layout, but not the result of Layout().foo())
 //     - WithSubshape: shape is a tuple whose subshape matches the given pattern
@@ -97,7 +97,6 @@ namespace xla {
 //
 //  Layout():
 //     - EqualTo
-//     - WithDenseFormat
 //
 // Op(), Shape(), and Layout() may be passed an argument of type
 // HloInstruction**, Shape**, or Layout**, respectively, or const versions of
@@ -167,6 +166,37 @@ bool Match(Value* value, const Pattern& pattern,
     }
   }
   return pattern.Match(value, option);
+}
+
+// If `enable_logging` is false, this is identical to Match(instr, pattern).
+//
+// If `enable_logging` is true and the match fails, we try to
+// Match(instr, filter_pattern). If this is true, then we log an explanation for
+// why the original Match(instr, pattern) failed.
+//
+// This function can be used aid in debugging passes with complex matchers.
+// For example, in the following snippet we're trying to match
+// m::Slice(m::Reshape(m::Pad())). Every time we encounter a slice that
+// doesn't match the larger pattern, we will log an explanation for why it
+// didn't match the larger pattern.
+//
+// if (MatchAndLogIfFailed(instr, "slice of reshape of pad",
+//                         m::Slice(m::Reshape(m::Pad())),
+//                         VLOG_IS_ON(3), m::Slice())
+//
+// TODO(jlebar): Log the caller's absl::SourceLocation once that's in OSS.
+template <typename FilterPattern, typename Pattern>
+bool MatchAndLogIfFailed(HloInstruction* instr, absl::string_view desc,
+                         const Pattern& pattern, bool enable_logging,
+                         const FilterPattern& filter_pattern) {
+  bool matched = Match(instr, pattern);
+  if (matched || !enable_logging || !Match(instr, filter_pattern)) {
+    return matched;
+  }
+  std::stringstream os;
+  CHECK(!Match(instr, pattern, {/*capture=*/false, /*explain_os=*/&os}));
+  LOG(ERROR) << "Failed to match " << desc << ":\n" << os.str();
+  return false;
 }
 
 namespace match {
@@ -432,29 +462,6 @@ class LayoutPatternEqualImpl {
   const ::xla::Layout* layout_;
 };
 
-// A LayoutPattern implementation that matches only if the layout has a given
-// format.
-class LayoutPatternFormatImpl {
- public:
-  explicit constexpr LayoutPatternFormatImpl(Format format) : format_(format) {}
-
-  bool Match(const ::xla::Layout* layout, MatchOption option) const {
-    if (layout->format() != format_) {
-      EXPLAIN << "Layout has format " << Format_Name(layout->format())
-              << " but expected " << Format_Name(format_);
-      return false;
-    }
-    return true;
-  }
-
-  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
-    *os << "with format " << Format_Name(format_);
-  }
-
- private:
-  Format format_;
-};
-
 // A pattern that matches Layouts.
 template <typename LayoutType, typename Impl>
 class LayoutPattern {
@@ -503,11 +510,6 @@ class LayoutPattern {
     return AppendImpl(LayoutPatternEqualImpl(layout));
   }
 
-  // Modifies the pattern to match only if the layout has a dense format.
-  constexpr auto WithDenseFormat() const {
-    return AppendImpl(LayoutPatternFormatImpl(DENSE));
-  }
-
  private:
   Impl impl_;
   LayoutType** matched_layout_;
@@ -536,7 +538,7 @@ class AnyOfPattern {
   template <typename ItemType>
   bool MatchImpl(ItemType* item, MatchOption option) const {
     // If we're generating an explanation, buffer it until we know we failed.
-    absl::optional<std::stringstream> explanation;
+    std::optional<std::stringstream> explanation;
     MatchOption new_option = option;
     if (option.explain_os) {
       new_option.explain_os = &explanation.emplace();
@@ -556,7 +558,7 @@ class AnyOfPattern {
     auto new_option = option;
     new_option.capture = false;
 
-    absl::optional<std::stringstream> explanation;
+    std::optional<std::stringstream> explanation;
     if (option.explain_os) {
       new_option.explain_os = &explanation.emplace();
     }
@@ -800,6 +802,24 @@ class ShapePatternIsArrayImpl {
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "that represents an array";
+  }
+};
+
+// A ShapePattern implementation that matches only if the shape is an array
+class ShapePatternIsDenseArrayImpl {
+ public:
+  explicit constexpr ShapePatternIsDenseArrayImpl() {}
+
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
+    if (!LayoutUtil::IsDenseArray(*shape)) {
+      EXPLAIN << "Shape is not a dense array";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "that represents a dense array";
   }
 };
 
@@ -1060,8 +1080,9 @@ class ShapePattern {
     return WithLayout(Layout().EqualTo(layout));
   }
 
+  // Modifies the pattern to match only if the shape is a dense array.
   constexpr auto IsDenseArray() const {
-    return WithLayout(Layout().WithDenseFormat());
+    return AppendImpl(ShapePatternIsDenseArrayImpl());
   }
 
   // Modifies the pattern to match only if the shape has a subshape that matches
@@ -1243,6 +1264,58 @@ class HloInstructionPatternOpcodeImpl {
  private:
   HloOpcode opcode_;
   bool invert_;
+};
+
+// An HloInstructionPattern implementation that optionally matches a unary
+// operand with a given opcode before matching a given pattern.
+template <typename PatternType, typename PatternImpl>
+class HloInstructionPatternOptionalUnaryOpImpl {
+ public:
+  explicit HloInstructionPatternOptionalUnaryOpImpl(
+      absl::Span<const HloOpcode> opcodes,
+      const HloInstructionPattern<PatternType, PatternImpl>& pattern)
+      : opcodes_(opcodes), pattern_(pattern) {}
+
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    // Compare the opcode of the instruction with the entries of opcodes_.
+    if (absl::c_linear_search(opcodes_, inst->opcode())) {
+      // Additionally, the operand of the instruction must match the given
+      // operand pattern.
+      if (pattern_.Match(HloOperand(inst, 0), option)) {
+        return true;
+      } else {
+        EXPLAIN << " and the ";
+      }
+    } else {
+      EXPLAIN << "The HloInstruction doesn't have one of the opcodes {"
+              << absl::StrJoin(opcodes_, ", ",
+                               [](std::string* out, const HloOpcode opcode) {
+                                 absl::StrAppend(out, HloOpcodeString(opcode));
+                               })
+              << "} and the ";
+    }
+    // In the transparent case, the instruction matches the given operand
+    // pattern.
+    if (pattern_.Match(inst, option, /*explain_instruction=*/false)) {
+      return true;
+    }
+    return false;
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "which optionally matches a unary operand with one of the opcodes {"
+        << absl::StrJoin(opcodes_, ", ",
+                         [](std::string* out, const HloOpcode opcode) {
+                           absl::StrAppend(out, HloOpcodeString(opcode));
+                         })
+        << "} before matching ";
+    pattern_.DescribeTo(os, indent);
+    *os << ".";
+  }
+
+ private:
+  absl::Span<const HloOpcode> opcodes_;
+  const HloInstructionPattern<PatternType, PatternImpl> pattern_;
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
@@ -1788,9 +1861,7 @@ class HloInstructionPatternComparisonDirectionImpl {
 
 class HloInstructionPredicateImpl {
  public:
-  explicit HloInstructionPredicateImpl(
-      std::function<bool(const HloInstruction*)> fn)
-      : fn_(std::move(fn)) {}
+  explicit HloInstructionPredicateImpl(HloPredicate fn) : fn_(std::move(fn)) {}
 
   bool Match(const HloInstruction* inst, MatchOption option) const {
     bool match = fn_(inst);
@@ -1805,7 +1876,7 @@ class HloInstructionPredicateImpl {
   }
 
  private:
-  std::function<bool(const HloInstruction*)> fn_;
+  HloPredicate fn_;
 };
 
 // Matches a constant scalar or effective scalar, optionally with a given value.
@@ -1813,7 +1884,7 @@ template <typename ScalarTy>
 class HloConstantScalarImpl {
  public:
   explicit constexpr HloConstantScalarImpl(bool match_effective_scalar)
-      : val_(absl::nullopt), match_effective_scalar_(match_effective_scalar) {}
+      : val_(std::nullopt), match_effective_scalar_(match_effective_scalar) {}
 
   constexpr HloConstantScalarImpl(ScalarTy val, bool match_effective_scalar)
       : val_(val), match_effective_scalar_(match_effective_scalar) {}
@@ -1860,7 +1931,7 @@ class HloConstantScalarImpl {
       EXPLAIN << "could not convert matched literal to effective scalar";
       return false;
     }
-    Literal const_inst_scalar = std::move(const_inst_scalar_or).ValueOrDie();
+    Literal const_inst_scalar = std::move(const_inst_scalar_or).value();
     if (!const_inst_scalar.IsEqualAt({}, *val_)) {
       EXPLAIN << "HloInstruction's constant value "
               << const_inst_scalar.ToStringWithoutShape()
@@ -1870,7 +1941,7 @@ class HloConstantScalarImpl {
     return true;
   }
 
-  absl::optional<ScalarTy> val_;
+  std::optional<ScalarTy> val_;
   bool match_effective_scalar_;
 };
 
@@ -1905,20 +1976,34 @@ class HloInstructionPattern {
   }
 
   // Returns true and captures the instruction iff it matches the pattern.
-  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+  bool Match(::xla::HloInstruction* inst, MatchOption option,
+             bool explain_instruction = true) const {
     if (impl_.Match(inst, option)) {
       if (option.capture && matched_inst_) {
         *matched_inst_ = inst;
       }
       return true;
     }
-    EXPLAIN << "\nin " << InstToString(inst);
+    if (explain_instruction) {
+      EXPLAIN << "\nin " << InstToString(inst);
+    }
     return false;
   }
 
   // Modifies the pattern to match only if the instruction has the given name.
   auto WithName(absl::string_view name) const {
     return AppendImpl(HloInstructionPatternNameImpl(name));
+  }
+
+  // Modifies the pattern to optionally match a unary operand with a given
+  // opcode before matching a given pattern.
+  template <typename PatternType, typename PatternImpl>
+  constexpr auto WithOptionalUnaryOp(
+      absl::Span<const HloOpcode> opcodes,
+      const HloInstructionPattern<PatternType, PatternImpl>& pattern) const {
+    return AppendImpl(
+        HloInstructionPatternOptionalUnaryOpImpl<PatternType, PatternImpl>(
+            opcodes, pattern));
   }
 
   // Modifies the pattern to match only if the instruction has the given opcode.
@@ -2091,7 +2176,7 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternComparisonDirectionImpl(direction));
   }
 
-  auto WithPredicate(std::function<bool(const HloInstruction*)> fn) const {
+  auto WithPredicate(HloPredicate fn) const {
     return AppendImpl(HloInstructionPredicateImpl(std::move(fn)));
   }
 
@@ -2137,6 +2222,22 @@ XLA_NULLOP_PATTERN(Rng)
 XLA_NULLOP_PATTERN(PartitionId)
 XLA_NULLOP_PATTERN(ReplicaId)
 #undef XLA_NULLOP_PATTERN
+
+// A pattern which optionally matches a unary operand with a given opcode before
+// matching a given pattern.
+template <typename Pattern>
+inline auto OptionalUnaryOp(absl::Span<const HloOpcode> ops,
+                            Pattern&& pattern) {
+  return Op().WithOptionalUnaryOp(ops, std::forward<Pattern>(pattern));
+}
+
+template <typename HloInstructionType, typename Pattern>
+inline auto OptionalUnaryOp(HloInstructionType** matched_inst,
+                            absl::Span<const HloOpcode> ops,
+                            Pattern&& pattern) {
+  return Op(matched_inst)
+      .WithOptionalUnaryOp(ops, std::forward<Pattern>(pattern));
+}
 
 // Helpers for unary instructions.
 #define XLA_UNOP_PATTERN(NAME)                                       \
@@ -2353,10 +2454,18 @@ auto CustomCall(Arg0&& arg0, Args&&... args) {
                               /*operand_num=*/0, std::forward<Arg0>(arg0),
                               std::forward<Args>(args)...);
 }
+
 template <typename... Args>
 auto CustomCall(absl::string_view custom_call_target, Args&&... args) {
   return CustomCall(std::forward<Args>(args)...)
       .WithCustomCallTarget(custom_call_target);
+}
+
+template <typename... Args>
+auto CustomCall(absl::Span<const absl::string_view> custom_call_targets,
+                Args&&... args) {
+  return CustomCall(std::forward<Args>(args)...)
+      .WithCustomCallTarget(custom_call_targets);
 }
 
 template <typename HloInstructionType, typename Arg0, typename... Args,
@@ -2368,11 +2477,20 @@ auto CustomCall(HloInstructionType** matched_inst, Arg0&& arg0,
       CustomCall(matched_inst).WithNumOperands(sizeof...(Args) + 1),
       /*operand_num=*/0, std::forward<Arg0>(arg0), std::forward<Args>(args)...);
 }
+
 template <typename HloInstructionType, typename... Args>
 auto CustomCall(HloInstructionType** matched_inst,
                 absl::string_view custom_call_target, Args&&... args) {
   return CustomCall(matched_inst, std::forward<Args>(args)...)
       .WithCustomCallTarget(custom_call_target);
+}
+
+template <typename HloInstructionType, typename... Args>
+auto CustomCall(HloInstructionType** matched_inst,
+                absl::Span<const absl::string_view> custom_call_targets,
+                Args&&... args) {
+  return CustomCall(matched_inst, std::forward<Args>(args)...)
+      .WithCustomCallTarget(custom_call_targets);
 }
 
 // Helpers for comparison instructions.

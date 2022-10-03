@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -51,7 +51,7 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
                                       : instr->shape();
 
       if (!ShapeUtil::HasDegenerateDimensions(reduced_op->shape())) {
-        return Status::OK();
+        return OkStatus();
       }
       Shape canonical_input_shape =
           ShapeUtil::DropDegenerateDimensions(input_shape);
@@ -114,9 +114,12 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-StatusOr<bool> ReductionDegenerateDimRemover::Run(HloModule *module) {
-  TF_ASSIGN_OR_RETURN(
-      bool changed, ReductionDegenerateDimRemoverVisitor().RunOnModule(module));
+StatusOr<bool> ReductionDegenerateDimRemover::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      ReductionDegenerateDimRemoverVisitor().RunOnModule(
+                          module, execution_threads));
   return changed;
 }
 

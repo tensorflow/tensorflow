@@ -83,7 +83,7 @@ tensorflow::Status Convert(const std::string& graph_def_contents,
   if (arithmetic_ops_count != nullptr) {
     *arithmetic_ops_count = model->ArithmeticOpsCount();
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status Convert(const ParsedTocoFlags& parsed_toco_flags,

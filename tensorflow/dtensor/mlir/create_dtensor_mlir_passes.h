@@ -132,6 +132,9 @@ CreateDTensorSparseTensorToDenseTensor();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorSparseExpansion();
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorInferShapesForRestoreV2Op();
+
 // Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"

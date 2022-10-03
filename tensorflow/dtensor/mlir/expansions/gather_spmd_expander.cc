@@ -104,9 +104,8 @@ StatusOr<mlir::Operation*> GatherV2SPMDExpander::ExpandOp(mlir::Operation* op) {
 
     if (!Layout::IsUnshardedDimension(params_layout->sharding_spec(axis))) {
       TF_ASSIGN_OR_RETURN(
-          params,
-          EmitAllGather(builder, params, *params_layout,
-                        Layout::FromProto(tgt_params_layout).ValueOrDie()));
+          params, EmitAllGather(builder, params, *params_layout,
+                                Layout::FromProto(tgt_params_layout).value()));
     }
   }
 
@@ -149,9 +148,8 @@ StatusOr<mlir::Operation*> GatherV2SPMDExpander::ExpandOp(mlir::Operation* op) {
 
     if (indices_relayout_needed) {
       TF_ASSIGN_OR_RETURN(
-          indices,
-          EmitRelayout(indices, *indices_layout,
-                       Layout::FromProto(tgt_indices_layout).ValueOrDie()));
+          indices, EmitRelayout(indices, *indices_layout,
+                                Layout::FromProto(tgt_indices_layout).value()));
     }
   }
 
@@ -362,7 +360,7 @@ Status GatherNdGetInputLayoutFromOutput(const Layout& output_layout,
   TF_ASSIGN_OR_RETURN(*params_layout, Layout::GetLayout(params_specs, mesh));
   TF_ASSIGN_OR_RETURN(*indices_layout, Layout::GetLayout(indices_specs, mesh));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

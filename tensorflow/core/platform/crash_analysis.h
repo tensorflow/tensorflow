@@ -17,12 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_CRASH_ANALYSIS_H_
 
 #include "tensorflow/core/platform/platform.h"
-
-// Include appropriate platform-dependent implementations
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/crash_analysis.h"
-#else
-#include "tensorflow/core/platform/default/crash_analysis.h"
-#endif
+#include "tensorflow/tsl/platform/crash_analysis.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CRASH_ANALYSIS_H_

@@ -38,7 +38,10 @@ class AllReduceBlueConnect : public HloModulePass {
 
   absl::string_view name() const override { return "all-reduce-blueconnect"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   size_t num_devices_per_host_;

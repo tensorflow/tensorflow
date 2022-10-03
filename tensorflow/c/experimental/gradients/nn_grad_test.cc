@@ -50,7 +50,7 @@ Status SparseSoftmaxCrossEntropyWithLogitsModel(
   // it.
   outputs[0] = loss;
   backprop->Unref();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BiasAddModel(AbstractContext* ctx,

@@ -30,6 +30,13 @@ namespace mlir {
 // islands, each with a single op.
 std::unique_ptr<OperationPass<ModuleOp>> CreateBreakUpIslandsPass();
 
+// Creates a pass that breaks up an island with multiple ops into multiple
+// islands, each with a single op. This pass intentionally does not propagate
+// control dependencies across newly created islands, a following pass will
+// handle this.
+// TODO(b/244596254) Implement followup pass for creating control deps.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitIntoIslandPerOpPass();
+
 // Creates a pass that converts mlir functions consisting of mlir ops into a
 // tf_executor dialect as a single island.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -41,6 +48,11 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 CreateExecutorDialectToFunctionalConversionPass();
 
 namespace TF {
+// Creates a pass that canonicalizes legacy compilation and replication
+// attributes.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateCanonicalizeCompileAndReplicateAttributesPass();
+
 // Creates a pass that drops `shape_invariant` attribute from While/WhileRegion
 // ops.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -107,6 +119,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateRewriteTPUEmbeddingOpsPass();
 
 // Performs specific fusion for GPU targets.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateGpuOpFusionPass();
+
+// Creates a pass that decomposes to be compiled ReduceDataset ops into a while
+// loop that iterates the dataset and calls the reduction function.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDecomposeReduceDatasetPass();
 
 // Create a pass that convert ops that copy tensors between devices, e.g.
 // tf.Identity.
@@ -265,6 +281,24 @@ CreatePrepareTpuComputationForTfExportPass();
 // Rewrites ops that require quantized inputs or outputs to ops that allow
 // non-quantized inputs and outputs.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerQuantizedPass();
+
+// Reorders ops so ops of the same dialect are next to each other.
+std::unique_ptr<Pass> CreateOrderByDialectPass();
+
+// Groups ops into functions that only contain one dialect.
+std::unique_ptr<Pass> CreateGroupByDialectPass();
+
+// Removes unused parameters from functions & their callers.
+std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveUnusedArgumentsPass();
+
+// Removes unused results from WhileRegion ops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateRemoveUnusedWhileResultsPass();
+
+// Populates the supplied passmanager with the passes required to run the
+// CPU/GPU bridge.
+void CreateTFXLABridgePipeline(OpPassManager& pm);
+
 }  // namespace TF
 
 namespace tf_executor {
@@ -272,6 +306,9 @@ namespace tf_executor {
 // Creates a pass to chain control outputs of while loop body.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorConvertControlToDataOutputsPass();
+
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFExecutorCheckControlDependenciesPass();
 
 // Creates a pass to merge IslandOps from TFExecutor dialect.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -297,6 +334,11 @@ CreateTFExecutorTPUV1IslandInliningPass();
 // Creates a pass to prune tf_executor.graph from dead nodes.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTFExecutorGraphPruningPass(
     llvm::ArrayRef<std::string> ops_to_preserve = {});
+
+// Creates a pass to update control dependencies.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFExecutorUpdateControlDependenciesPass();
+
 }  // namespace tf_executor
 
 namespace TFDevice {
@@ -406,14 +448,12 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateXlaClusterFormationPass();
 // parent region.
 std::unique_ptr<OperationPass<ModuleOp>> CreateXlaInlineDeviceOpsPass();
 
+// Creates a pass that rewrites partitioned calls with `_xla_compile_device
+// type` with `tf.XlaLaunch` ops.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateXlaRewritePass();
 }  // namespace TFDevice
 
 namespace TFTPU {
-// Creates a pass that canonicalizes legacy compilation and replication
-// attributes.
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateCanonicalizeCompileAndReplicateAttributesPass();
-
 // Creates a pass that converts unified compilation and replication
 // attributes back to legacy attributes.
 std::unique_ptr<OperationPass<func::FuncOp>>

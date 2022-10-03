@@ -12,17 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <memory>
+#include <string>
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
 // Tests for checking that the NNAPI Delegate plugin correctly handles all the
@@ -65,7 +67,7 @@ class NNAPIPluginTest : public ::testing::Test {
   NNAPIPluginTest() : delegate_(nullptr, [](TfLiteDelegate*) {}) {}
   void SetUp() override {
     nnapi_ = const_cast<NnApi*>(NnApiImplementation());
-    nnapi_mock_ = absl::make_unique<NnApiMock>(nnapi_);
+    nnapi_mock_ = std::make_unique<NnApiMock>(nnapi_);
     nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices =
         [](const ANeuralNetworksModel* model,
            const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
@@ -270,7 +272,7 @@ class NNAPIMultiOpPluginTest : public ::testing::Test {
   NNAPIMultiOpPluginTest() : delegate_(nullptr, [](TfLiteDelegate*) {}) {}
   void SetUp() override {
     nnapi_ = const_cast<NnApi*>(NnApiImplementation());
-    nnapi_mock_ = absl::make_unique<NnApiMock>(nnapi_);
+    nnapi_mock_ = std::make_unique<NnApiMock>(nnapi_);
   }
 
   void CreateDelegate(flatbuffers::Offset<NNAPISettings> nnapi_settings,

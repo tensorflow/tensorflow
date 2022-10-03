@@ -1,9 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "py_tests")
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 py_library(
     name = "writer",
@@ -32,7 +29,6 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 

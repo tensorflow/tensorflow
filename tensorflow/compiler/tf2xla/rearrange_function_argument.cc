@@ -66,7 +66,7 @@ Status InputTypesNeedsRearrange(const std::vector<DataType>& in_types,
   if (first_resource_index == -1) {
     // No resource input. No need to rewrite.
     *need_rewrite = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   *need_rewrite = false;
@@ -77,7 +77,7 @@ Status InputTypesNeedsRearrange(const std::vector<DataType>& in_types,
     }
   }
   if (!*need_rewrite) {
-    return Status::OK();
+    return OkStatus();
   }
 
   *resource_input_count = 0;
@@ -100,7 +100,7 @@ Status InputTypesNeedsRearrange(const std::vector<DataType>& in_types,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Given mapping between original input index and rearranged input index,
@@ -122,7 +122,7 @@ Status ReorderInputEdges(Graph* g, Node* n,
     g->RemoveEdge(e);
     g->AddEdge(src, src_output, n, new_dst_input)->DebugString();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // For While node, given mapping between original input index and rearranged
@@ -154,7 +154,7 @@ Status ReorderOutputEdges(Graph* g, Node* n, int input_count,
       g->AddEdge(input_edge->src(), input_edge->src_output(), dst, dst_input);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Given mapping between original input index and rearranged input index, change
@@ -203,7 +203,7 @@ Status CalculateRetvalRearrange(
     TF_RETURN_IF_ERROR(GetNodeAttr(arg->def(), "index", &src_index));
     resource_retval_to_arg->insert(std::make_pair(i, src_index));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Given original output types and return value index mapping, return the new
@@ -252,7 +252,7 @@ Status RearrangeOutputEdges(Node* n, Graph* g,
       g->AddEdge(n, iter->second, dst, dst_input);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Given mapping between original output index and rearranged output index,
@@ -287,7 +287,7 @@ Status MaybeRewriteWhileNode(
       types, &input_need_rearrange, &resource_input_count, &index_mapping));
   if (!input_need_rearrange) {
     *node_rewritten = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   *node_rewritten = true;
@@ -374,7 +374,7 @@ Status MaybeRewriteWhileNode(
     n->ClearAttr(attr_name);
     n->AddAttr(attr_name, attr_value);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MaybeRewriteIfNode(
@@ -398,7 +398,7 @@ Status MaybeRewriteIfNode(
                                        DT_RESOURCE) != out_types.end();
   if (!input_need_rearrange && !has_resource_output) {
     *node_rewritten = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   *node_rewritten = true;
@@ -502,7 +502,7 @@ Status MaybeRewriteIfNode(
     n->ClearAttr("Tout");
     n->AddAttr("Tout", new_out_types);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -545,7 +545,7 @@ Status RearrangeFunctionArguments(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

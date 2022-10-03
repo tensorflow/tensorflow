@@ -1,6 +1,25 @@
 """Targets for generating TensorFlow Python API __init__.py files."""
 
+load("//tensorflow:tensorflow.bzl", "if_indexing_source_code")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
+
+TENSORFLOW_API_GEN_PACKAGES = [
+    "tensorflow.python",
+    "tensorflow.dtensor.python.accelerator_util",
+    "tensorflow.dtensor.python.api",
+    "tensorflow.dtensor.python.config",
+    "tensorflow.dtensor.python.d_checkpoint",
+    "tensorflow.dtensor.python.d_variable",
+    "tensorflow.dtensor.python.input_util",
+    "tensorflow.dtensor.python.layout",
+    "tensorflow.dtensor.python.mesh_util",
+    "tensorflow.dtensor.python.tpu_util",
+    "tensorflow.dtensor.python.save_restore",
+    "tensorflow.lite.python.analyzer",
+    "tensorflow.lite.python.lite",
+    "tensorflow.lite.python.authoring.authoring",
+    "tensorflow.python.modules_with_exports",
+]
 
 def get_compat_files(
         file_paths,
@@ -42,27 +61,15 @@ def gen_api_init_files(
         api_version = 2,
         compat_api_versions = [],
         compat_init_templates = [],
-        packages = [
-            "tensorflow.python",
-            "tensorflow.dtensor.python.api",
-            "tensorflow.dtensor.python.d_checkpoint",
-            "tensorflow.dtensor.python.d_variable",
-            "tensorflow.dtensor.python.layout",
-            "tensorflow.dtensor.python.mesh_util",
-            "tensorflow.dtensor.python.save_restore",
-            "tensorflow.dtensor.python.tpu_util",
-            "tensorflow.lite.python.analyzer",
-            "tensorflow.lite.python.lite",
-            "tensorflow.lite.python.authoring.authoring",
-            "tensorflow.python.modules_with_exports",
-        ],
+        packages = TENSORFLOW_API_GEN_PACKAGES,
         package_deps = [
             "//tensorflow/python:no_contrib",
             "//tensorflow/python:modules_with_exports",
         ],
         output_package = "tensorflow",
         output_dir = "",
-        root_file_name = "__init__.py"):
+        root_file_name = "__init__.py",
+        proxy_module_root = None):
     """Creates API directory structure and __init__.py files.
 
     Creates a genrule that generates a directory structure with __init__.py
@@ -97,6 +104,9 @@ def gen_api_init_files(
       output_dir: Subdirectory to output API to.
         If non-empty, must end with '/'.
       root_file_name: Name of the root file with all the root imports.
+      proxy_module_root: Module root for proxy-import format. If specified, proxy files with content
+        like `from proxy_module_root.proxy_module import *` will be created to enable import
+        resolution under TensorFlow.
     """
     root_init_template_flag = ""
     if root_init_template:
@@ -116,6 +126,9 @@ def gen_api_init_files(
             "//tensorflow/python/tools/api/generator:doc_srcs",
         ],
     )
+    if proxy_module_root != None:
+        # Avoid conflicts between the __init__.py file of TensorFlow and proxy module.
+        output_files = [f for f in output_files if f != "__init__.py"]
 
     # Replace name of root file with root_file_name.
     output_files = [
@@ -133,24 +146,33 @@ def gen_api_init_files(
             " --compat_init_template=$(location %s)" % compat_init_template
         )
 
+    flags = [
+        root_init_template_flag,
+        "--apidir=$(@D)" + output_dir,
+        "--apiname=" + api_name,
+        "--apiversion=" + str(api_version),
+        compat_api_version_flags,
+        compat_init_template_flags,
+        "--packages=" + ",".join(packages),
+        "--output_package=" + output_package,
+        "--use_relative_imports=True",
+    ]
+    if proxy_module_root != None:
+        flags.append("--proxy_module_root=" + proxy_module_root)
+
     # copybara:uncomment_begin(configurable API loading)
     # native.vardef("TF_API_INIT_LOADING", "default")
-    # loading_flag = " --loading=$(TF_API_INIT_LOADING)"
+    # loading_value = "$(TF_API_INIT_LOADING)"
     # copybara:uncomment_end_and_comment_begin
-    loading_flag = " --loading=default"
+    loading_value = "default"
     # copybara:comment_end
 
     native.genrule(
         name = name,
         outs = all_output_files,
-        cmd = (
-            "$(location :" + api_gen_binary_target + ") " +
-            root_init_template_flag + " --apidir=$(@D)" + output_dir +
-            " --apiname=" + api_name + " --apiversion=" + str(api_version) +
-            compat_api_version_flags + " " + compat_init_template_flags +
-            loading_flag + " --packages=" + ",".join(packages) +
-            " --output_package=" + output_package +
-            " --use_relative_imports=True $(OUTS)"
+        cmd = if_indexing_source_code(
+            _make_cmd(api_gen_binary_target, flags, loading = "static"),
+            _make_cmd(api_gen_binary_target, flags, loading = loading_value),
         ),
         srcs = srcs,
         tools = [":" + api_gen_binary_target],
@@ -159,3 +181,8 @@ def gen_api_init_files(
             "//tensorflow/tools/api/tests:__pkg__",
         ],
     )
+
+def _make_cmd(api_gen_binary_target, flags, loading):
+    binary = "$(location :" + api_gen_binary_target + ")"
+    flags.append("--loading=" + loading)
+    return " ".join([binary] + flags + ["$(OUTS)"])

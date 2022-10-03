@@ -84,6 +84,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.types import distribute
 from tensorflow.python.util import nest
+from tensorflow.python.util import variable_utils
 
 
 PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
@@ -288,6 +289,19 @@ def _verify_tf_loop_vars(init_vars,
 
     try:
       nest.assert_same_structure(init, entry, expand_composites=True)
+    except (ValueError, TypeError):
+      # `Variable`s in `init` may be implicitly converted to `Tensor`s. Convert
+      # `ResourceVariable`s to Tensors so tf.nest.assert_same_structure
+      # won't break due to type spec mismatches between `ResourceVariable`s and
+      # `Tensor`s.
+      try:
+        init_tensors = variable_utils.convert_variables_to_tensors(init)
+        nest.assert_same_structure(init_tensors, entry, expand_composites=True)
+      except (ValueError, TypeError) as e:
+        raise TypeError("'{}' does not have the same nested structure after one"
+                        ' iteration.\n\n{}'.format(name, e)) from e
+
+    try:
       nest.assert_same_structure(entry, exit_, expand_composites=True)
     except (ValueError, TypeError) as e:
       raise TypeError("'{}' does not have the same nested structure after one"
@@ -355,10 +369,20 @@ def _verify_tf_cond_vars(body_vars, orelse_vars, symbol_names):
   for name, body_var, orelse_var in named_vars:
     try:
       nest.assert_same_structure(body_var, orelse_var, expand_composites=True)
-    except (ValueError, TypeError) as e:
-      raise TypeError(
-          "'{}' must have the same nested structure in the main and else"
-          ' branches:\n\n{}'.format(name, str(e))) from e
+    except (ValueError, TypeError):
+      # One branch of cond could be a `Tensor`, while the other branch could be
+      # a `ResourceVariable`. Convert `ResourceVariable`s to `Tensor`s so
+      # assert_same_structure won't fail.
+      try:
+        body_var_tensors = variable_utils.convert_variables_to_tensors(body_var)
+        orelse_var_tensors = variable_utils.convert_variables_to_tensors(
+            orelse_var)
+        nest.assert_same_structure(body_var_tensors, orelse_var_tensors,
+                                   expand_composites=True)
+      except (ValueError, TypeError) as e:
+        raise TypeError(
+            "'{}' must have the same nested structure in the main and else"
+            ' branches:\n\n{}'.format(name, str(e))) from e
     nest.map_structure(
         functools.partial(verify_single_cond_var, name), body_var, orelse_var)
 

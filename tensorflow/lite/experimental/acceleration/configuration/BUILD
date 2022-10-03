@@ -20,7 +20,7 @@ load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowl
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 # copybara:comment_begin(oss-only)
-load("//tensorflow/core/platform/default:build_config.bzl", "tf_proto_library_py")
+load("//tensorflow/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
 # copybara:comment_end
 
 package(
@@ -83,31 +83,11 @@ tf_proto_library_py(
 )
 # copybara:comment_end
 
-# TODO(b/191428000): The automatic generation is temporarily disabled until
-# https://github.com/google/flatbuffers/pull/6486 is landed and tensorflow
-# flatbuffer version updated.
-# Until that time you need to build configuration_for_generation_generated.h
-# and copy the result to configuration_generated.h.
-genrule(
-    name = "copy_configuration_fbs",
-    srcs = ["configuration.fbs"],
-    outs = ["configuration_for_generation.fbs"],
-    cmd = "cp $(<) $(@)",
-)
-
 flatbuffer_cc_library(
-    name = "configuration_fbs_for_generation",
-    srcs = [":configuration_for_generation.fbs"],
-    flatc_args = DEFAULT_FLATC_ARGS + ["--gen-compare"],
-    visibility = ["//visibility:private"],
-)
-
-cc_library(
     name = "configuration_fbs",
-    hdrs = ["configuration_generated.h"],
+    srcs = [":configuration.fbs"],
     compatible_with = get_compatible_with_portable(),
-    linkstatic = True,
-    deps = ["@flatbuffers//:runtime_cc"],
+    flatc_args = DEFAULT_FLATC_ARGS + ["--gen-compare"],
 )
 
 flatbuffer_java_library(
@@ -217,6 +197,7 @@ cc_test(
         ":nnapi_plugin",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate_mock_test",
         "//tensorflow/lite/kernels:test_util",

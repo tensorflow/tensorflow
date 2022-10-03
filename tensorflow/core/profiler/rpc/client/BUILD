@@ -53,6 +53,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:file_system_utils",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
@@ -71,8 +72,8 @@ cc_library(
     deps = [
         ":profiler_client_impl",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler:profiler_analysis_cc_grpc_proto",
+        "//tensorflow/core/profiler:profiler_service_cc_grpc_proto",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
@@ -93,8 +94,8 @@ cc_library(
         "@com_google_absl//absl/time",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler:profiler_analysis_cc_grpc_proto",
+        "//tensorflow/core/profiler:profiler_service_cc_grpc_proto",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )
@@ -118,7 +119,6 @@ cc_library(
 tf_cc_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.cc"],
-    tags = ["notap"],  # b/173824689
     deps = [
         ":profiler_client",
         ":profiler_client_impl",  # for oss
@@ -136,7 +136,6 @@ cc_library(
     srcs = ["remote_profiler_session_manager.cc"],
     hdrs = ["remote_profiler_session_manager.h"],
     copts = tf_profiler_copts(),
-    tags = ["notap"],  # TODO(b/188564813): Flaky test.
     deps = [
         ":profiler_client_for_pybind",
         "//tensorflow/core:lib",

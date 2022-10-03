@@ -36,7 +36,7 @@ namespace toco {
   const auto* op = it->get();
   if (op->type != OperatorType::kMatrixSetDiagV2 &&
       op->type != OperatorType::kMatrixSetDiagV3) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (op->inputs.size() != 3) {
@@ -47,7 +47,7 @@ namespace toco {
   const auto& input_k = model->GetArray(op->inputs[2]);
 
   if (!input_k.buffer) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (input_k.GetBuffer<ArrayDataType::kInt32>().data.size() != 1) {
@@ -77,7 +77,7 @@ namespace toco {
   DeleteOpAndArrays(model, op);
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

@@ -108,7 +108,7 @@ Status DynamicDeviceMgr::LookupDevice(StringPiece name, Device** device) const {
     return errors::InvalidArgument(name, " unknown device.");
   }
   *device = iter->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 bool DynamicDeviceMgr::ContainsDevice(int64_t device_incarnation) const {
@@ -165,7 +165,7 @@ Status DynamicDeviceMgr::AddDevices(
     device_incarnation_set_.insert(d->attributes().incarnation());
     dynamic_devices_.push_back(std::move(d));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicDeviceMgr::RemoveDevices(const std::vector<Device*>& devices) {
@@ -208,7 +208,7 @@ Status DynamicDeviceMgr::RemoveDevices(const std::vector<Device*>& devices) {
     stale_devices_.add(std::move(dynamic_devices_[i]));
     dynamic_devices_.erase(dynamic_devices_.begin() + i);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicDeviceMgr::RemoveDevicesByName(

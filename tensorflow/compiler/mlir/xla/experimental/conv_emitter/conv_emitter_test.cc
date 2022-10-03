@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace experimental {
@@ -52,13 +52,13 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
       hlo_module.entry_computation()->root_instruction();
 
   mlir::MLIRContext context;
-  context.loadDialect<mlir::AffineDialect, mlir::arith::ArithmeticDialect,
+  context.loadDialect<mlir::AffineDialect, mlir::arith::ArithDialect,
                       mlir::memref::MemRefDialect, mlir::func::FuncDialect>();
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 
   mlir::func::FuncOp function =
-      EmitConvolutionForwardAsMlir(conv, "Conv", &context).ValueOrDie();
+      EmitConvolutionForwardAsMlir(conv, "Conv", &context).value();
 
   mlir_module->push_back(function);
   (void)mlir_module->verifyInvariants();
@@ -74,7 +74,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
     mlir::PassManager pm(mlir_module->getContext());
     pm.addPass(mlir::createLowerAffinePass());
     pm.addPass(mlir::createConvertSCFToCFPass());
-    pm.addPass(mlir::createMemRefToLLVMPass());
+    pm.addPass(mlir::createMemRefToLLVMConversionPass());
     pm.addPass(mlir::createConvertFuncToLLVMPass());
     CHECK(mlir::succeeded(pm.run(*mlir_module)));
   }
@@ -142,7 +142,7 @@ CHECK-NEXT: }
 
   EXPECT_TRUE(
       RunFileCheck(CompileHloConvAndGetMlir(hlo_text), expected_mlir_pattern)
-          .ValueOrDie());
+          .value());
 }
 
 }  // namespace

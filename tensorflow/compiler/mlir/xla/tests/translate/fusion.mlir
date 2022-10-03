@@ -20,18 +20,18 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) {
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
       %result = "mhlo.add"(%arg2, %arg3): (tensor<f32>, tensor<f32>) -> tensor<f32>
       "mhlo.return"(%result) : (tensor<f32>) -> ()
-    }) { fusion_kind = #mhlo<"fusion_kind kLoop"> } : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    }) { fusion_kind = #mhlo<fusion_kind kLoop> } : (tensor<f32>, tensor<f32>) -> tensor<f32>
   %result0, %result1 = "mhlo.fusion"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
       %elem0 = "mhlo.add"(%arg2, %arg3): (tensor<f32>, tensor<f32>) -> tensor<f32>
       %elem1 = "mhlo.subtract"(%arg2, %arg3): (tensor<f32>, tensor<f32>) -> tensor<f32>
       "mhlo.return"(%elem0, %elem1) : (tensor<f32>, tensor<f32>) -> ()
-    }) { fusion_kind=#mhlo<"fusion_kind kLoop"> } : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
+    }) { fusion_kind=#mhlo<fusion_kind kLoop> } : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
   %result2:2 = "mhlo.fusion"(%arg0) ( {
     ^bb0(%arg2: tensor<f32>):  // no predecessors
       %4 = mhlo.add %arg2, %arg2 : tensor<f32>
       %5 = mhlo.subtract %arg2, %arg2 : tensor<f32>
       "mhlo.return"(%4, %5) : (tensor<f32>, tensor<f32>) -> ()
-    }) {fusion_kind = #mhlo<"fusion_kind kLoop">} : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
+    }) {fusion_kind = #mhlo<fusion_kind kLoop>} : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   func.return
 }

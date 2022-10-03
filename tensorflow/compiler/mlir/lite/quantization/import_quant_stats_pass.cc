@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "absl/memory/memory.h"
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/APFloat.h"
@@ -24,7 +26,6 @@ limitations under the License.
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
@@ -34,6 +35,8 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_info.pb.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
@@ -76,7 +79,8 @@ class ImportQuantStatsPass
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<quant::QuantizationDialect>();
+    registry.insert<quant::QuantizationDialect,
+                    quantfork::QuantizationForkDialect>();
   }
 
   // Parses the serialized quant stats protobuf and initialize the internal
@@ -139,8 +143,8 @@ void ImportQuantStatsPass::InsertStatsOpAtResult(OpBuilder b, Value res,
                                                  ElementsAttr layer_stats,
                                                  ElementsAttr axis_stats,
                                                  IntegerAttr axis) {
-  auto stats_op = b.create<quant::StatisticsOp>(b.getUnknownLoc(), res,
-                                                layer_stats, axis_stats, axis);
+  auto stats_op = b.create<quantfork::StatisticsOp>(
+      b.getUnknownLoc(), res, layer_stats, axis_stats, axis);
   res.replaceAllUsesWith(stats_op);
   stats_op.getOperation()->replaceUsesOfWith(stats_op, res);
 }
@@ -213,7 +217,7 @@ void ImportQuantStatsPass::runOnOperation() {
 // Creates an instance of the default quant parameters pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateImportQuantStatsPass(
     OperationToName op_to_name, const std::string &stats_str) {
-  auto pass = absl::make_unique<ImportQuantStatsPass>(op_to_name);
+  auto pass = std::make_unique<ImportQuantStatsPass>(op_to_name);
   if (pass->ParseQuantStats(stats_str)) return nullptr;
   return pass;
 }

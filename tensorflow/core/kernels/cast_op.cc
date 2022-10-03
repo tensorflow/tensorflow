@@ -124,7 +124,7 @@ CpuCastOp::CpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
 Status CpuCastOp::Prepare() {
   if (external_src_dtype_ == external_dst_dtype_) {
     work_ = nullptr;  // Identity
-    return Status::OK();
+    return OkStatus();
   }
   if (src_dtype_ == DT_BOOL) {
     work_ = GetCpuCastFromBool(dst_dtype_);
@@ -163,7 +163,7 @@ Status CpuCastOp::Prepare() {
   // vectorized versions (not the least based on F16C for Haswell
   // or newer).
 
-  return work_ == nullptr ? Unimplemented() : Status::OK();
+  return work_ == nullptr ? Unimplemented() : OkStatus();
 }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
@@ -178,7 +178,7 @@ class GpuCastOp : public CastOpBase {
   Status Prepare() {
     if (external_src_dtype_ == external_dst_dtype_) {
       work_ = nullptr;  // Identity
-      return Status::OK();
+      return OkStatus();
     }
     if (src_dtype_ == DT_BOOL) {
       work_ = GetGpuCastFromBool(dst_dtype_);
@@ -212,7 +212,7 @@ class GpuCastOp : public CastOpBase {
       work_ = GetGpuCastFromBfloat(dst_dtype_);
     }
 
-    return work_ == nullptr ? Unimplemented() : Status::OK();
+    return work_ == nullptr ? Unimplemented() : OkStatus();
   }
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -243,10 +243,10 @@ CURRY_TYPES2(REGISTER_CAST_GPU, uint64);
 CURRY_TYPES2(REGISTER_CAST_GPU, Eigen::half);
 CURRY_TYPES2(REGISTER_CAST_GPU, float);
 CURRY_TYPES2(REGISTER_CAST_GPU, double);
-#endif
-
 CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<float>);
 CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<double>);
+#endif
+
 REGISTER_CAST_GPU(float, bfloat16);
 REGISTER_CAST_GPU(bfloat16, float);
 

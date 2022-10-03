@@ -30,7 +30,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
     if (options.graph == nullptr) {
       // TODO(apassos) returning OK feels weird here as we can't do anything
       // without a graph, but some tests require this.
-      return Status::OK();
+      return OkStatus();
     }
     Graph* g = options.graph->get();
     if (g == nullptr) {
@@ -110,7 +110,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
       }
       g->RemoveNode(n);
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,

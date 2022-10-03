@@ -17,20 +17,21 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_LITERAL_H_
 
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
@@ -43,10 +44,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bitmap.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -136,7 +137,7 @@ class LiteralBase {
   NativeT GetFirstElement() const;
 
   // As above but returns any integer type casted to an int64_t.
-  absl::optional<int64_t> GetFirstInteger() const;
+  std::optional<int64_t> GetFirstInteger() const;
 
   // As Get(), but determines the correct type and converts the value
   // into text.
@@ -171,19 +172,19 @@ class LiteralBase {
 
   // As Get(), but determines the correct type and converts the value into
   // int64_t.  This literal must be an array.
-  absl::optional<int64_t> GetIntegralAsS64(
+  std::optional<int64_t> GetIntegralAsS64(
       absl::Span<const int64_t> multi_index) const;
 
   // As Get(), but determines the correct type, and converts the value into
   // double. This literal must be an array.
-  absl::optional<double> GetAsDouble(
+  std::optional<double> GetAsDouble(
       absl::Span<const int64_t> multi_index) const;
 
   // As Get(), but determines the correct type, and converts the value into
   // complex128. All floating point types can be converted into complex128.
   //
   // This literal must be an array.
-  absl::optional<complex128> GetAsComplex128(
+  std::optional<complex128> GetAsComplex128(
       absl::Span<const int64_t> multi_index) const;
 
   // Invokes the "per cell" callback for each element in the provided
@@ -251,7 +252,7 @@ class LiteralBase {
   bool IsR1Iota() const;
 
   // Returns the stride if the literal is a strided iota.
-  absl::optional<int64_t> IsR1StridedIota() const;
+  std::optional<int64_t> IsR1StridedIota() const;
 
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array with a dense layout.
@@ -285,7 +286,7 @@ class LiteralBase {
             return;
           }
 
-          CHECK(LayoutUtil::IsDense(subshape.layout()));
+          CHECK(LayoutUtil::IsDenseArray(subshape));
           auto data = absl::MakeConstSpan(
               static_cast<const char*>(literal.untyped_data(index)),
               std::min(kByteLimit, literal.size_bytes(index)));
@@ -400,7 +401,7 @@ class LiteralBase {
   // Note: It's an antipattern to use this method then immediately call
   // MutableLiteralBase::Populate on the result (since that results in zero
   // initialization, then reinitialization. Consider if a call to
-  // absl::make_unique<Literal>(shape), followed by the call to
+  // std::make_unique<Literal>(shape), followed by the call to
   // MutableLiteralBase::Populate can be used instead.
   static Literal CreateFromShape(const Shape& shape);
 
@@ -456,21 +457,21 @@ class LiteralBase {
     void AllocateBuffers();
     void DeallocateBuffers();
     // Gets/sets the buffer holding the array data.
-    const char* buffer() const { return absl::visit(BufferVisitor{}, rep_); }
+    const char* buffer() const { return std::visit(BufferVisitor{}, rep_); }
     char* buffer() {
       return const_cast<char*>(const_cast<const Piece*>(this)->buffer());
     }
     void set_buffer(char* buffer) {
       CHECK(subshape_->IsArray());
-      auto* array_rep = absl::holds_alternative<Uninitialized>(rep_)
+      auto* array_rep = std::holds_alternative<Uninitialized>(rep_)
                             ? &rep_.emplace<ArrayRep>()
                             : GetArrayRep();
       DCHECK(array_rep);
       array_rep->data = buffer;
     }
     void MoveDataFrom(Piece& from) {
-      DCHECK(!absl::holds_alternative<ArrayRep>(rep_));
-      DCHECK(!absl::holds_alternative<TupleRep>(rep_));
+      DCHECK(!std::holds_alternative<ArrayRep>(rep_));
+      DCHECK(!std::holds_alternative<TupleRep>(rep_));
       if (auto* array_rep = from.GetArrayRep()) {
         rep_.emplace<ArrayRep>().data = array_rep->data;
       } else if (auto* inlined_rep = from.GetInlinedRep()) {
@@ -498,7 +499,7 @@ class LiteralBase {
     const Shape& subshape() const { return *subshape_; }
     void set_subshape(const Shape* subshape) {
       subshape_ = subshape;
-      if (absl::holds_alternative<Uninitialized>(rep_)) {
+      if (std::holds_alternative<Uninitialized>(rep_)) {
         if (subshape_->IsTuple()) {
           rep_.emplace<TupleRep>();
         }
@@ -554,7 +555,7 @@ class LiteralBase {
       return ForEachHelper(
                  [&func](const ShapeIndex& index, const Piece& piece) {
                    func(index, piece);
-                   return Status::OK();
+                   return OkStatus();
                  },
                  *this, &index)
           .IgnoreError();
@@ -583,7 +584,7 @@ class LiteralBase {
       return ForEachMutableHelper(
                  [&func](const ShapeIndex& index, Piece* piece) {
                    func(index, piece);
-                   return Status::OK();
+                   return OkStatus();
                  },
                  const_cast<xla::LiteralBase::Piece*>(this), &index)
           .IgnoreError();
@@ -645,12 +646,10 @@ class LiteralBase {
       std::vector<Piece> children = {};
     };
 
-    // TODO(b/157309856): Turn this into a inlined constexpr when we switch to
-    // c++17 or later.
-    enum {
-      // Use just so many bytes that we don't increase the sizeof(Piece).
-      kMaxInlinedBytes = std::max(sizeof(ArrayRep), sizeof(TupleRep)),
-    };
+    // Use just so many bytes that we don't increase the sizeof(Piece).
+    static inline constexpr size_t kMaxInlinedBytes =
+        std::max(sizeof(ArrayRep), sizeof(TupleRep));
+
     // Inlined array storage.
     struct InlinedRep {
       char data[kMaxInlinedBytes];
@@ -669,19 +668,15 @@ class LiteralBase {
     };
 
     const InlinedRep* GetInlinedRep() const {
-      return absl::get_if<InlinedRep>(&rep_);
+      return std::get_if<InlinedRep>(&rep_);
     }
-    InlinedRep* GetInlinedRep() { return absl::get_if<InlinedRep>(&rep_); }
+    InlinedRep* GetInlinedRep() { return std::get_if<InlinedRep>(&rep_); }
 
-    const ArrayRep* GetArrayRep() const {
-      return absl::get_if<ArrayRep>(&rep_);
-    }
-    ArrayRep* GetArrayRep() { return absl::get_if<ArrayRep>(&rep_); }
+    const ArrayRep* GetArrayRep() const { return std::get_if<ArrayRep>(&rep_); }
+    ArrayRep* GetArrayRep() { return std::get_if<ArrayRep>(&rep_); }
 
-    const TupleRep* GetTupelRep() const {
-      return absl::get_if<TupleRep>(&rep_);
-    }
-    TupleRep* GetTupelRep() { return absl::get_if<TupleRep>(&rep_); }
+    const TupleRep* GetTupelRep() const { return std::get_if<TupleRep>(&rep_); }
+    TupleRep* GetTupelRep() { return std::get_if<TupleRep>(&rep_); }
     // Helpers for traversing the piece via ForEachSubpiece rooted at 'index'.
     // The first non-OK (or non-true) value is returned by the function.
     // The callable 'func' has the same signature as described above in
@@ -698,7 +693,7 @@ class LiteralBase {
           index->pop_back();
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
     template <typename Fn>
     bool ForEachHelperBool(const Fn& func, const Piece& piece,
@@ -729,7 +724,7 @@ class LiteralBase {
           index->pop_back();
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     // Recursive helper for EqualElements.
@@ -742,7 +737,7 @@ class LiteralBase {
     void CopyElementsWithDynamicBound(const LiteralBase::Piece& src);
 
     // Storage representation of this piece.
-    absl::variant<Uninitialized, InlinedRep, ArrayRep, TupleRep> rep_;
+    std::variant<Uninitialized, InlinedRep, ArrayRep, TupleRep> rep_;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).
@@ -778,7 +773,7 @@ class LiteralBase {
 // Abstract base class representing a mutable literal in XLA.
 class MutableLiteralBase : public LiteralBase {
  public:
-  virtual ~MutableLiteralBase() = 0;
+  ~MutableLiteralBase() override = 0;
 
   // Returns a Span view of the array for this literal for the
   // given NativeT (e.g., float). CHECKs if the subshape of the literal at the
@@ -872,7 +867,7 @@ class MutableLiteralBase : public LiteralBase {
   // array of S32.
   template <typename NativeT>
   void PopulateR1(absl::Span<const NativeT> values);
-  void PopulateR1(const tensorflow::core::Bitmap& values);
+  void PopulateR1(const tsl::core::Bitmap& values);
   template <typename NativeT>
   void PopulateR2(std::initializer_list<std::initializer_list<NativeT>> values);
   template <typename NativeT>
@@ -1064,7 +1059,7 @@ class Literal : public MutableLiteralBase {
   // Create a literal of the given shape. The literal is allocated sufficient
   // memory to hold the shape. Memory is uninitialized.
   explicit Literal(const Shape& shape);
-  virtual ~Literal();
+  ~Literal() override;
 
   // Literals are moveable, but not copyable. To copy a literal use
   // Literal::Clone or Literal::CloneToUnique. This prevents inadvertent copies
@@ -1086,7 +1081,10 @@ class Literal : public MutableLiteralBase {
   // deallocated, and the respective buffers are replaced with those in
   // src_literal. Upon return, src_literal is set to a nil shape (empty tuple).
   virtual Status MoveFrom(Literal&& src_literal,
-                          const ShapeIndex& dest_shape_index = {});
+                          const ShapeIndex& dest_shape_index);
+  Status MoveFrom(Literal&& src_literal) {
+    return MoveFrom(std::move(src_literal), /*dest_shape_index=*/{});
+  }
 
   // Returns a vector containing the tuple elements of this Literal as separate
   // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
@@ -1124,7 +1122,7 @@ class Literal : public MutableLiteralBase {
 // others. The shape is not owned by this class and not mutable.
 class MutableBorrowingLiteral : public MutableLiteralBase {
  public:
-  virtual ~MutableBorrowingLiteral();
+  ~MutableBorrowingLiteral() override;
 
   MutableBorrowingLiteral() : MutableLiteralBase() {}
 
@@ -1132,6 +1130,7 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   MutableBorrowingLiteral& operator=(const MutableBorrowingLiteral& literal);
 
   // Implicit conversion constructors.
+  // NOLINTNEXTLINE(google-explicit-constructor)
   MutableBorrowingLiteral(MutableLiteralBase* literal);
   MutableBorrowingLiteral(MutableBorrowingLiteral literal,
                           const ShapeIndex& view_root);
@@ -1158,6 +1157,7 @@ class LiteralSlice : public LiteralBase {
   LiteralSlice() : LiteralBase() {}
 
   // Implicit conversion constructors.
+  // NOLINTNEXTLINE(google-explicit-constructor)
   LiteralSlice(const LiteralBase& literal);
   LiteralSlice(const LiteralBase& literal, const ShapeIndex& view_root);
 
@@ -1318,7 +1318,11 @@ template <typename NativeT>
 inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
-  CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
+  if (shape().is_static()) {
+    CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
+  } else {
+    CHECK_EQ(GetDynamicSize(0), values.size());
+  }
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
   auto data_span = data<NativeT>();
@@ -1333,10 +1337,17 @@ void MutableLiteralBase::PopulateR2(
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
 
-  const int64_t dim0_size = values.size();
-  const int64_t dim1_size = values.begin()->size();
-  CHECK_EQ(dim0_size, shape().dimensions(0));
-  CHECK_EQ(dim1_size, shape().dimensions(1));
+  const int64_t values_dim0_size = values.size();
+  const int64_t values_dim1_size = values.begin()->size();
+  const int64_t literal_dim0_size = shape().is_dynamic_dimension(0)
+                                        ? GetDynamicSize(0)
+                                        : shape().dimensions(0);
+  const int64_t literal_dim1_size = shape().is_dynamic_dimension(1)
+                                        ? GetDynamicSize(1)
+                                        : shape().dimensions(1);
+
+  CHECK_EQ(values_dim0_size, literal_dim0_size);
+  CHECK_EQ(values_dim1_size, literal_dim1_size);
 
   int64_t dim0 = 0;
   for (auto inner_list : values) {
@@ -1345,7 +1356,7 @@ void MutableLiteralBase::PopulateR2(
       Set({dim0, dim1}, value);
       ++dim1;
     }
-    CHECK_EQ(dim1_size, dim1);
+    CHECK_EQ(values_dim1_size, dim1);
     ++dim0;
   }
 }
@@ -1357,7 +1368,10 @@ void MutableLiteralBase::PopulateFromArray(const Array<NativeT>& values) {
            primitive_util::NativeToPrimitiveType<NativeT>());
   CHECK_EQ(shape().rank(), values.num_dimensions());
   for (int dim = 0; dim < values.num_dimensions(); ++dim) {
-    CHECK_EQ(values.dim(dim), shape().dimensions(dim));
+    int64_t shape_size = shape().is_dynamic_dimension(dim)
+                             ? GetDynamicSize(dim)
+                             : shape().dimensions(dim);
+    CHECK_EQ(values.dim(dim), shape_size);
   }
   values.Each([this](absl::Span<const int64_t> indices, NativeT value) {
     this->Set(indices, value);
@@ -1425,7 +1439,7 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
     // For scalars.
     literal_data.at(0) = generator({}, /*thread_id=*/-1);
   }
-  return Status::OK();
+  return OkStatus();
 }
 template <typename NativeT, typename FnType>
 Status MutableLiteralBase::Populate(const FnType& generator) {

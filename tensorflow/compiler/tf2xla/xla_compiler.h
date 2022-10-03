@@ -240,7 +240,7 @@ class XlaCompiler {
   // convention.
   Status XLAShapeForArgument(
       const Argument& arg, bool is_entry_computation,
-      const absl::optional<xla::HloSharding>& arg_sharding,
+      const std::optional<xla::HloSharding>& arg_sharding,
       xla::Shape* xla_shape) const;
 
   // Retrieves the channel handle associated with `key`. Allocates

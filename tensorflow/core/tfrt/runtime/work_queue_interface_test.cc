@@ -89,7 +89,7 @@ TEST(DefaultWorkQueueWrapperTest, IntraOpThreadPool) {
   auto statusor_queue = work_queue_wrapper->InitializeRequest(
       /*request_context_builder=*/nullptr, &got_intra_op_threadpool);
   TF_ASSERT_OK(statusor_queue.status());
-  EXPECT_NE(statusor_queue.ValueOrDie(), nullptr);
+  EXPECT_NE(statusor_queue.value(), nullptr);
 
   EXPECT_EQ(got_intra_op_threadpool, &intra_op_thread_pool);
 }

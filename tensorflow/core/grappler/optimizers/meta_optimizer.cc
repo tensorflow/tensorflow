@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/verifiers/structure_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/util.h"
@@ -180,7 +181,7 @@ Status GetGraphDevice(const GraphDef& g_def, std::set<std::string>* devices) {
     }
     devices->insert(parsed_name.type);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -229,7 +230,10 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
 #ifdef INTEL_MKL
   if (IsMKLEnabled()) {
     MK_OPT("auto_mixed_precision_mkl", "auto_mixed_precision_mkl",
-           new AutoMixedPrecision(AutoMixedPrecisionMode::MKL));
+           new AutoMixedPrecision(AutoMixedPrecisionMode::BF16));
+    MK_OPT("auto_mixed_precision_onednn_bfloat16",
+           "auto_mixed_precision_onednn_bfloat16",
+           new AutoMixedPrecision(AutoMixedPrecisionMode::BF16));
   }
 #endif
   MK_OPT("auto_mixed_precision_cpu", "auto_mixed_precision_cpu",
@@ -273,7 +277,7 @@ Status MetaOptimizer::InitializeOptimizers(
     const std::set<string>& device_types,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   if (cfg_.disable_meta_optimizer()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   ConfigList plugin_configs = PluginGraphOptimizerRegistry::GetPluginConfigs(
@@ -369,12 +373,23 @@ Status MetaOptimizer::InitializeOptimizers(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::CUDA));
   }
 #ifdef INTEL_MKL
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_onednn_bfloat16()) &&
+      AutoMixedPrecisionEnabled(
+          plugin_configs
+              .toggle_config["auto_mixed_precision_onednn_bfloat16"]) &&
+      IsMKLEnabled()) {
+    optimizers->push_back(
+        MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::BF16));
+  }
   if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl()) &&
       AutoMixedPrecisionEnabled(
           plugin_configs.toggle_config["auto_mixed_precision_mkl"]) &&
       IsMKLEnabled()) {
+    LOG_FIRST_N(WARNING, 1)
+        << "NOTE: auto_mixed_precision_mkl is deprecated."
+           " Please use auto_mixed_precision_onednn_bfloat16 instead";
     optimizers->push_back(
-        MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::MKL));
+        MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::BF16));
   }
 #endif
   if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_cpu()) &&
@@ -554,13 +569,13 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
 Status MetaOptimizer::InitializePluginGraphOptimizers(
     const std::set<string>& device_types,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
-  if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF) return Status::OK();
+  if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF) return OkStatus();
   auto plugin_optimizers =
       PluginGraphOptimizerRegistry::CreateOptimizers(device_types);
   for (auto& plugin_optimizer : plugin_optimizers) {
     optimizers->push_back(std::move(plugin_optimizer));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 const RewriterConfig::CustomGraphOptimizer*
@@ -620,6 +635,10 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
         AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())
             ? RewriterConfig::ON
             : RewriterConfig::OFF;
+    user_cfg.toggle_config["auto_mixed_precision_onednn_bfloat16"] =
+        AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_onednn_bfloat16())
+            ? RewriterConfig::ON
+            : RewriterConfig::OFF;
     user_cfg.toggle_config["auto_mixed_precision_mkl"] =
         AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl())
             ? RewriterConfig::ON
@@ -654,6 +673,8 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
       PRINT_CFG("constfold", "constant_folding")
       PRINT_CFG("shape", "shape_optimization")
       PRINT_CFG("auto_mixed_precision", "auto_mixed_precision")
+      PRINT_CFG("auto_mixed_precision_onednn_bfloat16",
+                "auto_mixed_precision_onednn_bfloat16")
       PRINT_CFG("auto_mixed_precision_mkl", "auto_mixed_precision_mkl")
       PRINT_CFG("auto_mixed_precision_cpu", "auto_mixed_precision_cpu")
       PRINT_CFG("pin_to_host", "pin_to_host_optimization")
@@ -694,20 +715,25 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
   for (auto& pair : user_cfg.toggle_config) {
     if (pair.first == "debug_stripper" ||
         pair.first == "auto_mixed_precision" ||
+        pair.first == "auto_mixed_precision_onednn_bfloat16" ||
         pair.first == "auto_mixed_precision_mkl" ||
         pair.first == "auto_mixed_precision_cpu" ||
         pair.first == "pin_to_host_optimization" ||
         pair.first == "scoped_allocator_optimization") {
       // These optimizers are turned off by default.
+      // TODO(penporn): Remove the hard-coded length and change it to max length
+      // of all option strings.
       strings::StrAppend(
-          &logs, pair.first, string(32 - pair.first.size(), ' '),
+          &logs, pair.first, string(40 - pair.first.size(), ' '),
           (pair.second == RewriterConfig::ON), "\t\t",
           (plugin_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\t\t",
           (final_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\n");
     } else {
       // These optimizers are turned on by default.
+      // TODO(penporn): Remove the hard-coded length and change it to max length
+      // of all option strings.
       strings::StrAppend(
-          &logs, pair.first, string(32 - pair.first.size(), ' '),
+          &logs, pair.first, string(40 - pair.first.size(), ' '),
           (pair.second != RewriterConfig::OFF), "\t\t",
           (plugin_cfg.toggle_config[pair.first] != RewriterConfig::OFF), "\t\t",
           (final_cfg.toggle_config[pair.first] != RewriterConfig::OFF), "\n");
@@ -726,7 +752,7 @@ Status MetaOptimizer::OptimizeGraph(
     VLOG(3) << "Skipping optimization, graph has less than " << min_graph_nodes
             << " nodes.";
     *optimized_graph = item.graph;
-    return Status::OK();
+    return OkStatus();
   }
 
   tensorflow::metrics::ScopedCounter<2> timings(
@@ -757,7 +783,7 @@ Status MetaOptimizer::OptimizeGraph(
   if (optimizers.empty()) {
     VLOG(3) << "Skipping graph optimization, no optimizers registered";
     *optimized_graph = item.graph;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Invariant: optimized_graph contains the most recently optimized version of
@@ -860,7 +886,7 @@ Status MetaOptimizer::OptimizeGraph(
     DCHECK_EQ(optimized_graph->versions().producer(), original_producer);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
@@ -918,7 +944,7 @@ Status MetaOptimizer::RunOptimizer(
       message = strings::StrCat(optimizer->name(),
                                 " did nothing. time = ", duration_ms, "ms.");
       // Swallow the non-critical error.
-      status = Status::OK();
+      status = OkStatus();
     } else if (errors::IsDeadlineExceeded(status)) {
       message =
           strings::StrCat(status.ToString(), ", time = ", duration_ms, "ms.");
@@ -950,7 +976,7 @@ Status MetaOptimizer::RunOptimizer(
     if (absl::StartsWith(optimizer->name(), "tfg_optimizer")) return status;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Propagates `_tf_data_function` attributes from functions to their callees.
@@ -1278,7 +1304,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
         *optimized_graph);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 string MetaOptimizer::GetResultString() const {
@@ -1320,6 +1346,8 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
 #endif
          rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision()) ||
+         AutoMixedPrecisionEnabled(
+             rewrite_cfg.auto_mixed_precision_onednn_bfloat16()) ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_mkl()) ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_cpu()) ||
          !rewrite_cfg.optimizers().empty() ||
@@ -1344,7 +1372,7 @@ Status OptimizeGraph(
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   tensorflow::grappler::GrapplerItem item;
@@ -1418,7 +1446,7 @@ Status OptimizeGraph(
   }
 
   *g = std::move(optimized_graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace grappler

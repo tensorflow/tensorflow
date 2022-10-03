@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import numpy
 
@@ -24,6 +24,8 @@ from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
 from .xla_extension import Buffer as Buffer
+from .xla_extension import ShardedBuffer as ShardedBuffer
+from .xla_extension import ArrayImpl as ArrayImpl
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
@@ -35,11 +37,18 @@ from .xla_extension import FftType as FftType
 from .xla_extension import Frame as Frame
 from .xla_extension import HostBufferSemantics as HostBufferSemantics
 from .xla_extension import OpSharding as OpSharding
+from .xla_extension import HloSharding as HloSharding
 from .xla_extension import PrimitiveType as PrimitiveType
 from .xla_extension import Traceback as Traceback
 from .xla_extension import XlaBuilder as XlaBuilder
 from .xla_extension import XlaComputation as XlaComputation
 from .xla_extension import XlaOp as XlaOp
+from .xla_extension import Sharding as Sharding
+from .xla_extension import XLACompatibleSharding as XLACompatibleSharding
+from .xla_extension import MeshPspecSharding as MeshPspecSharding
+from .xla_extension import SingleDeviceSharding as SingleDeviceSharding
+from .xla_extension import PmapSharding as PmapSharding
+from .xla_extension import OpShardingSharding as OpShardingSharding
 
 _version: int
 
@@ -71,7 +80,9 @@ def make_cpu_client(*, use_tfrt: bool = ...) -> Client:
 
 def make_gpu_client(
     distributed_client: Optional[DistributedRuntimeClient] = ...,
-    node_id: int = ...) -> Client:
+    node_id: int = ...,
+    platform_name: Optional[str] = ...,
+    allowed_devices: Optional[Set[int]] = ...) -> Client:
   ...
 
 
@@ -79,7 +90,15 @@ def make_interpreter_client() -> Client:
   ...
 
 
+def make_tfrt_tpu_c_api_client() -> Client:
+  ...
+
+
 def make_tpu_client() -> Client:
+  ...
+
+
+def make_plugin_device_client() -> Client:
   ...
 
 
@@ -177,4 +196,7 @@ class ReplicaGroup:
 
 def make_replica_groups(
     replica_groups: Optional[Sequence[Sequence[int]]]) -> List[ReplicaGroup]:
+  ...
+
+def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
   ...

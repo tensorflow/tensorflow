@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -619,6 +620,15 @@ class NestTest(parameterized.TestCase, test.TestCase):
     inp_deep = [1, 2]
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=False)
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=True)
+
+    # This assertion is expected to pass: a VariableSpec with alias_id and
+    # a Variable are considered identical.
+    inp_shallow = resource_variable_ops.VariableSpec(None, alias_id=0)
+    inp_deep = resource_variable_ops.ResourceVariable(1.)
+    nest.assert_shallow_structure(inp_shallow, inp_deep,
+                                  expand_composites=False)
+    nest.assert_shallow_structure(inp_shallow, inp_deep,
+                                  expand_composites=True)
 
   def testFlattenUpTo(self):
     # Shallow tree ends at scalar.

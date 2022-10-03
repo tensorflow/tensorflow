@@ -16,12 +16,12 @@ load(
     "tf_cuda_tests_tags",
 )
 load(
-    "//tensorflow/stream_executor:build_defs.bzl",
+    "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "tf_additional_cupti_deps",
 )
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 
@@ -228,10 +228,10 @@ tf_cuda_library(
     copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor/rocm:roctracer_wrapper",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
         "//tensorflow/core/profiler/utils:time_utils",
-        "//tensorflow/stream_executor/rocm:roctracer_wrapper",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
@@ -268,6 +268,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:trace_utils",
     ] + tf_additional_cupti_deps(),
 )
 

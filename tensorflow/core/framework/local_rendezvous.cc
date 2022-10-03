@@ -150,7 +150,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
     DVLOG(2) << "Enqueue Send Item (key:" << key.FullKey() << "). ";
     queue->push_back(new Item(send_args, val, is_dead));
     mu_.unlock();
-    return Status::OK();
+    return OkStatus();
   }
 
   DVLOG(2) << "Consume Recv Item (key:" << key.FullKey() << "). ";
@@ -178,7 +178,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
   // Invoke the done-callback, without holding the lock.
   mu_.unlock();
   DCHECK_EQ(item->type, Item::kRecv);
-  (*item->recv_state.waiter)(Status::OK(), send_args, item->args, val, is_dead);
+  (*item->recv_state.waiter)(OkStatus(), send_args, item->args, val, is_dead);
   delete item;
   {
     mutex_lock l(mu_);
@@ -187,7 +187,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
       pending_callback_cond_var_.notify_all();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
@@ -342,7 +342,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
   // Invoke the done-callback, without holding the lock.
   mu_.unlock();
   DCHECK_EQ(item->type, Item::kSend);
-  done(Status::OK(), item->args, recv_args, *item->send_state.value,
+  done(OkStatus(), item->args, recv_args, *item->send_state.value,
        item->send_state.is_dead);
   delete item;
   {

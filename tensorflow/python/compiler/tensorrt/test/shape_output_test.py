@@ -32,7 +32,7 @@ class ShapeOutputTest(trt_test.TfTrtIntegrationTestBase):
   """Test shape value output with TF-TRT."""
 
   def setUp(self):
-    super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
+    super().setUp()
     self.DisableNonTrtOptimizers()
 
   def GraphFn(self, x):

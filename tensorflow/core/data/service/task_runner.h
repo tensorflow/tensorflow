@@ -19,8 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/cross_trainer_cache.h"
 #include "tensorflow/core/data/service/data_transfer.h"
-#include "tensorflow/core/data/service/multi_trainer_cache.h"
 #include "tensorflow/core/data/service/thread_safe_buffer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
@@ -116,7 +116,7 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
 };
 
 // A task runner which prefetches elements on a first-come first-served basis
-// and caches elements in a sliding-window MultiTrainerCache. The cache has a
+// and caches elements in a sliding-window `CrossTrainerCache`. The cache has a
 // bounded size and progresses when a trainer that has consumed all elements in
 // the cache. Trainers read from a sliding window of the dataset and may not
 // read the full dataset.
@@ -126,7 +126,7 @@ class CachingTaskRunner : public TaskRunner {
                              size_t max_cache_size_bytes);
   ~CachingTaskRunner() override;
 
-  // Gets the next element from the multi-trainer cache, blocking if the data is
+  // Gets the next element from the cross-trainer cache, blocking if the data is
   // not ready.
   // REQUIRES: !req.trainer_id().empty()
   Status GetNext(const GetElementRequest& req,
@@ -138,7 +138,7 @@ class CachingTaskRunner : public TaskRunner {
 
  private:
   // The `GetElementResultSequence` generates a sequence of elements from the
-  // `FirstComeFirstServedTaskRunner`. It is used for the `MultiTrainerCache` to
+  // `FirstComeFirstServedTaskRunner`. It is used for the `CrossTrainerCache` to
   // generate cached elements.
   class GetElementResultSequence : public CachableSequence<GetElementResult> {
    public:
@@ -152,7 +152,7 @@ class CachingTaskRunner : public TaskRunner {
   };
 
   FirstComeFirstServedTaskRunner fcfs_task_runner_;
-  MultiTrainerCache<GetElementResult> cache_;
+  CrossTrainerCache<GetElementResult> cache_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CachingTaskRunner);
 };
@@ -193,7 +193,7 @@ class PrefetchThread {
   // Buffered results for the next round.
   std::vector<std::unique_ptr<Element>> buffer_ TF_GUARDED_BY(mu_);
   // The status if the prefetch thread fails.
-  Status status_ TF_GUARDED_BY(mu_) = Status::OK();
+  Status status_ TF_GUARDED_BY(mu_) = OkStatus();
   // Condition variable notified when elements are added to or removed from
   // `buffer_`, or when `status_` is changed.
   condition_variable cv_;

@@ -25,7 +25,8 @@ of servers to mobile and edge devices.
 Originally developed by researchers and engineers from the Google Brain team
 within Google's AI organization, it comes with strong support for machine
 learning and deep learning and the flexible numerical computation core is used
-across many other scientific domains.
+across many other scientific domains. TensorFlow is licensed under [Apache
+2.0](https://github.com/tensorflow/tensorflow/blob/master/LICENSE).
 """
 
 import fnmatch
@@ -45,7 +46,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.10.0'
+_VERSION = '2.11.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -75,14 +76,11 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    # TODO(b/187981032): remove the constraint for 2.0 once the incompatibile
-    # issue is resolved.
-    'flatbuffers >= 1.12, <2',
+    'flatbuffers >= 2.0',
     # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
-    'keras_preprocessing >= 1.1.1',  # 1.1.0 needs tensorflow==1.7
     'libclang >= 13.0.0',
     'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
@@ -100,7 +98,8 @@ REQUIRED_PACKAGES = [
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
     'wrapt >= 1.11.0',
-    'tensorflow-io-gcs-filesystem >= 0.23.1',
+    'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or ' +
+    'platform_system!="Darwin"',
     # grpcio does not build correctly on big-endian machines due to lack of
     # BoringSSL support.
     # See https://github.com/tensorflow/tensorflow/issues/17882.
@@ -112,11 +111,12 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.9, < 2.10', 'tb-nightly ~= 2.10.0.a'),
-    standard_or_nightly('tensorflow_estimator >= 2.9.0rc0, < 2.10',
-                        'tf-estimator-nightly ~= 2.10.0.dev'),
-    standard_or_nightly('keras >= 2.9.0rc0, < 2.10',
-                        'keras-nightly ~= 2.10.0.dev'),
+    standard_or_nightly('tensorboard >= 2.10, < 2.11',
+                        'tb-nightly ~= 2.11.0.a'),
+    standard_or_nightly('tensorflow_estimator >= 2.10.0rc0, < 2.11',
+                        'tf-estimator-nightly ~= 2.11.0.dev'),
+    standard_or_nightly('keras >= 2.10.0rc0, < 2.11',
+                        'keras-nightly ~= 2.11.0.dev'),
 ]
 REQUIRED_PACKAGES = [ p for p in REQUIRED_PACKAGES if p is not None ]
 
@@ -273,12 +273,14 @@ headers = (
     list(find_files('*.h', 'tensorflow/python/client')) +
     list(find_files('*.h', 'tensorflow/python/framework')) +
     list(find_files('*.h', 'tensorflow/stream_executor')) +
+    list(find_files('*.h', 'tensorflow/compiler/xla/stream_executor')) +
+    list(find_files('*.h', 'tensorflow/tsl')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
     list(find_files('*', 'third_party/eigen3')) +
     list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+    list(find_files('*', 'tensorflow/include/external/eigen_archive'))) 
 
 setup(
     name=project_name,

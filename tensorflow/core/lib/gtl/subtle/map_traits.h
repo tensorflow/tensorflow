@@ -23,53 +23,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_GTL_SUBTLE_MAP_TRAITS_H_
 #define TENSORFLOW_CORE_LIB_GTL_SUBTLE_MAP_TRAITS_H_
 
-#include <utility>
+#include "tensorflow/tsl/lib/gtl/subtle/map_traits.h"
 
 namespace tensorflow {
 namespace gtl {
 namespace subtle {
 namespace internal_map_traits {
-struct Rank1 {};
-struct Rank0 : Rank1 {};
-
-template <class V>
-auto GetKey(V&& v, Rank0) -> decltype((std::forward<V>(v).first)) {
-  return std::forward<V>(v).first;
-}
-template <class V>
-auto GetKey(V&& v, Rank1) -> decltype(std::forward<V>(v).key()) {
-  return std::forward<V>(v).key();
-}
-
-template <class V>
-auto GetMapped(V&& v, Rank0) -> decltype((std::forward<V>(v).second)) {
-  return std::forward<V>(v).second;
-}
-template <class V>
-auto GetMapped(V&& v, Rank1) -> decltype(std::forward<V>(v).value()) {
-  return std::forward<V>(v).value();
-}
+// NOLINTBEGIN(misc-unused-using-decls)
+using ::tsl::gtl::subtle::internal_map_traits::GetKey;
+using ::tsl::gtl::subtle::internal_map_traits::GetMapped;
+using ::tsl::gtl::subtle::internal_map_traits::Rank0;
+using ::tsl::gtl::subtle::internal_map_traits::Rank1;
+// NOLINTEND(misc-unused-using-decls)
 
 }  // namespace internal_map_traits
-
-// Accesses the `key_type` from a `value_type`.
-template <typename V>
-auto GetKey(V&& v)
-    -> decltype(internal_map_traits::GetKey(std::forward<V>(v),
-                                            internal_map_traits::Rank0())) {
-  return internal_map_traits::GetKey(std::forward<V>(v),
-                                     internal_map_traits::Rank0());
-}
-
-// Accesses the `mapped_type` from a `value_type`.
-template <typename V>
-auto GetMapped(V&& v)
-    -> decltype(internal_map_traits::GetMapped(std::forward<V>(v),
-                                               internal_map_traits::Rank0())) {
-  return internal_map_traits::GetMapped(std::forward<V>(v),
-                                        internal_map_traits::Rank0());
-}
-
 }  // namespace subtle
 }  // namespace gtl
 }  // namespace tensorflow

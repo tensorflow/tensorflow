@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <cstring>
 #include <fstream>
+#include <string>
+#include <utility>
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"

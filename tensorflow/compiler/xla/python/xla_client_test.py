@@ -14,6 +14,7 @@
 # ==============================================================================
 """Backend-dependent tests for the Python XLA client."""
 
+import collections
 import functools
 import itertools
 import re
@@ -417,8 +418,8 @@ def TestFactory(xla_backend,
   class PythonCallbackTest(ComputationTest):
 
     def testPythonCallback(self):
-      if self.backend.platform != "cpu":
-        self.skipTest("Test requires cpu platform")
+      if self.backend.platform not in {"cpu", "gpu"}:
+        self.skipTest("Test requires cpu or gpu platform")
       c = self._NewComputation()
 
       f = lambda x, y: (x + y, x - y)
@@ -436,8 +437,8 @@ def TestFactory(xla_backend,
       del out, keepalive
 
     def testPythonCallbackCanHandleExceptions(self):
-      if self.backend.platform != "cpu":
-        self.skipTest("Test requires cpu platform")
+      if self.backend.platform not in {"cpu", "gpu"}:
+        self.skipTest("Test requires cpu or gpu platform")
       c = self._NewComputation()
 
       def _Callback(x):
@@ -455,8 +456,8 @@ def TestFactory(xla_backend,
       del out, keepalive
 
     def testTokens(self):
-      if self.backend.platform != "cpu":
-        self.skipTest("Test requires cpu platform")
+      if self.backend.platform not in {"cpu", "gpu"}:
+        self.skipTest("Test requires cpu or gpu platform")
       c = self._NewComputation()
 
       def _Callback(x, y):
@@ -475,8 +476,8 @@ def TestFactory(xla_backend,
       del out, keepalive
 
     def testStriding(self):
-      if self.backend.platform != "cpu":
-        self.skipTest("Test requires cpu platform")
+      if self.backend.platform not in {"cpu", "gpu"}:
+        self.skipTest("Test requires cpu or gpu platform")
       c = self._NewComputation()
 
       def _Callback(x):
@@ -712,29 +713,29 @@ def TestFactory(xla_backend,
       arg0_buffer = self.backend.buffer_from_pyval(arg0)
       arg1_buffer = self.backend.buffer_from_pyval(arg1)
       # Prefetch two buffers using copy_to_host_async, and then retrieve their
-      # values using to_py.
+      # values using np.asarray().
       arg0_buffer.copy_to_host_async()
       arg0_buffer.copy_to_host_async()  # Duplicate calls don't do anything.
       arg1_buffer.copy_to_host_async()
-      np.testing.assert_equal(arg0, arg0_buffer.to_py())
-      np.testing.assert_equal(arg1, arg1_buffer.to_py())
-      # copy_to_host_async does nothing after to_py is called.
+      np.testing.assert_equal(arg0, np.asarray(arg0_buffer))
+      np.testing.assert_equal(arg1, np.asarray(arg1_buffer))
+      # copy_to_host_async does nothing after np.asarray() is called.
       arg0_buffer.copy_to_host_async()
-      np.testing.assert_equal(arg0, arg0_buffer.to_py())
+      np.testing.assert_equal(arg0, np.asarray(arg0_buffer))
 
     def testDevice(self):
       x = np.arange(8, dtype=np.int32)
       for device in self.backend.local_devices():
         buf = self.backend.buffer_from_pyval(x, device=device)
         self.assertEqual(buf.device(), device)
-        np.testing.assert_equal(x, buf.to_py())
+        np.testing.assert_equal(x, np.asarray(buf))
 
     def testStandardTypes(self):
       for dtype in standard_dtypes:
         if dtype == bfloat16 or dtype == np.complex128:
           continue
         arr = self.backend.buffer_from_pyval(np.array([0, 1], dtype))
-        arr = arr.to_py()
+        arr = np.asarray(arr)
         self.assertEqual(dtype, type(arr[0]))
 
     def testUnsafeBufferPointer(self):
@@ -756,7 +757,7 @@ def TestFactory(xla_backend,
       y = self.backend.buffer_from_pyval(x)
       z = y.clone()
       self.assertNotEqual(id(x), id(y))
-      np.testing.assert_array_equal(y.to_py(), z.to_py())
+      np.testing.assert_array_equal(np.asarray(y), np.asarray(z))
       self.assertEqual(y.unsafe_buffer_pointer(), z.unsafe_buffer_pointer())
 
     @unittest.skipIf(cloud_tpu, "not implemented")
@@ -1056,6 +1057,35 @@ def TestFactory(xla_backend,
           [330., 380., 160.],
           [0., 0., 0.],
           [480., 530., 220.],
+      ]]])
+      self._ExecuteAndCompareClose(c, expected=[result])
+
+    def testConvGeneralDilatedWindowReversalF32(self):
+      c = self._NewComputation()
+      a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+      lhs = a(1, 1, 2, 3)
+      rhs = a(1, 1, 1, 2) * 10
+      strides = [1, 1]
+      pads = [(1, 0), (0, 1)]
+      lhs_dilation = (2, 1)
+      rhs_dilation = (1, 1)
+      window_reversal = [False, True]
+      dimension_numbers = xla_client.make_convolution_dimension_numbers(
+          ("NCHW", "OIHW", "NCHW"), 2)
+      ops.ConvGeneralDilated(
+          ops.Constant(c, lhs),
+          ops.Constant(c, rhs),
+          strides,
+          pads,
+          lhs_dilation,
+          rhs_dilation,
+          dimension_numbers,
+          window_reversal=window_reversal)
+      result = np.array([[[
+          [0., 0., 0.],
+          [0., 10., 20.],
+          [0., 0., 0.],
+          [30., 40., 50.],
       ]]])
       self._ExecuteAndCompareClose(c, expected=[result])
 
@@ -2298,7 +2328,7 @@ def TestFactory(xla_backend,
       y = xla_client._xla.dlpack_managed_tensor_to_buffer(
           dlt, self.cpu_backend, self.gpu_backend)
       np.testing.assert_array_equal(
-          x.astype(np.uint8) if dtype == np.bool_ else x, y.to_py())
+          x.astype(np.uint8) if dtype == np.bool_ else x, np.asarray(y))
 
     def testTensorsCanBeConsumedOnceOnly(self):
       x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
@@ -2337,9 +2367,9 @@ def TestFactory(xla_backend,
       y = xla_client._xla.dlpack_managed_tensor_to_buffer(d1, self.backend)
       z = xla_client._xla.dlpack_managed_tensor_to_buffer(d2, self.backend)
       del d1, d2
-      np.testing.assert_array_equal(x, buffer.to_py())
-      np.testing.assert_array_equal(x, y.to_py())
-      np.testing.assert_array_equal(x, z.to_py())
+      np.testing.assert_array_equal(x, np.asarray(buffer))
+      np.testing.assert_array_equal(x, np.asarray(y))
+      np.testing.assert_array_equal(x, np.asarray(z))
 
   tests.append(DLPackTest)
 
@@ -2514,7 +2544,7 @@ def TestFactory(xla_backend,
       ])
       self.assertLen(output_buffers, len(expected_results))
       for buf, expected in zip(output_buffers, expected_results):
-        to_py_result = buf.to_py()
+        to_py_result = np.asarray(buf)
         self.assertEqual(expected.shape, to_py_result.shape)
         test_fn(expected, to_py_result)
         if self.backend.platform == "cpu" and buf.dtype != bfloat16:
@@ -2613,6 +2643,265 @@ def TestFactory(xla_backend,
       self.assertNotEmpty(serialized)
 
   tests.append(DeviceAssignmentTest)
+
+  class TokenTest(ComputationTest):
+    """Tests related to PyToken."""
+
+    def testExecuteWithToken(self):
+      c = self._NewComputation()
+      ops.Mul(
+          ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], np.float32)),
+          ops.Constant(c, np.array([-1.2, 2, -2, -3], np.float32)))
+      compiled_c = self.backend.compile(c.build())
+      results, token = compiled_c.execute_with_token([])
+      token.block_until_ready()
+      self.assertLen(results, 1)
+      np.testing.assert_allclose(
+          np.asarray(results[0]), np.float32([-3, 6.6, 2.4, -2.1]), rtol=3e-3)
+
+    def testExecuteShardedOnLocalDevicesWithTokens(self):
+      c = self._NewComputation()
+      ops.Mul(
+          ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], np.float32)),
+          ops.Constant(c, np.array([-1.2, 2, -2, -3], np.float32)))
+      num_replicas = 1
+      options = xla_client.CompileOptions()
+      options.num_replicas = num_replicas
+      compiled_c = self.backend.compile(c.build(), compile_options=options)
+      results, sharded_token = compiled_c.execute_sharded_on_local_devices_with_tokens(
+          [])
+      sharded_token.block_until_ready()
+      self.assertLen(results, 1)
+      self.assertLen(results[0], 1)
+      np.testing.assert_allclose(
+          np.asarray(results[0][0]),
+          np.float32([-3, 6.6, 2.4, -2.1]),
+          rtol=3e-3)
+
+  tests.append(TokenTest)
+
+  class HostCallbackTest(ComputationTest):
+    """Tests related to HostCallback."""
+
+    @unittest.skipIf(not tfrt_tpu, "not implemented")
+    def testHostCallback(self):
+
+      c = self._NewComputation()
+      token = ops.CreateToken(c)
+
+      frontend_attributes = xla_client._xla.FrontendAttributes()
+      frontend_attributes["_xla_host_transfer_rendezvous"] = "undef"
+      frontend_attributes["_xla_host_transfer_original_type"] = "u32"
+      frontend_attributes["_xla_host_transfer_is_lower_bits"] = "false"
+      frontend_attributes["_xla_host_transfer_handler_name"] = "undef"
+      c.set_frontend_attributes(frontend_attributes)
+
+      send_channel_handle = self.backend.create_channel_handle()
+      send_channel_handle.type = (
+          xla_client._xla.ChannelHandle_ChannelType.DEVICE_TO_HOST)
+      send_channel_handle.handle = 1
+      ops.SendToHost(
+          ops.Constant(c, np.float32(1.25)),
+          token,
+          shape_with_layout=xla_client.Shape.scalar_shape(np.dtype(np.float32)),
+          handle=send_channel_handle)
+
+      recv_channel_handle = self.backend.create_channel_handle()
+      recv_channel_handle.type = (
+          xla_client._xla.ChannelHandle_ChannelType.HOST_TO_DEVICE)
+      recv_channel_handle.handle = 2
+      data = ops.RecvFromHost(
+          token,
+          shape=xla_client.Shape.scalar_shape(np.dtype(np.float32)),
+          handle=recv_channel_handle)
+      ops.GetTupleElement(data, 0)
+
+      def Identity(x):
+        return (x,)
+
+      host_callback = self.backend.make_python_callback_from_host_send_and_recv(
+          Identity,
+          operand_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.float32))],
+          result_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.float32))],
+          send_channel_ids=[1],
+          recv_channel_ids=[2])
+
+      compiled_c = self.backend.compile(
+          c.build(), host_callbacks=[host_callback])
+      c.clear_frontend_attributes()
+
+      results = compiled_c.execute([])
+      self.assertLen(results, 1)
+
+      np.testing.assert_equal(np.asarray(results[0]), np.float32(1.25))
+
+  tests.append(HostCallbackTest)
+
+  class HostCallbackMultiReplicaTest(ComputationTest):
+    """Tests related to HostCallback for multi-replica execution."""
+
+    @unittest.skipIf(not tfrt_tpu, "not implemented")
+    def testHostCallbackMultiReplica(self):
+
+      c = self._NewComputation()
+      token = ops.CreateToken(c)
+
+      frontend_attributes = xla_client._xla.FrontendAttributes()
+      frontend_attributes["_xla_host_transfer_rendezvous"] = "undef"
+      frontend_attributes["_xla_host_transfer_original_type"] = "u32"
+      frontend_attributes["_xla_host_transfer_is_lower_bits"] = "false"
+      frontend_attributes["_xla_host_transfer_handler_name"] = "undef"
+      c.set_frontend_attributes(frontend_attributes)
+
+      send_channel_handle = self.backend.create_channel_handle()
+      send_channel_handle.type = (
+          xla_client._xla.ChannelHandle_ChannelType.DEVICE_TO_HOST)
+      send_channel_handle.handle = 1
+      ops.SendToHost(
+          ops.ReplicaId(c),
+          token,
+          shape_with_layout=xla_client.Shape.scalar_shape(np.dtype(np.uint32)),
+          handle=send_channel_handle)
+
+      recv_channel_handle = self.backend.create_channel_handle()
+      recv_channel_handle.type = (
+          xla_client._xla.ChannelHandle_ChannelType.HOST_TO_DEVICE)
+      recv_channel_handle.handle = 2
+      data = ops.RecvFromHost(
+          token,
+          shape=xla_client.Shape.scalar_shape(np.dtype(np.uint32)),
+          handle=recv_channel_handle)
+      ops.GetTupleElement(data, 0)
+
+      def Identity(x):
+        return (x,)
+
+      host_callback = self.backend.make_python_callback_from_host_send_and_recv(
+          Identity,
+          operand_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.uint32))],
+          result_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.uint32))],
+          send_channel_ids=[1],
+          recv_channel_ids=[2])
+
+      num_replicas = 2
+      options = xla_client.CompileOptions()
+      options.num_replicas = num_replicas
+      compiled_c = self.backend.compile(
+          c.build(), compile_options=options, host_callbacks=[host_callback])
+      c.clear_frontend_attributes()
+
+      results = compiled_c.execute_sharded_on_local_devices([])
+      self.assertLen(results, 1)
+      self.assertLen(results[0], num_replicas)
+
+      for i in range(num_replicas):
+        np.testing.assert_equal(np.asarray(results[0][i]), np.uint32(i))
+
+  tests.append(HostCallbackMultiReplicaTest)
+
+  class ExecutePortableTest(ComputationTest):
+
+    def testExecutePortable(self):
+      devices_by_kind = collections.defaultdict(list)
+      for device in self.backend.devices():
+        devices_by_kind[device.device_kind].append(device)
+      multi_devices = [d for d in devices_by_kind.values() if len(d) > 1]
+      if not multi_devices:
+        raise unittest.SkipTest("Test needs multiple identical devices")
+      devices = multi_devices[0]
+
+      c = self._NewComputation()
+      args = [
+          np.array(3, dtype=np.int32),
+          np.array([10, 15, -2, 7], dtype=np.int32)
+      ]
+      p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(args[0]))
+      p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(args[1]))
+      ops.Mul(p0, p1)
+      options = xla_client.CompileOptions()
+      options.compile_portable_executable = True
+      compiled_c = self.backend.compile(c.build(), compile_options=options)
+      for device in devices:
+        out, = compiled_c.execute(
+            [self.backend.buffer_from_pyval(a, device=device) for a in args],
+            device=device)
+        np.testing.assert_array_equal(np.asarray(out), args[0] * args[1])
+
+  tests.append(ExecutePortableTest)
+
+  class ExecuteShardedOverloadTest(ComputationTest):
+
+    def testExecuteShardedOverloadEmptyInput(self):
+      c = self._NewComputation()
+      ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], np.float32))
+      options = xla_client.CompileOptions()
+      options.num_replicas = 1
+      compiled_c = self.backend.compile(c.build(), compile_options=options)
+
+      results = compiled_c.execute_sharded_on_local_devices([])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], list)
+      self.assertLen(results[0], 1)
+      results[0][0].block_until_ready()
+      self.assertIsInstance(results[0][0], xla_client.Buffer)
+
+      results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens([])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], list)
+      self.assertLen(results[0], 1)
+      results[0][0].block_until_ready()
+      self.assertIsInstance(results[0][0], xla_client.Buffer)
+
+    def testExecuteShardedOverloadBufferInput(self):
+      arg = np.arange(12, dtype=np.int16).reshape(3, 4)
+      c = self._NewComputation()
+      ops.Parameter(c, 0, xla_client.shape_from_pyval(arg))
+
+      options = xla_client.CompileOptions()
+      options.num_replicas = 1
+      compiled_c = self.backend.compile(c.build(), compile_options=options)
+
+      buffer = self.backend.buffer_from_pyval(arg)
+
+      results = compiled_c.execute_sharded_on_local_devices([[buffer]])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], list)
+      self.assertLen(results[0], 1)
+      results[0][0].block_until_ready()
+      self.assertIsInstance(results[0][0], xla_client.Buffer)
+
+      results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens(
+          [[buffer]])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], list)
+      self.assertLen(results[0], 1)
+      results[0][0].block_until_ready()
+      self.assertIsInstance(results[0][0], xla_client.Buffer)
+
+    def testExecuteShardedOverloadShardedBufferInput(self):
+      arg = np.arange(12, dtype=np.int16).reshape(3, 4)
+      c = self._NewComputation()
+      ops.Parameter(c, 0, xla_client.shape_from_pyval(arg))
+
+      options = xla_client.CompileOptions()
+      options.num_replicas = 1
+      compiled_c = self.backend.compile(c.build(), compile_options=options)
+
+      sharded_buffer = xla_client.ShardedBuffer.create_sharded_buffer(
+          [self.backend.buffer_from_pyval(arg)])
+
+      results = compiled_c.execute_sharded_on_local_devices([sharded_buffer])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], xla_client.ShardedBuffer)
+      results[0].block_until_ready()
+
+      results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens(
+          [sharded_buffer])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], xla_client.ShardedBuffer)
+      results[0].block_until_ready()
+
+  tests.append(ExecuteShardedOverloadTest)
 
   return tests
 

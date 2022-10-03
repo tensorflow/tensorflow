@@ -53,7 +53,6 @@ py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_oss_py2",
         "no_pip",
         "no_rocm",  # No need to rerun this test for ROCm config.
         "no_windows",  # numpy prints differently on windows.
@@ -105,7 +104,6 @@ py_test(
     main = "tf_doctest.py",
     python_version = "PY3",
     tags = [
-        "no_oss_py2",
         "no_pip",
         "no_rocm",
         "no_windows",  # numpy prints differently on windows.
@@ -129,7 +127,6 @@ py_test(
     srcs = ["tf_doctest_test.py"],
     python_version = "PY3",
     tags = [
-        "no_oss_py2",
         "no_pip",
         "noasan",
         "nomsan",

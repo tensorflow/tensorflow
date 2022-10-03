@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <set>
+#include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -217,13 +219,13 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
       EXPECT_FALSE(visited_set_.contains(hlo_instruction));
       visited_set_.insert(hlo_instruction);
       last_visited_ = hlo_instruction;
-      return Status::OK();
+      return OkStatus();
     }
 
     Status FinishVisit(HloInstruction* root) override {
       EXPECT_EQ(computation_->root_instruction(), root);
       ++finish_visit_calls_;
-      return Status::OK();
+      return OkStatus();
     }
 
     HloComputation* computation_;
@@ -247,7 +249,7 @@ TEST_F(HloComputationTest, DeepCopyArray) {
       LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
-  auto copy = computation->DeepCopyInstruction(constant).ValueOrDie();
+  auto copy = computation->DeepCopyInstruction(constant).value();
 
   EXPECT_THAT(copy, GmockMatch(m::Copy(m::Op().Is(constant))));
 }
@@ -264,7 +266,7 @@ TEST_F(HloComputationTest, DeepCopyTuple) {
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
-  auto tuple_copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
+  auto tuple_copy = computation->DeepCopyInstruction(tuple).value();
 
   EXPECT_THAT(tuple_copy, GmockMatch(m::Tuple(
                               m::Copy(m::GetTupleElement(m::Op().Is(tuple))),
@@ -284,17 +286,17 @@ TEST_F(HloComputationTest, DeepCopyArrayAtIndices) {
   {
     // If the index is true, then a copy should be made.
     ShapeTree<bool> indices_to_copy(constant->shape(), /*init_value=*/true);
-    EXPECT_THAT(computation->DeepCopyInstruction(constant, &indices_to_copy)
-                    .ValueOrDie(),
-                GmockMatch(m::Copy(m::Op().Is(constant))));
+    EXPECT_THAT(
+        computation->DeepCopyInstruction(constant, &indices_to_copy).value(),
+        GmockMatch(m::Copy(m::Op().Is(constant))));
   }
 
   {
     // If the index is false, then no copy should be made.
     ShapeTree<bool> indices_to_copy(constant->shape(), /*init_value=*/false);
-    EXPECT_EQ(computation->DeepCopyInstruction(constant, &indices_to_copy)
-                  .ValueOrDie(),
-              constant);
+    EXPECT_EQ(
+        computation->DeepCopyInstruction(constant, &indices_to_copy).value(),
+        constant);
   }
 }
 
@@ -317,7 +319,7 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
                                             /*init_value=*/nullptr);
     HloInstruction* deep_copy =
         computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
-            .ValueOrDie();
+            .value();
 
     EXPECT_THAT(deep_copy, GmockMatch(m::Tuple(
                                m::Copy(m::GetTupleElement(m::Op().Is(tuple)))
@@ -334,7 +336,7 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
                                             /*init_value=*/nullptr);
     HloInstruction* deep_copy =
         computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
-            .ValueOrDie();
+            .value();
 
     EXPECT_THAT(deep_copy,
                 GmockMatch(m::Tuple(m::GetTupleElement(m::Op().Is(tuple)),
@@ -352,7 +354,7 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
                                             /*init_value=*/nullptr);
     HloInstruction* deep_copy =
         computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
-            .ValueOrDie();
+            .value();
 
     EXPECT_THAT(deep_copy, GmockMatch(m::Tuple(
                                m::Copy(m::GetTupleElement(m::Op().Is(tuple))),
@@ -370,7 +372,7 @@ TEST_F(HloComputationTest, DeepCopyToken) {
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
-  auto copy = computation->DeepCopyInstruction(token).ValueOrDie();
+  auto copy = computation->DeepCopyInstruction(token).value();
 
   // No copy should be added.
   EXPECT_THAT(copy, GmockMatch(m::AfterAll()));
@@ -387,7 +389,7 @@ TEST_F(HloComputationTest, DeepCopyTokenTuple) {
       builder.AddInstruction(HloInstruction::CreateTuple({token, constant}));
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
-  auto copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
+  auto copy = computation->DeepCopyInstruction(tuple).value();
 
   // Only the array (second tuple element) should be copied. The token is passed
   // through transparently.
@@ -414,7 +416,7 @@ TEST_F(HloComputationTest, CycleDetection) {
   EXPECT_EQ(3, instructions.size());
 
   FunctionVisitor visitor(
-      [](HloInstruction* instruction) { return Status::OK(); });
+      [](HloInstruction* instruction) { return OkStatus(); });
   auto visit_status = computation->Accept(&visitor);
   ASSERT_FALSE(visit_status.ok());
   ASSERT_THAT(visit_status.error_message(),
@@ -503,8 +505,8 @@ TEST_F(HloComputationTest, CloneWithReplacements) {
                        HloInstruction::CreateParameter(2, r0s32, "p.1"));
   auto param3 = HloInstruction::CreateParameter(3, r0u32, "p.2");
   std::vector<const HloInstruction*> extra_parameters{param3.get()};
-  auto clone = computation->CloneWithReplacements(std::move(replacements),
-                                                  extra_parameters);
+  auto clone =
+      computation->CloneWithReplacements(&replacements, extra_parameters);
   ASSERT_EQ(clone->num_parameters(), 4);
   EXPECT_TRUE(
       ShapeUtil::Equal(clone->parameter_instruction(0)->shape(), r0f32_));
@@ -539,6 +541,7 @@ TEST_F(HloComputationTest, Stringification) {
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
+  computation->SetExecutionThread("MainThread");
 
   auto options = HloPrintOptions().set_print_metadata(false);
   const std::string expected_computation =
@@ -547,7 +550,7 @@ TEST_F(HloComputationTest, Stringification) {
   %y = f32[20,10]{1,0} parameter(1)
   %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
   ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+}, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation);
 }
 
@@ -574,6 +577,7 @@ TEST_F(HloComputationTest, StringificationIndent) {
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
+  computation->SetExecutionThread("MainThread");
 
   auto options =
       HloPrintOptions().set_print_metadata(false).set_indent_amount(2);
@@ -583,7 +587,7 @@ TEST_F(HloComputationTest, StringificationIndent) {
       %y = f32[20,10]{1,0} parameter(1)
       %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
       ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    })";
+    }, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation);
 }
 
@@ -610,6 +614,7 @@ TEST_F(HloComputationTest, StringificationCanonical) {
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
+  computation->SetExecutionThread("MainThread");
 
   auto options = HloPrintOptions().set_print_metadata(false);
   const std::string expected_computation1 =
@@ -618,7 +623,7 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   %y = f32[20,10]{1,0} parameter(1)
   %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
   ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+}, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation1);
 
   options = HloPrintOptions().Canonical();
@@ -627,12 +632,13 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   tmp_1 = f32[20,10]{1,0} parameter(1)
   tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
   ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+}, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation2);
 }
 
-std::unique_ptr<HloComputation> MakeAddNComputation(int n) {
-  auto builder = HloComputation::Builder("add_n");
+std::unique_ptr<HloComputation> MakeAddNComputation(
+    int n, std::string name = "add_n") {
+  auto builder = HloComputation::Builder(name);
   auto result = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "x_value"));
   auto one = builder.AddInstruction(
@@ -682,6 +688,69 @@ ENTRY entry {
   EXPECT_THAT(module->entry_computation()->MakeInstructionPostOrder(),
               ElementsAre(op::Parameter(), op::AllReduce(), op::AllReduce(),
                           op::Add(), op::Tuple()));
+}
+
+TEST_F(HloComputationTest, ComparisonWithCustomComparator) {
+  std::string_view mod_txt = R"(
+  HloModule Module
+  region_X {
+    Arg_0.5 = s32[] parameter(0)
+    Arg_1.6 = s32[] parameter(1)
+    ROOT add.7 = s32[] add(Arg_0.5, Arg_1.6)
+  }
+  region_Y {
+    Arg_0.5 = s32[] parameter(0)
+    Ar_1.6 = s32[] parameter(1)
+    ROOT add.7 = s32[] add(Arg_0.5, Ar_1.6)
+  }
+  region_A {
+    Arg_0.5 = s32[] parameter(0)
+    Arg_1.6 = s32[] parameter(1)
+    ROOT add.7 = s32[] multiply(Arg_0.5, Arg_1.6)
+  }
+  region_B {
+    Arg_0.5 = s32[] parameter(0)
+    Ar_1.6 = s32[] parameter(1)
+    ROOT add.7 = s32[] add(Arg_0.5, Ar_1.6)
+  }
+  main.15 {
+    Arg_0.1 = s32[10]{0} parameter(0)
+    constant.3 = s32[] constant(0)
+    rd1 = s32[] reduce(Arg_0.1, constant.3), dimensions={0}, to_apply=region_X
+    Arg_1.2 = s32[15]{0} parameter(1)
+    rd2 = s32[] reduce(Arg_1.2, constant.3), dimensions={0}, to_apply=region_Y
+    ROOT multiply.14 = s32[] multiply(rd1, rd2)
+  }
+  ENTRY main.16 {
+    Arg_0.1 = s32[10]{0} parameter(0)
+    constant.3 = s32[] constant(0)
+    rd1 = s32[] reduce(Arg_0.1, constant.3), dimensions={0}, to_apply=region_A
+    Arg_1.2 = s32[15]{0} parameter(1)
+    rd2 = s32[] reduce(Arg_1.2, constant.3), dimensions={0}, to_apply=region_B
+    ROOT multiply.14 = s32[] multiply(rd1, rd2)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(mod_txt));
+
+  absl::flat_hash_map<std::string_view, std::string_view> replace_map;
+  replace_map["region_X"] = "region_A";
+  replace_map["region_Y"] = "region_B";
+  auto compare_func = [&replace_map](const HloComputation* a,
+                                     const HloComputation* b) {
+    return (a->name() == b->name() || replace_map[a->name()] == b->name());
+  };
+  HloComputation *comp_a = nullptr, *comp_b = nullptr;
+  for (auto comp : module->computations()) {
+    if (comp->name() == "main.15") {
+      comp_a = comp;
+    }
+    if (comp->name() == "main.16") {
+      comp_b = comp;
+    }
+  }
+  EXPECT_FALSE(comp_a->Equal(*comp_b, false));
+  // Different regions but we are accepting based on the compare_func
+  EXPECT_TRUE(comp_a->Equal(*comp_b, false, compare_func));
 }
 
 }  // namespace

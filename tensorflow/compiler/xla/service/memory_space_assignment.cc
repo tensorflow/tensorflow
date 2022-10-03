@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
-#include "tensorflow/core/lib/math/math_util.h"
 namespace xla {
 
 namespace memory_space_assignment {
@@ -101,8 +101,44 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
   return false;
 }
 
+// Filters out buffer uses that cannot use the cross-program prefetch due to
+// aliasing with program output.
+std::vector<HloUse> FindCrossProgramPrefetchUses(
+    absl::Span<const HloUse> buffer_uses) {
+  std::vector<HloUse> uses;
+  if (buffer_uses.empty()) {
+    return uses;
+  }
+  const HloInstruction* root_instruction = buffer_uses.at(0)
+                                               .instruction->GetModule()
+                                               ->entry_computation()
+                                               ->root_instruction();
+  absl::c_for_each(buffer_uses, [&](auto& use) {
+    if (use.instruction == root_instruction) {
+      if (use.instruction->opcode() == HloOpcode::kTuple ||
+          use.instruction->opcode() == HloOpcode::kBitcast) {
+        return;
+      }
+      auto in_place_pairs =
+          HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction);
+      if (absl::c_any_of(
+              in_place_pairs,
+              [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
+                return in_place_pair.first.operand_number ==
+                           use.operand_number &&
+                       in_place_pair.first.operand_index == use.operand_index;
+              })) {
+        return;
+      }
+    }
+    uses.push_back(use);
+  });
+  return uses;
+}
+
 bool IsCrossProgramPrefetchCandidate(const HloValue& value,
                                      const Options& options) {
+  std::vector<HloUse> uses = FindCrossProgramPrefetchUses(value.GetUses());
   return value.defining_instruction()->parent() ==
              value.defining_instruction()->GetModule()->entry_computation() &&
          value.defining_instruction()->opcode() == HloOpcode::kParameter &&
@@ -110,9 +146,8 @@ bool IsCrossProgramPrefetchCandidate(const HloValue& value,
           value.shape().layout().memory_space() !=
               options.alternate_memory_space) &&
          value.index().size() <= 1 && value.shape().IsArray() &&
-         !value.GetUses().empty() &&
-         options.size_fn(value) <= options.max_size_in_bytes &&
-         absl::c_all_of(value.GetUses(), [&](const HloUse& use) {
+         !uses.empty() && options.size_fn(value) <= options.max_size_in_bytes &&
+         absl::c_all_of(uses, [&](const HloUse& use) {
            const HloInstruction* inst =
                use.instruction->operand(use.operand_number);
 
@@ -132,7 +167,7 @@ bool IsCrossProgramPrefetchCandidate(const HloValue& value,
          });
 }
 
-absl::optional<MemorySpaceAssignment::BufferInterval>
+std::optional<MemorySpaceAssignment::BufferInterval>
 FindCrossProgramPrefetchCandidate(const HloAliasAnalysis& alias_analysis,
                                   const HloLiveRange& hlo_live_range,
                                   const Options& options) {
@@ -179,7 +214,7 @@ FindCrossProgramPrefetchCandidate(const HloAliasAnalysis& alias_analysis,
 
   auto best_candidate = absl::c_min_element(candidates, compare);
   if (best_candidate == candidates.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   VLOG(3) << "Cross-program prefetch candidate picked: "
           << best_candidate->buffer->ToString();
@@ -197,7 +232,7 @@ Status EnsureInstructionAndOperandsInserted(
     HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
     absl::flat_hash_set<HloInstruction*>* inserted_instructions) {
   if (inserted_instructions->contains(new_instruction)) {
-    return Status::OK();
+    return OkStatus();
   }
   return InsertInstructionAndEnsureOperandsInserted(
       new_instruction, new_sequence, inserted_instructions);
@@ -225,7 +260,7 @@ Status InsertInstructionAndEnsureOperandsInserted(
   VLOG(4) << "inserting: " << new_instruction->ToShortString();
   new_sequence->push_back(new_instruction);
   TF_RET_CHECK(inserted_instructions->insert(new_instruction).second);
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string UsesToString(const std::vector<HloUse>& uses) {
@@ -359,7 +394,8 @@ int MemorySpaceAssignmentCostAnalysis::CalculateComputationNestLevel(
   while (!computation->IsEntryComputation()) {
     auto& node = call_graph_->GetNode(computation);
     auto callsites = node.caller_callsites();
-    CHECK_EQ(callsites.size(), 1) << "The module is not flattened!";
+    CHECK(node.computation()->IsAsyncComputation() || callsites.size() == 1)
+        << "The module is not flattened!";
     auto& callsite = callsites[0];
     if (!while_only || callsite.instruction()->opcode() == HloOpcode::kWhile) {
       ++nest_level;
@@ -429,7 +465,7 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
     if (!subshape.IsArray()) {
       return;
     }
-    if (is_in_alternate_mem(/*operand_num=*/absl::nullopt, index, subshape)) {
+    if (is_in_alternate_mem(/*operand_num=*/std::nullopt, index, subshape)) {
       bytes_accessed_from_alternate_mem +=
           cost_analysis_.output_bytes_accessed(instruction, index);
     }
@@ -921,7 +957,7 @@ std::string CostAnalysisPrefetchIntervalPicker::ToNoCopyDebugString(
       ", logical interval elapsed (s) = ", logical_interval_elapsed);
 }
 
-absl::optional<float>
+std::optional<float>
 CostAnalysisPrefetchIntervalPicker::BufferIntervalAlternateMemoryBenefit(
     const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval)
     const {
@@ -1064,7 +1100,8 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
       if (HloDataflowAnalysis::IsAsynchronousOperationDone(
               use.instruction->opcode())) {
         if (allocation_value->defining_instruction() ==
-            use.instruction->operand(0)) {
+                use.instruction->operand(0) &&
+            use.operand_index == allocation_value->defining_position().index) {
           last_allocation_value = allocation_value;
         }
       } else if (!HloDataflowAnalysis::IsAsynchronousOperationStart(
@@ -1274,27 +1311,33 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
   return true;
 }
 
+namespace {
+// Columns in buffer information:
+// buffer_id: int. This value can be used to match the allocation in
+// allocation information.
+// buffer_name: string.
+// alt_mem_benefit: float. Roughly corresponds to how much the cost analysis
+// thought it would be beneficial to put this in the alternate memory. The
+// higher the value, the more it is memory bound.
+// size: int. In bytes.
+// definition_time: int. Logical time this value was defined in the schedule.
+// use_times: string. This is a semicolon-separated list of integers for all
+// the use times.
+// use_names: string. This is a semicolon-separated list of string
+// representation of uses.
+// is_scoped: int. A value of 1 indicates that the buffer is a scoped
+// allocation.
+constexpr absl::string_view kBufferInfoColumnNames =
+    "buffer_id,buffer_name,alt_mem_benefit,size,definition_time,use_times,use_"
+    "names,is_scoped";
+}  // namespace
+
 void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
     const AlternateMemoryBestFitHeap::BufferInterval& interval,
     std::string* debug_str) const {
-  // Columns in buffer information:
-  // buffer_id: int. This value can be used to match the allocation in
-  // allocation information.
-  // buffer_name: string.
-  // alt_mem_benefit: float. Roughly corresponds to how much the cost analysis
-  // thought it would be beneficial to put this in the alternate memory. The
-  // higher the value, the more it is memory bound.
-  // size: int. In bytes.
-  // definition_time: int. Logical time this value was defined in the schedule.
-  // use_times: string. This is a semicolon-separated list of integers for all
-  // the use times.
-  // use_names: string. This is a semicolon-separated list of string
-  // representation of uses.
   if (debug_str->empty()) {
     // Append the column names.
-    absl::StrAppend(debug_str,
-                    "buffer_id,buffer_name,alt_mem_benefit,size,"
-                    "definition_time,use_times,use_names\n");
+    absl::StrAppend(debug_str, kBufferInfoColumnNames, "\n");
   }
   const HloBuffer& buffer =
       alias_analysis_.GetBufferContainingValue(*interval.buffer);
@@ -1328,12 +1371,34 @@ void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
   absl::StrAppend(debug_str, interval.size, ",");
   absl::StrAppend(debug_str, definition_time, ",");
   absl::StrAppend(debug_str, "\"", absl::StrJoin(use_times, ";"), "\",");
-  absl::StrAppend(debug_str, "\"", absl::StrJoin(use_names, ";"), "\"");
+  absl::StrAppend(debug_str, "\"", absl::StrJoin(use_names, ";"), "\",");
+  absl::StrAppend(debug_str, "0");  // is_scoped
   absl::StrAppend(debug_str, "\n");
 }
 
+void AlternateMemoryBestFitHeap::AppendScopedAllocationBufferInfoDebugString(
+    const HloInstruction* instruction, int64_t time, int64_t size,
+    std::string& debug_str) const {
+  if (debug_str.empty()) {
+    // Append the column names.
+    absl::StrAppend(&debug_str, kBufferInfoColumnNames, "\n");
+  }
+  const HloBuffer& buffer = alias_analysis_.GetUniqueBufferAt(instruction);
+
+  // As a convention, we use negative values for scoped allocations.
+  absl::StrAppend(&debug_str, -buffer.id(), ",");
+  absl::StrAppend(&debug_str, "\"scoped allocation for ", instruction->name(),
+                  "\",");
+  absl::StrAppend(&debug_str, 0, ",");  // alt_mem_benefit
+  absl::StrAppend(&debug_str, size, ",");
+  absl::StrAppend(&debug_str, time, ",");
+  absl::StrAppend(&debug_str, "\"\",");  // use_times
+  absl::StrAppend(&debug_str, "\"\",");  // use_names
+  absl::StrAppend(&debug_str, "1");      // is_scoped
+  absl::StrAppend(&debug_str, "\n");
+}
+
 void AlternateMemoryBestFitHeap::AppendAllocationInfoDebugString(
-    const AllocationValue& value,
     const MemorySpaceAssignment::Allocation& allocation,
     std::string& debug_str) const {
   // Columns in allocation information:
@@ -1347,10 +1412,14 @@ void AlternateMemoryBestFitHeap::AppendAllocationInfoDebugString(
     absl::StrAppend(&debug_str, "buffer_id,size,offset,start_time,end_time\n");
   }
   if (allocation.memory_space() == MemorySpace::kAlternate) {
+    const HloPosition& position = allocation.defining_position();
     const HloBuffer& buffer =
-        alias_analysis_.GetBufferContainingValue(*value.value());
-    absl::StrAppend(&debug_str, buffer.id(), ",");
-    absl::StrAppend(&debug_str, value.size(), ",");
+        alias_analysis_.GetUniqueBufferAt(position.instruction, position.index);
+    // As a convention, we use negative values for scoped allocations.
+    absl::StrAppend(
+        &debug_str,
+        allocation.is_scoped_allocation() ? -buffer.id() : buffer.id(), ",");
+    absl::StrAppend(&debug_str, allocation.chunk().size, ",");
     absl::StrAppend(&debug_str, allocation.chunk().offset, ",");
     absl::StrAppend(&debug_str, allocation.start_time(), ",");
     absl::StrAppend(&debug_str, allocation.end_time(), "\n");
@@ -1391,7 +1460,7 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   VLOG(1) << "Memory pressure = " << memory_pressure_;
 
   if (options_.enable_cross_program_prefetch) {
-    absl::optional<AlternateMemoryBestFitHeap::BufferInterval>
+    std::optional<AlternateMemoryBestFitHeap::BufferInterval>
         prefetch_candidate = FindCrossProgramPrefetchCandidate(
             alias_analysis_, hlo_live_range_, options_);
     if (prefetch_candidate) {
@@ -1528,7 +1597,7 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
         VLOG(2) << "Repacking.";
         auto repack_status =
             options_.repacker->Repack(absl::MakeSpan(repack_allocation_blocks));
-        CHECK_EQ(repack_status.status(), Status::OK());
+        CHECK_EQ(repack_status.status(), OkStatus());
         VLOG(2) << "Repack complete. Modified = " << *repack_status;
         if (*repack_status) {
           ImportRepackedAllocations();
@@ -1538,6 +1607,13 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
         FinalizeAllocations(absl::MakeSpan(allocation_values));
         break;
       }
+    }
+  }
+
+  if (options_.dump_fn != nullptr || VLOG_IS_ON(3)) {
+    for (auto& allocation : *allocations_) {
+      // Only fill allocation_info_str_ if needed.
+      AppendAllocationInfoDebugString(*allocation, allocation_info_str_);
     }
   }
 
@@ -1645,6 +1721,13 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
     int64_t definition_time =
         instruction_schedule.at(allocation_value.defining_instruction());
 
+    if (!options_.is_position_allowed_in_alternate_mem_fn(
+            allocation_value.defining_position())) {
+      AddRequiredAssignment(allocation_value.value(),
+                            allocation_value.defining_instruction(),
+                            MemorySpace::kDefault, definition_time);
+    }
+
     AliasedOffset* preferred_offset = nullptr;
     auto preferred_offset_it =
         preferred_offset_for_computation.find(allocation_value.computation());
@@ -1659,7 +1742,7 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
       int64_t use_time = instruction_schedule.at(hlo_use.instruction);
       int64_t latest_prefetch_time = use_time;
       bool allow_no_copy_alternate_mem_allocation = true;
-      absl::optional<int64_t> earliest_prefetch_time = absl::nullopt;
+      std::optional<int64_t> earliest_prefetch_time = std::nullopt;
 
       // Control flow  calls include kWhile, kCall, and kConditional opcodes.
       bool is_sequential_call =
@@ -1833,7 +1916,7 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
             int64_t body_parameter_time = instruction_schedule.at(
                 body_allocation_value_it->defining_instruction());
             body_allocation_value_it->allocation_sequence()->push_back(
-                absl::make_unique<MemorySpaceAssignment::ParentAllocation>(
+                std::make_unique<MemorySpaceAssignment::ParentAllocation>(
                     **prev_allocation_in_default_mem_it, hlo_use.instruction,
                     body_allocation_value_it->defining_position(),
                     body_parameter_time));
@@ -1851,7 +1934,7 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
                     << after_while_allocation_value_it->ToShortString();
             int64_t while_time = instruction_schedule.at(hlo_use.instruction);
             after_while_allocation_value_it->allocation_sequence()->push_back(
-                absl::make_unique<MemorySpaceAssignment::MirroredAllocation>(
+                std::make_unique<MemorySpaceAssignment::MirroredAllocation>(
                     **prev_allocation_in_default_mem_it, while_time));
             VLOG(3) << "Created: "
                     << after_while_allocation_value_it->allocation_sequence()
@@ -1918,7 +2001,7 @@ bool AsynchronousCopyResource::ConsumeResource(
   // Check if this copy will push the next copy later in time (or if removing
   // the resource, check if the removal of this copy move the next copy earlier
   // in time).
-  absl::optional<float> delay_for_next_copy = absl::nullopt;
+  std::optional<float> delay_for_next_copy = std::nullopt;
   float resource_freed = 0.0;
   for (int64_t time = start_time + 1; time < end_time && resource != 0;
        ++time) {
@@ -2060,14 +2143,13 @@ AlternateMemoryBestFitHeap::GetLiveAllocationAt(
 }
 
 void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
-    HloModule* module, absl::optional<BufferInterval> prefetch_candidate) {
+    HloModule* module, std::optional<BufferInterval> prefetch_candidate) {
   if (!prefetch_candidate) {
     return;
   }
 
   Chunk chunk_candidate = FindChunkCandidate(*prefetch_candidate);
-  if (chunk_candidate.offset != 0 ||
-      chunk_candidate.chunk_end() > available_heap_size()) {
+  if (chunk_candidate.chunk_end() > available_heap_size()) {
     LOG(WARNING)
         << "Could not allocate preferred memory for cross program prefetch";
     return;
@@ -2078,14 +2160,15 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   module->AddCrossProgramPrefetch(parameter, buffer->index());
 
   MemorySpaceAssignment::AllocationSequence allocations;
-  allocations.push_back(absl::make_unique<MemorySpaceAssignment::Allocation>(
+  allocations.push_back(std::make_unique<MemorySpaceAssignment::Allocation>(
       buffer->defining_position(), MemorySpace::kDefault, kDummyChunk,
       prefetch_candidate->start, prefetch_candidate->end,
       /*is_scoped_allocation=*/false));
 
   // Find the earliest use.
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
-  auto uses = buffer->GetUses();
+  auto uses = FindCrossProgramPrefetchUses(buffer->GetUses());
+  CHECK_GE(uses.size(), 1);
   auto use_schedule_compare = [&](const HloUse& lhs, const HloUse& rhs) {
     return instruction_schedule.at(lhs.instruction) <
            instruction_schedule.at(rhs.instruction);
@@ -2151,13 +2234,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
                /*resource=*/0.0,
                /*is_cross_program_prefetch=*/true);
 
-  HloInstruction* root_instruction =
-      module->entry_computation()->root_instruction();
-  absl::c_for_each(uses, [&](auto& use) {
-    if (use.instruction != root_instruction) {
-      allocations.back()->AddUse(use);
-    }
-  });
+  absl::c_for_each(uses, [&](auto& use) { allocations.back()->AddUse(use); });
   AliasedOffset* cross_program_prefetch_offset =
       GetAliasedOffset(*allocations.back());
 
@@ -2215,12 +2292,12 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
       hlo_live_range_.flattened_instruction_sequence().instructions();
   std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*> colocations;
   for (int i = 0; i < instruction_sequence.size(); ++i) {
+    const HloInstruction* instruction = instruction_sequence[i];
     int64_t reserved_scoped_memory =
-        options_.reserved_scoped_memory_fn(instruction_sequence[i]);
+        options_.reserved_scoped_memory_fn(instruction);
     if (reserved_scoped_memory != 0) {
       VLOG(1) << "Allocate reserved scoped memory at " << i << " ("
-              << instruction_sequence[i]->name()
-              << "): " << reserved_scoped_memory;
+              << instruction->name() << "): " << reserved_scoped_memory;
       MemorySpaceAssignment::BufferInterval interval;
       interval.buffer = nullptr;
       interval.size = reserved_scoped_memory;
@@ -2233,8 +2310,13 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
       CHECK_EQ(chunk_candidate.offset, 0);
       AddToPendingChunks(interval, chunk_candidate);
 
+      if (options_.dump_fn != nullptr || VLOG_IS_ON(3)) {
+        AppendScopedAllocationBufferInfoDebugString(
+            instruction, i, reserved_scoped_memory, buffer_info_str_);
+      }
+
       allocations_->push_back(
-          absl::make_unique<MemorySpaceAssignment::Allocation>(
+          std::make_unique<MemorySpaceAssignment::Allocation>(
               HloPosition{instruction_sequence[i], {}}, MemorySpace::kAlternate,
               chunk_candidate, i, i, /*is_scoped_allocation=*/true));
 
@@ -2260,11 +2342,11 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
   ClearPendingChunks();
 }
 
-absl::optional<AlternateMemoryBestFitHeap::RequiredMemoryAssignment>
+std::optional<AlternateMemoryBestFitHeap::RequiredMemoryAssignment>
 AlternateMemoryBestFitHeap::RequiredMemoryAssignmentAt(const HloValue* buffer,
                                                        int64_t time) const {
   auto required_assignment_it = required_assignments_.find(buffer);
-  absl::optional<RequiredMemoryAssignment> required_assignment_at_time;
+  std::optional<RequiredMemoryAssignment> required_assignment_at_time;
   if (required_assignment_it != required_assignments_.end()) {
     for (const RequiredMemoryAssignment& required_assignment :
          required_assignment_it->second) {
@@ -2278,22 +2360,22 @@ AlternateMemoryBestFitHeap::RequiredMemoryAssignmentAt(const HloValue* buffer,
   return required_assignment_at_time;
 }
 
-absl::optional<AlternateMemoryBestFitHeap::RequiredMemoryAssignment>
+std::optional<AlternateMemoryBestFitHeap::RequiredMemoryAssignment>
 AlternateMemoryBestFitHeap::AliasedRequiredAssignmentForUse(
     const AllocationValue::Use& use) const {
-  absl::optional<RequiredMemoryAssignment> required_assignment;
+  std::optional<RequiredMemoryAssignment> required_assignment;
   for (const HloPosition& position : use.aliases) {
     const HloValue* value =
         &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
             position.instruction, position.index);
     int64_t time =
         hlo_live_range_.instruction_schedule().at(position.instruction);
-    absl::optional<RequiredMemoryAssignment> required_assignment_for_alias =
+    std::optional<RequiredMemoryAssignment> required_assignment_for_alias =
         RequiredMemoryAssignmentAt(value, time);
-    if (required_assignment == absl::nullopt) {
+    if (required_assignment == std::nullopt) {
       required_assignment = required_assignment_for_alias;
     } else {
-      CHECK(required_assignment_for_alias == absl::nullopt ||
+      CHECK(required_assignment_for_alias == std::nullopt ||
             required_assignment->equals_ignoring_time(
                 *required_assignment_for_alias));
     }
@@ -2429,6 +2511,38 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
       }
     }
   }
+
+  // Go through all of the values and pin them to the default memory if they are
+  // not allowed on the alternate memory.
+  for (const HloValue* value : alias_analysis_.dataflow_analysis().values()) {
+    if (!options_.is_allowed_in_alternate_mem_fn(*value)) {
+      // We won't find the instruction in the schedule if it's inside a fusion.
+      // If so, just skip.
+      auto instruction_time_it =
+          instruction_schedule.find(value->instruction());
+      if (instruction_time_it == instruction_schedule.end()) {
+        continue;
+      }
+      int64_t instruction_time = instruction_time_it->second;
+      auto& required_assignments = required_assignments_[value];
+      // Check if there is an existing matching required assignment (e.g.
+      // inserted by the logic above) and if so ensure it requires a default
+      // memory allocation.
+      auto matching_assignment = absl::c_find_if(
+          required_assignments,
+          [&](const RequiredMemoryAssignment& required_assignment) {
+            return required_assignment.time == instruction_time;
+          });
+      if (matching_assignment != required_assignments.end()) {
+        CHECK(matching_assignment->memory_space == MemorySpace::kDefault)
+            << "Mismatch in required assignments at time " << instruction_time
+            << " value: " << value->ToString();
+      } else {
+        required_assignments.push_back(
+            {MemorySpace::kDefault, instruction_time});
+      }
+    }
+  }
 }
 
 bool AlternateMemoryBestFitHeap::AreIntervalsReservedInAlternateMemory(
@@ -2550,11 +2664,6 @@ void AlternateMemoryBestFitHeap::FinalizeAllocations(
       colocation_map;
   for (AllocationValue& allocation_value : allocation_values) {
     for (auto& allocation : *allocation_value.allocation_sequence()) {
-      if (options_.dump_fn != nullptr || VLOG_IS_ON(3)) {
-        // Only fill buffer_info_str_ if needed.
-        AppendAllocationInfoDebugString(allocation_value, *allocation,
-                                        allocation_info_str_);
-      }
       allocations_->push_back(std::move(allocation));
       MemorySpaceAssignment::Allocation* inserted_allocation =
           allocations_->back().get();
@@ -2612,7 +2721,7 @@ void AlternateMemoryBestFitHeap::AddToPendingChunks(
   CommitChunk(buffer_interval, chunk_candidate);
 }
 
-absl::optional<int>
+std::optional<int>
 AlternateMemoryBestFitHeap::FindEarliestTimeToSatisfyPeakMemory(
     int start_time, int end_time, int64_t size) const {
   int earliest_time;
@@ -2622,7 +2731,7 @@ AlternateMemoryBestFitHeap::FindEarliestTimeToSatisfyPeakMemory(
        --earliest_time) {
   }
   if (earliest_time == end_time) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return earliest_time + 1;
 }
@@ -2668,7 +2777,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   // memory instead.
   auto required_assignment_at_start = RequiredMemoryAssignmentAt(
       request.allocation_value->value(), request.start_time);
-  absl::optional<MemorySpace> required_memory_space_at_start;
+  std::optional<MemorySpace> required_memory_space_at_start;
   if (required_assignment_at_start) {
     required_memory_space_at_start = required_assignment_at_start->memory_space;
   }
@@ -2679,15 +2788,15 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   auto aliased_required_assignment_at_end =
       AliasedRequiredAssignmentForUse(*request.use);
   if (required_assignment_at_end != aliased_required_assignment_at_end) {
-    if (required_assignment_at_end == absl::nullopt) {
+    if (required_assignment_at_end == std::nullopt) {
       required_assignment_at_end = aliased_required_assignment_at_end;
     } else {
-      CHECK(aliased_required_assignment_at_end == absl::nullopt ||
+      CHECK(aliased_required_assignment_at_end == std::nullopt ||
             aliased_required_assignment_at_end->equals_ignoring_time(
                 *required_assignment_at_end));
     }
   }
-  absl::optional<MemorySpace> required_memory_space_at_end;
+  std::optional<MemorySpace> required_memory_space_at_end;
   if (required_assignment_at_end) {
     required_memory_space_at_end = required_assignment_at_end->memory_space;
   }
@@ -2708,14 +2817,14 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
       }
     }
     if (needs_required_allocation) {
-      absl::optional<Chunk> aliased_chunk = absl::nullopt;
+      std::optional<Chunk> aliased_chunk = std::nullopt;
       if (required_assignment_at_start->memory_space ==
           MemorySpace::kAlternate) {
         aliased_chunk =
             Chunk{required_assignment_at_start->offset->offset, request.size};
       }
       allocation_sequence->push_back(
-          absl::make_unique<MemorySpaceAssignment::Allocation>(
+          std::make_unique<MemorySpaceAssignment::Allocation>(
               defining_position, required_assignment_at_start->memory_space,
               aliased_chunk, request.start_time, request.start_time,
               /*is_scoped_allocation=*/false));
@@ -2762,8 +2871,8 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
     prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
   } else if (prev_allocation_in_default_mem_it == allocation_sequence->rend()) {
     allocation_sequence->push_back(
-        absl::make_unique<MemorySpaceAssignment::Allocation>(
-            defining_position, MemorySpace::kDefault, /*chunk=*/absl::nullopt,
+        std::make_unique<MemorySpaceAssignment::Allocation>(
+            defining_position, MemorySpace::kDefault, /*chunk=*/std::nullopt,
             request.start_time, request.end_time,
             /*is_scoped_allocation=*/false));
     prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
@@ -2815,7 +2924,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
 
 void AlternateMemoryBestFitHeap::AddAsyncCopy(
     const MemorySpaceAssignment::Allocation& prev_allocation,
-    MemorySpace memory_space, absl::optional<Chunk> chunk, int64_t start_time,
+    MemorySpace memory_space, std::optional<Chunk> chunk, int64_t start_time,
     int64_t end_time, int64_t copy_done_schedule_before_time,
     MemorySpaceAssignment::AllocationSequence* allocations,
     AliasedOffset* aliased_offset, float resource,
@@ -2830,7 +2939,7 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
   CHECK_LT(start_time, copy_done_schedule_before_time);
 
   allocations->push_back(
-      absl::make_unique<MemorySpaceAssignment::CopyAllocation>(
+      std::make_unique<MemorySpaceAssignment::CopyAllocation>(
           prev_allocation, memory_space, chunk, start_time, end_time,
           copy_done_schedule_before_time, is_cross_program_prefetch));
 
@@ -2955,7 +3064,7 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
   // for the entire live range. This can result in unnecessary copies. By using
   // the last use time, we try to find an allocation that is available for the
   // entire Producer to Use2 range.
-  absl::optional<Chunk> chunk_candidate = FindBestChunkCandidate(
+  std::optional<Chunk> chunk_candidate = FindBestChunkCandidate(
       request, preferred_offset, &alternate_mem_interval);
   // Check if the new heap size fits within limits. Also ensure if a
   // preferred offset was provided, that offset was used.
@@ -2977,7 +3086,7 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
       prev_allocation->Extend(request.end_time);
     } else {
       request.allocation_value->allocation_sequence()->push_back(
-          absl::make_unique<MemorySpaceAssignment::Allocation>(
+          std::make_unique<MemorySpaceAssignment::Allocation>(
               defining_position, MemorySpace::kAlternate, chunk_candidate,
               request.start_time, request.end_time,
               /*is_scoped_allocation=*/false));
@@ -3066,7 +3175,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Evict(
       !eviction_violates_resource) {
     prev_allocation->Extend(eviction_end_time);
     AddAsyncCopy(*prev_allocation, MemorySpace::kDefault,
-                 /*chunk=*/absl::nullopt, eviction_start_time,
+                 /*chunk=*/std::nullopt, eviction_start_time,
                  prev_allocation->end_time(), eviction_end_time,
                  request.allocation_value->allocation_sequence(),
                  /*aliased_offset=*/nullptr, eviction_resource);
@@ -3133,7 +3242,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
 
   // As a compile time optimization, use the peak memory usage to filter out
   // allocation times that would push us to OOM.
-  absl::optional<int> earliest_non_oom_prefetch_time =
+  std::optional<int> earliest_non_oom_prefetch_time =
       FindEarliestTimeToSatisfyPeakMemory(earliest_prefetch_time,
                                           prefetch_end_time, request.size);
   Result result = Result::kSuccess;
@@ -3182,7 +3291,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
   // As a compilation time optimization, store the prefetch start time where we
   // have first seen out of memory. There is no point of exploring prefetch
   // start times earlier than this point.
-  absl::optional<int64_t> out_of_mem_start;
+  std::optional<int64_t> out_of_mem_start;
   while (!options_.prefetch_interval_picker->Done()) {
     alternate_mem_interval.start = options_.prefetch_interval_picker->Next();
     CHECK_LT(alternate_mem_interval.start, prefetch_end_time);
@@ -3259,7 +3368,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
   }
 }
 
-absl::optional<AlternateMemoryBestFitHeap::Chunk>
+std::optional<AlternateMemoryBestFitHeap::Chunk>
 AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     const AllocationRequest& request, const AliasedOffset* preferred_offset,
     BufferInterval* alternate_mem_interval) const {
@@ -3285,7 +3394,7 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     int64_t latest_contiguous_use_time = *use_time_it;
 
     // Find a chunk that's as long living as possible.
-    absl::optional<Chunk> last_chunk_candidate;
+    std::optional<Chunk> last_chunk_candidate;
     int64_t latest_matching_use = std::numeric_limits<int64_t>::min();
     std::lower_bound(
         earliest_use_it, std::next(use_time_it), -1, [&](int64_t use, int64_t) {
@@ -3317,7 +3426,7 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
   if (chunk_candidate.offset == preferred_offset->offset) {
     return chunk_candidate;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 StatusOr<MemorySpaceAssignment::AsyncCopyStats>
@@ -3426,7 +3535,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
 Status MemorySpaceAssignment::FindAllocationSequence(
     const HloLiveRange& hlo_live_range,
     const HloAliasAnalysis& alias_analysis) {
-  auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
+  auto algorithm = std::make_unique<AlternateMemoryBestFitHeap>(
       &allocations_, options_, alias_analysis, hlo_live_range);
 
   HeapSimulator::Options heap_simulator_options;
@@ -3437,7 +3546,7 @@ Status MemorySpaceAssignment::FindAllocationSequence(
                                         options_.size_fn,
                                         heap_simulator_options)
                          .status());
-  return Status::OK();
+  return OkStatus();
 }
 
 void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
@@ -3525,7 +3634,7 @@ float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
 Status MemorySpaceAssignment::Allocation::Process() {
   if (is_scoped_allocation()) {
     // Nothing to do here for scoped allocations.
-    return Status::OK();
+    return OkStatus();
   }
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
@@ -3535,9 +3644,10 @@ Status MemorySpaceAssignment::Allocation::Process() {
     if (operand_shape.IsTuple()) {
       TF_ASSIGN_OR_RETURN(
           replacement_instruction,
-          ReplaceTupleWith(producing_instruction,
-                           use.instruction->mutable_operand(use.operand_number),
-                           use.operand_index));
+          TupleUtil::ReplaceTupleWith(
+              producing_instruction,
+              use.instruction->mutable_operand(use.operand_number),
+              use.operand_index));
     } else if (operand_shape != producing_instruction->shape()) {
       VLOG(4) << "Old shape = " << operand_shape.ToString()
               << ", new shape = " << producing_instruction->shape().ToString()
@@ -3548,125 +3658,17 @@ Status MemorySpaceAssignment::Allocation::Process() {
     TF_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
         use.operand_number, replacement_instruction));
   }
-  return Status::OK();
-}
-
-StatusOr<HloInstruction*> MemorySpaceAssignment::Allocation::ReplaceTupleWith(
-    HloInstruction* new_instruction, HloInstruction* tuple,
-    ShapeIndex shape_index) {
-  const Shape& tuple_shape = tuple->shape();
-  CHECK(tuple->shape().IsTuple())
-      << "ReplaceTupleWith was called for a non-tuple. Tuple = "
-      << tuple->ToString()
-      << ", new_instruction = " << new_instruction->ToString()
-      << ", shape_index = " << shape_index.ToString();
-  // Check if the new instruction is a get-tuple-element of the correct index of
-  // the tuple, and if so, simply return tuple.
-  const HloInstruction* instruction = new_instruction;
-  bool equivalent = true;
-  for (int i = shape_index.size() - 1; i >= 0; --i) {
-    int index = shape_index[i];
-    if (instruction->opcode() != HloOpcode::kGetTupleElement ||
-        instruction->tuple_index() != index) {
-      equivalent = false;
-      break;
-    }
-    instruction = instruction->operand(0);
-  }
-  if (equivalent && instruction == tuple) {
-    VLOG(4) << "Instruction " << new_instruction->ToShortString()
-            << " already exists at index " << shape_index.ToString() << " of "
-            << tuple->ToShortString();
-    return tuple;
-  }
-
-  HloComputation* computation = new_instruction->parent();
-  std::vector<HloInstruction*> tuple_args(tuple_shape.tuple_shapes_size());
-  CHECK_GE(tuple_shape.tuple_shapes_size(), shape_index[0]);
-  for (int i = 0; i < tuple_shape.tuple_shapes_size(); ++i) {
-    const Shape& subshape = tuple_shape.tuple_shapes(i);
-    // If tuple is a tuple instruction, we can get the tuple instruction's
-    // operand to construct the new tuple to improve compilation time
-    // performance.
-    auto get_operand = [&]() {
-      if (tuple->opcode() == HloOpcode::kTuple) {
-        return tuple->mutable_operand(i);
-      } else {
-        return computation->AddInstruction(
-            HloInstruction::CreateGetTupleElement(subshape, tuple, i));
-      }
-    };
-    if (i == shape_index[0]) {
-      // If the subshape is still a tuple, recurse and pass a new shape index
-      // for the one level deeper.
-      if (subshape.IsTuple()) {
-        TF_ASSIGN_OR_RETURN(tuple_args[i],
-                            ReplaceTupleWith(new_instruction, get_operand(),
-                                             ShapeIndex(shape_index.begin() + 1,
-                                                        shape_index.end())));
-      } else {
-        if (subshape != new_instruction->shape()) {
-          VLOG(4) << "Old shape = " << subshape.ToString()
-                  << ", new shape = " << new_instruction->shape().ToString()
-                  << "; inserting a bitcast.";
-          new_instruction = computation->AddInstruction(
-              HloInstruction::CreateBitcast(subshape, new_instruction));
-        } else if (tuple->opcode() == HloOpcode::kTuple &&
-                   tuple->operand(i) == new_instruction) {
-          // If the tuple element is the same as the new instruction, we
-          // actually don't have to create a new tuple, just return the original
-          // tuple.
-          VLOG(4) << "Tuple already contains the new instruction = "
-                  << new_instruction->ToShortString()
-                  << " tuple = " << tuple->ToShortString();
-          return tuple;
-        }
-        tuple_args[i] = new_instruction;
-      }
-    } else {
-      tuple_args[i] = get_operand();
-    }
-  }
-  if (shape_index[0] == tuple_shape.tuple_shapes_size()) {
-    // If shape_index[0] is equal to the tuple shape size, add the new
-    // instruction as an additional argument.
-    tuple_args.push_back(new_instruction);
-  }
-  return computation->AddInstruction(HloInstruction::CreateTuple(tuple_args));
+  return OkStatus();
 }
 
 HloInstruction* MemorySpaceAssignment::Allocation::AddGetTupleElements() const {
-  HloInstruction* producing_instruction = defining_position().instruction;
-  CHECK_NE(producing_instruction, nullptr);
+  CHECK_NE(defining_position().instruction, nullptr);
 
   Shape shape = defining_position().shape();
   CHECK(shape.IsArray()) << "Allocation shape is not an array. Shape = "
                          << shape.ToString()
                          << " position = " << defining_position().shape();
-  HloComputation* computation = producing_instruction->parent();
-
-  // If the instruction we're processing is a tuple, we (recursively) search or
-  // create kGetTupleElement instructions and copy that value. Asynchronous
-  // copies only support array types.
-  for (int64_t index : defining_position().index) {
-    // We first search if there already is a get-tuple-element with the correct
-    // index. If there is no such get-tuple-element, we create one.
-    auto gte_it = absl::c_find_if(
-        producing_instruction->users(), [index](const HloInstruction* use) {
-          return use != use->parent()->root_instruction() &&
-                 use->opcode() == HloOpcode::kGetTupleElement &&
-                 use->tuple_index() == index;
-        });
-    if (gte_it != producing_instruction->users().end()) {
-      producing_instruction = *gte_it;
-    } else {
-      producing_instruction =
-          computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-              producing_instruction->shape().tuple_shapes(index),
-              producing_instruction, index));
-    }
-  }
-  return producing_instruction;
+  return TupleUtil::AddGetTupleElements(defining_position());
 }
 
 std::string MemorySpaceAssignment::Allocation::ToString() const {
@@ -3730,9 +3732,9 @@ Status MemorySpaceAssignment::CopyAllocation::Process() {
     if (operand_shape.IsTuple()) {
       TF_ASSIGN_OR_RETURN(
           replacement_instruction,
-          ReplaceTupleWith(copy_done_,
-                           use.instruction->mutable_operand(use.operand_number),
-                           use.operand_index));
+          TupleUtil::ReplaceTupleWith(
+              copy_done_, use.instruction->mutable_operand(use.operand_number),
+              use.operand_index));
     } else if (operand_shape != copy_done_->shape()) {
       VLOG(4) << "Old shape = " << operand_shape.ToString()
               << ", new shape = " << copy_done_->shape().ToString()
@@ -3746,7 +3748,7 @@ Status MemorySpaceAssignment::CopyAllocation::Process() {
         use.operand_number, replacement_instruction));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemorySpaceAssignment::MirroredAllocation::Process() {
@@ -3761,10 +3763,11 @@ Status MemorySpaceAssignment::ParentAllocation::Process() {
       original_allocation_.AddGetTupleElements();
   int new_tuple_index = calling_instruction_->shape().tuple_shapes_size();
 
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_while_operand,
-                      ReplaceTupleWith(producing_instruction,
-                                       calling_instruction_->mutable_operand(0),
-                                       {new_tuple_index}));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * new_while_operand,
+      TupleUtil::ReplaceTupleWith(producing_instruction,
+                                  calling_instruction_->mutable_operand(0),
+                                  {new_tuple_index}));
   TF_RETURN_IF_ERROR(calling_instruction_->ReplaceOperandWithDifferentShape(
       0, new_while_operand));
   *calling_instruction_->mutable_shape() = new_while_operand->shape();
@@ -3793,13 +3796,13 @@ Status MemorySpaceAssignment::ParentAllocation::PostProcess() {
   // new root. Doing the post-process step later ensures the root has been
   // updated with other changes, and we can safely add the additional parameter.
   HloComputation* while_body = calling_instruction_->while_body();
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * new_while_body_root,
-      ReplaceTupleWith(AddGetTupleElements(), while_body->root_instruction(),
-                       defining_position_.index));
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_while_body_root,
+                      TupleUtil::ReplaceTupleWith(
+                          AddGetTupleElements(), while_body->root_instruction(),
+                          defining_position_.index));
   while_body->set_root_instruction(new_while_body_root,
                                    /*accept_different_shape=*/true);
-  return Status::OK();
+  return OkStatus();
 }
 
 void MemorySpaceAssignment::Allocation::MarkIfNeeded(
@@ -3882,7 +3885,7 @@ Status MemorySpaceAssignment::Process() {
       TF_RETURN_IF_ERROR(allocation->PostProcess());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemorySpaceAssignment::ExportAndColorBuffers() {
@@ -3950,7 +3953,7 @@ Status MemorySpaceAssignment::ExportAndColorBuffers() {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void MemorySpaceAssignment::RemoveAssignmentForInstruction(
@@ -4073,7 +4076,7 @@ Status MemorySpaceAssignment::SimplifyGraph() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
@@ -4197,7 +4200,7 @@ Status MemorySpaceAssignment::FixSchedule() {
     schedule.set_sequence(computation, new_sequence);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
@@ -4242,7 +4245,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
       }
     }
     interval_tree.Add(start_time, end_time - 1, chunk);
-    return Status::OK();
+    return OkStatus();
   };
 
   // Go through all instructions in the module to ensure CopyStart/CopyDone
@@ -4348,7 +4351,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
                 << ")";
         TF_RETURN_IF_ERROR(add_allocation_and_verify(
             start_time, earliest_computation_start_time - 1, chunk, value));
-        return Status::OK();
+        return OkStatus();
       };
 
       if (last_use_instruction &&
@@ -4400,7 +4403,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
   }
   VLOG(1) << "Max memory usage ignoring fragmentation: " << max_memory_usage;
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace memory_space_assignment
 }  // namespace xla

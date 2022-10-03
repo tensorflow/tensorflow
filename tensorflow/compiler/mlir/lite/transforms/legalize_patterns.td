@@ -17,15 +17,15 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def CreateEmptyBoolAttr : NativeCodeCall<"::mlir::BoolAttr()">;
 
-def NonOpaqueElementsAttr : ElementsAttrBase<
-  CPred<"!$_self.isa<OpaqueElementsAttr>()">,
+def DenseElementsAttr : ElementsAttrBase<
+  CPred<"$_self.isa<DenseElementsAttr>()">,
   "non-opaque constant tensor">;
 
 def F32ElementsAttr : ElementsAttrBase<
@@ -85,7 +85,7 @@ def LegalizeTFConstToTFLConst: Pat<(TF_ConstOp:$res ElementsAttr:$value),
 
 // Convert to std constant for statically shaped, non-opaque constants.
 def ConvertTfConstToStdConst : Pat<
-  (TF_ConstOp:$res NonOpaqueElementsAttr:$value),
+  (TF_ConstOp:$res DenseElementsAttr:$value),
   (Arith_ConstantOp $value),
   [(AnyStaticShapeTensor $res)], (addBenefit 10)>;
 
@@ -220,11 +220,16 @@ def LegalizeSqrt : Pat<(TF_SqrtOp $arg), (TFL_SqrtOp $arg)>;
 def LegalizeSquare : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
 def LegalizeSegmentSum : Pat<(TF_SegmentSumOp $data, $segment_ids),
                              (TFL_SegmentSumOp $data, (CreateTFCastToInt32Op $segment_ids))>;
-def LegalizeUnsortedSegmentProd :
-  Pat<(TF_UnsortedSegmentProdOp $data, $segment_ids,
-        (Arith_ConstantOp ElementsAttr:$num_segments)),
-      (TFL_UnsortedSegmentProdOp $data, (CreateTFCastToInt32Op $segment_ids),
-        ExtractSingleElementAsInt32:$num_segments)>;
+foreach UnsortedSegmentOp = [
+  [TF_UnsortedSegmentSumOp, TFL_UnsortedSegmentSumOp],
+  [TF_UnsortedSegmentMaxOp, TFL_UnsortedSegmentMaxOp],
+  [TF_UnsortedSegmentMinOp, TFL_UnsortedSegmentMinOp],
+  [TF_UnsortedSegmentProdOp, TFL_UnsortedSegmentProdOp]] in {
+  def Legalize#UnsortedSegmentOp[0] :
+     Pat<(UnsortedSegmentOp[0] $data, $segment_ids, $num_segments),
+              (UnsortedSegmentOp[1] $data, (CreateTFCastToInt32Op $segment_ids),
+                  (CreateTFCastToInt32Op $num_segments))>;
+}
 def LegalizeSelect : Pat<(TF_SelectOp $cond, $x, $y),
                          (TFL_SelectOp $cond, $x, $y)>;
 def LegalizeSelectV2SameStaticShape : Pat<(TF_SelectV2Op:$src_op $cond, $x, $y),
@@ -566,3 +571,7 @@ def LegalizeMultinomial : Pat<
 def LegalizeXlaDynamicUpdateSlice : Pat<
   (TF_XlaDynamicUpdateSliceOp $operand, $update, $start_indices),
   (TFL_DynamicUpdateSliceOp $operand, $update, $start_indices)>;
+
+def LegalizeAtan2 : Pat<(TF_Atan2Op $y, $x), (TFL_Atan2Op $y, $x)>;
+
+def LegalizeSign : Pat<(TF_SignOp $x), (TFL_SignOp $x)>;

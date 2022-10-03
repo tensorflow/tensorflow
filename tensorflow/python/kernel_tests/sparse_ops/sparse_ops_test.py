@@ -514,6 +514,13 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(empty_row_indicator_out,
                             np.array([0, 0, 1, 0, 1]).astype(np.bool_))
 
+  def testSparseFillEmptyRowsGradEmpty(self):
+    with test_util.use_gpu():
+      grad, _ = self.evaluate(
+          sparse_ops.sparse_fill_empty_rows_grad(
+              reverse_index_map=[], grad_values=[]))
+      self.assertAllEqual(grad, [])
+
   @test_util.run_deprecated_v1
   def testFillFloat(self):
     with self.session():
@@ -987,7 +994,7 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
     np.random.seed(1618)
     n, m = np.random.choice(20, size=2)
 
-    for dtype in [np.float32, np.float64]:
+    for dtype in [np.float16, np.float32, np.float64]:
       sp_vals_np = np.random.rand(n, m).astype(dtype)
 
       batched_sp_t, unused_nnz1 = _sparsify(
@@ -1000,7 +1007,7 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
             sparse_ops.sparse_softmax(batched_sp_t)).values.reshape((n, m))
         dense_result = nn_ops.softmax(densified)
 
-        self.assertAllClose(dense_result, sp_result)
+        self.assertAllCloseAccordingToType(dense_result, sp_result)
 
   def testHigherRanks(self):
     # For the first shape:

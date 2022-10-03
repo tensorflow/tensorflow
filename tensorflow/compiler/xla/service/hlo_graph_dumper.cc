@@ -22,6 +22,7 @@ limitations under the License.
 #include <deque>
 #include <map>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <tuple>
@@ -34,7 +35,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -46,29 +46,30 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/io/zlib_compression_options.h"
-#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/platform/base64.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/lib/io/zlib_compression_options.h"
+#include "tensorflow/tsl/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/tsl/platform/base64.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
 
-using absl::nullopt;
-using absl::optional;
 using absl::StrAppend;
 using absl::StrCat;
 using absl::StrFormat;
 using absl::StrJoin;
+using std::nullopt;
+using std::optional;
 
 // Used to indicate how we should treat a given HLOInstruction in the graph.
 // should we treat it like normal, hide it, and so on?
@@ -341,18 +342,18 @@ class HloDotDumper {
   std::string Dump();
 
   // Returns a CSS id assigned to the instruction, if that exists.
-  absl::optional<std::string> CssIdForInstruction(const HloInstruction& instr) {
+  std::optional<std::string> CssIdForInstruction(const HloInstruction& instr) {
     if (instr.opcode() == HloOpcode::kFusion) {
       // For fusion we render it as a subcomputation.
       auto it = cluster_ids_.find(instr.called_computations()[0]);
       if (it == cluster_ids_.end()) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       return StrCat("#a_clust", it->second, " path");
     }
     auto it = node_ids_.find(&instr);
     if (it == node_ids_.end()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return StrCat("#node", it->second, " polygon");
   }
@@ -542,14 +543,13 @@ stylesheet=<
 
     // The "to_node" value may be a NULL, indicating that this points to the
     // "root" tag rather than a normal node.
-    int64_t from_node_id =
-        tensorflow::gtl::FindWithDefault(node_ids_, from_node, -1);
+    int64_t from_node_id = tsl::gtl::FindWithDefault(node_ids_, from_node, -1);
     if (from_node_id == -1) {
       LOG(FATAL) << from_node->name() << " was added to edges but not to nodes";
     }
-    int64_t to_node_id =
-        to_node ? tensorflow::gtl::FindWithDefault(node_ids_, to_node, -1)
-                : root_node_id_;
+    int64_t to_node_id = to_node
+                             ? tsl::gtl::FindWithDefault(node_ids_, to_node, -1)
+                             : root_node_id_;
     if (to_node != nullptr && to_node_id == -1) {
       LOG(FATAL) << to_node->name() << " was added to edges but not to nodes";
     }
@@ -931,8 +931,9 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
         }
       } else if (operand->opcode() == HloOpcode::kGetTupleElement) {
         operand_str =
-            StrFormat("tuple-element %d of %s", operand->tuple_index(),
-                      operand->operand(0)->name());
+            StrFormat("tuple-element %d of %s %s", operand->tuple_index(),
+                      operand->operand(0)->name(),
+                      ShapeUtil::HumanStringWithLayout(operand->shape()));
       } else {
         operand_str = operand->name();
       }
@@ -954,9 +955,10 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
         instr->parent()->FusionInstruction()->operand(
             instr->parameter_number());
     if (param_input->opcode() == HloOpcode::kGetTupleElement) {
-      lines.push_back(StrFormat("tuple-element %d of %s",
-                                param_input->tuple_index(),
-                                param_input->operand(0)->name()));
+      lines.push_back(
+          StrFormat("tuple-element %d of %s %s", param_input->tuple_index(),
+                    param_input->operand(0)->name(),
+                    ShapeUtil::HumanStringWithLayout(param_input->shape())));
     }
   }
 
@@ -1271,7 +1273,7 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
     if (config.ok()) {
       props = ExtractCudnnConvBackendConfigProps(*config);
     }
-  } else if (instr->IsCustomCall(gpu::kGemmCallTarget)) {
+  } else if (gpu::IsCublasGemm(*instr)) {
     StatusOr<gpu::GemmBackendConfig> config =
         instr->backend_config<gpu::GemmBackendConfig>();
     if (config.ok()) {
@@ -1704,6 +1706,7 @@ std::string WrapDotInHtml(absl::string_view dot) {
         var panzoom = svgPanZoom(svg, {
             zoomEnabled: true,
             controlIconsEnabled: true,
+            maxZoom: 100,
         });
         document.getElementsByTagName("BODY")[0].onresize = function() {
             panzoom.resize();
@@ -1760,7 +1763,7 @@ namespace {
 struct FusionVisualizerProgress {
   // Creates a frame with a new rendered graph.
   void AddState(absl::string_view dot, absl::string_view explanation,
-                absl::optional<std::string> to_highlight) {
+                std::optional<std::string> to_highlight) {
     if (dot_graphs.empty() || dot_graphs.back() != dot) {
       dot_graphs.push_back(std::string(dot));
     }
@@ -1818,19 +1821,19 @@ StatusOr<std::string> WrapDotInFormat(const HloComputation& computation,
 
 // Compress with zlib + b64 encode.
 static StatusOr<std::string> CompressAndEncode(absl::string_view input) {
-  class WritableStringFile : public tensorflow::WritableFile {
+  class WritableStringFile : public tsl::WritableFile {
    public:
     explicit WritableStringFile(std::string* data) : data_(data){};
     ~WritableStringFile() override = default;
 
     Status Append(absl::string_view data) override {
       absl::StrAppend(data_, data);
-      return Status::OK();
+      return OkStatus();
     }
 
-    Status Close() override { return Status::OK(); }
-    Status Flush() override { return Status::OK(); }
-    Status Sync() override { return Status::OK(); }
+    Status Close() override { return OkStatus(); }
+    Status Flush() override { return OkStatus(); }
+    Status Sync() override { return OkStatus(); }
 
    private:
     std::string* data_;
@@ -1839,15 +1842,15 @@ static StatusOr<std::string> CompressAndEncode(absl::string_view input) {
   std::string compressed;
   WritableStringFile f(&compressed);
 
-  auto gz_opts = tensorflow::io::ZlibCompressionOptions::GZIP();
-  tensorflow::io::ZlibOutputBuffer gz_file(&f, gz_opts.input_buffer_size,
-                                           gz_opts.output_buffer_size, gz_opts);
+  auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
+  tsl::io::ZlibOutputBuffer gz_file(&f, gz_opts.input_buffer_size,
+                                    gz_opts.output_buffer_size, gz_opts);
   TF_RETURN_IF_ERROR(gz_file.Init());
   TF_RETURN_IF_ERROR(gz_file.Append(input));
   TF_RETURN_IF_ERROR(gz_file.Close());
 
   std::string encoded;
-  TF_RETURN_IF_ERROR(tensorflow::Base64Encode(compressed, &encoded));
+  TF_RETURN_IF_ERROR(tsl::Base64Encode(compressed, &encoded));
   return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
 }
 
@@ -2093,7 +2096,7 @@ void RegisterFusionState(const HloComputation& computation,
       MakeNodeRadiusAroundFilter(&consumer, kRenderRadius, render_boundary));
   std::string dot_txt = dumper.Dump();
 
-  absl::optional<std::string> producer_to_highlight;
+  std::optional<std::string> producer_to_highlight;
   if (producer) {
     producer_to_highlight = dumper.CssIdForInstruction(*producer);
   }

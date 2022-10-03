@@ -73,6 +73,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/padding.h"
@@ -84,6 +85,45 @@ namespace TF {
 namespace {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
+
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AbsOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AcosOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AcoshOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AsinOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AsinhOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AtanOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AtanhOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(BesselI0eOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(BesselI1eOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CheckNumericsOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CollectiveReduceOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ConjOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CoshOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CrossOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DataFormatDimMapOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DataFormatVecPermuteOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DigammaOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(EluOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(EluGradOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfcOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ExpOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Expm1Op);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FakeQuantWithMinMaxArgsOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FakeQuantWithMinMaxArgsGradientOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(InvOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(InvertOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LeakyReluOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LeakyReluGradOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LgammaOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Log1pOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogSoftmaxOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogicalNotOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MergeSummaryOp);
 
 //===----------------------------------------------------------------------===//
 // AddOp
@@ -753,7 +793,7 @@ LogicalResult BroadcastGradientArgsOp::fold(
   auto build_out_dense_element = [](SmallVectorImpl<int64_t> &shape,
                                     Type input_type) {
     Type element_type = input_type.cast<mlir::TensorType>().getElementType();
-    RankedTensorType type = RankedTensorType::get(
+    RankedTensorType type = tensorflow::GetTypeFromTFTensorShape(
         {static_cast<int64_t>(shape.size())}, element_type);
     // Input could only be i32 or i64. For i32, downcast to int32_t array.
     if (element_type.isInteger(32)) {
@@ -1190,7 +1230,7 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
 
   // Compute binary operands hoist parameters.
   auto hoist_params = GetHoistParams(op, axis, exceptions);
-  if (!hoist_params.hasValue()) return failure();
+  if (!hoist_params.has_value()) return failure();
 
   // Process `exceptions`: For each value there, synthesize a binary op of the
   // above kind, so that the concat hoisting optimization can still apply.
@@ -1244,7 +1284,8 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
     }
 
     // New concatenation axis.
-    auto axis_type = RankedTensorType::get({}, getElementTypeOrSelf(axis_attr));
+    auto axis_type = tensorflow::GetTypeFromTFTensorShape(
+        {}, getElementTypeOrSelf(axis_attr));
     DenseIntElementsAttr attr;
     if (axis_type.getElementType().isInteger(32)) {
       attr = DenseIntElementsAttr::get(axis_type, static_cast<int32_t>(axis));
@@ -1335,7 +1376,8 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(
   // and concatenate scalars into the vector.
   if (is_all_tensors(0, axis) && is_all_scalars(1)) {
     std::array<int64_t, 1> rhs_dims{static_cast<int64_t>(op.values().size())};
-    auto rhs_type = RankedTensorType::get(rhs_dims, ranked.getElementType());
+    auto rhs_type =
+        tensorflow::GetTypeFromTFTensorShape(rhs_dims, ranked.getElementType());
     return HoistParams{args(0),
                        args(1),
                        axis,
@@ -1345,7 +1387,8 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(
                        /*scalar_operand_idx=*/1};
   } else if (is_all_tensors(1, axis) && is_all_scalars(0)) {
     std::array<int64_t, 1> lhs_dims{static_cast<int64_t>(op.values().size())};
-    auto lhs_type = RankedTensorType::get(lhs_dims, ranked.getElementType());
+    auto lhs_type =
+        tensorflow::GetTypeFromTFTensorShape(lhs_dims, ranked.getElementType());
     return HoistParams{args(0),
                        args(1),
                        0,
@@ -1498,8 +1541,8 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
   // Compute an exclusive cumulative sum of elements at concat_dim.
   results.reserve(shapes.size());
   SmallVector<int32_t, 4> cumulative_sum(num_dims, 0);
-  RankedTensorType offset_type =
-      RankedTensorType::get({num_dims}, IntegerType::get(getContext(), 32));
+  RankedTensorType offset_type = tensorflow::GetTypeFromTFTensorShape(
+      {num_dims}, IntegerType::get(getContext(), 32));
   for (DenseIntElementsAttr shape : shapes) {
     results.push_back(DenseIntElementsAttr::get(offset_type, cumulative_sum));
     cumulative_sum[concat_dim] += shape.getValues<int32_t>()[concat_dim];
@@ -1539,7 +1582,9 @@ void ConstOp::build(OpBuilder &builder, OperationState &result,
     // we want to provide more flexibility by allowing attributes of scalar
     // types. But we need to wrap it up with ElementsAttr to construct
     // valid TensorFlow constants.
-    type = RankedTensorType::get(/*shape=*/{}, value.getType());
+    auto typed_attr = value.cast<TypedAttr>();
+    type = tensorflow::GetTypeFromTFTensorShape(/*shape=*/{},
+                                                typed_attr.getType());
     return ConstOp::build(builder, result, DenseElementsAttr::get(type, value));
   }
   // TODO(jpienaar): support other TensorFlow specific types.
@@ -1687,6 +1732,10 @@ static LogicalResult Verify(OpT op) {
         num_dims, tensorflow::FORMAT_HWIO);
     filter_channels = ty.getDimSize(idx);
   }
+
+  if (ShapedType::isDynamic(filter_channels) ||
+      ShapedType::isDynamic(input_channels))
+    return success();
 
   if (input_channels != -1 && filter_channels != -1 &&
       input_channels % filter_channels != 0)
@@ -2269,8 +2318,8 @@ LogicalResult DynamicStitchOp::verify() {
                             inferred_item_shape->end());
 
       auto out_ty = op.getType().cast<TensorType>();
-      auto expected_out_ty =
-          RankedTensorType::get(expected_shape, out_ty.getElementType());
+      auto expected_out_ty = tensorflow::GetTypeFromTFTensorShape(
+          expected_shape, out_ty.getElementType());
 
       if (!AreCastCompatible({out_ty, expected_out_ty})) {
         return op.emitOpError() << "has invalid output type; should be "
@@ -2322,13 +2371,13 @@ OpFoldResult EmptyOp::fold(ArrayRef<Attribute> operands) {
   if (!type.hasStaticShape()) return {};
 
   if (auto float_type = etype.dyn_cast<FloatType>()) {
-    auto out_type = RankedTensorType::get(out_shape, float_type);
+    auto out_type = tensorflow::GetTypeFromTFTensorShape(out_shape, float_type);
     return DenseElementsAttr::get(out_type,
                                   {APFloat(float_type.getFloatSemantics())});
   }
 
   if (auto int_type = etype.dyn_cast<IntegerType>()) {
-    auto out_type = RankedTensorType::get(out_shape, etype);
+    auto out_type = tensorflow::GetTypeFromTFTensorShape(out_shape, etype);
     APInt val(int_type.getWidth(), 0, int_type.getSignedness());
     return DenseElementsAttr::get(out_type, val);
   }
@@ -2366,31 +2415,46 @@ LogicalResult EmptyTensorListOp::verify() {
 //===----------------------------------------------------------------------===//
 
 // For EnqueueTPUEmbedding ops the device ordinal corresponds to the resource
-// instance.
+// instance. We also take the `device` attribute into account in order to avoid
+// dependencies between ops with the same ordinal on different devices.
+
+// Helper function to get an absolute device string, combining device and
+// ordinal attribute values.
+std::string GetAbsDeviceStr(Operation *op, uint64_t device_ordinal) {
+  std::string device_ordinal_str = std::to_string(device_ordinal);
+  auto device_attr = op->getAttrOfType<StringAttr>("device");
+  if (!device_attr || device_attr.getValue().empty()) return device_ordinal_str;
+
+  // TODO(b/229028654) Remove string conversion once implicit conversion between
+  // llvm::StringRef and absl::string_view works.
+  absl::string_view device_str(device_attr.data(), device_attr.size());
+  // Concatenate full device string and device ordinal.
+  return absl::StrCat(device_str, ":", device_ordinal_str);
+}
 
 std::string
 EnqueueTPUEmbeddingArbitraryTensorBatchOp::GetResourceInstanceStr() {
-  return std::to_string(device_ordinal());
+  return GetAbsDeviceStr(*this, device_ordinal());
 }
 
 std::string EnqueueTPUEmbeddingBatchOp::GetResourceInstanceStr() {
-  return std::to_string(device_ordinal());
+  return GetAbsDeviceStr(*this, device_ordinal());
 }
 
 std::string EnqueueTPUEmbeddingIntegerBatchOp::GetResourceInstanceStr() {
-  return std::to_string(device_ordinal());
+  return GetAbsDeviceStr(*this, device_ordinal());
 }
 
 std::string EnqueueTPUEmbeddingRaggedTensorBatchOp::GetResourceInstanceStr() {
-  return std::to_string(device_ordinal());
+  return GetAbsDeviceStr(*this, device_ordinal());
 }
 
 std::string EnqueueTPUEmbeddingSparseBatchOp::GetResourceInstanceStr() {
-  return std::to_string(device_ordinal());
+  return GetAbsDeviceStr(*this, device_ordinal());
 }
 
 std::string EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceStr() {
-  return std::to_string(device_ordinal());
+  return GetAbsDeviceStr(*this, device_ordinal());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2406,7 +2470,7 @@ OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
 
   // If input operand's type's shape always satisfies the shape attribute, fold
   // it to input.
-  if (shape_constraint.hasValue() &&
+  if (shape_constraint.has_value() &&
       shape_constraint->size() == type.getShape().size()) {
     for (int i = 0; i < shape_constraint->size(); ++i) {
       if (!ShapedType::isDynamic(shape_constraint.getValue()[i]) &&
@@ -2510,27 +2574,12 @@ Type InferExpandDimsOpType(Value input, Value dim) {
 
   SmallVector<int64_t, 4> shape = llvm::to_vector<4>(input_ty.getShape());
   shape.insert(shape.begin() + dim_val, 1);
-  return RankedTensorType::get(shape, element_ty);
+  return tensorflow::GetTypeFromTFTensorShape(shape, element_ty);
 }
 
 void ExpandDimsOp::build(OpBuilder &builder, OperationState &result,
                          Value input, Value dim) {
   return build(builder, result, InferExpandDimsOpType(input, dim), input, dim);
-}
-
-//===----------------------------------------------------------------------===//
-// Expm1Op
-//===----------------------------------------------------------------------===//
-
-LogicalResult Expm1Op::inferReturnTypeComponents(
-    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
-  ShapeAdaptor adaptor = operands.getShape(0);
-  ShapedTypeComponents component(adaptor.getElementType());
-  if (adaptor.hasRank()) adaptor.getDims(component);
-  inferredReturnShapes.push_back(component);
-  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2641,7 +2690,7 @@ static ShapedType InferFillOpType(Value dims, Value value) {
     for (const APInt dim : dims_attr.getValues<APInt>()) {
       shape.push_back(dim.getSExtValue());
     }
-    return RankedTensorType::get(shape, etype);
+    return tensorflow::GetTypeFromTFTensorShape(shape, etype);
   }
 
   if (auto shape_op = dims.getDefiningOp<ShapeOp>()) {
@@ -2682,7 +2731,7 @@ OpFoldResult FillOp::fold(ArrayRef<Attribute> operands) {
   for (const APInt dim : dims.getValues<APInt>()) {
     shape.push_back(dim.getSExtValue());
   }
-  type = RankedTensorType::get(shape, type.getElementType());
+  type = tensorflow::GetTypeFromTFTensorShape(shape, type.getElementType());
 
   return DenseElementsAttr::get(type, value.getValues<Attribute>()[0]);
 }
@@ -3200,8 +3249,9 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 
   // Add constant operation with a new reduction indices.
   OpBuilder builder(getOperation());
-  auto type = mlir::RankedTensorType::get(shuffled_reduction.size(),
-                                          builder.getIntegerType(32));
+  auto type = tensorflow::GetTypeFromTFTensorShape(
+      {static_cast<int64_t>(shuffled_reduction.size())},
+      builder.getIntegerType(32));
   auto values = mlir::DenseIntElementsAttr::get(type, shuffled_reduction);
   auto shuffled_reduction_op = builder.create<TF::ConstOp>(getLoc(), values);
 

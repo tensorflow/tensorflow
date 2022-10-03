@@ -50,7 +50,7 @@ Status RemapVectorToMap(
                           ", which is not supported."));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // anonymous namespace
 

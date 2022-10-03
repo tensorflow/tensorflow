@@ -18,7 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/reshape_test_common.h"
 #include "tensorflow/lite/string_type.h"
 

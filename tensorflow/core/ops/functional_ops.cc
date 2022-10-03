@@ -49,7 +49,7 @@ REGISTER_OP("SymbolicGradient")
           c->set_output(i, c->input(i));
         }
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("RemoteCall")
@@ -107,7 +107,7 @@ Status IfShapeInferenceFn(shape_inference::InferenceContext* c) {
         output_shapes[i], &output_shape_handle));
     c->set_output(static_cast<int>(i), output_shape_handle);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("StatelessIf")
@@ -152,7 +152,7 @@ Status CaseShapeInferenceFn(shape_inference::InferenceContext* c) {
         output_shapes[i], &output_shape_handle));
     c->set_output(static_cast<int>(i), output_shape_handle);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("StatelessCase")
@@ -188,7 +188,7 @@ REGISTER_OP("_While")
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->input(i));
       }
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 output = input; While (Cond(output)) { output = Body(output) }
@@ -229,7 +229,7 @@ Status WhileShapeInferenceFn(shape_inference::InferenceContext* c) {
       c->set_output(i, c->input(i));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("While")
@@ -309,7 +309,7 @@ REGISTER_OP("FakeParam")
       shape_inference::ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 // Returns the device index.

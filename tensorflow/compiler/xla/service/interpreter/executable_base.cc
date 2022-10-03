@@ -25,10 +25,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 
 namespace xla {
 namespace interpreter {
@@ -72,11 +72,11 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     }
   }
 
-  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   const HloComputation* computation = module().entry_computation();
   if (computation->num_parameters() != arguments.size()) {
-    return tensorflow::errors::Internal(
+    return tsl::errors::Internal(
         "Mismatch between argument count and graph parameter count.");
   }
 
@@ -139,7 +139,7 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDevice(
       run_options->stream(), result_literal, result.Result()));
 
-  uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_micros = tsl::Env::Default()->NowMicros();
 
   ExecutionProfile* profile = run_options->run_options().execution_profile();
   if (profile) {
@@ -157,7 +157,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
     std::vector<ExecutionInput>* arguments, se::Stream* stream) {
   TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
-          absl::optional<HloInputOutputAliasConfig::Alias> alias) {
+          std::optional<HloInputOutputAliasConfig::Alias> alias) {
         if (alias && alias->must_alias()) {
           VLOG(1) << alias->ToString();
           const MaybeOwningDeviceMemory& original_input =
@@ -170,7 +170,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
                 alias->ToString());
           }
         }
-        return Status::OK();
+        return OkStatus();
       }));
 
   se::StreamExecutor* executor = stream->parent();
@@ -191,7 +191,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
                            result_index.ToString());
     }
 
-    absl::optional<HloInputOutputAliasConfig::Alias> alias =
+    std::optional<HloInputOutputAliasConfig::Alias> alias =
         alias_config.GetAliasedParameter(result_index);
     if (alias) {
       TF_RET_CHECK(alias->parameter_number < arguments->size());
@@ -217,7 +217,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
           auto allocated_buffer,
           allocator->Allocate(executor->device_ordinal(), allocation_bytes,
                               /*retry_on_failure=*/true,
-                              on_device_subshape.layout().memory_space()));
+                              LayoutUtil::MemorySpace(on_device_subshape)));
       result_buffer = allocated_buffer.Release();
     }
     TF_RET_CHECK(allocation_bytes == 0 || result_buffer != nullptr);

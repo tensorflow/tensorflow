@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTABLE_BASE_H_
 
 #include <memory>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/executable.h"

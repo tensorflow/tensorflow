@@ -31,21 +31,23 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_tpu.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/core/tpu/pjrt_api.h"
 #include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 
 #if !defined(PLATFORM_GOOGLE)
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #elif defined(LIBTPU_STATIC)
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #endif  // PLATFORM_GOOGLE
 
 namespace tensorflow {
@@ -140,7 +142,7 @@ Status TryAcquireTpuLock() {
   }
 
   if (load_library_override == "1") {
-    return Status::OK();
+    return OkStatus();
   } else if (load_library_override == "0") {
     return errors::FailedPrecondition("TPU_LOAD_LIBRARY=0, not loading libtpu");
   }
@@ -170,8 +172,7 @@ Status TryAcquireTpuLock() {
       auto pid = FindLibtpuProcess();
       if (pid.ok()) {
         return errors::Aborted(absl::StrCat(
-            "libtpu.so is already in use by process with pid ",
-            pid.ValueOrDie(),
+            "libtpu.so is already in use by process with pid ", pid.value(),
             ". Not attempting to load libtpu.so in this process."));
       } else {
         return errors::Aborted(
@@ -181,13 +182,13 @@ Status TryAcquireTpuLock() {
             "libtpu.so in this process.");
       }
     } else {
-      return Status::OK();
+      return OkStatus();
     }
   } else {
     VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is not empty or "
                "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
                "therefore allowing multiple libtpu.so loads.";
-    return Status::OK();
+    return OkStatus();
   }
 }
 #if !defined(PLATFORM_GOOGLE)
@@ -214,6 +215,18 @@ Status InitializeTpuLibrary(void* library_handle) {
   }
 
   return s;
+}
+
+typedef const PJRT_Api* (*PjRtFuncPtr)();
+void InitializePjRt(void* library_handle) {
+  PjRtFuncPtr fptr = &GetTpuPjrtApi;
+  *reinterpret_cast<void**>(&fptr) = dlsym(library_handle, "GetTpuPjrtApi");
+  if (fptr == nullptr) {
+    LOG(INFO) << "GetTpuPjrtApi not found";
+  } else {
+    LOG(INFO) << "GetTpuPjrtApi was found";
+    tensorflow::tpu::SetPjrtApi(fptr());
+  }
 }
 
 namespace {
@@ -266,10 +279,11 @@ Status FindAndLoadTpuLibrary() {
     // Try to acquire exclusive access.
     TF_RETURN_IF_ERROR(TryAcquireTpuLock());
     TF_RETURN_IF_ERROR(InitializeTpuLibrary(library));
+    InitializePjRt(library);
   }
 
   InitializeCreateGcsFileSystemFnPtr();
-  return Status::OK();
+  return OkStatus();
 }
 
 #elif defined(LIBTPU_STATIC)
@@ -285,7 +299,7 @@ Status InitializeTpuLibrary() {
                    args.second.data());
 
   RegisterTpuPlatform();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FindAndLoadTpuLibrary() {
@@ -293,7 +307,7 @@ Status FindAndLoadTpuLibrary() {
   // Try to acquire exclusive access.
   TF_RETURN_IF_ERROR(TryAcquireTpuLock());
   TF_RETURN_IF_ERROR(InitializeTpuLibrary());
-  return Status::OK();
+  return OkStatus();
 }
 
 #else   // PLATFORM_GOOGLE

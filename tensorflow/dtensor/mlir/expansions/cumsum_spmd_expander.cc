@@ -69,7 +69,7 @@ StatusOr<mlir::Operation*> CumsumSPMDExpander::ExpandOp(mlir::Operation* op) {
   // the axis dimension replicated. So set both the operand and output layout
   // to this intermediate layout.
   Layout intermediate_layout = output_layout->GetLayoutWithReducedDims(
-      {axis_dim.ValueOrDie()}, /*keep_dims=*/true);
+      {axis_dim.value()}, /*keep_dims=*/true);
 
   // Relayout operand to intermediate layout.
   mlir::OpBuilder builder(op);

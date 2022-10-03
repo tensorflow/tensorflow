@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,7 +26,6 @@ limitations under the License.
 #include "grpcpp/support/channel_arguments.h"
 #include "grpcpp/support/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
@@ -71,10 +71,10 @@ Status DataServiceDispatcherClient::WorkerUpdate(
   if (!status.ok()) {
     return grpc_util::WrapError("Failed to send worker update", status);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-Status DataServiceDispatcherClient::GetDatasetDef(int64_t dataset_id,
+Status DataServiceDispatcherClient::GetDatasetDef(const std::string& dataset_id,
                                                   DatasetDef& dataset_def) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetDatasetDefRequest req;
@@ -86,7 +86,7 @@ Status DataServiceDispatcherClient::GetDatasetDef(int64_t dataset_id,
     return grpc_util::WrapError("Failed to get dataset def", status);
   }
   dataset_def = resp.dataset_def();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
@@ -111,16 +111,20 @@ Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
       return errors::Internal("Failed to parse split tensor proto");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::RegisterDataset(
     const DatasetDef& dataset, const DataServiceMetadata& metadata,
-    int64_t& dataset_id) {
+    const std::optional<std::string>& requested_dataset_id,
+    std::string& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
   *req.mutable_dataset() = dataset;
   *req.mutable_metadata() = metadata;
+  if (requested_dataset_id.has_value()) {
+    req.set_dataset_id(*requested_dataset_id);
+  }
 
   GetOrRegisterDatasetResponse resp;
   grpc::ClientContext client_ctx;
@@ -129,13 +133,13 @@ Status DataServiceDispatcherClient::RegisterDataset(
     return grpc_util::WrapError("Failed to register dataset", status);
   }
   dataset_id = resp.dataset_id();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
-    int64_t dataset_id, const ProcessingModeDef& processing_mode,
-    const absl::optional<std::string>& job_name,
-    absl::optional<int64_t> num_consumers, bool use_cross_trainer_cache,
+    const std::string& dataset_id, const ProcessingModeDef& processing_mode,
+    const std::optional<std::string>& job_name,
+    std::optional<int64_t> num_consumers, bool use_cross_trainer_cache,
     TargetWorkers target_workers, int64_t& job_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
@@ -159,7 +163,7 @@ Status DataServiceDispatcherClient::GetOrCreateJob(
         status);
   }
   job_id = resp.job_id();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetOrCreateIteration(
@@ -178,7 +182,7 @@ Status DataServiceDispatcherClient::GetOrCreateIteration(
         status);
   }
   iteration_client_id = resp.iteration_client_id();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::ReleaseIterationClient(
@@ -195,7 +199,7 @@ Status DataServiceDispatcherClient::ReleaseIterationClient(
                      iteration_client_id),
         status);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::MaybeRemoveTask(int64_t task_id,
@@ -214,7 +218,7 @@ Status DataServiceDispatcherClient::MaybeRemoveTask(int64_t task_id,
     return grpc_util::WrapError("Failed to call MaybeRemoveTask", status);
   }
   removed = resp.removed();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::ClientHeartbeat(
@@ -225,7 +229,7 @@ Status DataServiceDispatcherClient::ClientHeartbeat(
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get tasks", s);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetWorkers(
@@ -242,11 +246,11 @@ Status DataServiceDispatcherClient::GetWorkers(
   for (auto& worker : resp.workers()) {
     workers.push_back(worker);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetDataServiceMetadata(
-    int64_t dataset_id, DataServiceMetadata& metadata) {
+    const std::string& dataset_id, DataServiceMetadata& metadata) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetDataServiceMetadataRequest req;
   req.set_dataset_id(dataset_id);
@@ -257,7 +261,7 @@ Status DataServiceDispatcherClient::GetDataServiceMetadata(
     return grpc_util::WrapError("Failed to get data service metadata", s);
   }
   metadata = resp.metadata();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetDataServiceConfig(
@@ -271,13 +275,13 @@ Status DataServiceDispatcherClient::GetDataServiceConfig(
     return grpc_util::WrapError("Failed to get data service config", s);
   }
   config = response.config();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DataServiceDispatcherClient::EnsureInitialized() {
   mutex_lock l(mu_);
   if (stub_) {
-    return Status::OK();
+    return OkStatus();
   }
   std::shared_ptr<grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
@@ -300,7 +304,7 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
                            address_),
               s);
         }
-        return Status::OK();
+        return OkStatus();
       },
       "check service version",
       /*deadline_micros=*/kint64max));
@@ -311,9 +315,10 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
         resp.version(), ", while the client is running version ",
         kDataServiceVersion,
         ". Please ensure that the client and server side are running the "
-        "same version of TensorFlow.");
+        "same version of TensorFlow. If you're running an MPM binary, make "
+        "sure the server is running an up-to-date MPM.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace data

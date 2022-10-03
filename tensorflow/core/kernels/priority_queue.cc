@@ -57,7 +57,7 @@ Status PriorityQueue::Initialize() {
         "is: ",
         component_shapes_[0].DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void PriorityQueue::DequeueLocked(OpKernelContext* ctx, Tuple* tuple) {
@@ -124,7 +124,7 @@ Status PriorityQueue::GetElementComponentFromBatch(
       ctx->allocate_temp(tuple[component].dtype(), element_shape, out_element));
   TF_RETURN_IF_ERROR(
       batch_util::CopySliceToElement(tuple[component], out_element, index));
-  return Status::OK();
+  return OkStatus();
 }
 
 void PriorityQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
@@ -393,7 +393,7 @@ Status PriorityQueue::MatchesNodeDef(const NodeDef& node_def) {
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
   TF_RETURN_IF_ERROR(MatchesPriorityNodeDefTypes(node_def));
   TF_RETURN_IF_ERROR(MatchesPriorityNodeDefShapes(node_def));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PriorityQueue::MatchesPriorityNodeDefTypes(
@@ -409,7 +409,7 @@ Status PriorityQueue::MatchesPriorityNodeDefTypes(
                                    " but requested component types were ",
                                    DataTypeSliceString(requested_dtypes));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PriorityQueue::MatchesPriorityNodeDefShapes(
@@ -424,7 +424,7 @@ Status PriorityQueue::MatchesPriorityNodeDefShapes(
                                    " but requested component shapes were ",
                                    ShapeListString(requested_shapes));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

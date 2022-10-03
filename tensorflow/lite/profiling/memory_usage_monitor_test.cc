@@ -51,7 +51,7 @@ class MemoryUsageMonitorTest : public ::testing::Test {
     bool IsSupported() override { return true; }
     MemoryUsage GetMemoryUsage() override {
       MemoryUsage result;
-      result.max_rss_kb = 5 * ((*sleep_cnt_) + 1) * 1024;
+      result.mem_footprint_kb = 5 * ((*sleep_cnt_) + 1) * 1024;
       return result;
     }
     void SleepFor(const absl::Duration& duration) override {
@@ -64,9 +64,9 @@ class MemoryUsageMonitorTest : public ::testing::Test {
   };
 
   void SetUp() override {
-    monitor_.reset(new MemoryUsageMonitor(
+    monitor_ = std::make_unique<MemoryUsageMonitor>(
         50, std::unique_ptr<MemoryUsageMonitor::Sampler>(
-                new FakeMemoryUsageSampler(&num_sleeps_))));
+                new FakeMemoryUsageSampler(&num_sleeps_)));
   }
 
   int64_t num_sleeps_ = 0;

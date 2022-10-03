@@ -34,9 +34,9 @@ func.func @tanh_1d(%arg0: memref<102401xf32>) -> memref<102401xf32> {
 
 // CHECK:       gml_st.loop
 // CHECK:           memref.subview
-// CHECK-SAME:        memref<102401xf32> to memref<8xf32, #[[$MAP]]>
+// CHECK-SAME:        memref<102401xf32> to memref<8xf32, strided<[1], offset: ?>>
 // CHECK:           memref.subview
-// CHECK-SAME:        memref<102401xf32> to memref<8xf32, #[[$MAP]]>
+// CHECK-SAME:        memref<102401xf32> to memref<8xf32, strided<[1], offset: ?>>
 
 // CHECK:       gml_st.loop
 // CHECK:           memref.subview

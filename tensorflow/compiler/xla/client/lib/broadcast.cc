@@ -36,7 +36,7 @@ StatusOr<XlaOp> BroadcastTo(XlaOp input,
   }
 
   if (input_dims.size() > output_dims.size()) {
-    return tensorflow::errors::InvalidArgument(
+    return tsl::errors::InvalidArgument(
         "Input shape (", ShapeUtil::HumanString(input_shape),
         ") must have rank less than or equal to the output shape [",
         absl::StrJoin(output_dims, ","), "]");
@@ -50,7 +50,7 @@ StatusOr<XlaOp> BroadcastTo(XlaOp input,
     if (input_it != input_dims.rend()) {
       if (!(*output_it == 0 && *input_it == 0) &&
           !(*input_it != 0 && *output_it % *input_it == 0)) {
-        return tensorflow::errors::InvalidArgument(
+        return tsl::errors::InvalidArgument(
             "Invalid shape broadcast from ",
             ShapeUtil::HumanString(input_shape), " to [",
             absl::StrJoin(output_dims, ","), "]");

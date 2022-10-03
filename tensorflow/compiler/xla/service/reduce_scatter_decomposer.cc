@@ -34,11 +34,14 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> ReduceScatterDecomposer::Run(HloModule *module) {
+StatusOr<bool> ReduceScatterDecomposer::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   bool changed = false;
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
 
-  for (HloComputation *computation : module->MakeNonfusionComputations()) {
+  for (HloComputation *computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction *instruction :
          computation->MakeInstructionPostOrder()) {
       auto *rs = DynCast<HloReduceScatterInstruction>(instruction);
@@ -46,7 +49,7 @@ StatusOr<bool> ReduceScatterDecomposer::Run(HloModule *module) {
         continue;
       }
 
-      absl::optional<int64_t> channel_id;
+      std::optional<int64_t> channel_id;
       if (rs->channel_id()) {
         channel_id = next_channel_id++;
       }

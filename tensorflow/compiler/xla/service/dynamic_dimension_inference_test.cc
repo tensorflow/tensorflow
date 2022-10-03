@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -56,8 +56,8 @@ class DynamicDimensionInferenceTest : public HloTestBase {
         DynamicDimensionInference::Run(module_.get(), handler, shape_check_mode,
                                        assertion_generator));
 
-    inference_ = absl::make_unique<DynamicDimensionInference>(inference);
-    return Status::OK();
+    inference_ = std::make_unique<DynamicDimensionInference>(inference);
+    return OkStatus();
   }
 
   HloComputation* GetAdd() {
@@ -1248,7 +1248,7 @@ TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
     CHECK(inference != nullptr);
     CHECK(Cast<HloCustomCallInstruction>(hlo) != nullptr);
     handler_called = true;
-    return Status::OK();
+    return OkStatus();
   };
   TF_ASSERT_OK(RunInference(handler));
 
@@ -1380,9 +1380,9 @@ ENTRY computation {
   StatusOr<bool> filecheck_result = RunFileCheck(module_->ToString({}),
                                                  R"(
 // CHECK: compare = pred[] compare(s32[] %a_size_1, s32[] %b_size_1), direction=EQ
-// CHECK: compare.1 = pred[] compare(s32[] %a_size_2, s32[] %b_size_2), direction=EQ
-// CHECK: and = pred[] and(pred[] %compare, pred[] %compare.1)
-// CHECK: custom-call(pred[] %and), custom_call_target="__xla__assert"
+// CHECK: compare.5 = pred[] compare(s32[] %a_size_2, s32[] %b_size_2), direction=EQ
+// CHECK: and.2 = pred[] and(pred[] %compare, pred[] %compare.5)
+// CHECK: custom-call(pred[] %and.2), custom_call_target="__xla__assert"
                    )");
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(*filecheck_result);

@@ -125,6 +125,10 @@ static constexpr char kTPUEmbeddingConfiguration[] =
 // `tf` prefix attached in MLIR importer for dialect requirements.
 static constexpr char kTPUEmbeddingTableID[] = "tf._tpu_embedding_table_id";
 
+// Attribute mapping slot_id to func op arguments using as TPUEmbedding slot
+// variables.`tf` prefix attached in MLIR importer for dialect requirements.
+static constexpr char kTPUEmbeddingSlotID[] = "tf._tpu_embedding_slot_id";
+
 // Name of dtensor load embedding function.
 static constexpr char kLoadEmbeddingFn[] = "load_embedding_fn";
 

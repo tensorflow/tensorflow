@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
 
+#include <algorithm>
 #include <deque>
+#include <limits>
 
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -77,7 +79,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -101,7 +103,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -134,7 +136,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                        std::make_pair(kLegacyAutotune, legacy_autotune_attr),
                        std::make_pair(kBufferSizeMin, buffer_size_min_attr)},
                       output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -168,7 +170,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (buffer_size_->value == model::kAutotune) {
         buffer_size_->value = buffer_size_min_;
       }
-      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      cancellation_manager_ = std::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(), [this]() { CancelThreads(); },
           &deregister_fn_));
@@ -204,7 +206,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
         if (prefetch_thread_finished_) {
           *end_of_sequence = true;
-          return Status::OK();
+          return OkStatus();
         }
 
         DCHECK_EQ(buffer_limit(), 0);
@@ -229,12 +231,17 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
+      double buffer_size_min = buffer_size_min_;
+      double buffer_size_max = std::numeric_limits<int64_t>::max();
+      if (buffer_size_->value != model::kAutotune && buffer_size_->value != 0) {
+        buffer_size_min = buffer_size_->value;
+        buffer_size_max = buffer_size_->value;
+      }
       return model::MakeAsyncKnownRatioNode(
           std::move(args),
           /*ratio=*/1,
-          {model::MakeParameter(kBufferSize, buffer_size_,
-                                /*min=*/buffer_size_min_,
-                                /*max=*/std::numeric_limits<int64_t>::max())});
+          {model::MakeParameter(kBufferSize, buffer_size_, buffer_size_min,
+                                buffer_size_max)});
     }
 
     Status SaveInternal(SerializationContext* ctx,
@@ -260,7 +267,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           }
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -299,7 +306,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         }
         RecordBufferEnqueue(ctx, buffer_element.value);
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     data::TraceMeMetadata GetTraceMeMetadata() const override {
@@ -446,7 +453,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         prefetch_thread_ = ctx->StartThread(
             "tf_data_prefetch", [this, new_ctx]() { PrefetchThread(new_ctx); });
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     // Prefetches elements of the input, storing results in an internal buffer.
@@ -529,7 +536,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             writer->WriteScalar(absl::StrCat(prefix(), "::", index),
                                 ErrorMessageKey(), status.error_message()));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status ReadStatus(IteratorStateReader* reader, size_t index, Status* status)
@@ -546,9 +553,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                                ErrorMessageKey(), &error_message));
         *status = Status(code, error_message);
       } else {
-        *status = Status::OK();
+        *status = OkStatus();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     string CodeKey() { return absl::StrCat(kStatus, kCodeSuffix); }
@@ -621,6 +628,10 @@ PrefetchDatasetOp::PrefetchDatasetOp(OpKernelConstruction* ctx)
   }
   if (ctx->HasAttr(kBufferSizeMin)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kBufferSizeMin, &buffer_size_min_));
+  }
+  if (GetExperiments().contains("autotune_buffer_optimization")) {
+    legacy_autotune_ = false;
+    buffer_size_min_ = std::max(static_cast<int64_t>(1), buffer_size_min_);
   }
 }
 

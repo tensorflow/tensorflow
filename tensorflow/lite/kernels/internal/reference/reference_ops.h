@@ -29,6 +29,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -73,6 +74,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/resize_bilinear.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
+#include "tensorflow/lite/kernels/internal/reference/select.h"
 #include "tensorflow/lite/kernels/internal/reference/slice.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/space_to_batch_nd.h"
@@ -85,7 +87,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/internal/types.h"
 namespace tflite {
 
 namespace reference_ops {
@@ -595,56 +596,72 @@ inline GatherNdHelperResult GatherNdHelper(const RuntimeShape& params_shape,
   return ret;
 }
 
+// Implements GatherNd.
+// Returns an error if any of the indices_data would cause an out of bounds
+// memory read.
 template <typename ParamsT, typename IndicesT = int32>
-inline void GatherNd(const RuntimeShape& params_shape,
-                     const ParamsT* params_data,
-                     const RuntimeShape& indices_shape,
-                     const IndicesT* indices_data,
-                     const RuntimeShape& output_shape, ParamsT* output_data) {
+inline TfLiteStatus GatherNd(const RuntimeShape& params_shape,
+                             const ParamsT* params_data,
+                             const RuntimeShape& indices_shape,
+                             const IndicesT* indices_data,
+                             const RuntimeShape& output_shape,
+                             ParamsT* output_data) {
   ruy::profiler::ScopeLabel label("GatherNd");
 
   const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
   for (int i = 0; i < res.n_slices; ++i) {
-    int from_pos = 0;
+    int64_t from_pos = 0;
     for (int j = 0; j < res.indices_nd; ++j) {
       from_pos += indices_data[i * res.indices_nd + j] * res.dims_to_count[j];
+    }
+    if (from_pos < 0 || from_pos + res.slice_size > params_shape.FlatSize()) {
+      return kTfLiteError;
     }
     std::memcpy(output_data + i * res.slice_size, params_data + from_pos,
                 sizeof(ParamsT) * res.slice_size);
   }
+  return kTfLiteOk;
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
+// Implements GatherNd on strings.
+// Returns an error if any of the indices_data would cause an out of bounds
+// memory read.
 template <typename IndicesT = int32>
-inline void GatherNdString(const RuntimeShape& params_shape,
-                           const TfLiteTensor* params_data,
-                           const RuntimeShape& indices_shape,
-                           const IndicesT* indices_data,
-                           const RuntimeShape& output_shape,
-                           TfLiteTensor* output_data) {
+inline TfLiteStatus GatherNdString(const RuntimeShape& params_shape,
+                                   const TfLiteTensor* params_data,
+                                   const RuntimeShape& indices_shape,
+                                   const IndicesT* indices_data,
+                                   const RuntimeShape& output_shape,
+                                   TfLiteTensor* output_data) {
   ruy::profiler::ScopeLabel label("GatherNdString");
 
   const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
   DynamicBuffer buffer;
   for (int i = 0; i < res.n_slices; ++i) {
-    int from_pos = 0;
+    int64_t from_pos = 0;
     for (int j = 0; j < res.indices_nd; ++j) {
       from_pos += indices_data[i * res.indices_nd + j] * res.dims_to_count[j];
+    }
+    if (from_pos < 0 || from_pos + res.slice_size > params_shape.FlatSize()) {
+      return kTfLiteError;
     }
     for (int j = 0; j < res.slice_size; ++j) {
       buffer.AddString(GetString(params_data, from_pos + j));
     }
   }
   buffer.WriteToTensor(output_data, /*new_shape=*/nullptr);
+  return kTfLiteOk;
 }
 #endif
 
 template <typename IndicesT, typename UpdatesT>
-inline void ScatterNd(const RuntimeShape& indices_shape,
-                      const IndicesT* indices_data,
-                      const RuntimeShape& updates_shape,
-                      const UpdatesT* updates_data,
-                      const RuntimeShape& output_shape, UpdatesT* output_data) {
+inline TfLiteStatus ScatterNd(const RuntimeShape& indices_shape,
+                              const IndicesT* indices_data,
+                              const RuntimeShape& updates_shape,
+                              const UpdatesT* updates_data,
+                              const RuntimeShape& output_shape,
+                              UpdatesT* output_data) {
   ruy::profiler::ScopeLabel label("ScatterNd");
 
   int n_slices = 1;
@@ -667,18 +684,24 @@ inline void ScatterNd(const RuntimeShape& indices_shape,
     remain_flat_size = dims_to_count[i];
   }
 
+  if (n_slices * slice_size > updates_shape.FlatSize()) {
+    return kTfLiteError;
+  }
   memset(output_data, 0, sizeof(UpdatesT) * output_flat_size);
   for (int i = 0; i < n_slices; ++i) {
     int to_pos = 0;
     for (int j = 0; j < indices_nd; ++j) {
       IndicesT idx = indices_data[i * indices_nd + j];
-      TFLITE_DCHECK(0 <= idx && idx < output_shape.Dims(j));
       to_pos += idx * dims_to_count[j];
+    }
+    if (to_pos < 0 || to_pos + slice_size > output_flat_size) {
+      return kTfLiteError;
     }
     for (int j = 0; j < slice_size; j++) {
       output_data[to_pos + j] += updates_data[i * slice_size + j];
     }
   }
+  return kTfLiteOk;
 }
 
 template <typename T>
@@ -741,105 +764,6 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
                    const RuntimeShape& output_shape, T2* output_data) {
   // Drop shape of second input: not needed.
   ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
-}
-
-template <typename D, typename T>
-void Select(const RuntimeShape& input_condition_shape,
-            const D* input_condition_data, const RuntimeShape& input_x_shape,
-            const T* input_x_data, const RuntimeShape& input_y_shape,
-            const T* input_y_data, const RuntimeShape& output_shape,
-            T* output_data) {
-  int64_t flatsize;
-  // Allow select operator executions on mixed scalar tensors and one element
-  // tensors.
-  if (input_condition_shape.FlatSize() == 1 && input_x_shape.FlatSize() == 1 &&
-      input_y_shape.FlatSize() == 1 && output_shape.FlatSize() == 1) {
-    flatsize = 1;
-  } else {
-    flatsize = MatchingFlatSize(input_condition_shape, input_x_shape,
-                                input_y_shape, output_shape);
-  }
-  for (int64_t i = 0; i < flatsize; ++i) {
-    output_data[i] =
-        input_condition_data[i] ? input_x_data[i] : input_y_data[i];
-  }
-}
-
-template <typename D, typename T>
-void RankOneSelect(const RuntimeShape& input_condition_shape,
-                   const D* input_condition_data,
-                   const RuntimeShape& input_x_shape, const T* input_x_data,
-                   const RuntimeShape& input_y_shape, const T* input_y_data,
-                   const RuntimeShape& output_shape, T* output_data) {
-  const int64_t outer_size = input_condition_shape.FlatSize();
-  int64_t inner_size;
-  if (input_condition_shape.DimensionsCount() == 0) {
-    inner_size = MatchingFlatSize(input_x_shape, input_y_shape, output_shape);
-  } else {
-    TFLITE_DCHECK_EQ(
-        MatchingDim(input_x_shape, 0, input_y_shape, 0, output_shape, 0),
-        outer_size);
-    inner_size =
-        MatchingFlatSizeSkipDim(input_x_shape, 0, input_y_shape, output_shape);
-  }
-
-  int64_t offset = 0;
-  for (int64_t i = 0; i < outer_size; i++) {
-    const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
-    memcpy(output_data + offset, input_data + offset, inner_size * sizeof(T));
-    offset += inner_size;
-  }
-}
-
-template <typename D, typename T>
-void BroadcastSelect4DSlow(const RuntimeShape& input_condition_shape,
-                           const D* input_condition_data,
-                           const RuntimeShape& input_x_shape,
-                           const T* input_x_data,
-                           const RuntimeShape& input_y_shape,
-                           const T* input_y_data,
-                           const RuntimeShape& output_shape, T* output_data) {
-  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 4);
-
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  NdArrayDesc<4> desc_condition;
-  NdArrayDesc<4> desc_x;
-  NdArrayDesc<4> desc_y;
-  NdArrayDescsForElementwiseBroadcast(input_condition_shape, input_x_shape,
-                                      input_y_shape, &desc_condition, &desc_x,
-                                      &desc_y);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest
-  // stride, typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for
-  // the best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          const int condition_index =
-              SubscriptToIndex(desc_condition, b, y, x, c);
-          const int x_index = SubscriptToIndex(desc_x, b, y, x, c);
-          const int y_index = SubscriptToIndex(desc_y, b, y, x, c);
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              input_condition_data[condition_index] ? input_x_data[x_index]
-                                                    : input_y_data[y_index];
-        }
-      }
-    }
-  }
 }
 
 template <typename D, typename T>
@@ -1085,24 +1009,28 @@ inline void SegmentSum(const RuntimeShape& input_shape, const T* input_data,
   }
 }
 
-template <typename T>
-inline void UnsortedSegmentProd(const RuntimeShape& input_shape,
-                                const T* input_data,
-                                const RuntimeShape& segment_ids_shape,
-                                const int32_t* segment_ids_data,
-                                const int32_t num_segments,
-                                const RuntimeShape& output_shape,
-                                T* output_data) {
+template <typename T, template <typename T2> typename Op>
+inline void UnsortedSegmentRef(const RuntimeShape& input_shape,
+                               const T* input_data,
+                               const RuntimeShape& segment_ids_shape,
+                               const int32_t* segment_ids_data,
+                               const RuntimeShape& output_shape,
+                               T* output_data) {
   for (int i = 0; i < output_shape.FlatSize(); ++i) {
-    output_data[i] = 1;
+    output_data[i] = Op<T>::kInitialValue;
   }
-  const int segment_flat_size =
-      MatchingFlatSizeSkipDim(input_shape, 0, output_shape);
-  for (int i = 0; i < input_shape.Dims(0); i++) {
+  Op<T> op;
+  int segment_flat_size = 1;
+  for (int i = 1; i < output_shape.DimensionsCount(); ++i) {
+    segment_flat_size *= output_shape.Dims(i);
+  }
+  for (int i = 0; i < segment_ids_shape.FlatSize(); i++) {
     int output_index = segment_ids_data[i];
+    if (output_index < 0) continue;
     for (int j = 0; j < segment_flat_size; ++j) {
-      output_data[output_index * segment_flat_size + j] *=
-          input_data[i * segment_flat_size + j];
+      output_data[output_index * segment_flat_size + j] =
+          op(output_data[output_index * segment_flat_size + j],
+             input_data[i * segment_flat_size + j]);
     }
   }
 }

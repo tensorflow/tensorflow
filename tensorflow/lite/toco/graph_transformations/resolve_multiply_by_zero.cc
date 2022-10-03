@@ -58,23 +58,23 @@ void FillArrayWithZeros(Array* array) {
   const auto mul_it = model->operators.begin() + op_index;
   auto* mul_op = mul_it->get();
   if (mul_op->type != OperatorType::kMul) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const auto& output_array_name = mul_op->outputs[0];
   auto& output_array = model->GetArray(output_array_name);
 
   if (!IsDiscardableArray(*model, output_array_name)) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Yield if the output shape is not known yet.
   if (!output_array.has_shape()) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // This transformation only handles the case where one operand is all 0's and
@@ -86,12 +86,12 @@ void FillArrayWithZeros(Array* array) {
   };
   if (!is_input_constant[0] && !is_input_constant[1]) {
     // Neither input is constant, so nothing we can resolve here.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (is_input_constant[0] && is_input_constant[1]) {
     // Both inputs are constants. That's a job for constants propagation, not
     // for us to handle here.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const int index_of_constant_input = is_input_constant[0] ? 0 : 1;
   const int index_of_variable_input = is_input_constant[0] ? 1 : 0;
@@ -108,7 +108,7 @@ void FillArrayWithZeros(Array* array) {
           constant_input_array.GetBuffer<ArrayDataType::kFloat>().data;
       if (!AreAllBufferElementsZero<DataType<ArrayDataType::kFloat>>(
               constant_input_data)) {
-        return ::tensorflow::Status::OK();
+        return ::tensorflow::OkStatus();
       }
       FillArrayWithZeros<ArrayDataType::kFloat>(&output_array);
     } break;
@@ -117,7 +117,7 @@ void FillArrayWithZeros(Array* array) {
           constant_input_array.GetBuffer<ArrayDataType::kUint8>().data;
       if (!AreAllBufferElementsZero<DataType<ArrayDataType::kUint8>>(
               constant_input_data)) {
-        return ::tensorflow::Status::OK();
+        return ::tensorflow::OkStatus();
       }
       FillArrayWithZeros<ArrayDataType::kUint8>(&output_array);
     } break;
@@ -126,7 +126,7 @@ void FillArrayWithZeros(Array* array) {
           constant_input_array.GetBuffer<ArrayDataType::kInt32>().data;
       if (!AreAllBufferElementsZero<DataType<ArrayDataType::kInt32>>(
               constant_input_data)) {
-        return ::tensorflow::Status::OK();
+        return ::tensorflow::OkStatus();
       }
       FillArrayWithZeros<ArrayDataType::kInt32>(&output_array);
     } break;
@@ -135,7 +135,7 @@ void FillArrayWithZeros(Array* array) {
           constant_input_array.GetBuffer<ArrayDataType::kInt64>().data;
       if (!AreAllBufferElementsZero<DataType<ArrayDataType::kInt64>>(
               constant_input_data)) {
-        return ::tensorflow::Status::OK();
+        return ::tensorflow::OkStatus();
       }
       FillArrayWithZeros<ArrayDataType::kInt64>(&output_array);
     } break;
@@ -144,19 +144,19 @@ void FillArrayWithZeros(Array* array) {
           constant_input_array.GetBuffer<ArrayDataType::kComplex64>().data;
       if (!AreAllBufferElementsZero<DataType<ArrayDataType::kComplex64>>(
               constant_input_data)) {
-        return ::tensorflow::Status::OK();
+        return ::tensorflow::OkStatus();
       }
       FillArrayWithZeros<ArrayDataType::kComplex64>(&output_array);
     } break;
     default:
       AddMessageF(
           "Cannot resolve multiply by 0 because of unsupported data type\n");
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
   }
 
   DeleteOpAndArrays(model, mul_op);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

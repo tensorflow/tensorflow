@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <iterator>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -34,12 +35,12 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -52,6 +53,14 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
+// Checks that all layouts are fully replicated
+bool AllReplicated(const std::vector<Layout>& layouts) {
+  for (const Layout& layout : layouts) {
+    if (!layout.IsFullyReplicated()) return false;
+  }
+  return true;
+}
 
 StatusOr<mlir::TensorType> LocalTypeFromGlobalType(
     const Layout& layout, const mlir::TensorType& original_type) {
@@ -137,7 +146,7 @@ Status CreateSplitOp(const int num_split, const int split_dimension,
   llvm::SmallVector<mlir::Type, 4> output_types(num_split, output_type);
   *split_op = builder->create<mlir::TF::SplitOp>(
       location, output_types, split_dimension_op.output(), src_input);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Given layouts + shapes, determines if the two are broadcasting compatible.
@@ -580,7 +589,7 @@ void RemoveUnusedClusterResults(mlir::tf_device::ClusterOp cluster) {
   llvm::SmallVector<mlir::Value, 4> result_producing_values;
   new_result_values.reserve(cluster->getNumResults());
   result_producing_values.reserve(cluster->getNumResults());
-  for (mlir::OpResult result : cluster.results()) {
+  for (mlir::OpResult result : cluster.getResults()) {
     if (!result.use_empty()) {
       new_result_values.emplace_back(result);
       result_producing_values.emplace_back(
@@ -600,7 +609,7 @@ void RemoveUnusedClusterResults(mlir::tf_device::ClusterOp cluster) {
       cluster.getLoc(), new_result_types);
   new_cluster->setAttr(kMeshAttr,
                        cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr));
-  new_cluster.body().push_back(new mlir::Block);
+  new_cluster.getBody().push_back(new mlir::Block);
 
   auto& cluster_body = cluster.GetBody().getOperations();
   new_cluster.GetBody().getOperations().splice(
@@ -612,7 +621,7 @@ void RemoveUnusedClusterResults(mlir::tf_device::ClusterOp cluster) {
                                             result_producing_values);
 
   assert(new_cluster.getNumResults() == new_result_values.size());
-  for (auto it : llvm::zip(new_result_values, new_cluster.results())) {
+  for (auto it : llvm::zip(new_result_values, new_cluster.getResults())) {
     mlir::Value value_to_replace = std::get<0>(it);
     mlir::Value new_result = std::get<1>(it);
     value_to_replace.replaceAllUsesWith(new_result);
@@ -643,7 +652,7 @@ Status SetBuilderInsertionAfterValue(mlir::Value value,
                                      mlir::OpBuilder& builder) {
   if (value.isa<mlir::OpResult>()) {
     builder.setInsertionPointAfterValue(value);
-    return Status::OK();
+    return OkStatus();
   }
   mlir::tf_device::ClusterOp cluster;
   for (mlir::Operation* op : value.getUsers()) {
@@ -656,8 +665,8 @@ Status SetBuilderInsertionAfterValue(mlir::Value value,
   }
   if (!cluster) return errors::Internal("value not used in any cluster");
 
-  builder.setInsertionPointToStart(cluster.getBody());
-  return Status::OK();
+  builder.setInsertionPointToStart(cluster.SingleBlock::getBody());
+  return OkStatus();
 }
 
 Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
@@ -674,7 +683,7 @@ Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
   builder.create<mlir::TF::PrintV2Op>(value.getLoc(), format.output(),
                                       /*output_stream=*/"log(info)",
                                       /*end=*/"\n");
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExtractConstStringVectorFromValue(
@@ -692,7 +701,7 @@ Status ExtractConstStringVectorFromValue(
   for (const auto& str : attr.getRawStringData()) {
     out_vector.push_back(str.str());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value) {

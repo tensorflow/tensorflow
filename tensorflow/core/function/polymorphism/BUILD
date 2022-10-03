@@ -33,7 +33,7 @@ pytype_strict_library(
     srcs = ["function_cache.py"],
     srcs_version = "PY3",
     visibility = [
-        "//tensorflow/python/eager:__pkg__",
+        "//tensorflow/python/eager:__subpackages__",
     ],
     deps = [
         "//tensorflow/core/function/polymorphism:type_dispatch",
@@ -53,7 +53,7 @@ py_strict_test(
         ":function_cache",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python/eager:function_context",
+        "//tensorflow/python/eager/polymorphic_function:function_context",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types",
     ],

@@ -241,22 +241,22 @@ class DimsAdapter {
   // Converts to a TensorShape and assigns the result to the object passed in
   // via the shape pointer.
   Status TensorShape(TensorShape* shape,
-                     absl::optional<int> batch_size = absl::nullopt) const {
+                     std::optional<int> batch_size = std::nullopt) const {
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
         static_cast<const int64_t*>(storage_.data()), storage_.size(), shape));
     if (batch_size) shape->InsertDim(0, *batch_size);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Converts to a PartialTensorShape and assigns the result to the object
   // passed in via the shape pointer.
   Status PartialTensorShape(
       PartialTensorShape* shape,
-      absl::optional<int> batch_size = absl::nullopt) const {
+      std::optional<int> batch_size = std::nullopt) const {
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
         static_cast<const int64_t*>(storage_.data()), storage_.size(), shape));
     if (batch_size) shape->InsertDim(0, *batch_size);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Copies the dimension values to the vector passed in via the shape pointer.
@@ -264,7 +264,7 @@ class DimsAdapter {
   Status Vector(std::vector<T>* shape) const {
     shape->clear();
     absl::c_copy(storage_, std::back_inserter(*shape));
-    return Status::OK();
+    return OkStatus();
   }
 
   //----- Property Accessors ------
@@ -323,7 +323,7 @@ class DimsAdapter {
     return *this;
   }
 
-  DimsAdapter& Prepend(absl::optional<int32_t> dim) {
+  DimsAdapter& Prepend(std::optional<int32_t> dim) {
     if (dim) {
       num_dims_ = IsScalar() ? 2 : num_dims_ + 1;
       storage_.insert(storage_.begin(), *dim);
@@ -337,7 +337,7 @@ class DimsAdapter {
           "attempted to remove batch dim from scalar");
     num_dims_ -= 1;
     storage_.erase(storage_.begin());
-    return Status::OK();
+    return OkStatus();
   }
 
   //----- Comparison Operators ------
@@ -379,20 +379,18 @@ absl::string_view GetDeviceName(const Node* node);
 
 // Returns the ParsedName representation for the assigned device or the
 // requested device string of the given node. If the device string is invalid,
-// returns absl::nullopt.
-absl::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
+// returns std::nullopt.
+std::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
     const Node* node);
 
 // If the given two device assignments as compatible, returns the merge of the
-// two assignments. Otherwise, returns absl::nullopt.
-absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+// two assignments. Otherwise, returns std::nullopt.
+std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, const DeviceNameUtils::ParsedName& b);
 // Similar to the above, except that the second device assignment is represented
 // by a string_view.
-absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, absl::string_view b);
-
-bool isExperimentalFeatureActivated(string feature_name);
 
 }  // namespace tensorrt
 }  // namespace tensorflow

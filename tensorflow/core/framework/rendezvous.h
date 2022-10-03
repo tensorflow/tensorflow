@@ -148,7 +148,7 @@ class Rendezvous : public RendezvousInterface, public core::RefCounted {
             create_fn)
         : valid_(true),
           create_fn_(std::move(create_fn)),
-          cleanup_fn_([](const int64_t step_id) { return Status::OK(); }) {}
+          cleanup_fn_([](const int64_t step_id) { return OkStatus(); }) {}
 
     explicit operator bool() const { return valid_; }
 

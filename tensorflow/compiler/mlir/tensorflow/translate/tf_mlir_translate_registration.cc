@@ -18,6 +18,7 @@ limitations under the License.
 // command-line option header is pulled in.
 
 #include <memory>
+#include <utility>
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -29,8 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace mlir {
 using stream_executor::port::Status;
@@ -50,7 +51,7 @@ static OwningOpRef<mlir::ModuleOp> GraphdefToMlirTranslateFunction(
       convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
       enable_shape_inference, unconditionally_use_set_output_shapes, context);
   if (!module_or.status().ok()) return nullptr;
-  return module_or.ConsumeValueOrDie();
+  return std::move(module_or).value();
 }
 
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
@@ -64,7 +65,7 @@ static OwningOpRef<mlir::ModuleOp> GraphdefToSplattedMlirTranslateFunction(
       convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
       enable_shape_inference, unconditionally_use_set_output_shapes, context);
   if (!module_or.status().ok()) return nullptr;
-  return module_or.ConsumeValueOrDie();
+  return std::move(module_or).value();
 }
 
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
@@ -84,7 +85,7 @@ static LogicalResult MlirToGraphdefTranslateFunction(
     return mlir::failure();
   }
 
-  output << graphdef_or.ValueOrDie()->DebugString();
+  output << graphdef_or.value()->DebugString();
   return success();
 }
 

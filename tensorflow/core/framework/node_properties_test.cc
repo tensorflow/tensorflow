@@ -44,7 +44,7 @@ class MockOpRegistry : public OpRegistryInterface {
                 const OpRegistrationData** op_reg_data) const override {
     if (op_type_name == "Foo") {
       *op_reg_data = &op_reg_;
-      return Status::OK();
+      return OkStatus();
     } else {
       *op_reg_data = nullptr;
       return errors::InvalidArgument("Op type named ", op_type_name,

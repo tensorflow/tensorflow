@@ -16,6 +16,7 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -161,14 +162,16 @@ TEST(BenchmarkTest, DoesntCrashStringModel) {
 
 TEST(BenchmarkTest, SplitInputLayerNameAndValueFile) {
   std::vector<std::string> input_layer_value_files = {
-      "input:/tmp/input",       "input\\:0:/tmp/input",
-      "input\\\\0:/tmp/input",  "input\\\\:0:/tmp/input",
-      "input\\:0:\\tmp\\input",
+      "input:/tmp/input",
+      "input::0:/tmp/input",
+      "input::0::0:/tmp/input",
+      "input::::0:/tmp::input",
   };
   std::vector<std::pair<std::string, std::string>> expected = {
-      {"input", "/tmp/input"},      {"input:0", "/tmp/input"},
-      {"input\\\\0", "/tmp/input"}, {"input\\:0", "/tmp/input"},
-      {"input:0", "\\tmp\\input"},
+      {"input", "/tmp/input"},
+      {"input:0", "/tmp/input"},
+      {"input:0:0", "/tmp/input"},
+      {"input::0", "/tmp:input"},
   };
   std::pair<std::string, std::string> name_file_pair;
   for (int i = 0; i < input_layer_value_files.size(); ++i) {
@@ -211,7 +214,7 @@ TEST(BenchmarkTest, DoesntCrashMultiPerfOptions) {
 
   TestBenchmark benchmark(CreateFp32Params());
   BenchmarkPerformanceOptions all_options_benchmark(
-      &benchmark, absl::make_unique<TestMultiRunStatsRecorder>());
+      &benchmark, std::make_unique<TestMultiRunStatsRecorder>());
   all_options_benchmark.Run();
 }
 

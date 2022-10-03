@@ -65,7 +65,7 @@ Status TestCluster::Initialize() {
   for (int i = 0; i < num_workers_; ++i) {
     TF_RETURN_IF_ERROR(AddWorker());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TestCluster::AddWorker() {
@@ -79,7 +79,7 @@ Status TestCluster::AddWorker() {
   TF_RETURN_IF_ERROR(worker->Start());
   worker_addresses_.push_back(absl::StrCat("localhost:", worker->BoundPort()));
   workers_.push_back(std::move(worker));
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string TestCluster::DispatcherAddress() const {

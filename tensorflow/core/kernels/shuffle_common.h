@@ -15,8 +15,8 @@ limitations under the License.
 
 // Common utilities for random shuffling.
 
-#ifndef TENSORFLOW_CORE_KERNELS_RANDOM_SHUFFLE_COMMON_H_
-#define TENSORFLOW_CORE_KERNELS_RANDOM_SHUFFLE_COMMON_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SHUFFLE_COMMON_H_
+#define TENSORFLOW_CORE_KERNELS_SHUFFLE_COMMON_H_
 
 #include <algorithm>
 #include <functional>
@@ -94,9 +94,9 @@ Status RandomShuffle(OpKernelContext* context, const Tensor& input,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_RANDOM_SHUFFLE_COMMON_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SHUFFLE_COMMON_H_

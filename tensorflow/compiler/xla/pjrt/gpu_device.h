@@ -17,15 +17,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_GPU_DEVICE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/base/macros.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/common_runtime/bfc_allocator.h"
 
 namespace xla {
 
@@ -36,10 +35,11 @@ class GpuDevice : public PjRtStreamExecutorDevice {
 
   absl::string_view device_vendor();
 
-  std::string ToString() const override;
+  absl::string_view ToString() const override;
 
  private:
   std::string device_vendor_;
+  std::string to_string_;
 };
 
 struct GpuAllocatorConfig {
@@ -69,8 +69,8 @@ struct GpuAllocatorConfig {
 StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
-    const absl::optional<std::set<int>>& allowed_devices = absl::nullopt,
-    absl::optional<std::string> platform_name = absl::nullopt);
+    const std::optional<std::set<int>>& allowed_devices = std::nullopt,
+    std::optional<std::string> platform_name = std::nullopt);
 
 }  // namespace xla
 

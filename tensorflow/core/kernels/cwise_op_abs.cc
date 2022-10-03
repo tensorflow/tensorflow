@@ -17,13 +17,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if !defined(MLIR_GENERATED_CPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER8(UnaryOp, CPU, "Abs", functor::abs, Eigen::half, bfloat16, float,
           double, int8, int16, int32, int64_t);
-#else
-REGISTER(UnaryOp, CPU, "Abs", functor::abs, bfloat16);
-#endif
 
 REGISTER2(UnaryOp, CPU, "ComplexAbs", functor::abs, complex64, complex128);
 

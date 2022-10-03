@@ -17,8 +17,14 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -141,7 +147,7 @@ void ComputeCurrentTFResult(const std::string& saved_model_dir,
 }
 
 void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
-                       absl::optional<double> error) {
+                       std::optional<double> error) {
   DCHECK_EQ(x.dtype(), y.dtype());
   VLOG(1) << "TFRT result: " << x.DebugString();
   VLOG(1) << "TF result  : " << y.DebugString();
@@ -221,25 +227,26 @@ tensorflow::Tensor CreateTensorFromTensorProto(
 
 }  // namespace
 
-std::vector<tensorflow::Tensor> ProcessPredictRequestsAndMaybeProfile(
+void ProcessPredictRequestsAndMaybeProfile(
     const std::vector<tensorflow::serving::PredictRequest>& requests,
     SavedModel* saved_model, const bool profile, const int32_t num_steps) {
   std::vector<tensorflow::Tensor> outputs;
   for (size_t i = 0; i < requests.size(); ++i) {
     const tensorflow::serving::PredictRequest& request = requests.at(i);
-    auto& input_map = request.inputs();
+    const auto& input_map = request.inputs();
     std::vector<tensorflow::Tensor> inputs;
     const std::string& signature = request.model_spec().signature_name();
     auto func_metadata = saved_model->GetFunctionMetadata(signature);
     if (func_metadata.has_value()) {
-      LOG(INFO) << "Running request for model signature " << signature;
+      LOG(INFO) << "Running requests for model signature " << signature;
       for (const std::string& key : func_metadata->GetInputNames()) {
-        inputs.push_back(CreateTensorFromTensorProto(input_map.at(key)));
+        const tensorflow::TensorProto& tensor_proto = input_map.at(key);
+        inputs.push_back(CreateTensorFromTensorProto(tensor_proto));
       }
 
       for (int32_t step = 0; step < num_steps; ++step) {
         if (profile) {
-          tensorflow::profiler::TraceMe t([i, step]() mutable {
+          tensorflow::profiler::TraceMe t([i, step]() {
             return absl::StrCat("Request_", i, "_step_", step);
           });
           TF_CHECK_OK(saved_model->Run({}, signature, inputs, &outputs));
@@ -252,7 +259,6 @@ std::vector<tensorflow::Tensor> ProcessPredictRequestsAndMaybeProfile(
                  << signature;
     }
   }
-  return outputs;
 }
 
 }  // namespace tfrt_stub

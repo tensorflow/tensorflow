@@ -100,7 +100,7 @@ Status ValidateShapes(OpKernelContext* ctx, const Tensor& hypothesis_indices,
         truth_shape.shape().DebugString(), " and ",
         hypothesis_shape.shape().DebugString());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

@@ -33,14 +33,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-#ifndef PLATFORM_GOOGLE
-namespace grpc {
-// Creating aliases here to make sure we can access services under namespace
-// "tensorflow::grpc" both in google internal and open source.
-using ::tensorflow::CoordinationService;
-}  // namespace grpc
-#endif  // PLATFORM_GOOGLE
-
 class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
  public:
   template <class RequestMessage, class ResponseMessage>

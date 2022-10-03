@@ -35,7 +35,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Regex.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -357,28 +357,28 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
 
   // Try to flatten the "..." if possible.
   int lhs_named_label, rhs_named_label;
-  auto avaiable_labels =
+  auto available_labels =
       GetAvailableLabels(lhs, rhs, &lhs_named_label, &rhs_named_label);
-  if (!avaiable_labels.hasValue()) return llvm::None;
+  if (!available_labels.has_value()) return llvm::None;
 
   auto flattended_labels =
       FlattenEllipsis(lhs, lhs_named_label, rhs, rhs_named_label, out, lhs_ty,
-                      rhs_ty, avaiable_labels.getValue());
+                      rhs_ty, available_labels.getValue());
 
   lhs = std::get<0>(flattended_labels);
   rhs = std::get<1>(flattended_labels);
   out = std::get<2>(flattended_labels);
 
   auto lhs_map_or = EquationToMap(lhs);
-  if (!lhs_map_or.hasValue()) return llvm::None;
+  if (!lhs_map_or.has_value()) return llvm::None;
   auto lhs_map = lhs_map_or.getValue();
 
   auto rhs_map_or = EquationToMap(rhs);
-  if (!rhs_map_or.hasValue()) return llvm::None;
+  if (!rhs_map_or.has_value()) return llvm::None;
   auto rhs_map = rhs_map_or.getValue();
 
   auto out_map_or = EquationToMap(out);
-  if (!out_map_or.hasValue()) return llvm::None;
+  if (!out_map_or.has_value()) return llvm::None;
   auto out_map = out_map_or.getValue();
 
   EinsumDimensionNumbers dnums;

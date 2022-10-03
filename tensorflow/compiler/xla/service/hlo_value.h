@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -280,6 +280,11 @@ class InstructionValueSet : public ShapeTree<HloValueSet> {
   // Sets this value set to the union of the given value sets. Returns whether
   // this value set changed.
   bool AssignUnionOf(absl::Span<const InstructionValueSet* const> inputs);
+
+  // Sets this value set to the input value set at the given index. Returns
+  // whether this value set changed.
+  bool AssignUnionOf(const InstructionValueSet& input,
+                     ShapeIndexView input_index);
 
   // Returns true if any value sets for any subshape element is not a
   // singleton.

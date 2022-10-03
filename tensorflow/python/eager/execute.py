@@ -14,8 +14,6 @@
 # ==============================================================================
 """Functions called by the generated code to execute an eager-mode op."""
 
-import six
-
 from google.protobuf import text_format
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.python import pywrap_tfe
@@ -155,7 +153,7 @@ def make_float(v, arg_name):
 
 
 def make_int(v, arg_name):
-  if isinstance(v, six.string_types):
+  if isinstance(v, str):
     raise TypeError("Expected int for argument '%s' not %s." %
                     (arg_name, repr(v)))
   try:
@@ -215,7 +213,7 @@ def make_tensor(v, arg_name):
   """Ensure v is a TensorProto."""
   if isinstance(v, tensor_pb2.TensorProto):
     return v
-  elif isinstance(v, six.string_types):
+  elif isinstance(v, str):
     pb = tensor_pb2.TensorProto()
     text_format.Merge(v, pb)
     return pb

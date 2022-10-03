@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,20 +23,24 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
+namespace {
+bool UseBufferForWeights(const GpuInfo& gpu_info) {
+  return gpu_info.IsMali() || gpu_info.IsApple() || gpu_info.IsAMD();
+}
+}  // namespace
 
 ConvolutionTransposed::ConvolutionTransposed(
     const OperationDef& definition, const ConvolutionTransposedAttributes& attr,
-    const GpuInfo& gpu_info, bool weights_are_buffer)
+    const GpuInfo& gpu_info)
     : GPUOperation(definition),
       stride_(attr.stride.w, attr.stride.h, 1, 1),
       block_size_(2, 2, 1, 2) {
-  if (weights_are_buffer) {
+  if (UseBufferForWeights(gpu_info)) {
     if (gpu_info.IsApple()) {
       weights_layout_ = WeightsLayout::kOSpatialIOGroupO4I4;
     } else {
@@ -71,18 +76,16 @@ ConvolutionTransposed::ConvolutionTransposed(
   args_.AddInt("padding_y", attr.padding.prepended.h);
   args_.AddInt("kernel_size_x", attr.weights.shape.w);
   args_.AddInt("kernel_size_y", attr.weights.shape.h);
-  code_ = GenerateConvolutionTransposedCode(definition_, gpu_info,
-                                            weights_are_buffer, block_size_);
+  code_ = GenerateConvolutionTransposedCode(definition_, gpu_info, block_size_);
 }
 
 ConvolutionTransposed::ConvolutionTransposed(
     const OperationDef& definition,
-    const ConvolutionTransposed3DAttributes& attr, const GpuInfo& gpu_info,
-    bool weights_are_buffer)
+    const ConvolutionTransposed3DAttributes& attr, const GpuInfo& gpu_info)
     : GPUOperation(definition),
       stride_(attr.stride.w, attr.stride.h, attr.stride.d, 1),
       block_size_(2, 2, 1, 2) {
-  if (weights_are_buffer) {
+  if (UseBufferForWeights(gpu_info)) {
     if (gpu_info.IsApple()) {
       weights_layout_ = WeightsLayout::kOSpatialIOGroupO4I4;
     } else {
@@ -122,16 +125,13 @@ ConvolutionTransposed::ConvolutionTransposed(
   args_.AddInt("kernel_size_y", attr.weights.shape.h);
   args_.AddInt("kernel_size_z", attr.weights.shape.d);
   args_.AddInt("grid_size_y");
-  code_ = GenerateConvolutionTransposedCode(definition_, gpu_info,
-                                            weights_are_buffer, block_size_);
+  code_ = GenerateConvolutionTransposedCode(definition_, gpu_info, block_size_);
 }
 
 std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     const OperationDef& op_def, const GpuInfo& gpu_info,
-    bool weights_are_buffer, const int4& block_size) {
-  auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
-  AddSrcTensor("src_tensor", src_desc);
+    const int4& block_size) {
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
   if (op_def.src_tensors.size() != 1) {
@@ -139,16 +139,14 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     if (weights_layout_ == WeightsLayout::kOSpatialIOGroupI4O4 ||
         weights_layout_ == WeightsLayout::kOSpatialIOGroupO4I4) {
       BufferDescriptor desc;
-      desc.element_type = op_def.src_tensors[1].data_type;
+      desc.element_type = op_def.src_tensors[1].GetDataType();
       desc.element_size = 16;
       desc.memory_type = MemoryType::GLOBAL;
       AddSrcBuffer("weights", desc);
     } else {
       for (int i = 0; i < 4; ++i) {
-        Texture2DDescriptor desc;
-        desc.element_type = op_def.src_tensors[1 + i].data_type;
         const std::string name = "weights" + std::to_string(i);
-        AddSrcTexture2D("weights" + std::to_string(i), desc);
+        AddSrcTensor(name, definition_.src_tensors[1 + i]);
       }
     }
   }
@@ -157,6 +155,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
 
   std::string c;
 
+  const bool weights_are_buffer = UseBufferForWeights(gpu_info);
   for (int s = 0; s < block_size.w; ++s) {
     std::string f0, f1, f2, f3;
     if (weights_are_buffer) {
@@ -177,15 +176,24 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
       f2 = "f" + std::to_string(s * 4 + 2);
       f3 = "f" + std::to_string(s * 4 + 3);
     }
+    bool use_fma = gpu_info.IsAMD() && gpu_info.IsApiOpenCl();
     if (GetWeightsDescription().IsI4O4()) {
       switch (op_def.precision) {
         case CalculationsPrecision::F32:
         case CalculationsPrecision::F16:
-          c += "#define CONV" + std::to_string(s) + "(R, S)    \\\n";
-          c += "R += S.x * " + f0 + "; \\\n";
-          c += "R += S.y * " + f1 + "; \\\n";
-          c += "R += S.z * " + f2 + "; \\\n";
-          c += "R += S.w * " + f3 + ";   \n";
+          if (use_fma) {
+            c += "#define CONV" + std::to_string(s) + "(R, S)    \\\n";
+            c += "R = fma(" + f0 + ", S.x, R); \\\n";
+            c += "R = fma(" + f1 + ", S.y, R); \\\n";
+            c += "R = fma(" + f2 + ", S.z, R); \\\n";
+            c += "R = fma(" + f3 + ", S.w, R);   \n";
+          } else {
+            c += "#define CONV" + std::to_string(s) + "(R, S)    \\\n";
+            c += "R += S.x * " + f0 + "; \\\n";
+            c += "R += S.y * " + f1 + "; \\\n";
+            c += "R += S.z * " + f2 + "; \\\n";
+            c += "R += S.w * " + f3 + ";   \n";
+          }
           break;
         case CalculationsPrecision::F32_F16:
           c += "#define CONV" + std::to_string(s) + "(R, S) \\\n";
@@ -410,8 +418,8 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
           coords += ", sz" + zind;
         }
         if (src_def.IsLinear()) {
-          c += "      args.src_tensor.GetAddress(addr" + id + ", " + coords +
-               ", 0);\n";
+          c += "      int addr" + id + " = args.src_tensor.GetAddress(" +
+               coords + ", 0);\n";
           if (src_def.ReturnsZeroForNegOneRead(gpu_info)) {
             c += "      addr" + id + " = select(-1, addr" + id + ", (" + check +
                  "));\n";
@@ -600,69 +608,58 @@ void ConvolutionTransposed::GetPossibleKernelWorkGroups(
 ConvolutionTransposed CreateConvolutionTransposed(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  const bool weights_are_buffer = gpu_info.IsMali() || gpu_info.IsApple();
-  ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
-  result.UploadWeights(attr.weights, weights_are_buffer);
+  ConvolutionTransposed result(definition, attr, gpu_info);
+  result.UploadWeights(attr.weights, UseBufferForWeights(gpu_info));
 
-  TensorLinearDescriptor desc;
-  desc.storage_type =
-      DeduceLinearStorageType(definition.GetPrimaryStorageType());
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 
 ConvolutionTransposed CreateConvolutionTransposed3D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposed3DAttributes& attr) {
-  const bool weights_are_buffer = gpu_info.IsMali() || gpu_info.IsApple();
-  ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
-  result.UploadWeights(attr.weights, weights_are_buffer);
+  ConvolutionTransposed result(definition, attr, gpu_info);
+  result.UploadWeights(attr.weights, UseBufferForWeights(gpu_info));
 
-  TensorLinearDescriptor desc;
-  desc.storage_type =
-      DeduceLinearStorageType(definition.GetPrimaryStorageType());
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 
 ConvolutionTransposed CreateConvolutionTransposedDynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  const bool weights_are_buffer = gpu_info.IsMali();
   OperationDef new_def = definition;
   new_def.src_tensors = {
       definition.src_tensors[0]};  // leaving only src_tensor def, weights defs
                                    // will be added later
   const DataType weights_type = definition.GetDataType();
-  if (weights_are_buffer) {
+  if (UseBufferForWeights(gpu_info)) {
     // add 1 src_tensor(buffer) for weights
     new_def.src_tensors.push_back(
         {weights_type, TensorStorageType::BUFFER, Layout::HWC});
   } else {
     // add 4 src_tensors(4X textures 2d) for weights
     new_def.src_tensors.push_back(
-        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HW});
     new_def.src_tensors.push_back(
-        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HW});
     new_def.src_tensors.push_back(
-        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HW});
     new_def.src_tensors.push_back(
-        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HW});
   }
-  ConvolutionTransposed result(new_def, attr, gpu_info, weights_are_buffer);
+  ConvolutionTransposed result(new_def, attr, gpu_info);
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = DeduceLinearStorageType(new_def.GetPrimaryStorageType());
-  desc.element_type = new_def.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 

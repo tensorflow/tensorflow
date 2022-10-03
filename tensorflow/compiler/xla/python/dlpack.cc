@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "include/dlpack/dlpack.h"  // from @dlpack
@@ -289,7 +288,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
           "Buffer synchronization failed converting to DLPack tensor: %s",
           buffer_or.status().ToString());
     }
-    pack->external_reference = buffer_or.ConsumeValueOrDie();
+    pack->external_reference = std::move(buffer_or).value();
     if (!pack->external_reference) {
       return InvalidArgument(
           "Cannot convert deleted/invalid buffer to DLPack tensor.");

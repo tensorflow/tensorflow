@@ -17,11 +17,13 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> HloSubcomputationUnification::Run(HloModule* module) {
+StatusOr<bool> HloSubcomputationUnification::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // For each computation C in the module, find the first computation C0 in the
   // computations_ list that is identical to C, and adds canon[C] = C0.
   absl::flat_hash_map<HloComputation*, HloComputation*> canon;
-  const auto& computations = module->computations();
+  const auto& computations = module->computations(execution_threads);
   for (auto i = computations.begin(); i != computations.end(); ++i) {
     for (auto j = computations.begin(); j != i; ++j) {
       // Do not waste time comparing `*i` with `*j` if `*j` is not canonical.

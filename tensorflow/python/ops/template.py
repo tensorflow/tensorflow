@@ -15,14 +15,13 @@
 """Provides templates which allow variable sharing."""
 import functools
 import traceback
-
+from tensorflow.python.checkpoint import checkpoint as trackable_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import util as trackable_util
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator

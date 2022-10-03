@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -58,7 +58,7 @@ void ComputeInputOutputAliasedValues(const HloValue& value,
   // instruction.
   for (const HloPosition& pos : value.positions()) {
     if (pos.instruction == entry_computation.root_instruction()) {
-      absl::optional<HloInputOutputAliasConfig::Alias> aliased_input =
+      std::optional<HloInputOutputAliasConfig::Alias> aliased_input =
           io_alias_config.GetAliasedParameter(pos.index);
       if (aliased_input) {
         aliased_values.insert(
@@ -339,7 +339,7 @@ Status HloAliasAnalysis::Verify() const {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string HloAliasAnalysis::ToString() const {

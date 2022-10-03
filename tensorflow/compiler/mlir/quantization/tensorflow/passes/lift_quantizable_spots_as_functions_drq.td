@@ -15,7 +15,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
@@ -26,8 +26,10 @@ include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 
 def LiftMatMul : Pat<
   (TF_MatMulOp:$res $a, $b, $transpose_a, $transpose_b),
-  (LiftAsFunctionCall<"fused_matmul_fn">
-     (ArgumentList $a, $b),
-     (ResultList $res),
-     (AttributeList $transpose_a, $transpose_b)),
-  [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
+  (LiftAsFunctionCall<"composite_matmul_fn">
+    (ArgumentList $a, $b),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"transpose_a"> $transpose_a),
+      (NamedAttr<"transpose_b"> $transpose_b))),
+  [(IsNotInLiftedFunc $res), (IsConstTensor $b)], (addBenefit 1)>;

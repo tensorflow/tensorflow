@@ -47,8 +47,20 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
   const bool dst_host =
       (recv_args.alloc_attrs.on_host() || parsed.dst.type == "CPU");
   if (src_host && dst_host) {
+    if (VLOG_IS_ON(3)) {
+      bool src_override =
+          send_args.alloc_attrs.on_host() && !(parsed.src.type == "CPU");
+      bool dst_override =
+          recv_args.alloc_attrs.on_host() && !(parsed.dst.type == "CPU");
+      if (src_override || dst_override) {
+        VLOG(3) << "Shortcut to keep tensor on host (src_override "
+                << src_override << " and dst_override " << dst_override
+                << ") tensor dtype:" << DataTypeString(in.dtype()) << " "
+                << parsed.FullKey();
+      }
+    }
     *out = in;
-    done(Status::OK());
+    done(OkStatus());
     return;
   }
 

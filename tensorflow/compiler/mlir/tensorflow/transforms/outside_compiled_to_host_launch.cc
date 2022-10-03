@@ -44,7 +44,7 @@ void WrapOpInLaunch(Operation* host_op, llvm::StringRef host_device) {
       /*result_types=*/host_op->getResultTypes());
   host_op->replaceAllUsesWith(launch_op);
 
-  launch_op.body().push_back(new Block);
+  launch_op.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&launch_op.GetBody());
   auto* return_op =
       builder
@@ -60,7 +60,7 @@ void OutsideCompiledToHostLaunchPass::runOnOperation() {
   // traverse_op is applied to each op reachable from each tf_device::ClusterOp
   // in the module returned by getOperation().
   auto traverse_op = [&](Operation* op, tf_device::ClusterOp tpu_cluster,
-                         absl::optional<std::string> host_device) {
+                         std::optional<std::string> host_device) {
     // Apply WrapOpInLaunch when the op has _xla_outside_compilation.
     if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
       if (!host_device) {

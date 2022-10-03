@@ -345,7 +345,7 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(Block* block,
     if (IsNonConstQuantizeOp(&op) && !IsTerminatorOp(&op) &&
         !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op)) {
       auto current_device_type = GetInferenceDeviceTypeForOp(&op);
-      if (!(current_device_type.hasValue() &&
+      if (!(current_device_type.has_value() &&
             current_device_type == previous_device_type)) {
         // We should start a new subgraph.
         Subgraph new_subgraph;

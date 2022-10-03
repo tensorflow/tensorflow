@@ -78,7 +78,7 @@ Status ExtractWhileLoopFrames(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Check that the graph has no cycle containing the given node.
@@ -99,7 +99,7 @@ Status CheckNodeNotInCycle(const Node* node, const int num_nodes) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

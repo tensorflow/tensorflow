@@ -25,7 +25,9 @@ limitations under the License.
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
@@ -36,11 +38,12 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 namespace {
-#define GEN_PASS_CLASSES
+
+#define GEN_PASS_DEF_TOSALEGALIZETFPASS
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 // Performs lowering to TOSA dialect
-class LegalizeTF : public TosaLegalizeTFPassBase<LegalizeTF> {
+class LegalizeTF : public impl::TosaLegalizeTFPassBase<LegalizeTF> {
  public:
   explicit LegalizeTF() {}
   void runOnOperation() override;
@@ -354,7 +357,7 @@ LogicalResult ConvertTFRoundOp::matchAndRewrite(
 
   TensorType input_type = tf_round_op.x().getType().dyn_cast<TensorType>();
   if (!input_type) {
-    return op->emitOpError("Round: input not tensor type");
+    return rewriter.notifyMatchFailure(op, "input not tensor type");
   }
 
   if (input_type.getElementType().isa<FloatType>()) {
@@ -486,7 +489,7 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
   }
 
   if (axis < 0 || axis >= input_type.getRank()) {
-    return op->emitOpError("TFArgMax: invalid axis value");
+    return rewriter.notifyMatchFailure(op, "invalid axis value");
   }
 
   IntegerAttr axis_attr = rewriter.getI64IntegerAttr(axis);
@@ -550,7 +553,7 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
       i64array.emplace_back(value);
     }
 
-    RankedTensorType filter_type = RankedTensorType::get(
+    RankedTensorType filter_type = tensorflow::GetTypeFromTFTensorShape(
         llvm::makeArrayRef(i64array), rewriter.getIntegerType(64));
 
     if (!getPaddingValuesFromPadType(
@@ -620,7 +623,7 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
       i64array.emplace_back(value);
     }
 
-    RankedTensorType filter_type = RankedTensorType::get(
+    RankedTensorType filter_type = tensorflow::GetTypeFromTFTensorShape(
         llvm::makeArrayRef(i64array), rewriter.getIntegerType(64));
 
     if (!getPaddingValuesFromPadType(
@@ -690,7 +693,7 @@ LogicalResult ConvertTFRankOp::matchAndRewrite(
   int32_t rank = input_type.getRank();
 
   RankedTensorType rank_type =
-      RankedTensorType::get({1}, rewriter.getIntegerType(32));
+      tensorflow::GetTypeFromTFTensorShape({1}, rewriter.getIntegerType(32));
   auto rank_attr = DenseElementsAttr::get(rank_type, {rank});
   auto rank_const = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                     rank_type, rank_attr);
@@ -720,7 +723,7 @@ LogicalResult ConvertTFShapeOp::matchAndRewrite(
     shape_arr.emplace_back(input_shape[i]);
   }
 
-  RankedTensorType shape_type = RankedTensorType::get(
+  RankedTensorType shape_type = tensorflow::GetTypeFromTFTensorShape(
       {static_cast<int32_t>(shape_arr.size())}, rewriter.getIntegerType(32));
   auto shape_attr =
       DenseElementsAttr::get(shape_type, llvm::makeArrayRef(shape_arr));
@@ -792,7 +795,7 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
   if (!matchPattern(tf_fill_op.value(), m_Constant(&value_elem)))
     return failure();
 
-  RankedTensorType fill_type = RankedTensorType::get(
+  RankedTensorType fill_type = tensorflow::GetTypeFromTFTensorShape(
       ArrayRef<int64_t>(dims_vals), value_elem.getType().getElementType());
   DenseElementsAttr fill_attr;
 
@@ -826,8 +829,8 @@ LogicalResult ConvertTFConv2DOp::matchAndRewrite(
 
   // Set up a zero attr for subsequent pattern replacement if required
   auto bias_dim = filter_type.getShape().back();
-  RankedTensorType bias_type =
-      RankedTensorType::get({bias_dim}, filter_type.getElementType());
+  RankedTensorType bias_type = tensorflow::GetTypeFromTFTensorShape(
+      {bias_dim}, filter_type.getElementType());
   auto bias_attr = rewriter.getZeroAttr(bias_type);
   auto bias = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(), bias_type,
                                               bias_attr.cast<ElementsAttr>());
@@ -861,7 +864,7 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
 
   // Set up a zero attr for subsequent pattern replacement if required
   if (!filter_type) {
-    return op->emitOpError("DepthwiseConv2d: filter type unranked tensor");
+    return rewriter.notifyMatchFailure(op, "filter type unranked tensor");
   }
 
   auto tmpAttr = tf_dwconv2d_op.data_formatAttr();
@@ -915,8 +918,8 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
 
   auto filter_shape = filter_type.getShape();
   auto bias_dim = filter_shape[2] * filter_shape[3];
-  RankedTensorType bias_type =
-      RankedTensorType::get({bias_dim}, filter_type.getElementType());
+  RankedTensorType bias_type = tensorflow::GetTypeFromTFTensorShape(
+      {bias_dim}, filter_type.getElementType());
   auto bias_attr = rewriter.getZeroAttr(bias_type);
   auto bias = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(), bias_type,
                                               bias_attr.cast<ElementsAttr>());
@@ -956,12 +959,11 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
 
   auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(),
-      RankedTensorType::get(ArrayRef<int64_t>(a1_transpose_dims),
-                            filter_type.getElementType()),
+      tensorflow::GetTypeFromTFTensorShape(ArrayRef<int64_t>(a1_transpose_dims),
+                                           filter_type.getElementType()),
       tf_conv_op.filter(), a1_filter_transpose_perm.getValue());
 
   ArrayAttr stride;
-  ArrayAttr dilation;
   ArrayAttr outpad;
   ArrayAttr output_shape;
   {
@@ -977,13 +979,12 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
   }
   {
     auto tmpAttr = tf_conv_op.dilations();
-    if (!tmpAttr) {
-      dilation = rewriter.getI64ArrayAttr({1, 1});
-    } else {
+    if (tmpAttr) {
       // Note: hardcoded to NHWC for now
       int64_t dilation_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t dilation_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      dilation = rewriter.getI64ArrayAttr({dilation_h, dilation_w});
+      // TOSA transpose_conv2d does not support non-unit dilation
+      if (dilation_h != 1 || dilation_w != 1) return failure();
     }
   }
   {
@@ -1002,7 +1003,7 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
       if (!getTransposeConv2dPaddingValues(tf_pad, data_format_tf,
                                            0,  // tensorflow::FORMAT_HWIO,
                                            input_type, filter_type, output_type,
-                                           stride, dilation, rewriter, outpad))
+                                           stride, rewriter, outpad))
         return failure();
     }
   }
@@ -1032,7 +1033,7 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
   CreateReplaceOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op, output_type, tf_conv_op.out_backprop(),
       a1_filter_transpose_op.getResult(), zero_bias.getValue(), outpad, stride,
-      dilation, output_shape);
+      output_shape);
 
   return success();
 }
@@ -1284,7 +1285,7 @@ LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
   }
 
   RankedTensorType epsilon_type =
-      RankedTensorType::get({1}, variance_type.getElementType());
+      tensorflow::GetTypeFromTFTensorShape({1}, variance_type.getElementType());
   auto epsilon_attr =
       DenseFPElementsAttr::get(epsilon_type, {tf_batchnorm_op.epsilon()});
   auto epsilon_const = CreateOpAndInfer<tosa::ConstOp>(
@@ -1322,6 +1323,19 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_batchnorm_op = cast<TF::FusedBatchNormV3Op>(op);
 
+  if (tf_batchnorm_op.is_training())
+    return rewriter.notifyMatchFailure(
+        op, "unable to lower when is_training is set");
+
+  for (auto value : tf_batchnorm_op.getResults().drop_front(1)) {
+    if (!value.use_empty()) {
+      // Really we should compute this still and let it DCE but I can't find
+      // the math.
+      return rewriter.notifyMatchFailure(
+          op, "lowering does not support aggregate statistics");
+    }
+  }
+
   RankedTensorType output_type =
       tf_batchnorm_op.getResult(0).getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
@@ -1345,7 +1359,7 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
   if (!variance_type) return failure();
 
   auto epsilon_type =
-      RankedTensorType::get({1}, variance_type.getElementType());
+      tensorflow::GetTypeFromTFTensorShape({1}, variance_type.getElementType());
   auto epsilon_attr =
       DenseFPElementsAttr::get(epsilon_type, {tf_batchnorm_op.epsilon()});
   auto epsilon_const = CreateOpAndInfer<tosa::ConstOp>(
@@ -1371,7 +1385,13 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
       op5_mul_op4_scale.getResult(), tf_batchnorm_op.offset());
 
-  rewriter.replaceOp(op, {op6_add_op5_offset.getResult()});
+  llvm::SmallVector<Value> replacements = {
+      op6_add_op5_offset.getResult(), tf_batchnorm_op.mean(),
+      tf_batchnorm_op.variance(),
+      // The last three are reserved spaces and have no purpose currently.
+      tf_batchnorm_op.mean(), tf_batchnorm_op.variance(),
+      tf_batchnorm_op.variance()};
+  rewriter.replaceOp(op, replacements);
   return success();
 }
 
@@ -1407,7 +1427,7 @@ LogicalResult ConvertTFSliceOp::matchAndRewrite(
 
   // Assuming begin is always compile-time constant
   if (!matchPattern(tf_slice_op.begin(), m_Constant(&begin_elems))) {
-    return op->emitOpError("TF::Slice error: begin is not constant");
+    return rewriter.notifyMatchFailure(op, "begin is not constant");
   }
 
   for (int i = 0; i < begin_elems.getNumElements(); i++)
@@ -1567,7 +1587,7 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
   // Get the axis
   ElementsAttr axisAttrElems;
   if (!matchPattern(tf_splitv_op.split_dim(), m_Constant(&axisAttrElems))) {
-    return op->emitOpError("Cannot read split_dim elems");
+    return rewriter.notifyMatchFailure(op, "cannot read split_dim elems");
   }
 
   int32_t axis = axisAttrElems.getValues<IntegerAttr>()[0].getInt();
@@ -1695,19 +1715,19 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
       tf_matmul_op.getResult().getType().dyn_cast<RankedTensorType>();
 
   if (!(a_type && b_type && output_type)) {
-    return op->emitOpError("MatMul: a/b/output not ranked tensors");
+    return rewriter.notifyMatchFailure(op, "a/b/output not ranked tensors");
   }
 
   if (a_type.getRank() != b_type.getRank() ||
       a_type.getRank() != output_type.getRank()) {
-    return op->emitOpError("MatMul: a/b/output rank must match");
+    return rewriter.notifyMatchFailure(op, "a/b/output rank must match");
   }
 
   // Can only handle rank 2 tensors for tf.MatMul.
   // Cases with rank > 2 tensors should be handled by tf.BatchMatMul or
   // tf.BatchMatMulV2
   if (a_type.getRank() != 2) {
-    return op->emitOpError("MatMul: a/b/output rank must be 2");
+    return rewriter.notifyMatchFailure(op, "a/b/output rank must be 2");
   }
 
   SmallVector<int64_t, 3> batch_a_shape(
@@ -1717,12 +1737,12 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   SmallVector<int64_t, 3> batch_output_shape(
       {1, output_type.getShape()[0], output_type.getShape()[1]});
 
-  RankedTensorType batch_a_type =
-      RankedTensorType::get(batch_a_shape, a_type.getElementType());
-  RankedTensorType batch_b_type =
-      RankedTensorType::get(batch_b_shape, b_type.getElementType());
-  RankedTensorType batch_output_type =
-      RankedTensorType::get(batch_output_shape, output_type.getElementType());
+  RankedTensorType batch_a_type = tensorflow::GetTypeFromTFTensorShape(
+      batch_a_shape, a_type.getElementType());
+  RankedTensorType batch_b_type = tensorflow::GetTypeFromTFTensorShape(
+      batch_b_shape, b_type.getElementType());
+  RankedTensorType batch_output_type = tensorflow::GetTypeFromTFTensorShape(
+      batch_output_shape, output_type.getElementType());
 
   // Need to reshape input and output since TOSA matmul only supports
   // [N, H, C] * [N, C, W] -> [N, H, W].
@@ -1960,8 +1980,7 @@ LogicalResult ConvertTFLeakyReluOp::matchAndRewrite(
   // But this alternative is not robust unless alpha meets those constraints.
 
   if (!output_type.getElementType().isF32()) {
-    op->emitOpError("ConvertTFLeakyReluOp: only support F32");
-    return failure();
+    return rewriter.notifyMatchFailure(op, "only support F32");
   }
 
   FloatAttr tmpAttr = tf_leakyrelu_op.alphaAttr();
@@ -2189,16 +2208,16 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
       tf_batch_matmul_op.getResult().getType().dyn_cast<RankedTensorType>();
 
   if (!(x_type && y_type && output_type)) {
-    return op->emitOpError("BatchMatMulV2: x/y/output not ranked tensors");
+    return rewriter.notifyMatchFailure(op, "x/y/output not ranked tensors");
   }
 
   if (x_type.getRank() != y_type.getRank() ||
       x_type.getRank() != output_type.getRank()) {
-    return op->emitOpError("BatchMatMulV2: x/y/output rank must match");
+    return rewriter.notifyMatchFailure(op, "x/y/output rank must match");
   }
 
   if (x_type.getRank() <= 2) {
-    return op->emitOpError("BatchMatMulV2: x/y/output rank must > 2");
+    return rewriter.notifyMatchFailure(op, "x/y/output rank must > 2");
   }
 
   // Rank 3 batch matmul can be directly mapped to tosa.matmul trivially.
@@ -2227,12 +2246,12 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
     SmallVector<int64_t, 3> rank3_y_shape({N, C, W});
     SmallVector<int64_t, 3> rank3_output_shape({N, H, W});
 
-    RankedTensorType rank3_x_type =
-        RankedTensorType::get(rank3_x_shape, x_type.getElementType());
-    RankedTensorType rank3_y_type =
-        RankedTensorType::get(rank3_y_shape, y_type.getElementType());
-    RankedTensorType rank3_output_type =
-        RankedTensorType::get(rank3_output_shape, output_type.getElementType());
+    RankedTensorType rank3_x_type = tensorflow::GetTypeFromTFTensorShape(
+        rank3_x_shape, x_type.getElementType());
+    RankedTensorType rank3_y_type = tensorflow::GetTypeFromTFTensorShape(
+        rank3_y_shape, y_type.getElementType());
+    RankedTensorType rank3_output_type = tensorflow::GetTypeFromTFTensorShape(
+        rank3_output_shape, output_type.getElementType());
 
     auto op1_reshape_x = CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, op->getLoc(), rank3_x_type, tf_batch_matmul_op.x(),

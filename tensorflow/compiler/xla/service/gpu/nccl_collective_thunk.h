@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 
+#include <string>
+
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -60,9 +62,9 @@ struct NcclCollectiveConfig {
 
 template <typename OpT>
 void NcclCollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
-  if (op.channel_id()) {
+  if (op.getChannelId()) {
     collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = static_cast<int64_t>(op.channel_id()->handle().getInt());
+    op_id = static_cast<int64_t>(op.getChannelId()->getHandle());
   } else {
     collective_op_kind = RendezvousKey::kCrossReplica;
     mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
@@ -74,20 +76,19 @@ void NcclCollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
 
 template <typename OpT>
 NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
-    OpT op, absl::optional<bool> use_global_device_ids) {
+    OpT op, std::optional<bool> use_global_device_ids) {
   NcclCollectiveConfig config;
-  config.operand_count = op.operands().size();
+  config.operand_count = op.getInputs().size();
   config.operand_element_type.reserve(config.operand_count);
   for (int i = 0; i < config.operand_count; i++) {
-    const Shape shape = GetShape(op.operands()[i]);
+    const Shape shape = GetShape(op.getInputs()[i]);
     config.operand_element_type.push_back(shape.element_type());
   }
-  config.replica_groups =
-      ConvertReplicaGroups(op.replica_groups()).ValueOrDie();
+  config.replica_groups = ConvertReplicaGroups(op.getReplicaGroups()).value();
   config.SetCollectiveOpKindAndID(op);
-  config.group_mode = GetCollectiveOpGroupMode(op.channel_id().hasValue(),
+  config.group_mode = GetCollectiveOpGroupMode(op.getChannelId().has_value(),
                                                use_global_device_ids)
-                          .ValueOrDie();
+                          .value();
   return config;
 }
 
@@ -100,6 +101,8 @@ class NcclCollectiveThunk : public Thunk {
     int64_t element_count;
     BufferAllocation::Slice source_buffer;
     BufferAllocation::Slice destination_buffer;
+    mlir::Value source_value;
+    mlir::Value destination_value;
   };
 
   // Returns whether NCCL operations appear possible to perform; e.g. if we
@@ -110,15 +113,15 @@ class NcclCollectiveThunk : public Thunk {
   // error.
   static bool NcclIsEnabled();
 
+  // Logging support.
+  static std::string GetDeviceString(const NcclExecuteParams& params);
+
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  protected:
   virtual Status RunNcclCollective(const ExecuteParams& params,
                                    ncclComm_t comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
-
-  // Logging support.
-  std::string GetDeviceString(const ExecuteParams& params) const;
 
  private:
 #if XLA_ENABLE_XCCL
@@ -137,6 +140,17 @@ StatusOr<NcclComm::Lock> LockNcclComm(
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id);
 #endif  // XLA_ENABLE_XCCL
+
+struct DeviceBufferPair {
+  PrimitiveType element_type;
+  int64_t element_count;
+  se::DeviceMemoryBase source_buffer;
+  se::DeviceMemoryBase destination_buffer;
+};
+StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+    const Thunk::ExecuteParams& params,
+    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
+    const std::vector<PrimitiveType>& element_types);
 
 }  // namespace gpu
 }  // namespace xla

@@ -71,7 +71,7 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
     return;
   }
   response->set_leader_incarnation(leader_incarnation);
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
@@ -139,7 +139,7 @@ void CoordinationServiceRpcHandler::ReportErrorToTaskAsync(
                                ": ", request->error_message()));
   error = MakeCoordinationError(error, error_payload);
   agent_->SetError(error);
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
@@ -189,7 +189,7 @@ void CoordinationServiceRpcHandler::GetKeyValueAsync(
       request->key(), [response, done = std::move(done)](
                           const StatusOr<std::string>& status_or_value) {
         if (status_or_value.ok()) {
-          response->mutable_kv()->set_value(status_or_value.ValueOrDie());
+          response->mutable_kv()->set_value(status_or_value.value());
         }
         done(status_or_value.status());
       });
@@ -211,8 +211,8 @@ void CoordinationServiceRpcHandler::TryGetKeyValueAsync(
     return;
   }
   response->mutable_kv()->set_key(request->key());
-  response->mutable_kv()->set_value(result.ValueOrDie());
-  done(Status::OK());
+  response->mutable_kv()->set_value(result.value());
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
@@ -229,7 +229,7 @@ void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
       service->GetKeyValueDir(request->directory_key());
   *response->mutable_kv() = {std::make_move_iterator(results.begin()),
                              std::make_move_iterator(results.end())};
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::DeleteKeyValueAsync(

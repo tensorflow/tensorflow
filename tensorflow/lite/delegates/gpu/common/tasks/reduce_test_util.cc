@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/reduce_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -49,7 +50,7 @@ absl::Status ReduceSumChannelsIntTest(TestExecutionEnvironment* env) {
     Reduce operation = CreateReduce(axis, src.shape, OperationType::REDUCE_SUM,
                                     op_def, env->GetGpuInfo());
     RETURN_IF_ERROR(env->ExecuteGPUOperation(
-        {&src_0}, {&dst}, absl::make_unique<Reduce>(std::move(operation))));
+        {&src_0}, {&dst}, std::make_unique<Reduce>(std::move(operation))));
     tflite::gpu::Tensor<BHWC, T> dst_tensor;
     dst.DownloadData(&dst_tensor);
     if (dst_tensor.data != ref_tensor.data) {
@@ -90,7 +91,7 @@ absl::Status ReduceProductChannelsUIntTest(TestExecutionEnvironment* env) {
         CreateReduce(axis, src.shape, OperationType::REDUCE_PRODUCT, op_def,
                      env->GetGpuInfo());
     RETURN_IF_ERROR(env->ExecuteGPUOperation(
-        {&src_0}, {&dst}, absl::make_unique<Reduce>(std::move(operation))));
+        {&src_0}, {&dst}, std::make_unique<Reduce>(std::move(operation))));
     tflite::gpu::Tensor<BHWC, T> dst_tensor;
     dst.DownloadData(&dst_tensor);
     if (dst_tensor.data != ref_tensor.data) {
@@ -127,7 +128,7 @@ absl::Status MeanHWTest(TestExecutionEnvironment* env) {
           CreateReduce(axis, src_tensor.shape, OperationType::MEAN, op_def,
                        env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Reduce>(std::move(operation)),
+          src_tensor, std::make_unique<Reduce>(std::move(operation)),
           BHWC(1, 1, 1, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({2.5f}, dst_tensor.data, eps));
     }
@@ -154,7 +155,7 @@ absl::Status ReduceSumChannelsTest(TestExecutionEnvironment* env) {
           CreateReduce(axis, src_tensor.shape, OperationType::REDUCE_SUM,
                        op_def, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Reduce>(std::move(operation)),
+          src_tensor, std::make_unique<Reduce>(std::move(operation)),
           BHWC(1, 2, 1, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({5.4f, 12.6f}, dst_tensor.data, eps));
     }
@@ -185,7 +186,7 @@ absl::Status ReduceProductChannelsTest(TestExecutionEnvironment* env) {
           CreateReduce(axis, src_tensor.shape, OperationType::REDUCE_PRODUCT,
                        op_def, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Reduce>(std::move(operation)),
+          src_tensor, std::make_unique<Reduce>(std::move(operation)),
           BHWC(1, 2, 1, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({2.2f, 12.4f}, dst_tensor.data, eps));
     }
@@ -217,7 +218,7 @@ absl::Status ReduceMaxChannelsTest(TestExecutionEnvironment* env) {
           CreateReduce(axis, src_tensor.shape, OperationType::REDUCE_MAXIMUM,
                        op_def, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Reduce>(std::move(operation)),
+          src_tensor, std::make_unique<Reduce>(std::move(operation)),
           BHWC(1, 2, 1, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({32.6f, -2.0f}, dst_tensor.data, eps));
     }
@@ -245,7 +246,7 @@ absl::Status ReduceMinChannelsTest(TestExecutionEnvironment* env) {
           CreateReduce(axis, src_tensor.shape, OperationType::REDUCE_MINIMUM,
                        op_def, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Reduce>(std::move(operation)),
+          src_tensor, std::make_unique<Reduce>(std::move(operation)),
           BHWC(1, 2, 1, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({-100.0f, -7.0f}, dst_tensor.data, eps));
     }

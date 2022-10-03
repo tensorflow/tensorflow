@@ -39,7 +39,7 @@ Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
                                    ", not ", DataTypeString(tensor.dtype()));
   }
   *result = tensor.flat<T>()(0);
-  return Status::OK();
+  return OkStatus();
 }
 
 inline StatusOr<std::tuple<Tensor, Tensor, Algorithm> >

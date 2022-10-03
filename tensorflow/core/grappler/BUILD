@@ -119,6 +119,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

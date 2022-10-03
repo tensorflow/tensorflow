@@ -109,6 +109,15 @@ mlir::Value FloatConst(mlir::OpBuilder& builder, mlir::Location loc,
   return builder.create<mlir::TF::ConstOp>(loc, const_attr).getResult();
 }
 
+mlir::Value StringScalarConst(mlir::OpBuilder& builder, mlir::Location loc,
+                              llvm::StringRef value) {
+  return builder.create<mlir::TF::ConstOp>(
+      loc, mlir::DenseStringElementsAttr::get(
+               mlir::RankedTensorType::get(
+                   {}, builder.getType<mlir::TF::StringType>()),
+               value));
+}
+
 mlir::Value StringConst(mlir::OpBuilder& builder, mlir::Location loc,
                         llvm::ArrayRef<llvm::StringRef> values) {
   auto const_type =
@@ -150,7 +159,7 @@ Status ExtractConstVectorFromValue(mlir::Value value,
   }
   for (const mlir::APInt& index : attr)
     out_vector->emplace_back(index.getSExtValue());
-  return Status::OK();
+  return OkStatus();
 }
 
 mlir::Value CreateIntScalarConst(const int64_t value, mlir::OpBuilder builder,

@@ -24,56 +24,15 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "tensorflow/tsl/util/ptr_util.h"
+
 namespace tensorflow {
 
 namespace helper {
-
-// Trait to select overloads and return types for MakeUnique.
-template <typename T>
-struct MakeUniqueResult {
-  using scalar = std::unique_ptr<T>;
-};
-template <typename T>
-struct MakeUniqueResult<T[]> {
-  using array = std::unique_ptr<T[]>;
-};
-template <typename T, size_t N>
-struct MakeUniqueResult<T[N]> {
-  using invalid = void;
-};
-
+using tsl::helper::MakeUniqueResult;  // NOLINT
 }  // namespace helper
-
-// Transfers ownership of a raw pointer to a std::unique_ptr of deduced type.
-// Example:
-//   X* NewX(int, int);
-//   auto x = WrapUnique(NewX(1, 2));  // 'x' is std::unique_ptr<X>.
-//
-// WrapUnique is useful for capturing the output of a raw pointer factory.
-// However, prefer 'MakeUnique<T>(args...) over 'WrapUnique(new T(args...))'.
-//   auto x = WrapUnique(new X(1, 2));  // works, but nonideal.
-//   auto x = MakeUnique<X>(1, 2);  // safer, standard, avoids raw 'new'.
-//
-// Note: Cannot wrap pointers to array of unknown bound (i.e. U(*)[]).
-template <typename T>
-std::unique_ptr<T> WrapUnique(T* ptr) {
-  static_assert(!std::is_array<T>::value || std::extent<T>::value != 0,
-                "types T[0] or T[] are unsupported");
-  return std::unique_ptr<T>(ptr);
-}
-
-template <typename T, typename... Args>
-typename helper::MakeUniqueResult<T>::scalar MakeUnique(Args&&... args) {
-  return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-}
-
-// Overload for array of unknown bound.
-// The allocation of arrays needs to use the array form of new,
-// and cannot take element constructor arguments.
-template <typename T>
-typename helper::MakeUniqueResult<T>::array MakeUnique(size_t n) {
-  return std::unique_ptr<T>(new typename std::remove_extent<T>::type[n]());
-}
+using tsl::MakeUnique;  // NOLINT
+using tsl::WrapUnique;  // NOLINT
 
 }  // namespace tensorflow
 

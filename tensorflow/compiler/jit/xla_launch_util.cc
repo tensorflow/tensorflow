@@ -61,7 +61,7 @@ se::Platform::Id XlaPlatformInfoFromDevice(DeviceBase* device_base) {
 
 VariableInfo::VariableInfo(
     int index, absl::string_view name, Var* var,
-    const absl::optional<ManagedStackTrace>& definition_stack_trace)
+    const std::optional<ManagedStackTrace>& definition_stack_trace)
     : index_(index),
       name_(name),
       var_(var),
@@ -126,12 +126,12 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
         handle.container(), handle.name(), &variable, [](Var** ptr) {
           // This var is uninitialized for now.
           *ptr = new Var(DT_INVALID);
-          return Status::OK();
+          return OkStatus();
         }));
     result->emplace_back(var_idx, handle.name(), variable,
                          handle.definition_stack_trace());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx) {
@@ -185,7 +185,7 @@ Status LockVariables(absl::Span<VariableInfo*> variables) {
     prev = mu;
   }
   VLOG(4) << "Finished acquiring variable locks.";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LockVariables(absl::Span<VariableInfo> variables) {
@@ -204,9 +204,9 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
   for (int i = 0, end = variable_indices.size(); i < end; i++) {
     Var* var = variable_infos[i].var();
     (*result)[variable_indices[i]] =
-        var ? absl::make_optional(*var->tensor()) : absl::nullopt;
+        var ? absl::make_optional(*var->tensor()) : std::nullopt;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 XlaComputationLaunchContext::XlaComputationLaunchContext(
@@ -330,7 +330,7 @@ static StatusOr<Tensor> GetOrCreateTensorForOutput(
                                      ? xla::ShapeIndex({output_num})
                                      : xla::ShapeIndex({});
   CHECK(input_output_alias.shape().IsTuple() || output_num == 0);
-  if (absl::optional<xla::HloInputOutputAliasConfig::Alias> alias =
+  if (std::optional<xla::HloInputOutputAliasConfig::Alias> alias =
           input_output_alias.GetAliasedParameter(output_index)) {
     VLOG(3) << "Found alias: " << alias->ToString();
     int tf_param =
@@ -415,7 +415,7 @@ static Status SetOutputForConstant(
     ctx->set_output(output_num, const_tensor);
     output_tensor = ctx->mutable_output(output_num);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static StatusOr<Var*> GetOrCreateResourceVar(
@@ -425,7 +425,7 @@ static StatusOr<Var*> GetOrCreateResourceVar(
   TF_RETURN_IF_ERROR(
       LookupOrCreateResource<Var>(ctx, handle, &variable, [&write](Var** ptr) {
         *ptr = new Var(write.type);
-        return Status::OK();
+        return OkStatus();
       }));
   return variable;
 }
@@ -604,7 +604,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     *var->tensor() = output_tensor;
     ++output_num;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::vector<XlaCompiler::Argument>>

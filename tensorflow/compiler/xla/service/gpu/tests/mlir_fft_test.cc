@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/tests/mlir_gpu_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace gpu {
@@ -37,14 +37,14 @@ TEST_F(FftTest, SimpleCase1) {
         } {
           "lmhlo.fft"(%arg0, %arg1) {
             fft_length = dense<4> : tensor<1xi64>,
-            fft_type = #mhlo<"fft_type RFFT">
+            fft_type = #mhlo<fft_type RFFT>
           } : (memref<4xf32>, memref<3xcomplex<f32>>) -> ()
           "lmhlo.terminator"() : () -> ()
         }
       })";
   std::vector<float> arg0 = {1, 0, 1, 0};
-  auto outputs = RunMlirTextWithHostBuffers(mlir_text, {ToUint8Span(&arg0)})
-                     .ConsumeValueOrDie();
+  auto outputs =
+      RunMlirTextWithHostBuffers(mlir_text, {ToUint8Span(&arg0)}).value();
   ASSERT_EQ(1, outputs.size());
   EXPECT_THAT(FromUint8Span<float>(outputs[0]),
               ElementsAreArray<float>({2, 0, 0, 0, 2, 0}));

@@ -55,10 +55,6 @@ tensorflow::Status RunTFXLABridge(
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
   PassManager bridge(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(bridge);
-  if (enable_logging || VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile("tf_xla_bridge_before", module);
-    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
-  }
 
   // Populate a passmanager with the list of passes that implement the bridge.
   pipeline_builder(bridge);
@@ -70,10 +66,14 @@ tensorflow::Status RunTFXLABridge(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
+  if (enable_logging || VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile("tf_xla_bridge_before", module, "", &bridge);
+    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
+  }
   LogicalResult result = bridge.run(module);
   (void)result;
   if (enable_logging || VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("tf_xla_bridge_after", module);
+    tensorflow::DumpMlirOpToFile("tf_xla_bridge_after", module, "", &bridge);
   return diag_handler.ConsumeStatus();
 }
 
@@ -99,6 +99,7 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   pm.addPass(TF::CreateTFShapeInferencePass());
   pm.addNestedPass<func::FuncOp>(
       CreateTPUReorderReplicateAndPartitionedInputsPass());
+  pm.addNestedPass<func::FuncOp>(TF::CreateDecomposeReduceDatasetPass());
   pm.addPass(CreateTPUClusterFormationPass());
   // Run TPU cluster cleanup attributes so ops with no outside compiled
   // attribute have no host device attribute.
@@ -193,14 +194,14 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
 
 void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<func::FuncOp>(
-      CreateCanonicalizeCompileAndReplicateAttributesPass());
+      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   CreateTPUBridgePipelineImpl(pm);
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   // Convert to unified compilation and replication attributes.
   pm.addNestedPass<func::FuncOp>(
-      CreateCanonicalizeCompileAndReplicateAttributesPass());
+      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
@@ -228,8 +229,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
   Status status =
       RunTFXLABridge(module, enable_logging, CreateTPUBridgePipeline);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      "tpu", "v2", fallback_enabled,
-      status == Status::OK() ? "success" : "failure");
+      "tpu", "v2", fallback_enabled, status.ok() ? "success" : "failure");
   OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
       status);
@@ -240,8 +240,7 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
   Status status =
       RunTFXLABridge(module, enable_logging, CreateTPUBridgePipelineV1);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      "tpu", "v1", fallback_enabled,
-      status == Status::OK() ? "success" : "failure");
+      "tpu", "v1", fallback_enabled, status.ok() ? "success" : "failure");
   return status;
 }
 
@@ -273,10 +272,6 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_logging,
                                                  bool enable_inliner) {
   PassManager bridge(module.getContext());
-  if (enable_logging || VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile("standard_pipeline_before", module);
-    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
-  }
 
   StandardPipelineOptions pipeline_options;
   pipeline_options.enable_inliner.setValue(enable_inliner);
@@ -286,18 +281,25 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
+  if (enable_logging || VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile("standard_pipeline_before", module, "",
+                                 &bridge);
+    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
+  }
   LogicalResult result = bridge.run(module);
   (void)result;
   if (enable_logging || VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("standard_pipeline_after", module);
+    tensorflow::DumpMlirOpToFile("standard_pipeline_after", module, "",
+                                 &bridge);
   return diag_handler.ConsumeStatus();
 }
 
-namespace {
 void CreateTFXLABridgePipeline(OpPassManager &pm) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this.
   VLOG(2) << "Create TF XLA Bridge pipeline";
+  pm.addNestedPass<func::FuncOp>(
+      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
   pm.addNestedPass<func::FuncOp>(
       tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
@@ -327,6 +329,7 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   // Inline the StatefulPartitionedCallOp op based in the parent region.
   pm.addPass(TFDevice::CreateXlaInlineDeviceOpsPass());
+  pm.addNestedPass<func::FuncOp>(TFDevice::CreateXlaRewritePass());
   // Re-run the canonicalizer pass as some cleanup during resource op lifting
   // pass opens up some opportunities for canonicalization of cluster ops.
   // Specifically, we want to eliminate pass through results from the cluster
@@ -338,15 +341,13 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
-}  // namespace
-
 tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging) {
   Status status = mlir::TFTPU::RunTFXLABridge(module, enable_logging,
                                               CreateTFXLABridgePipeline);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
       /*fallback_enabled*/ false,
-      /*result*/ status == Status::OK() ? "success" : "failure");
+      /*result*/ status.ok() ? "success" : "failure");
   return status;
 }
 

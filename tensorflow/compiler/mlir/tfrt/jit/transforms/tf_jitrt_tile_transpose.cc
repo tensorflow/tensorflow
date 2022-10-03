@@ -21,9 +21,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -31,7 +30,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TILETRANSPOSE
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using llvm::SmallVector;
@@ -47,7 +46,6 @@ using mlir::arith::ConstantIndexOp;
 using mlir::gml_st::LoopOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgTilingOptions;
-using mlir::linalg::LinalgTransformationFilter;
 
 /// Returns true if the operation is a GenericOp implementing a transposition.
 // TODO(diegocaballero): Move it to MLIR core?
@@ -75,31 +73,28 @@ bool IsTransposeGenericOp(Operation *op) {
 
   // Check parallel iterators.
   auto iterator_types = generic_op.iterator_types();
-  if (std::any_of(
-          iterator_types.begin(), iterator_types.end(),
-          [](Attribute attr) { return !mlir::isParallelIterator(attr); }))
+  if (std::any_of(iterator_types.begin(), iterator_types.end(),
+                  [](Attribute attr) {
+                    return !mlir::linalg::isParallelIterator(attr);
+                  }))
     return false;
 
   // Check that the two indexing maps are a permutation.
-  auto indexing_maps = generic_op.getIndexingMaps();
+  auto indexing_maps = generic_op.getIndexingMapsArray();
   if (indexing_maps.size() != 2) return false;
   return (indexing_maps[0].isIdentity() && indexing_maps[1].isPermutation()) ||
          (indexing_maps[0].isPermutation() && indexing_maps[1].isIdentity());
 }
 
 struct TileTransposePattern : public mlir::OpRewritePattern<GenericOp> {
-  /// MatchAnyOpTag-based constructor with a mandatory `filter`.
-  TileTransposePattern(LinalgTilingOptions options,
-                       LinalgTransformationFilter filter, MLIRContext *context,
+  TileTransposePattern(LinalgTilingOptions options, MLIRContext *context,
                        mlir::PatternBenefit benefit = 1)
-      : mlir::OpRewritePattern<GenericOp>(context, benefit),
-        filter(filter),
-        options(options) {}
+      : mlir::OpRewritePattern<GenericOp>(context, benefit), options(options) {}
 
   mlir::LogicalResult matchAndRewrite(
       GenericOp linalg_op, PatternRewriter &rewriter) const override {
-    // Check if it is cwise on tensors.
-    if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
+    if (hasTransformationAttr(linalg_op)) return failure();
+    if (!IsTransposeGenericOp(linalg_op)) return failure();
 
     auto tiled_linalg_op =
         mlir::gml_st::tileLinalgOp(rewriter, linalg_op, options);
@@ -110,22 +105,18 @@ struct TileTransposePattern : public mlir::OpRewritePattern<GenericOp> {
         mlir::dyn_cast<LoopOp>(*tiled_linalg_op.getValue().loops.front());
     if (!tiled_loop) return failure();
 
-    tiled_loop->walk([&](GenericOp tiledOp) {
-      filter.replaceLinalgTransformationFilter(rewriter, tiledOp);
-    });
+    tiled_loop->walk(
+        [&](GenericOp tiledOp) { setTransformationAttr(rewriter, tiledOp); });
 
     rewriter.replaceOp(linalg_op, tiled_loop->getResults());
     return success();
   }
 
  private:
-  LinalgTransformationFilter filter;
   LinalgTilingOptions options;
 };
 
-constexpr llvm::StringRef kTiledId = "tiled";
-
-struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
+struct TileTransposePass : public impl::TileTransposeBase<TileTransposePass> {
   void runOnOperation() override {
     auto get_tile_size = [&](mlir::OpBuilder b, Operation *op) {
       auto generic_op = llvm::cast<GenericOp>(op);
@@ -141,7 +132,7 @@ struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
       // scatter operations.
       SmallVector<Value> tiles(num_loops,
                                b.create<ConstantIndexOp>(op->getLoc(), 1));
-      auto indexing_maps = generic_op.getIndexingMaps();
+      auto indexing_maps = generic_op.getIndexingMapsArray();
       unsigned last_dim = num_loops - 1;
       unsigned vec_factor0 = 8, vec_factor1 = 8;
       unsigned vec_dim0 = indexing_maps[0].getDimPosition(last_dim);
@@ -164,26 +155,17 @@ struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
     };
 
     auto func = getOperation();
-    auto filter = LinalgTransformationFilter(
-                      llvm::ArrayRef<mlir::StringAttr>{},
-                      {mlir::StringAttr::get(func.getContext(), kTiledId)})
-                      .addFilter([](Operation *op) {
-                        return success(IsTransposeGenericOp(op));
-                      });
     auto tiling_options =
         LinalgTilingOptions().setTileSizeComputationFunction(get_tile_size);
 
     mlir::RewritePatternSet patterns(func.getContext());
-    patterns.add<TileTransposePattern>(tiling_options, filter,
-                                       patterns.getContext());
+    patterns.add<TileTransposePattern>(tiling_options, patterns.getContext());
     if (failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       signalPassFailure();
     }
 
     // Ensure we drop the marker in the end.
-    func.walk([](GenericOp op) {
-      op->removeAttr(mlir::linalg::LinalgTransforms::kLinalgTransformMarker);
-    });
+    func.walk([](GenericOp op) { removeTransformationAttr(op); });
   }
 };
 
