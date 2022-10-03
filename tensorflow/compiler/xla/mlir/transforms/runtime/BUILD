@@ -32,6 +32,7 @@ cc_library(
     name = "passes",
     srcs = [
         "convert_asserts.cc",
+        "convert_custom_calls.cc",
         "export_functions.cc",
         "rt_to_llvm.cc",
     ],

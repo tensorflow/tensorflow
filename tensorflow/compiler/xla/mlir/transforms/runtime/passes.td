@@ -30,14 +30,49 @@ def ExportFunctions : Pass<"xla-rt-export-functions", "mlir::ModuleOp"> {
     runtime ABI, and makes them invocable by the executable, i.e.:
      - first argument is an `!rt.execution_context`
      - all results returned via the `rt.set_result` operation
-     - failed asserts set the results error via the `rt.set_error` operation
-     - function calls marked with `rt.custom_call` attribute (on the callee)
-       converted to the `rt.custom_call` operations.
-     - function declarations annotated with `rt.dynamic` attribute converted to
-       dynamic custom calls that are resolved at run time by name
+
+    Exported function can also return errors to the runtime using `rt.set_error`
+    operation, and all asserts can be automatically converted to safe run-time
+    errors with the `ConvertAsserts` pass defined below.
 
     See the `ir/runtime/rt_ops.td` to find how Xla executable returns results
     and errors using the runtime APIs.
+
+    Example:
+
+      ```mlir
+      rt.export @compute
+
+      func @compute(...) -> memref<?xf32> {
+        %0 = "allocate_memref" : () -> memref<?xf32>
+        return %0 : memref<?xf32>
+      }
+      ```
+
+    converted to:
+
+      ```mlir
+      func @compute(%ctx: !rt.execution_context, ...)
+        attributes { rt.exported } {
+        %0 = "allocate_memref" : () -> memref<?xf32>
+        rt.set_output %ctx, 0, %1 : memref<xf32>
+        return
+      }
+      ```
+  }];
+
+  let constructor = "xla::runtime::CreateExportRuntimeFunctionsPass()";
+  let dependentDialects = ["xla::runtime::RuntimeDialect"];
+}
+
+def ConvertCustomCalls : Pass<"xla-rt-convert-custom-calls", "ModuleOp"> {
+  let summary = "Converts custom calls to explicit `rt.custom_call` operations";
+
+  let description = [{
+    Converts function calls to custom call declarations (function declarations
+    annotated with `rt.custom_call` attribute) to explicit `rt.custom_call`
+    operations. Function declarations annotated with `rt.dynamic` attribute
+    are converted to dynamic custom calls that are resolved at run time by name.
 
     When converting function call to the custom call operation, custom call
     attributes will be a union of custom call function declaration attributes,
@@ -50,42 +85,32 @@ def ExportFunctions : Pass<"xla-rt-export-functions", "mlir::ModuleOp"> {
       func @custom_call() -> memref<?xf32>
         attributes { rt.custom_call = "custom_call", attr = <value> }
 
-      rt.export @compute
-
-      func @compute(...) -> memref<?xf32> {
-        %0 = ... : i1
-        assert %0, "Oops"
-        %1 = call @custom_call() { attr = <new_value> }: () -> memref<?xf32>
-        return %1
+      func @compute(%ctx: !rt.execution_context, %arg0: i1) -> memref<?xf32>
+          attributes { rt.exported } {
+        %0 = call @custom_call() { attr = <new_value> }: () -> memref<?xf32>
+        return %0 : memref<?xf32>
       }
       ```
 
     converted to:
 
       ```mlir
-      func @compute(%ctx: !rt.execution_context, ...)
+      func @compute(%ctx: !rt.execution_context, %arg0: i1) -> memref<?xf32>
           attributes { rt.exported } {
-        %0 = ... : i1
-        cond_br %0, ^ok0, ^err0
-      ^ok0:
-        %status, %1 = rt.custom_call %ctx, "custom_call"()
-                      { attr = <new value> } : () -> memref<?xf32>
+
+        %status, %0 = rt.custom_call %ctx["custom_call"] () {
+                        attr = <new value>
+                      } : () -> memref<?xf32>
+
         %success = rt.is_ok %status : !rt.status
-        cond_br %success, ^ok1, ^err1
-      ^ok1:
-        rt.set_output %ctx, 0, %1 : memref<xf32>
-        return
-      ^err0:
-        rt.set_error %ctx, "Oops"
-        return;
-      ^err1:
-        rt.set_error %ctx, "Custom call failed"
-        return;
+        assert %success, "Custom call to `custom_call` failed"
+
+        return %0 : memref<?xf32>
       }
       ```
   }];
 
-  let constructor = "xla::runtime::CreateExportRuntimeFunctionsPass()";
+  let constructor = "xla::runtime::CreateConvertCustomCallsPass()";
   let dependentDialects = ["xla::runtime::RuntimeDialect"];
 }
 

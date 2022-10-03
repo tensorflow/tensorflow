@@ -47,6 +47,7 @@ void CreateDefaultXlaGpuRuntimeCompilationPipeline(
 
   // Export functions to the XLA runtime.
   pm.addPass(CreateExportRuntimeFunctionsPass());
+  pm.addPass(CreateConvertCustomCallsPass());
   pm.addPass(CreateConvertAssertsPass());
 
   // Convert runtime operations and custom calls to LLVM dialect.
