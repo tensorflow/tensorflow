@@ -130,6 +130,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   Status RecordHeartbeat(const CoordinatedTask& task,
                          uint64_t incarnation) override;
   Status ReportTaskError(const CoordinatedTask& task, Status error) override;
+  std::vector<CoordinatedTaskStateInfo> GetTaskState(
+      const std::vector<CoordinatedTask>& task) override;
   Status InsertKeyValue(const std::string& key,
                         const std::string& value) override;
   void GetKeyValueAsync(const std::string& key,
@@ -651,6 +653,30 @@ Status CoordinationServiceStandaloneImpl::ReportTaskError(
   }
   PropagateError(task, /*is_reported_by_task=*/true);
   return OkStatus();
+}
+
+std::vector<CoordinatedTaskStateInfo>
+CoordinationServiceStandaloneImpl::GetTaskState(
+    const std::vector<CoordinatedTask>& tasks) {
+  std::vector<CoordinatedTaskStateInfo> states_info;
+  for (const auto& task : tasks) {
+    const std::string task_name = GetTaskName(task);
+    auto& state_info = states_info.emplace_back();
+    Status error;
+    {
+      mutex_lock l(state_mu_);
+      state_info.set_state(cluster_state_[task_name]->GetState());
+      error = cluster_state_[task_name]->GetStatus();
+    }
+    *state_info.mutable_task() = task;
+    state_info.set_error_code(error.code());
+    state_info.set_error_message(error.error_message());
+    if (!error.ok()) {
+      *state_info.mutable_error_payload()->mutable_source_task() = task;
+      state_info.mutable_error_payload()->set_is_reported_error(false);
+    }
+  }
+  return states_info;
 }
 
 Status CoordinationServiceStandaloneImpl::RecordHeartbeat(

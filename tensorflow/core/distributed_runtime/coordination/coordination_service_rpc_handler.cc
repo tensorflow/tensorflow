@@ -161,6 +161,22 @@ void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
           /*is_reported_error=*/true)));
 }
 
+void CoordinationServiceRpcHandler::GetTaskStateAsync(
+    const GetTaskStateRequest* request, GetTaskStateResponse* response,
+    StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  auto result = service->GetTaskState(
+      {request->source_task().begin(), request->source_task().end()});
+  *response->mutable_task_state() = {result.begin(), result.end()};
+  done(OkStatus());
+}
+
 void CoordinationServiceRpcHandler::InsertKeyValueAsync(
     const InsertKeyValueRequest* request, InsertKeyValueResponse* response,
     StatusCallback done) {
