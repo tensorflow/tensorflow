@@ -2463,3 +2463,34 @@ def RemoveUnusedWhileResultsPass : Pass<"tf-remove-unused-while-results", "mlir:
   }];
   let constructor = "TF::CreateRemoveUnusedWhileResultsPass()";
 }
+
+def LocalizeVarHandlesPass : Pass<"tf-localize-var-handles", "ModuleOp"> {
+  let summary = "Creates VarHandleOps next to the operations that use them.";
+  let description = [{
+      Creates VarHandleOps right next to the operations that use them, one
+      per operation.
+      This is useful for transformations that only end up with a few small
+      snippets of remaining TF code, and wish for those snippets to be
+      self-contained.
+      For example, this would transform
+
+      "tf_saved_model.global_tensor"() { sym_name = "v" ... }
+      func @f(%arg0 {tf_saved_model.bound_input = @v}) {
+        %1 = "tf.ReadVariableOp"(%arg0)
+        ...
+      }
+
+      to
+
+      func @f(%arg0 {tf_saved_model.bound_input = @v}) {
+        %0 = "tf.VarHandleOp"(sym_name = "v")
+        %1 = "tf.ReadVariableOp"(%0)
+        ...
+      }
+
+      Note that this pass might leave behind unused values
+      (like e.g. %arg0 in the example above), which can later be
+      pruned using DCE.
+  }];
+  let constructor = "TF::CreateLocalizeVarHandlesPass()";
+}
