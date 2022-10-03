@@ -36,6 +36,12 @@ from tensorflow.python.types import internal
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
+from tensorflow.python.ops import array_ops
+
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+
+
 # pylint: disable=protected-access
 _eval_using_default_session = ops._eval_using_default_session
 _override_helper = ops._override_helper
@@ -103,26 +109,31 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
   """
 
   @classmethod
-  def from_value(cls, sparse_tensor_value):
+  def from_value(cls, sparse_tensor_value, compressed=False):
     if not is_sparse(sparse_tensor_value):
       raise TypeError(f"Argument sparse_tensor_value={sparse_tensor_value} "
                       "is neither a SparseTensor nor SparseTensorValue.")
     return SparseTensor(
         indices=sparse_tensor_value.indices,
         values=sparse_tensor_value.values,
-        dense_shape=sparse_tensor_value.dense_shape)
+        dense_shape=sparse_tensor_value.dense_shape,
+        compressed=compressed)
 
-  def __init__(self, indices, values, dense_shape):
+  def __init__(self, indices, values, dense_shape, compressed=False):
     """Creates a `SparseTensor`.
 
     Args:
-      indices: A 2-D int64 tensor of shape `[N, ndims]`.
+      indices: A 2-D int64 tensor of shape `[N, ndims]` when `compressed` is
+      `False`. A 1-D int64 tensor of shape `[N]` when `compressed` is `True`.
       values: A 1-D tensor of any type and shape `[N]`.
       dense_shape: A 1-D int64 tensor of shape `[ndims]`.
 
     Raises:
       ValueError: When building an eager SparseTensor if `dense_shape` is
         unknown or contains unknown elements (None or -1).
+      ValueError: When attempting to construct a SparseTensor if `indices`
+        has a rank other than 2 with `compressed` set to `False` or if
+        `indices` has a rank other than 1 with `compressed` set to `True`.
     """
     with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
       indices = ops.convert_to_tensor(
@@ -135,12 +146,23 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
           dense_shape, name="dense_shape", dtype=dtypes.int64)
       dense_shape_default = tensor_util.constant_value_as_shape(dense_shape)
 
+    self._compressed = compressed
     self._indices = indices
     self._values = values
     self._dense_shape = dense_shape
     self._dense_shape_default = dense_shape_default
 
-    indices_shape = indices.shape.with_rank(2)
+    if not compressed:
+      if indices.shape.rank != 2:
+        raise(ValueError(f"Indices must have rank 2 for regular SparseTensors."
+                         f"Set `compressed` to `True` to construct a "
+                         f"compressed SparseTensor."))
+      indices_shape = indices.shape.with_rank(2)
+    else:
+      if indices.shape.rank != 1:
+        raise(ValueError(f"Indices must have rank 1 for compressed"
+                         f"SparseTensors."))
+      indices_shape = indices.shape.with_rank(1)
     values_shape = values.shape.with_rank(1)
     dense_shape_shape = dense_shape.shape.with_rank(1)
 
@@ -148,7 +170,8 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     indices_shape.dims[0].assert_is_compatible_with(values_shape.dims[0])
     # Assert number of columns in indices matches the number of elements in
     # dense_shape.
-    indices_shape.dims[1].assert_is_compatible_with(dense_shape_shape.dims[0])
+    if not compressed:
+      indices_shape.dims[1].assert_is_compatible_with(dense_shape_shape.dims[0])
 
   def get_shape(self):
     """Get the `TensorShape` representing the shape of the dense tensor.
@@ -282,6 +305,95 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     if not isinstance(shape, tensor_shape.TensorShape):
       shape = tensor_shape.TensorShape(shape)
     self._dense_shape_default = self._dense_shape_default.merge_with(shape)
+
+  @property
+  def is_compressed(self):
+    """Returns whether the sparse tensor is compressed."""
+    return self._compressed
+
+  def compress(self):
+    """Returns a compressed copy of `self`.
+
+    This method produces a compressed sparse tensor which represents the same
+    dense tensor as `self`. The output has an `indices` tensor with rank 1.
+
+    Returns:
+      A compressed sparse tensor.
+
+    Raises:
+      ValueError: If the dense tensor represented by `self` is not compatible
+      with compression, i.e. does not have left-aligned continuous non-zero
+      entries in all rows.
+
+    Example of a dense tensor with left-aligned continuos non-zero entries in
+    all rows whose sparse tensor can be compressed:
+
+    [[x, 0, 0, 0],
+     [x, x, x, 0],
+     [0, 0, 0, 0],
+     [x, x, 0, 0]]
+
+
+    Example of a dense tensor whose sparse tensor cannot be compressed:
+
+    [[x, 0, 0, 0],
+     [x, x, x, 0],
+     [0, 0, 0, 0],
+     [x, 0, x, 0]]  <-- non-zero entries not continuously left-aligned
+
+    """
+
+    if self.is_compressed:
+      return SparseTensor(self._indices, self._values, self._dense_shape, True)
+
+    # Avoid circular dependency with math_ops
+    math_ops = LazyLoader("math_ops", globals(),
+                     "tensorflow.python.ops.math_ops")
+
+    # Verify that underlying dense tensor has left-aligned continuous non-zero
+    # entries in all rows
+    dense_filled_rows, _ = array_ops.unique(self._indices[:, 0])
+    for r in dense_filled_rows:
+      row_indices = array_ops.where(self._indices[:, 0] == r)
+      dense_filled_cols = array_ops.reshape(array_ops.gather(
+                                              self._indices[:, 1],
+                                              row_indices),
+                                            [-1])
+      cont_filled_cols = math_ops.range(math_ops.reduce_max(
+                                              dense_filled_cols) + 1)
+      if dense_filled_cols.shape != cont_filled_cols.shape or \
+          not math_ops.reduce_all(math_ops.equal(dense_filled_cols,
+                                                 cont_filled_cols)).numpy():
+        raise ValueError("Sparse tensor compression requires the underlying \
+                            dense tensor to have left-aligned continuous \
+                            non-zero entries in all rows.")
+
+    indices = self._indices[:, 0]
+    return SparseTensor(indices, self._values, self._dense_shape, True)
+
+  def decompress(self):
+    """Returns a non-compressed copy of `self`.
+
+    This method produces a regular, non-compressed sparse tensor which
+    represents the same dense tensor as `self`. If `self` is a compressed
+    sparse tensor, the reconstruction of the regular form assumes left-aligned
+    continuous non-zero entries in all rows. The output has an `indices` tensor
+    with rank 2."""
+
+    if not self.is_compressed:
+      return SparseTensor(self._indices, self._values, self._dense_shape, True)
+
+    dense_filled_rows, _ = array_ops.unique(self._indices)
+    dense_filled_cols = np.empty(self._indices.shape[0], dtype=np.int64)
+    for r in dense_filled_rows:
+      indices_rows = array_ops.reshape(array_ops.where(self._indices == r),
+                                       [-1])
+      indices_num_rows = indices_rows.shape[0]
+      dense_filled_cols[indices_rows.numpy()] = np.arange(indices_num_rows)
+
+    self._indices = array_ops.stack([self._indices, dense_filled_cols], axis=1)
+    self._compressed = False
+    return self
 
   @property
   def graph(self):
@@ -424,7 +536,14 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
         not tf2.enabled()):
       return SparseTensorValue(*tensor_list)
     else:
-      return SparseTensor(*tensor_list)
+      rank = tensor_list[0].shape.rank
+      if rank == 1:
+        compressed = True
+      elif rank == 2:
+        compressed = False
+      else:
+        raise ValueError("The rank of the indices tensor must be 1 or 2.")
+      return SparseTensor(*tensor_list, compressed=compressed)
 
   # The SparseTensorSpec tensor_list encoding uses (de)serialize_sparse ops
   # to (un)box the component tensors in a way that allows for batching &

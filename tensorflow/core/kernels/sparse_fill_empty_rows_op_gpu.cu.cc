@@ -165,8 +165,8 @@ __global__ __launch_bounds__(1024) void ScatterNewElementsKernel(
 
 }  // namespace
 
-template <typename T, typename Tindex>
-struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
+template <typename T, typename Tindex, bool Compressed>
+struct SparseFillEmptyRows<GPUDevice, T, Tindex, Compressed> {
   Status operator()(OpKernelContext* context, const Tensor& default_value_t,
                     const Tensor& indices_t, const Tensor& values_t,
                     const Tensor& dense_shape_t,
@@ -174,12 +174,12 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     const int kEmptyRowIndicatorOutput = 2;
 
     const auto default_value = default_value_t.scalar<T>();
-    const auto indices = indices_t.matrix<Tindex>();
+    const auto indices = indices_t.tensor<Tindex, IndicesRank>();
     const auto values = values_t.vec<T>();
     const auto dense_shape = dense_shape_t.vec<Tindex>();
 
     const Tindex N = indices_t.shape().dim_size(0);
-    const int rank = indices_t.shape().dim_size(1);
+    const int rank = Compressed ? 1 : indices_t.shape().dim_size(1);
     const Tindex dense_rows = dense_shape(0);  // Must be on the host
     DataType index_type = DataTypeToEnum<Tindex>::value;
     const GPUDevice& device = context->eigen_device<GPUDevice>();
@@ -429,6 +429,8 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
   }
 
  private:
+  static constexpr int IndicesRank = Compressed ? 1 : 2;
+
   Status AllocateOutputsExceptEmptyRowIndicator(
       OpKernelContext* context, Tindex N, int rank, Tindex num_empty_rows,
       Tindex** output_indices, T** output_values, Tindex** reverse_index_map) {
@@ -456,10 +458,11 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     return OkStatus();
   }
 
-  Status ArgSortByRows(OpKernelContext* context, const GPUDevice& device,
-                       Tindex N, int rank, Tindex dense_rows,
-                       typename TTypes<Tindex>::ConstMatrix indices,
-                       Tensor* input_index_map_t) {
+  Status ArgSortByRows(
+      OpKernelContext* context, const GPUDevice& device, Tindex N, int rank,
+      Tindex dense_rows,
+      typename TTypes<Tindex, IndicesRank>::ConstTensor indices,
+      Tensor* input_index_map_t) {
     DataType index_type = DataTypeToEnum<Tindex>::value;
     // Extract row indices into separate array for use as keys for sorting.
     Tensor row_indices_t;
@@ -486,7 +489,12 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
 }  // namespace functor
 
 #define DEFINE_INT64(T) \
-  template struct functor::SparseFillEmptyRows<GPUDevice, T, int64>;
+  template struct functor::SparseFillEmptyRows<GPUDevice, T, int64, true>;
+TF_CALL_POD_TYPES(DEFINE_INT64)
+#undef DEFINE_INT64
+
+#define DEFINE_INT64(T) \
+  template struct functor::SparseFillEmptyRows<GPUDevice, T, int64, false>;
 TF_CALL_POD_TYPES(DEFINE_INT64)
 #undef DEFINE_INT64
 

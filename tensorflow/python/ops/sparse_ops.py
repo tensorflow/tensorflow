@@ -49,11 +49,14 @@ from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import tf_export
 
 
-def _convert_to_sparse_tensor(sp_input):
+def _convert_to_sparse_tensor(sp_input, compressed=False):
   """Convert `sp_input` to `SparseTensor` and return it.
 
   Args:
     sp_input: `SparseTensor` or `SparseTensorValue`.
+    compressed: An optional boolean which indicates whether to construct a
+      compressed `SparseTensor`, i.e. a `SparseTensor` with an `indices` tensor
+      with rank 1.
 
   Returns:
     `sp_input` converted to `SparseTensor`.
@@ -62,7 +65,8 @@ def _convert_to_sparse_tensor(sp_input):
     ValueError: if `sp_input` is neither `SparseTensor` nor `SparseTensorValue`.
   """
   if isinstance(sp_input, sparse_tensor.SparseTensorValue):
-    return sparse_tensor.SparseTensor.from_value(sp_input)
+    return sparse_tensor.SparseTensor.from_value(sp_input,
+                                                 compressed=compressed)
   if not isinstance(sp_input, sparse_tensor.SparseTensor):
     raise TypeError("Input must be a SparseTensor.")
   return sp_input
@@ -100,7 +104,7 @@ def _make_int64_tensor(value, name):
 
 
 @tf_export("sparse.from_dense")
-def from_dense(tensor, name=None):
+def from_dense(tensor, compressed=False, name=None):
   """Converts a dense tensor into a sparse tensor.
 
   Only elements not equal to zero will be present in the result. The resulting
@@ -117,10 +121,15 @@ def from_dense(tensor, name=None):
 
   Args:
     tensor: A dense `Tensor` to be converted to a `SparseTensor`.
+    compressed: An optional boolean which indicates whether the returned
+      `SparseTensor` is compressed, i.e. has an `indices` tensor with rank 1.
     name: Optional name for the op.
 
   Returns:
     The `SparseTensor`.
+
+  Raises:
+     TypeError: If the tensor has a dtype other than integer.
   """
   with ops.name_scope(name, "dense_to_sparse"):
     tensor = ops.convert_to_tensor(tensor)
@@ -128,7 +137,16 @@ def from_dense(tensor, name=None):
         math_ops.not_equal(tensor, array_ops.zeros_like(tensor)))
     values = array_ops.gather_nd(tensor, indices)
     shape = array_ops.shape(tensor, out_type=dtypes.int64)
-    return sparse_tensor.SparseTensor(indices, values, shape)
+    if compressed:
+      if tensor.dtype.is_integer:
+        indices = indices[:, 0]
+      else:
+        raise TypeError("Sparse tensor compressed mode only available for"
+                            " integer dtypes.")
+    return sparse_tensor.SparseTensor(indices,
+                                      values,
+                                      shape,
+                                      compressed=compressed)
 
 
 @tf_export("sparse.expand_dims")
@@ -1943,7 +1961,7 @@ def sparse_merge_impl(sp_ids,
 
 @tf_export("sparse.retain", v1=["sparse.retain", "sparse_retain"])
 @deprecation.deprecated_endpoints("sparse_retain")
-def sparse_retain(sp_input, to_retain):
+def sparse_retain(sp_input, to_retain, compressed=False):
   """Retains specified non-empty values within a `SparseTensor`.
 
   For example, if `sp_input` has shape `[4, 5]` and 4 non-empty string values:
@@ -1970,7 +1988,7 @@ def sparse_retain(sp_input, to_retain):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  sp_input = _convert_to_sparse_tensor(sp_input)
+  sp_input = _convert_to_sparse_tensor(sp_input, compressed=compressed)
 
   to_retain = ops.convert_to_tensor(to_retain)
 
@@ -1982,10 +2000,15 @@ def sparse_retain(sp_input, to_retain):
         tensor_shape.dimension_at_index(retain_shape, 0))
 
   where_true = array_ops.reshape(array_ops.where_v2(to_retain), [-1])
-  new_indices = array_ops.gather(sp_input.indices, where_true)
+  if compressed:
+    new_indices = array_ops.gather(array_ops.reshape(sp_input.indices, [-1]),
+                                   where_true)
+  else:
+    new_indices = array_ops.gather(sp_input.indices, where_true)
   new_values = array_ops.gather(sp_input.values, where_true)
   return sparse_tensor.SparseTensor(new_indices, new_values,
-                                    array_ops.identity(sp_input.dense_shape))
+                                    array_ops.identity(sp_input.dense_shape),
+                                    compressed=compressed)
 
 
 @tf_export(
@@ -2097,7 +2120,10 @@ def sparse_reset_shape(sp_input, new_shape=None):
     "sparse.fill_empty_rows",
     v1=["sparse.fill_empty_rows", "sparse_fill_empty_rows"])
 @deprecation.deprecated_endpoints("sparse_fill_empty_rows")
-def sparse_fill_empty_rows(sp_input, default_value, name=None):
+def sparse_fill_empty_rows(sp_input,
+                           default_value,
+                           name=None,
+                           compressed=False):
   """Fills empty rows in the input 2-D `SparseTensor` with a default value.
 
   This op adds entries with the specified `default_value` at index
@@ -2133,6 +2159,8 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
     sp_input: A `SparseTensor` with shape `[N, M]`.
     default_value: The value to fill for empty rows, with the same type as
       `sp_input.`
+    compressed: An optional boolean which indicates whether the returned
+      `SparseTensor` is compressed, i.e. has an `indices` tensor with rank 1.
     name: A name prefix for the returned tensors (optional)
 
   Returns:
@@ -2144,7 +2172,7 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  sp_input = _convert_to_sparse_tensor(sp_input)
+  sp_input = _convert_to_sparse_tensor(sp_input, compressed=compressed)
   with ops.name_scope(name, "SparseFillEmptyRows", [sp_input]):
     default_value = ops.convert_to_tensor(
         default_value, dtype=sp_input.values.dtype)
@@ -2153,11 +2181,15 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
          indices=sp_input.indices,
          values=sp_input.values,
          dense_shape=sp_input.dense_shape,
-         default_value=default_value)
+         default_value=default_value,
+         compressed=compressed)
+    if compressed:
+      output_indices=array_ops.reshape(output_indices, [-1])
     return (sparse_tensor.SparseTensor(
         indices=output_indices,
         values=output_values,
-        dense_shape=sp_input.dense_shape), empty_row_indicator)
+        dense_shape=sp_input.dense_shape,
+        compressed=compressed), empty_row_indicator)
 
 
 @tf_export(v1=["io.serialize_sparse", "serialize_sparse"])

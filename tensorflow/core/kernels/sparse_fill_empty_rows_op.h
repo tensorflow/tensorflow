@@ -24,7 +24,7 @@ namespace tensorflow {
 
 namespace functor {
 
-template <typename Device, typename T, typename Tindex>
+template <typename Device, typename T, typename Tindex, bool Compressed>
 struct SparseFillEmptyRows {
   // Note that the done callback is only used by the GPU implementation.
   Status operator()(OpKernelContext* context, const Tensor& default_value_t,

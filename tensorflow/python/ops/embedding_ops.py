@@ -14,6 +14,7 @@
 # ==============================================================================
 """Operations for embeddings."""
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -403,7 +404,6 @@ def embedding_lookup_v2(params, ids, max_norm=None, name=None):
   """
   return embedding_lookup(params, ids, "div", name, max_norm=max_norm)
 
-
 @tf_export(v1=["nn.embedding_lookup_sparse"])
 @dispatch.add_dispatch_support
 def embedding_lookup_sparse(params,
@@ -412,7 +412,9 @@ def embedding_lookup_sparse(params,
                             partition_strategy="mod",
                             name=None,
                             combiner=None,
-                            max_norm=None):
+                            max_norm=None,
+                            compressed=False,
+                            allow_dense_grads=False):
   """Looks up embeddings for the given ids and weights from a list of tensors.
 
   This op assumes that there is at least one id for each row in the dense tensor
@@ -447,6 +449,12 @@ def embedding_lookup_sparse(params,
       of the squares of the weights. Defaults to `mean`.
     max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
       than this value, before combining.
+    compressed: An optional boolean specifying whether `sp_ids` and `sp_weights`
+       are compressed SparseTensors.
+    allow_dense_grads: An optional boolean specifying whether to allow dense
+      gradients during training. Setting this flag to `True` can improve
+      performance when `params` is a single tensor and `max_norm` is `None` at
+      the expense of higher memory usage.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -515,13 +523,25 @@ def embedding_lookup_sparse(params,
 
   with ops.name_scope(name, "embedding_lookup_sparse",
                       params + [sp_ids]) as name:
-    segment_ids = sp_ids.indices[:, 0]
+
+    if compressed:
+      if context.executing_eagerly():
+        segment_ids = sp_ids.indices
+      else:
+        segment_ids = array_ops.reshape(sp_ids.indices, [-1])
+    else:
+      segment_ids = sp_ids.indices[:, 0]
 
     ids = sp_ids.values
-    ids, idx = array_ops.unique(ids)
 
-    embeddings = embedding_lookup(
-        params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
+    if len(params) == 1 and max_norm is None and allow_dense_grads:
+      idx = ids
+      embeddings = params[0]
+    else:
+      ids, idx = array_ops.unique(ids)
+      embeddings = embedding_lookup(
+          params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
+
     if not ignore_weights:
       if segment_ids.dtype != dtypes.int32:
         segment_ids = math_ops.cast(segment_ids, dtypes.int32)
@@ -597,6 +617,8 @@ def embedding_lookup_sparse_v2(params,
                                sp_weights,
                                combiner=None,
                                max_norm=None,
+                               compressed=False,
+                               allow_dense_grads=False,
                                name=None):
   """Looks up embeddings for the given ids and weights from a list of tensors.
 
@@ -635,6 +657,12 @@ def embedding_lookup_sparse_v2(params,
       of the squares of the weights. Defaults to `mean`.
     max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
       than this value, before combining.
+    compressed: An optional boolean specifying whether `sp_ids` and `sp_weights`
+       are compressed SparseTensors.
+    allow_dense_grads: An optional boolean specifying whether to allow dense
+      gradients during training. Setting this flag to `True` can improve
+      performance when `params` is a single tensor and `max_norm` is `None` at
+      the expense of higher memory usage.
     name: Optional name for the op.
 
   Returns:
@@ -678,7 +706,8 @@ def embedding_lookup_sparse_v2(params,
     ValueError: If `combiner` is not one of {"mean", "sqrtn", "sum"}.
   """
   return embedding_lookup_sparse(params, sp_ids, sp_weights, "div", name,
-                                 combiner, max_norm)
+                                 combiner, max_norm, compressed,
+                                 allow_dense_grads)
 
 
 @tf_export("nn.safe_embedding_lookup_sparse", v1=[])
@@ -689,6 +718,8 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
                                     combiner="mean",
                                     default_id=None,
                                     max_norm=None,
+                                    compressed=False,
+                                    allow_dense_grads=False,
                                     name=None):
   """Lookup embedding results, accounting for invalid IDs and empty features.
 
@@ -730,6 +761,12 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
       0-vector.
     max_norm: If not `None`, all embeddings are l2-normalized to max_norm before
       combining.
+    compressed: An optional boolean specifying whether `sp_ids` and `sp_weights`
+       are compressed SparseTensors.
+    allow_dense_grads: An optional boolean specifying whether to allow dense
+      gradients during training. Setting this flag to `True` can improve
+      performance when `params` is a single tensor and `max_norm` is `None` at
+      the expense of higher memory usage.
     name: A name for this operation (optional).
 
   Returns:
@@ -780,7 +817,9 @@ def safe_embedding_lookup_sparse_v2(embedding_weights,
       default_id=default_id,
       name=name,
       partition_strategy="div",
-      max_norm=max_norm)
+      max_norm=max_norm,
+      compressed=compressed,
+      allow_dense_grads=allow_dense_grads)
 
 
 @tf_export(v1=["nn.safe_embedding_lookup_sparse"])
@@ -792,7 +831,9 @@ def safe_embedding_lookup_sparse(embedding_weights,
                                  default_id=None,
                                  name=None,
                                  partition_strategy="div",
-                                 max_norm=None):
+                                 max_norm=None,
+                                 compressed=False,
+                                 allow_dense_grads=False):
   """Lookup embedding results, accounting for invalid IDs and empty features.
 
   The partitioned embedding in `embedding_weights` must all be the same shape
@@ -829,6 +870,12 @@ def safe_embedding_lookup_sparse(embedding_weights,
       `"div"` and `"mod"` are supported. Default is `"div"`.
     max_norm: If not `None`, all embeddings are l2-normalized to max_norm before
       combining.
+    compressed: An optional boolean specifying whether `sp_ids` and `sp_weights`
+       are compressed SparseTensors.
+    allow_dense_grads: An optional boolean specifying whether to allow dense
+      gradients during training. Setting this flag to `True` can improve
+      performance when `params` is a single tensor and `max_norm` is `None` at
+      the expense of higher memory usage.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -890,33 +937,40 @@ def safe_embedding_lookup_sparse(embedding_weights,
   with ops.name_scope(name, "embedding_lookup", embedding_weights +
                       [sparse_ids, sparse_weights]) as scope:
     # Reshape higher-rank sparse ids and weights to linear segment ids.
-    original_shape = sparse_ids.dense_shape
-    original_rank_dim = tensor_shape.dimension_value(
-        sparse_ids.dense_shape.get_shape()[0])
-    original_rank = (
-        array_ops.size(original_shape)
-        if original_rank_dim is None else original_rank_dim)
-    sparse_ids = sparse_ops.sparse_reshape(sparse_ids, [
-        math_ops.reduce_prod(
-            array_ops.slice(original_shape, [0], [original_rank - 1])),
-        array_ops.gather(original_shape, original_rank - 1)
-    ])
-    if sparse_weights is not None:
-      sparse_weights = sparse_tensor.SparseTensor(sparse_ids.indices,
-                                                  sparse_weights.values,
-                                                  sparse_ids.dense_shape)
+    # Higher-dimensional case not compatible with compressed mode.
+    if compressed and sparse_ids.dense_shape.shape.rank > 2:
+      raise ValueError("Compressed mode not compatible with sparse_ids with"
+              " rank greater than 2.")
+    if not compressed:
+      original_shape = sparse_ids.dense_shape
+      original_rank_dim = tensor_shape.dimension_value(
+          sparse_ids.dense_shape.get_shape()[0])
+      original_rank = (
+          array_ops.size(original_shape)
+          if original_rank_dim is None else original_rank_dim)
+      sparse_ids = sparse_ops.sparse_reshape(sparse_ids, [
+          math_ops.reduce_prod(
+              array_ops.slice(original_shape, [0], [original_rank - 1])),
+          array_ops.gather(original_shape, original_rank - 1)
+      ])
+      if sparse_weights is not None:
+        sparse_weights = sparse_tensor.SparseTensor(sparse_ids.indices,
+                                                    sparse_weights.values,
+                                                    sparse_ids.dense_shape)
 
     # Prune invalid ids and weights.
-    sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights)
+    sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights,
+                                                    compressed)
     if combiner != "sum":
       sparse_ids, sparse_weights = _prune_invalid_weights(
-          sparse_ids, sparse_weights)
+          sparse_ids, sparse_weights, compressed)
 
     # Fill in dummy values for empty features, if necessary.
     sparse_ids, is_row_empty = sparse_ops.sparse_fill_empty_rows(
-        sparse_ids, default_id or 0)
+        sparse_ids, default_id or 0, compressed=compressed)
     if sparse_weights is not None:
-      sparse_weights, _ = sparse_ops.sparse_fill_empty_rows(sparse_weights, 1.0)
+      sparse_weights, _ = sparse_ops.sparse_fill_empty_rows(
+        sparse_weights, 1.0, compressed=compressed)
 
     result = embedding_lookup_sparse(
         embedding_weights,
@@ -925,7 +979,9 @@ def safe_embedding_lookup_sparse(embedding_weights,
         combiner=combiner,
         partition_strategy=partition_strategy,
         name=None if default_id is None else scope,
-        max_norm=max_norm)
+        max_norm=max_norm,
+        compressed=compressed,
+        allow_dense_grads=allow_dense_grads)
 
     if default_id is None:
       # Broadcast is_row_empty to the same shape as embedding_lookup_result,
@@ -938,19 +994,24 @@ def safe_embedding_lookup_sparse(embedding_weights,
           is_row_empty, array_ops.zeros_like(result), result, name=scope)
 
     # Reshape back from linear ids back into higher-dimensional dense result.
-    final_result = array_ops.reshape(
-        result,
-        array_ops.concat([
-            array_ops.slice(
-                math_ops.cast(original_shape, dtypes.int32), [0],
-                [original_rank - 1]),
-            array_ops.slice(array_ops.shape(result), [1], [-1])
-        ], 0))
-    final_result.set_shape(
-        tensor_shape.unknown_shape(
-            (tensor_shape.Dimension(original_rank_dim) - 1).value).concatenate(
-                result.get_shape()[1:]))
-    return final_result
+    # Higher-dimensional case not compatible with compressed mode.
+    if compressed:
+      return result
+    else:
+      final_result = array_ops.reshape(
+          result,
+          array_ops.concat([
+              array_ops.slice(
+                  math_ops.cast(original_shape, dtypes.int32), [0],
+                  [original_rank - 1]),
+              array_ops.slice(array_ops.shape(result), [1], [-1])
+          ], 0))
+      final_result.set_shape(
+          tensor_shape.unknown_shape(
+              (tensor_shape.Dimension(original_rank_dim) - 1).value)
+                  .concatenate(
+                          result.get_shape()[1:]))
+      return final_result
 
 
 def embedding_lookup_ragged(embedding_weights,
@@ -999,23 +1060,27 @@ def embedding_lookup_ragged(embedding_weights,
     return looked_up_ragged
 
 
-def _prune_invalid_ids(sparse_ids, sparse_weights):
+def _prune_invalid_ids(sparse_ids, sparse_weights, compressed=False):
   """Prune invalid IDs (< 0) from the input ids and weights."""
   is_id_valid = math_ops.greater_equal(sparse_ids.values, 0)
   if sparse_weights is not None:
     is_id_valid = math_ops.logical_and(
         is_id_valid,
         array_ops.ones_like(sparse_weights.values, dtype=dtypes.bool))
-  sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_id_valid)
+  sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_id_valid,
+                                        compressed=compressed)
   if sparse_weights is not None:
-    sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_id_valid)
+    sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_id_valid,
+                                              compressed=compressed)
   return sparse_ids, sparse_weights
 
 
-def _prune_invalid_weights(sparse_ids, sparse_weights):
+def _prune_invalid_weights(sparse_ids, sparse_weights, compressed=False):
   """Prune invalid weights (< 0) from the input ids and weights."""
   if sparse_weights is not None:
     is_weights_valid = math_ops.greater(sparse_weights.values, 0)
-    sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_weights_valid)
-    sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_weights_valid)
+    sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_weights_valid,
+                                          compressed=compressed)
+    sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_weights_valid,
+                                              compressed=compressed)
   return sparse_ids, sparse_weights
