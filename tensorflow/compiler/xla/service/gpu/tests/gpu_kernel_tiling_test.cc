@@ -704,9 +704,9 @@ ENTRY main {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define void @fusion
+; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
 ; CHECK: load <4 x i16>
-; CHECK-COUNT-4: load float
+; CHECK-COUNT-4: load
 ; CHECK-NOT: load
 ; CHECK: }
 )";
