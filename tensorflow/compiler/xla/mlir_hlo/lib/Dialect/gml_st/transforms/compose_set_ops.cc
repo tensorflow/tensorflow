@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -50,7 +50,7 @@ struct ComposeSetPattern
 class ComposeSetOpsPass
     : public impl::ComposeSetOpsPassBase<ComposeSetOpsPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
-    registry.insert<arith::ArithmeticDialect, GmlStDialect>();
+    registry.insert<arith::ArithDialect, GmlStDialect>();
   }
 
   void runOnOperation() final {

@@ -61,7 +61,7 @@ class Counter {
     return &default_counter_cell_;
   }
 
-  Status GetStatus() { return Status::OK(); }
+  Status GetStatus() { return OkStatus(); }
 
  private:
   Counter() {}

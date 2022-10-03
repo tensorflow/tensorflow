@@ -27,17 +27,15 @@ func.func @gather(%arg: tensor<100xf32>,
 
 // -----
 
-func.func @scatter(%indices: tensor<3x2xi64>,
-                   %updates: tensor<3xf32>,
-                   %dst: tensor<3x3xf32>) -> tensor<3x3xf32> {
-  %scatter = thlo.scatter
-      ins(%indices: tensor<3x2xi64>, %updates: tensor<3xf32>)
-      outs(%dst: tensor<3x3xf32>)
-      (%in: f32, %out: f32) {
-        %0 = arith.addf %in, %out: f32
-        thlo.yield %0: f32
-      }
-  func.return %scatter : tensor<3x3xf32>
+func.func @scatter(%indices: tensor<2x2xi32>, %updates: tensor<2x1x3xf32>,
+    %init: tensor<3x3xf32>) -> tensor<3x3xf32> {
+  %0 = thlo.scatter ins(%indices : tensor<2x2xi32>, %updates : tensor<2x1x3xf32>)
+                    outs(%init : tensor<3x3xf32>)
+                    (%in: f32, %out: f32) {
+    %sum = arith.addf %in, %out : f32
+    thlo.yield %sum : f32
+  }
+  return %0 : tensor<3x3xf32>
 }
 // CHECK-LABEL: func @scatter
 

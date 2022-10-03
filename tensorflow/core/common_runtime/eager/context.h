@@ -202,7 +202,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // device not matching `preferred` will be chosen.
   //
   // The chosen device is stored in the `device` argument. The argument is not
-  // modified unless this method returns `Status::OK()`.
+  // modified unless this method returns `OkStatus()`.
   Status SelectDevice(DeviceNameUtils::ParsedName preferred,
                       const NodeDef& ndef, Device** out) const;
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/padding.h"
 
 namespace mlir::quant {
+namespace {
 
 Value GetDimValue(OpBuilder &builder, Location loc, Value shape_value,
                   int32_t dim) {
@@ -129,6 +130,8 @@ Value PadForDynamicShapedInputSamePadding(
       CreateScalarConstValue<int8_t>(builder, loc, input_zp_value));
 }
 
+}  // namespace
+
 // If input spatial sizes are dynamic (unknown) and padding is same, add ops to
 // dynamically calculate padding size and add input_zp value Pad op with the
 // padding.
@@ -206,6 +209,84 @@ Value CalculatePaddingAndPadIfNeeded(
       loc, RankedTensorType::get(output_shape, builder.getI8Type()), input,
       temp_padding,
       CreateScalarConstValue<int8_t>(builder, loc, input_zp_value));
+}
+
+// Pack value using following formula:
+// Consider value of rank=4, pack_dim=1 for example.
+//
+// if value.shape[1] % 2:
+//   value = pad(value, [0, 1, 0, 0])
+//
+// slice_shape = value.shape
+// slice_shape[1] /= 2
+//
+// packed_low = slice(value, [0, 0, 0, 0], slice_shape)
+// packed_low = bitwise_and(packed_low, 0x0F)
+//
+// packed_high = slice(value, [0, value.shape[1] / 2, 0, 0], slice_shape)
+// packed_high = left_shift(packed_high, 4)
+//
+// packed_value = bitwise_or(packed_low, packed_high)
+Value PackOperand(OpBuilder &builder, Location loc, Value value, int pack_dim) {
+  ShapedType value_type = value.getType().cast<ShapedType>();
+  const int rank = value_type.getRank();
+
+  SmallVector<int64_t> packed_shape(value_type.getShape().begin(),
+                                    value_type.getShape().end());
+  RankedTensorType shape_type =
+      RankedTensorType::get({rank}, builder.getI64Type());
+  Value shape_value = builder.create<TF::ShapeOp>(loc, shape_type, value);
+
+  // It is guaranteed that packed_shape[pack_dim] is known.
+  if (packed_shape[pack_dim] % 2 != 0) {
+    packed_shape[pack_dim] += 1;
+    llvm::SmallVector<int32_t> padding(rank * 2, 0);
+    padding[pack_dim * 2 + 1] = 1;
+    Value padding_value =
+        CreateConstValue<int32_t>(builder, loc, {rank, 2}, padding);
+    value = builder.create<TF::PadV2Op>(
+        loc, RankedTensorType::get(packed_shape, builder.getI8Type()), value,
+        padding_value, CreateScalarConstValue<int8_t>(builder, loc, 0));
+
+    llvm::SmallVector<int64_t> shape_add(rank, 0);
+    shape_add[pack_dim] = 1;
+    shape_value = builder.create<TF::AddOp>(
+        loc, shape_type, shape_value,
+        CreateConstValue<int64_t>(builder, loc, {rank}, shape_add));
+  }
+  packed_shape[pack_dim] /= 2;
+  llvm::SmallVector<int64_t> divisor(rank, 1);
+  divisor[pack_dim] = 2;
+
+  RankedTensorType packed_output_type =
+      RankedTensorType::get(packed_shape, builder.getI8Type());
+  Value packed_shape_value = builder.create<TF::DivOp>(
+      loc, shape_type, shape_value,
+      CreateConstValue<int64_t>(builder, loc, {rank}, divisor));
+
+  Value packed_low_begin_value = CreateConstValue<int64_t>(
+      builder, loc, {rank}, llvm::SmallVector<int64_t>(rank, 0));
+  Value packed_low_value =
+      builder.create<TF::SliceOp>(loc, packed_output_type, value,
+                                  packed_low_begin_value, packed_shape_value);
+  packed_low_value = builder.create<TF::BitwiseAndOp>(
+      loc, packed_output_type, packed_low_value,
+      CreateScalarConstValue<int8_t>(builder, loc, 0x0F));
+
+  llvm::SmallVector<int64_t> packed_high_begin(rank, 0);
+  packed_high_begin[pack_dim] = packed_shape[pack_dim];
+  Value packed_high_begin_value =
+      CreateConstValue<int64_t>(builder, loc, {rank}, packed_high_begin);
+  Value packed_high_value =
+      builder.create<TF::SliceOp>(loc, packed_output_type, value,
+                                  packed_high_begin_value, packed_shape_value);
+  packed_high_value = builder.create<TF::LeftShiftOp>(
+      loc, packed_output_type, packed_high_value,
+      CreateScalarConstValue<int8_t>(builder, loc, 4));
+
+  Operation *packed = builder.create<TF::BitwiseOrOp>(
+      loc, packed_output_type, packed_low_value, packed_high_value);
+  return ConstantFoldOpIfPossible(packed).front();
 }
 
 }  // namespace mlir::quant

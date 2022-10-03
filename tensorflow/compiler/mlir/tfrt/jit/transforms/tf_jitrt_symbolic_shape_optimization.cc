@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
@@ -66,7 +66,8 @@ namespace mhlo = mlir::mhlo;
 namespace shape = mlir::shape;
 namespace tensor = mlir::tensor;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_SYMBOLICSHAPEOPTIMIZATION
+#define GEN_PASS_DECL_SYMBOLICSHAPEOPTIMIZATION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 // -------------------------------------------------------------------------- //
@@ -283,7 +284,8 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
 // -------------------------------------------------------------------------- //
 
 struct SymbolicShapeOptimizationPass
-    : public SymbolicShapeOptimizationBase<SymbolicShapeOptimizationPass> {
+    : public impl::SymbolicShapeOptimizationBase<
+          SymbolicShapeOptimizationPass> {
   SymbolicShapeOptimizationPass() = default;
 
   explicit SymbolicShapeOptimizationPass(bool constraints_only) {

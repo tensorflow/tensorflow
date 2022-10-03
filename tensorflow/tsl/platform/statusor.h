@@ -151,7 +151,7 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   // Status()' when the return type is StatusOr<T>.
   //
   // REQUIRES: !status.ok(). This requirement is DCHECKed.
-  // In optimized builds, passing Status::OK() here will have the effect
+  // In optimized builds, passing OkStatus() here will have the effect
   // of passing tsl::error::INTERNAL as a fallback.
   StatusOr(const Status& status);
   StatusOr& operator=(const Status& status);
@@ -171,7 +171,7 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   bool ok() const { return this->status_.ok(); }
 
   // Returns a reference to our status. If this contains a T, then
-  // returns Status::OK().
+  // returns OkStatus().
   const Status& status() const&;
   Status status() &&;
 

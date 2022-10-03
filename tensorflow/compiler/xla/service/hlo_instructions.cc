@@ -2081,14 +2081,14 @@ const std::vector<HloInstruction*>& HloFusionInstruction::fused_parameters()
   return fused_instructions_computation()->parameter_instructions();
 }
 
-const tensorflow::gtl::iterator_range<UnwrappingIterator<
+const tsl::gtl::iterator_range<UnwrappingIterator<
     std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
 HloFusionInstruction::fused_instructions() const {
   const HloComputation* subcomp = fused_instructions_computation();
   return subcomp->instructions();
 }
 
-const tensorflow::gtl::iterator_range<
+const tsl::gtl::iterator_range<
     UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
 HloFusionInstruction::fused_instructions() {
   return fused_instructions_computation()->instructions();

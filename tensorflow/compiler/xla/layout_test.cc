@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout.h"
 
+#include <memory>
 #include <sstream>
 #include <vector>
 
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -105,6 +107,10 @@ TEST_F(LayoutTest, LayoutToFromProto) {
   expect_unchanged(Layout({1, 3, 2, 0}));
   expect_unchanged(Layout({0, 1}).set_element_size_in_bits(42));
   expect_unchanged(Layout({3, 2, 1, 0}, {}, {Tile({42, 123}), Tile({4, 5})}));
+  expect_unchanged(Layout({1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}));
+  expect_unchanged(
+      Layout({1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, 0, 0,
+             std::make_unique<Shape>(ShapeUtil::MakeShape(S32, {10, 10}))));
 }
 
 }  // namespace

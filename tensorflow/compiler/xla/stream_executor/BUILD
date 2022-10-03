@@ -7,9 +7,12 @@
 # TODO(rdzhabarov): XLA should have its own tensorflow independent rule.
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
 
 package(
     default_visibility = [
@@ -212,6 +215,29 @@ cc_library(
     hdrs = ["rng.h"],
     deps = [
         "//tensorflow/compiler/xla/stream_executor/platform",
+    ],
+)
+
+cc_library(
+    name = "device_mem_allocator",
+    hdrs = [
+        "device_host_allocator.h",
+        "device_mem_allocator.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":stream_executor",
+        "//tensorflow/tsl/framework:allocator",
+        "//tensorflow/tsl/framework:device_id",
+        "//tensorflow/tsl/platform:macros",
+    ],
+)
+
+filegroup(
+    name = "device_mem_allocator_headers",
+    srcs = [
+        "device_host_allocator.h",
+        "device_mem_allocator.h",
     ],
 )
 
@@ -575,8 +601,9 @@ cc_library(
         ":device_memory",
         ":dnn_proto_cc",
         ":stream_executor_headers",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
@@ -715,8 +742,19 @@ tf_cc_test(
     deps = [
         ":stream_executor",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "dnn_test",
+    size = "small",
+    srcs = ["dnn_test.cc"],
+    deps = [
+        ":dnn",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -730,7 +768,7 @@ cc_library(
         ":platform",
         ":stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/core/framework:allocator",
+        "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/synchronization",
     ],
@@ -761,11 +799,11 @@ alias(
 cc_library(
     name = "stream_executor_bundle",
     deps = [
-        "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor:dnn",
-        "//tensorflow/compiler/xla/stream_executor:event",
-        "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
-        "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
+        ":dnn",
+        ":event",
+        ":multi_platform_manager",
+        ":scratch_allocator",
+        ":stream_executor",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",

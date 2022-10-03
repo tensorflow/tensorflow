@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -3270,7 +3270,7 @@ struct HloLegalizeToLinalgPass
     RewritePatternSet patterns(&ctx);
     ConversionTarget target(ctx);
     target.addLegalDialect<
-        bufferization::BufferizationDialect, arith::ArithmeticDialect,
+        bufferization::BufferizationDialect, arith::ArithDialect,
         complex::ComplexDialect, linalg::LinalgDialect, math::MathDialect,
         tensor::TensorDialect, sparse_tensor::SparseTensorDialect,
         scf::SCFDialect, shape::ShapeDialect>();

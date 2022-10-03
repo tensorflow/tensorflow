@@ -27,7 +27,7 @@ td_library(
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-        "@llvm-project//mlir:ArithmeticOpsTdFiles",
+        "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
     ],
 )

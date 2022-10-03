@@ -43,12 +43,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/subprocess.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 #if defined(PLATFORM_GOOGLE)
 #include "util/readline/readline.h"
 #endif
@@ -752,23 +752,23 @@ int main(int argc, char** argv) {
   xla::tools::Options opts;
   opts.browser = "/usr/bin/sensible-browser";
   bool need_help = false;
-  const std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("hlo_snapshot", &opts.hlo_snapshot,
-                       "HloSnapshot proto to interactively dump to graphviz"),
-      tensorflow::Flag("hlo_proto", &opts.hlo_proto,
-                       "XLA hlo proto to interactively dump to graphviz"),
-      tensorflow::Flag("hlo_module_proto", &opts.hlo_module_proto,
-                       "XLA hlomodule proto to interactively dump to graphviz"),
-      tensorflow::Flag("hlo_text", &opts.hlo_text,
-                       "XLA hlo proto to interactively dump to graphviz"),
-      tensorflow::Flag("platform", &opts.platform,
-                       "Platform to compile for: CPU, CUDA, etc"),
-      tensorflow::Flag("browser", &opts.browser,
-                       "Path to web browser used to display produced graphs."),
-      tensorflow::Flag("help", &need_help, "Prints this help message"),
+  const std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("hlo_snapshot", &opts.hlo_snapshot,
+                "HloSnapshot proto to interactively dump to graphviz"),
+      tsl::Flag("hlo_proto", &opts.hlo_proto,
+                "XLA hlo proto to interactively dump to graphviz"),
+      tsl::Flag("hlo_module_proto", &opts.hlo_module_proto,
+                "XLA hlomodule proto to interactively dump to graphviz"),
+      tsl::Flag("hlo_text", &opts.hlo_text,
+                "XLA hlo proto to interactively dump to graphviz"),
+      tsl::Flag("platform", &opts.platform,
+                "Platform to compile for: CPU, CUDA, etc"),
+      tsl::Flag("browser", &opts.browser,
+                "Path to web browser used to display produced graphs."),
+      tsl::Flag("help", &need_help, "Prints this help message"),
   };
-  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  std::string usage = tsl::Flags::Usage(argv[0], flag_list);
+  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(argv[0], &argc, &argv);
   if (argc != 1 || !parse_ok || need_help) {
     LOG(QFATAL) << usage;

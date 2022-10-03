@@ -22,10 +22,11 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_scatter_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -360,36 +361,18 @@ struct ThloRegionReturnOpConversion
   }
 };
 
-// Rewrites simple scatter patterns.
 struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
   using OpConversionPattern<mhlo::ScatterOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       mhlo::ScatterOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    // The variadic case is not supported.
-    if (op.getUpdates().size() != 1) return failure();
-
-    const auto& dims = op.getScatterDimensionNumbers();
-    auto scatterIndicesType =
-        adaptor.getScatterIndices().getType().dyn_cast<RankedTensorType>();
-    if (!scatterIndicesType) return failure();
-
-    // Only point updates are supported.
-    //  - update_window_dims is []
-    //  - inserted_window_dims is range(operand.shape.rank)
-    //  - scatter_dims_to_operand_dims is range(scatter_indices.shape.rank)
-    //  - index_vector_dim is scatter_indices.shape.rank-1
-    if (!dims.getUpdateWindowDims().empty() ||
-        !isIotaArray(dims.getInsertedWindowDims()) ||
-        !isIotaArray(dims.getScatterDimsToOperandDims()) ||
-        dims.getIndexVectorDim() != scatterIndicesType.getRank() - 1)
-      return failure();
+    // Only canonicalized single-result scatter ops are supported.
+    if (!isCanonicalScatter(op) || op.getNumResults() != 1) return failure();
 
     auto opType =
-        typeConverter->convertType(op.getType(0)).dyn_cast<ShapedType>();
-    if (!opType)
-      return failure();  // Type is a tensor in the non-variadic case.
+        typeConverter->convertType(op.getType(0)).dyn_cast<RankedTensorType>();
+    if (!opType) return failure();
 
     Location loc = op.getLoc();
     auto thloScatter = rewriter.create<thlo::ScatterOp>(
@@ -637,7 +620,7 @@ class LegalizeMHLOToTHLOPass
     ConversionTarget target(*ctx);
     // clang-format off
     target.addLegalDialect<
-        arith::ArithmeticDialect,
+        arith::ArithDialect,
         complex::ComplexDialect,
         linalg::LinalgDialect,
         math::MathDialect,

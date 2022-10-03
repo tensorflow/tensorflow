@@ -75,51 +75,65 @@ namespace py = pybind11;
 
 namespace {
 
-// Protected by the GIL.
-JitState& global_state = *new JitState();
-
-// TODO(phawkins): Google style guide forbids thread-local values with
-// non-trivial destructors.
-ABSL_CONST_INIT thread_local JitState thread_local_state;  // NOLINT
-
-}  // namespace
-
 // `thread_local_state.extra_jit_context` is set from Python. It's done when
 // loading the Python jax modules on the main-thread. For other threads, we
 // need to initialize the field the first time we access `thread_local_state`.
 py::object& initialize_local_state = *new py::object();
 
-JitState& GetGlobalState() { return global_state; }
-JitState& GetLocalState() {
+}  // namespace
+
+JitState& GlobalJitState() {
+  // Protected by the GIL.
+  static JitState& global_state = *new JitState();
+  return global_state;
+}
+
+JitState& ThreadLocalJitState() {
+  // TODO(phawkins): Google style guide forbids thread-local values with
+  // non-trivial destructors.
+  ABSL_CONST_INIT thread_local JitState thread_local_state;  // NOLINT
+  DCHECK(PyGILState_Check());
   if (thread_local_state.extra_jit_context == std::nullopt) {
     CHECK(initialize_local_state.ptr() != nullptr);
+    // Avoids reentrant calls to the initialization function.
+    thread_local_state.extra_jit_context = py::none();
     initialize_local_state();
   }
   return thread_local_state;
 }
 
 bool GetDisableJit() {
+  auto& global_state = GlobalJitState();
+  auto& thread_local_state = ThreadLocalJitState();
   CHECK(global_state.disable_jit.has_value());
   return thread_local_state.disable_jit.value_or(*global_state.disable_jit);
 }
 
 bool GetEnableX64() {
+  auto& global_state = GlobalJitState();
+  auto& thread_local_state = ThreadLocalJitState();
   CHECK(global_state.enable_x64.has_value());
   return thread_local_state.enable_x64.value_or(*global_state.enable_x64);
 }
 
 bool GetEnableJaxArray() {
+  auto& global_state = GlobalJitState();
+  auto& thread_local_state = ThreadLocalJitState();
   CHECK(global_state.jax_array.has_value());
   return thread_local_state.jax_array.value_or(*global_state.jax_array);
 }
 
 std::optional<py::object> GetDefaultDevice() {
+  auto& global_state = GlobalJitState();
+  auto& thread_local_state = ThreadLocalJitState();
   return thread_local_state.default_device.has_value()
              ? thread_local_state.default_device
              : global_state.default_device;
 }
 
 std::optional<pybind11::function> GetPostHook() {
+  auto& global_state = GlobalJitState();
+  auto& thread_local_state = ThreadLocalJitState();
   return thread_local_state.post_hook.has_value() ? thread_local_state.post_hook
                                                   : global_state.post_hook;
 }
@@ -871,7 +885,8 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   // may never free temporary buffers for copies of arguments.
   xla::GlobalPyRefManager()->MaybeCollectGarbage();
 
-  auto& tls = thread_local_state;
+  auto& global_state = GlobalJitState();
+  auto& tls = ThreadLocalJitState();
   if (GetDisableJit()) {
     return fun_(*py::reinterpret_borrow<py::args>(args),
                 **kwargs.value_or(py::kwargs()));
@@ -1422,10 +1437,10 @@ void BuildJaxjitSubmodule(py::module& m) {
   jit_state_.def_readwrite("post_hook", &JitState::post_hook);
 
   jitlib.def(
-      "global_state", [&]() { return &global_state; },
+      "global_state", [&]() { return &GlobalJitState(); },
       py::return_value_policy::reference);
   jitlib.def(
-      "thread_local_state", [&]() { return &thread_local_state; },
+      "thread_local_state", [&]() { return &ThreadLocalJitState(); },
       py::return_value_policy::reference);
 
   jitlib.def("jit_is_disabled", &GetDisableJit);

@@ -4591,6 +4591,23 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   return OkStatus();
 }
 
+int64_t CountElementsLessThan(absl::Span<const int64_t> elements,
+                              int64_t value) {
+  int64_t low = 0;
+  int64_t high = elements.size() - 1;
+  int64_t count = 0;
+  while (low <= high) {
+    const int64_t mid = low + (high - low) / 2;
+    if (elements.at(mid) < value) {
+      count = mid + 1;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return count;
+}
+
 Status AlgebraicSimplifierVisitor::HandleReverse(HloInstruction* reverse) {
   // When all the dimensions to reverse are trivial (i.e. the bound is 1),
   // there is nothing to be done.
@@ -4599,6 +4616,100 @@ Status AlgebraicSimplifierVisitor::HandleReverse(HloInstruction* reverse) {
   };
   if (absl::c_all_of(reverse->dimensions(), dim_is_one)) {
     return ReplaceInstruction(reverse, reverse->mutable_operand(0));
+  }
+  if (!options_.is_layout_sensitive()) {
+    absl::Span<const int64_t> reverse_dims = reverse->dimensions();
+    HloInstruction* inner = reverse->mutable_operand(0);
+    HloOpcode inner_opcode = inner->opcode();
+    // handling nested reverse
+    // if two reverses are identical, both are removed, otherwise the
+    // intersection of the dimensions of two reverses are removed
+    if (inner_opcode == HloOpcode::kReverse) {
+      absl::c_sort(*(reverse->mutable_dimensions()));
+      absl::c_sort(*(inner->mutable_dimensions()));
+      std::vector<int64_t> sym_diff, uni, intersect;
+      absl::c_set_union(reverse_dims, inner->dimensions(),
+                        std::back_inserter(uni));
+      absl::c_set_intersection(reverse_dims, inner->dimensions(),
+                               std::back_inserter(intersect));
+      absl::c_set_difference(uni, intersect, std::back_inserter(sym_diff));
+      if (sym_diff.empty()) {
+        return ReplaceInstruction(reverse, inner->mutable_operand(0));
+      }
+      absl::Span<const int64_t> new_dimensions = absl::MakeConstSpan(sym_diff);
+      return ReplaceInstruction(
+          reverse, *MakeReverseHlo(inner->mutable_operand(0), new_dimensions));
+    }
+    // reverse(ElementWiseBinOp(x, constant)) ==>
+    // ElementWiseBinOp(reverse(x), constant)
+    // element-wise binary op inside reverse can be brought out
+    auto match_with_scalar = [&](HloInstruction* broadcast) -> HloInstruction* {
+      if (broadcast->opcode() == HloOpcode::kBroadcast &&
+          broadcast->dimensions().empty() &&
+          ShapeUtil::IsScalar(broadcast->operand(0)->shape())) {
+        return broadcast->mutable_operand(0);
+      }
+      return nullptr;
+    };
+    if (inner->IsElementwiseBinary()) {
+      // produces incorrect result for rng.
+      if (inner->opcode() == HloOpcode::kRng ||
+          inner_opcode == HloOpcode::kCompare) {
+        return OkStatus();
+      }
+      HloInstruction* hlo;
+      if (match_with_scalar(inner->mutable_operand(0))) {
+        hlo = inner->mutable_operand(1);
+        return ReplaceWithNewInstruction(
+            reverse,
+            HloInstruction::CreateBinary(inner->shape(), inner_opcode,
+                                         inner->mutable_operand(0),
+                                         *MakeReverseHlo(hlo, reverse_dims)));
+      } else if (match_with_scalar(inner->mutable_operand(1))) {
+        hlo = inner->mutable_operand(0);
+        return ReplaceWithNewInstruction(
+            reverse,
+            HloInstruction::CreateBinary(inner->shape(), inner_opcode,
+                                         *MakeReverseHlo(hlo, reverse_dims),
+                                         inner->mutable_operand(1)));
+      } else {
+        return OkStatus();
+      }
+    }
+    // reverse(DegenerateDimensionAddingReshape(x)) ==>
+    // DegenerateDimensionAddingReshape(reverse(x))
+    // degenerate adding reshape inside a reverse can be brought out
+    if (inner_opcode == HloOpcode::kReshape) {
+      Shape* inner_shape = inner->mutable_shape();
+      // degenerate adding reshape check
+      std::optional<ShapeUtil::ShapeEqualityDescriptor> reshape_degenerate =
+          inner->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
+      if (reshape_degenerate.has_value() &&
+          reshape_degenerate->deleted_dimensions.empty()) {
+        std::vector<int64_t> new_reverse_dims;
+        // for each reverse dimension dim, count the number of degenerate
+        // dimensions that are added 'before' dim by the reshape operation.
+        for (auto dim : reverse_dims) {
+          // trivial dimensions don't need to be reversed.
+          if (inner_shape->dimensions(dim) == 1) {
+            continue;
+          }
+          auto new_dim =
+              dim -
+              CountElementsLessThan(
+                  absl::MakeConstSpan(reshape_degenerate->inserted_dimensions),
+                  dim);
+          new_reverse_dims.push_back(new_dim);
+        }
+
+        return ReplaceInstruction(
+            reverse,
+            *MakeReshapeHlo(
+                *inner_shape,
+                *MakeReverseHlo(reverse->mutable_operand(0)->mutable_operand(0),
+                                new_reverse_dims)));
+      }
+    }
   }
   return OkStatus();
 }

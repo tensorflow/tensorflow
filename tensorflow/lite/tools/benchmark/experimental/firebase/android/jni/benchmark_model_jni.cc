@@ -169,10 +169,10 @@ class CsvExportingListener : public BenchmarkListener {
          << "," << warmup_us.std_deviation() << "," << inference_us.avg() << ","
          << inference_us.min() << "," << inference_us.max() << ","
          << inference_us.std_deviation() << ","
-         << (init_mem_usage.max_rss_kb / 1024.0) << ","
+         << (init_mem_usage.mem_footprint_kb / 1024.0) << ","
          << (init_mem_usage.total_allocated_bytes / 1024.0 / 1024.0) << ","
          << (init_mem_usage.in_use_allocated_bytes / 1024.0 / 1024.0) << ","
-         << (overall_mem_usage.max_rss_kb / 1024.0) << ","
+         << (overall_mem_usage.mem_footprint_kb / 1024.0) << ","
          << (overall_mem_usage.total_allocated_bytes / 1024.0 / 1024.0) << ","
          << (overall_mem_usage.in_use_allocated_bytes / 1024.0 / 1024.0)
          << "\n";

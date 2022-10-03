@@ -95,7 +95,7 @@ limitations under the License.
 //   ...
 //   StatusOr<std::string> message("Hello, world");
 //   EXPECT_THAT(message, IsOk());
-//   Status status = Status::OK();
+//   Status status = OkStatus();
 //   EXPECT_THAT(status, IsOk());
 
 namespace tensorflow {

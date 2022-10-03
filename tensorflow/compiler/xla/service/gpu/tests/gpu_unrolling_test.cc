@@ -70,27 +70,17 @@ TEST_F(GpuUnrollingTest, UnrollFourTimes) {
   config.set_debug_options(debug_options);
   auto hlo_module = ParseAndReturnVerifiedModule(kAddModule, config).value();
 
-  const std::string pattern1 = R"(
-; CHECK-LABEL: @fusion
-; CHECK: fadd
-; CHECK: fadd
-; CHECK: fadd
-; CHECK: fadd
-; CHECK-NOT: fadd
-; CHECK: }
-      )";
-
- const std::string pattern2 = R"(
-; CHECK-LABEL: @fusion
-; CHECK: fadd <2 x float>
-; CHECK: fadd <2 x float>
-; CHECK-NOT: fadd
-; CHECK: }
-      )";
-
   CompileAndVerifyIr(std::move(hlo_module),
-                     std::vector<std::string>{pattern1,pattern2},
-                     /*match_optimized_ir=*/true);
+                     R"(
+; CHECK-LABEL: @fusion
+; CHECK: fadd
+; CHECK: fadd
+; CHECK: fadd
+; CHECK: fadd
+; CHECK-NOT: fadd
+; CHECK: }
+      )",
+                     /*match_optimized_ir=*/false);
 }
 
 TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
@@ -101,31 +91,29 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   config.set_debug_options(debug_options);
   auto hlo_module = ParseAndReturnVerifiedModule(kAddModule, config).value();
 
-  const std::string pattern1 = R"(
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
 ; CHECK-LABEL: @fusion
-; CHECK: load <4 x float>
+; CHECK: load float
+; CHECK: load float
 ; CHECK: fadd
+; CHECK: store float
+; CHECK: load float
+; CHECK: load float
 ; CHECK: fadd
+; CHECK: store float
+; CHECK: load float
+; CHECK: load float
 ; CHECK: fadd
+; CHECK: store float
+; CHECK: load float
+; CHECK: load float
 ; CHECK: fadd
+; CHECK: store float
 ; CHECK-NOT: fadd
-; CHECK: store <4 x float>
 ; CHECK: }
-      )";
-
-const std::string pattern2 = R"(
-; CHECK-LABEL: @fusion
-; CHECK: load <4 x float>
-; CHECK: fadd <2 x float>
-; CHECK: fadd <2 x float>
-; CHECK-NOT: fadd
-; CHECK: store <4 x float>
-; CHECK: }
-      )";
-
-    CompileAndVerifyIr(std::move(hlo_module),
-                       std::vector<std::string>{pattern1,pattern2},
-                       /*match_optimized_ir=*/true);
+      )",
+                     /*match_optimized_ir=*/false);
 }
 
 TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
@@ -137,7 +125,6 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
 
   const char *const kUnfusedAddModule = R"(
     HloModule test_module
-
     ENTRY AddFunc {
       p0 = f32[2,2]{1,0} parameter(0)
       p1 = f32[2,2]{1,0} parameter(1)
@@ -146,31 +133,29 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
-  const std::string pattern1 = R"(
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
 ; CHECK-LABEL: @add
-; CHECK: load <4 x float>
+; CHECK: load float
+; CHECK: load float
 ; CHECK: fadd
+; CHECK: store float
+; CHECK: load float
+; CHECK: load float
 ; CHECK: fadd
+; CHECK: store float
+; CHECK: load float
+; CHECK: load float
 ; CHECK: fadd
+; CHECK: store float
+; CHECK: load float
+; CHECK: load float
 ; CHECK: fadd
+; CHECK: store float
 ; CHECK-NOT: fadd
-; CHECK: store <4 x float>
 ; CHECK: }
-      )";
-
-const std::string pattern2 = R"(
-; CHECK-LABEL: @add
-; CHECK: load <4 x float>
-; CHECK: fadd <2 x float>
-; CHECK: fadd <2 x float>
-; CHECK-NOT: fadd
-; CHECK: store <4 x float>
-; CHECK: }
-      )";
-
-    CompileAndVerifyIr(std::move(hlo_module),
-                       std::vector<std::string>{pattern1,pattern2},
-                       /*match_optimized_ir=*/true);
+      )",
+                     /*match_optimized_ir=*/false);
 }
 
 TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
@@ -189,13 +174,11 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
-  auto expected_ir = R"(
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
 ; CHECK: load float
-; CHECK-NOT: load float
-}
-)";
-
-  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+; CHECK-NOT: load float }
+      )",
                      /*match_optimized_ir=*/true);
 }
 
@@ -215,22 +198,11 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
-  // Note: On ROCm side, we do bare minimal to make the test pass.
-  // "cosine" function is in different code generation path from nvptx: on
-  // ROCm platform, it get pulled in from ROCm-Device-Libs, whereas in
-  // Cuda, generated llvm IR is compiled PTX.
-  auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK: __ocml_cos_f32
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
 ; CHECK: load float
-; CHECK-NOT: load float
-)"
-                                         : R"(
-; CHECK: load float
-; CHECK-NOT: load float
-}
-)";
-
-  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+; CHECK-NOT: load float }
+      )",
                      /*match_optimized_ir=*/true);
 }
 
@@ -322,56 +294,42 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kMultiOutputFusionModule, config).value();
 
-  std::string pattern1 = R"(
-; CHECK-LABEL: @fusion
-; CHECK: load <2 x float>
-; CHECK: load <2 x float>
-; CHECK-NOT: load <2 x float>
-; CHECK: fadd
-; CHECK: fmul
-; CHECK: fadd
-; CHECK: fmul
-; CHECK: store <2 x float>
-; CHECK: store <2 x float>
-; CHECK-NOT: store <2 x float>
-; CHECK-NOT: fadd
-; CHECK-NOT: fmul
-; CHECK: }
-      )";
-
-  std::string pattern2 = R"(
-; CHECK-LABEL: @fusion
-; CHECK: load <2 x float>
-; CHECK: load <2 x float>
-; CHECK-NOT: load <2 x float>
-; CHECK: fadd <2 x float>
-; CHECK: fmul <2 x float>
-; CHECK: store <2 x float>
-; CHECK: store <2 x float>
-; CHECK-NOT: store <2 x float>
-; CHECK-NOT: fadd
-; CHECK-NOT: fmul
-; CHECK: }
-      )";
-
-  std::string pattern3 = R"(
-; CHECK-LABEL: @fusion
-; CHECK: load <2 x float>
-; CHECK: load <2 x float>
-; CHECK-NOT: load <2 x float>
-; CHECK: fadd <2 x float>
-; CHECK: store <2 x float>
-; CHECK: fmul <2 x float>
-; CHECK: store <2 x float>
-; CHECK-NOT: store <2 x float>
-; CHECK-NOT: fadd
-; CHECK-NOT: fmul
-; CHECK: }
-      )";
-
   CompileAndVerifyIr(std::move(hlo_module),
-                     std::vector<std::string>{pattern1,pattern2,pattern3},
-                     /*match_optimized_ir=*/true);
+                     R"(
+; CHECK-LABEL: @fusion
+; CHECK: load float
+; CHECK: load float
+; CHECK-NOT: load float
+; CHECK-NOT: load float
+; CHECK: fadd
+; CHECK: load float
+; CHECK: load float
+; CHECK-NOT: load float
+; CHECK-NOT: load float
+; CHECK: fmul
+; CHECK: store float
+; CHECK: store float
+; CHECK-NOT: store float
+; CHECK-NOT: store float
+; CHECK: load float
+; CHECK: load float
+; CHECK-NOT: load float
+; CHECK-NOT: load float
+; CHECK: fadd
+; CHECK: load float
+; CHECK: load float
+; CHECK-NOT: load float
+; CHECK-NOT: load float
+; CHECK: fmul
+; CHECK: store float
+; CHECK: store float
+; CHECK-NOT: store float
+; CHECK-NOT: store float
+; CHECK-NOT: fadd
+; CHECK-NOT: fmul
+; CHECK: }
+      )",
+                     /*match_optimized_ir=*/false);
 }
 
 }  // namespace

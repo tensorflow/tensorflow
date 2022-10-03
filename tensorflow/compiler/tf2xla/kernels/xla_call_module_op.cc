@@ -16,12 +16,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -34,24 +39,275 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
-#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace tensorflow {
 namespace {
 
-void RefineDynamicShapes(XlaOpKernelContext *ctx, mlir::MLIRContext *context,
-                         mlir::OwningOpRef<mlir::ModuleOp> *module,
-                         int nr_dim_args, bool *dim_args_are_i64);
+// Computes a dimension value from the dim_arg specification.
+// The specification is of the form "<arg_idx>.<arg_axis_idx>".
+StatusOr<mlir::Value> ComputeDimensionValue(string dim_arg_spec,
+                                            std::vector<mlir::Value> arguments,
+                                            mlir::OpBuilder op_builder,
+                                            mlir::Type dim_arg_type) {
+  static const LazyRE2 dim_arg_spec_re = {R"((\d+).(\d+))"};
+  int arg_idx, arg_axis_idx;
+  if (!RE2::FullMatch(dim_arg_spec, *dim_arg_spec_re, &arg_idx,
+                      &arg_axis_idx)) {
+    return errors::InvalidArgument("Syntax error in dim_args_spec '",
+                                   dim_arg_spec, "'");
+  }
+  if (arg_idx < 0 || arg_idx > arguments.size()) {
+    return errors::InvalidArgument(
+        "Invalid argument index ", arg_idx, " when number of arguments is ",
+        arguments.size(), " in dim_arg_spec '", dim_arg_spec, "'");
+  }
+  mlir::RankedTensorType arg_type =
+      arguments[arg_idx].getType().dyn_cast<mlir::RankedTensorType>();
+  if (!arg_type) {
+    return errors::InvalidArgument(
+        "Argument ", arg_idx, " referenced in dim_arg_spec '", dim_arg_spec,
+        "' does not have a RankedTensorType");
+  }
+  if (arg_axis_idx < 0 || arg_axis_idx >= arg_type.getShape().size()) {
+    return errors::InvalidArgument(
+        "Invalid axis index ", arg_axis_idx, " when rank of input is ",
+        arg_type.getShape().size(), " in dim_arg_spec '", dim_arg_spec, "'");
+  }
+  mlir::Value val = op_builder.create<mlir::mhlo::GetDimensionSizeOp>(
+      arguments[arg_idx].getLoc(), dim_arg_type, arguments[arg_idx],
+      op_builder.getI64IntegerAttr(arg_axis_idx));
+  return val;
+}
 
-void PopulateDimArgInputs(XlaOpKernelContext *ctx,
-                          std::vector<string> dim_args_spec,
-                          bool dim_args_are_i64,
-                          std::vector<xla::XlaOp> *inputs);
+// Adds a wrapper for the "main" function to compute dimension arguments.
+//
+// The input module has the following structure, e.g.:
+//
+//    func public main(%arg0: i32, %arg1: i32, %arg2: f32[?, ?, 8]) { ... }
+//
+// where %arg0 and %arg1 are dimension arguments, always first among the
+// arguments, and whose values are computed based on the static shapes of the
+// array arguments (%arg2 and following).
+// In the above example, the dim_args_spec array would have two elements, one
+// for %arg0 and one for %arg1. E.g., ['0.0', '0.1'] specifies that %arg0
+// should be set to the size of axis 0 or array argument 0 (%arg2), while
+// %arg1 should be set to the size of axis 1.
+//
+// We create a new "main" function as follows:
+//   func public main(%arg2: f32[?, ?, 8]) {
+//      %arg0 = mhlo.get_dimension_size(%arg2) dimension=0
+//      %arg1 = mhlo.get_dimension_size(%arg2) dimension=1
+//      %res = func.call _wrapped_main(%arg0, %arg1, %arg2)
+//      return %res
+//   }
+//   func private _wrapped_main(%arg0: i32, %arg1: i32, %arg2: f32[?, ?, 8]) {
+//      ... the original main function ...
+//   }
+//
+// and then we run the inliner. This is important because in the
+// RefineDynamicShapes method called in Compile we refine the shape of the
+// array arguments. This would create a type error at the call to _wrapped_main
+// with the expected type of %arg2.
+Status AddMainWrapper(mlir::ModuleOp module,
+                      std::vector<string> dim_args_spec) {
+  int nr_dim_args = dim_args_spec.size();
+  // Locate the 'main' function.
+  // This is the convention used by MlirToXlaComputation.
+  mlir::func::FuncOp orig_main =
+      module.lookupSymbol<mlir::func::FuncOp>("main");
+  if (!orig_main) {
+    return errors::InvalidArgument("Cannot find 'main' in MHLO module");
+  }
+  if (orig_main.getNumArguments() <= nr_dim_args) {
+    return errors::InvalidArgument("'main' has ", orig_main.getNumArguments(),
+                                   " arguments, but it must have at least ",
+                                   nr_dim_args, " dimension arguments");
+  }
+  mlir::Block &orig_main_body = orig_main.front();
+
+  mlir::SymbolTable::setSymbolVisibility(
+      orig_main, mlir::SymbolTable::Visibility::Private);
+  mlir::OpBuilder op_builder(module.getBodyRegion());
+  orig_main.setName(op_builder.getStringAttr("_wrapped_main"));
+  mlir::Location loc = module.getLoc();
+  std::vector<mlir::Type> new_main_arg_types(
+      orig_main.getArgumentTypes().begin() + nr_dim_args,
+      orig_main.getArgumentTypes().end());
+  mlir::func::FuncOp new_main = op_builder.create<mlir::func::FuncOp>(
+      loc, "main",
+      mlir::FunctionType::get(module.getContext(),
+                              /*inputs=*/new_main_arg_types,
+                              /*results=*/orig_main.getResultTypes()));
+  mlir::SymbolTable::setSymbolVisibility(new_main,
+                                         mlir::SymbolTable::Visibility::Public);
+  mlir::Block *new_main_block = new_main.addEntryBlock();
+  std::vector<mlir::Value> block_args(new_main_block->getArguments().begin(),
+                                      new_main_block->getArguments().end());
+  op_builder.setInsertionPointToStart(new_main_block);
+
+  std::vector<mlir::Value> call_args(orig_main_body.getNumArguments());
+  for (int i = 0; i < orig_main_body.getNumArguments(); ++i) {
+    if (i < nr_dim_args) {
+      TF_ASSIGN_OR_RETURN(
+          call_args[i],
+          ComputeDimensionValue(dim_args_spec[i], block_args, op_builder,
+                                orig_main.getArgument(i).getType()));
+    } else {
+      call_args[i] = new_main_block->getArgument(i - nr_dim_args);
+    }
+  }
+  mlir::func::CallOp call_op = op_builder.create<mlir::func::CallOp>(
+      loc, orig_main.getResultTypes(), orig_main.getSymName(), call_args);
+  op_builder.create<mlir::func::ReturnOp>(loc, call_op.getResults());
+  VLOG(3) << "XlaCallModule module with wrapper: " << debugString(module);
+
+  mlir::PassManager pm(module.getContext());
+  // Inliner will merge main and _wrapped_main, making subsequent passes
+  // like constant propagation and shape inference work better.
+  pm.addPass(mlir::createInlinerPass());
+  if (!mlir::succeeded(pm.run(module))) {
+    return errors::InvalidArgument("MHLO inlining failed");
+  }
+  VLOG(3) << "XlaCallModule module with inlined wrapper: "
+          << debugString(module);
+
+  return OkStatus();
+}
+
+// Refines the dynamic module arguments based on the static argument shapes.
+// This assumes that the module has a "main" function without dimension args,
+// but possibly with dynamic shapes. We read the static shapes of the inputs,
+// then set them as the types of the function parameters, and run TF shape
+// inference to refine all dynamic shapes, and to rewrite the dynamic ops,
+// e.g., to replace dynamic_broadcast_in_dim with broadcast_in_dim.
+Status RefineDynamicShapes(XlaOpKernelContext *ctx,
+                           mlir::OwningOpRef<mlir::ModuleOp> *module) {
+  // Locate the (wrapped) 'main' function.
+  // This is the convention used by MlirToXlaComputation.
+  mlir::func::FuncOp main = (*module)->lookupSymbol<mlir::func::FuncOp>("main");
+  if (!main) {
+    return errors::InvalidArgument("Cannot find 'main' in MHLO module");
+  }
+  mlir::Block &main_body = main.front();
+  int nr_array_arguments = ctx->num_inputs();
+  if (nr_array_arguments != main_body.getNumArguments()) {
+    return errors::InvalidArgument(
+        "Incorrect number of arguments for XlaCallModule. ",
+        "The wrapped module expects ", main_body.getNumArguments(),
+        " arguments, but there are ", nr_array_arguments, " arguments");
+  }
+
+  mlir::Builder builder((*module)->getContext());
+  std::vector<mlir::Type> static_array_input_types(nr_array_arguments);
+  for (int i = 0, end = nr_array_arguments; i < end; ++i) {
+    TF_ASSIGN_OR_RETURN(xla::Shape xla_shape, ctx->InputXlaShape(i));
+    std::vector<int64_t> xla_dimensions(xla_shape.dimensions().begin(),
+                                        xla_shape.dimensions().end());
+    TF_ASSIGN_OR_RETURN(
+        mlir::Type element_type,
+        ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
+    mlir::Type type = mlir::RankedTensorType::get(xla_dimensions, element_type);
+    // TODO(burmako): This fails with an obscure compilation error.
+    // OP_REQUIRES_VALUE(
+    //     mlir::Type type, ctx,
+    //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));
+    VLOG(3) << "XlaCallModule static array input type #" << i << ": "
+            << debugString(type);
+    static_array_input_types[i] = type;
+  }
+  // Refine 'main' argument types to use static input types instead.
+  // This will only change the argument types and will not propagate the
+  // additional type information further. For that, we'll need to run
+  // shape inference as explained below.
+  main.setType(
+      builder.getFunctionType(static_array_input_types, main.getResultTypes()));
+  for (auto i = 0; i < main_body.getNumArguments(); ++i) {
+    main_body.getArgument(i).setType(static_array_input_types[i]);
+  }
+  // --tf-shape-inference, despite its TF-specific name, seems to be general
+  // enough to also work on MHLO. (Although it fails if it doesn't see a
+  // tf.versions attribute on the module, which we hackily attach).
+  auto tf_producer =
+      builder.getNamedAttr("producer", builder.getI32IntegerAttr(0));
+  (**module)->setAttr("tf.versions", builder.getDictionaryAttr({tf_producer}));
+
+  mlir::PassManager pm((*module)->getContext());
+  if (VLOG_IS_ON(3)) {
+    auto print_before = [](mlir::Pass *, mlir::Operation *) { return true; };
+    auto print_after = [](mlir::Pass *, mlir::Operation *) { return false; };
+    pm.enableIRPrinting(print_before, print_after);
+  }
+  // This pipeline is inspired by CreateConvertMlirToXlaHloPipeline. We
+  // need only a few of the passes.
+  // SCCP will resolve get_dimension_size and propagate constants to callees.
+  pm.addPass(mlir::createSCCPPass());
+  // Canonicalizer will turn dynamic_xxx into xxx.
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  if (!mlir::succeeded(pm.run(**module))) {
+    return errors::InvalidArgument("MHLO shape inference failed");
+  }
+  VLOG(3) << "XlaCallModule module with inferred types: "
+          << debugString(**module);
+  return OkStatus();
+}
+
+Status LoadAndPreprocessModule(mlir::OwningOpRef<mlir::ModuleOp> *module,
+                               mlir::MLIRContext *context, string module_str,
+                               std::vector<string> dim_args_spec,
+                               bool *has_dynamic_shapes, int *nr_outputs) {
+  context->loadDialect<mlir::func::FuncDialect>();
+  context->loadDialect<mlir::mhlo::MhloDialect>();
+  context->loadDialect<mlir::chlo::ChloDialect>();
+  // context->loadDialect<mlir::tensor::TensorDialect>();
+  VLOG(3) << "Parsing serialized module\n" << module_str;
+  *module = mlir::parseSourceString<mlir::ModuleOp>(llvm::StringRef(module_str),
+                                                    context);
+  if (!*module) {
+    return errors::InvalidArgument("Cannot deserialize MHLO computation");
+  }
+  if (failed((*module)->verifyInvariants())) {
+    VLOG(1) << "MLIR verification failed.";
+    (*module)->dump();
+    return errors::InvalidArgument("Error verifying MHLO module");
+  }
+  mlir::func::FuncOp main = (*module)->lookupSymbol<mlir::func::FuncOp>("main");
+  if (!main) {
+    return errors::InvalidArgument("Cannot find 'main' in MHLO module");
+  }
+  *has_dynamic_shapes = false;
+  for (const mlir::Type arg_type : main.getArgumentTypes()) {
+    mlir::RankedTensorType arg_ranked_type =
+        arg_type.dyn_cast<mlir::RankedTensorType>();
+    if (!arg_ranked_type) {
+      return errors::InvalidArgument("MHLO main has unranked arguments");
+    }
+    for (const int64_t arg_dim_size : arg_ranked_type.getShape()) {
+      if (arg_dim_size < 0) {
+        *has_dynamic_shapes = true;
+      }
+    }
+  }
+
+  if (!dim_args_spec.empty()) {
+    if (!has_dynamic_shapes) {
+      return errors::InvalidArgument(
+          "MHLO main has dim_args_spec but does not have dynamic shapes");
+    }
+    TF_RETURN_IF_ERROR(AddMainWrapper(**module, dim_args_spec));
+    main = (*module)->lookupSymbol<mlir::func::FuncOp>("main");
+  }
+  *nr_outputs = main.getNumResults();
+  return OkStatus();
+}
 
 class XlaCallModuleOp : public XlaOpKernel {
  public:
   explicit XlaCallModuleOp(OpKernelConstruction *ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("module", &module_str_));
+    string module_str;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("module", &module_str));
     std::vector<PartialTensorShape> expected_output_shapes;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Sout", &expected_output_shapes));
     std::vector<DataType> expected_output_dtypes;
@@ -63,45 +319,39 @@ class XlaCallModuleOp : public XlaOpKernel {
                                         expected_output_shapes.size(),
                                         ") must match the size of Tout (",
                                         expected_output_dtypes.size(), ")"));
-    expected_nr_outputs_ = expected_output_shapes.size();
+    OP_REQUIRES_OK(ctx, LoadAndPreprocessModule(
+                            &module_, &context_, module_str, dim_args_spec_,
+                            &has_dynamic_shapes_, &nr_outputs_));
   }
 
   void Compile(XlaOpKernelContext *ctx) override {
-    // Code inpired by
-    // tensorflow/compiler/xla/python/mlir.cc::PyMlirModuleToXlaComputation
-    mlir::MLIRContext context;
-    mlir::OwningOpRef<mlir::ModuleOp> module;
-    context.loadDialect<mlir::func::FuncDialect>();
-    context.loadDialect<mlir::mhlo::MhloDialect>();
-    context.loadDialect<mlir::chlo::ChloDialect>();
-    context.loadDialect<mlir::TF::TensorFlowDialect>();
-    module = mlir::parseSourceString<mlir::ModuleOp>(
-        llvm::StringRef(module_str_), &context);
-    OP_REQUIRES(ctx, module,
-                errors::InvalidArgument("Cannot deserialize MHLO computation"));
-    if (failed(module->verifyInvariants())) {
-      VLOG(1) << "MLIR verification failed.";
-      module->dump();
-      OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument("Error verifying MHLO module"));
+    if (has_dynamic_shapes_) {
+      OP_REQUIRES_OK(ctx, RefineDynamicShapes(ctx, &module_));
     }
 
-    int nr_dim_args = dim_args_spec_.size();
-    std::vector<xla::XlaOp> inputs(nr_dim_args + ctx->num_inputs());
-
-    if (nr_dim_args > 0) {
-      bool dim_args_are_i64 = true;
-      RefineDynamicShapes(ctx, &context, &module, nr_dim_args,
-                          &dim_args_are_i64);
-      PopulateDimArgInputs(ctx, dim_args_spec_, dim_args_are_i64, &inputs);
-    }
+    std::vector<xla::XlaOp> inputs(ctx->num_inputs());
     for (int i = 0, end = ctx->num_inputs(); i < end; ++i) {
-      inputs[nr_dim_args + i] = ctx->Input(i);
+      inputs[i] = ctx->Input(i);
     }
 
     xla::XlaComputation xla_computation;
     OP_REQUIRES_OK(
-        ctx, MlirToXlaComputation(*module, xla_computation, false, false));
+        ctx, MlirToXlaComputation(*module_, xla_computation, false, false));
+
+    if (VLOG_IS_ON(3)) {
+      OP_REQUIRES_VALUE(
+          const xla::HloModuleConfig module_config, ctx,
+          xla::HloModule::CreateModuleConfigFromProto(
+              xla_computation.proto(), xla::GetDebugOptionsFromFlags()));
+      OP_REQUIRES_VALUE(std::unique_ptr<xla::HloModule> hlo_module, ctx,
+                        xla::HloModule::CreateFromProto(xla_computation.proto(),
+                                                        module_config));
+      xla::HloPrintOptions options;
+      options = xla::HloPrintOptions::ShortParsable();
+      VLOG(3) << "XlaCallModule converted to HLO module "
+              << hlo_module->ToString(options);
+    }
+
     xla::XlaOp output = xla::Call(ctx->builder(), xla_computation, inputs);
 
     // Check that the resulting computation returns the expected shape
@@ -110,123 +360,22 @@ class XlaCallModuleOp : public XlaOpKernel {
     VLOG(3) << "XlaCallModule compiled output shape : "
             << xla::ShapeUtil::HumanString(found_output_shape);
 
-    if (expected_nr_outputs_ == 1) {
+    if (nr_outputs_ == 1) {
       ctx->SetOutput(0, output);
     } else {
-      for (int i = 0; i < expected_nr_outputs_; ++i) {
+      for (int i = 0; i < nr_outputs_; ++i) {
         ctx->SetOutput(i, xla::GetTupleElement(output, i));
       }
     }
   }
 
  private:
-  string module_str_;
-  int expected_nr_outputs_;
+  int nr_outputs_;
   std::vector<string> dim_args_spec_;
+  bool has_dynamic_shapes_;
+  mlir::OwningOpRef<mlir::ModuleOp> module_;
+  mlir::MLIRContext context_{mlir::MLIRContext::Threading::DISABLED};
 };
-
-// If there are dynamic shapes then resolve the unknown dimensions based on
-// the static shapes of the actual arguments and shape inference.
-void RefineDynamicShapes(XlaOpKernelContext *ctx, mlir::MLIRContext *context,
-                         mlir::OwningOpRef<mlir::ModuleOp> *module,
-                         int nr_dim_args, bool *dim_args_are_i64) {
-  // Locate the 'main' function.
-  // This is the convention used by MlirToXlaComputation.
-  auto main = (*module)->lookupSymbol<mlir::func::FuncOp>("main");
-  OP_REQUIRES(ctx, main,
-              errors::InvalidArgument("Cannot find 'main' in MHLO module"));
-  VLOG(3) << "XlaCallModule main function: " << debugString(main);
-  mlir::Block &main_body = main.front();
-
-  OP_REQUIRES(ctx,
-              nr_dim_args + ctx->num_inputs() == main_body.getNumArguments(),
-              errors::InvalidArgument(
-                  "Incorrect number of arguments for XlaCallModule. ",
-                  "The module expects ", main_body.getNumArguments(),
-                  " and dim_args_spec specifies ", nr_dim_args,
-                  " dimension arguments, but there are ", ctx->num_inputs(),
-                  " actual arguments"));
-  // Obtain static input types in MLIR terms.
-  mlir::Builder builder(context);
-
-  std::vector<mlir::Type> static_input_types(main_body.getNumArguments());
-  // The dim_arg parameters already have known types.
-  for (int i = 0; i < nr_dim_args; ++i) {
-    static_input_types[i] = getElementTypeOrSelf(main_body.getArgument(i));
-    *dim_args_are_i64 = (static_input_types[i].getIntOrFloatBitWidth() == 64);
-  }
-
-  // Now the actual arguments
-  for (int i = 0, end = ctx->num_inputs(); i < end; ++i) {
-    OP_REQUIRES_VALUE(xla::Shape xla_shape, ctx, ctx->InputXlaShape(i));
-    std::vector<int64_t> xla_dimensions(xla_shape.dimensions().begin(),
-                                        xla_shape.dimensions().end());
-    OP_REQUIRES_VALUE(
-        mlir::Type element_type, ctx,
-        ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
-    mlir::Type type = mlir::RankedTensorType::get(xla_dimensions, element_type);
-    // TODO(burmako): This fails with an obscure compilation error.
-    // OP_REQUIRES_VALUE(
-    //     mlir::Type type, ctx,
-    //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));
-    VLOG(3) << "XlaCallModule static input type #" << nr_dim_args + i << ": "
-            << debugString(type);
-    static_input_types[nr_dim_args + i] = type;
-  }
-
-  // Refine 'main' argument types to use static input types instead.
-  // This will only change the argument types and will not propagate the
-  // additional type information further. For that, we'll need to run
-  // shape inference as explained below.
-  main.setType(
-      builder.getFunctionType(static_input_types, main->getResultTypes()));
-  for (auto i = 0; i < main_body.getNumArguments(); ++i) {
-    main_body.getArgument(i).setType(static_input_types[i]);
-  }
-
-  // --tf-shape-inference, despite its TF-specific name, seems to be general
-  // enough to also work on MHLO. (Although it fails if it doesn't see a
-  // tf.versions attribute on the module, which we hackily attach).
-  auto tf_producer =
-      builder.getNamedAttr("producer", builder.getI32IntegerAttr(0));
-  (**module)->setAttr("tf.versions", builder.getDictionaryAttr({tf_producer}));
-
-  // Run --tf-shape-inference.
-  mlir::PassManager pm(context);
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  OP_REQUIRES(ctx, mlir::succeeded(pm.run(**module)),
-              errors::InvalidArgument("MHLO shape inference failed"));
-  VLOG(3) << "XlaCallModule main function with inferred types: "
-          << debugString(*main);
-}
-
-// Compute the dim_arg inputs based on the static shapes of the actual arguments
-// and put them in the inputs vector.
-void PopulateDimArgInputs(XlaOpKernelContext *ctx,
-                          std::vector<string> dim_args_spec,
-                          bool dim_args_are_i64,
-                          std::vector<xla::XlaOp> *inputs) {
-  int nr_dim_args = dim_args_spec.size();
-  for (int i = 0; i < nr_dim_args; ++i) {
-    string dim_arg_spec = dim_args_spec[i];
-    size_t dot_pos = dim_arg_spec.find('.');
-    OP_REQUIRES(
-        ctx, dot_pos != string::npos && dot_pos + 1 < dim_arg_spec.size(),
-        errors::InvalidArgument("Cannot parse dim_args_spec ", dim_arg_spec));
-    int arg_idx = std::stoi(dim_arg_spec.substr(0, dot_pos));
-    int arg_axis_idx = std::stoi(
-        dim_arg_spec.substr(dot_pos + 1, dim_arg_spec.size() - dot_pos));
-    OP_REQUIRES_VALUE(xla::Shape xla_shape, ctx, ctx->InputXlaShape(arg_idx));
-
-    int64_t dim_arg_val = xla_shape.dimensions()[arg_axis_idx];
-    VLOG(3) << "XlaCallModule dim_input[" << i << "] = " << dim_arg_val;
-    if (dim_args_are_i64) {
-      (*inputs)[i] = xla::ConstantR0<int64_t>(ctx->builder(), dim_arg_val);
-    } else {
-      (*inputs)[i] = xla::ConstantR0<int32_t>(ctx->builder(), dim_arg_val);
-    }
-  }
-}
 
 REGISTER_XLA_OP(Name("XlaCallModule"), XlaCallModuleOp);
 }  // namespace

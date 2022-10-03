@@ -471,14 +471,14 @@ class ShardedBuffer:
 PyLocalBuffer = DeviceArray
 Buffer = DeviceArray
 
-class Array:
+class ArrayImpl:
   def __init__(self,
                aval: Any,
                sharding: Any,
                arrays: Sequence[DeviceArray],
                committed: bool,
                _skip_checks: bool = ...): ...
-  def block_until_ready(self) -> Array: ...
+  def block_until_ready(self) -> ArrayImpl: ...
   dtype: np.dtype
   shape: Tuple[int, ...]
   _arrays: Any

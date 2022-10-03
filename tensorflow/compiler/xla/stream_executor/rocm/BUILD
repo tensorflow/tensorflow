@@ -1,12 +1,12 @@
 # Description:
 #   ROCm-platform specific StreamExecutor support code.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
 )
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow/tsl:tsl.bzl", "tf_copts")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_copts")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 

@@ -37,6 +37,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:reference_ops",
@@ -88,6 +89,7 @@ pybind_extension(
     deps = [
         ":interpreter_wrapper_lib",
         "@pybind11",
+        "//tensorflow/lite/core:headers",
         "//third_party/python_runtime:headers",
         "//tensorflow/lite:framework_lib",
         "//tensorflow/python:pybind11_lib",

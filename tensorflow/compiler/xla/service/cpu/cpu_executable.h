@@ -42,13 +42,44 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
+// Maps the descriptor table with inputs/outputs. Note that flattened_outputs
+// and result are mutually exclusive -- see below.
+//
+// Contains the same info as "xla_framework" MLIR annotations. That is:
+// - inputs: indices in the descriptor table of the input arguments.
+// - output_is_tuple: if set, the output is a tuple.
+// - flattened_outputs: if the output is a tuple, this contains the indices
+//   (if any) in the descriptor table that correspond to the expanded tuple.
+// - result: if the output is NOT a tuple, contains the index in the descriptor
+//   table of the result.
+struct XlaFrameworkMapping {
+  std::vector<int64_t> inputs;
+  std::vector<int64_t> flattened_outputs;
+  int64_t result = -1;
+  bool output_is_tuple = false;
+};
+
+// BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
+class BufferDesc {
+ public:
+  BufferDesc(void* data, size_t size) : data_(data), size_(size) {}
+  void* data() const { return data_; }
+  size_t size() const { return size_; }
+
+ private:
+  void* data_;
+  size_t size_;
+};
+
 class XlaRuntimeCpuExecutable {
  public:
   explicit XlaRuntimeCpuExecutable(
-      std::unique_ptr<xla::runtime::JitExecutable> jit_executable)
+      std::unique_ptr<xla::runtime::JitExecutable> jit_executable,
+      const XlaFrameworkMapping& xla_framework_mapping)
       : jit_executable_(std::move(jit_executable)),
-        default_executable_(&jit_executable_->DefaultExecutable().get()) {}
-  Status Execute(const std::vector<xla::runtime::BufferDesc>& buffers);
+        default_executable_(&jit_executable_->DefaultExecutable().get()),
+        xla_framework_mapping_(xla_framework_mapping) {}
+  Status Execute(const std::vector<BufferDesc>& descriptor_table);
   xla::runtime::Executable& default_executable() {
     return *default_executable_;
   }
@@ -56,6 +87,7 @@ class XlaRuntimeCpuExecutable {
  private:
   std::unique_ptr<xla::runtime::JitExecutable> jit_executable_;
   xla::runtime::Executable* default_executable_;  // owned by jit_executable_.
+  XlaFrameworkMapping xla_framework_mapping_;
 };
 
 // CPU-targeting implementation of the XLA Executable interface.
@@ -82,9 +114,8 @@ class CpuExecutable : public Executable {
 
   bool IsXlaRuntime() { return xla_runtime_executable_ != nullptr; }
 
-  Status ExecuteXlaRuntime(
-      const std::vector<xla::runtime::BufferDesc>& buffers) {
-    return xla_runtime_executable_->Execute(buffers);
+  Status ExecuteXlaRuntime(const std::vector<BufferDesc>& descriptor_table) {
+    return xla_runtime_executable_->Execute(descriptor_table);
   }
 
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(

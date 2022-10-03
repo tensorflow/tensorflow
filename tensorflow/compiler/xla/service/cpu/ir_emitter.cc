@@ -81,7 +81,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -1772,7 +1772,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   bool is_reduction_over_minor_dimension = absl::c_linear_search(
       dimensions, LayoutUtil::Minor(arg->shape().layout(), 0));
 
-  llvm::Align element_alignment(tensorflow::MathUtil::GCD<unsigned>(
+  llvm::Align element_alignment(tsl::MathUtil::GCD<unsigned>(
       ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type()),
       MinimumAlignmentForPrimitiveType(reduce->shape().element_type())));
 
@@ -2767,7 +2767,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
                                      const llvm_ir::IrArray& source_array) {
   unsigned primitive_type_size =
       ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
-  llvm::Align element_alignment(tensorflow::MathUtil::GCD<unsigned>(
+  llvm::Align element_alignment(tsl::MathUtil::GCD<unsigned>(
       primitive_type_size, MinimumAlignmentForPrimitiveType(primitive_type)));
   llvm::Type* primitive_llvm_type =
       llvm_ir::PrimitiveTypeToIrType(primitive_type, module_);

@@ -1385,12 +1385,12 @@ class LowerResizeNearestNeighbor : public RewritePattern {
       return failure();
     }
 
-    int batch_cst = input_ty.getShape()[0];
-    int channels_cst = input_ty.getShape()[3];
+    int64_t batch_cst = input_ty.getShape()[0];
+    int64_t channels_cst = input_ty.getShape()[3];
 
-    int in_y_cst = input_ty.getShape()[1];
-    int in_x_cst = input_ty.getShape()[2];
-    int in_spatial_cst =
+    int64_t in_y_cst = input_ty.getShape()[1];
+    int64_t in_x_cst = input_ty.getShape()[2];
+    int64_t in_spatial_cst =
         in_y_cst < 0 || in_x_cst < 0 ? -1 : in_y_cst * in_x_cst;
 
     // TODO(suderman): Add support for these optional parameters.

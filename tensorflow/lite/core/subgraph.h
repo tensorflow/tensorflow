@@ -426,6 +426,13 @@ class Subgraph {
   // Currently, it's used to remove unused inputs of WHILE cond subgraphs.
   TfLiteStatus RemoveUnusedInputs();
 
+  // WARNING: This is an experimental API and subject to change.
+  // If true, the graph-reordering optimization that finds a topological
+  // reordering that keeps delegated nodes together will be disabled.
+  bool DisableDelegateClustering() const {
+    return (options_ && options_->GetDisableDelegateClustering());
+  }
+
  private:
   friend class InterpreterBuilder;
   friend class TestDelegate;

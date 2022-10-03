@@ -164,6 +164,11 @@ cc_library(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "//tensorflow/tsl/framework:allocator_retry.h",
+        "//tensorflow/tsl/framework:allocator_retry.cc",
+        "//tensorflow/tsl/framework:bfc_allocator.h",
+        "//tensorflow/tsl/framework:bfc_allocator.cc",
+        "//tensorflow/tsl/framework:shared_counter.h",
     ] + glob(
         [
             "**/*.cc",
@@ -303,6 +308,8 @@ filegroup(
         "process_state.h",
         "pool_allocator.h",
         "permuter.h",
+        "//tensorflow/tsl/framework:allocator_retry.h",
+        "//tensorflow/tsl/framework:shared_counter.h",
     ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
 )
 
@@ -662,9 +669,9 @@ cc_library(
 )
 
 cc_library(
-    name = "forward_type_inference",
-    srcs = ["forward_type_inference.cc"],
-    hdrs = ["forward_type_inference.h"],
+    name = "type_inference",
+    srcs = ["type_inference.cc"],
+    hdrs = ["type_inference.h"],
     copts = tf_copts(),
     visibility = default_package_visibility,
     deps = [
@@ -692,14 +699,14 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "forward_type_inference_test",
+    name = "type_inference_test",
     size = "small",
-    srcs = ["forward_type_inference_test.cc"],
+    srcs = ["type_inference_test.cc"],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session_internal",
-        ":forward_type_inference",
+        ":type_inference",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:client_session",
@@ -783,7 +790,6 @@ cc_library(
         ":device_set",
         ":executor",
         ":executor_factory",
-        ":forward_type_inference",
         ":function_body",
         ":function_def_utils",
         ":function_optimization_registry",
@@ -801,6 +807,7 @@ cc_library(
         ":rendezvous_util",
         ":replicate_per_replica_nodes",
         ":single_threaded_executor",
+        ":type_inference",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -1939,9 +1946,7 @@ tf_cuda_library(
 cc_library(
     name = "bfc_allocator",
     srcs = [
-        "allocator_retry.cc",
         "allocator_retry.h",
-        "bfc_allocator.cc",
     ],
     hdrs = ["bfc_allocator.h"],
     features = ["parse_headers"],
@@ -1955,6 +1960,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/framework:bfc_allocator",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -1968,6 +1974,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/framework:shared_counter",
     ],
 )
 
@@ -2737,7 +2744,10 @@ tf_cc_test(
     srcs = ["direct_session_with_tracking_alloc_test.cc"],
     args = ["--heap_check="],  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_gpu"],
+    tags = [
+        "no_gpu",
+        "no_macos",  # TODO(b/250242601)
+    ],
     deps = [
         ":core",
         ":core_cpu",

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/tsl/framework/bfc_allocator.h"
 
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -43,12 +44,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_host_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/device_mem_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/common_runtime/device/device_host_allocator.h"
-#include "tensorflow/core/common_runtime/device/device_id.h"
-#include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace xla {
 namespace {
@@ -88,8 +89,7 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
     }
 
     auto allocator = std::make_unique<tensorflow::GpuCudaMallocAsyncAllocator>(
-        tensorflow::PlatformDeviceId(device_ordinal), allocator_memory,
-        preallocate);
+        tsl::PlatformDeviceId(device_ordinal), allocator_memory, preallocate);
     allocator->SetStreamAndPreallocateMemory(
         ordinal_and_device.second->compute_stream()
             ->implementation()
@@ -211,8 +211,8 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
       addressable_devices.begin()->second->executor()->platform();
   std::vector<se::MultiDeviceAdapter::AllocatorWithStream> allocators;
   bool enable_unified_memory;
-  Status status = tensorflow::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY",
-                                                 false, &enable_unified_memory);
+  Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY", false,
+                                          &enable_unified_memory);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to read TF_FORCE_UNIFIED_MEMORY: "
                << status.error_message();
@@ -221,11 +221,11 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
   for (auto& ordinal_and_device : addressable_devices) {
     se::StreamExecutor* executor = ordinal_and_device.second->executor();
     int device_ordinal = executor->device_ordinal();
-    auto sub_allocator = std::make_unique<tensorflow::DeviceMemAllocator>(
-        executor, tensorflow::PlatformDeviceId(device_ordinal),
+    auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
+        executor, tsl::PlatformDeviceId(device_ordinal),
         /*use_unified_memory=*/enable_unified_memory,
-        /*alloc_visitors=*/std::vector<tensorflow::SubAllocator::Visitor>(),
-        /*free_visitors=*/std::vector<tensorflow::SubAllocator::Visitor>());
+        /*alloc_visitors=*/std::vector<tsl::SubAllocator::Visitor>(),
+        /*free_visitors=*/std::vector<tsl::SubAllocator::Visitor>());
 
     int64_t free_memory;
     int64_t total_memory;
@@ -250,9 +250,9 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
                 << " for BFCAllocator.";
     }
 
-    tensorflow::BFCAllocator::Options opts;
+    tsl::BFCAllocator::Options opts;
     opts.allow_growth = !preallocate;
-    auto gpu_bfc_allocator = std::make_unique<tensorflow::BFCAllocator>(
+    auto gpu_bfc_allocator = std::make_unique<tsl::BFCAllocator>(
         std::move(sub_allocator), allocator_memory,
         absl::StrCat("GPU_", device_ordinal, "_bfc"), opts);
     allocators.emplace_back(std::move(gpu_bfc_allocator),
@@ -303,20 +303,20 @@ StatusOr<std::unique_ptr<se::DeviceMemoryAllocator>> GetGpuDeviceAllocator(
 
 // Returns a GPU pinned host memory allocator to use when staging host->GPU
 // transfers. We use a fixed 64MB pool of pinned memory.
-std::unique_ptr<tensorflow::BFCAllocator> GetGpuHostAllocator(
+std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
     se::StreamExecutor* executor) {
-  std::unique_ptr<tensorflow::SubAllocator> sub_allocator(
-      new tensorflow::DeviceHostAllocator(executor, /*numa_node=*/0,
-                                          /*alloc_visitors=*/{},
-                                          /*free_visitors=*/{}));
+  std::unique_ptr<tsl::SubAllocator> sub_allocator(
+      new se::DeviceHostAllocator(executor, /*numa_node=*/0,
+                                  /*alloc_visitors=*/{},
+                                  /*free_visitors=*/{}));
   // TODO(phawkins): allow the user to tune this.
   const int64_t kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
 
-  tensorflow::BFCAllocator::Options opts;
+  tsl::BFCAllocator::Options opts;
   opts.allow_growth = true;
-  return std::make_unique<tensorflow::BFCAllocator>(
-      std::move(sub_allocator), kGpuHostMemoryLimitBytes,
-      /*name=*/"xla_gpu_host_bfc", opts);
+  return std::make_unique<tsl::BFCAllocator>(std::move(sub_allocator),
+                                             kGpuHostMemoryLimitBytes,
+                                             /*name=*/"xla_gpu_host_bfc", opts);
 }
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(

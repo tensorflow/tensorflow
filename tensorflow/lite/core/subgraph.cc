@@ -415,8 +415,9 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   // fully not-this-delegate or this-delegate computation.
   InterpreterInfo info(this);
   std::vector<NodeSubset> node_subsets;
-  PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
-                                           &node_subsets);
+  PartitionGraphIntoIndependentNodeSubsets(
+      &info, nodes_to_replace, &node_subsets,
+      /*greedily=*/!DisableDelegateClustering());
 
   // On Android the log message below is used for diagnosing delegation success
   // also in production builds. Use VERBOSE here so that the logging is turned
@@ -566,8 +567,9 @@ TfLiteStatus Subgraph::PreviewDelegatePartitioning(
   // Partition the execution plan into node subsets.
   InterpreterInfo info(this);
   std::vector<NodeSubset> node_subsets;
-  PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
-                                           &node_subsets);
+  PartitionGraphIntoIndependentNodeSubsets(
+      &info, nodes_to_replace, &node_subsets,
+      /*greedily=*/!DisableDelegateClustering());
 
   // Create one TfLiteDelegateParams per node-subset which would be delegated.
   for (auto& node_subset : node_subsets) {

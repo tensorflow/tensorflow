@@ -56,7 +56,7 @@ void CreateDefaultXlaGpuRuntimeCompilationPipeline(
   pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
   // Convert everythinG else to LLVM dialect.
-  pm.addPass(mlir::createMemRefToLLVMPass());
+  pm.addPass(mlir::createMemRefToLLVMConversionPass());
   pm.addPass(mlir::createConvertFuncToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 }

@@ -40,7 +40,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -53,8 +53,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/location_metadata.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/gpu_passes.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
+#include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/all_gather_broadcast_reorder.h"
 #include "tensorflow/compiler/xla/service/all_gather_combiner.h"
@@ -116,6 +118,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
+#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
@@ -159,6 +162,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/real_imag_expander.h"
 #include "tensorflow/compiler/xla/service/reduce_decomposer.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_combiner.h"
+#include "tensorflow/compiler/xla/service/reduce_scatter_reassociate.h"
 #include "tensorflow/compiler/xla/service/reshape_decomposer.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/result_caster.h"
@@ -199,12 +203,6 @@ limitations under the License.
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
-
-#if XLA_ENABLE_XLIR
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
-#include "tensorflow/compiler/xla/runtime/jit_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
-#endif  // XLA_ENABLE_XLIR
 
 namespace xla {
 namespace gpu {
@@ -310,23 +308,25 @@ bool ConvIsLowerable(HloInstruction* conv) {
 using OwnedThunkSequence = GpuExecutable::OwnedThunkSequence;
 using OwnedJitRtProgram = GpuExecutable::OwnedJitRtProgram;
 
-StatusOr<std::unique_ptr<Executable>> JitRtAotCompilationResult::LoadExecutable(
+StatusOr<std::unique_ptr<Executable>>
+GpuXlaRuntimeAotCompilationResult::LoadExecutable(
     Compiler* compiler, se::StreamExecutor* executor) const {
-  TF_ASSIGN_OR_RETURN(
-      HloModuleConfig hlo_module_config,
-      HloModule::CreateModuleConfigFromProto(
-          jitrt_executable_.hlo_module_proto(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          xla_runtime_executable_.hlo_module_proto(),
+                          GetDebugOptionsFromFlags()));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(jitrt_executable_.hlo_module_proto(),
+      HloModule::CreateFromProto(xla_runtime_executable_.hlo_module_proto(),
                                  hlo_module_config));
   auto gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
   return GpuExecutable::LoadFromObjFile(
-      std::move(hlo_module), jitrt_executable_.obj_file(),
-      jitrt_executable_.mlir_module(), jitrt_executable_.entry_func_attrs(),
-      GetDebugOptionsFromFlags(), jitrt_executable_.gpu_asm_text(),
-      jitrt_executable_.gpu_binary(), gpu_compiler->GetGpuVersion(executor),
-      executor);
+      std::move(hlo_module), xla_runtime_executable_.obj_file(),
+      xla_runtime_executable_.mlir_module(),
+      xla_runtime_executable_.entry_func_attrs(), GetDebugOptionsFromFlags(),
+      xla_runtime_executable_.gpu_asm_text(),
+      xla_runtime_executable_.gpu_binary(),
+      gpu_compiler->GetGpuVersion(executor), executor);
 }
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
@@ -585,6 +585,7 @@ Status GpuCompiler::OptimizeHloModule(
     collectives_pipeline.AddPass<AllReduceFolder>();
     collectives_pipeline.AddPass<ReduceScatterCreator>();
     collectives_pipeline.AddPass<AllReduceReassociate>();
+    collectives_pipeline.AddPass<ReduceScatterReassociate>();
 
     // Run algebraic simplifier to reshape(broadcast) into a broadcast when
     // the reshape is just adding a unit dimension. This will help with the
@@ -789,7 +790,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot,
                                      TransposeFolding::NeverFoldTranspose);
   // Rewrite GEMMs into custom calls.
-  pipeline.AddPass<GemmRewriter>();
+  pipeline.AddPass<GemmRewriter>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
 
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
@@ -894,8 +896,6 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
   return std::move(assignment);
 }
 
-#if XLA_ENABLE_XLIR
-
 // Lowers MLIR module to the XLA Gpu runtime custom calls.
 static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
                                    llvm::StringRef entry_function_name,
@@ -946,7 +946,6 @@ static StatusOr<OwnedJitRtProgram> LowerToJitRt(
       entry_function_name.str(), os.str(), buffer_sizes.vec(),
       hlo_module->config().debug_options());
 }
-#endif  // XLA_ENABLE_XLIR
 
 using OutputInfoMap =
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>;
@@ -1122,7 +1121,6 @@ static Status CompileModuleToLlvmIrImpl(
     RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
-#if XLA_ENABLE_XLIR
   if (IsJitRtExecutableEnabled(hlo_module->config())) {
     std::vector<int64_t> buffer_sizes;
     llvm::transform(
@@ -1134,7 +1132,6 @@ static Status CompileModuleToLlvmIrImpl(
                      hlo_module, ir_emitter->ConsumeThunkSequence()));
     return OkStatus();
   }
-#endif  // XLA_ENABLE_XLIR
 
   auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
   ForAllThunks([](Thunk* thunk) { thunk->ClearCompileTimeInfo(); },
@@ -1491,7 +1488,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& options) {
-#if XLA_ENABLE_XLIR
   CHECK(options.PlatformId() == se::cuda::kCudaPlatformId);
   CHECK(options.executor() != nullptr);
   auto stream_exec = options.executor();
@@ -1567,15 +1563,13 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     std::string data(obj_file->getBuffer().data(),
                      obj_file->getBuffer().size());
-    results.emplace_back(std::make_unique<xla::gpu::JitRtAotCompilationResult>(
-        module->ToProto(), data, program->module,
-        compile_module_results.entry_func_attrs, backend_result.first,
-        backend_result.second));
+    results.emplace_back(
+        std::make_unique<xla::gpu::GpuXlaRuntimeAotCompilationResult>(
+            module->ToProto(), data, program->module,
+            compile_module_results.entry_func_attrs, backend_result.first,
+            backend_result.second));
   }
   return std::move(results);
-#else
-  return Unimplemented("");
-#endif  // XLA_ENABLE_XLIR
 }
 
 HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
@@ -1598,7 +1592,7 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
   auto binary = gpu_executable->binary();
 
   std::unique_ptr<AotCompilationResult> result =
-      std::make_unique<gpu::JitRtAotCompilationResult>(
+      std::make_unique<xla::gpu::GpuXlaRuntimeAotCompilationResult>(
           module_proto, obj_file, mlir_module, entry_func_attrs, text, binary);
   return result;
 }

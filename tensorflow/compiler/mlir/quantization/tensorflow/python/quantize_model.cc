@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
@@ -70,10 +71,13 @@ void AddExportPasses(mlir::PassManager &pm) {
 // there is only one node for initialization.
 std::string GetInitNodeName(
     const absl::flat_hash_set<Node *> &control_ret_nodes) {
-  if (control_ret_nodes.empty()) {
-    return "";
+  for (Node *control_ret_node : control_ret_nodes) {
+    if (absl::StrContains(control_ret_node->name(), kInitOpNamePrefix)) {
+      VLOG(1) << "Init node found: " << control_ret_node->name();
+      return control_ret_node->name();
+    }
   }
-  return (*control_ret_nodes.begin())->name();
+  return "";
 }
 
 // Converts MLIR ModuleOp to ExportedModel. Returns InternalError status

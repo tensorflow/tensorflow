@@ -27,8 +27,10 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -97,6 +99,22 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
     if mode == 'mkl' and not test_util.IsMklEnabled():
       self.skipTest('MKL is not enabled.')
+
+  def _VerifyNoFusion(self, model_fn):
+    ops.add_to_collection('train_op', model_fn)
+    mg = meta_graph.create_meta_graph_def(graph=model_fn.graph)
+
+    # Compute referene
+    config = _get_config(remapping_on=False)
+    gdef_ref = tf_optimizer.OptimizeGraph(config, mg)
+
+    # Compute with remapping ON
+    config = _get_config(remapping_on=True)
+    gdef = tf_optimizer.OptimizeGraph(config, mg)
+
+    self.assertEqual(len(gdef_ref.node), len(gdef.node))
+    self.assertAllEqual([n.op for n in gdef_ref.node],
+                        [n.op for n in gdef.node])
 
   def _VerifyValues(self, model_fn, use_low_precision, fused_op, epilog_ops):
     run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -189,7 +207,17 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
           z = nn.bias_add(y, b)
           out = act_fn(z)
 
-        epilog_ops = [b'BiasAdd', act_name]
+        if transpose and (device == '/device:CPU:0') and \
+            act_name in (b'GeluApproximate', b'GeluExact'):
+          if precision == dtypes.bfloat16:
+            # No fusion should happen on CPU.
+            self._VerifyNoFusion(out)
+            continue
+          else:
+            # Gelu should not get fused, only BiasAdd.
+            epilog_ops = [b'BiasAdd']
+        else:
+          epilog_ops = [b'BiasAdd', act_name]
         graph = self._VerifyValues(out, precision != dtypes.float32, fused_op,
                                    epilog_ops)
 

@@ -47,7 +47,6 @@ package(
 exports_files(
     srcs = [
         "allocator_registry.h",
-        "cancellation.h",
         "collective.h",
         "control_flow.h",
         "dataset.h",
@@ -256,13 +255,14 @@ filegroup(
         "versions.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework/registration:registration.h",
+        "//tensorflow/tsl/framework:device_type.h",
+        "//tensorflow/tsl/framework:framework_internal_private_hdrs",
     ],
 )
 
 filegroup(
     name = "framework_internal_impl_srcs",
     srcs = [
-        "cancellation.cc",
         "collective.cc",
         "dataset.cc",
         "device.cc",
@@ -279,7 +279,6 @@ filegroup(
         "logging.cc",
         "lookup_interface.cc",
         "memory_types.cc",
-        "metrics.cc",
         "model.cc",
         "node_def_builder.cc",
         "op_kernel.cc",
@@ -294,6 +293,7 @@ filegroup(
         "tensor_slice.cc",
         "tensor_util.cc",
         "versions.cc",
+        "//tensorflow/tsl/framework:framework_internal_impl_srcs",
     ],
 )
 
@@ -338,6 +338,7 @@ filegroup(
         "variant_op_registry.h",
         "variant_tensor_data.cc",
         "variant_tensor_data.h",
+        "//tensorflow/tsl/framework:device_type.h",
     ],
 )
 
@@ -346,7 +347,6 @@ filegroup(
     srcs = [
         "attr_value_util.cc",
         "attr_value_util.h",
-        "cancellation.cc",
         "cancellation.h",
         "collective.cc",
         "collective.h",
@@ -387,7 +387,6 @@ filegroup(
         "lookup_interface.h",
         "memory_types.cc",
         "memory_types.h",
-        "metrics.cc",
         "metrics.h",
         "model.cc",
         "model.h",
@@ -443,6 +442,7 @@ filegroup(
         "versions.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework/registration:registration.h",
+        "//tensorflow/tsl/framework:mobile_srcs_only_runtime",
     ],
 )
 
@@ -630,6 +630,31 @@ cc_library(
 )
 
 cc_library(
+    name = "float8",
+    srcs = ["float8.cc"],
+    hdrs = ["float8.h"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
+    ],
+    deps = [
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "float8_test",
+    srcs = ["float8_test.cc"],
+    deps = [
+        ":float8",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test_benchmark",
+    ],
+)
+
+cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
     visibility = [
@@ -639,7 +664,6 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:types",
         "//tensorflow/tsl/framework:numeric_types",
-        "//third_party/eigen3",
     ],
 )
 
@@ -838,6 +862,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/core/public:version",
         "//tensorflow/core/util:managed_stack_trace",
+        "//tensorflow/tsl/framework:device_type",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1094,6 +1119,7 @@ exports_files(
         "allocator.h",
         "bfloat16.h",
         "bounds_check.h",
+        "cancellation.h",
         "fake_input.h",
         "function_testlib.h",
         "log_memory.h",
@@ -1272,7 +1298,6 @@ tf_cc_tests(
         "attr_value_util_test.cc",
         "batch_util_test.cc",
         "bfloat16_test.cc",
-        "cancellation_test.cc",
         "common_shape_fns_test.cc",
         "dataset_test.cc",
         "device_base_test.cc",

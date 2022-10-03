@@ -20,7 +20,7 @@ from __future__ import print_function
 from collections import abc
 import contextlib
 
-from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.distribute import tpu_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops

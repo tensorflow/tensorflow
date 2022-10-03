@@ -2461,6 +2461,13 @@ auto CustomCall(absl::string_view custom_call_target, Args&&... args) {
       .WithCustomCallTarget(custom_call_target);
 }
 
+template <typename... Args>
+auto CustomCall(absl::Span<const absl::string_view> custom_call_targets,
+                Args&&... args) {
+  return CustomCall(std::forward<Args>(args)...)
+      .WithCustomCallTarget(custom_call_targets);
+}
+
 template <typename HloInstructionType, typename Arg0, typename... Args,
           typename std::enable_if<!std::is_convertible<
               Arg0, absl::string_view>::value>::type* = nullptr>

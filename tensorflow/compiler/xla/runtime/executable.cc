@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/executable.h"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
@@ -179,7 +180,13 @@ Executable::GetResultsMemoryLayout(const FunctionType& signature) {
     // Check if the type defines the ABI for returning it as a result.
     if (StatusOr<Type::ResultAbi> abi = type->AsResult(); abi.ok()) {
       layout.offsets.emplace_back(layout.size);
-      layout.size += abi->size;
+      // TODO(ezhulenev): Support user-defined result alignment. As a
+      // workaround, we require all results to be a multiple of 8 bytes. This
+      // way, we automatically get 8-byte alignment for all results, which is
+      // enough for all currently supported types.
+      size_t size = std::max<size_t>(abi->size, 8);
+      assert(size % 8 == 0 && "size must be a multiple of 8 bytes");
+      layout.size += size;
       continue;
     }
 

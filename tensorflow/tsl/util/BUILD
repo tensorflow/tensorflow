@@ -71,7 +71,6 @@ filegroup(
 filegroup(
     name = "framework_internal_impl_srcs",
     srcs = [
-        "command_line_flags.cc",
         "use_cudnn.cc",
     ],
 )
@@ -156,7 +155,6 @@ check_deps(
         otherwise = [":determinism"],
     ),
     deps = [
-        "//tensorflow:tensorflow_cc",
     ],
 )
 
@@ -208,6 +206,19 @@ cc_library(
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:str_util",
+        "//tensorflow/tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "command_line_flags",
+    srcs = ["command_line_flags.cc"],
+    hdrs = ["command_line_flags.h"],
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:str_util",
+        "//tensorflow/tsl/platform:stringpiece",
+        "//tensorflow/tsl/platform:stringprintf",
         "//tensorflow/tsl/platform:types",
     ],
 )

@@ -285,7 +285,7 @@ absl::StatusOr<llvm::hash_code> SymbolicShapesResolver::ResolveHash(
 /*static*/ StaticShape SymbolicShapesResolver::Normalize(
     const SymbolicShape& shape) {
   auto normalize = llvm::map_range(shape, [](int64_t dim) {
-    return std::max(dim, MemrefType::kDynamicSize);
+    return dim < 0 ? MemrefType::kDynamicSize : dim;
   });
   return {normalize.begin(), normalize.end()};
 }

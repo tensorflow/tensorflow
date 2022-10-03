@@ -38,7 +38,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:thlo",
         "//tensorflow/compiler/xla/mlir_hlo:tiling_interface_impl",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TensorDialect",

@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -69,8 +69,8 @@ tf_cc_test(
         ":semaphore",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -113,7 +113,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -128,8 +128,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:random",
+        "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -206,7 +206,7 @@ tf_cc_test(
     deps = [
         ":pjrt_client_test_common",
         ":tfrt_cpu_pjrt_client",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -222,7 +222,7 @@ tf_cc_test(
         ":gpu_device",
         ":pjrt_client_test_common",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -291,7 +291,7 @@ cc_library(
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
     deps = [
-        "//tensorflow/core/lib/monitoring:counter",
+        "//tensorflow/tsl/lib/monitoring:counter",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -338,10 +338,10 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core/framework:allocator",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -440,10 +440,10 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core/common_runtime:bfc_allocator",
-        "//tensorflow/core/common_runtime/device:device_mem_allocator",
-        "//tensorflow/core/common_runtime/device:device_id",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/framework:bfc_allocator",
+        "//tensorflow/tsl/framework:device_id",
+        "//tensorflow/tsl/util:env_var",
+        "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
     ] + if_cuda([
@@ -507,6 +507,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo_pass",
         "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
         "//tensorflow/compiler/xla/mlir_hlo:sparse_chlo_legalize_to_linalg",
+        "//tensorflow/compiler/xla/mlir_hlo:stablehlo_legalize_to_hlo_pass",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -632,8 +633,8 @@ tf_cc_test(
         ":lru_cache",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -674,10 +675,10 @@ tf_cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/numeric:int128",
@@ -719,7 +720,8 @@ tf_cc_test(
     deps = [
         ":host_callback",
         "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:test",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],
 )

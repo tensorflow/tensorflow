@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -137,35 +137,30 @@ Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
 // MaterializeOp
 //===----------------------------------------------------------------------===//
 
-static FailureOr<Type> inferReturnType(RankedTensorType sourceType,
-                                       Type setType) {
-  if (setType.isa<PointType>()) return sourceType.getElementType();
+static FailureOr<Type> inferReturnType(ShapedType sourceType, Type setType) {
   if (auto tileType = setType.dyn_cast<TileType>()) {
-    return RankedTensorType::get(tileType.getShape(),
-                                 sourceType.getElementType());
+    return sourceType.clone(tileType.getShape(), sourceType.getElementType());
   }
   return failure();
 }
 
 void MaterializeOp::build(OpBuilder &builder, OperationState &result,
                           Value source, Value set) {
-  auto sourceType = source.getType().cast<RankedTensorType>();
+  auto sourceType = source.getType().cast<ShapedType>();
   auto resultTypeOr = inferReturnType(sourceType, set.getType());
   assert(resultTypeOr.hasValue() && "could not infer result type");
   build(builder, result, *resultTypeOr, source, set);
 }
 
 LogicalResult verifyCompatibleExtractedSubset(Operation *op,
-                                              RankedTensorType tensorType,
+                                              ShapedType shapedType,
                                               Type extractedType,
                                               Type setType) {
-  auto sourceRank = tensorType.getRank();
-  auto elementType = tensorType.getElementType();
+  auto sourceRank = shapedType.getRank();
+  auto elementType = shapedType.getElementType();
 
   // If the result is a scalar, check that the tile had a single element.
   if (!extractedType.isa<ShapedType>()) {
-    if (setType.isa<PointType>()) return success();
-
     auto tileType = setType.cast<TileType>();
     if (extractedType != elementType) {
       return op->emitOpError("expected the result type ")
@@ -179,8 +174,8 @@ LogicalResult verifyCompatibleExtractedSubset(Operation *op,
            << tileType << " to have a single element shape";
   }
 
-  // If the result is a tensor, compare with the inferred type.
-  auto extractedTensorType = extractedType.cast<RankedTensorType>();
+  // If the result is a shaped type, compare with the inferred type.
+  auto extractedShapedType = extractedType.cast<ShapedType>();
   auto tileType = setType.cast<TileType>();
   int64_t tileRank = tileType.getRank();
   if (tileRank != sourceRank) {
@@ -189,10 +184,10 @@ LogicalResult verifyCompatibleExtractedSubset(Operation *op,
   }
 
   auto inferredType =
-      RankedTensorType::get(tileType.getShape(), tensorType.getElementType());
-  if (extractedTensorType != inferredType) {
+      shapedType.clone(tileType.getShape(), shapedType.getElementType());
+  if (extractedShapedType != inferredType) {
     return op->emitOpError("expected result type = ")
-           << extractedTensorType
+           << extractedShapedType
            << " to match the inferred type = " << inferredType;
   }
 
@@ -563,6 +558,18 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
                                     static_cast<int32_t>(upper.size()),
                                     static_cast<int32_t>(steps.size())};
 
+  // Parse distribution type (only for ParallelOp)
+  if (std::is_same<LoopTy, ParallelOp>::value) {
+    if (succeeded(parser.parseOptionalKeyword("distribution"))) {
+      StringAttr distributionType;
+      if (parser.parseLParen() || parser.parseAttribute(distributionType) ||
+          parser.parseRParen())
+        return failure();
+      result.addAttribute(ParallelOp::getDistributionTypeAttrName(result.name),
+                          distributionType);
+    }
+  }
+
   // Parse the output tensors (only for ForOp) and the body.
   SmallVector<OpAsmParser::UnresolvedOperand, 4> regionOperands(ivs);
   SmallVector<Type, 4> regionTypes(ivs.size(), builder.getIndexType());
@@ -611,6 +618,7 @@ LogicalResult ParallelOp::verify() { return success(); }
 void ParallelOp::build(
     OpBuilder &builder, OperationState &result, TypeRange resultTypes,
     ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
+    Optional<StringAttr> distributionType,
     function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
   result.addOperands(lowerBounds);
   result.addOperands(upperBounds);
@@ -621,6 +629,10 @@ void ParallelOp::build(
       builder.getDenseI32ArrayAttr({static_cast<int32_t>(lowerBounds.size()),
                                     static_cast<int32_t>(upperBounds.size()),
                                     static_cast<int32_t>(steps.size())}));
+
+  if (distributionType.has_value())
+    result.addAttribute(getDistributionTypeAttrName(result.name),
+                        distributionType.value());
 
   OpBuilder::InsertionGuard guard(builder);
   unsigned numIvs = steps.size();
@@ -641,10 +653,14 @@ void ParallelOp::print(OpAsmPrinter &p) {
   p << " (" << getInductionVars() << ") = (" << getLowerBound() << ") to ("
     << getUpperBound() << ") step (" << getStep() << ") ";
 
+  if (getDistributionType().has_value())
+    p << "distribution (" << getDistributionTypeAttr() << ") ";
+
   p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
   p.printOptionalAttrDict(
       getOperation()->getAttrs(),
-      /*elidedAttrs=*/{ParallelOp::getOperandSegmentSizeAttr()});
+      /*elidedAttrs=*/{ParallelOp::getOperandSegmentSizeAttr(),
+                       getDistributionTypeAttrName()});
 
   if (!getResultTypes().empty()) {
     p << " : ";
@@ -1346,48 +1362,6 @@ mlir::Value SpaceOp::getDynamicSize(unsigned idx) {
 }
 
 //===----------------------------------------------------------------------===//
-// PointOp
-//===----------------------------------------------------------------------===//
-
-void PointOp::build(OpBuilder &builder, OperationState &result, Value superset,
-                    ArrayRef<OpFoldResult> offsets,
-                    ArrayRef<NamedAttribute> attrs) {
-  SmallVector<Value> dynamicOffsets;
-  SmallVector<int64_t> staticOffsets;
-  for (OpFoldResult offset : offsets)
-    dispatchIndexOpFoldResult(offset, dynamicOffsets, staticOffsets,
-                              ShapedType::kDynamicStrideOrOffset);
-  build(builder, result, PointType::get(builder.getContext()), superset,
-        dynamicOffsets, builder.getI64ArrayAttr(staticOffsets));
-  result.addAttributes(attrs);
-}
-
-LogicalResult PointOp::verify() {
-  auto tileShape = getSuperset().getType().cast<TileType>().getShape();
-  if (failed(mlir::verifyListOfOperandsOrIntegers(
-          getOperation(), "index", tileShape.size(), getStaticIndices(),
-          getDynamicIndices(), ShapedType::isDynamicStrideOrOffset))) {
-    return failure();
-  }
-  // Check whether the known indices are in-bounds of known dimension sizes.
-  for (auto dimAndIndex : llvm::zip(tileShape, getStaticIndices())) {
-    auto dimSize = std::get<0>(dimAndIndex);
-    auto index =
-        std::get<1>(dimAndIndex).dyn_cast<mlir::IntegerAttr>().getInt();
-    if (index == ShapedType::kDynamicStrideOrOffset) continue;
-    if (index < 0) {
-      return emitOpError("expected index = ") << index << " to be non-negative";
-    }
-    if (dimSize != ShapedType::kDynamicSize && index >= dimSize) {
-      return emitOpError("expected index = ")
-             << index << " to be between 0 and " << (dimSize - 1);
-    }
-  }
-  return success();
-}
-
-//
-//===----------------------------------------------------------------------===//
 // TileOp
 //===----------------------------------------------------------------------===//
 
@@ -1603,30 +1577,6 @@ Value TileOp::compose(OpBuilder &builder) {
 }
 
 //===----------------------------------------------------------------------===//
-// PointOp
-//===----------------------------------------------------------------------===//
-
-Value PointOp::compose(OpBuilder &builder) {
-  auto supersetOp =
-      llvm::dyn_cast_or_null<TileOp>(getSuperset().getDefiningOp());
-  if (!supersetOp) return {};
-
-  // Compose offsets with newOffset = supersetOffset + supersetStride *
-  // offset.
-  auto loc = getLoc();
-  auto composedOffsets = decomposeMixedStridesOrOffsets(
-      builder,
-      composeOffsets(supersetOp.getMixedOffsets(), supersetOp.getMixedStrides(),
-                     mlir::getMixedStridesOrOffsets(getStaticIndices(),
-                                                    getDynamicIndices()),
-                     loc, builder));
-
-  // Build the composed point op.
-  return builder.create<PointOp>(loc, supersetOp.getSuperset(),
-                                 composedOffsets.second, composedOffsets.first);
-}
-
-//===----------------------------------------------------------------------===//
 // DropDimsOp
 //===----------------------------------------------------------------------===//
 
@@ -1636,12 +1586,6 @@ LogicalResult DropDimsOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   DropDimsOp::Adaptor adaptor(operands, attributes, regions);
   Type argTy = adaptor.getSuperset().getType();
-
-  // If the argument is of point type, so is the result.
-  if (auto pointTy = argTy.dyn_cast<PointType>()) {
-    inferredReturnTypes.push_back(argTy);
-    return success();
-  }
 
   // If the argument is of tile type, we can skip the dropped dimensions to
   // derive the result type.
@@ -1681,20 +1625,6 @@ Value selectDimsFromSet(OpBuilder &builder, Location loc, Type type, Value set,
     auto newSpaceSizesDecomposed = decomposeMixedSizes(builder, newSpaceSizes);
     return builder.create<SpaceOp>(loc, newSpaceSizesDecomposed.second,
                                    newSpaceSizesDecomposed.first);
-  }
-
-  // Case: point(space)
-  if (PointOp pointOp = llvm::dyn_cast_or_null<PointOp>(setDef)) {
-    auto newSpace =
-        selectDimsFromSet(builder, loc, type, pointOp.getSuperset(), selection);
-    auto pointOffsets = getMixedStridesOrOffsets(pointOp.getStaticIndices(),
-                                                 pointOp.getDynamicIndices());
-    auto newPointOffsets = selectMixedValues(pointOffsets, selection);
-    auto newPointOffsetsDecomposed =
-        decomposeMixedStridesOrOffsets(builder, newPointOffsets);
-    return builder.create<PointOp>(loc, newSpace,
-                                   newPointOffsetsDecomposed.second,
-                                   newPointOffsetsDecomposed.first);
   }
 
   // Case: tile(space)
@@ -1747,12 +1677,6 @@ LogicalResult TransposeDimsOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   TransposeDimsOp::Adaptor adaptor(operands, attributes, regions);
   const Type argTy = adaptor.getSuperset().getType();
-
-  // If the argument is of point type, so is the result.
-  if (auto pointTy = argTy.dyn_cast<PointType>()) {
-    inferredReturnTypes.push_back(argTy);
-    return success();
-  }
 
   // If the argument is of tile type, we can transpose the type's dimensions.
   if (auto tileTy = argTy.dyn_cast<TileType>()) {
@@ -1880,9 +1804,9 @@ void SetYieldOp::build(
 LogicalResult SetYieldOp::verify() {
   for (const auto [dst, src, set] :
        llvm::zip(getDsts(), getSrcs(), getSets())) {
-    if (failed(verifyCompatibleExtractedSubset(
-            getOperation(), dst.getType().cast<RankedTensorType>(),
-            src.getType(), set.getType())))
+    if (failed(verifyCompatibleExtractedSubset(getOperation(),
+                                               dst.getType().cast<ShapedType>(),
+                                               src.getType(), set.getType())))
       return failure();
   }
   auto accumulatorCount = llvm::count_if(
@@ -2018,20 +1942,8 @@ OpFoldResult OffsetOp::fold(ArrayRef<Attribute> operands) {
   if (!idxAttr) return {};
   int64_t idx = idxAttr.getInt();
 
-  // Case: offset(point(space))
-  Operation *subsetDef = getSubset().getDefiningOp();
-  if (auto pointOp = llvm::dyn_cast_or_null<PointOp>(subsetDef)) {
-    Operation *supersetDef = pointOp.getSuperset().getDefiningOp();
-
-    // Can only fold locally if the superset is the root space. Otherwise, rely
-    // on subset composition.
-    if (!llvm::isa_and_nonnull<SpaceOp>(supersetDef)) return {};
-
-    return ensureIndexTypeForAttribute(mlir::getMixedStridesOrOffsets(
-        pointOp.getStaticIndices(), pointOp.getDynamicIndices())[idx]);
-  }
-
   // Case: offset(tile(space))
+  Operation *subsetDef = getSubset().getDefiningOp();
   if (auto tileOp = llvm::dyn_cast_or_null<TileOp>(subsetDef)) {
     Operation *supersetDef = tileOp.getSuperset().getDefiningOp();
 

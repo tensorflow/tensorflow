@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
 
@@ -493,7 +494,7 @@ class MiniBenchmarkImpl : public MiniBenchmark {
   void CreateValidatorIfNececessary() {
     if (validator_) return;
 
-    ValidatorRunner::Options options;
+    ValidatorRunnerOptions options;
     MinibenchmarkStatus get_nnapi_sl_status =
         GetNnApiSlPointerIfPresent(&options.nnapi_sl);
     if (get_nnapi_sl_status != kMinibenchmarkSuccess) {

@@ -20,6 +20,9 @@ limitations under the License.
 
 #if !defined(PLATFORM_WINDOWS)
 #include <sys/uio.h>
+namespace tsl {
+using ::iovec;  // NOLINT(misc-unused-using-decls)
+}  // namespace tsl
 #else
 namespace tsl {
 struct iovec {

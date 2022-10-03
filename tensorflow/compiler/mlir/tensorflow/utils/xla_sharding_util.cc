@@ -554,6 +554,7 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
     const mlir::Location& location,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
     llvm::SmallVector<llvm::SmallVector<int, 4>, 4> cluster_to_core_index,
+    int num_results_pre_cluster,
     mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
     mlir::tf_device::ParallelExecuteOp new_parallel_execute,
     mlir::OpBuilder* builder) {
@@ -561,7 +562,19 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
        llvm::enumerate(old_parallel_execute.getResults())) {
     const auto output_index = result_and_index.index();
     const auto old_parallel_execute_output = result_and_index.value();
-    const auto& output_sharding = output_sharding_config[output_index];
+    if (output_index < num_results_pre_cluster) {
+      // Replace the use of those results of old parallel_execute op from host
+      // with corresponding results of new parallel_execute op
+      for (auto& use : llvm::make_early_inc_range(
+               old_parallel_execute->getResult(output_index).getUses())) {
+        use.set(new_parallel_execute->getResult(output_index));
+      }
+      continue;
+    }
+
+    int tpu_cluster_output_index = output_index - num_results_pre_cluster;
+    const auto& output_sharding =
+        output_sharding_config[tpu_cluster_output_index];
     const auto output_sharding_type = output_sharding.type();
 
     // If output is demultiplexed using the `tf.TPUPartitionedOutput` op, only
@@ -590,11 +603,12 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
                << output_index << "-th output";
 
       if (output_sharding_type == xla::OpSharding::REPLICATED) {
-        for (auto index_and_output :
+        for (const auto& index_and_output :
              llvm::enumerate(partitioned_output.output())) {
           const auto output_from_logical_device =
               new_parallel_execute.GetRegionOutputs(
-                  cluster_idx + index_and_output.index())[output_index];
+                  cluster_idx +
+                  index_and_output.index())[tpu_cluster_output_index];
           index_and_output.value().replaceAllUsesWith(
               output_from_logical_device);
         }
@@ -602,7 +616,7 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
         assert(output_sharding_type == xla::OpSharding::OTHER);
         llvm::SmallVector<mlir::Value, 4> tile_sharded_outputs;
         if (failed(GetTileShardedOutputsToMerge(
-                location, output_index, output_sharding_config,
+                location, tpu_cluster_output_index, output_sharding_config,
                 cluster_to_core_index, cluster_idx, new_parallel_execute,
                 &tile_sharded_outputs)))
           return mlir::failure();
@@ -615,9 +629,9 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
 
     if (output_sharding_type == xla::OpSharding::OTHER) {
       if (failed(HandleTileShardedOutputs(
-              output_index, output_sharding_config, cluster_to_core_index,
-              location, old_parallel_execute_output, cluster_idx,
-              new_parallel_execute, builder)))
+              tpu_cluster_output_index, output_sharding_config,
+              cluster_to_core_index, location, old_parallel_execute_output,
+              cluster_idx, new_parallel_execute, builder)))
         return mlir::failure();
       continue;
     }
@@ -629,9 +643,9 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
     // For maximal sharding configuration, correctly remap outputs from
     // parallel_execute region to users of the cluster func.
     int region_output_index;
-    if (failed(LookupClusterToCoreIndex(location, cluster_to_core_index,
-                                        logical_device_id, output_index,
-                                        &region_output_index)))
+    if (failed(LookupClusterToCoreIndex(
+            location, cluster_to_core_index, logical_device_id,
+            tpu_cluster_output_index, &region_output_index)))
       return mlir::failure();
 
     const auto output_from_logical_device =

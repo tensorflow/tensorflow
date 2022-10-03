@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/experimental/resource/lookup_interfaces.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"

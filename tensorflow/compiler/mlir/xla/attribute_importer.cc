@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -181,7 +182,7 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
   std::vector<mlir::Attribute> layouts;
   for (auto& shape_and_layout : shapes_with_layouts) {
     if (shape_and_layout.IsTuple())
-      return tensorflow::errors::Unimplemented(
+      return tsl::errors::Unimplemented(
           "Layout support for nested tuples is not implemented.");
     // XLA can have invalid layout for certain values (such as token types).
     // These are imported as empty layout in MHLO.
@@ -195,16 +196,14 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     // dimensions. Sparse, tiled layout or non-default memory space fields
     // cannot be expressed in MHLO layout yet.
     if (!xla::LayoutUtil::IsDenseArray(shape_and_layout)) {
-      return tensorflow::errors::Unimplemented(
-          "Only dense arrays are supported.");
+      return tsl::errors::Unimplemented("Only dense arrays are supported.");
     }
 
     const xla::Layout& xla_layout = shape_and_layout.layout();
     if (!xla_layout.tiles().empty())
-      return tensorflow::errors::Unimplemented(
-          "Tiled layout is not supported yet");
+      return tsl::errors::Unimplemented("Tiled layout is not supported yet");
     if (xla_layout.memory_space() != xla::Layout::kDefaultMemorySpace)
-      return tensorflow::errors::Unimplemented(
+      return tsl::errors::Unimplemented(
           "Layout support for non-default memory space is not yet implemented");
 
     llvm::SmallVector<int64_t> layout;

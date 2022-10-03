@@ -133,3 +133,88 @@ func.func @leaves_processed_funcs_alone() -> (i32, i32)
 
 // CHECK: func @leaves_processed_funcs_alone
 // CHECK-NOT: call
+
+// -----
+
+func.func @handles_mhlo_regions() {
+  "glue.someop"() : () -> ()
+  %4 = mhlo.constant dense<0.0> : tensor<200x10xf32>
+  %13 = mhlo.constant dense<-0.0> : tensor<f32>
+  %29 = mhlo.reduce(%4 init: %13) applies mhlo.add across dimensions = [1] : (tensor<200x10xf32>, tensor<f32>) -> tensor<200xf32>
+  return
+}
+
+// CHECK: func @handles_mhlo_regions
+// CHECK: call [[name:@[^(]*]](
+// CHECK: func [[name]]()
+
+// -----
+
+func.func @handles_regions_that_use_arguments(%arg0: f32, %arg1: f32) {
+  %0 = "glue.someop"() : () -> f32
+  "foo.someop"() ({
+    "bar.a"(%arg0) : (f32) -> f32
+    "bar.b"(%arg1) : (f32) -> f32
+    "bar.c"(%0) : (f32) -> f32
+  }, {}): () -> ()
+  return
+}
+
+// CHECK: func @handles_regions_that_use_arguments
+// CHECK: call [[foo:@[^(]*]](%arg0, %arg1, %0)
+// CHECK: func [[bar:@[^(]*]]
+// CHECK-SAME: dialect = "bar"
+// CHECK: bar.a
+// CHECK: bar.b
+// CHECK: bar.c
+// CHECK: func [[foo]]
+// CHECK: foo.someop
+// CHECK: call [[bar]]
+
+// -----
+
+func.func @handles_nested_regions(%arg0: f32, %arg1: f32) {
+  %0 = "glue.someop"() : () -> f32
+  "foo.someop"() ({
+    "foo.some_other_op"() ({
+      "bar.a"(%arg0) : (f32) -> f32
+      "bar.b"(%arg1) : (f32) -> f32
+      "bar.c"(%0) : (f32) -> f32
+    }, {}) : () -> ()
+  }, {}): () -> ()
+  return
+}
+
+// CHECK: func @handles_nested_regions
+// CHECK: glue.someop
+// CHECK: call [[foo:@[^(]*]](%arg0, %arg1, %0)
+// CHECK: func [[bar:@[^(]*]](
+// CHECK-SAME: dialect = "bar"
+// CHECK: bar.a
+// CHECK: bar.b
+// CHECK: bar.c
+// CHECK: func [[foo]]
+// CHECK: foo.someop
+// CHECK: foo.some_other_op
+
+// -----
+
+func.func @groups_nested_regions(%arg0: f32, %arg1: f32) {
+  %0 = "glue.someop"() : () -> f32
+  "foo.someop"() ({
+    "bar.a"(%arg0) : (f32) -> f32
+    "bar.b"(%arg1) : (f32) -> f32
+    %1 = "bar.c"(%0) : (f32) -> f32
+    "foo.a"(%1) : (f32) -> f32
+  }, {}): () -> ()
+  return
+}
+
+// CHECK: func @groups_nested_regions
+// CHECK: func [[bar:@[^(]*]](
+// CHECK-SAME: dialect = "bar"
+// CHECK-NOT: foo
+// CHECK: func
+// CHECK-SAME: dialect = "foo"
+// CHECK: call [[bar]]
+// CHECK: foo.a

@@ -1,3 +1,4 @@
+#
 # Returns the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
@@ -1348,7 +1349,6 @@ def tf_cc_test(
         srcs,
         deps,
         data = [],
-        linkstatic = 0,
         extra_copts = [],
         suffix = "",
         linkopts = lrt_if_needed(),
@@ -1381,16 +1381,6 @@ def tf_cc_test(
                tf_binary_dynamic_kernel_dsos() +
                tf_binary_additional_srcs(),
         exec_properties = tf_exec_properties(kwargs),
-        # Nested select() statements seem not to be supported when passed to
-        # linkstatic, and we already have a cuda select() passed in to this
-        # function.
-        linkstatic = linkstatic or select({
-            # cc_tests with ".so"s in srcs incorrectly link on Darwin unless
-            # linkstatic=1 (https://github.com/bazelbuild/bazel/issues/3450).
-            # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-            clean_dep("//tensorflow:macos"): 1,
-            "//conditions:default": 0,
-        }),
         **kwargs
     )
 
@@ -1495,7 +1485,6 @@ def tf_gpu_only_cc_test(
         tags = [],
         data = [],
         size = "medium",
-        linkstatic = 0,
         args = [],
         kernels = [],
         linkopts = []):
@@ -1516,13 +1505,6 @@ def tf_gpu_only_cc_test(
         data = data + tf_binary_dynamic_kernel_dsos(),
         deps = [":" + gpu_lib_name],
         linkopts = if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),
-        linkstatic = linkstatic or select({
-            # cc_tests with ".so"s in srcs incorrectly link on Darwin
-            # unless linkstatic=1.
-            # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-            clean_dep("//tensorflow:macos"): 1,
-            "//conditions:default": 0,
-        }),
         tags = tags,
         exec_properties = tf_exec_properties({"tags": tags}),
     )
@@ -1848,7 +1830,7 @@ def tf_kernel_library(
         hdrs = hdrs,
         textual_hdrs = textual_hdrs,
         copts = copts,
-        cuda_deps = cuda_deps,
+        cuda_deps = cuda_deps + gpu_deps,
         linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
         alwayslink = alwayslink,
         deps = deps,
@@ -2144,9 +2126,20 @@ check_deps = rule(
     },
 )
 
-def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [], copts = [], **kwargs):
-    """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels.
-      """
+def tf_custom_op_library(
+        name,
+        srcs = [],
+        gpu_srcs = [],
+        deps = [],
+        gpu_deps = None,
+        linkopts = [],
+        copts = [],
+        **kwargs):
+    """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels."""
+
+    if not gpu_deps:
+        gpu_deps = []
+
     deps = deps + if_cuda_or_rocm([
         clean_dep("//tensorflow/core:stream_executor_headers_lib"),
     ]) + if_cuda([
@@ -2168,7 +2161,7 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             srcs = gpu_srcs,
             copts = copts + tf_copts() + _cuda_copts() + rocm_copts() +
                     if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
-            deps = deps,
+            deps = deps + gpu_deps,
             **kwargs
         )
         deps = deps + [":" + basename + "_gpu"]

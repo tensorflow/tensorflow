@@ -43,11 +43,13 @@ mlir::LogicalResult BackwardShapeInferenceToRestoreOp(mlir::ModuleOp module,
                                                       mlir::Type type) {
   mlir::Operation* op = value.getDefiningOp();
   if (op == nullptr) return mlir::success();
-  if (!llvm::isa<mlir::TF::IdentityOp, mlir::TF::DTensorRecv,
+  if (!llvm::isa<mlir::TF::IdentityOp, mlir::TF::CastOp, mlir::TF::DTensorRecv,
                  mlir::TF::RestoreV2Op>(op)) {
-    return op->emitOpError(llvm::formatv(
-        "Expected an Identity, DTensorRecv, or RestoreV2 op, but got: {0}",
-        op->getName().getStringRef()));
+    return op->emitOpError(
+        llvm::formatv("Expected an Identity, Cast, DTensorRecv, or RestoreV2 "
+                      "op, but got: {0}. Please file a bug to the DTensor team."
+                      "(component id: 833864)",
+                      op->getName().getStringRef()));
   }
 
   builder->setInsertionPointAfter(op);
@@ -67,6 +69,25 @@ mlir::LogicalResult BackwardShapeInferenceToRestoreOp(mlir::ModuleOp module,
     // Using setType(type) modifies in place and makes this algorithm run in
     // O(N).
     value.setType(type);
+  } else if (auto cast_op = llvm::dyn_cast_or_null<mlir::TF::CastOp>(op)) {
+    auto new_cast_op = builder->create<mlir::TF::CastOp>(cast_op.getLoc(), type,
+                                                         cast_op.getOperand());
+    cast_op.replaceAllUsesWith(new_cast_op.getResult());
+    cast_op.erase();
+
+    // Cast ops have differing operand and output element type, so update
+    // the type to the operand element type.
+    mlir::RankedTensorType new_type = mlir::RankedTensorType::get(
+        GetShapeOfValue(new_cast_op.getResult()).value(),
+        new_cast_op.getOperand()
+            .getType()
+            .cast<mlir::TensorType>()
+            .getElementType());
+
+    // Recursively shape inference to the input of the cast op with the
+    // new type.
+    return BackwardShapeInferenceToRestoreOp(
+        module, builder, new_cast_op.getOperand(), new_type);
   } else if (auto identity_op =
                  llvm::dyn_cast_or_null<mlir::TF::IdentityOp>(op)) {
     auto new_identity_op = builder->create<mlir::TF::IdentityOp>(

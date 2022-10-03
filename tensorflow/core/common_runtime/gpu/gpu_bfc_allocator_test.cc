@@ -39,8 +39,16 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
+using tensorflow::BinSummary;
+using tensorflow::DeviceIdUtil;
+using tensorflow::DeviceMemAllocator;
+using tensorflow::GPUBFCAllocator;
+using tensorflow::GPUMachineManager;
+using tensorflow::GPUOptions;
+using tensorflow::PlatformDeviceId;
+using tensorflow::TypedAllocator;
 
 void CheckStats(Allocator* a, int64_t num_allocs, int64_t bytes_in_use,
                 int64_t peak_bytes_in_use, int64_t largest_alloc_size) {
@@ -69,8 +77,8 @@ std::unique_ptr<SubAllocator> CreateVirtualMemorySubAllocator(
           .value();
   auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
       executor->implementation()->GpuContextHack());
-  return GpuVirtualMemAllocator::Create({}, {}, *gpu_context, gpu_id,
-                                        virtual_address_space_size, {})
+  return tensorflow::GpuVirtualMemAllocator::Create(
+             {}, {}, *gpu_context, gpu_id, virtual_address_space_size, {})
       .value();
 }
 #endif
@@ -754,6 +762,6 @@ TEST_F(GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific,
 }
 #endif
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

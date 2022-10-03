@@ -56302,6 +56302,55 @@ func XlaCustomCall(scope *Scope, args []tf.Output, target_name string, backend_c
 	return op.Output(0)
 }
 
+// Emits an HLO `CustomCall` operation with multiple outputs.
+//
+// As opposed to `XlaCustomCall`, this operation supports multiple outputs.
+//
+// See `CustomCall` specification at
+//
+//	https://tensorflow.org/xla/operation_semantics#customcall,
+//
+// and `mhlo.custom_call` specification at
+//
+//	https://tensorflow.org/mlir/hlo_ops#mhlocustom_call_mlirmhlocustomcallop.
+//
+// Arguments:
+//
+//	operands: A sequence of tensors with possibly different types.
+//	call_target_name: Name of the user function. The function signature must conform
+//
+// to version 3 of the API, see `API_VERSION_STATUS_RETURNING_UNIFIED`. All
+// operands and results assumed to be in the default layout.
+//
+//	backend_config: A string that encodes a metadata for the backend.
+//	has_side_effect: Indicates whether the custom call has side effects.
+//	result_dtypes: Types of all results.
+//	result_shapes: Shapes of all results.
+func XlaCustomCallV2(scope *Scope, operands []tf.Output, call_target_name string, backend_config string, has_side_effect bool, result_dtypes []tf.DataType, result_shapes []tf.Shape) (results []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"call_target_name": call_target_name, "backend_config": backend_config, "has_side_effect": has_side_effect, "result_dtypes": result_dtypes, "result_shapes": result_shapes}
+	opspec := tf.OpSpec{
+		Type: "XlaCustomCallV2",
+		Input: []tf.Input{
+			tf.OutputList(operands),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if results, idx, err = makeOutputList(op, idx, "results"); err != nil {
+		scope.UpdateErr("XlaCustomCallV2", err)
+		return
+	}
+	return results
+}
+
 // Takes the packed uint32 input and unpacks the input to uint8 to do
 //
 // Dequantization on device.

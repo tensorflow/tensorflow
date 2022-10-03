@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/raw_os_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -134,7 +134,7 @@ Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
   auto hlo_module = computation.proto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
 
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
@@ -199,7 +199,7 @@ static mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslate(
 }
 
 static void RegisterInputDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
+  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                   mlir::mhlo::MhloDialect, mlir::tensor::TensorDialect>();
 }
 

@@ -98,7 +98,7 @@ Value CreateXLAConvOp(OpBuilder &builder, Location loc, Value input,
                       Value filter, Value input_zp, Value conv_output,
                       ArrayAttr strides, ArrayAttr dilations,
                       StringAttr conv_padding, ArrayAttr explicit_paddings,
-                      int feature_group_cnt) {
+                      int feature_group_cnt, bool four_bit = false) {
   int32_t input_zp_value;
   if (!GetSplatValue(input_zp, input_zp_value)) {
     emitError(loc,
@@ -139,6 +139,16 @@ Value CreateXLAConvOp(OpBuilder &builder, Location loc, Value input,
   input = CalculatePaddingAndPadIfNeeded(
       builder, loc, input, filter, input_zp_value, strides, dilations,
       conv_padding, explicit_paddings, padding);
+
+  std::string precision_config_str;
+  if (four_bit) {
+    input = PackOperand(builder, loc, input, /*pack_dim=*/3);
+    filter = PackOperand(builder, loc, filter, /*pack_dim=*/2);
+    xla::PrecisionConfig precision_config;
+    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
+    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
+    precision_config_str = precision_config.SerializeAsString();
+  }
   Value xla_conv_output =
       builder
           .create<TF::XlaConvV2Op>(
@@ -147,7 +157,7 @@ Value CreateXLAConvOp(OpBuilder &builder, Location loc, Value input,
               /*rhs=*/filter, window_strides, padding, lhs_dilation,
               rhs_dilation, feature_group_count,
               builder.getStringAttr(dnums.SerializeAsString()),
-              /*precision_config=*/builder.getStringAttr(""))
+              /*precision_config=*/builder.getStringAttr(precision_config_str))
           .output();
   if (input_zp_value == 0) return xla_conv_output;
 
@@ -210,7 +220,8 @@ Value CreateXLAConvOpFromTFDepthwiseConv2DOp(
 // Helper function to create an XlaDotV2Op.
 Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
                        Value weight, Value input_zp, Value output,
-                       const xla::DotDimensionNumbers &dnums) {
+                       const xla::DotDimensionNumbers &dnums,
+                       bool four_bit = false) {
   int32_t input_zp_value;
   if (!GetSplatValue(input_zp, input_zp_value)) {
     emitError(loc,
@@ -218,15 +229,25 @@ Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
     return {};
   }
 
-  Value dot_result = builder
-                         .create<TF::XlaDotV2Op>(
-                             loc, /*output=*/output.getType(),
-                             /*lhs=*/input,
-                             /*rhs=*/weight,
-                             /*dimension_numbers=*/
-                             builder.getStringAttr(dnums.SerializeAsString()),
-                             /*precision_config=*/builder.getStringAttr(""))
-                         .getResult();
+  std::string precision_config_str;
+  if (four_bit) {
+    input = PackOperand(builder, loc, input, /*pack_dim=*/1);
+    weight = PackOperand(builder, loc, weight, /*pack_dim=*/0);
+    xla::PrecisionConfig precision_config;
+    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
+    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
+    precision_config_str = precision_config.SerializeAsString();
+  }
+  Value dot_result =
+      builder
+          .create<TF::XlaDotV2Op>(
+              loc, /*output=*/output.getType(),
+              /*lhs=*/input,
+              /*rhs=*/weight,
+              /*dimension_numbers=*/
+              builder.getStringAttr(dnums.SerializeAsString()),
+              /*precision_config=*/builder.getStringAttr(precision_config_str))
+          .getResult();
 
   ShapedType weight_shape = weight.getType().template cast<ShapedType>();
   SmallVector<int64_t> filter_non_output_indices = {0};

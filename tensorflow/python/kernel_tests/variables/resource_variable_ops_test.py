@@ -84,6 +84,23 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.assertEmpty(gc.garbage)
     super(ResourceVariableOpsTest, self).tearDown()
 
+  def testLocalVariables(self):
+    num_traces = 0
+
+    # TODO(b/210930091): Test jit_compile=True when the bridge work is done.
+    @def_function.function(jit_compile=False)
+    def f():
+      nonlocal num_traces
+      num_traces += 1
+      v = variables.Variable(3, experimental_enable_variable_lifting=False)
+      v.assign_add(5)
+      return v.read_value()
+
+    self.assertEqual(num_traces, 0)
+    for _ in range(3):
+      self.assertAllClose(f(), 8)
+      self.assertEqual(num_traces, 1)
+
   @test_util.run_deprecated_v1
   def testHandleDtypeShapeMatch(self):
     with self.cached_session():
@@ -1764,6 +1781,28 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # TODO(b/246438937): Update this to dt_resource tensor once we expand
     # ResourceVariables with expand_composites=True.
     self.assertIsInstance(result[0], resource_variable_ops.ResourceVariable)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUniqueIdPreservedThroughPackAndUnpack(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(v.initializer)
+    expected_unique_id = v._unique_id
+    reconstructed_v = nest.pack_sequence_as(
+        v,
+        nest.flatten(v, expand_composites=True),
+        expand_composites=True)
+    self.assertEqual(reconstructed_v._unique_id, expected_unique_id)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testHandleNamePreservedThroughPackAndUnpack(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(v.initializer)
+    expected_handle_name = v._handle_name
+    reconstructed_v = nest.pack_sequence_as(
+        v,
+        nest.flatten(v, expand_composites=True),
+        expand_composites=True)
+    self.assertEqual(reconstructed_v._handle_name, expected_handle_name)
 
 if __name__ == "__main__":
   test.main()

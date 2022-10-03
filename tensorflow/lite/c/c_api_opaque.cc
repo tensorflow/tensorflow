@@ -90,3 +90,12 @@ int TfLiteOpaqueNodeNumberOfOutputs(const TfLiteOpaqueNode* opaque_node) {
 void* TfLiteOpaqueNodeGetUserData(const TfLiteOpaqueNode* opaque_node) {
   return reinterpret_cast<const TfLiteNode*>(opaque_node)->user_data;
 }
+
+TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
+    TfLiteOpaqueContext* opaque_context, TfLiteIntArray** execution_plan) {
+  // The following casts are safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  auto context = reinterpret_cast<TfLiteContext*>(opaque_context);
+  return context->GetExecutionPlan(context, execution_plan);
+}

@@ -49,7 +49,7 @@ Status LoadDynamicLibrary(const char* library_filename, void** handle) {
     return tsl::errors::NotFound(file_name + " not found");
   }
   *handle = hModule;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
@@ -61,7 +61,7 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
     return tsl::errors::NotFound(std::string(symbol_name) + " not found");
   }
   *symbol = (void**)found_symbol;
-  return Status::OK();
+  return OkStatus();
 }
 
 string FormatLibraryFileName(const string& name, const string& version) {

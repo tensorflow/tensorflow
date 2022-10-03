@@ -255,9 +255,8 @@ pybind_extension(
     hdrs = ["//tensorflow/core/platform:enable_tf2_hdr"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:enable_tf2_utils",
-        "@com_google_protobuf//:protobuf",
         "@pybind11",
     ],
 )

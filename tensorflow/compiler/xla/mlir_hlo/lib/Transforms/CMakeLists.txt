@@ -63,7 +63,7 @@ add_mlir_library(MLIRHLOGPUTransforms
 
   LINK_LIBS PUBLIC
   GmlStPasses
-  MLIRArithmeticTransforms
+  MLIRArithTransforms
   MLIRGPUOps
   MLIRHLOAnalysis
   MLIRIR
@@ -81,6 +81,7 @@ add_mlir_library(MLIRHLOGmlStPipeline
 
   LINK_LIBS PUBLIC
   GmlStPasses
+  MLIRBufferTransforms
   MLIRLinalgTransforms
   MLIRPass
 )

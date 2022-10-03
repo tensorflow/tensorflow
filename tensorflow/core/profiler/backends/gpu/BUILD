@@ -268,6 +268,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:trace_utils",
     ] + tf_additional_cupti_deps(),
 )
 

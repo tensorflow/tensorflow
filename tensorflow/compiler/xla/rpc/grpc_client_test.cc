@@ -27,9 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/rpc/grpc_stub.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/net.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/subprocess.h"
 #include "tensorflow/tsl/platform/test.h"
 

@@ -31,6 +31,11 @@ Value CalculatePaddingAndPadIfNeeded(
     int8_t input_zp_value, ArrayAttr strides, ArrayAttr dilations,
     StringAttr conv_padding, ArrayAttr explicit_paddings, Value &padding);
 
+// Given value that is in 8bit type, but holds 4bit data in unpacked format,
+// pack to nibble format along pack_dim.
+// If the pack_dim size is odd, add 1-size 0 padding and then pack.
+Value PackOperand(OpBuilder &builder, Location loc, Value value, int pack_dim);
+
 }  // namespace mlir::quant
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_TF_TO_XLA_ATTRIBUTE_UTILS_H_

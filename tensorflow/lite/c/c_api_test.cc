@@ -193,6 +193,43 @@ TEST(CApiSimple, Delegate) {
   TfLiteInterpreterDelete(interpreter);
 }
 
+TEST(CApiSimple, DelegateExternal_GetExecutionPlan) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  // Create and install a delegate instance.
+  bool delegate_prepared = false;
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_prepared;
+  opaque_delegate_builder.Prepare =
+      [](TfLiteOpaqueContext* context,  // NOLINT
+         struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+        *static_cast<bool*>(data) = true;
+
+        TfLiteIntArray* execution_plan;
+        EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextGetExecutionPlan(
+                                 context, &execution_plan));
+        EXPECT_EQ(2, execution_plan->size);
+
+        return kTfLiteOk;
+      };
+
+  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOpaqueDelegate(options, opaque_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  // The delegate should have been applied.
+  EXPECT_TRUE(delegate_prepared);
+
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+}
+
 TEST(CApiSimple, DelegateFails) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");

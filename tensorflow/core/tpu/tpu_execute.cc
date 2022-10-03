@@ -306,8 +306,12 @@ void TPUCancelExecution(Env* env, int device_ordinal) {
     // continue running callbacks. The new thread will call quick_exit,
     // so we discard the returned Thread pointer because we won't have
     // an opportunity to delete it.
-    (void)env->StartThread(ThreadOptions(), "tpu_execute_exit_countdown",
-                           [env]() { ExitCountdown(env); });
+    auto res = env->StartThread(ThreadOptions(), "tpu_execute_exit_countdown",
+                                [env]() { ExitCountdown(env); });
+    // workaround "ignoring return value of function declared with attribute
+    // warn_unused_result" since (void) no longer works on open source bazel
+    // build
+    ((void)(res));
   } else if (tpu_cancellation_closes_chips) {
     LOG(INFO) << "TPUCancelExecution CloseTPUHost on device " << device_ordinal;
     Status status = TpuNodeContext::CloseTpuHost();

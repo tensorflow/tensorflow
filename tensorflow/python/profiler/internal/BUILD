@@ -157,6 +157,8 @@ cc_library(
     srcs = ["profiler_pywrap_impl.cc"],
     hdrs = ["profiler_pywrap_impl.h"],
     visibility = [
+        # Do not change this visibility field.
+        # This library is referred in OSS world by github.com/pytorch/xla
         "//tensorflow/compiler/xla:__subpackages__",
     ],
     deps = [

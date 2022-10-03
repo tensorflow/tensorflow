@@ -95,7 +95,6 @@ cc_library(
         ":macros",
         ":platform",
         ":platform_port",
-        "//tensorflow/core/platform:platform_port",
     ],
 )
 
@@ -537,7 +536,7 @@ filegroup(
         "threadpool_interface.h",
         "tracing.h",
     ] + selects.with_or({
-        "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
+        "//tensorflow/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
             "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
@@ -681,6 +680,7 @@ filegroup(
         "refcount.h",
         "setround.h",
         "snappy.h",
+        "status.h",
         "tracing.h",
         "unbounded_work_queue.h",
     ],
@@ -949,11 +949,9 @@ cc_library(
     hdrs = ["threadpool_interface.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":mutex",
+        ":types",
         "//third_party/eigen3",
-        # TODO(ddunleavy) these can't be moved because internal Eigen
-        # actually depends on these. Need to update Eigen to depend on TSL
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -1154,15 +1152,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "cuda",
-    hdrs = ["cuda.h"],
-    deps = [
-        ":platform",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
-    ],
-)
-
-cc_library(
     name = "tensor_float_32_utils",
     srcs = ["tensor_float_32_utils.cc"],
     hdrs = ["tensor_float_32_utils.h"],
@@ -1218,6 +1207,17 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "path_test",
+    size = "small",
+    srcs = ["path_test.cc"],
+    deps = [
+        ":path",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
     name = "random_test",
     srcs = ["random_test.cc"],
     deps = [
@@ -1247,7 +1247,7 @@ cc_library(
     srcs = ["test_main.cc"],
     copts = tf_copts(),
     linkopts = select({
-        "//tensorflow:windows": [],
+        "//tensorflow/tsl:windows": [],
         "//conditions:default": ["-lm"],
     }),
     deps = [
@@ -1553,5 +1553,18 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@zlib",
+    ],
+)
+
+tf_cc_test(
+    name = "numbers_test",
+    size = "small",
+    srcs = [
+        "numbers_test.cc",
+    ],
+    deps = [
+        ":numbers",
+        ":test",
+        ":test_main",
     ],
 )

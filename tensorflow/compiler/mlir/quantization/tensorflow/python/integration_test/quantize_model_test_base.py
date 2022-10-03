@@ -13,7 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Base test class for quantize_model Tests."""
-from typing import Iterable, Mapping, Sequence, Set, Tuple, Optional
+import os
+from typing import Collection, Iterable, Mapping, Sequence, Tuple, Optional
 
 from absl.testing import parameterized
 import numpy as np
@@ -28,15 +29,21 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import signature_def_utils_impl
+from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
 
@@ -185,14 +192,71 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
     return in_placeholder, output_tensor
 
+  def _create_vocab_table_lookup_model_tf1(
+      self,
+      sess: session.Session) -> Tuple[core.Tensor, core.Tensor, core.Tensor]:
+    """Creates a simple model that initializes and lookups a vocab table.
+
+    This model creates an asset file at "vocab_file.txt" containing
+    comma-separated vocabularies.  It also initializes a `StaticVocabularyTable`
+    and performs a lookup with the input vocabs, which is a 1D tensor of
+    strings.
+
+    Args:
+      sess: Tensorflow Session to create the model in.
+
+    Returns:
+      (input_vocabs_placeholder, lookup_vals, output_tensor), where
+      * input_vocabs_placeholder is a placeholder tensor of 1D strings
+      * lookup_vals is an output tensor that is a direct result of table lookup
+      * output_tensor is a float 2x2 matrix
+    """
+    # Creates and populates an asset file.
+    asset_dir = self.create_tempdir('assets').full_path
+    asset_file = os.path.join(asset_dir, 'vocab_file.txt')
+    file_io.write_string_to_file(
+        filename=asset_file, file_content='hello,model,quantization\n')
+
+    vocab_file = asset.Asset(asset_file)
+
+    raw_vocab = io_ops.read_file(vocab_file)
+    vocabs = ragged_string_ops.string_split_v2(
+        string_ops.string_strip(raw_vocab), sep=',')
+
+    # Initialize the vocab table. Each comma-separated word in vocab_file.txt
+    # corresponds to the numeric identifiers in `values`.
+    kv_init = lookup_ops.KeyValueTensorInitializer(
+        keys=vocabs, values=np.array([0, 1, 2]), value_dtype=dtypes.int64)
+    table = lookup_ops.StaticVocabularyTable(kv_init, num_oov_buckets=5)
+
+    input_vocabs_placeholder = array_ops.placeholder(
+        dtypes.string, shape=(None,), name='input_vocabs')
+
+    # Introduce a matmul op that takes the lookup values to observe the
+    # effects of quantization.
+    lookup_vals = math_ops.cast(
+        table.lookup(input_vocabs_placeholder), dtypes.float32)
+    # shape: (2, ?)
+    matmul_input = array_ops.stack([lookup_vals, lookup_vals])
+
+    # Create a dummy weight matrix filled with ones.
+    weight_row = array_ops.ones(
+        shape=array_ops.shape(input_vocabs_placeholder), dtype=dtypes.float32)
+    # shape: (?, 2)
+    weight = array_ops.transpose_v2(array_ops.stack([weight_row, weight_row]))
+    # shape: (2, 2)
+    output_tensor = math_ops.matmul(matmul_input, weight)
+
+    return input_vocabs_placeholder, lookup_vals, output_tensor
+
   def _create_data_generator(
       self,
       input_key: str,
       shape: Sequence[int],
-      minval=-1.,
-      maxval=1.,
-      dtype=dtypes.float32,
-      num_examples=8) -> repr_dataset.RepresentativeDataset:
+      minval: float = -1.,
+      maxval: float = 1.,
+      dtype: dtypes.DType = dtypes.float32,
+      num_examples: int = 8) -> repr_dataset.RepresentativeDataset:
     """Creates a data generator to be used as representative dataset.
 
     Supports generating random value input tensors mapped by the `input_key`.
@@ -213,10 +277,16 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     for _ in range(num_examples):
       yield {input_key: random_ops.random_uniform(shape, minval, maxval, dtype)}
 
-  def _save_tf1_model(self, sess: session.Session, saved_model_path: str,
-                      signature_key: str, tags: Set[str],
-                      inputs: Mapping[str, core.Tensor],
-                      outputs: Mapping[str, core.Tensor]) -> None:
+  def _save_tf1_model(
+      self,
+      sess: session.Session,
+      saved_model_path: str,
+      signature_key: str,
+      tags: Collection[str],
+      inputs: Mapping[str, core.Tensor],
+      outputs: Mapping[str, core.Tensor],
+      init_op: Optional[ops.Operation] = None,
+      assets_collection: Optional[Sequence[ops.Tensor]] = None) -> None:
     """Saves a TF1 model.
 
     Args:
@@ -227,19 +297,26 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       tags: Set of tags associated with the model.
       inputs: Input name -> input tensor mapping.
       outputs: Output name -> output tensor mapping.
+      init_op: Op for initialization.
+      assets_collection: Assets collection. This collection is a list of string
+        tensors. Each tensor contains the asset file names.
     """
     v1_builder = builder.SavedModelBuilder(saved_model_path)
     sig_def = signature_def_utils_impl.predict_signature_def(
         inputs=inputs, outputs=outputs)
 
     v1_builder.add_meta_graph_and_variables(
-        sess, tags, signature_def_map={signature_key: sig_def})
+        sess,
+        tags,
+        signature_def_map={signature_key: sig_def},
+        main_op=init_op,
+        assets_collection=assets_collection)
     v1_builder.save()
 
   def _create_and_save_tf1_gather_model(self,
                                         saved_model_path: str,
                                         signature_key: str,
-                                        tags: Set[str],
+                                        tags: Collection[str],
                                         input_key: str,
                                         output_key: str,
                                         use_variable=False) -> core.Tensor:
@@ -398,7 +475,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
   def _create_and_save_tf1_conv_model(self,
                                       saved_model_path: str,
                                       signature_key: str,
-                                      tags: Set[str],
+                                      tags: Collection[str],
                                       input_key: str,
                                       output_key: str,
                                       use_variable=False) -> core.Tensor:

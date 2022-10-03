@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -181,7 +181,7 @@ void HloModule::ReplaceComputations(
         case HloOpcode::kReduceWindow:
         case HloOpcode::kScatter:
         case HloOpcode::kSort: {
-          HloComputation* new_arg = tensorflow::gtl::FindWithDefault(
+          HloComputation* new_arg = tsl::gtl::FindWithDefault(
               replacements, instruction->to_apply(), nullptr);
           if (new_arg != nullptr) {
             instruction->set_to_apply(new_arg);
@@ -189,12 +189,12 @@ void HloModule::ReplaceComputations(
           break;
         }
         case HloOpcode::kWhile: {
-          HloComputation* new_condition = tensorflow::gtl::FindWithDefault(
+          HloComputation* new_condition = tsl::gtl::FindWithDefault(
               replacements, instruction->while_condition(), nullptr);
           if (new_condition != nullptr) {
             instruction->set_while_condition(new_condition);
           }
-          HloComputation* new_body = tensorflow::gtl::FindWithDefault(
+          HloComputation* new_body = tsl::gtl::FindWithDefault(
               replacements, instruction->while_body(), nullptr);
           if (new_body != nullptr) {
             instruction->set_while_body(new_body);
@@ -203,7 +203,7 @@ void HloModule::ReplaceComputations(
         }
         case HloOpcode::kConditional: {
           for (int b = 0; b < instruction->branch_count(); ++b) {
-            HloComputation* new_computation = tensorflow::gtl::FindWithDefault(
+            HloComputation* new_computation = tsl::gtl::FindWithDefault(
                 replacements, instruction->branch_computation(b), nullptr);
             if (new_computation != nullptr) {
               instruction->set_branch_computation(b, new_computation);
@@ -212,12 +212,12 @@ void HloModule::ReplaceComputations(
           break;
         }
         case HloOpcode::kSelectAndScatter: {
-          HloComputation* new_select = tensorflow::gtl::FindWithDefault(
+          HloComputation* new_select = tsl::gtl::FindWithDefault(
               replacements, instruction->select(), nullptr);
           if (new_select != nullptr) {
             instruction->set_select(new_select);
           }
-          HloComputation* new_scatter = tensorflow::gtl::FindWithDefault(
+          HloComputation* new_scatter = tsl::gtl::FindWithDefault(
               replacements, instruction->scatter(), nullptr);
           if (new_scatter != nullptr) {
             instruction->set_scatter(new_scatter);
@@ -235,7 +235,7 @@ void HloModule::ReplaceComputations(
   }
 
   // Replace entry_computation if necessary.
-  entry_computation_ = tensorflow::gtl::FindWithDefault(
+  entry_computation_ = tsl::gtl::FindWithDefault(
       replacements, entry_computation_, entry_computation_);
 
   computations_ = std::move(new_computations);

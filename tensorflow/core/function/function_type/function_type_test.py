@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for function_type."""
 
+import pickle
+
 from tensorflow.core.function.function_type import function_type
 from tensorflow.python.platform import test
 
@@ -209,6 +211,19 @@ class FunctionTypeTest(test.TestCase):
     with self.assertRaisesRegex(TypeError, "missing a required argument: 'x'"):
       constraint.bind(*(), **{"z": 3})
 
+  def test_pickle(self):
+    original = function_type.FunctionType([
+        function_type.Parameter("x",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, None),
+        function_type.Parameter("y",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, None),
+        function_type.Parameter("z", function_type.Parameter.KEYWORD_ONLY,
+                                False, None)
+    ])
+    cloned = pickle.loads(pickle.dumps(original))
+    self.assertEqual(original, cloned)
 
 if __name__ == "__main__":
   test.main()

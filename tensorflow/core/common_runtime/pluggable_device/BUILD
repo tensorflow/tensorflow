@@ -43,6 +43,7 @@ cc_library(
         ":pluggable_device_simple_allocator",
         "//tensorflow/c/experimental/stream_executor",
         "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
+        "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:kernel",
         "//tensorflow/core:core_cpu",
@@ -87,6 +88,7 @@ cc_library(
         "//tensorflow/core/common_runtime:process_state",
         "//tensorflow/core/common_runtime:shared_counter",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:kernel",
         ":pluggable_device_runtime_impl",
@@ -110,6 +112,7 @@ cc_library(
         "//tensorflow/core/common_runtime:shared_counter",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:kernel",
     ] + if_static([

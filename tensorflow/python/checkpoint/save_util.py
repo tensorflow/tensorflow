@@ -187,9 +187,13 @@ def _get_tensors_from_legacy_saveable(
   checkpoint_factory_map, _ = save_util_v1.get_checkpoint_factories_and_keys(
       object_names, object_map)
   named_saveable_objects, _ = (
-      save_util_v1.add_attributes_to_object_graph_for_saveable_objects(
-          checkpoint_factory_map, object_graph_proto, node_ids, object_map,
-          call_with_mapped_captures, saveables_cache=None))
+      save_util_v1.generate_saveable_objects(
+          checkpoint_factory_map,
+          object_graph_proto,
+          node_ids,
+          object_map,
+          call_with_mapped_captures,
+          saveables_cache=None))
   trackable = (
       saveable_object_util.SaveableCompatibilityConverter(
           trackable_data.object_to_save, named_saveable_objects))

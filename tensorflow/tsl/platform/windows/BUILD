@@ -48,33 +48,32 @@ cc_library(
         "//third_party/eigen3",
         # TODO(ddunleavy) move to TSL
         "//tensorflow/core/lib/core:error_codes_proto_cc",
-        "//tensorflow/core/lib/core:stringpiece",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:blocking_counter",
-        "//tensorflow/core/platform:context",
-        "//tensorflow/core/platform:cord",
-        "//tensorflow/core/platform:denormal",
-        "//tensorflow/core/platform:env_time",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:file_statistics",
+        "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:blocking_counter",
+        "//tensorflow/tsl/platform:context",
+        "//tensorflow/tsl/platform:cord",
+        "//tensorflow/tsl/platform:denormal",
+        "//tensorflow/tsl/platform:env_time",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:file_statistics",
         "//tensorflow/tsl/platform:load_library",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:protobuf",
-        "//tensorflow/core/platform:regexp",
-        "//tensorflow/core/platform:setround",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform:stringprintf",
-        "//tensorflow/core/platform:threadpool_interface",
-        "//tensorflow/core/platform:tracing",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform:protobuf",
+        "//tensorflow/tsl/platform:regexp",
+        "//tensorflow/tsl/platform:setround",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:str_util",
+        "//tensorflow/tsl/platform:strcat",
+        "//tensorflow/tsl/platform:stringpiece",
+        "//tensorflow/tsl/platform:stringprintf",
+        "//tensorflow/tsl/platform:threadpool_interface",
+        "//tensorflow/tsl/platform:tracing",
+        "//tensorflow/tsl/platform:types",
     ],
 )
 
@@ -103,7 +102,7 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform:types",
     ],
 )
 
@@ -130,7 +129,7 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    deps = ["//tensorflow/core/platform:types"],
+    deps = ["//tensorflow/tsl/platform:types"],
 )
 
 cc_library(
@@ -144,8 +143,8 @@ cc_library(
     ],
     deps = [
         ":wide_char",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -191,12 +190,10 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:dynamic_annotations",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
         "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:byte_order",
+        "//tensorflow/tsl/platform:dynamic_annotations",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",
         "@snappy",
     ],
@@ -211,7 +208,7 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    deps = ["//tensorflow/core/platform:mutex"],
+    deps = ["//tensorflow/tsl/platform:mutex"],
 )
 
 cc_library(
@@ -241,12 +238,12 @@ cc_library(
     ],
     textual_hdrs = ["subprocess.h"],
     deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/platform",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:strcat",
+        "//tensorflow/tsl/platform:types",
     ],
 )
 

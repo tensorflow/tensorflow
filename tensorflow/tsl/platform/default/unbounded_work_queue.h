@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/notification.h"
 
 namespace tsl {
 

@@ -20,7 +20,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -157,21 +157,6 @@ template <>
 struct MhloToScalarOp<mhlo::SineOp> {
   using FOp = ::mlir::math::SinOp;
   using COp = ::mlir::complex::SinOp;
-};
-template <>
-struct MhloToScalarOp<mhlo::ShiftLeftOp> {
-  using IOp = ::mlir::arith::ShLIOp;
-  using UOp = ::mlir::arith::ShLIOp;
-};
-template <>
-struct MhloToScalarOp<mhlo::ShiftRightArithmeticOp> {
-  using IOp = ::mlir::arith::ShRSIOp;
-  using UOp = ::mlir::arith::ShRSIOp;
-};
-template <>
-struct MhloToScalarOp<mhlo::ShiftRightLogicalOp> {
-  using IOp = ::mlir::arith::ShRUIOp;
-  using UOp = ::mlir::arith::ShRUIOp;
 };
 template <>
 struct MhloToScalarOp<mhlo::Atan2Op> {
@@ -1156,6 +1141,73 @@ inline Value mapMhloOpToStdScalarOp<mhlo::SignOp>(Location loc,
   return nullptr;
 }
 
+/// Construct operations to select the saturated value if the shift amount is
+/// greater than the bitwidth of the type.
+inline Value selectShiftedOrSaturated(ImplicitLocOpBuilder& lb, Value rhs,
+                                      Value shifted, Value saturated,
+                                      Type type) {
+  Type etype =
+      type.isa<ShapedType>() ? type.cast<ShapedType>().getElementType() : type;
+  auto bitWidthInt = etype.getIntOrFloatBitWidth();
+  Value bitWidth = getConstantOrSplat(&lb, lb.getLoc(), type,
+                                      lb.getIntegerAttr(etype, bitWidthInt));
+  Value cmp = lb.create<mlir::arith::CmpIOp>(mlir::arith::CmpIPredicate::ugt,
+                                             bitWidth, rhs);
+  return lb.create<mlir::arith::SelectOp>(cmp, shifted, saturated);
+}
+
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::ShiftLeftOp>(
+    Location loc, ArrayRef<Type> /*ResultTypes*/, ArrayRef<Type> /*argTypes*/,
+    mhlo::ShiftLeftOp::Adaptor adaptor, OpBuilder* b) {
+  ImplicitLocOpBuilder lb(loc, *b);
+  Value lhs = adaptor.getLhs();
+  Value rhs = adaptor.getRhs();
+  Type type = lhs.getType();
+
+  // "Saturate" if the shift is greater than the bitwidth of the type
+  Value zero = lb.create<arith::ConstantOp>(lb.getZeroAttr(type));
+  Value shifted = lb.create<mlir::arith::ShLIOp>(lhs, rhs);
+
+  return selectShiftedOrSaturated(lb, rhs, shifted, zero, type);
+}
+
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::ShiftRightLogicalOp>(
+    Location loc, ArrayRef<Type> /*ResultTypes*/, ArrayRef<Type> /*argTypes*/,
+    mhlo::ShiftRightLogicalOp::Adaptor adaptor, OpBuilder* b) {
+  ImplicitLocOpBuilder lb(loc, *b);
+  Value lhs = adaptor.getLhs();
+  Value rhs = adaptor.getRhs();
+  Type type = lhs.getType();
+
+  // "Saturate" if the shift is greater than the bitwidth of the type
+  Value zero = lb.create<arith::ConstantOp>(b->getZeroAttr(type));
+  Value shifted = lb.create<mlir::arith::ShRUIOp>(lhs, rhs);
+
+  return selectShiftedOrSaturated(lb, rhs, shifted, zero, type);
+}
+
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::ShiftRightArithmeticOp>(
+    Location loc, ArrayRef<Type> /*ResultTypes*/, ArrayRef<Type> /*argTypes*/,
+    mhlo::ShiftRightArithmeticOp::Adaptor adaptor, OpBuilder* b) {
+  ImplicitLocOpBuilder lb(loc, *b);
+  Value lhs = adaptor.getLhs();
+  Value rhs = adaptor.getRhs();
+  Type type = lhs.getType();
+  Type etype =
+      type.isa<ShapedType>() ? type.cast<ShapedType>().getElementType() : type;
+  auto bitWidthInt = etype.getIntOrFloatBitWidth();
+
+  // "Saturate" if the shift is greater than the bitwidth of the type
+  Value maxShift = getConstantOrSplat(
+      b, loc, type, lb.getIntegerAttr(etype, bitWidthInt - 1));
+  Value saturatedShifted = lb.create<mlir::arith::ShRSIOp>(lhs, maxShift);
+  Value shifted = lb.create<mlir::arith::ShRSIOp>(lhs, rhs);
+
+  return selectShiftedOrSaturated(lb, rhs, shifted, saturatedShifted, type);
+}
 }  // namespace impl
 
 struct MhloOpToStdScalarOp {

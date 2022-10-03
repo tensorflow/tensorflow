@@ -16,14 +16,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 
 #include <memory>
+#include <numeric>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
@@ -126,6 +129,9 @@ HloInstruction *MaybeConstantFoldBias(HloInstruction *bias) {
 // and C.
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
+  explicit GemmRewriterVisitor(
+      se::CudaComputeCapability cuda_compute_capability)
+      : cuda_compute_capability_(cuda_compute_capability) {}
   Status HandleDot(HloInstruction *instr) override {
     if (IsMatrixMultiplication(*instr)) {
       CHECK(!instr->IsRank2Transpose());
@@ -135,13 +141,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       CHECK(!rhs->IsRank2Transpose());
       const Shape &output_shape = instr->shape();
 
-      const char *const target =
-          instr->GetModule()->config().debug_options().xla_gpu_enable_cublaslt()
-              ? kCublasLtMatmulCallTarget
-              : kGemmCallTarget;
-
-      std::unique_ptr<HloInstruction> gemm_call =
-          HloInstruction::CreateCustomCall(output_shape, {lhs, rhs}, target);
       GemmBackendConfig gemm_config;
       gemm_config.set_alpha_real(1.0);
       gemm_config.set_alpha_imag(0.0);
@@ -149,6 +148,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       *gemm_config.mutable_dot_dimension_numbers() =
           instr->dot_dimension_numbers();
       *gemm_config.mutable_precision_config() = instr->precision_config();
+
+      TF_ASSIGN_OR_RETURN(absl::string_view gemm_custom_call_target,
+                          GetGemmCustomCallTarget(instr, gemm_config));
+      std::unique_ptr<HloInstruction> gemm_call =
+          HloInstruction::CreateCustomCall(output_shape, {lhs, rhs},
+                                           gemm_custom_call_target);
 
       TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gemm_config));
       TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
@@ -269,7 +274,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // BLAS GeMM overwrites bias matrix, so fusion is only possible if the GeMM
     // is the only user. cublasLt matmul can operate out-of-place.
-    bool can_fuse_bias = (bias->user_count() == 1) || IsCublasLtMatmul(*gemm);
+    bool have_other_bias_users = bias->user_count() > 1;
+    bool can_fuse_bias = !have_other_bias_users || IsCublasLtMatmul(*gemm);
 
     auto config = gemm->backend_config<GemmBackendConfig>().value();
 
@@ -294,8 +300,25 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm->CloneWithNewOperands(instr->shape(), operands);
 
     TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
-    if (IsLegacyCublasMatmul(*fused_op)) {
-      // Force bias input to alias with output, as GEMM operates in-place.
+
+    // Choose whether the bias must alias the output. Legacy cublas GEMMs must
+    // operate in place and alias the bias with the output, whereas with
+    // cublasLt we can choose.
+    //
+    // Operating in place is always safe; copy-insertion will insert copies if
+    // necessary.  But (we assume) copying is slower than operating
+    // out-of-place, so for cublasLt (where we have the choice), we try to
+    // operate in place if we think it a copy won't be necessary.
+    //
+    // We assume that parameters are always read-only and therefore we'd need to
+    // copy if we were going to operate in place. (This is not quite true; the
+    // param could have input/output aliasing.)  We also assume that if there
+    // are other uses of the bias, we might need to copy.  (Again, not quite
+    // true if those uses all come before this operation.  But copy-insertion
+    // runs before scheduling, so it can't know and has to conservatively insert
+    // copies.)
+    if (IsLegacyCublasMatmul(*fused_op) ||
+        (bias->opcode() != HloOpcode::kParameter && !have_other_bias_users)) {
       xla::Cast<HloCustomCallInstruction>(fused_op.get())
           ->set_output_to_operand_aliasing({{{}, {2, {}}}});
     }
@@ -357,15 +380,136 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(fused_op)));
     return true;
   }
+
+ private:
+  se::CudaComputeCapability cuda_compute_capability_;
+
+  StatusOr<absl::string_view> GetGemmCustomCallTarget(
+      const HloInstruction *instr,
+      const GemmBackendConfig &gemm_backend_config) const {
+    // Decide whether or not to use cublas or cublasLt based on the instruction.
+    const HloInstruction *lhs = instr->operand(0);
+    const HloInstruction *rhs = instr->operand(1);
+    if (!instr->GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_enable_cublaslt()) {
+      // cublasLt is not enabled.
+      return absl::string_view(kGemmCallTarget);
+    }
+
+    // cublasLt is enabled.
+    if (lhs->shape().element_type() == S8 ||
+        rhs->shape().element_type() == S8) {
+      // TODO(b/241446501) The XLA usage of cublasLt does not yet handle
+      // int8 matmuls. Fallback to legacy cublas.
+      return absl::string_view(kGemmCallTarget);
+    }
+
+    TF_ASSIGN_OR_RETURN(bool gemm_is_supported_by_cublas_lt,
+                        GemmIsSupportedByCublasLt(instr, gemm_backend_config));
+    if (gemm_is_supported_by_cublas_lt) {
+      return absl::string_view(kCublasLtMatmulCallTarget);
+    }
+
+    // This case is not supported by cublasLt, fallback to legacy cublas.
+    return absl::string_view(kGemmCallTarget);
+  }
+
+  StatusOr<bool> GemmIsSupportedByCublasLt(
+      const HloInstruction *instr,
+      const GemmBackendConfig &gemm_backend_config) const {
+    const HloInstruction *lhs = instr->operand(0);
+    const HloInstruction *rhs = instr->operand(1);
+    const Shape &output_shape = instr->shape();
+
+    // The cublasLt API has two currently known limitations:
+    // 1. Batch count must be <2^16.
+    constexpr int64_t kMaxBatchCount = 65535;
+    // We get the batch dimension size from lhs here, but we could just as well
+    // use rhs; they are guaranteed to be the same (TODO:Verify).
+    const auto &batch_dimensions =
+        gemm_backend_config.dot_dimension_numbers().lhs_batch_dimensions();
+    int batch_count = (batch_dimensions.empty() ? 0 : 1);
+    // All batch dimensions get flattened into a single batch dimension.
+    for (auto batch_dimension : batch_dimensions) {
+      batch_count *= lhs->shape().dimensions(batch_dimension);
+    }
+    if (batch_count > kMaxBatchCount) {
+      // This is not supported by cublasLt.
+      return false;
+    }
+
+    // 2. cublasLt does not support rhs col dimension size > 4194240 for
+    // C64.
+    constexpr int kMaxDimensionSize{4194240};
+    if (output_shape.element_type() != C64) {
+      // Does not match type in unsupported case.
+      return true;
+    }
+
+    if (cuda_compute_capability_.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+      // cuBlasLt has an implementation for complex data with compute type
+      // 32F_FAST_32TF that uses tensor cores and that is free from the
+      // restriction. This implementation only works on Ampere
+      // architecture though (where TF32 was introduced).
+      return true;
+    }
+
+    // Get the rhs non-contracting dimensions as they will eventually be at the
+    // cublasLt level.
+    std::vector<int64_t> rhs_non_contracting_dims;
+    const DotDimensionNumbers &dot_dims =
+        gemm_backend_config.dot_dimension_numbers();
+    TF_ASSIGN_OR_RETURN(
+        GemmConfig gemm_config,
+        GemmConfig::For(
+            lhs->shape(), dot_dims.lhs_batch_dimensions(),
+            dot_dims.lhs_contracting_dimensions(), rhs->shape(),
+            dot_dims.rhs_batch_dimensions(),
+            dot_dims.rhs_contracting_dimensions(),
+            /*output_shape=*/instr->shape(), gemm_backend_config.alpha_real(),
+            gemm_backend_config.alpha_imag(), gemm_backend_config.beta(),
+            /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision));
+    if (gemm_config.output_layout.order != MatrixLayout::Order::kColumnMajor) {
+      // cublasLt's matmul output is column major by default. This gemm requires
+      // the output to be in row major. Later we will swap lhs & rhs (and
+      // transpose each operand) of this gemm. Since we care about the rhs at
+      // the cublasLt level, this swap means that we care about the lhs right
+      // here.
+      TF_ASSIGN_OR_RETURN(
+          rhs_non_contracting_dims,
+          GetNonContractingDims(lhs->shape(), dot_dims.lhs_batch_dimensions(),
+                                dot_dims.lhs_contracting_dimensions()));
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          rhs_non_contracting_dims,
+          GetNonContractingDims(rhs->shape(), dot_dims.rhs_batch_dimensions(),
+                                dot_dims.rhs_contracting_dimensions()));
+    }
+
+    const auto lhs_non_contracting_dimension_size = absl::c_accumulate(
+        rhs_non_contracting_dims, 1, [&](int64_t size, int64_t dim) {
+          return size * lhs->shape().dimensions(dim);
+        });
+
+    // Check that the size of the non-contracting dimension is not too large.
+    return lhs_non_contracting_dimension_size <= kMaxDimensionSize;
+  }
 };
 
-StatusOr<bool> RunOnComputation(HloComputation *computation) {
-  GemmRewriterVisitor visitor;
+StatusOr<bool> RunOnComputation(
+    HloComputation *computation,
+    se::CudaComputeCapability cuda_compute_capability) {
+  GemmRewriterVisitor visitor(cuda_compute_capability);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
 
 }  // anonymous namespace
+
+GemmRewriter::GemmRewriter(se::CudaComputeCapability cuda_compute_capability)
+    : cuda_compute_capability_(cuda_compute_capability) {}
 
 StatusOr<bool> GemmRewriter::Run(
     HloModule *module,
@@ -373,7 +517,8 @@ StatusOr<bool> GemmRewriter::Run(
   bool changed = false;
   for (HloComputation *computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    TF_ASSIGN_OR_RETURN(
+        bool result, RunOnComputation(computation, cuda_compute_capability_));
     changed |= result;
   }
   return changed;

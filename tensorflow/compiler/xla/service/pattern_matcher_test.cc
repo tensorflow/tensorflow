@@ -615,12 +615,26 @@ TEST_F(PatternMatcherTest, CustomCallTargetMatcherDescribeAndExplain) {
 
   auto* root = hlo_module->entry_computation()->root_instruction();
   EXPECT_TRUE(Match(root, match::Op().WithCustomCallTarget("test_target")));
+  EXPECT_TRUE(Match(
+      root, match::Op().WithCustomCallTarget({"test_target", "other_target"})));
+  EXPECT_TRUE(Match(
+      root, match::Op().WithCustomCallTarget({"other_target", "test_target"})));
   EXPECT_FALSE(Match(root, match::Op().WithCustomCallTarget("other_target")));
+  EXPECT_FALSE(Match(root, match::Op().WithCustomCallTarget(
+                               {"other_target", "other_target2"})));
 
   EXPECT_DESC_AND_EXPLANATION(
       root, match::Op().WithCustomCallTarget("other_target"),
       "an HloInstruction custom call with target 'other_target'",
       "HloInstruction is not a custom call with a target 'other_target'\nin "
+      "out = f32[] custom-call(), custom_call_target=\"test_target\"");
+
+  EXPECT_DESC_AND_EXPLANATION(
+      root, match::Op().WithCustomCallTarget({"other_target", "other_target2"}),
+      "an HloInstruction custom call with target in {other_target, "
+      "other_target2}",
+      "HloInstruction is not a custom call with a target in {other_target, "
+      "other_target2}\nin "
       "out = f32[] custom-call(), custom_call_target=\"test_target\"");
 }
 
@@ -1085,6 +1099,13 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
   EXPECT_TRUE(Match(
       root, m::CustomCall("test_target", m::Parameter(0), m::Parameter(1))));
 
+  EXPECT_TRUE(Match(root, m::CustomCall({"test_target", "other_target"})));
+  EXPECT_TRUE(Match(root, m::CustomCall({"other_target", "test_target"})));
+  EXPECT_TRUE(Match(root, m::CustomCall({"test_target", "other_target"},
+                                        m::Parameter(0), m::Parameter(1))));
+  EXPECT_TRUE(Match(root, m::CustomCall({"other_target", "test_target"},
+                                        m::Parameter(0), m::Parameter(1))));
+
   HloInstruction* instr;
   EXPECT_TRUE(Match(root, m::CustomCall(&instr)));
   EXPECT_TRUE(Match(root, m::CustomCall(&instr, "test_target")));
@@ -1098,6 +1119,7 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
                                         m::Parameter(0), m::Parameter(1))));
 
   EXPECT_FALSE(Match(root, m::CustomCall("other_target")));
+  EXPECT_FALSE(Match(root, m::CustomCall({"other_target", "other_target2"})));
   EXPECT_FALSE(Match(
       root, m::CustomCall("test_target", m::Parameter(1), m::Parameter(0))));
 }

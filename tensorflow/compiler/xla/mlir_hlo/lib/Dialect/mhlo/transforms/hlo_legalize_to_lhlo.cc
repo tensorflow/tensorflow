@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -449,7 +449,7 @@ struct HloLegalizeToLhlo
     RewritePatternSet patterns(&context);
     ConversionTarget target(context);
     target.addLegalDialect<
-        arith::ArithmeticDialect, bufferization::BufferizationDialect,
+        arith::ArithDialect, bufferization::BufferizationDialect,
         lmhlo::LmhloDialect, memref::MemRefDialect, shape::ShapeDialect,
         func::FuncDialect, tensor::TensorDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();

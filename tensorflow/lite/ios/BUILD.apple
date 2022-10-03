@@ -84,9 +84,10 @@ strip_common_include_path_prefix(
     name = "strip_common_include_path_core",
     hdr_labels = [
         "//tensorflow/lite:builtin_ops.h",
-        "//tensorflow/lite/c:c_api.h",
         "//tensorflow/lite/c:c_api_experimental.h",
         "//tensorflow/lite/c:common.h",
+        # Here we include the path of the actual c api header instead of the shim header.
+        "//tensorflow/lite/core/c:c_api.h",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
     ],
 )
@@ -205,6 +206,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_experimental.h",
         "//tensorflow/lite/c:c_api_types.h",
         "//tensorflow/lite/c:common.h",
+        "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
     ],
     tags = [

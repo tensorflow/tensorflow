@@ -1,7 +1,8 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
-load("//tensorflow:tensorflow.bzl", "check_deps", "if_google", "tf_cc_test", "tf_copts", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "check_deps", "tf_cc_test", "tf_cuda_cc_test")
+load("//tensorflow/tsl:tsl.bzl", "if_google", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
@@ -21,7 +22,7 @@ load(
     "tf_cuda_tests_tags",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -141,8 +142,8 @@ tf_cuda_cc_test(
     deps = [
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -151,11 +152,13 @@ tf_cuda_cc_test(
     srcs = ["cuda_driver_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171512140): re-enable.
+        "no_rocm",
     ],
     deps = [
+        ":cuda_driver",
         "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "@local_config_cuda//cuda:cuda_headers",
     ],
 )
@@ -167,9 +170,12 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # TODO(b/171512140): re-enable.
     ],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
         "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -684,8 +690,8 @@ tf_cc_test(
     srcs = ["cudnn_version_test.cc"],
     deps = [
         ":cudnn_version",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -704,12 +710,18 @@ cc_library(
     alwayslink = 1,
 )
 
+# OSX framework for device driver access
+cc_library(
+    name = "IOKit",
+    linkopts = ["-framework IOKit"],
+)
+
 cc_library(
     name = "stream_executor_cuda",
-    deps = if_google(
-        [
-            "//tensorflow/compiler/xla/stream_executor:stream_executor_bundle",
-        ] + select({
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_bundle",
+    ] + if_google(
+        select({
             # copybara:uncomment_begin(different config setting in OSS)
             # "//tools/cc_target_os:gce": [],
             # copybara:uncomment_end_and_comment_begin
@@ -767,8 +779,9 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/xla/stream_executor:kernel",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
