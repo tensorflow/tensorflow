@@ -288,9 +288,7 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
 }
 
 bool ConvIsLowerable(HloInstruction* conv) {
-  return conv_matchers::CanImplementAsGpuForwardConv(conv) ||
-         std::get<0>(conv_matchers::MatchBackwardFilter(conv)) ||
-         std::get<0>(conv_matchers::MatchBackwardInput(conv));
+  return GpuConvRewriter::ConvIsLowerable(conv);
 }
 
 }  // end anonymous namespace
