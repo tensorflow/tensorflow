@@ -11,9 +11,9 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup")  # buildifier: disable=same-origin-load
 
 # For platform specific build config
 load(
@@ -154,6 +154,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
+        "//tensorflow/core/activity_watcher",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
@@ -810,6 +811,7 @@ cc_library(
         ":message_wrappers",
         "//tensorflow/core:lib",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

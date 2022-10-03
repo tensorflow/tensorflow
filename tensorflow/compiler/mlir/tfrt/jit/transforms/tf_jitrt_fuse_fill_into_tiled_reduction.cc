@@ -23,14 +23,14 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_FUSEFILLINTOTILEDREDUCTION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using llvm::makeArrayRef;
@@ -61,8 +61,8 @@ using mlir::tensor::InsertSliceOp;
 
 SmallVector<OpFoldResult> GetParallelDimStep(LoopOp tiled_loop) {
   assert(tiled_loop.getNumLoops() == 2 && "Expected a 2D loop");
-  Value step = tiled_loop.isParallelDimension(0) ? tiled_loop.step().front()
-                                                 : tiled_loop.step().back();
+  Value step = tiled_loop.isParallelDimension(0) ? tiled_loop.getStep().front()
+                                                 : tiled_loop.getStep().back();
   if (auto constant = step.getDefiningOp<mlir::arith::ConstantOp>()) {
     return {constant.getValue()};
   }
@@ -243,8 +243,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
     auto accumulator = rewriter.create<GenericOp>(
         tiled_op.getLoc(), partial_result.getType(),
-        makeArrayRef(partial_result),
-        makeArrayRef(extract_output_slice.result()),
+        makeArrayRef(partial_result), makeArrayRef((Value)extract_output_slice),
         makeArrayRef({id_map, id_map}), parallel_iter_types,
         [&](OpBuilder &b, Location nested_loc, ValueRange args) {
           BlockAndValueMapping bvm;
@@ -254,7 +253,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
         });
 
     rewriter.updateRootInPlace(insert_output_slice, [&]() {
-      insert_output_slice.sourceMutable().assign(accumulator.getResult(0));
+      insert_output_slice.getSourceMutable().assign(accumulator.getResult(0));
     });
     return success();
   }
@@ -266,10 +265,10 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
     auto loc = tiled_loop.getLoc();
     rewriter.setInsertionPoint(tiled_loop);
     auto new_loop = rewriter.create<LoopOp>(
-        loc, mlir::TypeRange(tiled_loop.outputs()), tiled_loop.getOperands(),
+        loc, mlir::TypeRange(tiled_loop.getOutputs()), tiled_loop.getOperands(),
         tiled_loop->getAttrs());
-    rewriter.inlineRegionBefore(tiled_loop.region(), new_loop.region(),
-                                new_loop.region().begin());
+    rewriter.inlineRegionBefore(tiled_loop.getRegion(), new_loop.getRegion(),
+                                new_loop.getRegion().begin());
 
     rewriter.replaceOp(tiled_loop, new_loop.getResult(0));
     return new_loop;
@@ -286,7 +285,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
     // Find tiled loop output operand and the corresponding block argument.
     mlir::OpOperand *loop_output_operand =
-        tiled_loop.findOutputOperand(tiled_loop.outputs().front());
+        tiled_loop.findOutputOperand(tiled_loop.getOutputs().front());
     BlockArgument loop_output_bb_arg =
         tiled_loop.getTiedBlockArgument(*loop_output_operand);
 
@@ -319,7 +318,8 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 };
 
 struct FuseFillIntoTiledReductionPass
-    : public FuseFillIntoTiledReductionBase<FuseFillIntoTiledReductionPass> {
+    : public impl::FuseFillIntoTiledReductionBase<
+          FuseFillIntoTiledReductionPass> {
   void runOnOperation() override {
     auto func = getOperation();
     auto context = func.getContext();

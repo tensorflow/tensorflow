@@ -15,8 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_VALUE_INFERENCE_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_VALUE_INFERENCE_H_
 
+#include <optional>
+
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"

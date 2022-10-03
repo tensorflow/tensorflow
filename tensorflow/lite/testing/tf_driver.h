@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TESTING_TF_DRIVER_H_
 
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 

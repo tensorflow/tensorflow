@@ -16,10 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
@@ -27,9 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/notification.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/notification.h"
 
 using absl::StrCat;
 
@@ -54,10 +54,9 @@ StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
 
   se::Stream* substream = stream->GetOrCreateSubStream();
   substream->ThenWaitFor(stream);
-  auto cleanup = tensorflow::gtl::MakeCleanup(
-      [&]() { stream->ReturnSubStream(substream); });
+  absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
-  tensorflow::Notification n;
+  tsl::Notification n;
   Status s;
   Literal literal(device_buffer.on_host_shape());
   TransferLiteralFromDevice(
@@ -79,11 +78,10 @@ Status TransferManager::TransferLiteralFromDevice(
     const MutableBorrowingLiteral& literal,
     const TransferMetadata* transfer_metadata) {
   se::Stream* substream = stream->GetOrCreateSubStream();
-  auto cleanup = tensorflow::gtl::MakeCleanup(
-      [&]() { stream->ReturnSubStream(substream); });
+  absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
   Status ret;
-  tensorflow::Notification n;
+  tsl::Notification n;
   TransferLiteralFromDevice(
       substream, device_buffer, literal,
       [&](Status status) {
@@ -104,8 +102,7 @@ Status TransferManager::TransferLiteralToDevice(
   // deadlock.
   se::Stream* substream = stream->GetOrCreateSubStream();
   substream->ThenWaitFor(stream);
-  auto cleanup = tensorflow::gtl::MakeCleanup(
-      [&]() { stream->ReturnSubStream(substream); });
+  absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
   TF_RETURN_IF_ERROR(TransferLiteralToDeviceAsync(
       substream, literal, device_buffer, transfer_metadata));
   return substream->BlockHostUntilDone();
@@ -119,10 +116,9 @@ StatusOr<Literal> TransferManager::TransferArrayFromDevice(
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
   se::Stream* substream = stream->GetOrCreateSubStream();
-  auto cleanup = tensorflow::gtl::MakeCleanup(
-      [&]() { stream->ReturnSubStream(substream); });
+  absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
-  tensorflow::Notification n;
+  tsl::Notification n;
   Literal literal(shape);
   Status s;
   TransferArrayFromDevice(
@@ -147,8 +143,7 @@ Status TransferManager::TransferArrayToDevice(
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
   se::Stream* substream = stream->GetOrCreateSubStream();
-  auto cleanup = tensorflow::gtl::MakeCleanup(
-      [&]() { stream->ReturnSubStream(substream); });
+  absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
   TF_RETURN_IF_ERROR(
       TransferArrayToDeviceAsync(substream, literal, dest, transfer_metadata));
   return substream->BlockHostUntilDone();
@@ -410,7 +405,7 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
                         allocator->Allocate(shaped_buffer.device_ordinal(),
                                             GetByteSizeRequirement(subshape),
                                             /*retry_on_failure=*/true,
-                                            subshape.layout().memory_space()));
+                                            LayoutUtil::MemorySpace(subshape)));
     // Move the allocated buffer into the ScopedShapedBuffer, which owns it.
     memory_base = memory.Release();
   }

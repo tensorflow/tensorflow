@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 
+#include <utility>
+
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/typed_allocator.h"
@@ -25,6 +27,22 @@ limitations under the License.
 
 namespace tflite {
 namespace flex {
+
+namespace {
+// Returns a boolean to indicate whether we should reuse memory from the
+// TfLiteTensor.
+inline bool ShouldReuseTensorMemory(const TfLiteTensor* tensor) {
+  // TODO(b/205153246): Currently arena-alloated memory could not be reused
+  // since it might be invalid after the original arena grow in size and copied
+  // over to a new memory block.
+  // First check alignment is consistent with Tensorflow.
+  if (EIGEN_MAX_ALIGN_BYTES != 0 &&
+      reinterpret_cast<intptr_t>(tensor->data.raw) % EIGEN_MAX_ALIGN_BYTES) {
+    return false;
+  }
+  return tensor->allocation_type != kTfLiteArenaRw;
+}
+}  // namespace
 
 void BaseTfLiteTensorBuffer::FillAllocationDescription(
     tensorflow::AllocationDescription* proto) const {
@@ -50,24 +68,36 @@ void BaseTfLiteTensorBuffer::LogDeallocation() {
   }
 }
 
-TfLiteTensorBuffer::TfLiteTensorBuffer(const TfLiteTensor* tensor)
-    : BaseTfLiteTensorBuffer(tensorflow::cpu_allocator()->AllocateRaw(
-          EIGEN_MAX_ALIGN_BYTES, tensor->bytes)) {
-  // TODO(ahentz): if we can guarantee that TF Lite allocated tensors with
-  // the same alignment as TensorFlow (EIGEN_MAX_ALIGN_BYTES), then we can
-  // potentially eliminate the copy below.
+void* TfLiteTensorBuffer::MaybeAllocateTensorflowBuffer(
+    const TfLiteTensor* tensor, bool allow_reusing) const {
+  if (allow_reusing && ShouldReuseTensorMemory(tensor)) {
+    return tensor->data.raw;
+  }
+  return tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES,
+                                                  tensor->bytes);
+}
+
+TfLiteTensorBuffer::TfLiteTensorBuffer(const TfLiteTensor* tensor,
+                                       bool allow_reusing)
+    : BaseTfLiteTensorBuffer(
+          MaybeAllocateTensorflowBuffer(tensor, allow_reusing)) {
   len_ = tensor->bytes;
 
-  LogAllocation();
+  reused_buffer_from_tflite_ = allow_reusing && ShouldReuseTensorMemory(tensor);
 
-  if (data()) {
+  if (data() && !reused_buffer_from_tflite_) {
+    LogAllocation();
     std::memcpy(data(), tensor->data.raw, tensor->bytes);
   }
 }
 
 TfLiteTensorBuffer::~TfLiteTensorBuffer() {
-  LogDeallocation();
-  tensorflow::cpu_allocator()->DeallocateRaw(data());
+  if (!reused_buffer_from_tflite_) {
+    LogDeallocation();
+    // Only deallocate tensor memory if it's allocated via Tensorflow's CPU
+    // allocator.
+    tensorflow::cpu_allocator()->DeallocateRaw(data());
+  }
 }
 
 StringTfLiteTensorBuffer::StringTfLiteTensorBuffer(const TfLiteTensor* tensor)
@@ -102,7 +132,8 @@ StringTfLiteTensorBuffer::StringTfLiteTensorBuffer(const TfLiteTensor* tensor,
 }
 
 tensorflow::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
-                                         tensorflow::Tensor* tf_tensor) {
+                                         tensorflow::Tensor* tf_tensor,
+                                         bool allow_reusing) {
   if (resource::IsBuiltinResource(tensor)) {
     // If this is native TF Lite resource variable, then we create a TF resource
     // tensor where the tensor handle encodes the identifier of the TF Lite
@@ -150,7 +181,7 @@ tensorflow::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
   if (tensor->type == kTfLiteString) {
     buf = new StringTfLiteTensorBuffer(tensor);
   } else {
-    buf = new TfLiteTensorBuffer(tensor);
+    buf = new TfLiteTensorBuffer(tensor, allow_reusing);
   }
   tensorflow::Tensor t = tensorflow::TensorCApi::MakeTensor(
       GetTensorFlowDataType(tensor->type), shape, buf);

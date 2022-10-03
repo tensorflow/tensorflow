@@ -177,8 +177,18 @@ class BundleWriter {
 //
 // Once merged, makes a best effort to delete the old metadata files.
 // Returns OK iff all bundles are successfully merged.
+//
+// "allow_missing_files": If set to true, merges "prefixes" as long as
+// at least one file exists. (Defaults to false.)
+//
+// Returns an InvalidArgumentError when "allow_missing_files" is set to true
+// and all data files named in "prefixes" do not exist.
+//
+// Returns a NotFoundError when "allow_missing_files" is set to false and
+// any data file named in "prefixes" does not exist.
 Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
-                    StringPiece merged_prefix);
+                    StringPiece merged_prefix,
+                    bool allow_missing_files = false);
 
 // On construction, silently attempts to read the metadata associated with
 // "prefix".  If caller intends to call any function afterwards, "status()"
@@ -186,7 +196,8 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
 // All threads accessing the same BundleReader must synchronize.
 class BundleReader {
  public:
-  BundleReader(Env* const env, StringPiece prefix);
+  BundleReader(Env* const env, StringPiece prefix,
+               bool enable_multi_threading_for_testing = false);
   ~BundleReader();
 
   // Is ok() iff the reader construction is successful (completed the read of
@@ -323,6 +334,8 @@ class BundleReader {
   bool need_to_swap_bytes_;
 
   friend class TensorBundleAlignmentTest;  // For testing data alignment.
+
+  bool enable_multi_threading_for_testing_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BundleReader);
 };

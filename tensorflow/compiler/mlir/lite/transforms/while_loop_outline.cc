@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
@@ -201,7 +203,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   auto old_extern_values_size = extern_values.size();
 
   llvm::SmallVector<Region*, 2> regions{&while_op.cond(), &while_op.body()};
-  for (auto it : llvm::enumerate(regions)) {
+  for (const auto& it : llvm::enumerate(regions)) {
     llvm::SetVector<Value> region_extern_values;
     getUsedValuesDefinedAbove(*it.value(), region_extern_values);
 

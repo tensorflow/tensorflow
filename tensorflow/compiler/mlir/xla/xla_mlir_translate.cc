@@ -19,28 +19,28 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
 namespace {
 // Error collector that simply ignores errors reported.
-class NoOpErrorCollector : public tensorflow::protobuf::io::ErrorCollector {
+class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
  public:
   void AddError(int line, int column, const std::string& message) override {}
 };
 
 bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
-  tensorflow::protobuf::TextFormat::Parser parser;
+  tsl::protobuf::TextFormat::Parser parser;
   NoOpErrorCollector collector;
   parser.RecordErrorsTo(&collector);
   return hlo_proto->ParseFromString(contents) ||
@@ -84,7 +84,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
     return nullptr;
   }
 
-  auto hlo_module = std::move(hlo_module_error.ValueOrDie());
+  auto hlo_module = std::move(hlo_module_error.value());
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   auto status =

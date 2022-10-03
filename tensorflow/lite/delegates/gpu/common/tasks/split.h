@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_STRIDED_SPLIT_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_STRIDED_SPLIT_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPLIT_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPLIT_H_
 
 #include <string>
 
@@ -27,8 +27,8 @@ namespace gpu {
 
 class Split : public GPUOperation {
  public:
-  Split(const OperationDef& definition, const SplitAttributes& attr,
-        const std::vector<int>& channels);
+  Split(const GpuInfo& gpu_info, const OperationDef& definition,
+        const SplitAttributes& attr, const std::vector<int>& channels);
   int3 GetGridSize() const override;
 
   // Move only
@@ -39,15 +39,17 @@ class Split : public GPUOperation {
 
  private:
   std::string GetSplitCode();
-  std::string GetSplitChannelsCode(const std::vector<int>& channels);
+  std::string GetSplitChannelsCode(const GpuInfo& gpu_info,
+                                   const std::vector<int>& channels);
 
   SplitAttributes attr_;
 };
 
-Split CreateSplit(const OperationDef& definition, const SplitAttributes& attr,
+Split CreateSplit(const GpuInfo& gpu_info, const OperationDef& definition,
+                  const SplitAttributes& attr,
                   const std::vector<int>& channels);
 
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_STRIDED_SPLIT_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPLIT_H_

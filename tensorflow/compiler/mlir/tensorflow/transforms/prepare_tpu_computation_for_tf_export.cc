@@ -121,7 +121,7 @@ class RewriteXlaHostComputeMlir
         /*key=*/rewriter.getStringAttr(""), op.send_keyAttr(),
         op.recv_keyAttr(),
         /*cost_estimate_ns=*/rewriter.getI64IntegerAttr(kDefaultCostEstimate),
-        op.tpu_coreAttr());
+        /*tpu_core=*/rewriter.getI64IntegerAttr(0));
     return success();
   }
 };

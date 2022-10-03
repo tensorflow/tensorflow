@@ -118,7 +118,7 @@ PYBIND11_MODULE(_unified_api, m) {
            [](AbstractContext* self, const char* op,
               const char* raw_device_name) {
              auto operation = self->CreateOperation();
-             operation->Reset(op, raw_device_name);
+             (void)operation->Reset(op, raw_device_name);
              return operation;
            })
       .def("RegisterFunction",

@@ -32,9 +32,9 @@ def numpy_reverse(x, axis):
   if axis < 0:
     axis = length + axis
 
-  ix = [
+  ix = tuple(
       slice(None, None, -1) if i == axis else slice(None) for i in range(length)
-  ]
+  )
   return x[ix]
 
 
@@ -48,10 +48,11 @@ def handle_options(func, x, axis, exclusive, reverse):
     x = numpy_reverse(x, axis)
 
   if exclusive:
-    ix_head = [slice(0, 1) if i == axis else slice(None) for i in range(length)]
-    ix_init = [
+    ix_head = tuple(slice(0, 1) if i == axis else slice(None)
+                    for i in range(length))
+    ix_init = tuple(
         slice(0, -1) if i == axis else slice(None) for i in range(length)
-    ]
+    )
     if func == np.cumsum:
       init = np.zeros_like(x[ix_head])
     elif func == np.cumprod:

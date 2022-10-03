@@ -15,10 +15,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/perception_ops_utils.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -106,10 +107,9 @@ class PerceptionUtilsTest : public ::testing::Test {
 
   void SetUp() override {
     context_ = std::make_unique<mlir::MLIRContext>();
-    context_
-        ->loadDialect<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
-                      mlir::TF::TensorFlowDialect, TensorFlowLiteDialect>();
-    builder_ = std::unique_ptr<mlir::Builder>(new Builder(context_.get()));
+    context_->loadDialect<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+                          mlir::TF::TensorFlowDialect, TensorFlowLiteDialect>();
+    builder_ = std::make_unique<mlir::Builder>(context_.get());
 
     fused_max_unpooling_func_ =
         createMaxUnpoolingFunc(builder_.get(), {2, 4, 4, 2}, {2, 2, 2, 2});

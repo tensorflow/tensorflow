@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/signature_runner.h"
 
 extern "C" {
@@ -133,6 +133,7 @@ TfLiteSignatureRunner* TfLiteInterpreterGetSignatureRunner(
     const TfLiteInterpreter* interpreter, const char* signature_key) {
   tflite::SignatureRunner* signature_runner =
       interpreter->impl->GetSignatureRunner(signature_key);
+  if (!signature_runner) return nullptr;
   return new TfLiteSignatureRunner{signature_runner};
 }
 

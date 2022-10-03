@@ -1,15 +1,15 @@
 # Tensorflow util package
 
-load("//tensorflow:tensorflow.bzl", "py_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
@@ -476,17 +476,6 @@ py_library(
     ],
 )
 
-py_strict_library(
-    name = "traceback_utils",
-    srcs = ["traceback_utils.py"],
-    compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        ":tf_decorator",
-    ],
-)
-
 tf_py_test(
     name = "traceback_utils_test",
     size = "small",
@@ -710,5 +699,20 @@ tf_py_test(
         ":util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
+    ],
+)
+
+tf_py_test(
+    name = "variable_utils_test",
+    srcs = ["variable_utils_test.py"],
+    deps = [
+        ":util",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:test",
     ],
 )

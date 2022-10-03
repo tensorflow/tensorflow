@@ -22,13 +22,13 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_target_cpu")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_target_cpu")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_enabled")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_enabled")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_abilists")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists")
 
 def _tfcompile_model_library_rule_impl(ctx):
     header_file = ctx.outputs.header_out
@@ -92,11 +92,9 @@ def _tfcompile_model_library_rule_impl(ctx):
         mnemonic = "TensorflowCompile",
     )
     out_files = [header_file, metadata_object_file, function_object_file, session_module_pb]
-    dep_files = [ctx.executable.tfcompile_tool]
     return [
         DefaultInfo(
             files = depset(out_files),
-            runfiles = ctx.runfiles(files = dep_files, transitive_files = depset(dep_files)),
         ),
         OutputGroupInfo(**output_dict),
     ]

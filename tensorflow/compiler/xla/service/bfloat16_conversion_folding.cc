@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -252,11 +252,13 @@ Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
   return OkStatus();
 }
 
-StatusOr<bool> BFloat16ConversionFolding::Run(HloModule* module) {
+StatusOr<bool> BFloat16ConversionFolding::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       2, "BFloat16ConversionFolding::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     if (BFloat16ConversionFoldingVisitor::Run(comp, bfloat16_support_, this)) {
       changed = true;
     }

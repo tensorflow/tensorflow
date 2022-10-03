@@ -1061,7 +1061,7 @@ def sparse_split_v2(sp_input=None,
 
   >>> indices = [[0, 2], [0, 4], [0, 5], [1, 0], [1, 1]]
   >>> values = [1, 2, 3, 4, 5]
-  >>> t = tf.SparseTensor(indices=indices, values=values, dense_shape=[2, 7])
+  >>> t = tf.sparse.SparseTensor(indices=indices, values=values, dense_shape=[2, 7])
   >>> tf.sparse.to_dense(t)
   <tf.Tensor: shape=(2, 7), dtype=int32, numpy=
   array([[0, 0, 1, 0, 2, 3, 0],
@@ -1671,7 +1671,7 @@ def sparse_tensor_to_dense(sp_input,
 
   For this sparse tensor with three non-empty values:
 
-  >>> sp_input = tf.SparseTensor(
+  >>> sp_input = tf.sparse.SparseTensor(
   ...   dense_shape=[3, 5],
   ...   values=[7, 8, 9],
   ...   indices =[[0, 1],

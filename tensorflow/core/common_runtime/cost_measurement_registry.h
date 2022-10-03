@@ -63,7 +63,7 @@ class CostMeasurementRegistrar {
   static ::tensorflow::CostMeasurementRegistrar                        \
       MyCostMeasurementClass##_registrar(                              \
           (name), [](const CostMeasurement::Context& context) {        \
-            return absl::make_unique<MyCostMeasurementClass>(context); \
+            return std::make_unique<MyCostMeasurementClass>(context); \
           });                                                          \
   }  // namespace
 

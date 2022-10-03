@@ -55,7 +55,7 @@ namespace toco {
   const auto& max_array = model->GetArray(fakequant_op->inputs[2]);
   CHECK_EQ(RequiredBufferSizeForShape(min_array.shape()), 1);
   CHECK_EQ(RequiredBufferSizeForShape(max_array.shape()), 1);
-  fakequant_op->minmax.reset(new MinMax);
+  fakequant_op->minmax = std::make_unique<MinMax>();
   MinMax& minmax = *fakequant_op->minmax;
   minmax.min = min_array.GetBuffer<ArrayDataType::kFloat>().data[0];
   minmax.max = max_array.GetBuffer<ArrayDataType::kFloat>().data[0];

@@ -53,7 +53,7 @@ void BuildProfilerSubmodule(py::module* m) {
   profiler.def(
       "start_server",
       [](int port) -> std::unique_ptr<tensorflow::profiler::ProfilerServer> {
-        auto server = absl::make_unique<tensorflow::profiler::ProfilerServer>();
+        auto server = std::make_unique<tensorflow::profiler::ProfilerServer>();
         server->StartProfilerServer(port);
         return server;
       },

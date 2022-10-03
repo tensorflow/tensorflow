@@ -149,7 +149,7 @@ struct EngineContext {
     }
     *exec_ctx = execution_contexts[idx].get();
     *has_device_memory = execution_contexts[idx].HasDeviceMemory();
-    return Status::OK();
+    return OkStatus();
   }
 
   int GetNumContexts() {
@@ -185,7 +185,6 @@ struct EngineContext {
   // latency. Since its value remains constant, we can cache it.
   size_t device_memory_size_;
 };
-
 // Contains the context required to build the calibration data.
 class CalibrationContext {
  public:

@@ -18,11 +18,10 @@ limitations under the License.
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -428,7 +427,7 @@ Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
   auto partitioned_fft =
       PartitionedHlo(result, hlo->shape(), partitioned_input.state());
   SetPartitionedHlo(hlo, partitioned_fft);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace spmd

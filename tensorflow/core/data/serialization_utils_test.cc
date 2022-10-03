@@ -57,14 +57,14 @@ class TestContext {
     TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
         options, "/job:localhost/replica:0/task:0", &devices));
     (*result)->device_mgr_ =
-        absl::make_unique<StaticDeviceMgr>(std::move(devices));
+        std::make_unique<StaticDeviceMgr>(std::move(devices));
 
     FunctionDefLibrary proto;
-    (*result)->lib_def_ = absl::make_unique<FunctionLibraryDefinition>(
+    (*result)->lib_def_ = std::make_unique<FunctionLibraryDefinition>(
         OpRegistry::Global(), proto);
 
     OptimizerOptions opts;
-    (*result)->pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
+    (*result)->pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         (*result)->device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, (*result)->lib_def_.get(), opts);
     (*result)->runner_ = [](const std::function<void()>& fn) { fn(); };
@@ -73,9 +73,9 @@ class TestContext {
     (*result)->params_.device = (*result)->device_mgr_->ListDevices()[0];
     (*result)->params_.runner = &(*result)->runner_;
     (*result)->op_ctx_ =
-        absl::make_unique<OpKernelContext>(&(*result)->params_, 0);
+        std::make_unique<OpKernelContext>(&(*result)->params_, 0);
     (*result)->iter_ctx_ =
-        absl::make_unique<IteratorContext>((*result)->op_ctx_.get());
+        std::make_unique<IteratorContext>((*result)->op_ctx_.get());
     return OkStatus();
   }
 

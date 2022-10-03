@@ -35,7 +35,7 @@ Status GenNode::BuildGraphInMap(const GraphDef& source, GenNodeMap* map) {
       return Status(error::INVALID_ARGUMENT,
                     "Duplicate node name '" + name + "'.");
     }
-    (*map)[name] = absl::make_unique<GenNode>(&n);
+    (*map)[name] = std::make_unique<GenNode>(&n);
   }
   // Now parse the links.
   for (const auto& mapit : *map) {

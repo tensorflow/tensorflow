@@ -1180,7 +1180,7 @@ Status EncapsulateSubgraphsPass::Run(
   }
 
   std::unique_ptr<DeviceMgr> device_mgr =
-      absl::make_unique<StaticDeviceMgr>(std::move(devices));
+      std::make_unique<StaticDeviceMgr>(std::move(devices));
   const auto* config = &options.session_options->config;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(

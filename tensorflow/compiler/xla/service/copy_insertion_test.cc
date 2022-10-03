@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -77,7 +77,9 @@ class CopyInsertionTest : public HloTestBase {
  protected:
   void InsertCopies(HloModule* module) {
     CopyInsertion copy_insertion;
+    VLOG(3) << "Before copy inser: " << module->ToString();
     ASSERT_IS_OK(copy_insertion.Run(module).status());
+    VLOG(2) << "After copy inser: " << module->ToString();
   }
 
   const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
@@ -755,8 +757,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
   ROOT %while.1 = (s32[], f32[8]{0}) while((s32[], f32[8]{0}) %tuple.1), condition=%DependentTupleElements.Condition, body=%DependentTupleElements.Body
 }
 )";
-  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
-  auto module_ = module_or_status.ConsumeValueOrDie();
+  auto module_ = ParseAndReturnVerifiedModule(hlo_string).value();
   auto while_hlo = module_->entry_computation()->root_instruction();
   // module_ and while_hlo are the pre-existing module and hlo, the below
   // code generates a clone of the existing while and replaces that while
@@ -823,8 +824,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
   ROOT %while.1 = (s32[], f32[8]{0}) while((s32[], f32[8]{0}) %tuple.1), condition=%DependentTupleElements.Condition, body=%DependentTupleElements.Body
 }
 )";
-  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
-  auto module_ = module_or_status.ConsumeValueOrDie();
+  auto module_ = ParseAndReturnVerifiedModule(hlo_string).value();
   auto while_hlo = module_->entry_computation()->root_instruction();
   // module_ and while_hlo are the pre-existing module and hlo, the below
   // code generates a clone of the existing while and replaces that while
@@ -883,8 +883,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s
   ROOT %while.1 = (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) while( (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) %tuple.1), condition=%DependentTupleElements.Condition, body=%DependentTupleElements.Body
 }
 )";
-  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
-  auto module_ = module_or_status.ConsumeValueOrDie();
+  auto module_ = ParseAndReturnVerifiedModule(hlo_string).value();
   auto while_hlo = module_->entry_computation()->root_instruction();
   // module_ and while_hlo are the pre-existing module and hlo, the below
   // code generates a clone of the existing while and replaces that while
@@ -2175,8 +2174,7 @@ ENTRY TestComputation {
   ROOT while.3 = (s32[], s32[], s32[], s32[], s32[]) while(arg_tuple.6), condition=cond_wrapper.v3.2, body=_functionalize_body_2__.v25
 }
 )";
-  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
-  auto module = module_or_status.ConsumeValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   InsertCopies(module.get());
 }
 
@@ -2275,8 +2273,7 @@ ENTRY TestComputation {
   ROOT while.3 = (s32[], s32[], s32[], s32[], s32[]) while(arg_tuple.6), condition=cond_wrapper.v3.2, body=_functionalize_body_2__.v25
 }
 )";
-  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
-  auto module = module_or_status.ConsumeValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   InsertCopies(module.get());
 }
 
@@ -2469,7 +2466,6 @@ ENTRY TestComputation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
-  VLOG(2) << module->ToString() << "\n";
 
   // An extra copy must be kept inside the loop due to uses in the conditional.
   EXPECT_EQ(CountCopies(*module), 3);

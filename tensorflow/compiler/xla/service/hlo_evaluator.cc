@@ -21,18 +21,19 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <iterator>
+#include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/internal/endian.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -51,19 +52,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace xla {
 
@@ -203,7 +203,7 @@ struct WhileCondComparison {
 // of NoOp, it contains the parameter index and initial value of the loop
 // induction variable.
 using WhileCondComparisonOrNoOp =
-    absl::variant<WhileCondComparison, ParamIndexAndValue>;
+    std::variant<WhileCondComparison, ParamIndexAndValue>;
 
 // Finds the while loop condition comparison by matching the loop condition root
 // with known patterns.
@@ -403,10 +403,11 @@ enum class EvalErrorDetail : uint32_t {
   kDynamicValueDependence = 0,
 };
 
-Status MakeEvalErrorDueToParamOrInfeed() {
-  Status error = tensorflow::errors::FailedPrecondition(
-      "Failed to evaluate instruction since it depends on infeed or "
-      "parameters to its parent computation.");
+Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
+  Status error = tsl::errors::FailedPrecondition(
+      "Failed to evaluate instruction (", eval_instruction.name(),
+      ") since it depends on infeed or parameters to its parent computation (",
+      eval_instruction.parent()->name(), ").");
   std::string error_payload;
   error_payload.resize(sizeof(EvalErrorDetail));
   absl::little_endian::Store32(
@@ -417,13 +418,12 @@ Status MakeEvalErrorDueToParamOrInfeed() {
 }
 
 std::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
-  std::optional<tensorflow::StringPiece> error_detail =
-      error.GetPayload(kEvalErrorDetailUrl);
+  auto error_detail = error.GetPayload(kEvalErrorDetailUrl);
   if (!error_detail.has_value() && error_detail->empty()) {
     return std::nullopt;
   }
   return static_cast<EvalErrorDetail>(
-      absl::little_endian::Load32(error_detail->data()));
+      absl::little_endian::Load32(error_detail->Flatten().data()));
 }
 
 // A convenience wrapper to compute the while loop's argument's init value at
@@ -473,7 +473,7 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
   }
   if (loop_comparison_or_noop->index() == 1) {
     ParamIndexAndValue& parameter_index_and_value =
-        absl::get<ParamIndexAndValue>(*loop_comparison_or_noop);
+        std::get<ParamIndexAndValue>(*loop_comparison_or_noop);
     CHECK(parameter_index_and_value.param_index.has_value());
     int64_t loop_cond_var_index = *parameter_index_and_value.param_index;
     std::optional<DynamicOrStaticValue> noop_value =
@@ -516,7 +516,7 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
   }
   CHECK_EQ(loop_comparison_or_noop->index(), 0);
   WhileCondComparison loop_comparison =
-      absl::get<WhileCondComparison>(*loop_comparison_or_noop);
+      std::get<WhileCondComparison>(*loop_comparison_or_noop);
   CHECK(loop_comparison.lhs.IsValid() && loop_comparison.rhs.IsValid());
 
   // If the while loop condition comparison's both sides take an init value
@@ -715,53 +715,53 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
 HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
   typed_visitors_[PRED] =
-      absl::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
   typed_visitors_[U8] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint8_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint8_t>>(this);
   typed_visitors_[U16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint16_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint16_t>>(this);
   typed_visitors_[U32] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint32_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint32_t>>(this);
   typed_visitors_[U64] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint64_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<uint64_t>>(this);
   typed_visitors_[S8] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int8_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int8_t>>(this);
   typed_visitors_[S16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int16_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int16_t>>(this);
   typed_visitors_[S32] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int32_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int32_t>>(this);
   typed_visitors_[S64] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
   typed_visitors_[F16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<Eigen::half, float>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<Eigen::half, float>>(this);
   typed_visitors_[F32] =
-      absl::make_unique<HloEvaluatorTypedVisitor<float>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<float>>(this);
   typed_visitors_[F64] =
-      absl::make_unique<HloEvaluatorTypedVisitor<double>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<double>>(this);
   typed_visitors_[C64] =
-      absl::make_unique<HloEvaluatorTypedVisitor<complex64>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<complex64>>(this);
   typed_visitors_[C128] =
-      absl::make_unique<HloEvaluatorTypedVisitor<complex128>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<complex128>>(this);
 
   // Most of the evaluator computations we use don't support BF16 (e.g.,
   // std::ceil, std::tanh). To make evaluator work with BF16, we set all
   // elementwise computations to be done in F32 and do BF16<->F32 conversion
   // around the input and the output of the computations.
   typed_visitors_[BF16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
 
   typed_visitors_[TUPLE] =
-      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+      std::make_unique<FunctionVisitor>([](HloInstruction*) {
         return Unimplemented(
             "HloEvaluatorTypedVisitor: unhandled primitive type: TUPLE.");
       });
   typed_visitors_[OPAQUE_TYPE] =
-      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+      std::make_unique<FunctionVisitor>([](HloInstruction*) {
         return Unimplemented(
             "HloEvaluatorTypedVisitor: unhandled primitive type: OPAQUE_TYPE.");
       });
   typed_visitors_[TOKEN] =
-      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+      std::make_unique<FunctionVisitor>([](HloInstruction*) {
         return Unimplemented(
             "HloEvaluatorTypedVisitor: unhandled primitive type: TOKEN.");
       });
@@ -820,7 +820,7 @@ StatusOr<Literal> HloEvaluator::Evaluate(
     }
   }
   if (!result.IsKnown()) {
-    return MakeEvalErrorDueToParamOrInfeed();
+    return MakeEvalErrorDueToParamOrInfeed(*computation.root_instruction());
   }
   return result.Clone();
 }
@@ -838,7 +838,7 @@ StatusOr<Literal> HloEvaluator::Evaluate(
                        recursively_evaluate_nonconstant_operands));
   const Literal& result = GetEvaluatedLiteralFor(instruction);
   if (!result.IsKnown()) {
-    return MakeEvalErrorDueToParamOrInfeed();
+    return MakeEvalErrorDueToParamOrInfeed(*instruction);
   }
   return result.Clone();
 }
@@ -853,7 +853,7 @@ bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result,
     return false;
   }
 
-  *result = result_or.ConsumeValueOrDie();
+  *result = std::move(result_or).value();
   return true;
 }
 
@@ -979,8 +979,7 @@ Status HloEvaluator::EvaluateInternal(
 
   if (!recursively_evaluate_nonconstant_operands) {
     if (!hlo_query::AllOperandsAreConstants(*instruction)) {
-      return tensorflow::errors::FailedPrecondition(
-          "Not all operands are constants.");
+      return tsl::errors::FailedPrecondition("Not all operands are constants.");
     }
   } else {
     if (instruction->opcode() == HloOpcode::kGetTupleElement) {
@@ -1084,7 +1083,7 @@ Status HloEvaluator::HandleSetDimensionSize(
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   if (arg_literals_.empty()) {
     if (!enable_partial_evaluation_) {
-      return tensorflow::errors::FailedPrecondition(
+      return tsl::errors::FailedPrecondition(
           "Failed to evaluate instruction since its operands are unknown "
           "or undetermined and partial evaluation is not enabled.");
     }
@@ -1113,7 +1112,7 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
 
 Status HloEvaluator::HandleInfeed(HloInstruction* infeed) {
   if (!enable_partial_evaluation_) {
-    return tensorflow::errors::FailedPrecondition(
+    return tsl::errors::FailedPrecondition(
         "Failed to evaluate instruction since its operands are unknown "
         "or undetermined and partial evaluation is not enabled.");
   }
@@ -2454,8 +2453,15 @@ static StatusOr<std::reference_wrapper<const Literal>> ReshapedGatherIndices(
   std::vector<int64_t> new_shape(start_indices.shape().dimensions().begin(),
                                  start_indices.shape().dimensions().end());
   new_shape.push_back(1);
-  TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
-                      start_indices.Reshape(new_shape));
+  if (start_indices.shape().is_dynamic()) {
+    // TODO(b/243182930): If we add support for dynamic reshape, remove this
+    // check and the call to ToStatic().
+    TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
+                        start_indices.ToStatic().Reshape(new_shape));
+  } else {
+    TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
+                        start_indices.Reshape(new_shape));
+  }
   return std::cref(*reshaped_start_indices);
 }
 
@@ -2929,7 +2935,7 @@ Status HloEvaluator::HandleScatter(HloInstruction* hlo) {
     }
     Literal updated_result =
         embedded_evaluator.Evaluate(*scatter->to_apply(), to_apply_args)
-            .ConsumeValueOrDie();
+            .value();
     // Clear visit states so that the we can use the evaluate again on the
     // same computation.
     embedded_evaluator.ResetVisitStates();
@@ -3083,7 +3089,7 @@ Status HloEvaluator::HandleAsyncDone(HloInstruction* async_done) {
 Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
   if (copy_start->user_count() != 1 ||
       copy_start->users().at(0)->opcode() != HloOpcode::kCopyDone) {
-    return tensorflow::errors::FailedPrecondition(
+    return tsl::errors::FailedPrecondition(
         "Cannot evaluate a kCopyStart that doesn't have a single kCopyDone "
         "user.");
   }
@@ -3103,7 +3109,7 @@ Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
 Status HloEvaluator::HandleCopyDone(HloInstruction* copy_done) {
   const HloInstruction* operand = copy_done->operand(0);
   if (operand->opcode() != HloOpcode::kCopyStart) {
-    return tensorflow::errors::FailedPrecondition(
+    return tsl::errors::FailedPrecondition(
         "Cannot evaluate a kCopyDone that doesn't have a kCopyStart as "
         "operand.");
   }
@@ -3337,7 +3343,7 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
       StatusOr<Literal> result =
           TryParseAndEvaluateWhileInductionVar(while_hlo);
       if (result.ok()) {
-        lcv = result.ConsumeValueOrDie();
+        lcv = std::move(result).value();
         break;
       } else {
         return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",
@@ -3517,14 +3523,14 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
               compare_status = lhs.status();
               return false;
             }
-            literals.push_back(std::move(lhs.ValueOrDie()));
+            literals.push_back(std::move(lhs.value()));
             auto rhs = ExtractFromIndexPositions(literals_to_sort[i], {b},
                                                  /*extract_as_scalar=*/true);
             if (!rhs.ok()) {
               compare_status = rhs.status();
               return false;
             }
-            literals.push_back(std::move(rhs.ValueOrDie()));
+            literals.push_back(std::move(rhs.value()));
           }
           std::vector<const Literal*> literal_ptrs;
           absl::c_transform(literals, std::back_inserter(literal_ptrs),
@@ -3539,7 +3545,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
             compare_status = computed_result.status();
             return false;
           }
-          return computed_result.ValueOrDie().Get<bool>({});
+          return computed_result.value().Get<bool>({});
         };
         if (Cast<HloSortInstruction>(sort)->is_stable()) {
           std::stable_sort(indices_to_sort.begin(), indices_to_sort.end(),
@@ -3839,12 +3845,12 @@ Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {
 }
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
-  VLOG(2) << "About to visit HLO: " << hlo->ToString();
+  VLOG(3) << "About to visit HLO: " << hlo->ToString();
   if (!enable_partial_evaluation_) {
     for (HloInstruction* operand : hlo->mutable_operands()) {
       if (!IsAlreadyEvaluated(operand) ||
           !GetEvaluatedLiteralFor(operand).IsKnown()) {
-        return tensorflow::errors::FailedPrecondition(
+        return tsl::errors::FailedPrecondition(
             "Failed to evaluate instruction since its operands are unknown "
             "or undetermined and partial evaluation is not enabled.");
       }
@@ -3854,14 +3860,20 @@ Status HloEvaluator::Preprocess(HloInstruction* hlo) {
 }
 
 Status HloEvaluator::Postprocess(HloInstruction* hlo) {
-  VLOG(2) << "Finished visiting " << hlo->ToString()
+  VLOG(3) << "Finished visiting " << hlo->ToString()
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
   // Out of convenience the literal may have been produced with a different
   // layout. Relayout as indicated by the HLO instruction.
-  if (!Layout::Equal().MinorToMajorOnly()(
-          GetEvaluatedLiteralFor(hlo).shape().layout(),
-          hlo->shape().layout())) {
-    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo->shape());
+  auto evaluated_shape = GetEvaluatedLiteralFor(hlo).shape();
+  xla::Shape hlo_shape = hlo->shape();
+  if (hlo_shape.IsArray() && !hlo_shape.has_layout()) {
+    *hlo_shape.mutable_layout() =
+        LayoutUtil::GetDefaultLayoutForShape(hlo_shape);
+  }
+  if (evaluated_shape.has_layout() && hlo_shape.has_layout() &&
+      !Layout::Equal().MinorToMajorOnly()(evaluated_shape.layout(),
+                                          hlo_shape.layout())) {
+    evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo_shape);
   }
   return OkStatus();
 }
@@ -3878,7 +3890,7 @@ std::unique_ptr<Array2D<T>> MatmulArray2DImpl(
   int m = lhs.height();
   int n = rhs.width();
   int k = lhs.width();
-  auto result = absl::make_unique<Array2D<T>>(m, n);
+  auto result = std::make_unique<Array2D<T>>(m, n);
   // Because Eigen is a header-oriented library, make sure that the Eigen code
   // is the same as the code used by the CPU backend (otherwise the linker will
   // randomly pick *some* definition).

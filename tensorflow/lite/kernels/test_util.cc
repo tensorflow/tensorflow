@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/nnapi/acceleration_test_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/acceleration_test_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
@@ -112,7 +112,8 @@ int SingleOpModel::AddIntermediate(TensorType type,
       CreateQuantizationParameters(builder_, /*min=*/0, /*max=*/0,
                                    builder_.CreateVector<float>(scale),
                                    builder_.CreateVector<int64_t>(zero_point));
-  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>({}),
+  std::vector<int> empty;
+  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>(empty),
                                   type,
                                   /*buffer=*/0,
                                   /*name=*/0, q_params, false));
@@ -376,7 +377,7 @@ int CountPartitionsExecutedByCpuKernel(const Interpreter* interpreter) {
 }  // namespace
 
 void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
-  absl::optional<NnapiAccelerationTestParams> validation_params =
+  std::optional<NnapiAccelerationTestParams> validation_params =
       GetNnapiAccelerationTestParam(test_id);
   if (!validation_params.has_value()) {
     return;

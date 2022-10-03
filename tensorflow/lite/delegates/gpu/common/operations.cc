@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstdint>
 #include <set>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
@@ -86,6 +86,8 @@ std::string ToString(enum OperationType op) {
       return "batched_matmul";
     case OperationType::CAST:
       return "cast";
+    case OperationType::CEIL:
+      return "ceil";
     case OperationType::CONCAT:
       return "concat";
     case OperationType::CONSTANT:
@@ -98,6 +100,8 @@ std::string ToString(enum OperationType op) {
       return "copy";
     case OperationType::COS:
       return "cos";
+    case OperationType::CUMSUM:
+      return "cumsum";
     case OperationType::DENSIFY:
       return "densify";
     case OperationType::DEPTHWISE_CONVOLUTION:
@@ -154,6 +158,8 @@ std::string ToString(enum OperationType op) {
       return "neg";
     case OperationType::NOT_EQUAL:
       return "not_equal";
+    case OperationType::ONE_HOT:
+      return "one_hot";
     case OperationType::PAD:
       return "pad";
     case OperationType::POOLING_2D:
@@ -182,6 +188,8 @@ std::string ToString(enum OperationType op) {
       return "resize";
     case OperationType::RSQRT:
       return "rsqrt";
+    case OperationType::SELECT_V2:
+      return "select_v2";
     case OperationType::SIGMOID:
       return "sigmoid";
     case OperationType::SIN:
@@ -216,8 +224,8 @@ std::string ToString(enum OperationType op) {
 }
 
 OperationType OperationTypeFromString(const std::string& name) {
-  static const auto* operations =
-      new std::unordered_map<std::string, OperationType>({
+  static const auto operations =
+      new absl::flat_hash_map<std::string, OperationType>({
           {"abs", OperationType::ABS},
           {"add", OperationType::ADD},
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
@@ -229,6 +237,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"convolution_transposed", OperationType::CONVOLUTION_TRANSPOSED},
           {"copy", OperationType::COPY},
           {"cos", OperationType::COS},
+          {"cumsum", OperationType::CUMSUM},
           {"densify", OperationType::DENSIFY},
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
           {"depth_to_space", OperationType::DEPTH_TO_SPACE},
@@ -258,6 +267,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"mul", OperationType::MUL},
           {"neg", OperationType::NEG},
           {"not_equal", OperationType::NOT_EQUAL},
+          {"one_hot", OperationType::ONE_HOT},
           {"pad", OperationType::PAD},
           {"pooling_2d", OperationType::POOLING_2D},
           {"pow", OperationType::POW},
@@ -272,6 +282,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"resize", OperationType::RESIZE},
           {"reshape", OperationType::RESHAPE},
           {"rsqrt", OperationType::RSQRT},
+          {"select_v2", OperationType::SELECT_V2},
           {"sigmoid", OperationType::SIGMOID},
           {"sin", OperationType::SIN},
           {"slice", OperationType::SLICE},

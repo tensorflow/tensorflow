@@ -24,6 +24,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream_interface.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -36,12 +42,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_node_device_util.h"
 #include "tensorflow/core/tpu/virtual_device.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_node_context.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_stream_interface.h"
 
 namespace tensorflow {
 namespace {
@@ -386,7 +386,7 @@ Status TpuNodeDeviceFactory::CreateDevices(
         UseNoPreferenceLayoutFn(), &TpuShapeRepresentation};
     options.shape_determination_fns = {shape_determination_fns};
     options.padded_shape_fn = &TpuPaddedShapeFn;
-    auto device = absl::make_unique<XlaDevice>(session_options, options);
+    auto device = std::make_unique<XlaDevice>(session_options, options);
 
     // The AcceleratorDeviceInfo actually provides information not only for GPU
     // devices but also for TPU. The name is a legacy from the pre-TPU
@@ -447,7 +447,7 @@ Status TpuSystemDeviceFactory::CreateDevices(
       absl::StrCat(name_prefix, "/device:", DEVICE_TPU_SYSTEM, ":", 0),
       DeviceType(DEVICE_TPU_SYSTEM), Bytes(memory_limit), DeviceLocality(),
       absl::StrCat("device: ", DEVICE_TPU_SYSTEM, " device"));
-  devices->push_back(absl::make_unique<VirtualDevice>(options.env, attrs));
+  devices->push_back(std::make_unique<VirtualDevice>(options.env, attrs));
   VLOG(1) << "Created TPU_SYSTEM device. This host has " << device_count
           << " TPUs";
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 
 #include <memory>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
@@ -32,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -123,7 +124,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   if (auto* dnn = stream_executor->AsDnn()) {
     auto version_status = dnn->GetVersion();
     if (version_status.ok()) {
-      auto version = version_status.ConsumeValueOrDie();
+      auto version = std::move(version_status).value();
       if (std::make_tuple(version.major_version(), version.minor_version()) <=
               std::make_tuple(7, 3) &&
           instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
@@ -211,7 +212,7 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     // The side input layout must match the output layout.
     TF_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, 3));
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 namespace {
@@ -394,7 +395,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           all_to_all));
     }
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status GpuLayoutAssignment::SetDotOperandLayout(

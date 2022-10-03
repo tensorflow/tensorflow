@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <fstream>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -321,7 +322,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
     PyErr_Format(PyExc_ValueError, "Invalid model");
     return nullptr;
   }
-  auto tflite_model = absl::make_unique<tflite::ModelT>();
+  auto tflite_model = std::make_unique<tflite::ModelT>();
   model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
 
   tflite::TensorType inference_tensor_type =
@@ -364,7 +365,7 @@ PyObject* MlirSparsifyModel(PyObject* data) {
     PyErr_Format(PyExc_ValueError, "Invalid model");
     return nullptr;
   }
-  auto tflite_model = absl::make_unique<tflite::ModelT>();
+  auto tflite_model = std::make_unique<tflite::ModelT>();
   model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
 
   flatbuffers::FlatBufferBuilder builder;
@@ -415,7 +416,7 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
         [opdef](
             tensorflow::OpRegistrationData* op_reg_data) -> tensorflow::Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return tensorflow::Status::OK();
+          return ::tensorflow::OkStatus();
         });
 
     // Register the corresponding fake op kernel.

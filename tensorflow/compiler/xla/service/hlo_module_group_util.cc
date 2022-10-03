@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <list>
+#include <memory>
 #include <queue>
 #include <stack>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -355,7 +355,7 @@ HloModuleGroupUtil::ComputeReachability(
     TF_RETURN_IF_ERROR(
         VisitTopologicalOrder(&visit_states, visit_function, root));
   }
-  auto reachability = absl::make_unique<HloReachabilityMap>(post_order);
+  auto reachability = std::make_unique<HloReachabilityMap>(post_order);
   for (HloInstruction* hlo : post_order) {
     reachability->FastSetReachabilityToUnion(GlobalPredecessors(hlo), hlo);
   }

@@ -413,6 +413,7 @@ SelectOpTest/.+,29
 -SliceOpTest/SliceOpTest/SliceInt64/.+
 -SliceOpTest/SliceOpTest/SliceBool/.+
 -SliceOpTest/SliceOpTest/SliceInt16/.+
+-SliceOpTest/SliceOpTest/SliceInt64StaticOutput/.*
 # Only constant tensors
 SliceOpTest/SliceOpTest/.+/0,29
 

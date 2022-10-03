@@ -184,6 +184,7 @@ cc_library(
         ":benchmark_model_lib",
         ":benchmark_params",
         ":benchmark_utils",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/tools:logging",
         "@com_google_absl//absl/memory",
         "//tensorflow/core/util:stats_calculator_portable",

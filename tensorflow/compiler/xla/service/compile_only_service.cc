@@ -26,11 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -103,7 +102,8 @@ CompileOnlyService::CompileAheadOfTime(
     TF_RET_CHECK(instance.computation.has_host_program_shape());
     auto update_shape_with_empty_tiles = [this](Shape* subshape,
                                                 const xla::ShapeIndex& index) {
-      if (subshape->IsArray() && subshape->layout().tiles().empty()) {
+      if (subshape->IsArray() &&
+          (!subshape->has_layout() || subshape->layout().tiles().empty())) {
         *subshape = compiler_->DefaultDeviceShapeRepresentation(*subshape);
       }
     };
@@ -131,8 +131,8 @@ CompileOnlyService::CompileAheadOfTime(
   }
 
   return compiler_->CompileAheadOfTime(
-      absl::make_unique<HloModuleGroup>(hlo_modules[0]->name(),
-                                        absl::MakeSpan(hlo_modules)),
+      std::make_unique<HloModuleGroup>(hlo_modules[0]->name(),
+                                       absl::MakeSpan(hlo_modules)),
       options, metadata);
 }
 

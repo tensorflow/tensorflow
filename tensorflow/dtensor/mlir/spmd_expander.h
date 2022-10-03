@@ -147,7 +147,7 @@ class SPMDExpanderRegistry {
       InitOnStartupMarker{}                                    \
       << SPMDExpanderRegistry::Global()->RegisterPropagateFn(  \
              mlir::op ::getOperationName().str(),              \
-             absl::make_unique<prop>(__VA_ARGS__))
+             std::make_unique<prop>(__VA_ARGS__))
 
 }  // namespace dtensor
 }  // namespace tensorflow

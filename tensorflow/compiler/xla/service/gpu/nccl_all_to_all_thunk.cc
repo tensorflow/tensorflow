@@ -18,12 +18,12 @@ limitations under the License.
 #include <chrono>  // NOLINT (required by TF interfaces)
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 #if XLA_ENABLE_XCCL
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif
 
 namespace xla {
@@ -44,17 +44,17 @@ namespace gpu {
   // FIXME(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
   // attribute and it should be removed.
   config.config = GetNcclCollectiveConfigForMlir(op, std::nullopt);
-  config.has_split_dimension = op.split_dimension().hasValue();
+  config.has_split_dimension = op.getSplitDimension().has_value();
   return config;
 }
 
 /*static*/ bool NcclAllToAllThunk::CanImplement(mlir::lmhlo::AllToAllOp op) {
-  return absl::c_all_of(op.operands(), [&op](mlir::Value operand) {
+  return absl::c_all_of(op.getInputs(), [&op](mlir::Value operand) {
     Shape shape = GetShape(operand);
     return LayoutUtil::IsDenseArray(shape) &&
            IsTypeSupportedByNccl(shape.element_type()) &&
-           (!op.split_dimension() ||
-            LayoutUtil::MinorToMajor(shape).back() == *op.split_dimension());
+           (!op.getSplitDimension() ||
+            LayoutUtil::MinorToMajor(shape).back() == *op.getSplitDimension());
   });
 }
 
@@ -106,7 +106,8 @@ Status RunAllToAll(bool has_split_dimension,
           auto dtype_and_multiplier,
           ToNcclDataTypeAndCountMultiplier(buffer.element_type));
       ncclDataType_t dtype = dtype_and_multiplier.first;
-      int element_count = buffer.element_count * dtype_and_multiplier.second;
+      int64_t element_count =
+          buffer.element_count * dtype_and_multiplier.second;
 
       TF_RET_CHECK(element_count % num_participants == 0)
           << "Buffer was not an exact multiple of the number of participants.";
@@ -149,7 +150,7 @@ Status RunAllToAll(bool has_split_dimension,
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing all-to-all for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

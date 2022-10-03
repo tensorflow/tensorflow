@@ -34,7 +34,7 @@ class OptimizeDatasetParams : public DatasetParams {
                       std::move(node_name)),
         optimizations_(std::move(optimizations)),
         optimization_configs_(std::move(optimization_configs)) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());

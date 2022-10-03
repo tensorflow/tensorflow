@@ -16,8 +16,10 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include "llvm/Support/CommandLine.h"
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -29,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 
 // NOLINTNEXTLINE
 //===----------------------------------------------------------------------===//
@@ -364,8 +366,13 @@ class PrepareDynamicRangeQuantizableOp
       DenseFPElementsAttr value_attr =
           op.getValue().cast<DenseFPElementsAttr>();
       new_values.reserve(value_attr.getNumElements());
+
+      constexpr float kMaxFloat16Value = 65504.f;
+      constexpr float kMinFloat16Value = -65504.f;
+
       for (auto value : value_attr.template getValues<float>()) {
-        new_values.push_back(Eigen::half(value));
+        new_values.push_back(Eigen::half(
+            std::min(std::max(value, kMinFloat16Value), kMaxFloat16Value)));
       }
       DenseElementsAttr new_value_attr = DenseFPElementsAttr::get(
           new_result_type, ArrayRef<Eigen::half>(new_values));
@@ -392,8 +399,8 @@ class PrepareDynamicRangeQuantizableOp
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.
 void PrepareDynamicRangeQuantizePass::removeAllStatsOp(func::FuncOp func) {
-  func.walk([&](quant::StatisticsOp stats_op) {
-    stats_op.replaceAllUsesWith(stats_op.arg());
+  func.walk([&](quantfork::StatisticsOp stats_op) {
+    stats_op.replaceAllUsesWith(stats_op.getArg());
     stats_op.erase();
   });
 }

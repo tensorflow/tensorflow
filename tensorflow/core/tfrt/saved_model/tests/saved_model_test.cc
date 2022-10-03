@@ -12,14 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
+#include <cstdint>
+#include <iterator>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/cc/saved_model/loader.h"
-#include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tensorflow/core/tfrt/mla/mla_test_utils.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 
@@ -46,7 +52,8 @@ TEST_P(SavedModelTest, BasicV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.enable_lazy_loading = GetParam().enable_lazy_loading;
+  options.lazy_loading_threshold =
+      GetParam().enable_lazy_loading ? 0 : INT32_MAX;
   options.graph_execution_options.compile_options.enable_native_ops =
       GetParam().enable_native_ops;
   options.graph_execution_options.compile_options.enable_grappler =
@@ -83,6 +90,49 @@ INSTANTIATE_TEST_SUITE_P(
         TestParams{0, 0, 0}, TestParams{0, 0, 1}, TestParams{0, 1, 0},
         TestParams{0, 1, 1}, TestParams{1, 0, 0}, TestParams{1, 0, 1},
         TestParams{1, 1, 0}, TestParams{1, 1, 1}));
+
+TEST(SavedModelTest, CostMeasurementEnabled) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  //  x = tf.placeholder(tf.int32, shape=(3))
+  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+  //  r = tf.matmul(x, y)
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.graph_execution_options.compile_options.enable_native_ops = false;
+
+  tensorflow::Status status;
+  auto saved_model =
+      SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                     /*tags=*/{"serve"}, &status);
+  TF_CHECK_OK(status);
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.push_back(
+      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
+
+  tfrt::SavedModel::RunOptions run_options;
+  run_options.enable_cost_measurement = true;
+
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({6}));
+
+  auto op_count = saved_model->GetHostContext()
+                      ->GetOrCreateSharedContext<CostRecorder>()
+                      .size();
+
+  // There are three ops in the CostRecorder. They are tf.VarHandleOp,
+  // tf.ReadVariableOp and tf.MatMul
+  ASSERT_EQ(op_count, 3);
+}
 
 TEST(SavedModelTest, BasicV2) {
   // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
@@ -164,41 +214,12 @@ std::vector<tensorflow::Tensor> CreateExpectedOutputs(
   return outputs;
 }
 
-TEST(SavedModelTest, LoadSavedModelWithMetaGraphDef) {
+TEST(SavedModelTest, RunMultipleSignatures) {
   // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
   // using the following python code:
   //  x = tf.placeholder(tf.int32, shape=(3))
   //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
   //  r = tf.matmul(x, y)
-  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
-
-  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
-  auto options = DefaultSavedModelOptions(runtime.get());
-
-  tensorflow::MetaGraphDef meta_graph_def;
-  TF_CHECK_OK(tensorflow::ReadMetaGraphDefFromSavedModel(
-      saved_model_dir, /*tags=*/{"serve"}, &meta_graph_def));
-
-  tensorflow::Status status;
-  auto saved_model = SavedModelImpl::LoadSavedModel(
-      options, saved_model_dir, std::move(meta_graph_def), &status);
-  TF_CHECK_OK(status);
-
-  // Set input 'x' to [[1, 1, 1]]
-  std::vector<tensorflow::Tensor> inputs;
-  inputs.push_back(
-      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
-
-  std::vector<tensorflow::Tensor> outputs;
-  TF_ASSERT_OK(saved_model->Run({}, "toy", inputs, &outputs));
-  ASSERT_EQ(outputs.size(), 1);
-
-  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
-              ::testing::ElementsAreArray({6}));
-}
-
-TEST(SavedModelTest, RunMultipleSignatures) {
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       "tensorflow/core/tfrt/saved_model/tests/toy_v1");
 
@@ -306,6 +327,11 @@ TEST(SavedModelTest, RunMultipleSignatures) {
 }
 
 TEST(SavedModelTest, RunMultipleSignatures_OverlappingNodes) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  //  x = tf.placeholder(tf.int32, shape=(3))
+  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+  //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       "tensorflow/core/tfrt/saved_model/tests/toy_v1");
 
@@ -366,6 +392,11 @@ TEST(SavedModelTest, RunMultipleSignatures_OverlappingNodes) {
 class SavedModelRunByTensorNamesTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is
+    // generated using the following python code:
+    //  x = tf.placeholder(tf.int32, shape=(3))
+    //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+    //  r = tf.matmul(x, y)
     auto saved_model_dir = tensorflow::GetDataDependencyFilepath(
         "tensorflow/core/tfrt/saved_model/tests/toy_v1");
     runtime_ = DefaultTfrtRuntime(/*num_threads=*/1);
@@ -465,6 +496,11 @@ TEST_F(SavedModelRunByTensorNamesTest, ShuffleInputsAndOutputs) {
 }
 
 TEST(SavedModelTest, CustomWorkQueue) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  //  x = tf.placeholder(tf.int32, shape=(3))
+  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+  //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       "tensorflow/core/tfrt/saved_model/tests/toy_v1");
 
@@ -509,10 +545,16 @@ TEST(SavedModelTest, CustomWorkQueue) {
 // Verifies the savedmodel runs correctly with work queues specified in
 // RunOptions.
 TEST(SavedModelTest, RunOptionsWorkQueue) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  //  x = tf.placeholder(tf.int32, shape=(3))
+  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+  //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       "tensorflow/core/tfrt/saved_model/tests/toy_v1");
 
-  auto runtime = tensorflow::tfrt_stub::Runtime::Create();
+  auto runtime =
+      tensorflow::tfrt_stub::Runtime::Create(/*num_inter_op_threads=*/4);
 
   auto options = DefaultSavedModelOptions(runtime.get());
   options.graph_execution_options.compile_options.enable_native_ops = false;
@@ -555,7 +597,55 @@ TEST(SavedModelTest, RunOptionsWorkQueue) {
               ::testing::ElementsAreArray({6}));
 }
 
+TEST(SavedModelTest, UseMla) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  //  x = tf.placeholder(tf.int32, shape=(3))
+  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+  //  r = tf.matmul(x, y)
+
+  // Copy the model dir so that we can write to it.
+  const std::string mla_dir = CopySavedModelFromTestDataToTempDir(
+      "tensorflow/core/tfrt/saved_model/tests", "toy_v1");
+
+  // Build an MLA at the copied dir.
+  TF_ASSERT_OK(ConvertSavedModelAndAddToMla(
+      mla_dir,
+      /*saved_model_version=*/1, /*tags=*/{"serve"},
+      /*entry_points=*/{"toy"}, /*mla_module_name=*/"saved_model"));
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.maybe_load_from_mla = true;
+
+  // Load the model using the MLA dir.
+  tensorflow::Status status;
+  auto saved_model =
+      SavedModelImpl::LoadSavedModel(options, mla_dir,
+                                     /*tags=*/{"serve"}, &status);
+  TF_CHECK_OK(status);
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.push_back(
+      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
+
+  tfrt::SavedModel::RunOptions run_options;
+
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({6}));
+}
+
 TEST(SavedModelTest, FunctionMetadata) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  //  x = tf.placeholder(tf.int32, shape=(3))
+  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+  //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       "tensorflow/core/tfrt/saved_model/tests/toy_v1");
 
@@ -924,6 +1014,11 @@ TEST(SavedModelTest, SparseTensorInput) {
 }
 
 TEST(SavedModelTest, DeadlineExceeded) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  //  x = tf.placeholder(tf.int32, shape=(3))
+  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+  //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       "tensorflow/core/tfrt/saved_model/tests/toy_v1");
 

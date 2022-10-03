@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -66,14 +66,14 @@ Status HloDomainMap::TryProcessEmptyDomain(HloInstruction* instruction) {
   // both sides.
   for (HloInstruction* operand : instruction->unique_operands()) {
     if (IsDomainInstruction(operand)) {
-      auto domain = absl::make_unique<DomainMetadata::Domain>();
+      auto domain = std::make_unique<DomainMetadata::Domain>();
       domain->enter_domains.insert(operand);
       domain->exit_domains.insert(instruction);
       TF_RETURN_IF_ERROR(InsertDomain(std::move(domain)));
     }
   }
   if (instruction == instruction->parent()->root_instruction()) {
-    auto domain = absl::make_unique<DomainMetadata::Domain>();
+    auto domain = std::make_unique<DomainMetadata::Domain>();
     domain->enter_domains.insert(instruction);
     TF_RETURN_IF_ERROR(InsertDomain(std::move(domain)));
   }
@@ -196,7 +196,7 @@ Status HloDomainMap::ExpandDomain(HloInstruction* instruction,
 StatusOr<std::unique_ptr<DomainMetadata::Domain>> HloDomainMap::CreateDomain(
     HloInstruction* instruction,
     const InstructionOrderMap& instructions_order) const {
-  auto domain = absl::make_unique<DomainMetadata::Domain>();
+  auto domain = std::make_unique<DomainMetadata::Domain>();
   TF_RETURN_IF_ERROR(ExpandDomain(instruction, domain.get()));
   domain->instructions =
       MakeNonDomainInstructions(domain->reach_set, instructions_order);

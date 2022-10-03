@@ -67,7 +67,7 @@ TfrtContext::TfrtContext(
   const std::string& host_cpu_name = eager_context_->HostCPU()->name();
 
   auto diag_handler = [](const DecodedDiagnostic& diag) {
-    LOG(ERROR) << diag.message;
+    LOG(ERROR) << diag.message();
   };
 
   auto rt = CoreRuntime::Create(diag_handler, CreateMallocAllocator(),

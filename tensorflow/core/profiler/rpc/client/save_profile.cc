@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/file_system_utils.h"
 
 // Windows.h #defines ERROR, but it is also used in
@@ -49,6 +50,7 @@ namespace {
 
 constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
+constexpr char kXPlanePb[] = "xplane.pb";
 
 Status DumpToolData(absl::string_view run_dir, absl::string_view host,
                     const ProfileToolData& tool, std::ostream* os) {
@@ -146,6 +148,22 @@ Status SaveGzippedToolData(const std::string& repository_root,
 std::string GetCurrentTimeStampAsString() {
   return absl::FormatTime("%E4Y_%m_%d_%H_%M_%S", absl::Now(),
                           absl::LocalTimeZone());
+}
+
+Status SaveXSpace(const std::string& repository_root, const std::string& run,
+                  const std::string& host, const XSpace& xspace) {
+  std::string log_dir = ProfilerJoinPath(repository_root, run);
+  VLOG(1) << "Creating " << log_dir;
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(log_dir));
+  std::string file_name = absl::StrCat(host, ".", kXPlanePb);
+  // Windows file names do not support colons.
+  absl::StrReplaceAll({{":", "_"}}, &file_name);
+
+  // Dumps profile data to <repository_root>/<run>/<host>_<port>.<kXPlanePb>
+  std::string out_path = ProfilerJoinPath(log_dir, file_name);
+  LOG(INFO) << "Collecting XSpace to repository: " << out_path;
+
+  return WriteBinaryProto(Env::Default(), out_path, xspace);
 }
 
 }  // namespace profiler

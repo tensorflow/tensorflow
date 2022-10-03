@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -521,11 +521,13 @@ Status BFloat16NormalizationVisitor::Preprocess(HloInstruction* hlo) {
 
 }  // namespace
 
-StatusOr<bool> BFloat16Normalization::Run(HloModule* module) {
+StatusOr<bool> BFloat16Normalization::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       2, "BFloat16Normalization::Run(), before:\n" + module->ToString());
   BFloat16NormalizationVisitor visitor(bfloat16_support_, this);
-  for (auto* comp : module->MakeComputationPostOrder()) {
+  for (auto* comp : module->MakeComputationPostOrder(execution_threads)) {
     TF_RETURN_IF_ERROR(comp->Accept(&visitor));
   }
   XLA_VLOG_LINES(2,

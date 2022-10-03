@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -106,6 +107,7 @@ class TensorInterface : public AbstractTensorInterface {
   bool CanMove() const override;
   std::string SummarizeValue() const override;
 
+  void SetShape(const int64_t* dims, int num_dims);
   Status ToTensor(tensorflow::Tensor* dst) const;
   Status BitcastFrom(const TensorInterface& from, DataType type,
                      const int64_t* new_dims, int num_new_dims);
@@ -124,6 +126,19 @@ inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
+
+TF_Tensor* TF_TensorFromTensorShallow(const Tensor& src, Status* status);
+
+namespace internal {
+
+struct TFTensorDeleter {
+  void operator()(TF_Tensor* tf_tensor) const { TF_DeleteTensor(tf_tensor); }
+};
+
+}  // namespace internal
+
+// Struct that wraps TF_Tensor to delete once out of scope.
+using TF_TensorPtr = std::unique_ptr<TF_Tensor, internal::TFTensorDeleter>;
 
 }  // namespace tensorflow
 

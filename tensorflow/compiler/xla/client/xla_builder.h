@@ -17,11 +17,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_XLA_BUILDER_H_
 
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -41,7 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 namespace xla {
 
@@ -55,6 +60,33 @@ struct XlaBuilderFriend {
   static XlaOp BuildAddDependency(XlaBuilder* builder, XlaOp operand,
                                   XlaOp token, const Shape& shape);
 
+  static XlaOp BuildAsyncStart(XlaBuilder* builder,
+                               absl::Span<const XlaOp> operands,
+                               std::string execution_thread, int64_t group_id,
+                               const XlaComputation& called_computation,
+                               const Shape& shape);
+  static XlaOp BuildAsyncStart(XlaBuilder* builder,
+                               absl::Span<const XlaOp> operands,
+                               std::string execution_thread,
+                               const XlaComputation& called_computation,
+                               const Shape& shape);
+  static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
+                                std::string execution_thread, int64_t group_id,
+                                const XlaComputation& called_computation,
+                                const Shape& shape);
+  static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
+                                std::string execution_thread,
+                                const XlaComputation& called_computation,
+                                const Shape& shape);
+  static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
+                              std::string execution_thread, int64_t group_id,
+                              const XlaComputation& called_computation,
+                              const Shape& shape);
+  static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
+                              std::string execution_thread,
+                              const XlaComputation& called_computation,
+                              const Shape& shape);
+
   static XlaOp BuildFusion(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands,
                            absl::string_view fusion_kind,
@@ -64,6 +96,10 @@ struct XlaBuilderFriend {
                             const Shape& shape);
 
   static XlaOp BuildPartitionId(XlaBuilder* builder, const Shape& shape);
+
+  static XlaOp BuildDomain(XlaBuilder* builder, XlaOp operand,
+                           const OpSharding entry, const OpSharding exit,
+                           const Shape& shape);
 
   static XlaOp BuildRngGetAndUpdateState(XlaBuilder* builder, int64_t delta,
                                          const Shape& shape);
@@ -660,7 +696,8 @@ class XlaBuilder {
   // method above calls this method after error handling.
   virtual StatusOr<XlaOp> CustomCallInternal(
       const std::string& call_target_name, absl::Span<const XlaOp> operands,
-      const Shape& shape_with_layout, const std::string& opaque,
+      const XlaComputation* computation, const Shape& shape_with_layout,
+      const std::string& opaque,
       std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
@@ -669,6 +706,8 @@ class XlaBuilder {
       std::optional<ConvolutionDimensionNumbers> dnums,
       CustomCallSchedule schedule, CustomCallApiVersion api_version);
 
+  // TODO(b/239474321) Remove this overload as it has simply led to code
+  // duplication.
   XlaOp CustomCall(
       const std::string& call_target_name, absl::Span<const XlaOp> operands,
       const XlaComputation& computation, const Shape& shape_with_layout,
@@ -739,10 +778,12 @@ class XlaBuilder {
       const std::optional<Layout>& layout = std::nullopt,
       const std::optional<bool> use_global_device_ids = std::nullopt);
 
-  XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
-                  absl::Span<const ReplicaGroup> replica_groups = {},
-                  const std::optional<ChannelHandle>& channel_id = std::nullopt,
-                  const std::optional<Shape>& shape_with_layout = std::nullopt);
+  XlaOp AllReduce(
+      XlaOp operand, const XlaComputation& computation,
+      absl::Span<const ReplicaGroup> replica_groups = {},
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Shape>& shape_with_layout = std::nullopt,
+      const std::optional<bool> use_global_device_ids = std::nullopt);
 
   XlaOp ReduceScatter(
       XlaOp operand, const XlaComputation& computation,
@@ -752,8 +793,6 @@ class XlaBuilder {
       const std::optional<Layout>& layout = std::nullopt,
       const std::optional<bool> use_global_device_ids = std::nullopt);
 
-  // TODO(b/219961627): Allow the replica_groups to be inferred (one group
-  // containing all replicas).
   XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                  int64_t concat_dimension, int64_t split_count,
                  absl::Span<const ReplicaGroup> replica_groups,
@@ -1025,7 +1064,7 @@ class XlaBuilder {
   Status first_error_;
 
   // The saved stack trace from the point at which the first error occurred.
-  tensorflow::SavedStackTrace first_error_backtrace_;
+  tsl::SavedStackTrace first_error_backtrace_;
 
   // The instructions of this computation.
   // Use a deque so pointers into this are stable, for example the return
@@ -1357,7 +1396,8 @@ class XlaBuilder {
   friend XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                          absl::Span<const ReplicaGroup> replica_groups,
                          const std::optional<ChannelHandle>& channel_id,
-                         const std::optional<Shape>& shape_with_layout);
+                         const std::optional<Shape>& shape_with_layout,
+                         const std::optional<bool> use_global_device_ids);
   friend XlaOp ReduceScatter(XlaOp operand, const XlaComputation& computation,
                              int64_t scatter_dimension, int64_t shard_count,
                              absl::Span<const ReplicaGroup> replica_groups,
@@ -1399,6 +1439,7 @@ class XlaBuilder {
   friend XlaOp Floor(XlaOp operand);
   friend XlaOp Ceil(XlaOp operand);
   friend XlaOp Round(XlaOp operand);
+  friend XlaOp RoundNearestEven(XlaOp operand);
   friend XlaOp Log(XlaOp operand);
   friend XlaOp Log1p(XlaOp operand);
   friend XlaOp Logistic(XlaOp operand);
@@ -1667,7 +1708,7 @@ template <typename NativeT>
 XlaOp ConstantR0(XlaBuilder* builder, NativeT value);
 template <typename NativeT>
 XlaOp ConstantR1(XlaBuilder* builder, absl::Span<const NativeT> values);
-XlaOp ConstantR1(XlaBuilder* builder, const tensorflow::core::Bitmap& values);
+XlaOp ConstantR1(XlaBuilder* builder, const tsl::core::Bitmap& values);
 template <typename NativeT>
 XlaOp ConstantR2(XlaBuilder* builder,
                  std::initializer_list<std::initializer_list<NativeT>> values);
@@ -2337,7 +2378,8 @@ XlaOp AllGather(XlaOp operand, int64_t all_gather_dimension,
 XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                 absl::Span<const ReplicaGroup> replica_groups = {},
                 const std::optional<ChannelHandle>& channel_id = std::nullopt,
-                const std::optional<Shape>& shape_with_layout = std::nullopt);
+                const std::optional<Shape>& shape_with_layout = std::nullopt,
+                const std::optional<bool> use_global_device_ids = std::nullopt);
 
 XlaOp ReduceScatter(
     XlaOp operand, const XlaComputation& computation, int64_t scatter_dimension,
@@ -2415,9 +2457,12 @@ XlaOp Floor(XlaOp operand);
 // Enqueues a ceil instruction onto the computation.
 XlaOp Ceil(XlaOp operand);
 
-// Enqueues a round instruction onto the computation, rounding to nearest even
+// Enqueues a round instruction onto the computation,
 // with half-way cases rounding away from zero.
 XlaOp Round(XlaOp operand);
+
+// Enqueues a round instruction onto the computation, rounding to nearest even
+XlaOp RoundNearestEven(XlaOp operand);
 
 // Enqueues an log instruction (natural logarithm) onto the computation.
 XlaOp Log(XlaOp operand);
@@ -2711,8 +2756,7 @@ XlaOp ConstantR1(XlaBuilder* builder, int64_t length, NativeT value) {
   return ConstantLiteral(builder, literal);
 }
 
-inline XlaOp ConstantR1(XlaBuilder* builder,
-                        const tensorflow::core::Bitmap& values) {
+inline XlaOp ConstantR1(XlaBuilder* builder, const tsl::core::Bitmap& values) {
   return ConstantLiteral(builder, LiteralUtil::CreateR1(values));
 }
 
@@ -2778,6 +2822,22 @@ XlaOp ConstantR4FromArray4D(XlaBuilder* builder,
                             const Array4D<NativeT>& values) {
   return ConstantFromArray(builder, values);
 }
+
+// Switches from automatic SPMD partitioning to manual partitioning. Converts a
+// full-shaped tensor (to be automatically partitioned by SPMD partitioner) to a
+// shard-shaped tensor to be consumed by manually partitioned ops.
+StatusOr<xla::XlaOp> ConvertSpmdFullToShardShape(
+    xla::XlaBuilder* builder, xla::XlaOp input, int single_dim,
+    const xla::OpSharding& manual_sharding,
+    absl::Span<const int64_t> unspecified_dims);
+
+// Switches from manual partitioning to automatic SPMD partitioning. Converts a
+// shard-shaped tensor (manually partitioned in SPMD-style) to a full-shaped
+// tensor to be partitioned automatically by the SPMD partitioner.
+StatusOr<xla::XlaOp> ConvertSpmdShardToFullShape(
+    xla::XlaBuilder* builder, xla::XlaOp input, const xla::Shape& output_shape,
+    int single_dim, const xla::OpSharding& manual_sharding,
+    absl::Span<const int64_t> unspecified_dims);
 
 }  // namespace xla
 

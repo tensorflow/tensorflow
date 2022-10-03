@@ -29,7 +29,7 @@ class UniqueDatasetParams : public DatasetParams {
                       std::vector<PartialTensorShape> output_shapes)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       kNodeName) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());

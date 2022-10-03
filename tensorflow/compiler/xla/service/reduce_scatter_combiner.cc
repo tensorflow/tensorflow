@@ -114,7 +114,9 @@ ReduceScatterCombiner::ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
     : combine_threshold_in_bytes_(combine_threshold_in_bytes),
       combine_threshold_count_(combine_threshold_count) {}
 
-StatusOr<bool> ReduceScatterCombiner::Run(HloModule* module) {
+StatusOr<bool> ReduceScatterCombiner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running ReduceScatterCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
@@ -132,7 +134,8 @@ StatusOr<bool> ReduceScatterCombiner::Run(HloModule* module) {
   }
 
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&domain_map](const HloInstruction* instruction)
@@ -142,6 +145,9 @@ StatusOr<bool> ReduceScatterCombiner::Run(HloModule* module) {
           GetAllReduceKey(instruction, domain_map.get());
 
       if (!rs || !key) {
+        return std::nullopt;
+      }
+      if (!MatchReductionComputation(rs->to_apply())) {
         return std::nullopt;
       }
       return ReduceScatterKey{std::move(*key), rs->scatter_dimension()};

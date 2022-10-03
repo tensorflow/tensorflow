@@ -73,7 +73,7 @@ class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
   using TacticID = AlgorithmSelectorImpl::TacticID;
 
   // An index we should choose for all algorithms. Used for debugging.
-  absl::optional<int32_t> fixed_algorithm_idx_;
+  std::optional<int32_t> fixed_algorithm_idx_;
 
   AlgorithmSelectorImpl selector_;
 
@@ -82,7 +82,7 @@ class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
 
   // If the environment variable TF_TRT_FIXED_ALGORITHM_ID is empty, this
   // function returns nullopt. Otherwise, it returns the specified number.
-  static absl::optional<int64_t> GetFixedAlgorithmID();
+  static std::optional<int64_t> GetFixedAlgorithmID();
 
   // Returns true if the algorithm associated with context is acceptable.
   bool AlgorithmPolicy(const nvinfer1::IAlgorithmContext& context,
@@ -105,7 +105,7 @@ class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
 
   bool IsRequired() const {
     return selector_.IsAlgorithmSelectorRequired() ||
-           fixed_algorithm_idx_ != absl::nullopt;
+           fixed_algorithm_idx_ != std::nullopt;
   }
 };
 

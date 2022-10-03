@@ -862,7 +862,7 @@ Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
 // default allocator is widely used throughout the codebase and in client code.
 static Allocator* get_default_cpu_allocator() {
   static Allocator* default_cpu_allocator =
-      cpu_allocator(port::kNUMANoAffinity);
+      cpu_allocator(tsl::port::kNUMANoAffinity);
   return default_cpu_allocator;
 }
 

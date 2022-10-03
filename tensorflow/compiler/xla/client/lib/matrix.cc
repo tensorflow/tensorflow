@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,7 +31,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -602,7 +602,7 @@ StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
 
   auto maybe_invalid_character = [](char d) {
     if (absl::ascii_isalpha(d)) {
-      return ::tensorflow::OkStatus();
+      return OkStatus();
     }
     if (d == '.') {
       return InvalidArgument("Unsupported \".\" in einsum config.");

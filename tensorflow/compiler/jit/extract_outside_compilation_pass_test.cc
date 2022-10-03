@@ -232,7 +232,7 @@ class ExtractOutsideCompilationForFunctionTest : public ::testing::Test {
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(
         session_options, "/job:localhost/replica:0/task:0", &devices));
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+    device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
   }
 
   Status ExtractOutsideCompilationTest(
@@ -245,7 +245,7 @@ class ExtractOutsideCompilationForFunctionTest : public ::testing::Test {
       std::vector<string> *shape_inference_graphs,
       bool *has_outside_compilation) {
     OptimizerOptions opts;
-    pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
+    pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, fld, opts,
         /*default_thread_pool=*/nullptr);

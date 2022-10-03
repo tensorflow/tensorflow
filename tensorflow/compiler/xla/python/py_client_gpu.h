@@ -16,13 +16,24 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_PY_CLIENT_GPU_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_CLIENT_GPU_H_
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_runtime.h"
+#else
 #include "third_party/gpus/cuda/include/cuda.h"
+#endif
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
+
+#if TENSORFLOW_USE_ROCM
+#define gpuStreamHandle hipStream_t
+#else
+#define gpuStreamHandle CUstream
+#endif
 
 namespace xla {
 
-void XlaPythonGpuCallback(CUstream stream, void** buffers, const char* opaque,
-                          size_t opaque_len, XlaCustomCallStatus* status);
+void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
+                          const char* opaque, size_t opaque_len,
+                          XlaCustomCallStatus* status);
 
 }  // namespace xla
 

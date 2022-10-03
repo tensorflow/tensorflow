@@ -41,7 +41,7 @@ message WorkerUpdateResponse {}
 
 // Next tag: 2
 message GetDatasetDefRequest {
-  int64 dataset_id = 1;
+  string dataset_id = 1;
 }
 
 // Next tag: 2
@@ -70,25 +70,30 @@ message GetVersionResponse {
   int64 version = 1;
 }
 
-// Next tag: 4
+// Next tag: 5
 message GetOrRegisterDatasetRequest {
   // The dataset to register.
   DatasetDef dataset = 1;
   // Metadata related to tf.data service.
   DataServiceMetadata metadata = 3;
+  oneof optional_dataset_id {
+    // If provided, tf.data service will register the dataset with the specified
+    // ID. Otherwise, it will generate a unique dataset ID.
+    string dataset_id = 4;
+  }
   reserved 2;
 }
 
 // Next tag: 2
 message GetOrRegisterDatasetResponse {
   // The id for the registered dataset.
-  int64 dataset_id = 1;
+  string dataset_id = 1;
 }
 
 // Next tag: 2
 message GetDataServiceMetadataRequest {
   // The dataset id to get the data service dataset metadata.
-  int64 dataset_id = 1;
+  string dataset_id = 1;
 }
 
 // Next tag: 2
@@ -107,7 +112,7 @@ message GetDataServiceConfigResponse {
 // Next tag: 7
 message GetOrCreateJobRequest {
   // The id of the dataset to create a job for.
-  int64 dataset_id = 1;
+  string dataset_id = 1;
   // A mode controlling how the tf.data service produces data for the job.
   ProcessingModeDef processing_mode_def = 2;
   // Optional job name identifying a shared job. If not set, the RPC will always

@@ -68,11 +68,11 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
     if (compression_type_.empty()) {
-      return absl::make_unique<UncompressedIterator>(
+      return std::make_unique<UncompressedIterator>(
           UncompressedIterator::Params{
               this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
     } else {
-      return absl::make_unique<CompressedIterator>(CompressedIterator::Params{
+      return std::make_unique<CompressedIterator>(CompressedIterator::Params{
           this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
     }
   }
@@ -189,7 +189,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         }
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
             TranslateFileName(next_filename), &file_));
-        input_buffer_ = absl::make_unique<io::InputBuffer>(
+        input_buffer_ = std::make_unique<io::InputBuffer>(
             file_.get(), dataset()->buffer_size_);
         TF_RETURN_IF_ERROR(input_buffer_->SkipNBytes(dataset()->header_bytes_));
       } while (true);
@@ -234,7 +234,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         file_pos_limit_ = file_size - dataset()->footer_bytes_;
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
             TranslateFileName(current_filename), &file_));
-        input_buffer_ = absl::make_unique<io::InputBuffer>(
+        input_buffer_ = std::make_unique<io::InputBuffer>(
             file_.get(), dataset()->buffer_size_);
         TF_RETURN_IF_ERROR(input_buffer_->Seek(current_pos));
       }
@@ -360,12 +360,12 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
                   ? io::ZlibCompressionOptions::DEFAULT()
                   : io::ZlibCompressionOptions::GZIP();
           file_stream_ =
-              absl::make_unique<io::RandomAccessInputStream>(file_.get());
-          buffered_input_stream_ = absl::make_unique<io::ZlibInputStream>(
+              std::make_unique<io::RandomAccessInputStream>(file_.get());
+          buffered_input_stream_ = std::make_unique<io::ZlibInputStream>(
               file_stream_.get(), dataset()->buffer_size_,
               dataset()->buffer_size_, zlib_options);
         } else {
-          buffered_input_stream_ = absl::make_unique<io::BufferedInputStream>(
+          buffered_input_stream_ = std::make_unique<io::BufferedInputStream>(
               file_.get(), dataset()->buffer_size_);
         }
         TF_RETURN_IF_ERROR(
@@ -423,8 +423,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
                 ? io::ZlibCompressionOptions::DEFAULT()
                 : io::ZlibCompressionOptions::GZIP();
         file_stream_ =
-            absl::make_unique<io::RandomAccessInputStream>(file_.get());
-        buffered_input_stream_ = absl::make_unique<io::ZlibInputStream>(
+            std::make_unique<io::RandomAccessInputStream>(file_.get());
+        buffered_input_stream_ = std::make_unique<io::ZlibInputStream>(
             file_stream_.get(), dataset()->buffer_size_,
             dataset()->buffer_size_, zlib_options);
         lookahead_cache_.clear();

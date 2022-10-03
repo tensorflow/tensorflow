@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -83,7 +83,7 @@ TEST_P(FloatReverseTest, Reverses) {
       ShapeUtil::ElementsIn(ShapeUtil::MakeShape(F32, spec.input_dims)));
   std::iota(input_vector.begin(), input_vector.end(), 0.0);
   auto r1_literal = LiteralUtil::CreateR1<float>(input_vector);
-  auto input_literal = r1_literal.Reshape(spec.input_dims).ConsumeValueOrDie();
+  auto input_literal = r1_literal.Reshape(spec.input_dims).value();
 
   XlaBuilder builder(TestName());
   auto a = AddParam(input_literal, &builder);

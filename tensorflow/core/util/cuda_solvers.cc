@@ -21,18 +21,18 @@
 
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_solvers.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 
 // The CUDA cublas_api.h API contains const-correctness errors. Instead of
 // casting away constness on our data, we instead reinterpret the CuBLAS
@@ -634,6 +634,18 @@ static inline Status HeevdImpl(BufSizeFnT bufsize, SolverFnT solver,
   /* Allocate device memory for workspace. */
   auto dev_workspace =
       cuda_solver->GetScratchSpace<Scalar>(lwork, "", /* on_host */ false);
+#if CUDA_VERSION >= 11070
+  // TODO(b/223856016): CUDA 11.7 sometimes gives invalid outputs if the scratch
+  // space is not initialized to zero.
+  se::Stream* stream = context->op_device_context()->stream();
+  if (!stream) {
+    return errors::Internal("No GPU stream available");
+  }
+  uint64_t work_size_in_bytes = static_cast<uint64_t>(lwork) * sizeof(Scalar);
+  se::DeviceMemoryBase dev_workspace_ptr(dev_workspace.mutable_data(),
+                                         work_size_in_bytes);
+  stream->ThenMemZero(&dev_workspace_ptr, work_size_in_bytes);
+#endif
   /* Launch the solver kernel. */
   TF_RETURN_IF_CUSOLVER_ERROR(
       solver(cusolver_dn_handle, jobz, uplo, n, CUDAComplex(dev_A), lda,

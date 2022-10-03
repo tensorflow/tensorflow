@@ -279,7 +279,7 @@ Status FunctionalizeControlFlow(Graph* graph,
   if (include_functions) {
     // Functionalize control flow in functions that are (directly or indirectly)
     // associated with a node in `graph`.
-    auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+    auto pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
         /*device_mgr=*/nullptr, tensorflow::Env::Default(),
         /*config=*/nullptr, TF_GRAPH_DEF_VERSION, library,
         tensorflow::OptimizerOptions());

@@ -40,12 +40,14 @@ enum class OperationType {
   BATCH_NORMALIZATION,
   BATCHED_MATMUL,
   CAST,
+  CEIL,
   CONCAT,
   CONSTANT,
   CONVOLUTION_2D,
   CONVOLUTION_TRANSPOSED,
   COPY,
   COS,
+  CUMSUM,
   DENSIFY,
   DEPTHWISE_CONVOLUTION,
   DEPTH_TO_SPACE,
@@ -74,6 +76,7 @@ enum class OperationType {
   MUL,
   NEG,
   NOT_EQUAL,
+  ONE_HOT,
   PAD,
   POOLING_2D,
   POW,
@@ -89,6 +92,7 @@ enum class OperationType {
   RESHAPE,
   RESIZE,
   RSQRT,
+  SELECT_V2,
   SIGMOID,
   SIN,
   SLICE,
@@ -400,9 +404,6 @@ struct ReLUAttributes {
 };
 
 struct PReLUAttributes {
-  // clip <= 0 mean it is not set.
-  float clip = 0;
-
   // If alpha is linear, then it is sharded across CHANNELS axis, otherwise
   // full shape alpha is required.
   absl::variant<Tensor<Linear, DataType::FLOAT32>,

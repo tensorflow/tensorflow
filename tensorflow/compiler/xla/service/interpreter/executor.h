@@ -24,23 +24,23 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/device_options.h"
+#include "tensorflow/compiler/xla/stream_executor/event.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
+#include "tensorflow/compiler/xla/stream_executor/kernel.h"
+#include "tensorflow/compiler/xla/stream_executor/kernel_spec.h"
+#include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
+#include "tensorflow/compiler/xla/stream_executor/plugin.h"
+#include "tensorflow/compiler/xla/stream_executor/rng.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/compiler/xla/stream_executor/timer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/device_description.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/device_options.h"
-#include "tensorflow/stream_executor/event.h"
-#include "tensorflow/stream_executor/host/host_stream.h"
-#include "tensorflow/stream_executor/host/host_timer.h"
-#include "tensorflow/stream_executor/kernel.h"
-#include "tensorflow/stream_executor/kernel_spec.h"
-#include "tensorflow/stream_executor/launch_dim.h"
-#include "tensorflow/stream_executor/plugin.h"
-#include "tensorflow/stream_executor/rng.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor.h"
-#include "tensorflow/stream_executor/stream_executor_internal.h"
-#include "tensorflow/stream_executor/timer.h"
 
 namespace stream_executor {
 namespace interpreter {
@@ -53,7 +53,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   ~XlaInterpreterExecutor() override;
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override {
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
 
   port::Status GetKernel(const MultiKernelLoaderSpec &spec,
@@ -128,11 +128,11 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
                     std::function<port::Status()> callback) override;
 
   port::Status AllocateEvent(Event *event) override {
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
 
   port::Status DeallocateEvent(Event *event) override {
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
 
   port::Status RecordEvent(Stream *stream, Event *event) override {
@@ -173,7 +173,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   CreateDeviceDescription(int device_ordinal);
 
   port::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
 
   bool CanEnablePeerAccessTo(StreamExecutorInterface *other) override {

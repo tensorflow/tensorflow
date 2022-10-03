@@ -57,7 +57,7 @@ StatusOr<DeviceId> DeviceInfoCache::GetIdFor(absl::string_view name) {
 
   int new_id = names_.size();
   names_.push_back(string(name));
-  id_to_device_type_.push_back(absl::make_unique<DeviceType>(""));
+  id_to_device_type_.push_back(std::make_unique<DeviceType>(""));
   DeviceType* device_type = id_to_device_type_.back().get();
   TF_RETURN_IF_ERROR(DeviceNameToDeviceType(names_.back(), device_type));
 

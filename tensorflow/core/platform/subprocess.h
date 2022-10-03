@@ -16,58 +16,23 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_SUBPROCESS_H_
 #define TENSORFLOW_CORE_PLATFORM_SUBPROCESS_H_
 
-#include <memory>
-#include <vector>
-
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/subprocess.h"
 
 namespace tensorflow {
-
-// Channel identifiers.
-enum Channel {
-  CHAN_STDIN = 0,
-  CHAN_STDOUT = 1,
-  CHAN_STDERR = 2,
-};
-
-// Specify how a channel is handled.
-enum ChannelAction {
-  // Close the file descriptor when the process starts.
-  // This is the default behavior.
-  ACTION_CLOSE,
-
-  // Make a pipe to the channel.  It is used in the Communicate() method to
-  // transfer data between the parent and child processes.
-  ACTION_PIPE,
-
-  // Duplicate the parent's file descriptor. Useful if stdout/stderr should
-  // go to the same place that the parent writes it.
-  ACTION_DUPPARENT,
-};
-
-// Supports spawning and killing child processes.
-class SubProcess;
-
-// Returns an object that represents a child process that will be
-// launched with the given command-line arguments `argv`. The process
-// must be explicitly started by calling the Start() method on the
-// returned object.
-std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv);
-
+using tsl::ACTION_CLOSE;
+using tsl::ACTION_DUPPARENT;
+using tsl::ACTION_PIPE;
+using tsl::CHAN_STDERR;
+using tsl::CHAN_STDIN;
+using tsl::CHAN_STDOUT;
+using tsl::Channel;
+using tsl::ChannelAction;
+using tsl::CreateSubProcess;
+using tsl::SubProcess;
 }  // namespace tensorflow
 
 #include "tensorflow/core/platform/platform.h"
 
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/subprocess.h"
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
-    defined(PLATFORM_GOOGLE_IOS)
-#include "tensorflow/core/platform/default/subprocess.h"
-#elif defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/subprocess.h"
-#else
-#error Define the appropriate PLATFORM_<foo> macro for this platform
-#endif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_SUBPROCESS_H_

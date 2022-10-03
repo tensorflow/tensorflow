@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -34,8 +34,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -561,10 +561,13 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   return OkStatus();
 }
 
-StatusOr<bool> BatchNormExpander::Run(HloModule* module) {
+StatusOr<bool> BatchNormExpander::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "BatchNormExpander::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     if (BatchNormExpanderVisitor::Run(computation, rewrite_training_op_,
                                       rewrite_inference_op_,
                                       rewrite_grad_op_)) {

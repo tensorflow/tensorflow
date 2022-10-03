@@ -14,6 +14,7 @@
 # ==============================================================================
 """Strategy combinations for combinations.combine()."""
 
+import sys
 import unittest
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
@@ -189,7 +190,17 @@ def _get_multi_worker_mirrored_creator(required_gpus, use_merge_call=True):
       pass
     return strategy
 
-  return _create_multi_worker_mirrored
+  def skip_if_cannot_start_grpc_server():
+    try:
+      return _create_multi_worker_mirrored()
+    except errors.UnknownError as e:
+      if "Could not start gRPC server" in e.message and (
+          len(sys.argv) >= 1 and "bazel" in sys.argv[0]):
+        raise unittest.SkipTest("Cannot start std servers.")
+      else:
+        raise
+
+  return skip_if_cannot_start_grpc_server
 
 
 # Due to b/195615322, FixedShardsPartitioner will wrongly partition

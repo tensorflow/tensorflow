@@ -654,9 +654,9 @@ template <typename TaskType>
 bool SharedBatchScheduler<TaskType>::BatchExists(
     const BatchUniquePtr& batch_to_process) {
   if (absl::holds_alternative<BatchTaskUniqueptr>(batch_to_process)) {
-    return absl::get<BatchTaskUniqueptr>(batch_to_process) == nullptr;
+    return absl::get<BatchTaskUniqueptr>(batch_to_process) != nullptr;
   }
-  return absl::get<BatchTaskHandleUniquePtr>(batch_to_process) == nullptr;
+  return absl::get<BatchTaskHandleUniquePtr>(batch_to_process) != nullptr;
 }
 
 template <typename TaskType>
@@ -667,7 +667,7 @@ void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
   internal::Queue<TaskType>* queue_for_batch = nullptr;
   const int num_queues = queues_.size();
   for (int num_queues_tried = 0;
-       (BatchExists(batch_to_process)) && num_queues_tried < num_queues;
+       !BatchExists(batch_to_process) && num_queues_tried < num_queues;
        ++num_queues_tried) {
     DCHECK(next_queue_to_schedule_ != queues_.end());
 
@@ -680,13 +680,13 @@ void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
     // Ask '*next_queue_to_schedule_' if it wants us to process a batch.
     batch_to_process = (*next_queue_to_schedule_)->ScheduleBatch();
 
-    if (!BatchExists(batch_to_process)) {
+    if (BatchExists(batch_to_process)) {
       queue_for_batch = next_queue_to_schedule_->get();
     }
 
     // Advance 'next_queue_to_schedule_'.
     if (queue_closed && (*next_queue_to_schedule_)->IsEmpty() &&
-        (BatchExists(batch_to_process))) {
+        !BatchExists(batch_to_process)) {
       // We've encountered a closed queue with no work to do. Drop it.
       DCHECK_NE(queue_for_batch, next_queue_to_schedule_->get());
       next_queue_to_schedule_ = queues_.erase(next_queue_to_schedule_);
@@ -712,9 +712,7 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
     mutex_lock l(mu_);
     while (true) {
       GetNextWorkItem_Locked(&queue_for_batch, &batch_to_process);
-      if (!BatchExists(batch_to_process)) {
-        break;
-      }
+      if (BatchExists(batch_to_process)) break;
       // We couldn't find any work to do. Wait until a new batch becomes
       // schedulable, or some time has elapsed, before checking again.
       const int64_t kTimeoutMillis =

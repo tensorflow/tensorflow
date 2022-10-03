@@ -574,7 +574,7 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
     }
     result->push_back(std::move(tensor));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>

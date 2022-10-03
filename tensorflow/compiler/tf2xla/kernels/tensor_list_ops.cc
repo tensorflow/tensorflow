@@ -16,6 +16,7 @@ limitations under the License.
 // XLA TensorList operators.
 
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
@@ -114,7 +115,7 @@ Status TryGetElementShapeFromInput(XlaOpKernelContext* ctx, xla::XlaOp input,
   auto is_compile_time_constant_or = input.builder()->IsConstant(input);
   TF_RETURN_IF_ERROR(is_compile_time_constant_or.status());
 
-  bool is_compile_time_constant = is_compile_time_constant_or.ValueOrDie();
+  bool is_compile_time_constant = is_compile_time_constant_or.value();
   if (!is_compile_time_constant) {
     *got_shape = false;
     return OkStatus();
@@ -182,7 +183,7 @@ class TensorListReserveOp : public XlaOpKernel {
       xla::XlaOp new_list;
       OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
                               ctx->builder(), list_shape,
-                              list_dynamic_dims_or.ValueOrDie(), &new_list));
+                              list_dynamic_dims_or.value(), &new_list));
       xla::XlaOp result;
       OP_REQUIRES_OK(
           ctx,
@@ -257,7 +258,7 @@ class EmptyTensorListOp : public XlaOpKernel {
         xla::XlaOp result;
         OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
                                 ctx->builder(), list_shape,
-                                list_dynamic_dims_or.ValueOrDie(), &result));
+                                list_dynamic_dims_or.value(), &result));
 
         ctx->SetTensorListOutput(0, result);
         return;
@@ -490,7 +491,7 @@ class TensorListConcatOp : public XlaOpKernel {
     xla::XlaBuilder* b = input.builder();
     auto shape_or = b->GetShape(buffer);
     OP_REQUIRES_OK(ctx, shape_or.status());
-    xla::Shape element_shape = shape_or.ConsumeValueOrDie();
+    xla::Shape element_shape = std::move(shape_or).value();
     std::vector<int64_t> element_dims =
         xla::SpanToVector(element_shape.dimensions());
     OP_REQUIRES(
@@ -536,7 +537,7 @@ class TensorListSplitOp : public XlaOpKernel {
     xla::XlaBuilder* b = input_tensor.builder();
     auto shape_or = b->GetShape(input_tensor);
     OP_REQUIRES_OK(ctx, shape_or.status());
-    xla::Shape element_shape = shape_or.ConsumeValueOrDie();
+    xla::Shape element_shape = std::move(shape_or).value();
     std::vector<int64_t> element_dims =
         xla::SpanToVector(element_shape.dimensions());
     OP_REQUIRES(

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -32,7 +33,7 @@ class DelegateTest : public testing::FlexModelTest {
  public:
   DelegateTest() : delegate_(FlexDelegate::Create()) {
     flex_delegate_ = static_cast<FlexDelegate*>(delegate_->data_);
-    interpreter_.reset(new Interpreter(&error_reporter_));
+    interpreter_ = std::make_unique<Interpreter>(&error_reporter_);
   }
 
   ~DelegateTest() override {

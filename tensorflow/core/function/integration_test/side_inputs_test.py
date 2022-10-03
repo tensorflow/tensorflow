@@ -33,7 +33,7 @@ class SideInputsTest(parameterized.TestCase):
   @unittest.skip("Feature not implemented")
   def test_direct_capture(self, val_before, type_before, val_after, type_after):
     def f():
-      return x + tf.constant(1)
+      return x + 1
 
     tf_f = tf.function(f)
     x = type_before(val_before)
@@ -85,7 +85,6 @@ class SideInputsTest(parameterized.TestCase):
 
   @unittest.skip("Feature not implemented")
   def test_local_capture(self):
-    @tf.function
     def f():
       x = tf.constant(0)
       def g():
@@ -103,7 +102,6 @@ class SideInputsTest(parameterized.TestCase):
       int)
   @unittest.skip("Feature not implemented")
   def test_capture_by_nested_function(self, capture_type):
-    @tf.function
     def f():
       def g():
         return x
@@ -140,7 +138,6 @@ class SideInputsTest(parameterized.TestCase):
         return x
       return g()
 
-    @tf.function
     def f():
       h = g_factory()
       return h()
@@ -157,7 +154,6 @@ class SideInputsTest(parameterized.TestCase):
     def g():
       return x
 
-    @tf.function
     def f(h):
       return h()
     tf_f = tf.function(f)

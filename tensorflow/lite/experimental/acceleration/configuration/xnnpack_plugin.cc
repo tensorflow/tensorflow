@@ -30,7 +30,7 @@ class XNNPackPlugin : public DelegatePluginInterface {
   int GetDelegateErrno(TfLiteDelegate* from_delegate) override { return 0; }
   static std::unique_ptr<DelegatePluginInterface> New(
       const TFLiteSettings& acceleration) {
-    return absl::make_unique<XNNPackPlugin>(acceleration);
+    return std::make_unique<XNNPackPlugin>(acceleration);
   }
   explicit XNNPackPlugin(const TFLiteSettings& tflite_settings)
       : options_(TfLiteXNNPackDelegateOptionsDefault()) {

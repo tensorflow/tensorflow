@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {

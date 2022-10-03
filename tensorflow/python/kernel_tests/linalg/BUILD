@@ -1,9 +1,9 @@
 # Tests of TensorFlow linalg kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -242,7 +242,7 @@ cuda_py_test(
     name = "linear_operator_circulant_test",
     size = "medium",
     srcs = ["linear_operator_circulant_test.py"],
-    shard_count = 10,
+    shard_count = 15,
     tags = [
         "no_cuda11",  # TODO(b/197522782): reenable test after fixing.
         "noasan",  # times out, b/63678675
@@ -375,7 +375,6 @@ cuda_py_test(
     srcs = ["linear_operator_kronecker_test.py"],
     shard_count = 10,
     tags = [
-        "no_rocm",
         "noasan",
         "optonly",
     ],
@@ -417,6 +416,7 @@ cuda_py_test(
     name = "linear_operator_lower_triangular_test",
     size = "medium",
     srcs = ["linear_operator_lower_triangular_test.py"],
+    shard_count = 4,
     tags = [
         "noasan",
         "optonly",

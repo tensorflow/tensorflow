@@ -50,7 +50,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -60,6 +59,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
+namespace {
+#define GEN_PASS_DEF_DTENSORLAYOUTPROPAGATIONV2
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // This value dictates how many times during layout propagation we allow
 // fixing of oscillatory behaviors.
@@ -448,9 +451,9 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
 
     auto current_layout = merged_layouts.find(value);
     if (current_layout == merged_layouts.end() ||
-        current_layout->second != merged.ValueOrDie()) {
+        current_layout->second != merged.value()) {
       updated_merge.insert(value);
-      merged_layouts[value] = merged.ValueOrDie();
+      merged_layouts[value] = merged.value();
     }
   }
 
@@ -462,6 +465,9 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
 mlir::LogicalResult GetMostShardedLayout(llvm::ArrayRef<Layout> layouts,
                                          mlir::Location location,
                                          absl::optional<Layout>* out) {
+  // If there are no layouts to merge, leave the output empty.
+  if (layouts.empty()) return mlir::success();
+
   absl::optional<Layout> layout;
   std::map<std::string, std::set<int>> layout_map;
   for (const Layout& layout : layouts) {
@@ -928,25 +934,27 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
 
   // The following functions are part of the printing interface but aren't
   // needed for the compact printing form for Layout printing.
-  void printAttributeWithoutType(mlir::Attribute attr) override{};
-  void printSuccessor(mlir::Block* successor) override{};
+  void printAttributeWithoutType(mlir::Attribute attr) override {}
+  void printSuccessor(mlir::Block* successor) override {}
   void printSuccessorAndUseList(mlir::Block* successor,
-                                mlir::ValueRange succOperands) override{};
+                                mlir::ValueRange succOperands) override {}
   void printOptionalAttrDict(
       llvm::ArrayRef<mlir::NamedAttribute> attrs,
-      llvm::ArrayRef<llvm::StringRef> elidedAttrs) override{};
+      llvm::ArrayRef<llvm::StringRef> elidedAttrs) override {}
   void printOptionalAttrDictWithKeyword(
       llvm::ArrayRef<mlir::NamedAttribute> attrs,
-      llvm::ArrayRef<llvm::StringRef> elidedAttrs) override{};
+      llvm::ArrayRef<llvm::StringRef> elidedAttrs) override {}
 
   void shadowRegionArgs(mlir::Region& region,
-                        mlir::ValueRange namesToUse) override{};
+                        mlir::ValueRange namesToUse) override {}
   void printAffineMapOfSSAIds(mlir::AffineMapAttr mapAttr,
-                              mlir::ValueRange operands) override{};
+                              mlir::ValueRange operands) override {}
 
   void printAffineExprOfSSAIds(mlir::AffineExpr expr,
                                mlir::ValueRange dimOperands,
-                               mlir::ValueRange symOperands) override{};
+                               mlir::ValueRange symOperands) override {}
+
+  void printOptionalLocationSpecifier(mlir::Location loc) override {}
 
  private:
   int indent_level_;
@@ -1336,7 +1344,7 @@ Status RunOneIteration(
     llvm::DenseMap<mlir::Value, std::vector<mlir::OpOperand*>>& consumers,
     llvm::DenseMap<mlir::Value, Layout>& merged_layouts, mlir::ModuleOp& module,
     const uint64_t module_hash, int* stage) {
-  if (is_updated.empty()) return Status::OK();
+  if (is_updated.empty()) return OkStatus();
   // Merge any possibly updated layouts.
   if (mlir::failed(
           MergeAndGetUpdatedLayouts(is_locked, is_updated, producer_request,
@@ -1360,7 +1368,7 @@ Status RunOneIteration(
       return errors::Internal("UpdateLayoutsForOp failed to update layouts.");
   }
   ++(*stage);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Compares every value's layouts in `merged_a` with the ones in `merged_b`,
@@ -1382,12 +1390,12 @@ Status CompareMergedLayouts(const llvm::DenseMap<mlir::Value, Layout>& merged_a,
       changed.insert(value);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // MLIR pass that propagates layout for all ops the module.
 struct DLayoutPropagationPassV2
-    : public DTensorLayoutPropagationV2Base<DLayoutPropagationPassV2> {
+    : public impl::DTensorLayoutPropagationV2Base<DLayoutPropagationPassV2> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
   }
@@ -1576,6 +1584,8 @@ struct DLayoutPropagationPassV2
       return signalPassFailure();
   };
 };
+
+}  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorLayoutPropagationPassV2() {

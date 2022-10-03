@@ -319,6 +319,10 @@ TfLiteStatus ParseRound(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseRsqrt(const Operator* op, ErrorReporter* error_reporter,
                         BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseSelectV2(const Operator* op, ErrorReporter* error_reporter,
+                           BuiltinDataAllocator* allocator,
+                           void** builtin_data);
+
 TfLiteStatus ParseShape(const Operator* op, ErrorReporter* error_reporter,
                         BuiltinDataAllocator* allocator, void** builtin_data);
 
@@ -355,6 +359,11 @@ TfLiteStatus ParseSqrt(const Operator* op, ErrorReporter* error_reporter,
 
 TfLiteStatus ParseSquare(const Operator* op, ErrorReporter* error_reporter,
                          BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseSquaredDifference(const Operator* op,
+                                    ErrorReporter* error_reporter,
+                                    BuiltinDataAllocator* allocator,
+                                    void** builtin_data);
 
 TfLiteStatus ParseStridedSlice(const Operator* op,
                                ErrorReporter* error_reporter,

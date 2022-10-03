@@ -31,7 +31,7 @@ class FinalizeDatasetParams : public DatasetParams {
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         has_captured_ref_(false) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
   }
 
   std::vector<Tensor> GetInputTensors() const override { return {}; }

@@ -16,13 +16,13 @@
 
 import contextlib
 import logging
-import os
 import threading
 from typing import Any, List, Sequence, Set
 
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python import _pywrap_dtensor_device
@@ -34,9 +34,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import resource_variable_ops
 
-_DT_CLIENT_ID = "DTENSOR_CLIENT_ID"
-_DT_NUM_CLIENTS = "DTENSOR_NUM_CLIENTS"
-_DT_JOB_NAME = "DTENSOR_JOB_NAME"
 
 # TODO(allenl): Allow something other than "CUSTOM" so we don't need device
 # numbering hacks to avoid collisions between parallel devices and dtensor
@@ -61,7 +58,7 @@ class DTensorDevice(object):
     if any(not isinstance(mesh, layout_lib.Mesh) for mesh in meshes):
       raise TypeError(
           "Expected a flat list of Mesh objects, got {}".format(meshes))
-    global _next_device_number, _next_device_number_lock
+    global _next_device_number
     ctx = context.context()
     with _next_device_number_lock:
       self.name = "{}/device:CUSTOM:{}".format(ctx.host_address_space(),
@@ -79,37 +76,13 @@ class DTensorDevice(object):
     for mesh in meshes:
       self._register_mesh(mesh)
 
-# LINT.IfChange
-  def _num_clients(self):
-    """Returns number of clients in current DTensor cluster."""
-    # If missing, 1 is a good default.
-    return int(os.environ.get(_DT_NUM_CLIENTS, "1"))
-# LINT.ThenChange(//tensorflow/dtensor/cc/dtensor_utils.cc)
-
-# LINT.IfChange
-  def _client_id(self):
-    """Returns current client ID (int) in current DTensor cluster."""
-    return int(os.environ.get(_DT_CLIENT_ID, "0"))
-# LINT.ThenChange(//tensorflow/dtensor/cc/dtensor_utils.cc)
-
-  def _job_name(self):
-    """Returns the DTensor Borg job name."""
-    # If missing, the program is likely running locally or on Forge.
-    return os.environ.get(_DT_JOB_NAME, "localhost")
-
-  def _full_job_name(self):
-    """Returns the fully qualified TF job name for this or another task."""
-    if self._job_name() == "localhost":
-      return "localhost/replica:0/task:0"
-    return self._job_name() + "/replica:0/task:" + str(self._client_id())
-
   def _create_host_array(self, shape, host_id):
     """Returns ID and device lists that can be used to create a host mesh."""
     num_global_devices = np.prod(shape)
     global_device_ids = np.arange(num_global_devices).reshape(shape)
     local_device_list = [
         tf_device.DeviceSpec(
-            job=self._full_job_name(), device_type="CPU", device_index=0)
+            job=config.full_job_name(), device_type="CPU", device_index=0)
     ]
     num_local_devices = len(local_device_list)
     local_device_ids = [
@@ -142,7 +115,7 @@ class DTensorDevice(object):
           "found", tpu_mesh.to_string())
       return None
 
-    ts_global_device_ids = np.arange(self._num_clients())
+    ts_global_device_ids = np.arange(config.num_clients())
     # TODO(zhonglinhan): parse global device specs as input when not None.
     return layout_lib.Mesh(
         dim_names=[tpu_mesh.dim_names[0]],  # 1D mesh.
@@ -366,6 +339,17 @@ class DTensorDevice(object):
         context.context()._handle,  # pylint: disable=protected-access
         self._device_info,
         tpu_core_locations)
+
+  def _get_function_cache_hit_and_miss_count(self):
+    """Returns the number of cache hit and miss for function compilation.
+
+    Returns:
+      A dictionary keyed with miss and hit, corresponding to the cache hit and
+      miss count.
+    """
+    return _pywrap_dtensor_device.GetFunctionCacheHitAndMissCount(
+        context.context()._handle,  # pylint: disable=protected-access,
+        self._device_info)
 
   @contextlib.contextmanager
   def _experimental_default_mesh(self, mesh: layout_lib.Mesh):

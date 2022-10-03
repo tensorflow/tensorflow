@@ -7,10 +7,10 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
+load("//tensorflow:tensorflow.default.bzl", "tf_gen_op_libs")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # For platform specific build config
 load(
@@ -97,6 +97,7 @@ tf_gen_op_libs(
         "stateless_random_ops_v2",
         "summary_ops",
         "training_ops",
+        "uniform_quant_ops",
     ],
     sub_directory = "",
     deps = [
@@ -308,6 +309,7 @@ cc_library(
         ":stateless_random_ops_v2_op_lib",
         ":string_ops_op_lib",
         ":training_ops_op_lib",
+        ":uniform_quant_ops_op_lib",
         ":word2vec_ops",
     ] + select({
         # Non-tpu platforms don't need tpu dependency.
@@ -508,6 +510,7 @@ tf_cc_test(
         "string_ops_test.cc",
         "tpu_cross_replica_ops_test.cc",
         "training_ops_test.cc",
+        "uniform_quant_ops_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [

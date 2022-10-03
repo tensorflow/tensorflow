@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module_group_metadata.h"
 
+#include <memory>
 #include <sstream>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -59,7 +59,7 @@ std::string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
 
 /* static */ StatusOr<std::unique_ptr<HloModuleGroupMetadata>>
 HloModuleGroupMetadata::Build(absl::Span<HloModule* const> modules) {
-  auto metadata = absl::make_unique<HloModuleGroupMetadata>(modules);
+  auto metadata = std::make_unique<HloModuleGroupMetadata>(modules);
   TF_RETURN_IF_ERROR(metadata->Build());
   return std::move(metadata);
 }
@@ -305,7 +305,7 @@ std::optional<int64_t> HloModuleGroupMetadata::GetInstructionDevice(
   // In such cases the VerifyChannelInstructions() will return proper errors.
   std::optional<int64_t> device = instruction.sharding_unique_device();
   if (!device) {
-    device = GetModuleId(instruction.parent()->parent());
+    device = GetModuleId(instruction.GetModule());
   }
   return device;
 }
@@ -409,8 +409,7 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
     return OkStatus();
   } else if (!ContainsKey(companion_set_index_, instruction1) &&
              !ContainsKey(companion_set_index_, instruction2)) {
-    companion_sets_.push_back(
-        absl::make_unique<std::vector<HloInstruction*>>());
+    companion_sets_.push_back(std::make_unique<std::vector<HloInstruction*>>());
     auto companion_set = companion_sets_.back().get();
     companion_set->push_back(instruction1);
     companion_set->push_back(instruction2);

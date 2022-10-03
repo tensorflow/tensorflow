@@ -501,7 +501,7 @@ TEST_F(RaggedTensorToTensorOpTest, ShapeWrongDimensions) {
        createVector<int32>({1, 1, 1, 2})}  // row_partition_tensors
   );
   // Fails with an invalid argument.
-  EXPECT_EQ(RunOpKernel().code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_EQ(errors::IsInvalidArgument(RunOpKernel()), true);
 }
 
 class RaggedTensorToTensorOpUnknownShapeTest
@@ -510,7 +510,7 @@ class RaggedTensorToTensorOpUnknownShapeTest
   std::unique_ptr<ShapeInferenceTestOp> op_;
   void SetAttributes(const gtl::ArraySlice<string> row_partition_types,
                      int num_row_partition_tensors) {
-    op_ = absl::make_unique<ShapeInferenceTestOp>("RaggedTensorToTensor");
+    op_ = std::make_unique<ShapeInferenceTestOp>("RaggedTensorToTensor");
     SetAttrValue(row_partition_types,
                  &((*op_->node_def.mutable_attr())["row_partition_types"]));
     (*op_->node_def.mutable_attr())["num_row_partition_tensors"].set_i(

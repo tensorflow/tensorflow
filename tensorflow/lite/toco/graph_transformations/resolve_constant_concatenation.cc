@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -19,10 +20,10 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -169,6 +170,7 @@ void SetMinMaxForConcatenedArray(GraphTransformation* transformation,
   std::string concatenated_array_name = concat_op->outputs[0];
   Array& concatenated_array = model->GetOrCreateArray(concatenated_array_name);
   std::vector<Array*> input_arrays;
+  input_arrays.reserve(concat_op->inputs.size());
   for (const std::string& input_name : concat_op->inputs) {
     input_arrays.push_back(&model->GetArray(input_name));
   }

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_JIT_UNION_FIND_H_
-#define TENSORFLOW_COMPILER_JIT_UNION_FIND_H_
+#ifndef TENSORFLOW_COMPILER_XLA_UNION_FIND_H_
+#define TENSORFLOW_COMPILER_XLA_UNION_FIND_H_
 
 namespace tensorflow {
 
@@ -78,4 +78,4 @@ UnionFind<T>* UnionFind<T>::FindRoot() {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_JIT_UNION_FIND_H_
+#endif  // TENSORFLOW_COMPILER_XLA_UNION_FIND_H_

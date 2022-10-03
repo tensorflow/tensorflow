@@ -58,7 +58,7 @@ StatusOr<Layout> ComputeResultLayout(mlir::Operation* op,
       output_layout_proto.add_sharding_specs()->set_sharding_spec(
           input_layout.sharding_spec(i));
   }
-  return Layout::FromProto(output_layout_proto).ValueOrDie();
+  return Layout::FromProto(output_layout_proto).value();
 }
 }  // namespace
 
@@ -102,9 +102,9 @@ StatusOr<mlir::Operation*> ArgMaxSPMDExpander::ExpandOp(mlir::Operation* op) {
 
     if (!Layout::IsUnshardedDimension(input_layout->sharding_spec(axis))) {
       TF_ASSIGN_OR_RETURN(
-          input, EmitAllGather(
-                     builder, input, *input_layout,
-                     Layout::FromProto(tgt_input_layout_proto).ValueOrDie()));
+          input,
+          EmitAllGather(builder, input, *input_layout,
+                        Layout::FromProto(tgt_input_layout_proto).value()));
     }
   }
 

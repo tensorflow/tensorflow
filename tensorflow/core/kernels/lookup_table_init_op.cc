@@ -159,7 +159,7 @@ class InitializeTableFromTextFileOp : public OpKernel {
  private:
   std::unique_ptr<InitializerSerializer> MakeInitializerSerializer(
       Tensor vocab_filename) {
-    return absl::make_unique<InitializerSerializer>(
+    return std::make_unique<InitializerSerializer>(
         [vocab_filename, vocab_size = vocab_size_, delimiter = delimiter_,
          key_index = key_index_, value_index = value_index_,
          offset = offset_](GraphDefBuilder* builder, Node* table, Node** out) {

@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REPLICATION_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REPLICATION_ANALYSIS_H_
 
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -43,18 +46,72 @@ class HloReplicationAnalysis {
       const absl::flat_hash_set<const HloInstruction*>*
           loops_known_with_same_iterations);
 
+  // Same as above but supports finding partially replicated HLOs.
+  static StatusOr<std::unique_ptr<HloReplicationAnalysis>>
+  RunWithPartialReplication(const HloModule* module, bool cross_partition_spmd);
+
   // Returns if the HLO instruction outputs the same value (i.e., replicated) at
   // the given index across all replicas or partitions.
   bool HloInstructionIsReplicatedAt(const HloInstruction* inst,
                                     const ShapeIndex& index) const;
 
+  bool HloInstructionIsReplicatedAt(
+      const HloInstruction* inst, const ShapeIndex& index,
+      absl::Span<const ReplicaGroup> replica_groups) const;
+
  private:
+  // A data structure that represents how an HLO is replicated among a set of
+  // devices. Device ID could be either partition ID or replica ID.
+  // We represent partial replication by grouping devices that have the same
+  // value into the same set.
+  class HloReplication {
+   public:
+    static HloReplication ReplicatedOnAllDevices();
+    static HloReplication UniqueOnAllDevices();
+    static HloReplication PartiallyReplicated(
+        absl::Span<const absl::Span<const int64_t>> device_sets);
+    HloReplication();
+    HloReplication(const HloReplication& other) = default;
+    HloReplication(HloReplication&& other) = default;
+    HloReplication& operator=(HloReplication&& other) = default;
+    HloReplication Merge(const HloReplication& other) const;
+    bool Equal(const HloReplication& other) const;
+    bool IsReplicatedOnAllDevices() const;
+    bool IsUniqueOnAllDevices() const;
+    bool IsReplicatedWithinSubgroup(absl::Span<const int64_t> device_ids) const;
+    std::string ToString() const;
+
+   private:
+    enum class State {
+      kReplicatedOnAllDevices = 0,
+      kUniqueOnAllDevices = 1,
+      kPartiallyReplicated = 2,
+    };
+    explicit HloReplication(State state,
+                            absl::Span<const int64_t> device_set_root);
+    State state_;
+    // Empty if state_ is kReplicatedOnAllDevices or kUniqueOnAllDevices.
+    // Otherwise, its size equals to the number of devices (either partitions
+    // or replications). Maps each device ID to the smallest device ID in the
+    // set.
+    std::vector<int64_t> device_set_root_;
+  };
+
+  static HloReplication DetermineHloInstructionIsReplicated(
+      const HloInstruction* hlo, const ShapeIndex& index,
+      bool cross_partition_spmd,
+      const absl::flat_hash_map<const HloInstruction*,
+                                ShapeTree<HloReplication>>& hlo_replication,
+      bool support_partial_replication);
+
   HloReplicationAnalysis(const HloModule* module, bool cross_partition_spmd,
                          const absl::flat_hash_set<const HloInstruction*>*
-                             loops_known_with_same_iterations)
+                             loops_known_with_same_iterations,
+                         bool support_partial_replication)
       : module_(module),
         cross_partition_spmd_(cross_partition_spmd),
-        loops_known_with_same_iterations_(*loops_known_with_same_iterations) {}
+        loops_known_with_same_iterations_(*loops_known_with_same_iterations),
+        support_partial_replication_(support_partial_replication) {}
 
   // Computes hlo_replication_.
   void ComputeHloReplication();
@@ -82,10 +139,13 @@ class HloReplicationAnalysis {
   const absl::flat_hash_set<const HloInstruction*>&
       loops_known_with_same_iterations_;
 
+  const bool support_partial_replication_;
+
   // A map from each analyzed HLO instruction to a shape tree that represents
   // whether the instruction outputs the same value across replicas or
   // partitions at each shape index.
-  absl::flat_hash_map<const HloInstruction*, ShapeTree<bool>> hlo_replication_;
+  absl::flat_hash_map<const HloInstruction*, ShapeTree<HloReplication>>
+      hlo_replication_;
 };
 
 }  // namespace xla

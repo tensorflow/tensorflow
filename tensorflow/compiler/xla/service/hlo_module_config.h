@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_CONFIG_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_CONFIG_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -273,11 +273,12 @@ class HloModuleConfig {
     return &fusion_config_;
   }
 
-  const std::vector<std::vector<int64_t>>& dot_config() const {
+  const absl::flat_hash_map<std::string, std::vector<int64_t>>& dot_config()
+      const {
     return dot_config_;
   }
 
-  std::vector<std::vector<int64_t>>* mutable_dot_config() {
+  absl::flat_hash_map<std::string, std::vector<int64_t>>* mutable_dot_config() {
     return &dot_config_;
   }
 
@@ -409,9 +410,8 @@ class HloModuleConfig {
   std::vector<std::vector<bool>> fusion_config_;
 
   // Custom dot canonicalization configuration, where dot_config_[v] control
-  // how to convert dot operation v (sorted topologically and by computation) to
-  // convolution.
-  std::vector<std::vector<int64_t>> dot_config_;
+  // how to convert dot operation named 'v' to convolution.
+  absl::flat_hash_map<std::string, std::vector<int64_t>> dot_config_;
 
   // Layout configuration, where layout_config_[v][i] controls the layout
   // decision i of operation v.

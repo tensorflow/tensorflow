@@ -30,11 +30,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace tensorflow {
 namespace {
@@ -66,7 +66,8 @@ namespace mhlo = mlir::mhlo;
 namespace shape = mlir::shape;
 namespace tensor = mlir::tensor;
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_SYMBOLICSHAPEOPTIMIZATION
+#define GEN_PASS_DECL_SYMBOLICSHAPEOPTIMIZATION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 // -------------------------------------------------------------------------- //
@@ -126,7 +127,7 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
     }
   }
   // If the output is the same as one of the inputs just return that.
-  if (llvm::is_splat(shape_and_rank_for_dim) &&
+  if (llvm::all_equal(shape_and_rank_for_dim) &&
       shape_and_rank_for_dim[0].first) {
     return shape_and_rank_for_dim[0].first;
   }
@@ -215,20 +216,20 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
     mhlo::DynamicBroadcastInDimOp op, mlir::PatternRewriter& rewriter) const {
   MLIRContext* ctx = getContext();
 
-  auto in_type = op.operand().getType().dyn_cast<RankedTensorType>();
+  auto in_type = op.getOperand().getType().dyn_cast<RankedTensorType>();
   auto out_type = op.getResult().getType().dyn_cast<RankedTensorType>();
   if (!in_type || !out_type) return failure();
 
   // Check that broadcast is right-aligned (numpy style), so that operand
   // dimensions broadcasted to match inner-most dimensions of the output.
-  auto bcast_dims = op.broadcast_dimensions().getValues<int64_t>();
+  auto bcast_dims = op.getBroadcastDimensions().getValues<int64_t>();
   auto expected_bcast_dims = llvm::seq<int64_t>(
       out_type.getRank() - in_type.getRank(), out_type.getRank());
   if (!llvm::equal(bcast_dims, expected_bcast_dims)) return failure();
 
   ShapeComponentAnalysis shape_component_analysis;
   auto input_map = isNonExpandingBroadcast(
-      shape_component_analysis, op.operand(), op.output_dimensions());
+      shape_component_analysis, op.getOperand(), op.getOutputDimensions());
   if (!input_map) return failure();
 
   // Resolve dynamic output dimensions for the `linalg.init_tensor` operation.
@@ -243,7 +244,7 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
 
     // Resolve the dynamic size of the output dimension.
     Value output_dyn_dim = rewriter.create<tensor::ExtractOp>(
-        loc, op.output_dimensions(),
+        loc, op.getOutputDimensions(),
         ValueRange{rewriter.create<ConstantIndexOp>(loc, d)});
 
     // Symbolic shape analysis might have given us an i32 or i64. Cast to index.
@@ -267,7 +268,7 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
 
   rewriter.replaceOpWithNewOp<linalg::GenericOp>(
       op, /*resultTensorTypes=*/TypeRange{init.getType()},
-      /*inputs=*/ValueRange{op.operand()},
+      /*inputs=*/ValueRange{op.getOperand()},
       /*outputs=*/ValueRange{init},
       /*indexingMaps=*/llvm::makeArrayRef({*input_map, output_map}),
       /*iteratorTypes=*/iterator_types,
@@ -283,7 +284,8 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
 // -------------------------------------------------------------------------- //
 
 struct SymbolicShapeOptimizationPass
-    : public SymbolicShapeOptimizationBase<SymbolicShapeOptimizationPass> {
+    : public impl::SymbolicShapeOptimizationBase<
+          SymbolicShapeOptimizationPass> {
   SymbolicShapeOptimizationPass() = default;
 
   explicit SymbolicShapeOptimizationPass(bool constraints_only) {

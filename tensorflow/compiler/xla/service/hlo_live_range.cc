@@ -61,40 +61,16 @@ void HloLiveRange::NormalizeAliasedBuffers() {
     for (int64_t i = 0; i + 1 < aliased_live_ranges.size(); ++i) {
       TimeBound& live_range1 = *aliased_live_ranges[i];
       TimeBound& live_range2 = *aliased_live_ranges[i + 1];
-      if (live_range1.start == live_range2.start) {
-        // If value1 has the same start time as value2, make value1 disappear
-        // by setting the end time same as start time:
-        //
-        // Before:
-        // +----+           value1
-        // +----------+     value2
-        //
-        // After:
-        // +                value1
-        // +----------+     value2
-        //
-        // Note that only when heap simulator runs before copy insertion can
-        // this happen where one instruction defines multiple aliased buffers
-        // -- This is illegal to execute and can be fixed by copy insertion
-        // later.
-        // FIXME(cjfj): This code doesn't match the behaviour described above.
-        live_range1.end = live_range2.end;
-        continue;
-      }
-
-      if (live_range1.end < live_range2.start) {
-        continue;
-      }
-
       live_range2.end = std::max(live_range1.end, live_range2.end);
-      live_range1.end = live_range2.start - 1;
+      live_range1.end = std::min(live_range1.end, live_range2.start);
     }
   }
 }
 
 // FlattenSchedule walks through the computation and tracks down the ordinal
 // number of each instruction in the schedule.
-void HloLiveRange::FlattenSchedule(const HloComputation& computation) {
+void HloLiveRange::FlattenSchedule(const HloComputation& computation,
+                                   const HloComputation* async_context) {
   auto it = schedule_.sequences().find(computation.unique_id());
   if (it == schedule_.sequences().end()) {
     total_order_scheduled_ = false;
@@ -104,6 +80,11 @@ void HloLiveRange::FlattenSchedule(const HloComputation& computation) {
   // Check if we've already processed this computation.
   if (computation_span_times_.contains(&computation)) return;
 
+  // Mark this computation into the async context, if available.
+  if (async_context != nullptr) {
+    computations_in_async_context_[&computation] = async_context;
+  }
+
   LogicalTime start_time = flattened_instruction_sequence_.size();
 
   const HloInstructionSequence& instruction_sequence = it->second;
@@ -112,14 +93,20 @@ void HloLiveRange::FlattenSchedule(const HloComputation& computation) {
       // Recurse into sub computations if running with module scoped analysis
       // mode.
       if (instruction->opcode() == HloOpcode::kCall ||
-          instruction->opcode() == HloOpcode::kConditional) {
+          instruction->opcode() == HloOpcode::kConditional ||
+          instruction->opcode() == HloOpcode::kAsyncStart) {
         for (const HloComputation* called_computation :
              instruction->called_computations()) {
-          FlattenSchedule(*called_computation);
+          // AsyncStart starts an async context. Other ops that call
+          // computations just propagate the existing one, if any.
+          FlattenSchedule(*called_computation,
+                          instruction->opcode() == HloOpcode::kAsyncStart
+                              ? called_computation
+                              : async_context);
         }
       } else if (instruction->opcode() == HloOpcode::kWhile) {
-        FlattenSchedule(*instruction->while_condition());
-        FlattenSchedule(*instruction->while_body());
+        FlattenSchedule(*instruction->while_condition(), async_context);
+        FlattenSchedule(*instruction->while_body(), async_context);
       }
     }
 
@@ -205,6 +192,24 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     LogicalTime definition_end_time =
         instruction.IsRoot() ? computation_span_times_[computation].end
                              : entry.second;
+
+    // If the instruction is in an asynchronous context, extend the live range
+    // until the end of the async-done instruction.
+    auto async_context_it = computations_in_async_context_.find(computation);
+    if (async_context_it != computations_in_async_context_.end()) {
+      const HloComputation* async_context = async_context_it->second;
+      CHECK(async_context->IsAsyncComputation());
+      auto async_done_it = absl::c_find_if(
+          async_context->AsyncInstructions(),
+          [](const HloInstruction* instruction) {
+            return instruction->opcode() == HloOpcode::kAsyncDone;
+          });
+      CHECK(async_done_it != async_context->AsyncInstructions().end());
+      definition_end_time =
+          std::max(definition_end_time, instruction_schedule_[*async_done_it]);
+      VLOG(2) << "Setting the definition end time for op in async context: "
+              << definition_end_time;
+    }
 
     const InstructionValueSet& value_set_tree =
         alias_analysis_.dataflow_analysis().GetInstructionValueSet(

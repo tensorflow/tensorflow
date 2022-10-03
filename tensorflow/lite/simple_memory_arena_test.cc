@@ -55,8 +55,9 @@ TEST(SimpleMemoryArenaTest, BasicZeroAlloc) {
 
   // The zero-sized alloc should resolve to null.
   char* resolved_ptr = nullptr;
-  ASSERT_EQ(arena.Commit(&context), kTfLiteOk);
-  ASSERT_EQ(arena.ResolveAlloc(&context, alloc, &resolved_ptr), kTfLiteOk);
+  bool reallocated = false;
+  ASSERT_EQ(arena.Commit(&context, &reallocated), kTfLiteOk);
+  ASSERT_TRUE(reallocated);
   EXPECT_EQ(resolved_ptr, nullptr);
 }
 
@@ -86,7 +87,9 @@ TEST(SimpleMemoryArenaTest, TestClearPlan) {
   arena.Allocate(&context, 32, 2047, 0, 0, 2, &allocs[0]);
   arena.Allocate(&context, 32, 2047, 1, 1, 2, &allocs[1]);
   arena.Allocate(&context, 32, 2047, 2, 1, 2, &allocs[2]);
-  arena.Commit(&context);
+  bool reallocated = false;
+  arena.Commit(&context, &reallocated);
+  ASSERT_TRUE(reallocated);
 
   EXPECT_EQ(allocs[0].offset, 0);
   EXPECT_EQ(allocs[1].offset, 2048);
@@ -98,7 +101,8 @@ TEST(SimpleMemoryArenaTest, TestClearPlan) {
   arena.Allocate(&context, 32, 1023, 3, 0, 2, &allocs[3]);
   arena.Allocate(&context, 32, 1023, 4, 1, 2, &allocs[4]);
   arena.Allocate(&context, 32, 1023, 5, 1, 2, &allocs[5]);
-  arena.Commit(&context);
+  arena.Commit(&context, &reallocated);
+  ASSERT_FALSE(reallocated);
 
   EXPECT_EQ(allocs[3].offset, 0);
   EXPECT_EQ(allocs[4].offset, 1024);
@@ -110,7 +114,8 @@ TEST(SimpleMemoryArenaTest, TestClearPlan) {
   arena.Allocate(&context, 32, 4095, 6, 0, 2, &allocs[6]);
   arena.Allocate(&context, 32, 4095, 7, 1, 2, &allocs[7]);
   arena.Allocate(&context, 32, 4095, 8, 1, 2, &allocs[8]);
-  arena.Commit(&context);
+  arena.Commit(&context, &reallocated);
+  ASSERT_TRUE(reallocated);
 
   EXPECT_EQ(allocs[6].offset, 0);
   EXPECT_EQ(allocs[7].offset, 4096);
@@ -130,7 +135,9 @@ TEST(SimpleMemoryArenaTest, TestClearBuffer) {
   ASSERT_EQ(arena.ReleaseBuffer(), kTfLiteOk);
 
   // Commit and ensure resolved pointers are not null.
-  ASSERT_EQ(arena.Commit(&context), kTfLiteOk);
+  bool reallocated = false;
+  ASSERT_EQ(arena.Commit(&context, &reallocated), kTfLiteOk);
+  ASSERT_TRUE(reallocated);
   char* resolved_ptr = nullptr;
   ASSERT_EQ(arena.ResolveAlloc(&context, allocs[0], &resolved_ptr), kTfLiteOk);
   EXPECT_NE(resolved_ptr, nullptr);
@@ -146,7 +153,8 @@ TEST(SimpleMemoryArenaTest, TestClearBuffer) {
   ASSERT_NE(arena.ResolveAlloc(&context, allocs[0], &resolved_ptr), kTfLiteOk);
 
   // Commit again and ensure resolved pointers are not null.
-  ASSERT_EQ(arena.Commit(&context), kTfLiteOk);
+  ASSERT_EQ(arena.Commit(&context, &reallocated), kTfLiteOk);
+  ASSERT_TRUE(reallocated);
   ASSERT_NE(arena.BasePointer(), 0);
   resolved_ptr = nullptr;
   ASSERT_EQ(arena.ResolveAlloc(&context, allocs[0], &resolved_ptr), kTfLiteOk);
@@ -170,7 +178,9 @@ TEST_P(BufferAndPlanClearingTest, TestClearBufferAndClearPlan) {
   arena.Allocate(&context, 32, 2047, 0, 0, 2, &allocs[0]);
   arena.Allocate(&context, 32, 2047, 1, 1, 2, &allocs[1]);
 
-  ASSERT_EQ(arena.Commit(&context), kTfLiteOk);
+  bool reallocated = false;
+  ASSERT_EQ(arena.Commit(&context, &reallocated), kTfLiteOk);
+  ASSERT_TRUE(reallocated);
 
   if (GetParam()) {
     ASSERT_EQ(arena.ReleaseBuffer(), kTfLiteOk);
@@ -181,14 +191,16 @@ TEST_P(BufferAndPlanClearingTest, TestClearBufferAndClearPlan) {
   }
 
   // Just committing won't work, allocations need to be made again.
-  ASSERT_EQ(arena.Commit(&context), kTfLiteOk);
+  ASSERT_EQ(arena.Commit(&context, &reallocated), kTfLiteOk);
+  ASSERT_TRUE(reallocated);
   char* resolved_ptr = nullptr;
   ASSERT_NE(arena.ResolveAlloc(&context, allocs[0], &resolved_ptr), kTfLiteOk);
 
   // Re-allocate tensors & commit.
   arena.Allocate(&context, 32, 2047, 0, 0, 2, &allocs[0]);
   arena.Allocate(&context, 32, 2047, 1, 1, 2, &allocs[1]);
-  ASSERT_EQ(arena.Commit(&context), kTfLiteOk);
+  ASSERT_EQ(arena.Commit(&context, &reallocated), kTfLiteOk);
+  ASSERT_TRUE(reallocated);
 
   // Pointer-resolution now works.
   resolved_ptr = nullptr;

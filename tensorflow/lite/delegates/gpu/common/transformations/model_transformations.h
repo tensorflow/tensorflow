@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_GENERAL_TRANSFORMATIONS_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_GENERAL_TRANSFORMATIONS_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_MODEL_TRANSFORMATIONS_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_MODEL_TRANSFORMATIONS_H_
 
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 
@@ -28,4 +28,4 @@ bool ApplyModelTransformations(ModelTransformer* transformer);
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_GENERAL_TRANSFORMATIONS_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_MODEL_TRANSFORMATIONS_H_

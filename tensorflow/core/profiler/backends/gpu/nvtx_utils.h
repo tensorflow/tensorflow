@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_NVTX_UTILS_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_NVTX_UTILS_H_
+#ifndef TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_NVTX_UTILS_H_
+#define TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_NVTX_UTILS_H_
 
 #include <stack>
 
@@ -55,4 +55,4 @@ class NVTXRangeTracker {
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_GPU_NVTX_UTILS_H_
+#endif  // TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_NVTX_UTILS_H_

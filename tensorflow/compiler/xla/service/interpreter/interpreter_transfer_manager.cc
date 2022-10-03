@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 
@@ -31,7 +30,7 @@ InterpreterTransferManager::InterpreterTransferManager()
 
 static std::unique_ptr<xla::TransferManager>
 CreateInterpreterTransferManager() {
-  return absl::make_unique<xla::InterpreterTransferManager>();
+  return std::make_unique<xla::InterpreterTransferManager>();
 }
 
 static bool InitModule() {

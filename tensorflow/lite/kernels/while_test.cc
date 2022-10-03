@@ -18,7 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include "tensorflow/lite/profiling/memory_info.h"
 
@@ -40,7 +40,7 @@ class WhileTest : public ControlFlowOpTest {};
 TEST_F(WhileTest, TestTriangularNumberSequence) {
   const std::vector<int> expected = {1, 3, 6, 10, 15, 21, 28};
   for (int i = 0; i < expected.size(); ++i) {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     AddSubgraphs(2);
     builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), i);
     builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
@@ -69,7 +69,7 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
 TEST_F(WhileTest, TestTriangularNumberSequenceWithShallowCopy) {
   const std::vector<int> expected = {1, 3, 6, 10, 15, 21, 28};
   for (int i = 0; i < expected.size(); ++i) {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     AddSubgraphs(2);
     builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), i);
     builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
@@ -83,12 +83,12 @@ TEST_F(WhileTest, TestTriangularNumberSequenceWithShallowCopy) {
     options.OptimizeMemoryForLargeTensors(1000000);
     ASSERT_EQ(interpreter_->ApplyOptions(&options), kTfLiteOk);
     const size_t initial_mem_usage =
-        profiling::memory::GetMemoryUsage().max_rss_kb;
+        profiling::memory::GetMemoryUsage().mem_footprint_kb;
     ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
     // Memory usage shouldn't exceed 9MB (2 x inputs + margin).
-    ASSERT_LE(
-        profiling::memory::GetMemoryUsage().max_rss_kb - initial_mem_usage,
-        9000);
+    ASSERT_LE(profiling::memory::GetMemoryUsage().mem_footprint_kb -
+                  initial_mem_usage,
+              9000);
     FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
     const std::vector<int> input_vector(1000000, 1);
     FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]),
@@ -111,7 +111,7 @@ TEST_F(WhileTest, TestTriangularNumberSequenceWithShallowCopy) {
 }
 
 TEST_F(WhileTest, TestPadLoop) {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), 3);
   builder_->BuildPadLoopBodySubgraph(interpreter_->subgraph(2), {1, 2});
@@ -137,7 +137,7 @@ TEST_F(WhileTest, TestPadLoop) {
 }
 
 TEST_F(WhileTest, TestPadLoopWithShallowCopy) {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), 3);
   builder_->BuildPadLoopBodySubgraph(interpreter_->subgraph(2), {1, 2});
@@ -170,7 +170,7 @@ TEST_F(WhileTest, TestPadLoopWithShallowCopy) {
 }
 
 TEST_F(WhileTest, TestWhileLoopWithDynamicTensor) {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraphWithDynamicTensor(
       interpreter_->subgraph(1), 3);

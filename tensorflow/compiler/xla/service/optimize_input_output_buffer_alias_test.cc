@@ -17,13 +17,12 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -37,7 +36,7 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
     r3f32_ = ShapeUtil::MakeShape(F32, {4, 5, 6});
     r4f32_ = ShapeUtil::MakeShape(F32, {4, 5, 6, 7});
 
-    optimize_pass_ = absl::make_unique<OptimizeInputOutputBufferAlias>();
+    optimize_pass_ = std::make_unique<OptimizeInputOutputBufferAlias>();
   }
 
   // Returns the number of output indices that aliases with the input.
@@ -56,7 +55,7 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
     auto changed = optimize_pass_->Build(input_shape, output_shape, &config_);
     TF_CHECK_OK(changed.status());
 
-    return changed.ValueOrDie();
+    return changed.value();
   }
 
   std::unique_ptr<OptimizeInputOutputBufferAlias> optimize_pass_;

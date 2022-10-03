@@ -15,42 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_CONTEXT_TYPES_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_CONTEXT_TYPES_H_
 
-#include <cstdint>
+#include "tensorflow/tsl/profiler/lib/context_types.h"
 
 namespace tensorflow {
 namespace profiler {
 
-enum class ContextType : int {
-  kGeneric = 0,
-  kLegacy,
-  kTfExecutor,
-  kTfrtExecutor,
-  kSharedBatchScheduler,
-  kPjRt,
-  kAdaptiveSharedBatchScheduler,
-  kTfrtTpuRuntime,
-  kTpuEmbeddingEngine,
-  kGpuLaunch,
-  kBatcher,
-  kTpuStream,
-  kTpuLaunch,
-  kLastContextType = ContextType::kTpuLaunch,
-};
-
-// In XFlow we encode context type as flow category as 6 bits.
-static_assert(static_cast<int>(ContextType::kLastContextType) < 64,
-              "Should have less than 64 categories.");
-
-const char* GetContextTypeString(ContextType context_type);
-
-inline ContextType GetSafeContextType(uint32_t context_type) {
-  if (context_type > static_cast<uint32_t>(ContextType::kLastContextType)) {
-    return ContextType::kGeneric;
-  }
-  return static_cast<ContextType>(context_type);
-}
+using tsl::profiler::ContextType;           // NOLINT
+using tsl::profiler::GetContextTypeString;  // NOLINT
+using tsl::profiler::GetSafeContextType;    // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_UTILS_CONTEXT_TYPES_H_
+#endif  // TENSORFLOW_CORE_PROFILER_LIB_CONTEXT_TYPES_H_

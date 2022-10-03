@@ -21,7 +21,6 @@ from typing import Callable, Iterable, Sequence
 
 from absl import app
 from absl import flags
-from absl import logging
 
 from tensorflow.python.compiler.tensorrt import trt_convert as trt
 from tensorflow.python.compiler.tensorrt.model_tests import model_handler
@@ -31,6 +30,7 @@ from tensorflow.python.framework import config as framework_config
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test as platform_test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 

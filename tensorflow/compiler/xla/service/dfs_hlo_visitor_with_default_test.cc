@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -80,7 +80,7 @@ ENTRY TestComputation {
   ROOT convert = f64[] convert(f32[] arg)
 })";
   std::unique_ptr<HloModule> module =
-      ParseAndReturnVerifiedModule(hlo_string).ConsumeValueOrDie();
+      ParseAndReturnVerifiedModule(hlo_string).value();
   ElementwiseTestVisitor visitor;
   TF_EXPECT_OK(module->entry_computation()->Accept(&visitor));
 }

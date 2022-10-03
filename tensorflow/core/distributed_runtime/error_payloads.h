@@ -34,5 +34,8 @@ constexpr char kWorkerPossiblyRestarted[] =
     "type.googleapis.com/"
     "tensorflow.distributed_runtime.WorkerPossiblyRestarted";
 
+constexpr char kWorkerPreemption[] =
+    "type.googleapis.com/tensorflow.distributed_runtime.WorkerPreemption";
+
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_ERROR_PAYLOADS_H_

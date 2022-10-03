@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
@@ -19,15 +20,15 @@ limitations under the License.
 #include <random>
 #include <vector>
 
-#include "tensorflow/core/kernels/fractional_pool_common.h"
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/fractional_pool_common.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -241,7 +242,32 @@ class FractionalAvgPoolGradOp : public OpKernel {
                     orig_input_tensor_shape.NumElements() == 4,
                 errors::InvalidArgument("original input tensor shape must be"
                                         "1-dimensional and 4 elements"));
+    int64_t num_elements = 1;
+    for (int i = 0; i < orig_input_tensor_shape.dims(); i++) {
+      OP_REQUIRES(context, orig_input_tensor_shape.dim_size(i) > 0,
+                  errors::InvalidArgument(
+                      "orig_input_tensor_shape must be positive, got: ",
+                      orig_input_tensor_shape.dim_size(i)));
+      num_elements = MultiplyWithoutOverflow(
+          num_elements, orig_input_tensor_shape.dim_size(i));
+      OP_REQUIRES(
+          context, num_elements > 0,
+          errors::InvalidArgument(
+              "The total elements specified by orig_input_tensor_shape",
+              " is too large. Encountered overflow after multiplying ",
+              orig_input_tensor_shape.dim_size(i), ", result: ", num_elements));
+    }
+
     const Tensor& out_backprop = context->input(1);
+    OP_REQUIRES(context, out_backprop.dims() == 4,
+                errors::InvalidArgument("out_backprop must be 4-dimensional"));
+    for (int i = 0; i < out_backprop.dims(); i++) {
+      OP_REQUIRES(context, out_backprop.dim_size(i) > 0,
+                  errors::InvalidArgument(
+                      "out_backprop must be positive for all dimension, got:",
+                      out_backprop.dim_size(i)));
+    }
+
     const Tensor& row_seq_tensor = context->input(2);
     const Tensor& col_seq_tensor = context->input(3);
 

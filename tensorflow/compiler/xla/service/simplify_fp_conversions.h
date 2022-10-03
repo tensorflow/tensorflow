@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -32,7 +32,10 @@ class SimplifyFPConversions : public HloModulePass {
  public:
   absl::string_view name() const override { return "simplify-fp-conversions"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

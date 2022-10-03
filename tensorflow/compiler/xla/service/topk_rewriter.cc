@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/topk_rewriter.h"
 
+#include <optional>
+
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -181,9 +182,11 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
   return k;
 }
 
-StatusOr<bool> TopkRewriter::TransformToCustomCall(HloModule* module) {
+StatusOr<bool> TopkRewriter::TransformToCustomCall(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->computations()) {
+  for (HloComputation* comp : module->computations(execution_threads)) {
     for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
       // Check if sort is in TopK.
       std::optional<int64_t> k = SortIsInTopK(inst);
@@ -268,10 +271,12 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(HloModule* module) {
   return changed;
 }
 
-StatusOr<bool> TopkRewriter::Run(HloModule* module) {
+StatusOr<bool> TopkRewriter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   TF_ASSIGN_OR_RETURN(auto transform_to_customcall_changed,
-                      TransformToCustomCall(module));
+                      TransformToCustomCall(module, execution_threads));
   changed |= transform_to_customcall_changed;
   return changed;
 }

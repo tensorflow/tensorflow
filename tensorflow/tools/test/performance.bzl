@@ -37,7 +37,7 @@ def tf_cc_logged_benchmark(
         data = [
             target,
         ],
-        main = "run_and_gather_logs.py",
+        main = "//tensorflow/tools/test:run_and_gather_logs.py",
         deps = [
             "//tensorflow/tools/test:run_and_gather_logs_main_lib",
         ],

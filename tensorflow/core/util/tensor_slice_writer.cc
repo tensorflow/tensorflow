@@ -131,6 +131,16 @@ Status TensorSliceWriter::Finish() {
 
 /* static */
 size_t TensorSliceWriter::MaxBytesPerElement(DataType dt) {
+  size_t max_bytes_per_element =
+      TensorSliceWriter::MaxBytesPerElementOrZero(dt);
+  if (max_bytes_per_element == 0) {
+    LOG(FATAL) << "MaxBytesPerElement not implemented for dtype: " << dt;
+  }
+  return max_bytes_per_element;
+}
+
+/* static */
+size_t TensorSliceWriter::MaxBytesPerElementOrZero(DataType dt) {
   switch (dt) {
     case DT_FLOAT:
       return 4;
@@ -170,9 +180,8 @@ size_t TensorSliceWriter::MaxBytesPerElement(DataType dt) {
     case DT_STRING:
     case DT_BFLOAT16:
     default:
-      LOG(FATAL) << "MaxBytesPerElement not implemented for dtype: " << dt;
+      return 0;
   }
-  return 0;
 }
 
 template <>

@@ -372,13 +372,13 @@ bool CompositeNodeManager::Empty() const {
 std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
     const string& ready_node_manager) {
   if (ready_node_manager == "FIFO") {
-    return absl::make_unique<FIFOManager>();
+    return std::make_unique<FIFOManager>();
   } else if (ready_node_manager == "LIFO") {
-    return absl::make_unique<LIFOManager>();
+    return std::make_unique<LIFOManager>();
   } else if (ready_node_manager == "FirstReady") {
-    return absl::make_unique<FirstReadyManager>();
+    return std::make_unique<FirstReadyManager>();
   } else if (ready_node_manager == "Composite") {
-    return absl::make_unique<CompositeNodeManager>();
+    return std::make_unique<CompositeNodeManager>();
   }
   LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
   return nullptr;
@@ -422,7 +422,7 @@ Status SchedulerState::Init(const GrapplerItem* item,
   initial_nodes->clear();
 
   // Constructs graph properties and performs shape inference.
-  graph_properties_ = absl::make_unique<GraphProperties>(*item);
+  graph_properties_ = std::make_unique<GraphProperties>(*item);
   // TODO(safeen,dyoon): Will we ever use InferDynamically? If not we may want
   // to get rid of use_static_shapes_ and cluster_.
   if (use_static_shapes_) {
@@ -1382,7 +1382,7 @@ VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
                                    Cluster* cluster,
                                    ReadyNodeManager* ready_nodes,
                                    std::unique_ptr<VirtualPlacer> placer)
-    : scheduler_state_(absl::make_unique<SchedulerState>(
+    : scheduler_state_(std::make_unique<SchedulerState>(
           use_static_shapes, use_aggressive_shape_inference, cluster,
           std::move(placer))),
       ready_nodes_(ready_nodes) {}

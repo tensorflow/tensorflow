@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/dynamic_annotations.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -33,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace {
 void R0F32Add2(float* out, float** in) {

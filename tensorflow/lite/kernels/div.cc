@@ -228,8 +228,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 
   if (output->type == kTfLiteFloat32) {
-    // Div by zero seems ok in this case, just like in TF case infinities are
-    // returned. So we don't do a check at this point.
+    // Div by zero seems ok in this case, we don't do a check at this point.
+    // However, unlike in TF where infinities are returned, here we return an
+    // activation min/max value if any or std::numeric_limits<float>::min/max.
     EvalDiv<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteInt32) {
     CheckNonZero<int32_t>(context, input2);

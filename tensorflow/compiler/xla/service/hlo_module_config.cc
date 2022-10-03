@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 
 #include <atomic>
+#include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_layout.h"

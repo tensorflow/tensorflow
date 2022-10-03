@@ -29,7 +29,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -44,10 +43,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bitmap.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -78,7 +77,7 @@ class LiteralUtil {
   static Literal CreateR0(NativeT value);
   template <typename NativeT>
   static Literal CreateR1(absl::Span<const NativeT> values);
-  static Literal CreateR1(const tensorflow::core::Bitmap& values);
+  static Literal CreateR1(const tsl::core::Bitmap& values);
   template <typename NativeT>
   static Literal CreateR2(
       std::initializer_list<std::initializer_list<NativeT>> values);
@@ -220,39 +219,21 @@ class LiteralUtil {
   static Literal CreateFromDimensions(PrimitiveType primitive_type,
                                       absl::Span<const int64_t> dimensions);
 
-  // If the given literal's data type is bfloat16, converts it to a float
+  // Convert<SrcType>To<DstType> family of functions:
+  // If the given literal's data type is <SrcType>, converts it to a <DstType>
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
   static Literal ConvertBF16ToF32(const LiteralSlice& bf16_literal);
-
-  // If the given literal's data type is bfloat16, converts it to a double
-  // literal; otherwise, returns a copy of it. If the literal is a tuple,
-  // recursively converts its elements.
   static Literal ConvertBF16ToF64(const LiteralSlice& bf16_literal);
-
-  // If the given literal's data type is float, converts it to a bfloat16
-  // literal; otherwise, returns a copy of it. If the literal is a tuple,
-  // recursively converts its elements.
   static Literal ConvertF32ToBF16(const LiteralSlice& f32_literal);
-
-  // If the given literal's data type is float, converts it to a double
-  // literal; otherwise, returns a copy of it. If the literal is a tuple,
-  // recursively converts its elements.
   static Literal ConvertF32ToF64(const LiteralSlice& f32_literal);
-
-  // If the given literal's data type is double, converts it to a bfloat16
-  // literal; otherwise, returns a copy of it. If the literal is a tuple,
-  // recursively converts its elements.
   static Literal ConvertF64ToBF16(const LiteralSlice& f64_literal);
+  static Literal ConvertF64ToF32(const LiteralSlice& f64_literal);
+  static Literal ConvertS32ToF32(const LiteralSlice& s32_literal);
 
   // Creates a scalar literal whose value is the maximum value of a given
   // literal slice.
   static Literal MaxElement(const LiteralSlice& literal);
-
-  // If the given literal's data type is double, converts it to a bfloat16
-  // literal; otherwise, returns a copy of it. If the literal is a tuple,
-  // recursively converts its elements.
-  static Literal ConvertF64ToF32(const LiteralSlice& f64_literal);
 
   // Creates a literal with a new shape with the given new dimensions using the
   // data in the given input literal. For reshaping purposes the (flat) data

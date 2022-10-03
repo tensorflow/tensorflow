@@ -36,12 +36,12 @@ class XlaExpressionTest : public ::testing::Test {
  protected:
   void SetUp() override {
     client_ = xla::ClientLibrary::LocalClientOrDie();
-    builder_ = absl::make_unique<xla::XlaBuilder>("acomputation");
+    builder_ = std::make_unique<xla::XlaBuilder>("acomputation");
     constant_ = test::AsScalar<int32>(42);
     op_ = xla::ConstantR0<int32>(builder_.get(), 7);
     non_constant_op_ = xla::Parameter(
         builder_.get(), 0, xla::ShapeUtil::MakeShape(xla::F32, {}), "x");
-    resource_ = absl::make_unique<XlaResource>(
+    resource_ = std::make_unique<XlaResource>(
         XlaResource::kVariable, /*arg_num=*/0, /*name=*/string("avariable"),
         DT_INT32, TensorShape({17, 3}), op_, /*tensor_array_size=*/-1,
         /*tensor_array_gradients=*/std::set<string>(),

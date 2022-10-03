@@ -1,6 +1,6 @@
 # Description: Tests defined for Cloud TPUs
 
-load("//tensorflow:tensorflow.bzl", "pytype_library")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "pytype_library")  # buildifier: disable=same-origin-load
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
@@ -327,10 +327,12 @@ tpu_py_test(
     ],
     disable_mlir_bridge = False,
     disable_tfrt = False,
+    disable_v3_4chips = False,
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
         "no_oss",
+        "noasan",
     ],
     deps = [
         "//tensorflow/python/tpu:tpu_py",

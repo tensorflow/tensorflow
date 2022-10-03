@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/gpu/conversion_function.h"
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
@@ -151,7 +152,7 @@ ConvertRuntimeFallbackTensorToDenseGpuTensor(
             std::move(*gpu_buffer))};
 
     return tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::DenseGpuTensor>(
-        exec_ctx.host(), std::move(gpu_tensor));
+        std::move(gpu_tensor));
   } else {
     // TODO(chuanhao): clean up the branch after cl/325503773. Currently this
     // branch is needed since we don't know what type of tensor that
@@ -179,10 +180,12 @@ ConvertRuntimeFallbackTensorToDenseGpuTensor(
             std::move(current_context.get()), dst.stream(), dst.allocator(),
             llvm::cast<tfrt::DenseHostTensor>(host_tensor_ref.get()), host_ctx);
     if (!expected_gpu_tensor) {
-      return EmitErrorAsync(exec_ctx, expected_gpu_tensor.takeError());
+      return EmitErrorAsync(
+          exec_ctx,
+          absl::InternalError(toString(expected_gpu_tensor.takeError())));
     }
     return tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::DenseGpuTensor>(
-        exec_ctx.host(), std::move(expected_gpu_tensor.get()));
+        std::move(expected_gpu_tensor.get()));
   }
 }
 
@@ -190,8 +193,6 @@ static tfrt::AsyncValueRef<RuntimeFallbackTensor>
 ConvertDenseGpuTensorToRuntimeFallbackTensor(
     const tfrt::gpu::DenseGpuTensor& tensor, const tfrt::gpu::GpuDevice& src,
     const tfrt::gpu::GpuDevice& dst, const tfrt::ExecutionContext& exec_ctx) {
-  auto* host = exec_ctx.host();
-
   tfrt::ResourceContext* resource_context = exec_ctx.resource_context();
   tensorflow::tfd::EagerContextResource* eager_context_resource =
       resource_context
@@ -211,7 +212,7 @@ ConvertDenseGpuTensorToRuntimeFallbackTensor(
       ToAbslStringView(dst.name()), &device);
   if (!status.ok())
     return EmitErrorAsync(exec_ctx,
-                          tfrt::MakeStringError(tfrt::StrCat(
+                          absl::InternalError(tfrt::StrCat(
                               "error looking up gpu device from EagerContext: ",
                               status.error_message())));
 
@@ -219,9 +220,10 @@ ConvertDenseGpuTensorToRuntimeFallbackTensor(
       tensor, device, device, eager_ctx);
   if (fallback_tensor) {
     return tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-        host, std::move(*fallback_tensor));
+        std::move(*fallback_tensor));
   } else {
-    return EmitErrorAsync(exec_ctx, fallback_tensor.takeError());
+    return EmitErrorAsync(
+        exec_ctx, absl::InternalError(toString(fallback_tensor.takeError())));
   }
 }
 

@@ -62,7 +62,7 @@ void TestBitcastOp(Tensor* input_tensor, DataType out_type,
   params.op_kernel = kernel.get();
   gtl::InlinedVector<TensorValue, 4> inputs;
   inputs.emplace_back(input_tensor);
-  params.inputs = &inputs;
+  params.inputs = inputs;
 
   OpKernelContext ctx(&params);
   kernel->Compute(&ctx);

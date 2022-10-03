@@ -310,7 +310,7 @@ TEST(PartiallyDeclusterPassTest, DeclusterMustBeConstantNodes) {
 
   AddToCluster({shape.node(), reshape.node()}, "cluster_0");
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(s.ToGraph(graph.get()));
   TF_ASSERT_OK(PartiallyDecluster(&graph));
 
@@ -338,7 +338,7 @@ TEST(PartiallyDeclusterPassTest, DeclusteringStopsAtMetadataOps) {
   AddToCluster({mul.node(), shape_of_mul.node(), shape.node(), reshape.node()},
                "cluster_0");
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(s.ToGraph(graph.get()));
   TF_ASSERT_OK(PartiallyDecluster(&graph));
 
@@ -363,7 +363,7 @@ TEST(PartiallyDeclusterPassTest, EdgeAcrossDifferentClusters) {
   AddToCluster({reshape.node()}, "cluster_0");
   AddToCluster({shape.node()}, "cluster_1");
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(s.ToGraph(graph.get()));
   TF_ASSERT_OK(PartiallyDecluster(&graph));
 
@@ -387,7 +387,7 @@ TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps) {
 
   AddToCluster({shape.node(), reshape.node()}, "cluster_0");
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(s.ToGraph(graph.get()));
 
   // This is needed to register the XLA_GPU device.
@@ -444,7 +444,7 @@ TEST(PartiallyDeclusterPassTest, MetadataOpsDontStartClusters) {
   Output d = ops::Size(in_cluster_and.WithOpName("d"), c);
   (void)ops::Shape(in_cluster_and.WithOpName("e"), d);
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
   TF_ASSERT_OK(PartiallyDecluster(&graph));
@@ -469,7 +469,7 @@ TEST(PartiallyDeclusterPassTest, MetadataOpsDontStartClusters) {
 TEST(PartiallyDeclusterPassTest, MetaConsumersArentDeclustered) {
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
   tensorflow::Scope in_cluster_and = root.WithXlaCluster("cluster_0");
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   Output a = ops::Placeholder(root.WithOpName("a"), DT_FLOAT);
   Output b = ops::Add(in_cluster_and.WithOpName("b"), a, a);
   Output c = ops::Rank(in_cluster_and.WithOpName("c"), b);
@@ -493,7 +493,7 @@ TEST(PartiallyDeclusterPassTest, MetaConsumersArentDeclustered) {
 TEST(PartiallyDeclusterPassTest, ConstInputsToSliceArentDeclustered) {
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
   tensorflow::Scope in_cluster_and = root.WithXlaCluster("cluster_0");
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   Output a = ops::Placeholder(root.WithOpName("a"), DT_FLOAT,
                               ops::Placeholder::Attrs{{4}});
   Output b = ops::Const(in_cluster_and.WithOpName("b"), {1});
@@ -518,7 +518,7 @@ TEST(PartiallyDeclusterPassTest,
   // mark_for_compilation_pass_test.cc
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
   tensorflow::Scope in_cluster_and = root.WithXlaCluster("cluster_0");
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   Output a = ops::Placeholder(root.WithOpName("a"), DT_FLOAT,
                               ops::Placeholder::Attrs{{4}});
   Output b = ops::Const(in_cluster_and.WithOpName("b"), {1});

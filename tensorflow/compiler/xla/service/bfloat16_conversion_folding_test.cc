@@ -76,7 +76,7 @@ class BFloat16ConversionFoldingTest : public HloTestBase {
     BFloat16ConversionFolding fold(&bfloat16_support_);
     StatusOr<bool> result = fold.Run(module);
     EXPECT_IS_OK(result.status());
-    return result.ValueOrDie();
+    return result.value();
   }
 };
 

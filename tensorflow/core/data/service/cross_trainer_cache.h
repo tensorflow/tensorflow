@@ -67,7 +67,7 @@ namespace data {
 //
 //   CrossTrainerCache<int64_t> cache(
 //       /*max_cache_size_bytes=*/10 * (size_t{1} << 30),  // 10GB
-//       absl::make_unique<InfiniteRange>());
+//       std::make_unique<InfiniteRange>());
 //
 //   std::shared_ptr<int64_t> next;
 //   TF_ASSIGN_OR_RETURN(next, cache.Get("Trainer 1"));  // Returns 1

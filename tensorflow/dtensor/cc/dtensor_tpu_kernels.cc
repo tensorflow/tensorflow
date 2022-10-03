@@ -20,6 +20,9 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -37,9 +40,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tpu_system_interface.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/stream_executor/tpu/tpu_topology.h"
 
 // Timeout for waiting for TPU devices to appear.
 const absl::Duration dtensor_tpu_init_retry_timeout = absl::Seconds(30);
@@ -272,6 +272,24 @@ class ShutdownTPUSystemOpKernel : public OpKernel {
   }
 };
 
+class SetGlobalTPUArrayOpKernel : public OpKernel {
+ public:
+  explicit SetGlobalTPUArrayOpKernel(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "SetGlobalTPUArrayOpKernel op";
+    auto tpu_topology = ctx->input(0).scalar<tstring>()();
+    TF_Status* status = TF_NewStatus();
+
+    tpu::OpsApiFn()->SetGlobalTPUArrayOp_DoWorkFn(tpu_topology.size(),
+                                                  tpu_topology.data(), status);
+    OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
+    TF_DeleteStatus(status);
+
+    VLOG(1) << "SetGlobalTPUArrayOpKernel done";
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("ConfigureAndInitializeGlobalTPU")
                             .Device(DEVICE_TPU_SYSTEM)
                             .HostMemory("output"),
@@ -279,6 +297,11 @@ REGISTER_KERNEL_BUILDER(Name("ConfigureAndInitializeGlobalTPU")
 
 REGISTER_KERNEL_BUILDER(Name("ShutdownTPUSystem").Device(DEVICE_TPU_SYSTEM),
                         ShutdownTPUSystemOpKernel);
+
+REGISTER_KERNEL_BUILDER(Name("DTensorSetGlobalTPUArray")
+                            .Device(DEVICE_TPU_SYSTEM)
+                            .HostMemory("topology"),
+                        SetGlobalTPUArrayOpKernel);
 
 }  // namespace dtensor
 }  // namespace tensorflow

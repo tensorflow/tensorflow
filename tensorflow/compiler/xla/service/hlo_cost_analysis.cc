@@ -16,9 +16,10 @@ limitations under the License.
 
 #include <cmath>
 #include <cstdint>
+#include <functional>
+#include <memory>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -29,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
 
 namespace xla {
 
@@ -159,14 +160,19 @@ int64_t HloCostAnalysis::FusionParameterReadBytes(
         size += GetShapeSize(user->shape());
         break;
       case HloOpcode::kDynamicSlice:
-        size += hlo == user->operand(0) ? GetShapeSize(user->shape())
-                                        : GetShapeSize(hlo->shape());
+        if (hlo == user->operand(0)) {
+          size += GetShapeSize(user->shape());
+        } else if (!seen_trivial_user) {
+          seen_trivial_user = true;
+          size += GetShapeSize(hlo->shape());
+        }
         break;
       case HloOpcode::kDynamicUpdateSlice:
-        // Uses the same shape as 'update' which is operand 1.
-        size += hlo == user->operand(0)
-                    ? GetShapeSize(user->operand(1)->shape())
-                    : GetShapeSize(hlo->shape());
+        // Operand 0 is aliased to the output.
+        if (hlo != user->operand(0) && !seen_trivial_user) {
+          seen_trivial_user = true;
+          size += GetShapeSize(hlo->shape());
+        }
         break;
       case HloOpcode::kBroadcast:
       case HloOpcode::kReshape:
@@ -419,8 +425,51 @@ Status HloCostAnalysis::HandleReduceWindow(
       ShapeUtil::ElementsIn(reduce_window->shape().IsArray()
                                 ? reduce_window->shape()
                                 : reduce_window->shape().tuple_shapes(0));
-  const int64_t reduction_count =
-      (window_element_count - 1) * output_element_count;
+  int64_t reduction_count = (window_element_count - 1) * output_element_count;
+
+  // To report FLOPs correctly, identify a reduce window that represents
+  // a reduce followed by a broadcast of a single dimension, and update the
+  // reduction_count appropriately.
+  bool optimized_rw = false;
+  int64_t logical_reduction_dim = -1;
+  int64_t num_reduction_dimensions = absl::c_count_if(
+      window.dimensions(),
+      [](const WindowDimension& dim) { return (dim.size() != 1); });
+  int64_t num_padded_dimensions =
+      absl::c_count_if(window.dimensions(), [](const WindowDimension& dim) {
+        return (dim.padding_low() != 0 || dim.padding_high() != 0);
+      });
+  if (num_reduction_dimensions == 1 && num_padded_dimensions == 1 &&
+      reduce_window->shape().IsArray()) {
+    // Determine the reduction dimension that is broadcasted back to the full
+    // span, if such a dimension exists. To do so, two checks are needed: (a) if
+    // the pad_low and pad_high are one less than the dimension span, and (b)
+    // the reduction window size is one less than twice the dimension span.
+    auto reduction_dim =
+        absl::c_find_if(window.dimensions(), [](const WindowDimension& dim) {
+          return (dim.size() != 1 && dim.padding_low() != 0 &&
+                  dim.padding_high() != 0 &&
+                  dim.padding_low() == dim.padding_high() &&
+                  dim.size() == 2 * dim.padding_low() + 1);
+        });
+    if (reduction_dim != window.dimensions().end()) {
+      logical_reduction_dim = reduction_dim - window.dimensions().begin();
+      optimized_rw =
+          reduction_dim->padding_low() ==
+          reduce_window->shape().dimensions(logical_reduction_dim) - 1;
+    }
+  }
+
+  if (optimized_rw) {
+    window_element_count =
+        reduce_window->shape().dimensions(logical_reduction_dim);
+    reduction_count = (output_element_count / window_element_count) +
+                      (window_element_count - 1);
+    VLOG(3) << "Reduction count: " << reduction_count
+            << " reported for reduce-window:\n"
+            << reduce_window->ToString();
+  }
+
   for (const auto& property : sub_properties) {
     if (!absl::StartsWith(property.first, kBytesAccessedKey)) {
       current_properties_[property.first] = property.second * reduction_count;
@@ -949,7 +998,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   for (int64_t i = 0; i < fusion->fused_parameters().size(); ++i) {
     const HloInstruction* operand = fusion->fused_parameter(i);
     int64_t operand_size = 0;
-    if (!fusion->shape().IsTuple()) {
+    if (!operand->shape().IsTuple()) {
       operand_size = FusionParameterReadBytes(operand);
     } else {
       // If the fusion parameter is a tuple type, find the gte for the leaf
@@ -1043,8 +1092,7 @@ Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
         const Properties branch_computation_properties,
         ProcessSubcomputation(conditional->branch_computation(j)));
     for (const auto& property : branch_computation_properties) {
-      if (!tensorflow::gtl::InsertIfNotPresent(&current_properties_,
-                                               property)) {
+      if (!tsl::gtl::InsertIfNotPresent(&current_properties_, property)) {
         auto& current_property = current_properties_[property.first];
         current_property = std::max(current_property, property.second);
       }
