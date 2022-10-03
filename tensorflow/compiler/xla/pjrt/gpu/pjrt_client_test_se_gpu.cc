@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/pjrt/gpu_device.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client_test.h"
 
 namespace xla {
 namespace {
 
 // Register GPU as the backend for tests in pjrt_client_test.cc.
-const bool kUnused =
-    (RegisterTestClientFactory([]() {
-       return GetGpuClient(/*asynchronous=*/true, GpuAllocatorConfig{},
-                           /*distributed_client=*/nullptr, /*node_id=*/0);
-     }),
-     true);
+const bool kUnused = (RegisterTestClientFactory([]() {
+                        return GetStreamExecutorGpuClient(
+                            /*asynchronous=*/true, GpuAllocatorConfig{},
+                            /*distributed_client=*/nullptr, /*node_id=*/0);
+                      }),
+                      true);
 
 }  // namespace
 }  // namespace xla

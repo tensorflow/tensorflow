@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/pjrt/gpu_device.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 
 #include <map>
 #include <optional>
@@ -31,7 +31,7 @@ limitations under the License.
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "tensorflow/compiler/xla/pjrt/nccl_id_store.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/nccl_id_store.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
 #endif  // GOOGLE_CUDA
@@ -113,7 +113,7 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
 #endif  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
 
 // A custom PjRtClient that overrides the device assignment method.
-class GpuClient : public xla::PjRtStreamExecutorClient {
+class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
  public:
   using xla::PjRtStreamExecutorClient::PjRtStreamExecutorClient;
 
@@ -135,8 +135,9 @@ class GpuClient : public xla::PjRtStreamExecutorClient {
   }
 };
 
-xla::StatusOr<xla::DeviceAssignment> GpuClient::GetDefaultDeviceAssignment(
-    int num_replicas, int num_partitions) const {
+xla::StatusOr<xla::DeviceAssignment>
+StreamExecutorGpuClient::GetDefaultDeviceAssignment(int num_replicas,
+                                                    int num_partitions) const {
   if (num_partitions == 1 && num_replicas <= addressable_devices().size()) {
     xla::DeviceAssignment assignment(num_replicas, 1);
     for (int i = 0; i < num_replicas; ++i) {
@@ -147,43 +148,6 @@ xla::StatusOr<xla::DeviceAssignment> GpuClient::GetDefaultDeviceAssignment(
   // Fallback to default global device assignment if we can't run locally.
   return PjRtStreamExecutorClient::GetDefaultDeviceAssignment(num_replicas,
                                                               num_partitions);
-}
-
-// Builds an xla::LocalClient for the GPU platform.
-StatusOr<LocalClient*> GetGpuXlaClient(
-    const std::optional<std::string>& platform_name,
-    const std::optional<std::set<int>>& allowed_devices) {
-  TF_ASSIGN_OR_RETURN(
-      se::Platform * platform,
-      PlatformUtil::GetPlatform(platform_name ? *platform_name : "gpu"));
-  if (platform->VisibleDeviceCount() <= 0) {
-    return FailedPrecondition("No visible GPU devices.");
-  }
-  LocalClientOptions options;
-  options.set_platform(platform);
-  options.set_allowed_devices(allowed_devices);
-  return ClientLibrary::GetOrCreateLocalClient(options);
-}
-
-void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
-  for (int i = 0; i < executors.size(); ++i) {
-    for (int j = 0; j < executors.size(); ++j) {
-      if (i == j) {
-        continue;
-      }
-      se::StreamExecutor* from = executors[i];
-      se::StreamExecutor* to = executors[j];
-      if (from->CanEnablePeerAccessTo(to)) {
-        Status status = from->EnablePeerAccessTo(to);
-        if (!status.ok()) {
-          LOG(WARNING) << "Unable to enable peer access between GPUs " << i
-                       << " and " << j << "; status: " << status;
-        } else {
-          VLOG(2) << "Enabled peer access from GPU " << i << " to GPU " << j;
-        }
-      }
-    }
-  }
 }
 
 // Builds a LocalDeviceState for each GPU present.
@@ -202,69 +166,10 @@ BuildLocalDeviceStates(LocalClient* xla_client, bool asynchronous) {
   return std::move(addressable_devices);
 }
 
-// Builds a BFCAllocator for all local GPUs.
-StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
-    const std::map<int, std::unique_ptr<LocalDeviceState>>& addressable_devices,
-    double memory_fraction, bool preallocate) {
-  CHECK_GT(addressable_devices.size(), 0);
-  const se::Platform* platform =
-      addressable_devices.begin()->second->executor()->platform();
-  std::vector<se::MultiDeviceAdapter::AllocatorWithStream> allocators;
-  bool enable_unified_memory;
-  Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY", false,
-                                          &enable_unified_memory);
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to read TF_FORCE_UNIFIED_MEMORY: "
-               << status.error_message();
-  }
-
-  for (auto& ordinal_and_device : addressable_devices) {
-    se::StreamExecutor* executor = ordinal_and_device.second->executor();
-    int device_ordinal = executor->device_ordinal();
-    auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
-        executor, tsl::PlatformDeviceId(device_ordinal),
-        /*use_unified_memory=*/enable_unified_memory,
-        /*alloc_visitors=*/std::vector<tsl::SubAllocator::Visitor>(),
-        /*free_visitors=*/std::vector<tsl::SubAllocator::Visitor>());
-
-    int64_t free_memory;
-    int64_t total_memory;
-    if (!executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
-      return Unavailable("Failed to query available memory from device %i",
-                         device_ordinal);
-    }
-    // To allow full GPU memory to be visible to the BFC allocator if using
-    // unified memory.
-    // When unified memory is enabled, allow GPU memory oversubscription by
-    // setting memory_fraction > 1.
-    size_t allocator_memory = enable_unified_memory
-                                  ? total_memory * fmax(1.0, memory_fraction)
-                                  : free_memory * memory_fraction;
-    if (preallocate) {
-      LOG(INFO) << "XLA backend allocating " << allocator_memory
-                << " bytes on device " << device_ordinal
-                << " for BFCAllocator.";
-    } else {
-      LOG(INFO) << "XLA backend will use up to " << allocator_memory
-                << " bytes on device " << device_ordinal
-                << " for BFCAllocator.";
-    }
-
-    tsl::BFCAllocator::Options opts;
-    opts.allow_growth = !preallocate;
-    auto gpu_bfc_allocator = std::make_unique<tsl::BFCAllocator>(
-        std::move(sub_allocator), allocator_memory,
-        absl::StrCat("GPU_", device_ordinal, "_bfc"), opts);
-    allocators.emplace_back(std::move(gpu_bfc_allocator),
-                            ordinal_and_device.second->compute_stream());
-  }
-  return std::make_unique<se::MultiDeviceAdapter>(platform,
-                                                  std::move(allocators));
-}
-
 // Constructs a GPU device memory allocator to use, according to the allocator
 // configuration the client requested.
-StatusOr<std::unique_ptr<se::DeviceMemoryAllocator>> GetGpuDeviceAllocator(
+StatusOr<std::unique_ptr<se::DeviceMemoryAllocator>>
+GetStreamExecutorGpuDeviceAllocator(
     se::Platform* platform, const GpuAllocatorConfig& allocator_config,
     const std::map<int, std::unique_ptr<LocalDeviceState>>&
         addressable_devices) {
@@ -287,10 +192,22 @@ StatusOr<std::unique_ptr<se::DeviceMemoryAllocator>> GetGpuDeviceAllocator(
     case GpuAllocatorConfig::Kind::kDefault:
     case GpuAllocatorConfig::Kind::kBFC: {
       LOG(INFO) << "Using BFC allocator.";
-      TF_ASSIGN_OR_RETURN(allocator,
-                          CreateBFCAllocator(addressable_devices,
-                                             allocator_config.memory_fraction,
-                                             allocator_config.preallocate));
+      std::vector<se::StreamExecutor*> executors;
+      executors.reserve(addressable_devices.size());
+      std::vector<se::MultiDeviceAdapter::AllocatorWithStream>
+          allocators_and_streams;
+      for (const auto& ordinal_and_device : addressable_devices) {
+        TF_ASSIGN_OR_RETURN(
+            auto bfc_allocator,
+            CreateBFCAllocator(ordinal_and_device.second->executor(),
+                               allocator_config.memory_fraction,
+                               allocator_config.preallocate));
+        allocators_and_streams.emplace_back(
+            std::move(bfc_allocator),
+            ordinal_and_device.second->compute_stream());
+      }
+      allocator = std::make_unique<se::MultiDeviceAdapter>(
+          platform, std::move(allocators_and_streams));
       break;
     }
 
@@ -301,31 +218,13 @@ StatusOr<std::unique_ptr<se::DeviceMemoryAllocator>> GetGpuDeviceAllocator(
   return std::move(allocator);
 }
 
-// Returns a GPU pinned host memory allocator to use when staging host->GPU
-// transfers. We use a fixed 64MB pool of pinned memory.
-std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
-    se::StreamExecutor* executor) {
-  std::unique_ptr<tsl::SubAllocator> sub_allocator(
-      new se::DeviceHostAllocator(executor, /*numa_node=*/0,
-                                  /*alloc_visitors=*/{},
-                                  /*free_visitors=*/{}));
-  // TODO(phawkins): allow the user to tune this.
-  const int64_t kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
-
-  tsl::BFCAllocator::Options opts;
-  opts.allow_growth = true;
-  return std::make_unique<tsl::BFCAllocator>(std::move(sub_allocator),
-                                             kGpuHostMemoryLimitBytes,
-                                             /*name=*/"xla_gpu_host_bfc", opts);
-}
-
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states) {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   for (auto& ordinal_and_device : local_device_states) {
     const se::DeviceDescription& description =
         ordinal_and_device.second->executor()->GetDeviceDescription();
-    auto device = std::make_unique<GpuDevice>(
+    auto device = std::make_unique<StreamExecutorGpuDevice>(
         ordinal_and_device.first, std::move(ordinal_and_device.second),
         description.name(), description.device_vendor(),
         /*node_id=*/0);
@@ -372,7 +271,7 @@ Status BuildDistributedDevices(
         local_device = std::move(it->second);
         gpu_device_ids[device_proto.local_device_ordinal()] = global_device_id;
       }
-      auto device = std::make_unique<GpuDevice>(
+      auto device = std::make_unique<StreamExecutorGpuDevice>(
           device_proto.global_device_id(), std::move(local_device),
           device_proto.name(), device_proto.vendor(), node.node_id());
       devices->push_back(std::move(device));
@@ -396,25 +295,28 @@ Status BuildDistributedDevices(
 
 }  // namespace
 
-GpuDevice::GpuDevice(int id,
-                     std::unique_ptr<LocalDeviceState> local_device_state,
-                     std::string device_kind, std::string device_vendor,
-                     int node_id)
+StreamExecutorGpuDevice::StreamExecutorGpuDevice(
+    int id, std::unique_ptr<LocalDeviceState> local_device_state,
+    std::string device_kind, std::string device_vendor, int node_id)
     : PjRtStreamExecutorDevice(id, std::move(local_device_state),
                                std::move(device_kind), node_id),
       device_vendor_(std::move(device_vendor)) {
   attributes_ = {
       {"device_vendor", PjRtDeviceAttribute(device_vendor_)},
   };
-  to_string_ = absl::StrFormat("GpuDevice(id=%i, process_index=%i)", id,
-                               process_index());
+  to_string_ = absl::StrFormat(
+      "StreamExecutorGpuDevice(id=%i, process_index=%i)", id, process_index());
 }
 
-absl::string_view GpuDevice::device_vendor() { return device_vendor_; }
+absl::string_view StreamExecutorGpuDevice::device_vendor() {
+  return device_vendor_;
+}
 
-absl::string_view GpuDevice::ToString() const { return to_string_; }
+absl::string_view StreamExecutorGpuDevice::ToString() const {
+  return to_string_;
+}
 
-StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
+StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
     const std::optional<std::set<int>>& allowed_devices,
@@ -427,8 +329,8 @@ StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
   EnablePeerAccess(xla_client->backend().stream_executors());
   TF_ASSIGN_OR_RETURN(
       auto allocator,
-      GetGpuDeviceAllocator(xla_client->platform(), allocator_config,
-                            local_device_states));
+      GetStreamExecutorGpuDeviceAllocator(
+          xla_client->platform(), allocator_config, local_device_states));
   auto host_memory_allocator =
       GetGpuHostAllocator(local_device_states.begin()->second->executor());
 
@@ -442,7 +344,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     devices = BuildLocalDevices(std::move(local_device_states));
   }
 
-  return std::unique_ptr<PjRtClient>(std::make_unique<GpuClient>(
+  return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
       GpuName(), xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator),

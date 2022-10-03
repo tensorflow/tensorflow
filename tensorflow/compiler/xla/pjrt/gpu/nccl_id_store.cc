@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/pjrt/nccl_id_store.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/nccl_id_store.h"
 
 #include <string>
 #include <utility>

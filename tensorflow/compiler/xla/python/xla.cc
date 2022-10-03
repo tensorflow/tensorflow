@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
 #include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
-#include "tensorflow/compiler/xla/pjrt/gpu_device.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -311,8 +311,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("CUDA_ASYNC", GpuAllocatorConfig::Kind::kCudaAsync);
 
   // TODO(tomhennigan): Remove this types.
-  py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>> gpu_device(
-      m, "GpuDevice");
+  py::class_<StreamExecutorGpuDevice, PjRtDevice,
+             ClientAndPtr<StreamExecutorGpuDevice>>
+      gpu_device(m, "GpuDevice");
   m.def(
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
@@ -321,10 +322,11 @@ PYBIND11_MODULE(xla_extension, m) {
          std::optional<std::string> platform_name)
           -> StatusOr<std::shared_ptr<PyClient>> {
         py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                            GetGpuClient(asynchronous, allocator_config,
-                                         std::move(distributed_client), node_id,
-                                         allowed_devices, platform_name));
+        TF_ASSIGN_OR_RETURN(
+            std::unique_ptr<PjRtClient> client,
+            GetStreamExecutorGpuClient(asynchronous, allocator_config,
+                                       std::move(distributed_client), node_id,
+                                       allowed_devices, platform_name));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true,

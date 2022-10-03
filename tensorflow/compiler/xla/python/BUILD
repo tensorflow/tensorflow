@@ -853,7 +853,7 @@ pybind_extension(
         "//tensorflow/python:bfloat16_lib",
     ] + select({
         ":gpu_enabled": [
-            "//tensorflow/compiler/xla/pjrt:gpu_device",
+            "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         ],
         "//conditions:default": [],
     }) + select({
