@@ -171,7 +171,7 @@ rules](https://bughunters.google.com/about/rules/6521337925468160/google-open-so
 
 ### Reporting vulnerabilities
 
-Please fill out [this report form](https://forms.gle/mr12SgzXENhxQ7jD6) about any security related issues you find. This mail is delivered to a small security team. For critical problems, you may encrypt your report (see below).
+Please fill out [this report form](https://forms.gle/mr12SgzXENhxQ7jD6) about any security related issues you find. For critical problems, you may encrypt your report and send it to `security@tensorflow.org` (see below).
 
 Please use a descriptive title for your report. After the initial
 reply to your report, the security team will endeavor to keep you informed of
