@@ -16,6 +16,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
+#include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -334,7 +337,8 @@ void MergePlanes(const std::vector<const XPlane*>& src_planes,
 }
 
 int64_t GetStartTimestampNs(const XPlane& plane) {
-  int64_t plane_timestamp = 0;
+  if (plane.lines().empty()) return 0LL;
+  int64_t plane_timestamp = std::numeric_limits<int64_t>::max();
   for (const auto& line : plane.lines()) {
     plane_timestamp = std::min(plane_timestamp, line.timestamp_ns());
   }
@@ -374,11 +378,11 @@ void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,
 
   plane.ForEachLine([&](XLineBuilder line) {
     line.ForEachEvent([&](XEventBuilder event) {
-      absl::optional<uint64_t> correlation_id;
-      absl::optional<uint64_t> producer_type;
-      absl::optional<uint64_t> consumer_type;
-      absl::optional<uint64_t> producer_id;
-      absl::optional<uint64_t> consumer_id;
+      std::optional<uint64_t> correlation_id;
+      std::optional<uint64_t> producer_type;
+      std::optional<uint64_t> consumer_type;
+      std::optional<uint64_t> producer_id;
+      std::optional<uint64_t> consumer_id;
       event.ForEachStat([&](XStat* stat) {
         if (correlation_id_stats_metadata &&
             stat->metadata_id() == correlation_id_stats_metadata->id()) {
