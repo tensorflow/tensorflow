@@ -24,10 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -37,14 +35,12 @@ limitations under the License.
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
-#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/client/common.h"
 #include "tensorflow/core/data/service/client/data_service_client.h"
+#include "tensorflow/core/data/service/client/utils.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
-#include "tensorflow/core/data/service/dispatcher_client.h"
-#include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
@@ -53,16 +49,13 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -95,7 +88,7 @@ namespace data {
 
 namespace {
 // Default interval between task list refreshes.
-const int64_t kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
+constexpr int64_t kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
 
 constexpr char kDataServiceDatasetV1[] = "DataServiceDataset";
 constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
@@ -104,66 +97,6 @@ constexpr char kDataServiceDatasetV4[] = "DataServiceDatasetV4";
 
 constexpr const char kParallelEpochs[] = "parallel_epochs";
 constexpr const char kDistributedEpoch[] = "distributed_epoch";
-
-// Same timeout used by the RegisterDatasetOp.
-constexpr absl::Duration kGetMetadataRetryTimeout = absl::Hours(1);
-
-bool IsColocatedTask(const TaskInfo& task) {
-  return absl::c_any_of(task.worker_tags(), [](absl::string_view worker_tag) {
-    return absl::AsciiStrToUpper(worker_tag) == kColocatedWorkerTag;
-  });
-}
-
-StatusOr<DataServiceMetadata> GetDataServiceMetadata(
-    const std::string& dataset_id, const tstring& address,
-    const tstring& protocol) {
-  DataServiceDispatcherClient client(address, protocol);
-  DataServiceMetadata metadata;
-  absl::Time deadline =
-      absl::FromUnixMicros(EnvTime::NowMicros()) + kGetMetadataRetryTimeout;
-
-  Status status = grpc_util::Retry(
-      [&]() { return client.GetDataServiceMetadata(dataset_id, metadata); },
-      absl::Substitute("Get data service metadata for dataset $0, "
-                       "with dispatcher at $1.",
-                       dataset_id, std::string(address)),
-      absl::ToUnixMicros(deadline));
-  if (errors::IsNotFound(status)) {
-    return errors::NotFound(
-        "Dataset id ", dataset_id,
-        " not found. It must be registered with `register_dataset` before "
-        "calling `from_dataset_id`.");
-  }
-  TF_RETURN_IF_ERROR(status);
-  return metadata;
-}
-
-StatusOr<DataServiceMetadata::Compression> GetValidatedCompression(
-    const std::string& dataset_id, const DataServiceMetadata& metadata) {
-  if (metadata.compression() == DataServiceMetadata::COMPRESSION_UNSPECIFIED) {
-    return errors::Internal(absl::Substitute(
-        "Got invalid compression $0 for dataset $1. A proper compression "
-        "should be registered in `register_dataset`.",
-        DataServiceMetadata::Compression_Name(metadata.compression()),
-        dataset_id));
-  }
-  return metadata.compression();
-}
-
-StatusOr<DataServiceConfig> GetDataServiceConfig(const tstring& address,
-                                                 const tstring& protocol) {
-  DataServiceDispatcherClient client(address, protocol);
-  DataServiceConfig config;
-  absl::Time deadline =
-      absl::FromUnixMicros(EnvTime::NowMicros()) + kGetMetadataRetryTimeout;
-
-  TF_RETURN_IF_ERROR(grpc_util::Retry(
-      [&]() { return client.GetDataServiceConfig(config); },
-      absl::Substitute("Get data service config with dispatcher at $0.",
-                       std::string(address)),
-      absl::ToUnixMicros(deadline)));
-  return config;
-}
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
@@ -250,30 +183,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   }
 
   int64_t CardinalityInternal() const override {
-    if (is_coordinated_read_) {
-      // Coordinated reads require the dataset to be infinite.
-      return kInfiniteCardinality;
-    }
-
-    if (metadata_.cardinality() == 0) {
-      return 0;
-    }
-
-    if (metadata_.cardinality() == kInfiniteCardinality) {
-      // Sharding may cause an infinite dataset to be empty. For example, in
-      // `range(10).batch(10, drop_remainder=True).repeat()`, inserting `shard`
-      // before `batch` will cause the dataset to be empty.
-      // This case is rare, and there is significant performance hit for dynamic
-      // sharding if it reports unknown cardinality, so it is reasonable to
-      // report infinite cardinality. For DATA sharding, it is ok to report
-      // infinite cardinality since it inserts `shard` after `repeat`.
-      if (processing_mode_.sharding_policy() == ProcessingModeDef::OFF ||
-          processing_mode_.sharding_policy() == ProcessingModeDef::DYNAMIC ||
-          processing_mode_.sharding_policy() == ProcessingModeDef::DATA) {
-        return kInfiniteCardinality;
-      }
-    }
-    return kUnknownCardinality;
+    return EstimateCardinality(processing_mode_, metadata_,
+                               is_coordinated_read_);
   }
 
   Status CheckExternalState() const override {
