@@ -53,9 +53,12 @@ class DataServiceContext {
 using DataServiceContextFactory =
     std::function<std::unique_ptr<DataServiceContext>()>;
 
-// Interface for reading data from tf.data service. This class is thread-safe.
-// It is intended to be used by `data_service_dataset_op.cc` to read data from
-// tf.data service.
+// API for reading data from tf.data service.
+//
+// The client works by reading from tf.data workers in parallel and interleaving
+// the dataset elements. It periodically queries the dispatcher to decide which
+// workers to read from (in case workers are added or removed). The data reading
+// is non-deterministic. This class is thread-safe.
 class DataServiceClient {
  public:
   explicit DataServiceClient(const DataServiceParams& params);

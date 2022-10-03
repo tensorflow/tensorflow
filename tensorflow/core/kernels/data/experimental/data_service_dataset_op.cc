@@ -99,11 +99,7 @@ constexpr const char kDistributedEpoch[] = "distributed_epoch";
 constexpr absl::Duration kDefaultTaskRefreshInterval = absl::Seconds(1);
 }  // namespace
 
-// Dataset for reading data from the tf.data service non-deterministically.
-//
-// This dataset interleaves dataset elements produced by multiple tf.data
-// workers. We periodically query the dispatcher to determine which workers
-// to read from (in case workers are added or removed).
+// Dataset for reading data from the tf.data service.
 class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(
