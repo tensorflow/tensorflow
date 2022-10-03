@@ -132,9 +132,11 @@ Status RunAndCompare(
 
   const HloModuleProto test_module_proto = test_module->ToProto();
 
-  std::vector<Literal> args = MakeFakeArguments(test_module.get(), engine,
-                                                options.use_large_float_range)
-                                  .value();
+  std::vector<Literal> args =
+      MakeFakeArguments(test_module.get(), engine,
+                        options.use_large_float_range,
+                        options.treat_gte_as_data_formatting)
+          .value();
   // Use provided input literals as arguments, if any.
   if (iteration_literals_proto != nullptr &&
       iteration_literals_proto->arguments_size() != 0) {
