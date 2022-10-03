@@ -32,11 +32,7 @@ MeshPspecSharding::MeshPspecSharding(py::object mesh, py::object spec,
       mesh_(std::move(mesh)),
       spec_(std::move(spec)),
       parsed_pspec_(std::move(parsed_pspec)) {
-  try {
-    py::cast(this).attr("_preprocess")();
-  } catch (py::error_already_set& err) {
-    throw py::value_error(err.what());
-  }
+  py::cast(this).attr("_preprocess")();
 }
 
 void RegisterSharding(py::module& m) {
