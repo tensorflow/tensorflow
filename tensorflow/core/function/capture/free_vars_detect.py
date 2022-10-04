@@ -123,7 +123,7 @@ def _make_callable_signature(obj):
         f"Only class/function/methods are valid inputs, got {type(obj)}")
 
 
-def detect_function_free_vars(fn):
+def _detect_function_free_vars(fn):
   """Detect free vars in any Python function."""
   assert isinstance(fn, types.FunctionType) or isinstance(
       fn, types.MethodType
@@ -153,3 +153,63 @@ def detect_function_free_vars(fn):
 
   # func_name -> namedtupe FreeVar
   return fn_map
+
+
+def generate_logging(fn, fn_threshold=5, var_threshold=10):
+  """Generate loggings of free vars from fn."""
+  assert isinstance(fn, types.FunctionType) or isinstance(
+      fn, types.MethodType
+  ), f"The input should be of Python function/method type. Got type: {type(fn)}."
+
+  while hasattr(fn, "__wrapped__"):
+    fn = fn.__wrapped__
+  fn_vars_map = _detect_function_free_vars(fn)
+  # If not free vars detected, return None
+  if not fn_vars_map:
+    return None
+
+  logging_txt = []
+  tf_fn_name = _make_callable_signature(fn)
+  tf_fn_module = fn.__module__
+
+  def one_line_logging(fn_name, free_vars, threshold=10):
+    if not free_vars:
+      return ""
+    log = f"Inside function {fn_name}(): "
+    log += ", ".join([var.name for var in free_vars[:threshold]])
+    if len(free_vars) > threshold:
+      log += "..."
+    return log
+
+  # Show the free vars info of the tf.function at the top
+  fn_threshold -= 1
+  tf_fn_line = one_line_logging(tf_fn_name, fn_vars_map[tf_fn_name],
+                                var_threshold)
+
+  # Functions that are defined outside of tf.function
+  outside_fn_lines = []
+  outside_fn_names = [name for name in fn_vars_map.keys() if name != tf_fn_name]
+  outside_fn_names = sorted(outside_fn_names)
+  for fn_name in outside_fn_names[:fn_threshold]:
+    outside_fn_lines.append(
+        one_line_logging(fn_name, fn_vars_map[fn_name], var_threshold))
+
+  if len(fn_vars_map) > fn_threshold:
+    ellipsis_line = "..."
+  else:
+    ellipsis_line = None
+
+  # TODO(panzf): direct users to the manual API after it's exposed to public
+  explanation_line = (
+      f"Free variables are detected within tf.function {tf_fn_name}() in"
+      f"{tf_fn_module}. Free variable usage may cause inconsistant behaviors"
+      "between eager mode and tf.function. Please consider refactor the code"
+      "if possible. More details are avaiable in"
+      "https://www.tensorflow.org/guide/function#limitations.\n"
+      "Free variable names inside each function/method are shown below:")
+
+  logging_txt = [explanation_line, tf_fn_line] + outside_fn_lines
+  if ellipsis_line:
+    logging_txt.append(ellipsis_line)
+
+  return "\n".join(logging_txt)
