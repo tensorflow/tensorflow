@@ -16,6 +16,7 @@
 
 import builtins
 import collections
+import functools
 import inspect
 import types
 
@@ -157,12 +158,21 @@ def _detect_function_free_vars(fn):
 
 def generate_logging(fn, fn_threshold=5, var_threshold=10):
   """Generate loggings of free vars from fn."""
+  if fn is None:
+    return None
   assert isinstance(fn, types.FunctionType) or isinstance(
       fn, types.MethodType
+  ) or isinstance(fn, functools.partial) or isinstance(
+      fn, functools.partialmethod
   ), f"The input should be of Python function/method type. Got type: {type(fn)}."
 
   while hasattr(fn, "__wrapped__"):
     fn = fn.__wrapped__
+
+  if isinstance(fn, functools.partial) or isinstance(fn,
+                                                     functools.partialmethod):
+    fn = fn.func
+
   fn_vars_map = _detect_function_free_vars(fn)
   # If not free vars detected, return None
   if not fn_vars_map:

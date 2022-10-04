@@ -367,6 +367,10 @@ class GenerateLoggingTest(parameterized.TestCase):
     self.assertGreater(len(free_vars), 2)
     return "\n".join(free_vars[2:])
 
+  def test_empty_input(self):
+    txt = free_vars_detect.generate_logging(None)
+    self.assertIsNone(txt)
+
   def test_no_free_var(self):
 
     def f(x):
@@ -416,6 +420,40 @@ class GenerateLoggingTest(parameterized.TestCase):
 
     foo = Foo()
     txt = free_vars_detect.generate_logging(foo.f)
+    txt = self._remove_explanation(txt)
+    lines = txt.split("\n")
+    self.assertLen(lines, 2)
+    self.assertEqual(lines[0], "Inside function Foo.f(): self.g")
+    self.assertEqual(lines[1], "Inside function Foo.g(): x")
+
+  def test_partial_func(self):
+    x = 1
+    y = 2
+
+    def f(a):
+      return a + x + y
+
+    partial_f = functools.partial(f, a=0)
+
+    txt = free_vars_detect.generate_logging(partial_f)
+    txt = self._remove_explanation(txt)
+    self.assertEqual(txt, "Inside function f(): x, y")
+
+  def test_partial_method(self):
+    x = 0
+
+    class Foo():
+
+      def f(self):
+        return self.g
+
+      def g(self):
+        return [x]
+
+      partial_f = functools.partialmethod(f)
+
+    foo = Foo()
+    txt = free_vars_detect.generate_logging(foo.partial_f)
     txt = self._remove_explanation(txt)
     lines = txt.split("\n")
     self.assertLen(lines, 2)
