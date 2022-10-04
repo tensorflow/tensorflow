@@ -1128,12 +1128,16 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   auto symbol_map = runtime::ToSymbolsBinding(PopulateXlaGpuCustomCalls,
                                               PopulateXlaGpuTypeIdNames);
 
+  // Gpu executable has a single exported function.
+  std::vector<runtime::Executable::LoadFunction> functions;
+  functions.push_back({hlo_module->entry_computation()->name(),
+                       std::move(signature), std::move(rt_signature)});
+
   // Load JitRt executable from an object file, and link it with Gpu runtime
   // intrinsics implementing Gpu custom calls.
   auto executable = runtime::Executable::LoadFromObjFile(
-      hlo_module->name(), std::move(buffer),
-      hlo_module->entry_computation()->name(), std::move(signature),
-      std::move(rt_signature), symbol_map);
+      hlo_module->name(), std::move(buffer), std::move(functions), symbol_map);
+
   if (!executable.ok())
     return InternalError("Failed to load JitRt executable: %s",
                          executable.status().message());

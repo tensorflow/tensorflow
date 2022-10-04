@@ -43,36 +43,47 @@ using absl::StatusOr;
 // Results are returned to the caller via the user-provided result converter.
 //===----------------------------------------------------------------------===//
 
-static AsyncTaskRunner* NoAsyncTaskRunner() {
+static AsyncTaskRunner* NoRunner() {
   return reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 }
 
-static absl::Status CompileAndExecute(
-    std::string_view module, ArgumentsRef args, ResultConverter& results,
-    AsyncTaskRunner* async_task_runner = NoAsyncTaskRunner()) {
+static absl::StatusOr<JitExecutable> Compile(
+    std::string_view module, absl::Span<const std::string_view> exported) {
   JitExecutable::Options opts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects = RegisterXlaRuntimeTestlibDialects;
   opts.compiler.create_compilation_pipeline = CreateXlaRuntimeTestlibPipeline;
 
-  StatusOr<JitExecutable> jit_executable =
-      JitExecutable::Instantiate(module, "test", opts);
-  if (!jit_executable.ok()) return jit_executable.status();
+  return JitExecutable::Instantiate(module, opts, exported);
+}
 
-  AsyncValuePtr<Executable> executable = jit_executable->DefaultExecutable();
+static absl::Status Execute(JitExecutable& jit_executable, unsigned ordinal,
+                            ArgumentsRef args, ResultConverter& results,
+                            AsyncTaskRunner* async_task_runner = NoRunner()) {
+  AsyncValuePtr<Executable> executable = jit_executable.DefaultExecutable();
   if (executable.IsError()) return executable.GetError();
 
   Executable::CallFrame call_frame;
-  auto initialized = executable->InitializeCallFrame(args, &call_frame);
+  auto initialized =
+      executable->InitializeCallFrame(ordinal, args, &call_frame);
   if (!initialized.ok()) return initialized;
 
   Executable::ExecuteOpts execute_opts;
   execute_opts.async_task_runner = async_task_runner;
 
-  executable->Execute(call_frame, execute_opts);
+  executable->Execute(ordinal, call_frame, execute_opts);
   if (call_frame.is_error) return absl::InternalError(call_frame.error);
 
-  return executable->ReturnResults(results, &call_frame);
+  return executable->ReturnResults(ordinal, results, &call_frame);
+}
+
+static absl::Status CompileAndExecute(
+    std::string_view module, ArgumentsRef args, ResultConverter& results,
+    AsyncTaskRunner* async_task_runner = NoRunner()) {
+  StatusOr<JitExecutable> jit_executable = Compile(module, {"test"});
+  if (!jit_executable.ok()) return jit_executable.status();
+
+  return Execute(*jit_executable, 0, args, results, async_task_runner);
 }
 
 //===----------------------------------------------------------------------===//
@@ -139,6 +150,36 @@ TEST(ExecutableTest, ScalarArgs) {
 
   ASSERT_TRUE(CompileAndExecute(module, {arg0, arg1}, converter).ok());
   EXPECT_EQ(result, 42);
+}
+
+TEST(ExecutableTest, MultipleFunctions) {
+  absl::string_view module = R"(
+    func.func @add(%arg0: i32, %arg1: i32) -> i32 {
+      %0 = arith.addi %arg0, %arg1 : i32
+      return %0 : i32
+    }
+
+    func.func @mul(%arg0: i32, %arg1: i32) -> i32 {
+      %0 = arith.muli %arg0, %arg1 : i32
+      return %0 : i32
+    }
+  )";
+
+  absl::StatusOr<JitExecutable> compiled = Compile(module, {"add", "mul"});
+  ASSERT_TRUE(compiled.ok());
+  EXPECT_EQ(compiled->num_functions(), 2);
+
+  int32_t result = 0;
+  ResultConverterSet converter(AssertNoError, ReturnI32{&result});
+
+  ScalarArg arg0(static_cast<int32_t>(20));
+  ScalarArg arg1(static_cast<int32_t>(22));
+
+  ASSERT_TRUE(Execute(*compiled, /*ordinal=*/0, {arg0, arg1}, converter).ok());
+  EXPECT_EQ(result, 20 + 22);
+
+  ASSERT_TRUE(Execute(*compiled, /*ordinal=*/1, {arg0, arg1}, converter).ok());
+  EXPECT_EQ(result, 20 * 22);
 }
 
 TEST(ExecutableTest, AssertionFailure) {
@@ -229,8 +270,7 @@ using benchmark::State;
 
 static void CompileAndBenchmark(
     State& state, std::string_view module, ArgumentsRef args,
-    ResultConverter& results,
-    AsyncTaskRunner* async_task_runner = NoAsyncTaskRunner()) {
+    ResultConverter& results, AsyncTaskRunner* async_task_runner = NoRunner()) {
   JitExecutable::Options opts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects = RegisterXlaRuntimeTestlibDialects;

@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -101,14 +102,15 @@ class JitCompiler {
     // conversion.
     //
     // When we compile the input IR, we first apply the `calling_convention` to
-    // get the MLIR function type of the exported function, and then we convert
-    // it to the corresponding run-time function type.
+    // get the MLIR function type for the exported function(s), and then we
+    // convert it to the corresponding run-time function type.
     TypeConverter type_converter;
   };
 
   // Instantiates compiler from the serialized mlir source.
   static absl::StatusOr<std::unique_ptr<JitCompiler>> Instantiate(
-      Options opts, std::string_view mlir_module, std::string_view entrypoint);
+      Options opts, std::string_view mlir_module,
+      absl::Span<const std::string_view> exported);
 
   // Makes an executable from an instance of the JitCompiler. This is the end of
   // life for the `JitCompiler`, it effectively converts the MLIR module
@@ -120,19 +122,20 @@ class JitCompiler {
       std::string_view memory_region_name,
       std::optional<size_t> specialization = std::nullopt);
 
-  // Specialize compiled module to the arguments:
+  // Specialize the exported function given by 'ordinal' to the arguments:
   //
   // - update all unknown dimensions according to the resolved symbolic shapes
   // - attach symbolic shape attribute to the operands
   // - sink small constants into the function body
   //
-  // After entrypoint signature is updated, and all constant arguments
-  // materialized in the function body, runs the user-provided specialization
-  // pipeline to optimize the module based on the new information in the IR.
+  // After the exported function's signature is updated, and all constant
+  // arguments are materialized in the function body, runs the user-provided
+  // specialization pipeline to optimize the module based on the new
+  // information in the IR.
   //
-  // Returns error if arguments are not compatible with compiled module
-  // entrypoint signature.
-  absl::Status Specialize(ArgumentsRef arguments,
+  // Returns an error if arguments are not compatible with the exported
+  // function's signature.
+  absl::Status Specialize(unsigned ordinal, ArgumentsRef arguments,
                           llvm::ArrayRef<SymbolicShape> symbolic_shapes,
                           llvm::ArrayRef<ArgumentConstraint> constraints,
                           const SpecializationListener* listener = nullptr);
@@ -148,9 +151,11 @@ class JitCompiler {
     return *module_;
   }
 
-  mlir::func::FuncOp entrypoint() const {
-    assert(entrypoint_ && "failed to resolve entrypoint function");
-    return entrypoint_;
+  absl::Span<const mlir::func::FuncOp> exported() const { return exported_; }
+
+  mlir::func::FuncOp exported(unsigned ordinal) const {
+    assert(exported_[ordinal] && "failed to resolve exported function");
+    return exported_[ordinal];
   }
 
   // Marks function for export and makes it invocable by the runtime executable.
@@ -158,7 +163,7 @@ class JitCompiler {
 
  private:
   JitCompiler(Options opts, std::string_view mlir_module,
-              std::string_view entrypoint);
+              absl::Span<const std::string_view> exported);
 
   absl::Status Error(std::string_view error) {
     // TODO(ezhulenev): Pass diagnstic as a status payload.
@@ -175,7 +180,7 @@ class JitCompiler {
   mlir::SourceMgrDiagnosticHandler handler_;
 
   mlir::OwningOpRef<mlir::ModuleOp> module_;  // can be null if failed to parse
-  mlir::func::FuncOp entrypoint_;             // can be null if failed to parse
+  std::vector<mlir::func::FuncOp> exported_;  // can be empty if failed to parse
 
   bool specialized_;
 };
