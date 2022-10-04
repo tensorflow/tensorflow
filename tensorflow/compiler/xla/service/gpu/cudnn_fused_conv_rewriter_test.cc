@@ -186,7 +186,8 @@ TEST_F(CudnnFusedConvRewriterTest, TestElu) {
     GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
                     "the Nvidia Ampere+ GPUs.";
   }
-  // max(0, conv(x, w) + bias);
+  // sum = conv(x, w) + bias
+  // select(compare(sum, 0, GT), sum, exponential-minus-one(sum));
   TestMatchWithAllTypes(R"(
     HloModule Test
 
