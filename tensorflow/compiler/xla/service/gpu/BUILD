@@ -1559,6 +1559,15 @@ tf_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "executable_proto",
+    srcs = ["executable.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/compiler/xla/service:hlo_proto",
+    ],
+)
+
 cc_library(
     name = "target_constants",
     hdrs = ["target_constants.h"],
@@ -1619,6 +1628,7 @@ cc_library(
     deps = [
         ":alias_passthrough_params",
         ":all_reduce_blueconnect",
+        ":executable_proto_cc",
         ":fusion_bitcast_lift",
         ":fusion_merger",
         ":gemm_broadcast_folding_rewriter",

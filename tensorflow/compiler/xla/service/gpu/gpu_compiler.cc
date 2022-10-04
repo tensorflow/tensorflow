@@ -299,21 +299,23 @@ using OwnedJitRtProgram = GpuExecutable::OwnedJitRtProgram;
 StatusOr<std::unique_ptr<Executable>>
 GpuXlaRuntimeAotCompilationResult::LoadExecutable(
     Compiler* compiler, se::StreamExecutor* executor) const {
+  XlaRuntimeExecutableProto xla_runtime_executable =
+      xla_runtime_gpu_executable_.xla_runtime_executable();
   TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
                       HloModule::CreateModuleConfigFromProto(
-                          xla_runtime_executable_.hlo_module_proto(),
+                          xla_runtime_executable.hlo_module_proto(),
                           GetDebugOptionsFromFlags()));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(xla_runtime_executable_.hlo_module_proto(),
+      HloModule::CreateFromProto(xla_runtime_executable.hlo_module_proto(),
                                  hlo_module_config));
   auto gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
   return GpuExecutable::LoadFromObjFile(
-      std::move(hlo_module), xla_runtime_executable_.obj_file(),
-      xla_runtime_executable_.mlir_module(),
-      xla_runtime_executable_.entry_func_attrs(), GetDebugOptionsFromFlags(),
-      xla_runtime_executable_.gpu_asm_text(),
-      xla_runtime_executable_.gpu_binary(),
+      std::move(hlo_module), xla_runtime_executable.obj_file(),
+      xla_runtime_executable.mlir_module(),
+      xla_runtime_executable.entry_func_attrs(), GetDebugOptionsFromFlags(),
+      xla_runtime_gpu_executable_.gpu_asm_text(),
+      xla_runtime_gpu_executable_.gpu_binary(),
       gpu_compiler->GetGpuVersion(executor), executor);
 }
 
