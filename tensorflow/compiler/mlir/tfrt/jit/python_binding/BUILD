@@ -1,8 +1,4 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "pybind_library")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "pybind_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 licenses(["notice"])

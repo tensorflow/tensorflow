@@ -1,7 +1,4 @@
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_cloud")
-
-# buildifier: disable=same-origin-load
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")

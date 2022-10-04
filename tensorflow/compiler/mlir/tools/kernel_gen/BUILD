@@ -1,10 +1,7 @@
-# buildifier: disable=same-origin-load
 load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
-
-# buildifier: disable=same-origin-load
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
