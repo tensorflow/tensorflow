@@ -1691,8 +1691,6 @@ xla_test(
     name = "select_and_scatter_test",
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
-    # TODO(b/215243829): 3 tests fail with the GLC latency table.
-    backend_tags = {"ghostlite_iss": ["broken"]},
     tags = [
         "nomac",  # b/194731834
         "nozapfhahn",
