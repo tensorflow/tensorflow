@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
@@ -67,28 +68,31 @@ static Value PrependExecutionContextArgument(func::FuncOp func) {
   return func.getArgument(0);
 }
 
-static void ConvertExportedFunction(func::FuncOp func) {
+static void ConvertExportedFunction(ExportOp exported, func::FuncOp func) {
   Value exec_ctx = PrependExecutionContextArgument(func);
   ConvertReturnOperations(func, exec_ctx);
 
   // After conversion mark exported function with an attribute.
-  func->setAttr(kExportedAttrName, UnitAttr::get(func.getContext()));
+  func->setAttr(kExportedAttrName, exported.getOrdinalAttr());
 }
 
 void ExportFunctionsPass::runOnOperation() {
-  llvm::SmallVector<ExportOp> exports;
-  llvm::SmallVector<func::FuncOp> exported;
+  llvm::SmallVector<std::pair<ExportOp, func::FuncOp>> exported;
 
   // Collect exported functions.
   SymbolTable sym_table(getOperation());
   getOperation().walk([&](ExportOp op) {
-    exports.push_back(op);
-    exported.push_back(sym_table.lookup<func::FuncOp>(op.getFunctionRef()));
+    if (op.getOrdinal().has_value()) {
+      func::FuncOp func = sym_table.lookup<func::FuncOp>(op.getFunctionRef());
+      exported.emplace_back(op, func);
+    }
   });
 
   // Convert all exported functions.
-  llvm::for_each(exported, ConvertExportedFunction);
-  llvm::for_each(exports, [](ExportOp op) { op.erase(); });
+  llvm::for_each(exported, [](std::pair<ExportOp, func::FuncOp>& pair) {
+    ConvertExportedFunction(pair.first, pair.second);
+    pair.first.erase();
+  });
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateExportRuntimeFunctionsPass() {

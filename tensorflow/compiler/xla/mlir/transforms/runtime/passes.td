@@ -26,8 +26,9 @@ def ExportFunctions : Pass<"xla-rt-export-functions", "mlir::ModuleOp"> {
   let summary = "Exports function(s) to Xla runtime";
 
   let description = [{
-    Converts functions marked for export with a `rt.export` operation to Xla
-    runtime ABI, and makes them invocable by the executable, i.e.:
+    Converts functions marked for export with an `rt.export` operation with
+    specified ordinal attribute to Xla runtime ABI, and makes them invocable by
+    the executable, i.e.:
      - first argument is an `!rt.execution_context`
      - all results returned via the `rt.set_result` operation
 
@@ -41,7 +42,7 @@ def ExportFunctions : Pass<"xla-rt-export-functions", "mlir::ModuleOp"> {
     Example:
 
       ```mlir
-      rt.export @compute
+      rt.export @compute ordinal 0
 
       func @compute(...) -> memref<?xf32> {
         %0 = "allocate_memref" : () -> memref<?xf32>
@@ -53,7 +54,7 @@ def ExportFunctions : Pass<"xla-rt-export-functions", "mlir::ModuleOp"> {
 
       ```mlir
       func @compute(%ctx: !rt.execution_context, ...)
-        attributes { rt.exported } {
+        attributes { rt.exported = 0 : i32 } {
         %0 = "allocate_memref" : () -> memref<?xf32>
         rt.set_output %ctx, 0, %1 : memref<xf32>
         return
@@ -86,7 +87,7 @@ def ConvertCustomCalls : Pass<"xla-rt-convert-custom-calls", "ModuleOp"> {
         attributes { rt.custom_call = "custom_call", attr = <value> }
 
       func @compute(%ctx: !rt.execution_context, %arg0: i1) -> memref<?xf32>
-          attributes { rt.exported } {
+          attributes { rt.exported = 0 : i32 } {
         %0 = call @custom_call() { attr = <new_value> }: () -> memref<?xf32>
         return %0 : memref<?xf32>
       }
@@ -96,7 +97,7 @@ def ConvertCustomCalls : Pass<"xla-rt-convert-custom-calls", "ModuleOp"> {
 
       ```mlir
       func @compute(%ctx: !rt.execution_context, %arg0: i1) -> memref<?xf32>
-          attributes { rt.exported } {
+          attributes { rt.exported = 0 : i32 } {
 
         %status, %0 = rt.custom_call %ctx["custom_call"] () {
                         attr = <new value>
@@ -130,7 +131,7 @@ def ConvertAsserts : Pass<"xla-rt-convert-asserts", "ModuleOp"> {
 
       ```mlir
       func @compute(%ctx: !rt.execution_context, %arg0: i1)
-          attributes { rt.exported } {
+          attributes { rt.exported = 0} {
         cf.assert %arg0, "Oops"
         return
       }
@@ -140,7 +141,7 @@ def ConvertAsserts : Pass<"xla-rt-convert-asserts", "ModuleOp"> {
 
       ```mlir
       func @compute(%ctx: !rt.execution_context, %arg0: i1)
-          attributes { rt.exported } {
+          attributes { rt.exported = 0 : i32 } {
         %0 = ... : i1
         cond_br %0, ^ok, ^err
       ^err:

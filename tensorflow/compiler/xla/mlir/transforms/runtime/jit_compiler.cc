@@ -200,7 +200,8 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   std::vector<Executable::Function> functions;
   std::vector<std::string_view> exported;  // names of exported functions
 
-  for (func::FuncOp func : compiler->exported()) {
+  for (auto& indexed : llvm::enumerate(compiler->exported())) {
+    func::FuncOp func = indexed.value();
     std::string_view name = exported.emplace_back(func.getName());
 
     // Get the signature of the exported function.
@@ -229,7 +230,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
     // Mark function for export, so that compilation pipeline will correctly
     // lower it to the runtime ABI (see `xla-rt-export-functions` pass).
-    compiler->Export(func);
+    compiler->Export(func, indexed.index());
 
     // Add function with an unresolved function pointer; it will be updated once
     // we compile the input module to the native executable.
@@ -341,11 +342,11 @@ absl::Status JitCompiler::Specialize(unsigned ordinal, ArgumentsRef arguments,
   return absl::OkStatus();
 }
 
-void JitCompiler::Export(mlir::func::FuncOp func) const {
+void JitCompiler::Export(mlir::func::FuncOp func, unsigned ordinal) const {
   assert(module_ && "failed to parse the mlir module");
   mlir::OpBuilder builder(*module_);
   builder.setInsertionPoint(func);
-  builder.create<ExportOp>(func.getLoc(), func);
+  builder.create<ExportOp>(func.getLoc(), func, ordinal);
 }
 
 }  // namespace runtime

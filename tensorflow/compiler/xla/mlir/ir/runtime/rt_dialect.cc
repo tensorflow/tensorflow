@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project  // IWYU pragma: keep
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.h"
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
@@ -63,9 +64,9 @@ mlir::LogicalResult RuntimeDialect::verifyOperationAttribute(
     mlir::Operation *op, mlir::NamedAttribute attribute) {
   // Only functions can be marked as exported.
   if (attribute.getName() == "rt.exported") {
-    if (!(attribute.getValue().isa<mlir::UnitAttr>())) {
-      return op->emitOpError()
-             << "requires " << attribute.getName() << " to be a unit attribute";
+    if (!llvm::isa<mlir::IntegerAttr>(attribute.getValue())) {
+      return op->emitOpError() << "requires " << attribute.getName()
+                               << " to be an integer attribute";
     }
 
     auto func = llvm::dyn_cast<mlir::func::FuncOp>(op);

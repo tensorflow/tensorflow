@@ -159,7 +159,7 @@ class JitCompiler {
   }
 
   // Marks function for export and makes it invocable by the runtime executable.
-  void Export(mlir::func::FuncOp func) const;
+  void Export(mlir::func::FuncOp func, unsigned ordinal) const;
 
  private:
   JitCompiler(Options opts, std::string_view mlir_module,

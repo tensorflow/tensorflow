@@ -54,7 +54,8 @@ def RT_ExportOp : RT_Op<"export", [
     runtime and becomes visible as an XLA executable function.
 
     Optional ordinal attribute specifies exported function ordinal in the
-    executable. If ordinal is not defined, it will be assigned automatically.
+    executable. If ordinal is not defined, it will be assigned automatically by
+    the ordinal assignment pass.
 
     Each ordinal must be unique and ordinals are contiguous starting from zero.
   }];
@@ -67,6 +68,7 @@ def RT_ExportOp : RT_Op<"export", [
   let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<(ins "mlir::func::FuncOp":$function_ref)>,
+    OpBuilder<(ins "mlir::func::FuncOp":$function_ref, "unsigned":$ordinal)>,
   ];
 
   let assemblyFormat = "$function_ref (`ordinal` $ordinal^)? attr-dict";

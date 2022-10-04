@@ -5,7 +5,7 @@
 // CHECK:  %[[PRED:.*]]: i1
 // CHECK: )
 func.func @exported(%arg0: !rt.execution_context, %arg1: i1)
-    attributes {rt.exported} {
+    attributes {rt.exported = 0 : i32} {
   // CHECK:  cf.cond_br %[[PRED]], ^[[OK:.*]], ^[[ERR:.*]]
   // CHECK:  ^[[OK]]:
   // CHECK:  return
