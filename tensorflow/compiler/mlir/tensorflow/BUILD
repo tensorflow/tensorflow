@@ -1421,7 +1421,6 @@ cc_library(
     ],
     hdrs = [
         "transforms/test_passes.h",
-        "transforms/test_passes_detail.h",
     ],
     deps = [
         ":error_util",
