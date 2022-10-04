@@ -222,6 +222,7 @@ tf_cc_test(
     deps = [
         ":finalize_dataset_op",
         ":options_dataset_op",
+        ":prefetch_dataset_op",
         ":range_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -444,6 +445,7 @@ tf_cc_test(
     srcs = ["iterator_ops_test.cc"],
     deps = [
         ":iterator_ops",
+        ":prefetch_dataset_op",
         ":range_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -1013,6 +1015,7 @@ tf_kernel_library(
     hdrs = ["reduce_dataset_op.h"],
     deps = [
         ":iterator_ops",
+        ":prefetch_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
