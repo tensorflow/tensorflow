@@ -19,8 +19,8 @@ while getopts "hrn" opt; do
     r)
         restriction=true
         ;;
-	n)
-		nightly=true
+    n)
+	nightly=true
     esac
 done
 shift "$((OPTIND-1))"
@@ -51,18 +51,17 @@ fi
 yes "" | ROCM_PATH=$ROCM_INSTALL_DIR TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure
 # Explicitly define resource constraints on bazel to avoid overload on rocm-ci
 if [[ -n $restriction ]]; then
-    bazel build --local_ram_resources=60000 --local_cpu_resources=35 --jobs=70 --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
-    bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm &&
-    pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl
-    exit 0
+    RESOURCE_OPTION="--local_ram_resources=60000 --local_cpu_resources=35 --jobs=70"
+else
+    RESOURCE_OPTION=""
 fi
 
 if [[ -n $nightly ]]; then
-	bazel build --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
+	bazel build $RESOURCE_OPTION --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
 	bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm --nightly_flag &&
 	pip3 install --upgrade $TF_PKG_LOC/tf_nightly_rocm*.whl
 else
-	bazel build --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
+	bazel build $RESOURCE_OPTION --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
 	bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm &&
 	pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl
 fi
