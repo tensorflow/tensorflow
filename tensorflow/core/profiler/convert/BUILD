@@ -343,6 +343,7 @@ cc_library(
     deps = [
         ":op_metrics_db_combiner",
         ":op_stats_combiner",
+        ":preprocess_single_host_xplane",
         ":repository",
         ":step_events_to_steps_db",
         ":xplane_to_kernel_stats_db",
@@ -693,10 +694,22 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:derived_timeline",
-        "//tensorflow/core/profiler/utils:group_events",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
+    ],
+)
+
+cc_library(
+    name = "preprocess_single_host_xplane",
+    srcs = ["preprocess_single_host_xplane.cc"],
+    hdrs = ["preprocess_single_host_xplane.h"],
+    copts = tf_profiler_copts(),
+    visibility = ["//tensorflow/core/profiler:internal"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:derived_timeline",
+        "//tensorflow/core/profiler/utils:group_events",
+        "//tensorflow/tsl/profiler/utils:xplane_utils",
     ],
 )
 
@@ -712,6 +725,7 @@ cc_library(
         ":op_stats_to_overview_page",
         ":op_stats_to_pod_viewer",
         ":op_stats_to_tf_stats",
+        ":preprocess_single_host_xplane",
         ":repository",
         ":tool_options",
         ":xplane_to_memory_profile",
