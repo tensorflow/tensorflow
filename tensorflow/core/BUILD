@@ -1182,7 +1182,7 @@ alias(
 
 alias(
     name = "cuda",
-    actual = "//tensorflow/core/common_runtime/gpu:cuda",
+    actual = "//tensorflow/tsl/platform:cuda",
     visibility = ["//visibility:public"],
 )
 

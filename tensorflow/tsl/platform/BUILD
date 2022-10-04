@@ -999,6 +999,13 @@ cc_library(
 )
 
 cc_library(
+    name = "cuda",
+    deps = [
+        "//tensorflow/tsl/platform/default/build_config:cuda",
+    ],
+)
+
+cc_library(
     name = "logger",
     srcs = ["logger.cc"],
     hdrs = ["logger.h"],

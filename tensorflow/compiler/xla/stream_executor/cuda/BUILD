@@ -125,7 +125,7 @@ cc_library(
     ] + tf_additional_cuda_driver_deps()) + select({
         # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
         "//tensorflow/tsl:is_cuda_enabled_and_oss": ["cudart_stub"],
-        "//conditions:default": ["//tensorflow/core:cuda"],
+        "//conditions:default": ["//tensorflow/tsl/platform:cuda"],
     }) + [
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
@@ -322,8 +322,6 @@ cc_library(
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core/platform:tensor_float_32_hdr_lib",
-        "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
@@ -336,6 +334,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
     ]) + if_static([
         "//tensorflow/tsl/platform:tensor_float_32_utils",
     ]),
@@ -638,10 +637,10 @@ cc_library(
     srcs = if_cuda_is_configured(["cuda_asm_compiler.cc"]),
     deps = if_cuda_is_configured([
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_diagnostics_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
+        "//tensorflow/tsl/platform:errors",
     ]),
 )
 

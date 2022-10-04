@@ -2676,7 +2676,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:queue_ops",
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
-    ] + if_cuda(["//tensorflow/core/common_runtime/gpu:cuda"]),
+    ] + if_cuda(["//tensorflow/tsl/platform:cuda"]),
 )
 
 # This is identical to :common_runtime_direct_session_test with the addition of

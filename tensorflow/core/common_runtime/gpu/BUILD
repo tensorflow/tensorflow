@@ -68,13 +68,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cuda",
-    deps = [
-        "//tensorflow/tsl/platform/default/build_config:cuda",
-    ],
-)
-
-cc_library(
     name = "rocm",
     deps = [
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_rpath",
