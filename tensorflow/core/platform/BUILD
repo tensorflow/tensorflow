@@ -16,7 +16,6 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
-    "tf_additional_test_srcs",
     "tf_google_mobile_srcs_only_runtime",
     "tf_kernel_tests_linkstatic",
     "tf_platform_alias",
@@ -1687,12 +1686,6 @@ filegroup(
 alias(
     name = "legacy_lib_internal_srcs",
     actual = "//tensorflow/core/platform/profile_utils:legacy_lib_internal_srcs",
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_test_srcs",
-    srcs = tf_additional_test_srcs(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
