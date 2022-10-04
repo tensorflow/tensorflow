@@ -1,10 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "pybind_extension")
 
 package(
     default_visibility = ["//tensorflow:internal"],
