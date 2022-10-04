@@ -337,6 +337,24 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "pjrt_stream_executor_client_test",
+    srcs = ["pjrt_stream_executor_client_test.cc"],
+    deps = [
+        ":pjrt_client",
+        ":pjrt_stream_executor_client",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "tpu_client",
     srcs = ["tpu_client.cc"],
