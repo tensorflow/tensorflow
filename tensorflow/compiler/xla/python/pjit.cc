@@ -336,7 +336,7 @@ xla::Status PjitFunction::UpdateArgsSignature(
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
   arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
 
-  return xla::Status::OK();
+  return xla::OkStatus();
 }
 
 void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
