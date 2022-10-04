@@ -2206,6 +2206,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [SameVariadicOperandSize, RecursiveSideEffe
 
   let hasFolder = 1;
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
