@@ -50,7 +50,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/lib/io/zlib_compression_options.h"
 #include "tensorflow/tsl/lib/io/zlib_outputbuffer.h"
