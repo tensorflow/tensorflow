@@ -301,7 +301,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    defines = ["EIGEN_NEON_DO_NOT_OVERRIDE_NR"],
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
         ":avx2_quantization_utils",
         ":common",
