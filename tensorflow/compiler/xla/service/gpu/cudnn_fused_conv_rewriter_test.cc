@@ -58,16 +58,30 @@ class CudnnFusedConvRewriterHloTest : public HloTestBase {
 };
 
 class CudnnFusedConvRewriterTest : public GpuCodegenTest {
+ public:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+
  protected:
   std::string GetOptimizedHlo(absl::string_view hlo_string) {
+    HloModuleConfig config = GetModuleConfigForTest();
+    DebugOptions debug_opts = config.debug_options();
     // cudnn_vectorize_convolutions transforms convolutions, making it hard to
     // match them here in this test.  What's worse, the transforms it does
     // depends on the GPU that's available!  So just disable them for this
     // function that gets the optimized HLO.  When we actually run the module
     // we'll still have this pass enabled.
-    HloModuleConfig config = GetModuleConfigForTest();
-    DebugOptions debug_opts = config.debug_options();
     debug_opts.add_xla_disable_hlo_passes("cudnn_vectorize_convolutions");
+    // Starting with the Nvidia Ampere GPUs, more fusion patterns are supported
+    // via the cuDNN's runtime fusion code compilation.
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::AMPERE)) {
+      debug_opts.set_xla_gpu_use_runtime_fusion(true);
+    }
     config.set_debug_options(debug_opts);
 
     auto result = backend().compiler()->RunHloPasses(
@@ -162,6 +176,33 @@ TEST_F(CudnnFusedConvRewriterTest, TestBias) {
       broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
       add1 = TYPE[1,3,3,64] add(conv, broadcasted_bias)
       ROOT relu = TYPE[1,3,3,64] maximum(zeros, add1)
+    })");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestElu) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
+                    "the Nvidia Ampere+ GPUs.";
+  }
+  // max(0, conv(x, w) + bias);
+  TestMatchWithAllTypes(R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = TYPE[] constant(0)
+      zeros = TYPE[1,3,3,64] broadcast(zero), dimensions={}
+
+      input = TYPE[1,3,3,64] parameter(0)
+      filter = TYPE[3,3,64,64] parameter(1)
+      bias = TYPE[64] parameter(2)
+
+      conv = TYPE[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+      broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
+      sum = TYPE[1,3,3,64] add(conv, broadcasted_bias)
+      cmp = pred[1,3,3,64] compare(sum, zeros), direction=GT
+      expm1 = TYPE[1,3,3,64] exponential-minus-one(sum)
+      ROOT elu = TYPE[1,3,3,64] select(cmp, sum, expm1)
     })");
 }
 
