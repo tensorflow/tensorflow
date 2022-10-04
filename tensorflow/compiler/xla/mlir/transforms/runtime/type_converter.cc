@@ -108,6 +108,7 @@ static std::unique_ptr<Type> ConvertCanonicalType(
 
 /*static*/ StatusOr<PrimitiveType> TypeConverter::ConvertElementType(
     mlir::Type type) {
+  if (type.isBF16()) return PrimitiveType::BF16;
   if (type.isF32()) return PrimitiveType::F32;
   if (type.isF64()) return PrimitiveType::F64;
   if (type.isUnsignedInteger(8)) return PrimitiveType::U8;
