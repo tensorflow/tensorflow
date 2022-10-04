@@ -8,12 +8,8 @@ load(
     "tf_cc_test",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "pytype_library")
+load("//tensorflow:pytype.default.bzl", "pytype_library")
 
 package(
     default_visibility = [":friends"],
