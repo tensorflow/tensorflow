@@ -1554,6 +1554,12 @@ add {
   ROOT %domain.2 = u32[] domain(u32[] %Arg_0.1), domain={kind="sharding", entry={maximal device=1}, exit={}}
 }
 
+// CHECK-LABEL : func private @sparse
+// CHECK: tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], pointerBitWidth = 32, indexBitWidth = 32 }>>) -> tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], pointerBitWidth = 32, indexBitWidth = 32 }>>
+%sparse {
+  ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
+}
+
 // CHECK-LABEL: func private @add_dependency
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<4x4xf32>)
 %add_dependency (Arg_0.1: f32[4,4]) -> f32[4,4] {

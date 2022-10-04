@@ -174,7 +174,8 @@ class XlaHloToLhloPass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<arith::ArithDialect, bufferization::BufferizationDialect,
                     func::FuncDialect, memref::MemRefDialect, mhlo::MhloDialect,
-                    lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
+                    lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect,
+                    sparse_tensor::SparseTensorDialect>();
   }
 
  public:

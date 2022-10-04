@@ -555,6 +555,8 @@ cc_library(
     hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/register.h"],
     deps = [
         ":mlir_hlo",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SparseTensorDialect",
         # Backward compatibility with the old way of registering CHLO dialect
         "@stablehlo//:chlo_ops",
     ],

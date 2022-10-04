@@ -16,6 +16,7 @@ limitations under the License.
 #include "llvm/Support/raw_os_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/mlir/xla/xla_mlir_translate.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 namespace {
 // NOLINTNEXTLINE
@@ -199,8 +201,9 @@ static mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslate(
 }
 
 static void RegisterInputDialects(mlir::DialectRegistry& registry) {
+  mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                  mlir::mhlo::MhloDialect, mlir::tensor::TensorDialect>();
+                  mlir::tensor::TensorDialect>();
 }
 
 static mlir::TranslateFromMLIRRegistration MlirHloToHloTranslate(

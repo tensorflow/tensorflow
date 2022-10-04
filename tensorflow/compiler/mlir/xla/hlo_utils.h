@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -71,11 +72,53 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
     }
   }
   using mlir::mhlo::TypeExtensionsAttr;
-  TypeExtensionsAttr extensions;
+  mlir::Attribute encoding;
   if (is_dynamic) {
-    extensions = TypeExtensionsAttr::get(builder.getContext(), bounds);
+    encoding = TypeExtensionsAttr::get(builder.getContext(), bounds);
   }
-  return TypeT::get(shape, element_type_or.value(), extensions);
+
+  using mlir::sparse_tensor::SparseTensorEncodingAttr;
+  // TODO(b/238903065): We don't yet support bounded dynamism shapes and
+  // sparsity at the same time, as we can currently only have one `encoding` on
+  // a RankedTensorType, and we don't currently have a meet of
+  // SparseTensorEncodingAttr and TypeExtensionsAttr (which holds bounds).
+  //
+  // For example, we wouldn't be able to represent the xla type
+  // `f32[4,<=4]{1,0:D(D,C)}`.
+  if (xla_ty.has_layout()) {
+    auto layout = xla_ty.layout();
+    if (LayoutUtil::IsSparse(layout)) {
+      if (is_dynamic)
+        return tensorflow::errors::Unimplemented(
+            "MHLO doesn't support bounded dynamic shapes for sparse tensors");
+      llvm::SmallVector<SparseTensorEncodingAttr::DimLevelType> dlts;
+      for (auto dlt : layout.dim_level_types()) {
+        switch (dlt) {
+          case DimLevelType::DIM_DENSE:
+            dlts.push_back(SparseTensorEncodingAttr::DimLevelType::Dense);
+            break;
+          case DimLevelType::DIM_COMPRESSED:
+            dlts.push_back(SparseTensorEncodingAttr::DimLevelType::Compressed);
+            break;
+          case DimLevelType::DIM_SINGLETON:
+            dlts.push_back(SparseTensorEncodingAttr::DimLevelType::Singleton);
+            break;
+          default:
+            return tensorflow::errors::InvalidArgument(
+                "Unknown DimLevelType from HLO");
+        }
+      }
+      auto ordering = layout.minor_to_major();
+      llvm::SmallVector<uint32_t> major_to_minor = {ordering.rbegin(),
+                                                    ordering.rend()};
+      auto id_map = mlir::AffineMap::getPermutationMap(major_to_minor,
+                                                       builder.getContext());
+      // TODO(atondwal): support sizes other than 32 when XLA does
+      encoding = SparseTensorEncodingAttr::get(builder.getContext(), dlts,
+                                               id_map, 32, 32);
+    }
+  }
+  return TypeT::get(shape, element_type_or.value(), encoding);
 }
 
 StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(

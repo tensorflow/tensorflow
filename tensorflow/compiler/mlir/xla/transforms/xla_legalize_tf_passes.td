@@ -50,7 +50,7 @@ def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
   let constructor = "mlir::mhlo::createLegalizeTFPass()";
   let dependentDialects = ["arith::ArithDialect, chlo::ChloDialect",
                            "mhlo::MhloDialect",
-                           "shape::ShapeDialect", "func::FuncDialect"];
+                           "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
 def LegalizeTFModulePass : Pass<"xla-fallback-legalize-tf-module-pass", "ModuleOp"> {
@@ -70,7 +70,7 @@ def LegalizeTFModulePass : Pass<"xla-fallback-legalize-tf-module-pass", "ModuleO
   let constructor = "mlir::mhlo::createLegalizeTFModulePass()";
   let dependentDialects = ["arith::ArithDialect, chlo::ChloDialect",
                            "mhlo::MhloDialect",
-                           "shape::ShapeDialect", "func::FuncDialect"];
+                           "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
 def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::FuncOp"> {
@@ -89,14 +89,14 @@ def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::Func
   let constructor = "mlir::mhlo::createLegalizeTFNoFallbackPass()";
   let dependentDialects = ["arith::ArithDialect", "chlo::ChloDialect",
                            "mhlo::MhloDialect",
-                           "shape::ShapeDialect", "func::FuncDialect"];
+                           "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
 def LegalizeTFControlFlow : Pass<"xla-legalize-tf-control-flow", "ModuleOp"> {
   let summary = "Legalize from TF dialect's to HLO dialect's control flow.";
 
   let constructor = "mlir::mhlo::createLegalizeTFControlFlowPass()";
-  let dependentDialects = ["mhlo::MhloDialect"];
+  let dependentDialects = ["mhlo::MhloDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
 def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
@@ -121,5 +121,5 @@ def LegalizeTFCollective : Pass<"xla-legalize-tf-collective", "ModuleOp"> {
   let summary = "Legalize TF/XLA collective ops (TensorFlow dialect) to the HLO dialect";
 
   let constructor = "mlir::mhlo::CreateLegalizeTFCollectivePass()";
-  let dependentDialects = ["mhlo::MhloDialect"];
+  let dependentDialects = ["mhlo::MhloDialect", "sparse_tensor::SparseTensorDialect"];
 }

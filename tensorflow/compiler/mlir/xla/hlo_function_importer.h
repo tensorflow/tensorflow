@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -145,6 +146,7 @@ class HloFunctionImporter {
     context_->loadDialect<mlir::arith::ArithDialect>();
     context_->loadDialect<mlir::func::FuncDialect>();
     context_->loadDialect<mlir::mhlo::MhloDialect>();
+    context_->loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
   }
 
   // Imports the given computation as a new function, if it hasn't been already
