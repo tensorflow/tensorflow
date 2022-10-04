@@ -491,6 +491,27 @@ LogicalResult Executable::Call(ExecutionContext* ctx, class CustomCall& call,
                    ctx->diagnostic_engine);
 }
 
+FunctionRef Executable::function_ref(unsigned ordinal) const {
+  return FunctionRef(this, ordinal);
+}
+
+//===----------------------------------------------------------------------===//
+// Executable function reference.
+//===----------------------------------------------------------------------===//
+
+FunctionRef::FunctionRef(const Executable* executable, unsigned ordinal)
+    : executable_(executable), ordinal_(ordinal) {
+  assert(executable && "executable must be not null");
+}
+
+absl::Status FunctionRef::operator()(ArgumentsRef arguments,
+                                     const ResultConverter& results,
+                                     const Executable::ExecuteOpts& opts,
+                                     bool verify_arguments) const {
+  return executable_->Execute(ordinal_, arguments, results, opts,
+                              verify_arguments);
+}
+
 //===----------------------------------------------------------------------===//
 // Register XLA runtime symbols with XLA execution engine.
 //===----------------------------------------------------------------------===//

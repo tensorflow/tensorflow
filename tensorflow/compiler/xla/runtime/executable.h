@@ -43,6 +43,7 @@ namespace xla {
 namespace runtime {
 
 class ExecutionContext;
+class FunctionRef;
 class JitCompiler;
 
 // Returns a symbols binding for running XLA executable with a custom symbols
@@ -139,6 +140,9 @@ class Executable {
   // Returns the number of exported functions. Functions are indexed by their
   // ordinal number in the [0, num_functions) range.
   size_t num_functions() const { return functions_.size(); }
+
+  // Returns a function reference to an exported function with given ordinal.
+  FunctionRef function_ref(unsigned ordinal) const;
 
   // Returns true if exported function with given ordinal has async results.
   bool IsAsync(unsigned ordinal) const;
@@ -362,6 +366,22 @@ class Executable {
 
   // The time it took to compile this binary.
   std::chrono::milliseconds time_to_compile_;
+};
+
+// Function reference provides a function-like API for a function exported from
+// the executabled with the given ordinal.
+class FunctionRef {
+ public:
+  FunctionRef(const Executable* executable, unsigned ordinal);
+
+  absl::Status operator()(ArgumentsRef arguments,
+                          const ResultConverter& results,
+                          const Executable::ExecuteOpts& opts,
+                          bool verify_arguments = true) const;
+
+ private:
+  const Executable* executable_;
+  unsigned ordinal_;
 };
 
 // Escape slashes, substituting them with double underscores to get a memory

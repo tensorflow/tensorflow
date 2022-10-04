@@ -63,18 +63,11 @@ static absl::Status Execute(JitExecutable& jit_executable, unsigned ordinal,
   AsyncValuePtr<Executable> executable = jit_executable.DefaultExecutable();
   if (executable.IsError()) return executable.GetError();
 
-  Executable::CallFrame call_frame;
-  auto initialized =
-      executable->InitializeCallFrame(ordinal, args, &call_frame);
-  if (!initialized.ok()) return initialized;
-
   Executable::ExecuteOpts execute_opts;
   execute_opts.async_task_runner = async_task_runner;
 
-  executable->Execute(ordinal, call_frame, execute_opts);
-  if (call_frame.is_error) return absl::InternalError(call_frame.error);
-
-  return executable->ReturnResults(ordinal, results, &call_frame);
+  FunctionRef function_ref = executable->function_ref(ordinal);
+  return function_ref(args, results, execute_opts);
 }
 
 static absl::Status CompileAndExecute(
@@ -91,6 +84,8 @@ static absl::Status CompileAndExecute(
 static void AssertNoError(const absl::Status& status) {
   assert(false && "Unexpected call to `ReturnError`");
 }
+
+static void IgnoreError(const absl::Status& status) {}
 
 struct ReturnI32 {
   LogicalResult operator()(unsigned result_index, const Type* type,
@@ -203,7 +198,7 @@ TEST(ExecutableTest, AssertionFailure) {
     ScalarArg arg0(int32_t{42});
     auto executed = CompileAndExecute(module, {arg0}, converter);
     EXPECT_FALSE(executed.ok());
-    EXPECT_EQ(executed.message(), "Oops, argument can't be 42");
+    EXPECT_EQ(executed.message(), "run time error: Oops, argument can't be 42");
   }
 }
 
@@ -218,21 +213,23 @@ TEST(ExecutableTest, AssertionFailureOrResult) {
     }
   )";
 
-  int32_t result = 0;
-  ResultConverterSet converter(AssertNoError, ReturnI32{&result});
-
   {
+    int32_t result = 0;
+    ResultConverterSet converter(AssertNoError, ReturnI32{&result});
+
     ScalarArg arg0(int32_t{20});
     EXPECT_TRUE(CompileAndExecute(module, {arg0}, converter).ok());
     EXPECT_EQ(result, 62);
   }
 
   {
-    result = 0;
+    int32_t result = 0;
+    ResultConverterSet converter(IgnoreError, ReturnI32{&result});
+
     ScalarArg arg0(int32_t{42});
     auto executed = CompileAndExecute(module, {arg0}, converter);
     EXPECT_FALSE(executed.ok());
-    EXPECT_EQ(executed.message(), "Oops, argument can't be 42");
+    EXPECT_EQ(executed.message(), "run time error: Oops, argument can't be 42");
     EXPECT_EQ(result, 0);
   }
 }
