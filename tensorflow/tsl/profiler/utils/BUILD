@@ -183,6 +183,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":math_utils",
+        ":tf_xplane_visitor",
         ":timespan",
         ":trace_utils",
         ":xplane_builder",

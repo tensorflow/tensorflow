@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/lib/context_types.h"
 #include "tensorflow/tsl/profiler/utils/math_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/timespan.h"
 #include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
@@ -354,6 +355,19 @@ bool IsEmpty(const XSpace& space) {
     }
   }
   return true;
+}
+
+bool IsXSpaceGrouped(const XSpace& space) {
+  for (const auto& plane : space.planes()) {
+    // If any plane has been grouped, consider space as grouped.
+    // CreateTfXPlaneVisitor is necessary because we need check "group_id" stat
+    // by its type StatType::kGroupId.
+    XPlaneVisitor xplane = tsl::profiler::CreateTfXPlaneVisitor(&plane);
+    const XStatMetadata* group_id_stat =
+        xplane.GetStatMetadataByType(StatType::kGroupId);
+    if (group_id_stat) return true;
+  }
+  return false;
 }
 
 void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,
