@@ -454,12 +454,13 @@ StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
   return changed;
 }
 
-StatusOr<bool> FuseElu(HloComputation* comp) {
+StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     const DebugOptions& debug_options =
         instr->GetModule()->config().debug_options();
-    if (!debug_options.xla_gpu_use_runtime_fusion()) {
+    if (!debug_options.xla_gpu_use_runtime_fusion() ||
+        !cc.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
       return false;
     }
 
@@ -846,7 +847,7 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     // Relu might appear before or after convert-to-f16/s8, so we check in both
     // cases.
     TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
-    TF_ASSIGN_OR_RETURN(changed, FuseElu(comp));
+    TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
     any_changed |= changed;
 
     TF_ASSIGN_OR_RETURN(changed, FuseConvertToF16(comp));
@@ -864,7 +865,7 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     any_changed |= changed;
 
     TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
-    TF_ASSIGN_OR_RETURN(changed, FuseElu(comp));
+    TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
     any_changed |= changed;
 
     // Check that we don't have any convs outputing integer types other than s8.

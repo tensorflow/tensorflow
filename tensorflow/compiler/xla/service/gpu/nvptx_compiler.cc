@@ -75,7 +75,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       /*allow_mixed_precision=*/false);
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
-  pipeline.AddPass<CudnnFusedConvRewriter>();
+  pipeline.AddPass<CudnnFusedConvRewriter>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
   pipeline.AddPass<GpuConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(
       stream_exec->GetDeviceDescription().cuda_compute_capability());
