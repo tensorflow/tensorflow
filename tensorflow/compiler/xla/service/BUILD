@@ -3468,6 +3468,21 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "despecializer_test",
+    srcs = ["despecializer_test.cc"],
+    deps = [
+        ":despecializer",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "dot_decomposer",
     srcs = ["dot_decomposer.cc"],
@@ -6105,6 +6120,7 @@ cc_library(
         ":hlo_pass",
         ":hlo_pass_pipeline",
         "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
