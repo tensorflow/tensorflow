@@ -4198,6 +4198,7 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
   if (!IsOneDNNEnabled()) {
     VLOG(2) << "TF-MKL: oneDNN is not enabled";
     return Status::OK();
+  }
 
   auto process_graph = [&](std::unique_ptr<Graph>* g) {
     // Get the ownership of a graph

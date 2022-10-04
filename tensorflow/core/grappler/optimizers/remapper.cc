@@ -1357,7 +1357,6 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
 
     // matmul_node is already the _FusedMatMul and we don't need to check its
     // data type again.
-
     if (!IsOneDNNEnabled() && !NodeIsOnGpu(matmul_node)) return false;
 
     // Check if _FusedMatMul contains only BiasAdd
