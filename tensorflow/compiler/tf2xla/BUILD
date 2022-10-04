@@ -253,6 +253,7 @@ cc_library(
         ":xla_compiled_cpu_runtime_hdrs",
     ],
     copts = runtime_copts() + tf_openmp_copts(),
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     features = [
         "fully_static_link",
         "-parse_headers",
