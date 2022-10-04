@@ -560,6 +560,9 @@ const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
 }
 
 int64_t CpuExecutable::SizeOfGeneratedCodeInBytes() const {
+  // TODO(b/233850967): support profiling in XLA:CPU-Next, instead of
+  // punting on it as we are doing here.
+  if (IsXlaRuntime()) return 0;
   return jit_->SizeOfGeneratedCodeInBytes();
 }
 
