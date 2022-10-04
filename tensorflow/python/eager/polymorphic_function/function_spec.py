@@ -214,18 +214,18 @@ class FunctionSpec(object):
   def _make_default_values(self):
     """Returns default values from the function's inspected fullargspec."""
     if self.fullargspec.defaults is not None:
-      non_kwonlydefaults = {
+      defaults = {
           name: value for name, value in zip(
               self.fullargspec.args[-len(self.fullargspec.defaults):],
               self.fullargspec.defaults)
       }
     else:
-      non_kwonlydefaults = {}
+      defaults = {}
 
-    if self.fullargspec.kwonlydefaults is None:
-      return non_kwonlydefaults
-    else:
-      return non_kwonlydefaults | self.fullargspec.kwonlydefaults
+    if self.fullargspec.kwonlydefaults is not None:
+      defaults.update(self.fullargspec.kwonlydefaults)
+
+    return defaults
 
   @property
   def default_values(self):
