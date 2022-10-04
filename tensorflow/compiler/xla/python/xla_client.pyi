@@ -33,6 +33,7 @@ from .xla_extension import DeviceArrayBase as DeviceArrayBase
 from .xla_extension import DeviceAssignment as DeviceAssignment
 from .xla_extension import DistributedRuntimeClient as DistributedRuntimeClient
 from .xla_extension import Executable as Executable
+from .xla_extension import LoadedExecutable as LoadedExecutable
 from .xla_extension import FftType as FftType
 from .xla_extension import Frame as Frame
 from .xla_extension import HostBufferSemantics as HostBufferSemantics

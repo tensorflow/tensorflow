@@ -419,6 +419,7 @@ ShardedBuffer = _xla.ShardedBuffer
 ArrayImpl = _xla.ArrayImpl
 DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
+LoadedExecutable = Executable
 OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
 Sharding = _xla.Sharding

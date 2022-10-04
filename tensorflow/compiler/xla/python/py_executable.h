@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_EXECUTABLE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -68,14 +69,15 @@ class PyShardedToken {
 // Python wrapper around PjRtExecutable. We use a wrapper class:
 // a) to keep the PyClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
-class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
+class PyLoadedExecutable
+    : public std::enable_shared_from_this<PyLoadedExecutable> {
  public:
-  PyExecutable(std::shared_ptr<PyClient> client,
-               std::unique_ptr<PjRtLoadedExecutable> executable,
-               std::shared_ptr<Traceback> traceback,
-               std::optional<std::string> fingerprint,
-               std::vector<pybind11::capsule> host_callbacks);
-  ~PyExecutable();
+  PyLoadedExecutable(std::shared_ptr<PyClient> client,
+                     std::unique_ptr<PjRtLoadedExecutable> executable,
+                     std::shared_ptr<Traceback> traceback,
+                     std::optional<std::string> fingerprint,
+                     std::vector<pybind11::capsule> host_callbacks);
+  ~PyLoadedExecutable();
 
   std::shared_ptr<PyClient> client() const { return client_; }
   std::shared_ptr<PjRtLoadedExecutable> executable() const {
@@ -139,7 +141,7 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   const ExecuteOptions& options() const { return options_; }
   const std::optional<std::string>& fingerprint() const { return fingerprint_; }
 
-  // Keep `obj` alive as long as PyExecutable.
+  // Keep `obj` alive as long as PyLoadedExecutable.
   void KeepAlive(pybind11::object obj);
 
  private:
@@ -169,8 +171,8 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
 
   // Doubly-linked list of all executables known to the client. Protected by the
   // GIL.
-  PyExecutable* next_;
-  PyExecutable* prev_;
+  PyLoadedExecutable* next_;
+  PyLoadedExecutable* prev_;
 };
 
 }  // namespace xla
