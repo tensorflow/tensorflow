@@ -2956,8 +2956,8 @@ func.func @pad_interior_negative(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) 
   func.return %1 : tensor<25x9xui32>
 }
 // CHECK-LABEL: func @pad_interior_negative
-//       CHECK: %[[PAD:.]] = tensor.insert_slice %{{.+}} into %{{.+}}[4, 0] [12, 4] [2, 2] : tensor<12x4xi32> into tensor<29x10xi32>
-//       CHECK: %[[SLICE:.]] = tensor.extract_slice %[[PAD]][0, 1] [25, 9] [1, 1] : tensor<29x10xi32> to tensor<25x9xi32>
+//       CHECK: %[[PAD:.*]] = tensor.insert_slice %{{.+}} into %{{.+}}[4, 0] [12, 4] [2, 2] : tensor<12x4xi32> into tensor<29x10xi32>
+//       CHECK: %[[SLICE:.*]] = tensor.extract_slice %[[PAD]][0, 1] [25, 9] [1, 1] : tensor<29x10xi32> to tensor<25x9xi32>
 
 // -----
 
@@ -3199,7 +3199,7 @@ func.func @linalg.conv_2D_padding_test2(%arg0: tensor<1x33x1x1xf16>, %arg1: tens
 // CHECK-NEXT: ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
 // CHECK-NEXT:   tensor.yield %[[ZERO]] : f16
 // CHECK-NEXT: } : tensor<400x1024x1024x1xf16> to tensor<400x1040x1056x1xf16>
-// CHECK-NEXT: %[[RESULT:.*]] = linalg.conv_2d_nhwc_hwcf {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} ins(%2, %arg0 : tensor<400x1040x1056x1xf16>, tensor<1x33x1x1xf16>) outs(%1 : tensor<400x1040x1024x1xf16>) -> tensor<400x1040x1024x1xf16>
+// CHECK-NEXT: %[[RESULT:.*]] = linalg.conv_2d_nhwc_hwcf {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} ins(%[[PAD]], %arg0 : tensor<400x1040x1056x1xf16>, tensor<1x33x1x1xf16>) outs(%[[FILL]] : tensor<400x1040x1024x1xf16>) -> tensor<400x1040x1024x1xf16>
 // CHECK-NEXT: return %[[RESULT]] : tensor<400x1040x1024x1xf16>
 
 // -----
@@ -4940,8 +4940,8 @@ func.func @reduce_precision(%arg0: tensor<1x2x3x4xf32>)
   // Check Convolution
   // CHECK: linalg.generic {indexing_maps = [#[[MAP2]], #[[MAP3]], #[[MAP4]]],
   // CHECK-SAME: iterator_types = ["parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "reduction", "parallel"]}
-  // CHECK-SAME: ins(%8, %9 : tensor<2x1x28x24x1xf64>, tensor<13x13x1x2x1xf64>)
-  // CHECK-SAME: outs(%11 : tensor<1x6x8x2x1xf64>) {
+  // CHECK-SAME: ins(%{{.*}}, %{{.*}} : tensor<2x1x28x24x1xf64>, tensor<13x13x1x2x1xf64>)
+  // CHECK-SAME: outs(%{{.*}} : tensor<1x6x8x2x1xf64>) {
   // CHECK: ^bb0(%[[LHS:.*]]: f64, %[[RHS:.*]]: f64, %[[OUT:.*]]: f64):
     // CHECK: %[[MUL:.*]] = arith.mulf %[[LHS]], %[[RHS]] : f64
     // CHECK: %[[RES:.*]] = arith.addf %[[OUT]], %[[MUL]] : f64
@@ -4994,8 +4994,8 @@ func.func @batch_group_count_convolution(%arg0: tensor<2x14x12x1xf64>, %arg1: te
   // Check Convolution
   // CHECK: linalg.generic {indexing_maps = [#[[MAP2]], #[[MAP3]], #[[MAP4]]],
   // CHECK-SAME: iterator_types = ["parallel", "reduction", "parallel", "parallel", "reduction", "parallel", "reduction", "parallel"]}
-  // CHECK-SAME: ins(%8, %9 : tensor<2x28x24x2x1xf64>, tensor<13x13x1x2x1xf64>)
-  // CHECK-SAME: outs(%11 : tensor<2x6x8x2x1xf64>) {
+  // CHECK-SAME: ins(%{{.*}}, %{{.*}} : tensor<2x28x24x2x1xf64>, tensor<13x13x1x2x1xf64>)
+  // CHECK-SAME: outs(%{{.*}} : tensor<2x6x8x2x1xf64>) {
   // CHECK: ^bb0(%[[LHS:.*]]: f64, %[[RHS:.*]]: f64, %[[OUT:.*]]: f64):
     // CHECK: %[[MUL:.*]] = arith.mulf %[[LHS]], %[[RHS]] : f64
     // CHECK: %[[RES:.*]] = arith.addf %[[OUT]], %[[MUL]] : f64
