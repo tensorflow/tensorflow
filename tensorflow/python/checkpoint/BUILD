@@ -281,6 +281,7 @@ py_library(
     srcs = ["restore.py"],
     srcs_version = "PY3",
     deps = [
+        ":checkpoint_view",
         ":saveable_compat",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
@@ -288,9 +289,11 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/saved_model/registration",
+        "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:constants",
         "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/trackable:trackable_utils",
+        "//tensorflow/python/training/saving:saveable_object_util",
     ],
 )
 

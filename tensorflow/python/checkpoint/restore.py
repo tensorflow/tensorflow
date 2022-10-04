@@ -16,6 +16,7 @@
 
 import collections
 
+from tensorflow.python.checkpoint import checkpoint_view
 from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -23,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import registration
+from tensorflow.python.trackable import base
 from tensorflow.python.trackable import constants
 from tensorflow.python.trackable import python_state
 from tensorflow.python.trackable import trackable_utils
@@ -477,6 +479,62 @@ class CheckpointPosition(object):
       python_positions = ()
       registered_savers = {}
     return restore_ops, tensor_saveables, python_positions, registered_savers
+
+
+def restore_nodes(save_path, nodes_to_restore):
+  """Restores nodes from a dict.
+
+  Requires that the `Trackable` Python object has been bound to an object
+  ID in the checkpoint.
+
+  Args:
+    save_path: a string represents path to the checkpoint.
+    nodes_to_restore: a dict maps `node_id` to `trackable` to be restored.
+  """
+  if save_path is None:
+    raise ValueError("save_path cannot be empty.")
+  if not isinstance(nodes_to_restore, dict):
+    raise ValueError(
+        "Expecting a dictionary of node_id to Trackable for nodes_to_restore.")
+
+  # pylint:disable=g-import-not-at-top
+  # There are circular dependencies between Trackable and SaveableObject,
+  # so we must import it here.
+  from tensorflow.python.training.saving import saveable_object_util
+  # pylint:enable=g-import-not-at-top
+
+  ckpt_view = checkpoint_view.CheckpointView(save_path)
+  ckpt_view_descendants = ckpt_view.descendants()
+  for node_id, trackable in nodes_to_restore.items():
+    # node_id does not have a corresponding Checkpoint value.
+    if (node_id not in ckpt_view_descendants or
+        ckpt_view._object_graph_proto.nodes[  # pylint: disable=protected-access
+            node_id] is None):
+      raise ValueError(
+          f"The expected node_id: {node_id} to Trackable {trackable} to "
+          "restore does not exist in the checkpoint.")
+    # Trackable mapped to node_id to restore is empty.
+    if trackable is None or not isinstance(trackable, base.Trackable):
+      raise ValueError(
+          f"Expecting a valid Trackable to node_id: {node_id} but got "
+          f"trackable: {trackable}."
+      )
+
+    trackable_expects_ckpted_value = saveable_object_util.trackable_has_serialize_to_tensor(
+        trackable)
+    ckpt_contains_serialized_tensors = ckpt_view._object_graph_proto.nodes[  # pylint: disable=protected-access
+        node_id].attributes
+
+    if trackable_expects_ckpted_value and not ckpt_contains_serialized_tensors:
+      raise ValueError(
+          f"Trackable {trackable} expects checkpointed values but checkpoint "
+          f"does not contain serialized tensors for node_id: {node_id}.")
+
+    if not trackable_expects_ckpted_value and ckpt_contains_serialized_tensors:
+      raise ValueError(
+          f"Trackable {trackable} does not expect checkpointed values but "
+          "checkpoint contains serialized tensors: "
+          f"{ckpt_contains_serialized_tensors} for node_id: {node_id}.")
 
 
 def _queue_children_for_restoration(checkpoint_position, visit_queue):
