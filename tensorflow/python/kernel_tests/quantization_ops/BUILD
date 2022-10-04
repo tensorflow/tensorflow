@@ -1,6 +1,5 @@
 # Tests of TensorFlow quantization ops written using the Python API.
 
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
