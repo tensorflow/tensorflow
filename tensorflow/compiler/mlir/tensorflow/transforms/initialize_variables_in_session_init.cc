@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 #include "tensorflow/core/framework/resource_var.h"

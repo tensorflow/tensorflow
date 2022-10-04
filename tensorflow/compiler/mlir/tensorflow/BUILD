@@ -1267,7 +1267,6 @@ cc_library(
     includes = ["include"],
     textual_hdrs = [
         "transforms/passes_detail.h",
-        "transforms/savedmodel_passes_detail.h",
         "transforms/tf_device_passes.h.inc",
         "transforms/tf_passes.h.inc",
         "transforms/tf_savedmodel_passes.h.inc",

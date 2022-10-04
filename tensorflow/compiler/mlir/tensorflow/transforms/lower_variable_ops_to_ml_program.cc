@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
@@ -132,8 +131,11 @@ ml_program::GlobalOp CreateGlobalOpFromOp(Operation* source, OpBuilder& builder,
 
 }  // namespace
 
+#define GEN_PASS_DEF_LOWERVARIABLEOPSTOMLPROGRAMPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
+
 struct LowerVariableOpsToMlProgramPass
-    : public LowerVariableOpsToMlProgramPassBase<
+    : public impl::LowerVariableOpsToMlProgramPassBase<
           LowerVariableOpsToMlProgramPass> {
   explicit LowerVariableOpsToMlProgramPass() {}
   void getDependentDialects(DialectRegistry& registry) const override {
