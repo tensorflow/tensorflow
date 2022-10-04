@@ -48,8 +48,6 @@ namespace gpu {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocBlasPlugin);
 
-namespace wrap = tensorflow::wrap;
-
 template <class T>
 const typename RocBlasTypeConversionHelper<T>::mapped_type *complex_cast(
     const DeviceMemory<T> &a) {
