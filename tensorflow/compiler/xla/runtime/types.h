@@ -148,6 +148,26 @@ class ScalarType : public llvm::RTTIExtends<ScalarType, Type> {
 };
 
 //===----------------------------------------------------------------------===//
+// Tuple type corresponding to mlir::TupleType.
+//===----------------------------------------------------------------------===//
+
+class TupleType : public llvm::RTTIExtends<TupleType, Type> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  explicit TupleType(llvm::SmallVector<std::unique_ptr<Type>> elems)
+      : elems_(std::move(elems)) {}
+
+  std::string ToString() const final;
+
+  // Note: the AsArgument() and AsResult() methods are unimplemented, because
+  // this type is not meant to be used without expansion at run time.
+
+ private:
+  llvm::SmallVector<std::unique_ptr<Type>> elems_;
+};
+
+//===----------------------------------------------------------------------===//
 // Ranked Tensor type corresponding to the mlir::RankedTensorType.
 //===----------------------------------------------------------------------===//
 
