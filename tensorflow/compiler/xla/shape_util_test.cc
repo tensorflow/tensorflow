@@ -804,6 +804,15 @@ TEST(ShapeUtilTest, DeleteDimensions) {
   EXPECT_EQ(new_shape, ShapeUtil::MakeShapeWithLayout(F32, {5, 2}, {1, 0}));
 }
 
+TEST(ShapeUtilTest, MakeShapeWithDescendingLayoutAndSamePhysicalLayout) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {128, 24, 4, 48, 48},
+                                               {2, 4, 3, 1, 0});
+  Shape new_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
+  EXPECT_EQ(new_shape, ShapeUtil::MakeShapeWithLayout(F32, {128, 24, 48, 48, 4},
+                                                      {4, 3, 2, 1, 0}));
+}
+
 TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
   Shape shape =
       ShapeUtil::MakeShapeWithLayout(F32, {5, 3, 2, 7, 9}, {2, 0, 1, 4, 3});
