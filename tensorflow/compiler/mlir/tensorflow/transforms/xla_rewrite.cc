@@ -24,16 +24,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 #define DEBUG_TYPE "tf-xla-rewrite"
 
 namespace mlir {
-
 namespace {
 
-struct XlaRewritePass : public TFDevice::XlaRewritePassBase<XlaRewritePass> {
+#define GEN_PASS_DEF_XLAREWRITEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
+struct XlaRewritePass : public impl::XlaRewritePassBase<XlaRewritePass> {
   void runOnOperation() override;
 };
 

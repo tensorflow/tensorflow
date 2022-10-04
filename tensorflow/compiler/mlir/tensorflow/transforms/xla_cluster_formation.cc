@@ -17,15 +17,18 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace mlir {
 
 namespace {
+
+#define GEN_PASS_DEF_XLACLUSTERFORMATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 // Outlines partitioned call ops with `_XlaMustCompile` to device clusters.
 struct XlaClusterFormationPass
-    : public TFDevice::XlaClusterFormationPassBase<XlaClusterFormationPass> {
+    : public impl::XlaClusterFormationPassBase<XlaClusterFormationPass> {
   void runOnOperation() override;
 };
 
