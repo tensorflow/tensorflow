@@ -6,8 +6,7 @@ load(
     "if_not_mobile",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_kernel_library")
 
 package(
     default_visibility = ["//tensorflow:internal"],
