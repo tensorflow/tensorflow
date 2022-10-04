@@ -438,10 +438,12 @@ cc_library(
 
 cc_library(
     name = "validator_runner_options",
+    srcs = ["validator_runner_options.cc"],
     hdrs = ["validator_runner_options.h"],
     deps = [
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],

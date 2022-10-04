@@ -694,7 +694,16 @@ message BenchmarkStoragePaths {
   optional string data_directory_path = 2;
 }
 
+// Validation related settings.
+// Next ID: 2
+message ValidationSettings {
+  // Timeout for one settings under test. If test didn't finish within this
+  // timeout, this setting is considered hanging.
+  optional int64 per_test_timeout_ms = 1;
+}
+
 // How to run a minibenchmark.
+// Next ID: 5
 message MinibenchmarkSettings {
   // Which settings to test. This would typically be filled in from an
   // allowlist.
@@ -705,4 +714,6 @@ message MinibenchmarkSettings {
   // Where to store state. This would typically be set dynamically, as it
   // depends on the application folder.
   optional BenchmarkStoragePaths storage_paths = 3;
+  // Validation test related settings.
+  optional ValidationSettings validation_settings = 4;
 }

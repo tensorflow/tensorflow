@@ -64,7 +64,7 @@ MinibenchmarkStatus BlockingValidatorRunner::Init() {
   return validator_runner_impl_->Init();
 }
 
-std::vector<FlatBufferBuilder> BlockingValidatorRunner::TriggerValidation(
+std::vector<const BenchmarkEvent*> BlockingValidatorRunner::TriggerValidation(
     const std::vector<const TFLiteSettings*>& for_settings) {
   if (for_settings.empty()) {
     return {};
@@ -90,30 +90,27 @@ std::vector<FlatBufferBuilder> BlockingValidatorRunner::TriggerValidation(
   int64_t deadline_us = Validator::BootTimeMicros() + total_timeout_ms * 1000;
 
   bool within_timeout = true;
+  int completed = 0;
   // TODO(b/249274787): GetNumCompletedResults() loads the file from disk each
   // time when called. We should find a way to optimize the FlatbufferStorage to
   // reduce the I/O and remove the sleep().
-  while (validator_runner_impl_->GetNumCompletedResults() <
+  while ((completed = validator_runner_impl_->GetNumCompletedResults()) <
              for_settings.size() &&
          (within_timeout = Validator::BootTimeMicros() < deadline_us)) {
     usleep(absl::ToInt64Microseconds(kWaitBetweenRefresh));
   }
+  std::vector<const BenchmarkEvent*> results =
+      validator_runner_impl_->GetSuccessfulResults();
   if (!within_timeout) {
     TFLITE_LOG_PROD(
         TFLITE_LOG_WARNING,
         "Validation timed out after %ld ms. Return before all tests finished.",
         total_timeout_ms);
-  }
-  std::vector<const BenchmarkEvent*> result_temp =
-      validator_runner_impl_->GetSuccessfulResults();
-  std::vector<FlatBufferBuilder> results;
-  results.reserve(result_temp.size());
-  for (auto& result : result_temp) {
-    FlatBufferBuilder fbb;
-    BenchmarkEventT benchmark_event;
-    result->UnPackTo(&benchmark_event);
-    fbb.Finish(CreateBenchmarkEvent(fbb, &benchmark_event));
-    results.emplace_back(std::move(fbb));
+  } else if (completed > results.size()) {
+    TFLITE_LOG_PROD(
+        TFLITE_LOG_WARNING,
+        "Validation completed. %d out of %d tests failed due to error.",
+        completed - results.size(), completed);
   }
   return results;
 }

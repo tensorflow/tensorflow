@@ -43,7 +43,7 @@ class BlockingValidatorRunner {
 
   // Trigger the validation tests with for_settings, and return the successful
   // test result.
-  std::vector<flatbuffers::FlatBufferBuilder> TriggerValidation(
+  std::vector<const BenchmarkEvent*> TriggerValidation(
       const std::vector<const TFLiteSettings*>& for_settings);
 
  private:
