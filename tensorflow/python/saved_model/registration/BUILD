@@ -2,8 +2,6 @@
 # TensorFlow SavedModel Registration.
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
