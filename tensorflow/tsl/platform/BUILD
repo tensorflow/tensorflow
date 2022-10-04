@@ -27,7 +27,7 @@ load(
     "tf_windows_aware_platform_deps",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 

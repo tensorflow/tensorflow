@@ -1,7 +1,7 @@
 # Description:
 # Platform-specific build configurations.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 # TODO(jakeharmon): Determine if this will fail in TSL's github

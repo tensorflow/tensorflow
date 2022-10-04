@@ -6,7 +6,7 @@
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 

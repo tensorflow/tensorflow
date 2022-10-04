@@ -3,7 +3,7 @@
 
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
