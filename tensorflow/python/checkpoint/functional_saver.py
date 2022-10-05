@@ -28,6 +28,7 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.saved_model import registration
+from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import nest
@@ -439,13 +440,31 @@ class MultiDeviceSaver(object):
             for slice_spec, tensor in slice_and_tensor.items():
               restore_fn = self._keys_to_restore_fn[(checkpoint_key,
                                                      slice_spec)]
-              (restore_fn_inputs
-               .setdefault(restore_fn, {})
-               .setdefault(checkpoint_key, {})[slice_spec]) = tensor
+
+              # Processing the returned restored_tensor_dict to prepare for the
+              # Trackable `restore` function. The `restore` function expects a
+              # map of `string name (checkpoint_key) -> Tensor`. Unless there is
+              # a slice_spec, in which case the map will be of
+              # `string name (checkpoint_key)-> slice_spec -> Tensor`.
+              if slice_spec:
+                (restore_fn_inputs.setdefault(restore_fn, {}).setdefault(
+                    checkpoint_key, {})[slice_spec]) = tensor
+              else:
+                restore_fn_inputs.setdefault(restore_fn,
+                                             {})[checkpoint_key] = tensor
               restore_fn_input_count[restore_fn] -= 1
 
               if restore_fn_input_count[restore_fn] == 0:
-                ret = restore_fn(restore_fn_inputs[restore_fn])
+                restored_tensors = {}
+                # Extracts the substring after the "/.ATTRIBUTES/" in the
+                # ckpt_key from restore_fn_inputs[restore_fn] to
+                # restored_tensors. For example, if restore_fn_input[restore_fn]
+                # is dict { "/.ATTIBUTES/a": Tensor}, restored_tensors will be
+                # changed to dict {"a": Tensor}
+                for ckpt_key, tensor in restore_fn_inputs[restore_fn].items():
+                  restored_tensors[trackable_utils.extract_local_name(
+                      ckpt_key)] = tensor
+                ret = restore_fn(restored_tensors)
                 if isinstance(ret, dict):
                   restore_ops.update(ret)
       # Run registered restore methods after the default restore ops.
