@@ -51,8 +51,8 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",  # fixdeps: keep
         "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo_pass",
-        "//tensorflow/compiler/xla/mlir_hlo:gpu_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:shape_simplification",
+        "//tensorflow/compiler/xla/mlir_hlo:transforms_gpu_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineToStandard",
