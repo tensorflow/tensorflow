@@ -85,14 +85,14 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   //
   // So we drop all degenerate dimensions EXCEPT for the one being concatenated.
   Status HandleConcatenate(HloInstruction* hlo) override {
-    auto s = hlo->shape();
-    auto orig_concat_dim = hlo->dimensions(0);
+    const Shape& s = hlo->shape();
+    int64_t orig_concat_dim = hlo->dimensions(0);
 
     std::vector<HloInstruction*> normalized_inputs;
     for (HloInstruction* operand : hlo->mutable_operands()) {
       TF_ASSIGN_OR_RETURN(auto normalized_input, GetNormalizedInput(operand));
-      auto normalized_input_s = normalized_input->shape();
-      auto operand_s = operand->shape();
+      const Shape& normalized_input_s = normalized_input->shape();
+      const Shape& operand_s = operand->shape();
 
       // Drop all degenerate dimensions, unless it is being concatenated.
       auto operand_s_filtered = ShapeUtil::FilterDimensions(
