@@ -15,7 +15,7 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
+    "//tensorflow/tsl/platform:build_config_root.bzl",
     "if_static",
 )
 
