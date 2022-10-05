@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_FRAMEWORK_GRADIENT_CHECKER_H_
 #define TENSORFLOW_CC_FRAMEWORK_GRADIENT_CHECKER_H_
 
+#include <vector>
+
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/framework/tensor.h"
