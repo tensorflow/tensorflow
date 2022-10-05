@@ -28,15 +28,7 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "if_nccl")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_cloud", "if_nccl")
 
 package(
     default_visibility = [":friends"],
