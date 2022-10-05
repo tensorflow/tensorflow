@@ -9,7 +9,7 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>, %shape : tensor<3xin
   // CHECK-DAG: %[[SHAPE_D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
   // CHECK-DAG: %[[SHAPE_D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
   // CHECK-DAG: %[[SHAPE_D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
-  // CHECK-DAG: %[[INIT:.*]] = linalg.init_tensor [%[[SHAPE_D0]], %[[SHAPE_D1]], %[[SHAPE_D2]]] : tensor<?x?x?xf32>
+  // CHECK-DAG: %[[INIT:.*]] = tensor.empty(%[[SHAPE_D0]], %[[SHAPE_D1]], %[[SHAPE_D2]]) : tensor<?x?x?xf32>
   // CHECK-NEXT: %[[BCAST:.*]] = thlo.dynamic_broadcast_in_dim
   // CHECK-SAME: ins(%[[ARG]] : tensor<?x?xf32>)
   // CHECK-SAME: outs(%[[INIT]] : tensor<?x?x?xf32>)
@@ -46,7 +46,7 @@ func.func @dynamic_broadcast_in_dim_with_known_expanding(%arg : tensor<?x?x?xf32
   // CHECK-DAG: %[[SHAPE_D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
   // CHECK-DAG: %[[SHAPE_D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
   // CHECK-DAG: %[[SHAPE_D3:.*]] = tensor.extract %[[SHAPE]][%[[C3]]]
-  // CHECK-DAG: %[[INIT:.*]] = linalg.init_tensor [%[[SHAPE_D0]], %[[SHAPE_D1]], %[[SHAPE_D2]], %[[SHAPE_D3]]] : tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[INIT:.*]] = tensor.empty(%[[SHAPE_D0]], %[[SHAPE_D1]], %[[SHAPE_D2]], %[[SHAPE_D3]]) : tensor<?x?x?x?xf32>
   // CHECK-NEXT: %[[BCAST:.*]] = thlo.dynamic_broadcast_in_dim
   // CHECK-SAME: ins(%[[ARG]] : tensor<?x?x?xf32>)
   // CHECK-SAME: outs(%[[INIT]] : tensor<?x?x?x?xf32>)
@@ -72,7 +72,7 @@ func.func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?x
   // CHECK-DAG:  %[[CONCAT_DIM_C:.*]] = tensor.dim %[[C]], %[[C1]]
   // CHECK-DAG:  %[[CONCAT_DIM_AB:.*]] = arith.addi %[[CONCAT_DIM_A]], %[[CONCAT_DIM_B]]
   // CHECK-DAG:  %[[CONCAT_DIM_ABC:.*]] = arith.addi %[[CONCAT_DIM_AB]], %[[CONCAT_DIM_C]]
-  // CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[CONCAT_DIM_ABC]]]
+  // CHECK-DAG:  %[[INIT:.*]] = tensor.empty(%[[D0]], %[[CONCAT_DIM_ABC]])
   // CHECK:      %[[CONCATENATE:.*]] = thlo.concatenate
   // CHECK-SAME:     ins(%[[A]] : tensor<?x?xi32>, %[[B]] : tensor<?x?xi32>, %[[C]] : tensor<?x?xi32>)
   // CHECK-SAME:     outs(%[[INIT]] : tensor<?x?xi32>)
@@ -89,7 +89,7 @@ func.func @concatenate_with_static_info(%a: tensor<?x32xi32>, %b: tensor<64x16xi
   // CHECK-DAG:  %[[C48:.*]] = arith.constant 48
   // CHECK-DAG:  %[[CONCAT_DIM_C:.*]] = tensor.dim %[[C]], %[[C1]]
   // CHECK-DAG:  %[[CONCAT_DIM_SUM:.*]] = arith.addi %[[CONCAT_DIM_C]], %[[C48]]
-  // CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [64, %[[CONCAT_DIM_SUM]]]
+  // CHECK-DAG:  %[[INIT:.*]] = tensor.empty(%[[CONCAT_DIM_SUM]])
   // CHECK:      %[[CONCAT:.*]] = thlo.concatenate
   // CHECK-SAME:     ins(%[[A]] : tensor<?x32xi32>, %[[B]] : tensor<64x16xi32>, %[[C]] : tensor<?x?xi32>)
   // CHECK-SAME:     outs(%[[INIT]] : tensor<64x?xi32>)
@@ -115,7 +115,7 @@ func.func @simple_gather(%operand : tensor<3x3xf32>,
 }
 
 // CHECK-LABEL: @simple_gather
-//       CHECK: %[[INIT:.*]] = linalg.init_tensor [3] : tensor<3xf32>
+//       CHECK: %[[INIT:.*]] = tensor.empty() : tensor<3xf32>
 //       CHECK: %[[GATHER:.*]] = thlo.gather
 //  CHECK-SAME:   ins(%arg0 : tensor<3x3xf32>, %arg1 : tensor<3x2xi64>)
 //  CHECK-SAME:   outs(%[[INIT]] : tensor<3xf32>)
@@ -137,7 +137,7 @@ func.func @simple_gather_unsigned(
 }
 // CHECK-LABEL: @simple_gather_unsigned
 //       CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<3x3xui32> to tensor<3x3xi32>
-//       CHECK: %[[INIT:.*]] = linalg.init_tensor [3] : tensor<3xi32>
+//       CHECK: %[[INIT:.*]] = tensor.empty() : tensor<3xi32>
 //       CHECK: %[[GATHER:.*]] = thlo.gather
 //  CHECK-SAME:   ins(%[[CAST]] : tensor<3x3xi32>, %arg1 : tensor<3x2xi64>)
 //  CHECK-SAME:   outs(%[[INIT]] : tensor<3xi32>)
@@ -209,7 +209,7 @@ func.func @reduce_add(
   func.return %0 : tensor<5xf32>
 }
 // CHECK: %[[EXTRACT:.*]] = tensor.extract %arg1[] : tensor<f32>
-// CHECK: %[[INIT:.*]] = linalg.init_tensor [5] : tensor<5xf32>
+// CHECK: %[[INIT:.*]] = tensor.empty() : tensor<5xf32>
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%[[EXTRACT]] : f32) outs(%[[INIT]] : tensor<5xf32>) -> tensor<5xf32>
 // CHECK: %[[REDUCTION:.*]] = thlo.reduction ins(%arg0 : tensor<5x4xf32>) outs(%[[FILL]] : tensor<5xf32>)
 // CHECK-SAME: dimensions = [1] (%[[ARG2:.*]]: f32, %[[ARG3:.*]]: f32) {
@@ -241,7 +241,7 @@ func.func @variadic_reduce_add(
 // CHECK: %[[FILL_F32:.*]] = linalg.fill ins(%{{.*}} : f32) outs(%{{.*}} : tensor<5xf32>) -> tensor<5xf32>
 // CHECK: %[[C0:.*]] = arith.constant 0 : index
 // CHECK: %[[DIM_0:.*]] = tensor.dim %{{.*}}, %[[C0]] : tensor<?x?xi32>
-// CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[DIM_0]]] : tensor<?xi32>
+// CHECK: %[[INIT:.*]] = tensor.empty(%[[DIM_0]]) : tensor<?xi32>
 // CHECK: %[[FILL_I32:.*]] = linalg.fill ins(%{{.*}} : i32) outs(%[[INIT]] : tensor<?xi32>) -> tensor<?xi32>
 // CHECK: %[[REDUCTION:.*]]:2 = thlo.reduction ins(%arg0 : tensor<5x4xf32>, %arg1 : tensor<?x?xi32>) outs(%[[FILL_F32]] : tensor<5xf32>, %[[FILL_I32]] : tensor<?xi32>)
 // CHECK: thlo.yield %{{.*}}, %{{.*}} : f32, i32
@@ -252,7 +252,7 @@ func.func @variadic_reduce_add(
 // CHECK-LABEL: func @float_add
 func.func @float_add(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  // CHECK:  %[[INIT:.*]] = linalg.init_tensor
+  // CHECK:  %[[INIT:.*]] = tensor.empty
   // CHECK: thlo.map
   // CHECK-SAME: ins(%[[ARG0:[a-zA-Z0-9]*]] : tensor<2x2xf32>
   // CHECK-SAME: %[[ARG1:[a-zA-Z0-9]*]] : tensor<2x2xf32>)
@@ -700,7 +700,7 @@ func.func @float_cmp(%lhs: tensor<2x2xf32>,
           : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
   func.return %0 : tensor<2x2xi1>
 }
-// CHECK: linalg.init_tensor [2, 2] : tensor<2x2xi1>
+// CHECK: tensor.empty() : tensor<2x2xi1>
 // CHECK: thlo.map
 // CHECK-SAME: ins({{[^)]*}}) outs(%{{[^)]*}})
 // CHECK-SAME: (%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32) {
@@ -716,7 +716,7 @@ func.func @float_cmp_ne(%lhs: tensor<2x2xf32>,
           : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
   func.return %0 : tensor<2x2xi1>
 }
-// CHECK: linalg.init_tensor [2, 2] : tensor<2x2xi1>
+// CHECK: tensor.empty() : tensor<2x2xi1>
 // CHECK: thlo.map
 // CHECK-SAME: ins({{[^)]*}}) outs(%{{[^)]*}})
 // CHECK-SAME: (%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32) {
@@ -732,7 +732,7 @@ func.func @int_cmp(%lhs: tensor<2x2xi32>,
           : (tensor<2x2xi32>, tensor<2x2xi32>) -> (tensor<2x2xi1>)
   func.return %0 : tensor<2x2xi1>
 }
-// CHECK: linalg.init_tensor [2, 2] : tensor<2x2xi1>
+// CHECK: tensor.empty() : tensor<2x2xi1>
 // CHECK: thlo.map
 // CHECK-SAME: ins({{[^)]*}}) outs(%{{[^)]*}})
 // CHECK-SAME: (%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32) {
@@ -748,7 +748,7 @@ func.func @complex_cmp_eq(%lhs: tensor<2xcomplex<f32>>,
           : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> (tensor<2xi1>)
   func.return %0 : tensor<2xi1>
 }
-// CHECK: linalg.init_tensor [2] : tensor<2xi1>
+// CHECK: tensor.empty() : tensor<2xi1>
 // CHECK: thlo.map
 // CHECK-SAME: ins({{[^)]*}}) outs(%{{[^)]*}})
 // CHECK-SAME: (%[[LHS_IN:.*]]: complex<f32>, %[[RHS_IN:.*]]: complex<f32>) {
@@ -764,7 +764,7 @@ func.func @complex_cmp_neq(%lhs: tensor<2xcomplex<f64>>,
           : (tensor<2xcomplex<f64>>, tensor<2xcomplex<f64>>) -> (tensor<2xi1>)
   func.return %0 : tensor<2xi1>
 }
-// CHECK: linalg.init_tensor [2] : tensor<2xi1>
+// CHECK: tensor.empty() : tensor<2xi1>
 // CHECK: thlo.map
 // CHECK-SAME: ins({{[^)]*}}) outs(%{{[^)]*}})
 // CHECK-SAME: (%[[LHS_IN:.*]]: complex<f64>, %[[RHS_IN:.*]]: complex<f64>) {
@@ -866,7 +866,7 @@ func.func @transpose(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
 }
 
 // CHECK-LABEL: @transpose
-// CHECK:       %[[INIT:.*]] = linalg.init_tensor [2, 1, 4, 3]
+// CHECK:       %[[INIT:.*]] = tensor.empty()
 // CHECK-SAME:      : tensor<2x1x4x3xi32>
 // CHECK:       %[[TRANSPOSE:.*]] = thlo.transpose
 // CHECK-SAME:      ins(%arg0 : tensor<1x2x3x4xi32>)
@@ -884,7 +884,7 @@ func.func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
          -> (tensor<2x2xf32>)
   func.return %0 : tensor<2x2xf32>
 }
-// CHECK: linalg.init_tensor [2, 2] : tensor<2x2xf32>
+// CHECK: tensor.empty() : tensor<2x2xf32>
 // CHECK: thlo.map
 // CHECK-SAME: (%[[PRED_IN:[a-zA-Z0-9]*]]: i1, %[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32) {
 // CHECK-NEXT:   %[[RESULT:.*]] = arith.select %[[PRED_IN]], %[[LHS_IN]], %[[RHS_IN]] : f32
@@ -904,7 +904,7 @@ func.func @select_scalar_pred_dyn(%pred : tensor<i1>, %lhs: tensor<2x?xf32>,
 // CHECK-DAG:  %[[SHAPE:.*]] = shape.shape_of %[[LHS]]
 // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
 // CHECK-DAG:  %[[DIM:.*]] = tensor.extract %[[SHAPE]][%[[C1]]] : tensor<2xindex>
-// CHECK-DAG:  %[[DST:.*]] = linalg.init_tensor [2, %[[DIM]]]
+// CHECK-DAG:  %[[DST:.*]] = tensor.empty(%[[DIM]])
 // CHECK:      thlo.map
 // CHECK-SAME: (%[[LHS_IN:[a-zA-Z0-9]*]]: f32, %[[RHS_IN:.*]]: f32) {
 // CHECK-NEXT:   %[[RES:.*]] = arith.select %[[PRED_]], %[[LHS_IN]], %[[RHS_IN]] : f32

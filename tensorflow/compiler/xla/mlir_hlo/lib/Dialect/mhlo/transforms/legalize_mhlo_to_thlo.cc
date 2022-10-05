@@ -69,7 +69,7 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
     const ArrayRef<int64_t> resultShape = resultTy.getShape();
     const int64_t rank = resultTy.getRank();
 
-    // Determine init tensor size.
+    // Determine empty tensor size.
     SmallVector<int64_t> staticInitSizes(resultShape.begin(),
                                          resultShape.end());
     SmallVector<Value> dynamicInitSizes;
@@ -115,11 +115,11 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
       dynamicInitSizes.push_back(dynamicSum);
     }
 
-    // Create init tensor and the new concat op.
-    auto init = rewriter.create<linalg::InitTensorOp>(
-        loc, dynamicInitSizes, staticInitSizes, resultTy.getElementType());
+    // Create empty tensor and the new concat op.
+    auto emptyTensor = rewriter.create<tensor::EmptyOp>(
+        loc, staticInitSizes, resultTy.getElementType(), dynamicInitSizes);
     rewriter.replaceOpWithNewOp<thlo::ConcatenateOp>(
-        op, resultTy, adaptor.getVal(), init, concatDim);
+        op, resultTy, adaptor.getVal(), emptyTensor, concatDim);
     return success();
   }
 };
@@ -148,7 +148,7 @@ struct DynamicBroadcastInDimOpPattern
     }
     if (operandTy.getRank() == countKnownExpansionBehavior) return failure();
 
-    // Create init tensor as none of the operands are reusable/updatable.
+    // Create empty tensor as none of the operands are reusable/updatable.
     SmallVector<Value> dynamicDims;
     SmallVector<int64_t> staticShapeInfo;
     for (int i = 0; i < resultTy.getRank(); i++) {
@@ -157,8 +157,8 @@ struct DynamicBroadcastInDimOpPattern
           ValueRange{rewriter.create<arith::ConstantIndexOp>(loc, i)}));
       staticShapeInfo.push_back(ShapedType::kDynamicSize);
     }
-    auto initTensor = rewriter.create<linalg::InitTensorOp>(
-        loc, dynamicDims, staticShapeInfo, resultTy.getElementType());
+    auto emptyTensor = rewriter.create<tensor::EmptyOp>(
+        loc, staticShapeInfo, resultTy.getElementType(), dynamicDims);
 
     auto broadcastDims = rewriter.getDenseI64ArrayAttr(
         llvm::to_vector(op.getBroadcastDimensions().getValues<int64_t>()));
@@ -175,7 +175,7 @@ struct DynamicBroadcastInDimOpPattern
     }
 
     rewriter.replaceOpWithNewOp<thlo::DynamicBroadcastInDimOp>(
-        op, resultTy, adaptor.getOperand(), initTensor, broadcastDims,
+        op, resultTy, adaptor.getOperand(), emptyTensor, broadcastDims,
         knownExpandingDims, knownNonexpandingDims);
     return success();
   }
@@ -223,17 +223,16 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
     if (resultType.getNumDynamicDims() > 0) return failure();
 
     auto loc = op.getLoc();
-    auto initTensor = rewriter.create<linalg::InitTensorOp>(
-        loc, mlir::ValueRange{}, resultType.getShape(),
-        resultType.getElementType());
+    auto emptyTensor = rewriter.create<tensor::EmptyOp>(
+        loc, resultType.getShape(), resultType.getElementType());
     rewriter.replaceOpWithNewOp<thlo::GatherOp>(
         op, resultType, adaptor.getOperand(), adaptor.getStartIndices(),
-        initTensor);
+        emptyTensor);
     return success();
   }
 };
 
-static SmallVector<Value, 8> getReduceOpInitTensorDynSizes(
+static SmallVector<Value, 8> getReduceOpEmptyTensorDynSizes(
     OpBuilder& b, Location loc, Value operand, int64_t srcRank,
     RankedTensorType resultType, ArrayRef<int64_t> reductionDims) {
   SmallVector<Value, 8> dynShape;
@@ -287,13 +286,13 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
       initValue = rewriter.createOrFold<tensor::ExtractOp>(loc, initValue);
       auto tensorResultType = resultType.cast<RankedTensorType>();
 
-      SmallVector<Value, 8> dynShape = getReduceOpInitTensorDynSizes(
+      SmallVector<Value, 8> dynShape = getReduceOpEmptyTensorDynSizes(
           rewriter, loc, operand, srcRank, tensorResultType, reductionDims);
-      Value initTensor = rewriter.create<linalg::InitTensorOp>(
-          loc, dynShape, tensorResultType.getShape(),
-          tensorResultType.getElementType());
+      Value emptyTensor = rewriter.create<tensor::EmptyOp>(
+          loc, tensorResultType.getShape(), tensorResultType.getElementType(),
+          dynShape);
       Value filledTensor =
-          rewriter.create<linalg::FillOp>(loc, initValue, initTensor).result();
+          rewriter.create<linalg::FillOp>(loc, initValue, emptyTensor).result();
       outputs.push_back(filledTensor);
     }
 
@@ -408,14 +407,14 @@ struct TransposePattern : public OpConversionPattern<mhlo::TransposeOp> {
     auto resultTy = typeConverter->convertType(op.getType()).cast<ShapedType>();
 
     auto loc = op.getLoc();
-    Value initTensor =
-        getInitTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
+    Value emptyTensor =
+        getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
 
     auto permutation = rewriter.getDenseI64ArrayAttr(
         llvm::to_vector(op.permutation().getValues<int64_t>()));
 
     rewriter.replaceOpWithNewOp<thlo::TransposeOp>(
-        op, op.getType(), op.operand(), initTensor, permutation);
+        op, op.getType(), op.operand(), emptyTensor, permutation);
 
     return success();
   }
@@ -432,11 +431,11 @@ struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
            "Expected a pointwise map");
 
     Location loc = op.getLoc();
-    Value initTensor =
-        getInitTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
+    Value emptyTensor =
+        getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
 
-    auto thloMap = rewriter.create<thlo::MapOp>(loc, resultTy,
-                                                adaptor.operands(), initTensor);
+    auto thloMap = rewriter.create<thlo::MapOp>(
+        loc, resultTy, adaptor.operands(), emptyTensor);
     Region& region = thloMap.getMapper();
     rewriter.inlineRegionBefore(op.computation(), region, region.end());
 
@@ -480,11 +479,11 @@ struct SelectPattern : public OpConversionPattern<mhlo::SelectOp> {
       mappedInputs = mappedInputs.drop_front();
     }
 
-    auto initTensor =
-        getInitTensorFor(rewriter, loc, resultTy, op, op.getOperands());
+    auto emptyTensor =
+        getEmptyTensorFor(rewriter, loc, resultTy, op, op.getOperands());
 
     auto thloMap =
-        rewriter.create<thlo::MapOp>(loc, resultTy, mappedInputs, initTensor);
+        rewriter.create<thlo::MapOp>(loc, resultTy, mappedInputs, emptyTensor);
 
     {
       OpBuilder::InsertionGuard guard(rewriter);
@@ -505,7 +504,7 @@ struct SelectPattern : public OpConversionPattern<mhlo::SelectOp> {
       // If predicate is shaped, the block has three arguments (pred, on_true,
       // on_false).
       Value innerResult = rewriter.create<arith::SelectOp>(
-          loc, getElementTypeOrSelf(initTensor),
+          loc, getElementTypeOrSelf(emptyTensor),
           isScalarPred ? ValueRange{predValue, block->getArgument(0),
                                     block->getArgument(1)}
                        : block->getArguments());
@@ -574,11 +573,11 @@ class PointwiseToTHLOConverter : public OpConversionPattern<OpTy> {
 
     // Find input/output values and types.
     ValueRange inputs = adaptor.getOperands();
-    Value initTensor =
-        getInitTensorFor(rewriter, loc, *resultTy, op, adaptor.getOperands());
+    Value emptyTensor =
+        getEmptyTensorFor(rewriter, loc, *resultTy, op, adaptor.getOperands());
 
     auto mapOp = rewriter.create<thlo::MapOp>(loc, op->getResultTypes().front(),
-                                              inputs, initTensor);
+                                              inputs, emptyTensor);
 
     {
       OpBuilder::InsertionGuard guard(rewriter);
@@ -593,9 +592,9 @@ class PointwiseToTHLOConverter : public OpConversionPattern<OpTy> {
       Block* block = rewriter.createBlock(&region, region.end(), blockArgTypes,
                                           blockArgLocs);
 
-      Value innerResult =
-          mhlo::MhloOpToStdScalarOp::mapOp(op, getElementTypeOrSelf(initTensor),
-                                           block->getArguments(), &rewriter);
+      Value innerResult = mhlo::MhloOpToStdScalarOp::mapOp(
+          op, getElementTypeOrSelf(emptyTensor), block->getArguments(),
+          &rewriter);
       rewriter.create<thlo::YieldOp>(loc, innerResult);
     }
 

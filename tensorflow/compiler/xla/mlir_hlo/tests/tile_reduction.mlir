@@ -7,12 +7,12 @@
 func.func @tile_reduction(%arg0 : tensor<1x?xf32>) -> tensor<1xf32> {
 
   %zero = arith.constant 0.0 : f32
-  %result0 = linalg.init_tensor[1] : tensor<1xf32>
+  %result0 = tensor.empty() : tensor<1xf32>
   // CHECK: %[[RESULT1:.*]] = linalg.fill
   %result1 = linalg.fill ins(%zero : f32) outs(%result0 : tensor<1xf32>) -> tensor<1xf32>
 
   // CHECK:      %[[RDIM:.*]] = tensor.dim %arg0, %c1 : tensor<1x?xf32>
-  // CHECK:      %[[PARTIAL:.*]] = linalg.init_tensor [32] : tensor<32xf32>
+  // CHECK:      %[[PARTIAL:.*]] = tensor.empty() : tensor<32xf32>
   // CHECK:      gml_st.parallel (%[[LANE:.*]]) = (%c0) to (%c32) step (%c1) distribution ("warp")
   // CHECK:        gml_st.set_yield %[[RESULT1]] into %[[PARTIAL]]
   // CHECK:      gml_st.parallel (%[[LANE:.*]]) = (%c0) to (%c32) step (%c1) distribution ("warp")

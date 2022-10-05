@@ -91,8 +91,8 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
   auto warpDist = rewriter.getStringAttr("warp");
 
   // Create warp-sized partial reduction result tensor.
-  Value partial = rewriter.create<linalg::InitTensorOp>(
-      loc, kWarpSize, outType.getElementType());
+  Value partial = rewriter.create<tensor::EmptyOp>(loc, kWarpSize,
+                                                   outType.getElementType());
   Value outPoint = rewriter.create<gml_st::SpaceOp>(loc, oneAttr);
   Value partSpace = rewriter.create<gml_st::SpaceOp>(
       loc, OpFoldResult(rewriter.getIndexAttr(kWarpSize)));

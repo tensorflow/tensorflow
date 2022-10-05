@@ -84,13 +84,13 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
       return success();
     }
 
-    // Case InitTensorOp.
-    if (auto initTensorOp = llvm::dyn_cast<linalg::InitTensorOp>(def)) {
+    // Case EmptyOp.
+    if (auto emptyTensorOp = llvm::dyn_cast<tensor::EmptyOp>(def)) {
       if (auto indexConstantOp = llvm::dyn_cast_or_null<arith::ConstantOp>(
               op.getIndex().getDefiningOp())) {
         int64_t idx =
             indexConstantOp.getValue().dyn_cast<IntegerAttr>().getInt();
-        OpFoldResult dim = initTensorOp.getMixedSizes()[idx];
+        OpFoldResult dim = emptyTensorOp.getMixedSizes()[idx];
         Value dimValue;
         if (dim.is<Value>()) {
           dimValue = dim.get<Value>();

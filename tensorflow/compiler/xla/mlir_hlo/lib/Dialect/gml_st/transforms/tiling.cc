@@ -129,14 +129,14 @@ Value createNestedPloopTilingRecursively(
 
 Value createNestedPloopTiling(OpBuilder &b, Location loc, Value source,
                               ArrayRef<SmallVector<int64_t>> &nestedTileSizes) {
-  // Create init tensor.
+  // Create empty tensor.
   auto sourceTy = source.getType().cast<RankedTensorType>();
   SmallVector<Value> sourceDynamicDims =
       tensor::createDynamicDimValues(b, loc, source);
-  auto init = b.create<linalg::InitTensorOp>(
-      loc, sourceDynamicDims, sourceTy.getShape(), sourceTy.getElementType());
+  auto emptyTensor = b.create<tensor::EmptyOp>(
+      loc, sourceTy.getShape(), sourceTy.getElementType(), sourceDynamicDims);
 
-  return createNestedPloopTilingRecursively(b, loc, init, source,
+  return createNestedPloopTilingRecursively(b, loc, emptyTensor, source,
                                             nestedTileSizes);
 }
 

@@ -58,9 +58,9 @@ using mlir::arith::ConstantIndexOp;
 using mlir::gml_st::LoopOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
-using mlir::linalg::InitTensorOp;
 using mlir::linalg::LinalgOp;
 using mlir::linalg::LinalgTilingOptions;
+using mlir::tensor::EmptyOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::tensor::ExtractSliceOp;
 
@@ -176,17 +176,17 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     Value input_size = rewriter.create<mlir::tensor::DimOp>(loc, input, 0);
 
     auto fill_op = linalg_op.getOutputs().front().getDefiningOp<FillOp>();
-    auto init_op = fill_op.output().getDefiningOp<InitTensorOp>();
+    auto empty_op = fill_op.output().getDefiningOp<mlir::tensor::EmptyOp>();
 
     auto neutral_value = fill_op.value();
-    auto element_type = init_op.getType().getElementType();
+    auto element_type = empty_op.getType().getElementType();
 
     Value zero = rewriter.create<ConstantIndexOp>(loc, 0);
     Value tile_size_value = rewriter.create<ConstantIndexOp>(loc, tile_size);
-    Value new_init = rewriter.create<InitTensorOp>(loc, ValueRange{},
-                                                   vector_size, element_type);
+    Value new_empty =
+        rewriter.create<mlir::tensor::EmptyOp>(loc, vector_size, element_type);
     Value new_fill =
-        rewriter.create<FillOp>(loc, fill_op.value(), new_init).result();
+        rewriter.create<FillOp>(loc, fill_op.value(), new_empty).result();
 
     llvm::Optional<Value> tilable_bound_or =
         getTilableBound(rewriter, loc, zero, input_size, tile_size_value);

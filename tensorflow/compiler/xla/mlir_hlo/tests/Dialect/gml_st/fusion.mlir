@@ -14,7 +14,7 @@ func.func @dynamic_broadcast_in_dim_at_tile(%arg : tensor<?x?xf32>,
   // CHECK:      %[[EXTRACT:.*]] = tensor.extract %[[ARG1]][%[[C0]]]
   // CHECK:      %[[EXTRACT_0:.*]] = tensor.extract %[[ARG1]][%[[C1]]]
   // CHECK:      %[[EXTRACT_1:.*]] = tensor.extract %[[ARG1]][%[[C2]]]
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[EXTRACT]], %[[EXTRACT_0]], %[[EXTRACT_1]]]
+  // CHECK:      %[[INIT:.*]] = tensor.empty(%[[EXTRACT]], %[[EXTRACT_0]], %[[EXTRACT_1]])
   // CHECK:      %[[OFFSET:.*]] = gml_st.offset %[[ARG2]][%[[C0]]]
   // CHECK:      %[[SIZE:.*]] = gml_st.size %[[ARG2]][%[[C0]]]
   // CHECK:      %[[OFFSET_0:.*]] = gml_st.offset %[[ARG2]][%[[C1]]]
@@ -58,7 +58,7 @@ func.func @dynamic_broadcast_in_dim_at_tile(%arg : tensor<?x?xf32>,
   %d0 = tensor.extract %shape[%c0] : tensor<3xindex>
   %d1 = tensor.extract %shape[%c1] : tensor<3xindex>
   %d2 = tensor.extract %shape[%c2] : tensor<3xindex>
-  %dst = linalg.init_tensor [%d0, %d1, %d2] : tensor<?x?x?xf32>
+  %dst = tensor.empty(%d0, %d1, %d2) : tensor<?x?x?xf32>
   %bcast = thlo.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
       outs(%dst: tensor<?x?x?xf32>)
       broadcast_dimensions = [0, 2]
@@ -81,7 +81,7 @@ func.func @dynamic_broadcast_in_dim_at_point(%arg : tensor<?x?xf32>,
   // CHECK:      %[[EXTRACT:.*]] = tensor.extract %[[ARG1]][%[[C0]]]
   // CHECK:      %[[EXTRACT_0:.*]] = tensor.extract %[[ARG1]][%[[C1]]]
   // CHECK:      %[[EXTRACT_1:.*]] = tensor.extract %[[ARG1]][%[[C2]]]
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[EXTRACT]], %[[EXTRACT_0]], %[[EXTRACT_1]]]
+  // CHECK:      %[[INIT:.*]] = tensor.empty(%[[EXTRACT]], %[[EXTRACT_0]], %[[EXTRACT_1]])
   // CHECK:      %[[OFFSET:.*]] = gml_st.offset %[[ARG2]][%[[C0]]]
   // CHECK:      %[[SIZE:.*]] = gml_st.size %[[ARG2]][%[[C0]]]
   // CHECK:      %[[OFFSET_0:.*]] = gml_st.offset %[[ARG2]][%[[C1]]]
@@ -125,7 +125,7 @@ func.func @dynamic_broadcast_in_dim_at_point(%arg : tensor<?x?xf32>,
   %d0 = tensor.extract %shape[%c0] : tensor<3xindex>
   %d1 = tensor.extract %shape[%c1] : tensor<3xindex>
   %d2 = tensor.extract %shape[%c2] : tensor<3xindex>
-  %dst = linalg.init_tensor [%d0, %d1, %d2] : tensor<?x?x?xf32>
+  %dst = tensor.empty(%d0, %d1, %d2) : tensor<?x?x?xf32>
   %bcast = thlo.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
       outs(%dst: tensor<?x?x?xf32>)
       broadcast_dimensions = [0, 2]
@@ -222,7 +222,7 @@ func.func @concatenate_at_point(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>,
   // CHECK:      %[[DIM_2:.*]] = tensor.dim %[[ARG2]], %[[C1]]
   // CHECK:      %[[ADDI:.*]] = arith.addi %[[DIM_0]], %[[DIM_1]]
   // CHECK:      %[[ADDI_0:.*]] = arith.addi %[[ADDI]], %[[DIM_2]]
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[DIM]], %[[ADDI_0]]]
+  // CHECK:      %[[INIT:.*]] = tensor.empty(%[[DIM]], %[[ADDI_0]])
   // CHECK:      %[[OFFSET:.*]] = gml_st.offset %[[ARG3]][%[[C0]]]
   // CHECK:      %[[SIZE:.*]] = gml_st.size %[[ARG3]][%[[C0]]]
   // CHECK:      %[[OFFSET_0:.*]] = gml_st.offset %[[ARG3]][%[[C1]]]
@@ -280,7 +280,7 @@ func.func @concatenate_at_point(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>,
   %concat_dim_c = tensor.dim %c, %c1 : tensor<?x?xi32>
   %concat_dim_ab = arith.addi %concat_dim_a, %concat_dim_b : index
   %concat_dim_abc = arith.addi %concat_dim_ab, %concat_dim_c : index
-  %init = linalg.init_tensor [%dim_0, %concat_dim_abc] : tensor<?x?xi32>
+  %init = tensor.empty(%dim_0, %concat_dim_abc) : tensor<?x?xi32>
   %concat = thlo.concatenate
       ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
       outs(%init : tensor<?x?xi32>) {
@@ -301,7 +301,7 @@ func.func @add(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
     %tile: !gml_st.tile<?x?>) -> tensor<?x?xf32> {
   // CHECK:      %[[C0:.*]] = arith.constant 0
   // CHECK:      %[[C1:.*]] = arith.constant 1
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [32, 32]
+  // CHECK:      %[[INIT:.*]] = tensor.empty()
   // CHECK:      %[[OFFSET:.*]] = gml_st.offset %[[ARG2]][%[[C0]]]
   // CHECK:      %[[SIZE:.*]] = gml_st.size %[[ARG2]][%[[C0]]]
   // CHECK:      %[[OFFSET_0:.*]] = gml_st.offset %[[ARG2]][%[[C1]]]
@@ -322,7 +322,7 @@ func.func @add(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
   // CHECK:        %[[ADDF:.*]] = arith.addf %[[ARG3]], %[[ARG4]]
   // CHECK:        linalg.yield %[[ADDF]]
   // CHECK:      return {op_label = "consumer"} %[[GENERIC]]
-  %init = linalg.init_tensor [32, 32] : tensor<32x32xf32>
+  %init = tensor.empty() : tensor<32x32xf32>
   %linalg = linalg.generic {
       indexing_maps = [#id_map, #id_map, #id_map],
       iterator_types = ["parallel", "parallel"],
@@ -348,7 +348,7 @@ func.func @add_point(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
     %point: !gml_st.tile<1x1>) -> tensor<1x1xf32> {
   // CHECK:      %[[C0:.*]] = arith.constant 0
   // CHECK:      %[[C1:.*]] = arith.constant 1
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [32, 32]
+  // CHECK:      %[[INIT:.*]] = tensor.empty()
   // CHECK:      %[[OFFSET:.*]] = gml_st.offset %[[ARG2]][%[[C0]]]
   // CHECK:      %[[SIZE:.*]] = gml_st.size %[[ARG2]][%[[C0]]]
   // CHECK:      %[[OFFSET_0:.*]] = gml_st.offset %[[ARG2]][%[[C1]]]
@@ -372,7 +372,7 @@ func.func @add_point(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
   // CHECK:        %[[ADDF:.*]] = arith.addf %[[ARG3]], %[[ARG4]]
   // CHECK:        linalg.yield %[[ADDF]]
   // CHECK:      return {op_label = "consumer"} %[[GENERIC]]
-  %init = linalg.init_tensor [32, 32] : tensor<32x32xf32>
+  %init = tensor.empty() : tensor<32x32xf32>
   %linalg = linalg.generic {
       indexing_maps = [#id_map, #id_map, #id_map],
       iterator_types = ["parallel", "parallel"],
@@ -398,7 +398,7 @@ func.func @add_two_users(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
     %tile: !gml_st.tile<?x?>, %d0: index, %d1: index) -> tensor<?x?xf32> {
   // CHECK:      %[[C0:.*]] = arith.constant 0
   // CHECK:      %[[C1:.*]] = arith.constant 1
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [32, 32]
+  // CHECK:      %[[INIT:.*]] = tensor.empty()
   // CHECK:      %[[OFFSET:.*]] = gml_st.offset %[[ARG2]][%[[C0]]]
   // CHECK:      %[[SIZE:.*]] = gml_st.size %[[ARG2]][%[[C0]]]
   // CHECK:      %[[OFFSET_0:.*]] = gml_st.offset %[[ARG2]][%[[C1]]]
@@ -425,7 +425,7 @@ func.func @add_two_users(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
   // CHECK:      ^bb0(%[[ARG5_0:.*]]: f32, %[[ARG6_0:.*]]: f32, %[[ARG7_0:.*]]: f32):
   // CHECK:        %[[ADDF_0:.*]] = arith.addf %[[ARG5_0]], %[[ARG6_0]]
   // CHECK:        linalg.yield %[[ADDF_0]]
-  // CHECK:      %[[INIT_0:.*]] = linalg.init_tensor [%[[ARG3]], %[[ARG4]]]
+  // CHECK:      %[[INIT_0:.*]] = tensor.empty(%[[ARG3]], %[[ARG4]])
   // CHECK:      %[[GENERIC_1:.*]] = linalg.generic
   // CHECK-SAME:     iterator_types = ["parallel", "parallel"]
   // CHECK-SAME:     ins(%[[GENERIC]], %[[GENERIC_0]] : tensor<?x?xf32>, tensor<?x?xf32>)
@@ -434,7 +434,7 @@ func.func @add_two_users(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
   // CHECK:        %[[ADDF_1:.*]] = arith.addf %[[ARG5_1]], %[[ARG6_1]]
   // CHECK:        linalg.yield %[[ADDF_1]]
   // CHECK:      return %[[GENERIC_1]]
-  %init0 = linalg.init_tensor [32, 32] : tensor<32x32xf32>
+  %init0 = tensor.empty() : tensor<32x32xf32>
   %linalg0 = linalg.generic {
       indexing_maps = [#id_map, #id_map, #id_map],
       iterator_types = ["parallel", "parallel"],
@@ -449,7 +449,7 @@ func.func @add_two_users(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
       : tensor<32x32xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
   %user1 = gml_st.materialize %linalg0[%tile]
       : tensor<32x32xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
-  %init1 = linalg.init_tensor [%d0, %d1] : tensor<?x?xf32>
+  %init1 = tensor.empty(%d0, %d1) : tensor<?x?xf32>
   %linalg1 = linalg.generic {
       indexing_maps = [#id_map, #id_map, #id_map],
       iterator_types = ["parallel", "parallel"],
@@ -473,7 +473,7 @@ func.func @cos(%arg: tensor<32x32xf32>, %tile: !gml_st.tile<?x?>)
     -> tensor<?x?xf32> {
   // CHECK:      %[[C0:.*]] = arith.constant 0
   // CHECK:      %[[C1:.*]] = arith.constant 1
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [32, 32]
+  // CHECK:      %[[INIT:.*]] = tensor.empty()
   // CHECK:      %[[OFFSET:.*]] = gml_st.offset %[[ARG1]][%[[C0]]]
   // CHECK:      %[[SIZE:.*]] = gml_st.size %[[ARG1]][%[[C0]]]
   // CHECK:      %[[OFFSET_0:.*]] = gml_st.offset %[[ARG1]][%[[C1]]]
@@ -493,7 +493,7 @@ func.func @cos(%arg: tensor<32x32xf32>, %tile: !gml_st.tile<?x?>)
   // CHECK:        %[[COS:.*]] = math.cos %[[ARG2]]
   // CHECK:        linalg.yield %[[COS]]
   // CHECK:      return {op_label = "consumer"} %[[GENERIC]]
-  %init = linalg.init_tensor [32, 32] : tensor<32x32xf32>
+  %init = tensor.empty() : tensor<32x32xf32>
   %linalg = linalg.generic {
       indexing_maps = [#id_map, #id_map],
       iterator_types = ["parallel", "parallel"],
@@ -519,7 +519,7 @@ func.func @cos_point(%arg: tensor<32x32xf32>, %point: !gml_st.tile<1x1>)
     -> tensor<1x1xf32> {
   // CHECK:      %[[C0:.*]] = arith.constant 0
   // CHECK:      %[[C1:.*]] = arith.constant 1
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [32, 32]
+  // CHECK:      %[[INIT:.*]] = tensor.empty()
   // CHECK:      %[[OFFSET:.*]] = gml_st.offset %[[ARG1]][%[[C0]]]
   // CHECK:      %[[SIZE:.*]] = gml_st.size %[[ARG1]][%[[C0]]]
   // CHECK:      %[[OFFSET_0:.*]] = gml_st.offset %[[ARG1]][%[[C1]]]
@@ -541,7 +541,7 @@ func.func @cos_point(%arg: tensor<32x32xf32>, %point: !gml_st.tile<1x1>)
   // CHECK:        %[[COS:.*]] = math.cos %[[ARG2]]
   // CHECK:        linalg.yield %[[COS]]
   // CHECK:      return {op_label = "consumer"} %[[GENERIC]]
-  %init = linalg.init_tensor [32, 32] : tensor<32x32xf32>
+  %init = tensor.empty() : tensor<32x32xf32>
   %linalg = linalg.generic {
       indexing_maps = [#id_map, #id_map],
       iterator_types = ["parallel", "parallel"],
@@ -571,7 +571,7 @@ func.func @transpose_point(%arg: tensor<1x2x3x?xf32>,
   // CHECK:      %[[C2:.*]] = arith.constant 2
   // CHECK:      %[[C3:.*]] = arith.constant 3
   // CHECK:      %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C3]]
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [2, 1, %[[DIM]], 3]
+  // CHECK:      %[[INIT:.*]] = tensor.empty(%[[DIM]])
   // CHECK:      %[[OFFSET:.*]] = gml_st.offset %[[ARG1]][%[[C0]]]
   // CHECK:      %[[SIZE:.*]] = gml_st.size %[[ARG1]][%[[C0]]]
   // CHECK:      %[[OFFSET_0:.*]] = gml_st.offset %[[ARG1]][%[[C1]]]
@@ -603,7 +603,7 @@ func.func @transpose_point(%arg: tensor<1x2x3x?xf32>,
   // CHECK:      return {op_label = "consumer"} %[[GENERIC]]
   %c3 = arith.constant 3 : index
   %d3 = tensor.dim %arg, %c3 : tensor<1x2x3x?xf32>
-  %init = linalg.init_tensor [2, 1, %d3, 3] : tensor<2x1x?x3xf32>
+  %init = tensor.empty(%d3) : tensor<2x1x?x3xf32>
   %transpose = linalg.generic {
       indexing_maps = [#transposed, #id],
       iterator_types = ["parallel", "parallel", "parallel", "parallel"],
@@ -631,7 +631,7 @@ func.func @transpose_tile(%arg: tensor<1x2x3x?xf32>,
   // CHECK:      %[[C2:.*]] = arith.constant 2
   // CHECK:      %[[C3:.*]] = arith.constant 3
   // CHECK:      %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C3]]
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [2, 1, %[[DIM]], 3]
+  // CHECK:      %[[INIT:.*]] = tensor.empty(%[[DIM]])
   // CHECK:      %[[OFFSET:.*]] = gml_st.offset %[[ARG1]][%[[C0]]]
   // CHECK:      %[[SIZE:.*]] = gml_st.size %[[ARG1]][%[[C0]]]
   // CHECK:      %[[OFFSET_0:.*]] = gml_st.offset %[[ARG1]][%[[C1]]]
@@ -661,7 +661,7 @@ func.func @transpose_tile(%arg: tensor<1x2x3x?xf32>,
   // CHECK:      return {op_label = "consumer"} %[[GENERIC]]
   %c3 = arith.constant 3 : index
   %d3 = tensor.dim %arg, %c3 : tensor<1x2x3x?xf32>
-  %init = linalg.init_tensor [2, 1, %d3, 3] : tensor<2x1x?x3xf32>
+  %init = tensor.empty(%d3) : tensor<2x1x?x3xf32>
   %transposed = linalg.generic {
       indexing_maps = [#transposed, #id],
       iterator_types = ["parallel", "parallel", "parallel", "parallel"],
@@ -687,7 +687,7 @@ func.func @empty(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
   // CHECK:      %[[C1:.*]] = arith.constant 1
   // CHECK:      %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C0]]
   // CHECK:      %[[DIM_0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[DIM]], %[[DIM_0]]]
+  // CHECK:      %[[INIT:.*]] = tensor.empty(%[[DIM]], %[[DIM_0]])
   // CHECK:      %[[OFFSET:.*]] = gml_st.offset %[[ARG2]][%[[C0]]]
   // CHECK:      %[[SIZE:.*]] = gml_st.size %[[ARG2]][%[[C0]]]
   // CHECK:      %[[OFFSET_0:.*]] = gml_st.offset %[[ARG2]][%[[C1]]]
@@ -704,7 +704,7 @@ func.func @empty(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
   %c1 = arith.constant 1 : index
   %d0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
   %d1 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
-  %init = linalg.init_tensor [%d0, %d1] : tensor<?x?xf32>
+  %init = tensor.empty(%d0, %d1) : tensor<?x?xf32>
   %result = linalg.generic {
       indexing_maps = [#id_map, #id_map, #id_map],
       iterator_types = ["parallel", "parallel"],
@@ -774,7 +774,7 @@ func.func @dim_reification_generic(%arg: tensor<?x?xf32>,
 func.func @dim_reification_init_tensor(%i: index, %j: index) -> index {
   // CHECK: return %[[J]]
   %c1 = arith.constant 1 : index
-  %0 = linalg.init_tensor [%i, %j] : tensor<?x?xf32>
+  %0 = tensor.empty(%i, %j) : tensor<?x?xf32>
   %1 = tensor.dim %0, %c1 : tensor<?x?xf32>
   return %1 : index
 }

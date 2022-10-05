@@ -17,7 +17,7 @@ func.func @add_static(%lhs: tensor<1024x1024xf32>, %rhs: tensor<1024x1024xf32>)
     -> tensor<1024x1024xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
-  %init = linalg.init_tensor [1024, 1024] : tensor<1024x1024xf32>
+  %init = tensor.empty() : tensor<1024x1024xf32>
   %add = linalg.generic {
       indexing_maps = [#id_map, #id_map, #id_map],
       iterator_types = ["parallel", "parallel"],
@@ -38,7 +38,7 @@ func.func @add_static(%lhs: tensor<1024x1024xf32>, %rhs: tensor<1024x1024xf32>)
 // CHECK-FOR-DAG:   %[[C256:.*]] = arith.constant 256
 // CHECK-FOR-DAG:   %[[C512:.*]] = arith.constant 512
 // CHECK-FOR-DAG:   %[[C1024:.*]] = arith.constant 1024
-// CHECK-FOR:       %[[INIT:.*]] = linalg.init_tensor [1024, 1024]
+// CHECK-FOR:       %[[INIT:.*]] = tensor.empty()
 // CHECK-FOR:       %[[FOR:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-FOR-SAME:      to (%[[C1024]], %[[C1024]])
 // CHECK-FOR-SAME:      step (%[[C256]], %[[C512]])
@@ -69,7 +69,7 @@ func.func @add(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>)
   %c1 = arith.constant 1 : index
   %d0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
   %d1 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
-  %init = linalg.init_tensor [%d0, %d1] : tensor<?x?xf32>
+  %init = tensor.empty(%d0, %d1) : tensor<?x?xf32>
   %add = linalg.generic {
       indexing_maps = [#id_map, #id_map, #id_map],
       iterator_types = ["parallel", "parallel"],
@@ -93,7 +93,7 @@ func.func @add(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>)
 // CHECK-FOR:       %[[C512:.*]] = arith.constant 512
 // CHECK-FOR:       %[[LHS_DIM_0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
 // CHECK-FOR:       %[[LHS_DIM_1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-// CHECK-FOR:       %[[INIT:.*]] = linalg.init_tensor [%[[LHS_DIM_0]], %[[LHS_DIM_1]]]
+// CHECK-FOR:       %[[INIT:.*]] = tensor.empty(%[[LHS_DIM_0]], %[[LHS_DIM_1]])
 // CHECK-FOR:       %[[FOR:.*]] = gml_st.for (%[[ARG2:.*]], %[[ARG3:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-FOR-SAME:      to (%[[LHS_DIM_0]], %[[LHS_DIM_1]])
 // CHECK-FOR-SAME:      step (%[[C256]], %[[C512]])
@@ -134,7 +134,7 @@ func.func @add(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>)
 // CHECK-PARALLEL:       %[[C512:.*]] = arith.constant 512
 // CHECK-PARALLEL:       %[[LHS_DIM_0:.*]] = tensor.dim %[[LHS]], %[[C0]]
 // CHECK-PARALLEL:       %[[LHS_DIM_1:.*]] = tensor.dim %[[LHS]], %[[C1]]
-// CHECK-PARALLEL:       %[[INIT:.*]] = linalg.init_tensor [%[[LHS_DIM_0]], %[[LHS_DIM_1]]]
+// CHECK-PARALLEL:       %[[INIT:.*]] = tensor.empty(%[[LHS_DIM_0]], %[[LHS_DIM_1]])
 // CHECK-PARALLEL:       %[[PARALLEL:.*]] = gml_st.parallel (%[[ARG2:.*]], %[[ARG3:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-PARALLEL-SAME:      to (%[[LHS_DIM_0]], %[[LHS_DIM_1]])
 // CHECK-PARALLEL-SAME:      step (%[[C256]], %[[C512]])
@@ -172,7 +172,7 @@ func.func @reduce_row(%lhs: tensor<?x?xf32>,
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
 
-  %init = linalg.init_tensor [%0] : tensor<?xf32>
+  %init = tensor.empty(%0) : tensor<?xf32>
   %fill = linalg.fill ins(%cst : f32)
                       outs(%init : tensor<?xf32>) -> tensor<?xf32>
   %sum_of_prod = linalg.generic {
@@ -202,7 +202,7 @@ func.func @reduce_row(%lhs: tensor<?x?xf32>,
 // CHECK-FOR-DAG:   %[[C256_0:.*]] = arith.constant 256
 // CHECK-FOR-DAG:   %[[C512_0:.*]] = arith.constant 512
 // CHECK-FOR-DAG:   %[[CST:.*]] = arith.constant 0.000000e+00
-// CHECK-FOR-DAG:   %[[INIT_0:.*]] = linalg.init_tensor [%[[LHS_DIM_0]]]
+// CHECK-FOR-DAG:   %[[INIT_0:.*]] = tensor.empty(%[[LHS_DIM_0]])
 // CHECK-FOR-DAG:   %[[FILL:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[INIT_0]] : tensor<?xf32>)
 // CHECK-FOR:       %[[FOR_0:.*]] = gml_st.for (%[[ARG2_0:.*]], %[[ARG3_0:.*]]) = (%[[C0_0]], %[[C0_0]])
 // CHECK-FOR-SAME:      to (%[[LHS_DIM_0]], %[[LHS_DIM_1]])

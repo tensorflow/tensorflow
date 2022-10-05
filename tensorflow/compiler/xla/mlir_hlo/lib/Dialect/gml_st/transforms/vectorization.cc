@@ -179,9 +179,9 @@ struct MaterializeOpVectorizationPattern
       // destination tensor. The entinre tensor_write op, together with the
       // invented tensor will be folded when vectorizing the final
       // gml_st.set_yield op.
-      auto initTensor = rewriter.create<linalg::InitTensorOp>(
+      auto emptyTensor = rewriter.create<tensor::EmptyOp>(
           loc, vectorType.getShape(), vectorType.getElementType());
-      convertVectorResultsToTensor(op, {initTensor}, bvm, rewriter);
+      convertVectorResultsToTensor(op, {emptyTensor}, bvm, rewriter);
     }
     rewriter.replaceOp(op, bvm.lookupOrDefault(op));
     return success();
