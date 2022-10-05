@@ -487,6 +487,20 @@ StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
                              .WithOneUse()))) {
       continue;
     }
+
+    // cuDNN runtime funsion kernels require 32-bit aligned data access. Since
+    // we only allow fp16 datatype, we need to check if the in and out channels
+    // of filter are even numbers.
+    const Shape& shape = conv->operand(1)->shape();
+    int64_t num_input_features = shape.dimensions(
+        conv->convolution_dimension_numbers().kernel_input_feature_dimension());
+    int64_t num_output_features =
+        shape.dimensions(conv->convolution_dimension_numbers()
+                             .kernel_output_feature_dimension());
+    if (num_input_features % 2 != 0 || num_output_features % 2 != 0) {
+      continue;
+    }
+
     TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
                         conv->backend_config<CudnnConvBackendConfig>());
     if (config.activation_mode() != se::dnn::kNone) {
