@@ -198,6 +198,7 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
+            "//tensorflow/core/protobuf:coordination_config_proto_cc",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",

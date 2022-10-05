@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -34,9 +35,50 @@ limitations under the License.
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 #include "tensorflow/core/protobuf/distributed_runtime_payloads.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
+namespace {
+// Check if current task is the leader as specified by coordination service.
+bool IsMultiClientLeader(const ServerDef& server_def,
+                         const CoordinationServiceConfig& config) {
+  DeviceNameUtils::ParsedName leader_pn;
+  DeviceNameUtils::ParseFullName(config.service_leader(), &leader_pn);
+  return server_def.job_name() == leader_pn.job &&
+         server_def.task_index() == leader_pn.task;
+}
+
+// Set coordination service leader based on `server_def`.
+void SetCoordinationServiceLeader(const ServerDef& server_def,
+                                  CoordinationServiceConfig* config) {
+  const std::string& collective_leader = server_def.default_session_config()
+                                             .experimental()
+                                             .collective_group_leader();
+  if (!collective_leader.empty()) {
+    config->set_service_leader(collective_leader);
+    LOG(INFO) << "No coordination leader is set, using the collective leader "
+              << collective_leader;
+  } else {
+    const std::string& default_leader =
+        strings::StrCat("/job:", server_def.job_name(), "/replica:0/task:0");
+    config->set_service_leader(default_leader);
+    LOG(INFO) << "No coordination leader is set, using the default leader "
+              << default_leader;
+  }
+}
+
+// Set coordinated jobs based on `server_def`.
+void SetCoordinatedJobList(const ServerDef& server_def,
+                           CoordinationServiceConfig* config) {
+  for (const auto& job : server_def.cluster().job()) {
+    tensorflow::CoordinatedJob* coordinated_job =
+        config->mutable_coordinated_job_list()->Add();
+    coordinated_job->set_name(job.name());
+    coordinated_job->set_num_tasks(job.tasks().size());
+  }
+}
+}  // namespace
 
 SessionMgr::SessionMgr(
     WorkerEnv* worker_env, const std::string& default_worker_name,
@@ -197,26 +239,40 @@ Status SessionMgr::CreateSession(
 
   // If configured, enable coordination service and agent in the first worker
   // session.
-  const CoordinationServiceConfig& coordination_service_config =
+  CoordinationServiceConfig coordination_config =
       server_def.default_session_config().experimental().coordination_config();
-  if (!coordination_service_config.service_type().empty() &&
+  if (!coordination_config.service_type().empty() &&
       coordination_service_agent_ == nullptr) {
     std::unique_ptr<CoordinationClientCache> client_cache;
     TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&client_cache));
-    // Note: If this worker is not the leader, no service instance will be
-    // returned. Hence, only the worker leader in the cluster would hold the
-    // coordination service instance.
-    coordination_service_ =
-        CoordinationServiceInterface::EnableCoordinationService(
-            coordination_service_config.service_type(), worker_env_->env,
-            server_def, std::move(client_cache));
 
+    // Set service leader if unspecified.
+    if (coordination_config.service_leader().empty()) {
+      SetCoordinationServiceLeader(server_def, &coordination_config);
+    }
+
+    // Set coordinated jobs if unspecified.
+    if (coordination_config.coordinated_job_list().empty()) {
+      SetCoordinatedJobList(server_def, &coordination_config);
+    }
+
+    // Initialize coordination service if it is the leader.
+    if (IsMultiClientLeader(server_def, coordination_config)) {
+      coordination_service_ =
+          CoordinationServiceInterface::EnableCoordinationService(
+              worker_env_->env, coordination_config, std::move(client_cache));
+    }
+
+    // Initialize coordination service agent.
     std::unique_ptr<CoordinationClientCache> agent_cache;
     TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&agent_cache));
     coordination_service_agent_ = CreateCoordinationServiceAgent();
     TF_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
-        worker_env_->env, server_def, std::move(agent_cache),
+        worker_env_->env, server_def.job_name(), server_def.task_index(),
+        coordination_config,
+        agent_cache->GetOwnedClient(coordination_config.service_leader()),
         std::move(coordination_error_callback)));
+
     activity_watcher::MaybeEnableMultiWorkersWatching(
         coordination_service_agent_.get());
   }

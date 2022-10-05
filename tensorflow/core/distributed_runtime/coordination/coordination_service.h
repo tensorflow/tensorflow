@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_H_
 
 #include <functional>
+#include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/coordination_config.pb.h"
 
 namespace tsl {
 class Env;
@@ -33,7 +36,6 @@ class Env;
 namespace tensorflow {
 using tsl::Env;
 class CoordinationServiceDeviceInfo;
-class ServerDef;
 
 // Static registration for coordination service implementations.
 #define REGISTER_COORDINATION_SERVICE(service_type_name, factory_fn)        \
@@ -69,7 +71,7 @@ class CoordinationServiceInterface {
  public:
   using CoordinationServiceFactory =
       std::function<std::unique_ptr<CoordinationServiceInterface>(
-          Env* env, const ServerDef& server_def,
+          Env* env, const CoordinationServiceConfig& config,
           std::unique_ptr<CoordinationClientCache> cache)>;
 
   using StatusOrValueCallback =
@@ -85,17 +87,16 @@ class CoordinationServiceInterface {
   }
 
   static std::unique_ptr<CoordinationServiceInterface>
-  EnableCoordinationService(const std::string& service_type, Env* env,
-                            const ServerDef& server_def,
+  EnableCoordinationService(Env* env, const CoordinationServiceConfig& config,
                             std::unique_ptr<CoordinationClientCache> cache) {
     const auto* factories = GetCoordinationServiceFactories();
-    auto factories_iter = factories->find(service_type);
+    auto factories_iter = factories->find(config.service_type());
     if (factories_iter == factories->end()) {
       LOG(ERROR) << "No coordination service factory found for service type "
-                 << service_type;
+                 << config.service_type();
       return nullptr;
     }
-    auto service = factories_iter->second(env, server_def, std::move(cache));
+    auto service = factories_iter->second(env, config, std::move(cache));
     if (service != nullptr) {
       *GetCoordinationServiceInstancePtr() = service.get();
     }
