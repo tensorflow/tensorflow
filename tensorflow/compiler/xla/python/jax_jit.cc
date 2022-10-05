@@ -190,6 +190,12 @@ bool CallSignature::operator==(const CallSignature& other) const {
                       other.device, other.jax_enable_x64, other.jax_array,
                       other.static_arg_names) &&
          // `==` on py:objects is the Python `is`. We need equal.
+         std::equal(dynamic_arg_shardings.begin(), dynamic_arg_shardings.end(),
+                    other.dynamic_arg_shardings.begin(),
+                    other.dynamic_arg_shardings.end(),
+                    [](const py::object& a, const py::object& b) {
+                      return ShardingEqual(a, b);
+                    }) &&
          std::equal(
              static_args.begin(), static_args.end(), other.static_args.begin(),
              other.static_args.end(),

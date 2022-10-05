@@ -31,13 +31,21 @@ limitations under the License.
 
 namespace jax {
 
+// This enum specifies the concrete type of a C++ sharding object. This is used
+// to implement RTTI customized for the Sharding classes.
+enum class ShardingType {
+  kDefault = 0,  // Opaque type, fallback to python.
+  kMeshPspecSharding,
+};
+
 class Sharding {
  public:
   Sharding() = default;
 
   // This constructor is used in the fast path to retrieve the number of devices
   // without falling back to python. This is only used in the cpp path.
-  explicit Sharding(int num_devices) : num_devices_(num_devices) {}
+  explicit Sharding(ShardingType type, int num_devices)
+      : type_(type), num_devices_(num_devices) {}
 
   virtual ~Sharding() = default;
 
@@ -51,9 +59,16 @@ class Sharding {
     return device_set.size();
   }
 
+  ShardingType type() const { return type_; }
+
  private:
+  ShardingType type_;
   std::optional<int> num_devices_;
 };
+
+size_t ShardingHash(const pybind11::object& obj);
+
+bool ShardingEqual(const pybind11::object& a, const pybind11::object& b);
 
 class XLACompatibleSharding : public Sharding {
  public:
@@ -83,7 +98,8 @@ class MeshPspecSharding : public XLACompatibleSharding {
 class SingleDeviceSharding : public XLACompatibleSharding {
  public:
   explicit SingleDeviceSharding(pybind11::object device)
-      : XLACompatibleSharding(/*num_devices=*/1), device_(std::move(device)) {}
+      : XLACompatibleSharding(ShardingType::kDefault, /*num_devices=*/1),
+        device_(std::move(device)) {}
 
   const pybind11::object& device() const { return device_; }
 
@@ -96,7 +112,8 @@ class SingleDeviceSharding : public XLACompatibleSharding {
 class PmapSharding : public XLACompatibleSharding {
  public:
   PmapSharding(pybind11::array devices, ShardingSpec sharding_spec)
-      : XLACompatibleSharding(/*num_devices=*/devices.size()),
+      : XLACompatibleSharding(ShardingType::kDefault,
+                              /*num_devices=*/devices.size()),
         devices_(std::move(devices)),
         sharding_spec_(std::move(sharding_spec)) {}
 
@@ -119,7 +136,8 @@ class PmapSharding : public XLACompatibleSharding {
 class OpShardingSharding : public XLACompatibleSharding {
  public:
   OpShardingSharding(pybind11::list devices, xla::OpSharding op_sharding)
-      : XLACompatibleSharding(/*num_devices=*/devices.size()),
+      : XLACompatibleSharding(ShardingType::kDefault,
+                              /*num_devices=*/devices.size()),
         devices_(std::move(devices)),  // Implicitly converts a list to a tuple.
         op_sharding_(std::move(op_sharding)) {}
 

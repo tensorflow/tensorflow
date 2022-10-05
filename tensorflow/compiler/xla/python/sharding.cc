@@ -23,12 +23,43 @@ namespace jax {
 
 namespace py = pybind11;
 
+size_t ShardingHash(const pybind11::object& obj) {
+  const auto* sharding = py::cast<jax::Sharding*>(obj);
+
+  if (sharding->type() == ShardingType::kMeshPspecSharding) {
+    const auto* mesh_sharding = static_cast<const MeshPspecSharding*>(sharding);
+    return absl::Hash<void*>()(mesh_sharding->mesh().ptr());
+  }
+
+  return py::hash(obj);
+}
+
+bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
+  if (a.ptr() == b.ptr()) return true;
+
+  auto* a_sharding = py::cast<jax::Sharding*>(a);
+  auto* b_sharding = py::cast<jax::Sharding*>(b);
+
+  if (a_sharding->type() != b_sharding->type()) return false;
+
+  if (a_sharding->type() == ShardingType::kMeshPspecSharding) {
+    auto* a_mesh_sharding = static_cast<const MeshPspecSharding*>(a_sharding);
+    auto* b_mesh_sharding = static_cast<const MeshPspecSharding*>(b_sharding);
+
+    return a_mesh_sharding->mesh().ptr() == b_mesh_sharding->mesh().ptr() &&
+           a_mesh_sharding->spec().equal(b_mesh_sharding->spec());
+  }
+
+  return a.equal(b);
+}
+
 MeshPspecSharding::MeshPspecSharding(py::object mesh, py::object spec,
                                      py::object parsed_pspec)
-    : XLACompatibleSharding(/*num_devices=*/[&mesh]() {
-        py::array devices = mesh.attr("devices");
-        return devices.size();
-      }()),
+    : XLACompatibleSharding(ShardingType::kMeshPspecSharding, /*num_devices=*/
+                            [&mesh]() {
+                              py::array devices = mesh.attr("devices");
+                              return devices.size();
+                            }()),
       mesh_(std::move(mesh)),
       spec_(std::move(spec)),
       parsed_pspec_(std::move(parsed_pspec)) {
