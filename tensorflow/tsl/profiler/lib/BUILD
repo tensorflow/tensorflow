@@ -1,6 +1,10 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test")
+load(
+    "//tensorflow/core/profiler/builds:build_config.bzl",
+    "tf_profiler_copts",
+)
 
 cc_library(
     name = "context_types_hdrs",
@@ -30,6 +34,20 @@ filegroup(
         "context_types.h",
     ],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "profiler_interface",
+    hdrs = ["profiler_interface.h"],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/core/profiler:internal",
+    ],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/platform:status",
+    ],
 )
 
 cc_library(
