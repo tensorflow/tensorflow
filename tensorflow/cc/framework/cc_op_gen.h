@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
 #define TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
 
+#include <string>
+
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/platform/types.h"
