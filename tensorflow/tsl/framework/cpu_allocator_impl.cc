@@ -16,7 +16,6 @@ limitations under the License.
 #include <atomic>
 
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/framework/allocator_registry.h"
 #include "tensorflow/tsl/framework/tracking_allocator.h"
@@ -25,6 +24,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/strcat.h"
 #include "tensorflow/tsl/platform/stringprintf.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace tsl {
 
@@ -122,12 +122,12 @@ class CPUAllocator : public Allocator {
 
   void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,
                   std::size_t req_bytes, std::size_t alloc_bytes) {
-    tensorflow::profiler::TraceMe::InstantActivity(
+    tsl::profiler::TraceMe::InstantActivity(
         [this, traceme_name, chunk_ptr, req_bytes,
          alloc_bytes]() TF_NO_THREAD_SAFETY_ANALYSIS {
           const auto& annotation = tensorflow::profiler::
               ScopedMemoryDebugAnnotation::CurrentAnnotation();
-          return tensorflow::profiler::TraceMeEncode(
+          return tsl::profiler::TraceMeEncode(
               traceme_name, {{"allocator_name", Name()},
                              {"bytes_reserved", stats_.bytes_reserved},
                              {"bytes_allocated", stats_.bytes_in_use},
@@ -141,7 +141,7 @@ class CPUAllocator : public Allocator {
                              {"data_type", annotation.pending_data_type},
                              {"shape", annotation.pending_shape_func()}});
         },
-        /*level=*/tensorflow::profiler::TraceMeLevel::kInfo);
+        /*level=*/tsl::profiler::TraceMeLevel::kInfo);
   }
 
   absl::optional<AllocatorStats> GetStats() override {
