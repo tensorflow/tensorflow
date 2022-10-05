@@ -8,12 +8,7 @@ load(
     "tflite_ios_framework",
 )
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_binary", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(

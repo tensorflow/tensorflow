@@ -23,12 +23,11 @@ load(
     "if_mkl_ml",
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_cc_shared_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "ADDITIONAL_API_INDEXABLE_SETTINGS")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "ADDITIONAL_API_INDEXABLE_SETTINGS",
+    "tf_cc_shared_library",
+)
 
 # copybara:uncomment_begin
 # load("//tools/build_defs/license:license.bzl", "license")

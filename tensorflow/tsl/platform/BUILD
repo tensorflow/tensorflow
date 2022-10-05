@@ -4,7 +4,6 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-# buildifier: disable=same-origin-load
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(

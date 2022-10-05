@@ -1,6 +1,5 @@
 """Functions to initialize tensorrt python tests."""
 
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 # buildifier: disable=unnamed-macro

@@ -4,14 +4,8 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",

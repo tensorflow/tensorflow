@@ -13,12 +13,7 @@ load(
     "check_deps",
     "tf_copts",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
