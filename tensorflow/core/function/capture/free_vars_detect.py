@@ -81,7 +81,13 @@ def _search_callable_free_vars(fn):
         # Otherwise, only process `f`.
         if not var.qn[0].is_composite() and base == "self":
           attr = str(var.qn[1])
-          obj = getattr(fn.__self__, attr)
+          if hasattr(fn, "__self__"):
+            obj = getattr(fn.__self__, attr)
+          # For function (not method) `self` usage under enclosing class scope
+          elif hasattr(fn, "__closure__"):
+            obj = getattr(fn.__closure__[0].cell_contents, attr)
+          else:
+            continue
         else:
           continue
 
