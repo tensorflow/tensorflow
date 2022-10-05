@@ -137,7 +137,7 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
       filter_layout.push_back(dnums.kernel_input_feature_dimension());
       break;
     default:
-      return InternalError("Invalid filter layout %s for conv with dnums %s",
+      return InternalError("Invalid filter layout %s for conv with dnums %s,",
                            FilterLayoutString(filter),
                            ConvolutionDimensionNumbersToString(dnums));
   }
@@ -197,9 +197,12 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(input.layout(), nhwc_input)) {
     input_layout = DataLayout::kBatchYXDepth;
   } else {
-    return InternalError("Invalid input layout %s for conv with dnums %s",
-                         LayoutUtil::HumanString(input.layout()),
-                         ConvolutionDimensionNumbersToString(dnums));
+    return InternalError(
+        "Invalid input layout %s for conv with dnums %s; expected one of (%s, "
+        "%s, %s)",
+        LayoutUtil::HumanString(input.layout()),
+        ConvolutionDimensionNumbersToString(dnums), nchw_input.ToString(),
+        nchw_vect_input.ToString(), nhwc_input.ToString());
   }
 
   FilterLayout filter_layout;
@@ -221,9 +224,12 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(filter.layout(), nhwc_filter)) {
     filter_layout = FilterLayout::kOutputYXInput;
   } else {
-    return InternalError("Invalid filter layout %s for conv with dnums %s",
-                         LayoutUtil::HumanString(filter.layout()),
-                         ConvolutionDimensionNumbersToString(dnums));
+    return InternalError(
+        "Invalid filter layout %s for conv with dnums %s, expected one of (%s, "
+        "%s, %s)",
+        LayoutUtil::HumanString(filter.layout()),
+        ConvolutionDimensionNumbersToString(dnums), nchw_filter.ToString(),
+        nchw_vect_filter.ToString(), nhwc_filter.ToString());
   }
 
   DataLayout output_layout;
