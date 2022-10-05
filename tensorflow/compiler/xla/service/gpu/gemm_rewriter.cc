@@ -183,11 +183,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   Status HandleMultiply(HloInstruction *instr) override {
     HloInstruction *alpha, *existing_gemm;
-    if (Match(instr, m::MultiplyAnyOrder(
-                         m::Op(&existing_gemm)
-                             .WithCustomCallTarget(
-                                 {kGemmCallTarget, kCublasLtMatmulCallTarget}),
-                         m::Broadcast(m::ConstantScalar(&alpha))))) {
+    if (Match(instr,
+              m::MultiplyAnyOrder(
+                  m::CustomCall(&existing_gemm,
+                                {kGemmCallTarget, kCublasLtMatmulCallTarget})
+                      .WithOneUser(),
+                  m::Broadcast(m::ConstantScalar(&alpha)).WithOneUser()))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
 
@@ -222,15 +223,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                           .WithOneUser())
                       .WithOneUser(),
                   m::Broadcast(&bias, m::Op()).WithOneUser()))) {
-      bool was_fused;
-      if (optional_slice->opcode() == HloOpcode::kSlice) {
-        TF_ASSIGN_OR_RETURN(
-            was_fused,
-            FuseVectorBiasAdd(instr, bias, existing_gemm, optional_slice));
-      } else {
-        TF_ASSIGN_OR_RETURN(was_fused,
-                            FuseVectorBiasAdd(instr, bias, existing_gemm));
-      }
+      TF_ASSIGN_OR_RETURN(
+          bool was_fused,
+          FuseVectorBiasAdd(
+              instr, bias, existing_gemm,
+              (optional_slice->opcode() == HloOpcode::kSlice ? optional_slice
+                                                             : nullptr)));
+
       if (was_fused) {
         return OkStatus();
       }
@@ -312,12 +311,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                           .WithOneUser())
                       .WithOneUser(),
                   m::Broadcast(&zeros, m::ConstantScalar(0)).WithOneUser()))) {
-      if (optional_slice_or_bitcast->opcode() == HloOpcode::kSlice) {
-        TF_RETURN_IF_ERROR(FuseReluActivation(instr, zeros, existing_gemm,
-                                              optional_slice_or_bitcast));
-      } else {
-        TF_RETURN_IF_ERROR(FuseReluActivation(instr, zeros, existing_gemm));
-      }
+      TF_RETURN_IF_ERROR(FuseReluActivation(
+          instr, zeros, existing_gemm,
+          (optional_slice_or_bitcast->opcode() == HloOpcode::kSlice
+               ? optional_slice_or_bitcast
+               : nullptr)));
     }
     return OkStatus();
   }
@@ -342,12 +340,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // Replaces binary(slice(gemm), broadcast) with
+  // slice(binary(gemm, broadcast)) and changes the shape of broadcast from
+  // that of slice to that of the GEMM, i.e. the operand of slice.
   Status SinkSliceBelowBinaryOp(HloInstruction *slice, HloInstruction **binary,
                                 HloInstruction **broadcast) {
-    // Replaces binary(slice(gemm), broadcast) with
-    // slice(binary(gemm, broadcast)) and changes the shape of broadcast from
-    // that of slice to that of the GEMM, i.e. the operand of slice.
-
     TF_RET_CHECK(slice->user_count() == 1);
     TF_RET_CHECK((*broadcast)->user_count() == 1);
     TF_RET_CHECK((*binary)->IsRoot() || (*binary)->user_count() == 1);
@@ -439,8 +436,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                    HloInstruction *broadcast_bias,
                                    HloInstruction *gemm,
                                    HloInstruction *slice = nullptr) {
-    TF_RET_CHECK(broadcast_bias->shape() ==
-                 (slice ? slice->shape() : gemm->shape()));
+    TF_RET_CHECK(ShapeUtil::Compatible(
+        broadcast_bias->shape(), (slice ? slice->shape() : gemm->shape())));
     auto out_type = gemm->shape().element_type();
     // Verify that the data type is supported by Epilogue Fusion.
     if (!SupportsEpilogueFusion(out_type)) {
