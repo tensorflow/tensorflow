@@ -377,7 +377,7 @@ Status MetaOptimizer::InitializeOptimizers(
       AutoMixedPrecisionEnabled(
           plugin_configs
               .toggle_config["auto_mixed_precision_onednn_bfloat16"]) &&
-      IsMKLEnabled()) {
+      IsOneDNNEnabled()) {
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::BF16));
   }

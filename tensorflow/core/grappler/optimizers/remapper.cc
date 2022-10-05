@@ -465,7 +465,7 @@ bool RuntimeFusionEnabled(const Cluster* cluster) {
 bool IsSupportedActivation(const NodeDef& node, const Cluster* cluster) {
   bool is_default_supported =
       IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
-  bool is_device_specific = (IsMKLEnabled() || RuntimeFusionEnabled(cluster)) &&
+  bool is_device_specific = (IsOneDNNEnabled() || RuntimeFusionEnabled(cluster)) &&
                             (IsTanh(node) || IsSigmoid(node));
   return (is_default_supported || is_device_specific);
 }
@@ -1208,7 +1208,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
                               std::set<int>* remove_node_indices,
                               bool* is_gelu_approximate) {
   // Gelu fusion is enabled with oneDNN or cublasLt or cuDNN library.
-  if (!IsMKLEnabled() && !BlasLtMatmulEnabled() &&
+  if (!IsOneDNNEnabled() && !BlasLtMatmulEnabled() &&
       !RuntimeFusionEnabled(cluster))
     return false;
 
@@ -1325,7 +1325,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
         ctx->graph_view.GetNode(matched_nodes_map->at("matmul"))->node();
     DataType matmul_dtype = GetDataTypeFromAttr(*matmul_node, "T");
 
-    bool cpu_ok = IsMKLEnabled() && IsCpuCompatibleMatMul(*ctx, matmul_node);
+    bool cpu_ok = IsOneDNNEnabled() && IsCpuCompatibleMatMul(*ctx, matmul_node);
     bool gpu_ok = NodeIsOnGpu(matmul_node) && RuntimeFusionEnabled(cluster) &&
                   matmul_dtype == DT_HALF;
     if (!cpu_ok && !gpu_ok) return false;
@@ -1416,7 +1416,7 @@ bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
   // Current implementation has support only
   // for CPU when oneDNN is enabled.
   // TODO(intel-tf): This will be removed when fully tested with GPU
-  if (!NodeIsOnCpu(max_node_def) && !IsMKLEnabled()) return false;
+  if (!NodeIsOnCpu(max_node_def) && !IsOneDNNEnabled()) return false;
 
   bool found_op_type_match = false;
   utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
