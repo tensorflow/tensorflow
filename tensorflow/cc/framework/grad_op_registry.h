@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_FRAMEWORK_GRAD_OP_REGISTRY_H_
 #define TENSORFLOW_CC_FRAMEWORK_GRAD_OP_REGISTRY_H_
 
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
