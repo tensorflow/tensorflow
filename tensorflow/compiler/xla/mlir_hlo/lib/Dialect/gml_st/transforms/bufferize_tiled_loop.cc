@@ -137,7 +137,7 @@ struct BufferizeInitTensorOp : public OpConversionPattern<InitTensorOp> {
 
     rewriter.replaceOpWithNewOp<memref::AllocOp>(
         op, getTypeConverter()->convertType(op.getType()).cast<MemRefType>(),
-        adaptor.sizes());
+        adaptor.getSizes());
     return success();
   }
 };

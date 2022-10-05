@@ -95,7 +95,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
                                                          blockSizeX, one, one);
     {
       OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToEnd(&launchOp.body().front());
+      rewriter.setInsertionPointToEnd(&launchOp.getBody().front());
       auto index = launchOp.getThreadIds().x;
 
       // Load the initial value and store it to the output.
@@ -164,7 +164,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       }
 
       // Finally, insert the terminator for the launchOp.
-      rewriter.setInsertionPointToEnd(&launchOp.body().front());
+      rewriter.setInsertionPointToEnd(&launchOp.getBody().front());
       rewriter.create<mlir::gpu::TerminatorOp>(loc);
     }
 

@@ -1520,7 +1520,7 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
   auto launch_func = mlir::cast<mlir::gpu::LaunchFuncOp>(op);
   auto kernel_func =
       mlir::SymbolTable::lookupNearestSymbolFrom<mlir::LLVM::LLVMFuncOp>(
-          launch_func, launch_func.kernel());
+          launch_func, launch_func.getKernel());
   if (!kernel_func) {
     return InternalError("kernel '%s' not found",
                          launch_func.getKernelName().str());

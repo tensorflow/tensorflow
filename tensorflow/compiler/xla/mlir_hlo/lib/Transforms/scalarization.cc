@@ -62,7 +62,7 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
     for (OpOperand &opOperand : genericOp->getOpOperands()) {
       Value operandValue = opOperand.get();
       Type operandType = operandValue.getType();
-      auto bbArg = genericOp.getTiedBlockArgument(&opOperand);
+      auto bbArg = genericOp.getMatchingBlockArgument(&opOperand);
       if (!operandType.isa<ShapedType>()) continue;
 
       SmallVector<Value> indices(

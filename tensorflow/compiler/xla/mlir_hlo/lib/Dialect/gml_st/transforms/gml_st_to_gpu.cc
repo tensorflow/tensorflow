@@ -114,7 +114,7 @@ static LaunchOp createInitialGpuLaunchOp(Location loc, Value defaultSize,
   auto launch =
       rewriter.create<LaunchOp>(loc, defaultSize, defaultSize, defaultSize,
                                 defaultSize, defaultSize, defaultSize);
-  Block* body = &launch.body().front();
+  Block* body = &launch.getBody().front();
   rewriter.setInsertionPointToEnd(body);
   rewriter.create<gpu::TerminatorOp>(loc);
   rewriter.setInsertionPointToStart(body);
@@ -212,7 +212,7 @@ static Value matchLaunchSpaceToLoop(ParallelOp parallel,
           rewriter.getAffineSymbolExpr(0));
   Value inductionVar = rewriter.create<AffineApplyOp>(
       loc, inductionVarMap,
-      ValueRange{launch.body().getArgument(launchIdx), lowerBound, step});
+      ValueRange{launch.getBody().getArgument(launchIdx), lowerBound, step});
 
   // Infer the launch bound from the loop bounds and the step.
   Value iterIndependentUpperBound =

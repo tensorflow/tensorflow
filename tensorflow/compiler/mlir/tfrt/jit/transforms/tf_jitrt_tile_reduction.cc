@@ -172,10 +172,10 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     Location loc = linalg_op.getLoc();
     Value input = linalg_op.getInputOperand(0)->get();
     // All inputs have the same size because of identity maps for indexing.
-    SmallVector<Value> inputs = linalg_op.inputs();
+    SmallVector<Value> inputs = linalg_op.getInputs();
     Value input_size = rewriter.create<mlir::tensor::DimOp>(loc, input, 0);
 
-    auto fill_op = linalg_op.outputs().front().getDefiningOp<FillOp>();
+    auto fill_op = linalg_op.getOutputs().front().getDefiningOp<FillOp>();
     auto init_op = fill_op.output().getDefiningOp<InitTensorOp>();
 
     auto neutral_value = fill_op.value();
@@ -218,9 +218,10 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
               nested_loc, outputs[0].getType(), reshaped_tiled_inputs,
               makeArrayRef({outputs[0]}), indexing_maps, iter_types,
               /*bodyBuild=*/nullptr);
-          mlir::Region &region = tiled_reduction.region();
+          mlir::Region &region = tiled_reduction.getRegion();
           OpBuilder::InsertionGuard g(rewriter);
-          rewriter.cloneRegionBefore(linalg_op.region(), region, region.end());
+          rewriter.cloneRegionBefore(linalg_op.getRegion(), region,
+                                     region.end());
           b.create<mlir::gml_st::YieldOp>(nested_loc,
                                           tiled_reduction.getResult(0));
         });
@@ -255,8 +256,8 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
               sliced_inputs.push_back(
                   b.create<ExtractSliceOp>(nested_loc, input, ivs, size, one));
             }
-            bvm.map(linalg_op.inputs(), sliced_inputs);
-            bvm.map(linalg_op.outputs(), outputs);
+            bvm.map(linalg_op.getInputs(), sliced_inputs);
+            bvm.map(linalg_op.getOutputs(), outputs);
             auto new_linalg_op = b.clone(*linalg_op.getOperation(), bvm);
             setTransformationAttr(b, new_linalg_op);
             b.create<mlir::gml_st::YieldOp>(nested_loc,

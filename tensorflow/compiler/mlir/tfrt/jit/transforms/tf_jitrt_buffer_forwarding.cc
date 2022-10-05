@@ -115,8 +115,8 @@ struct LinalgTrivialBufferForwardingPattern
         if (input_buffer->get().getType() != output_buffer->get().getType())
           continue;
 
-        mlir::AffineMap src_map = op.getTiedIndexingMap(input_buffer);
-        mlir::AffineMap dst_map = op.getTiedIndexingMap(output_buffer);
+        mlir::AffineMap src_map = op.getMatchingIndexingMap(input_buffer);
+        mlir::AffineMap dst_map = op.getMatchingIndexingMap(output_buffer);
 
         // Only support identity maps for the output for now.
         if (!dst_map.isIdentity()) continue;

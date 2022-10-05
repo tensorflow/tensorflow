@@ -1087,7 +1087,7 @@ class IotaConverter : public OpConversionPattern<OpTy> {
           nestedBuilder.create<linalg::YieldOp>(nestedLoc, castOp);
         },
         linalg::getPrunedAttributeList(iotaOp));
-    rewriter.replaceOp(iotaOp, linalgOp.result_tensors());
+    rewriter.replaceOp(iotaOp, linalgOp.getResultTensors());
     return success();
   }
 };
@@ -1552,7 +1552,7 @@ class MapOpConverter : public OpConversionPattern<mhlo::MapOp> {
 
     // Convert the signature of the body. We scalarize the operands and add a
     // scalar operand representing the output tensor.
-    Region& region = linalgOp.region();
+    Region& region = linalgOp.getRegion();
     rewriter.inlineRegionBefore(op.getComputation(), region, region.end());
     TypeConverter::SignatureConversion signatureConverter(op.getNumOperands() +
                                                           1);
@@ -1686,7 +1686,7 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
     // This is converted to a function with the same signature but with
     // element types. E.g., "(tensor<f32>, tensor<f32>) -> tensor<f32>" will
     // be converted to "(f32, f32, f32)".
-    Region& region = linalgOp.region();
+    Region& region = linalgOp.getRegion();
     rewriter.inlineRegionBefore(op.getBody(), region, region.end());
     TypeConverter::SignatureConversion signatureConverter(numOperands * 2);
 
@@ -2615,7 +2615,7 @@ struct ReduceWindowOpOnTensorsGenericConversion
     // Convert the signature of the body. This includes converting scalar
     // tensors to their scalar values and inserting an additional block arg for
     // the window arg.
-    Region& region = linalgOp.region();
+    Region& region = linalgOp.getRegion();
     rewriter.cloneRegionBefore(op.getBody(), region, region.end());
 
     TypeConverter::SignatureConversion signatureConverter(
@@ -2933,7 +2933,7 @@ struct TorchIndexSelectOpConversion
     SmallVector<Type, 4> bodyArgTypes;
     SmallVector<Value, 2> linalgOpArgs = {adaptor.getIndex(), sliceOp};
     // Add a block to the region.
-    auto* region = &linalgOp.region();
+    auto* region = &linalgOp.getRegion();
     auto* block = rewriter.createBlock(region, region->end());
     for (auto blockArgs : linalgOpArgs) {
       bodyArgTypes.push_back(
@@ -3052,7 +3052,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
         /*bodyBuild=*/nullptr, linalg::getPrunedAttributeList(gatherOp));
 
     // Now populate the linalg generic region
-    auto* region = &linalgOp.region();
+    auto* region = &linalgOp.getRegion();
     auto* block = rewriter.createBlock(region, region->end());
     block->addArguments(resultType.getElementType(), loc);
     OpBuilder::InsertionGuard guard(rewriter);
