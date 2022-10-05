@@ -14,10 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/finalize_dataset_op.h"
 
-#include <string>
-#include <utility>
-#include <vector>
-
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/kernels/data/options_dataset_op.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
@@ -94,9 +90,9 @@ constexpr char kPrivateThreadPoolOptions[] = R"pb(
   optimization_options { apply_default_optimizations: false }
   threading_options { private_threadpool_size: 10 }
 )pb";
-constexpr char kModelOptions[] = R"pb(
+constexpr char kModelOptions[] = R"proto(
   optimization_options { apply_default_optimizations: false }
-)pb";
+)proto";
 constexpr char kOptimizationsDefaultOptions[] = R"pb(
   autotune_options { enabled: false }
   optimization_options { apply_default_optimizations: true }
@@ -207,7 +203,7 @@ FinalizeDatasetParams AllChainedDatasetsParams() {
   return FinalizeDatasetParams(AllChainedDatasetsOptionsParams(),
                                /*output_dtypes=*/{DT_INT64},
                                /*output_shapes=*/{PartialTensorShape({})},
-                               /*node_name=*/"inject/prefetch_ModelDataset/_9");
+                               /*node_name=*/"ModelDataset/_9");
 }
 
 TEST_F(FinalizeDatasetOpTest, NoOptimizationNodeName) {
@@ -288,9 +284,9 @@ TEST_F(FinalizeDatasetOpTest, AllChainedDatasetsNodeName) {
   std::vector<const DatasetBase*> inputs;
   Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
-  CheckDatasetPipelineTypeStrings(
-      {"PrefetchDataset", "ModelDataset", "PrivateThreadPoolDataset",
-       "MaxIntraOpParallelismDataset", "OptionsDataset", "RangeDataset"});
+  CheckDatasetPipelineTypeStrings({"ModelDataset", "PrivateThreadPoolDataset",
+                                   "MaxIntraOpParallelismDataset",
+                                   "OptionsDataset", "RangeDataset"});
 }
 
 }  // namespace

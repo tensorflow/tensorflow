@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <functional>
 #include <string>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/dataset_test_base.h"
@@ -570,7 +569,7 @@ GetOptimizationsTestCase GetOptimizationTestCase1() {
       /*expected_disabled=*/{},
       /*expected_default=*/
       {"noop_elimination", "map_and_batch_fusion", "shuffle_and_repeat_fusion",
-       "map_parallelization", "parallel_batch", "inject_prefetch"}};
+       "map_parallelization", "parallel_batch"}};
 }
 
 // Tests disabling application of default optimizations.
@@ -594,7 +593,7 @@ GetOptimizationsTestCase GetOptimizationTestCase3() {
           /*expected_enabled=*/{"make_sloppy", "map_and_batch_fusion"},
           /*expected_disabled=*/{"parallel_batch", "map_parallelization"},
           /*expected_default=*/
-          {"noop_elimination", "shuffle_and_repeat_fusion", "inject_prefetch"}};
+          {"noop_elimination", "shuffle_and_repeat_fusion"}};
 }
 
 // Test enabling all / most available optimizations.
