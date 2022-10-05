@@ -265,6 +265,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
           shape.ShortDebugString());
     }
     if (layout.has_physical_shape()) {
+      TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(layout.physical_shape()));
       TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           layout.physical_shape(),
           [&](const Shape& subshape, const ShapeIndex& index) {
@@ -277,7 +278,6 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
             }
             return OkStatus();
           }));
-      TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(layout.physical_shape()));
     }
   } else if (layout.has_physical_shape()) {
     return InvalidArgument(

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
@@ -820,6 +821,29 @@ TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
   Shape b = ShapeUtil::DeleteDimensions({3, 2, 1}, shape);
   EXPECT_EQ(a, b);
   EXPECT_EQ(a, ShapeUtil::MakeShapeWithLayout(F32, {5, 9}, {0, 1}));
+}
+
+TEST(ShapeUtilTest, B_250640044) {
+  // This case failed the fuzzer; see b/250640044.
+  ShapeProto proto;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(element_type: TUPLE
+           tuple_shapes {
+             element_type: S8
+             dimensions: 137438953472
+             layout {
+               minor_to_major: 0
+               dim_level_types: DIM_COMPRESSED
+               physical_shape {
+                 element_type: TUPLE
+                 tuple_shapes {}
+               }
+             }
+             is_dynamic_dimension: false
+           })pb",
+      &proto));
+  Shape shape(proto);
+  EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
 TEST(Transpose021Test, NoTranspose) {
