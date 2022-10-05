@@ -319,5 +319,15 @@ class Conv2DTransposeTest(test.TestCase):
             strides=[1])
         self.evaluate(op)
 
+  def testConv2DTransposeLargeOutputShape(self):
+    with self.session():
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        op = nn_ops.conv2d_transpose(
+            input=np.ones((2, 2, 2, 2)),
+            output_shape=[114078056, 179835296],
+            strides=[10],
+            filters=1)
+        self.evaluate(op)
+
 if __name__ == "__main__":
   test.main()
