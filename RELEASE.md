@@ -116,6 +116,9 @@
     *   Fix device placement issues related to datasets with ragged tensors of
         strings (i.e. variant encoded data with types not supported on GPU).
 
+*   `tf.SparseTensor`:
+    *   Introduced `set_shape`, which sets the static dense shape of the sparse tensor and has the same semantics as `tf.Tensor.set_shape`.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
