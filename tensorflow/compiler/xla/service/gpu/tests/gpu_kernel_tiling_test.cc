@@ -535,7 +535,9 @@ TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 15
 ; CHECK: call SHUFFLE
 ; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
-; CHECK: br i1 %[[LOGICAL_T0]],
+; CHECK: LCAL
+; CHECK: EXTV
+; CHECK: BR_LCAL
 )";
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
@@ -566,14 +568,17 @@ TEST_F(GpuKernelTilingTest, RowReductionFourRowsPerWarp) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
-  auto expected_ir = R"(
+  auto expected_ir =  R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 7
 ; CHECK: call SHUFFLE
 ; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
-; CHECK: br i1 %[[LOGICAL_T0]],
+; CHECK: LCAL
+; CHECK: EXTV
+; CHECK: BR_LCAL
 )";
+
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
