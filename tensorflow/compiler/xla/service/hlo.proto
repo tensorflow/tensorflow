@@ -174,11 +174,13 @@ message HloInstructionProto {
   xla.RandomDistribution distribution = 23;
 
   // A small float number added to the variance to avoid divide-by-zero error.
-  // Only present for kBatchNormTraining.
+  // Only present for kBatchNormTraining, kBatchNormInference, and
+  // kBatchNormGrad.
   float epsilon = 24;
 
   // An integer value representing the index of the feature dimension.
-  // Only present for kBatchNormTraining.
+  // Only present for kBatchNormTraining, kBatchNormInference, and
+  // kBatchNormGrad.
   int64 feature_index = 25;
 
   // Represents a unique identifier for each Send/Recv instruction pair or
