@@ -17,7 +17,7 @@ load(
     "if_cuda_is_configured",
 )
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
+    "//tensorflow/tsl/platform:build_config_root.bzl",
     "if_static",
     "tf_cuda_tests_tags",
 )

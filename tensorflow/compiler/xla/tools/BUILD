@@ -9,7 +9,7 @@ load(
     "tf_cc_test",
 )
 load(
-    "//tensorflow/core/platform:build_config.bzl",
+    "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
