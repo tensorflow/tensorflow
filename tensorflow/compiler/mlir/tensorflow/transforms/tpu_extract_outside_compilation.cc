@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
@@ -59,8 +58,11 @@ constexpr char kHostFunctionAttr[] = "host_func";
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 constexpr char kNoReplicationCluster[] = "__no_replication_cluster";
 
+#define GEN_PASS_DEF_TPUEXTRACTOUTSIDECOMPILATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUExtractOutsideCompilation
-    : public TF::TPUExtractOutsideCompilationPassBase<
+    : public impl::TPUExtractOutsideCompilationPassBase<
           TPUExtractOutsideCompilation> {
   void runOnOperation() override;
 };

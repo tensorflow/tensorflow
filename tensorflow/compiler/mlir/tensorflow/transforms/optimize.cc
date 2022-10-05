@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 
 namespace mlir {
@@ -131,9 +130,12 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
   }
 };
 
+#define GEN_PASS_DEF_TENSORFLOWOPTIMIZEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Canonicalize operations in functions.
 struct TensorFlowOptimizePass
-    : public TensorFlowOptimizePassBase<TensorFlowOptimizePass> {
+    : public impl::TensorFlowOptimizePassBase<TensorFlowOptimizePass> {
   LogicalResult initialize(MLIRContext *context) override {
     RewritePatternSet pattern_list(context);
     populateWithGenerated(pattern_list);

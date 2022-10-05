@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -78,8 +77,11 @@ constexpr char kBadArrayElementMsg[] =
 constexpr char kBadArrayAttrLengthMsg[] =
     "bad '{0}' attribute, expected array attribute of size {1}, got size {2}";
 
+#define GEN_PASS_DEF_TPUREWRITEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 namespace {
-struct TPURewritePass : public TF::TPURewritePassBase<TPURewritePass> {
+struct TPURewritePass : public impl::TPURewritePassBase<TPURewritePass> {
   void runOnOperation() override;
 };
 

@@ -23,7 +23,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -31,12 +30,16 @@ namespace {
 
 std::vector<Operation*> groupOperationsByDialect(Block& block);
 
+#define GEN_PASS_DEF_ORDERBYDIALECTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Reorder operations so that consecutive ops stay in the same dialect, as far
 // as possible. This is to optimize the op order for the group-by-dialect pass,
 // which factors consecutive same-dialect ops into functions.
 // TODO(kramm): This pass needs to become aware of side-effects between ops
 // of different dialects.
-class OrderByDialectPass : public OrderByDialectPassBase<OrderByDialectPass> {
+class OrderByDialectPass
+    : public impl::OrderByDialectPassBase<OrderByDialectPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OrderByDialectPass)
 

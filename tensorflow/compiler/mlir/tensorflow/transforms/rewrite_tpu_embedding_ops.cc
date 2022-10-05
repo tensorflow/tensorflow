@@ -19,17 +19,19 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_REWRITETPUEMBEDDINGOPSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Rewrites RecvTPUEmbeddingActivationsOp and SendTPUEmbeddingGradients ops to
 // internal variants by introducing XlaRecvTPUEmbeddingDeduplicationData op.
 struct RewriteTPUEmbeddingOps
-    : public RewriteTPUEmbeddingOpsPassBase<RewriteTPUEmbeddingOps> {
+    : public impl::RewriteTPUEmbeddingOpsPassBase<RewriteTPUEmbeddingOps> {
   void runOnOperation() override;
 };
 

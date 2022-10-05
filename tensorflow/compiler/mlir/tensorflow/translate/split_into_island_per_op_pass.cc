@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 // This pass is used in preparation for Graph export.
 // The GraphDef exporter expects each op to be in its own island.
@@ -39,8 +38,11 @@ namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_SPLITINTOISLANDPEROPPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class SplitIntoIslandPerOpPass
-    : public SplitIntoIslandPerOpPassBase<SplitIntoIslandPerOpPass> {
+    : public impl::SplitIntoIslandPerOpPassBase<SplitIntoIslandPerOpPass> {
  public:
   void runOnOperation() override;
 

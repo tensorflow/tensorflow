@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/parallel_execute_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -36,8 +35,11 @@ namespace mlir {
 namespace TFTPU {
 namespace {
 
+#define GEN_PASS_DEF_TPURESOURCEREADSWRITESPARTITIONINGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUResourceReadsWritesPartitioningPass
-    : public TF::TPUResourceReadsWritesPartitioningPassBase<
+    : public impl::TPUResourceReadsWritesPartitioningPassBase<
           TPUResourceReadsWritesPartitioningPass> {
   void runOnOperation() override;
 };

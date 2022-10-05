@@ -23,7 +23,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -32,7 +31,11 @@ namespace {
 void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id,
                        Operation* module);
 
-class GroupByDialectPass : public GroupByDialectPassBase<GroupByDialectPass> {
+#define GEN_PASS_DEF_GROUPBYDIALECTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+class GroupByDialectPass
+    : public impl::GroupByDialectPassBase<GroupByDialectPass> {
  public:
   void runOnOperation() override;
 

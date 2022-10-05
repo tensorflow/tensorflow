@@ -341,7 +341,6 @@ cc_library(
         "transforms/generated_legalize_hlo.inc",
         "transforms/legalize_hlo.cc",
         "transforms/passes.h",
-        "transforms/passes_detail.h",
     ],
     deps = [
         ":lower_tf_lib",
@@ -369,7 +368,6 @@ cc_library(
     name = "tfe_legalize_tfg",
     srcs = [
         "transforms/passes.h",
-        "transforms/passes_detail.h",
         "transforms/tfg-to-tfe.cc",
     ],
     deps = [
@@ -838,7 +836,6 @@ cc_library(
 cc_library(
     name = "unroll_batch_matmul_pass",
     srcs = [
-        "transforms/passes_detail.h",
         "transforms/unroll_batch_matmul.cc",
     ],
     hdrs = [
@@ -1263,7 +1260,6 @@ cc_library(
     ],
     includes = ["include"],
     textual_hdrs = [
-        "transforms/passes_detail.h",
         "transforms/tf_device_passes.h.inc",
         "transforms/tf_passes.h.inc",
         "transforms/tf_savedmodel_passes.h.inc",
@@ -1335,6 +1331,7 @@ cc_library(
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ControlFlowDialect",
+        "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -1354,7 +1351,6 @@ cc_library(
     name = "shape_inference_pass",
     srcs = [
         "transforms/passes.h",
-        "transforms/passes_detail.h",
         "transforms/shape_inference.cc",
         "transforms/shape_inference_pass.cc",
     ],
