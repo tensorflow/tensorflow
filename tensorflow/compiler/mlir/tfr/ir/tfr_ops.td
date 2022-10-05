@@ -42,7 +42,7 @@ def TFR_Dialect : Dialect {
 
   let cppNamespace = "::mlir::TFR";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 //===----------------------------------------------------------------------===//
@@ -141,10 +141,10 @@ def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {
 
   let extraClassDeclaration = [{
     // Get the argument operands to the called function.
-    operand_range getArgOperands() { return args(); }
+    operand_range getArgOperands() { return getArgs(); }
 
     // Return the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() { return calleeAttr(); }
+    CallInterfaceCallable getCallableForCallee() { return getCalleeAttr(); }
   }];
 
   let assemblyFormat = [{
@@ -173,7 +173,7 @@ def TFR_CastOp : TFR_Op<"cast", [NoSideEffect]> {
     // Return element type of the input tensor type. Only available when the
     // input is a MLIR built-in tensor type.
     Attribute getInputElementType() {
-      if (auto ty = arg().getType().dyn_cast<TensorType>()) {
+      if (auto ty = getArg().getType().dyn_cast<TensorType>()) {
         return TypeAttr::get(ty.getElementType());
       }
       return {};
