@@ -36,6 +36,7 @@ namespace jax {
 enum class ShardingType {
   kDefault = 0,  // Opaque type, fallback to python.
   kMeshPspecSharding,
+  kOpShardingSharding,
 };
 
 class Sharding {
@@ -136,7 +137,7 @@ class PmapSharding : public XLACompatibleSharding {
 class OpShardingSharding : public XLACompatibleSharding {
  public:
   OpShardingSharding(pybind11::list devices, xla::OpSharding op_sharding)
-      : XLACompatibleSharding(ShardingType::kDefault,
+      : XLACompatibleSharding(ShardingType::kOpShardingSharding,
                               /*num_devices=*/devices.size()),
         devices_(std::move(devices)),  // Implicitly converts a list to a tuple.
         op_sharding_(std::move(op_sharding)) {}
@@ -144,9 +145,27 @@ class OpShardingSharding : public XLACompatibleSharding {
   const pybind11::tuple& devices() const { return devices_; }
   const xla::OpSharding& op_sharding() const { return op_sharding_; }
 
+  size_t Hash() {
+    if (!hash_.has_value()) {
+      hash_ = CalculateHash();
+    }
+    return *hash_;
+  }
+
  private:
+  size_t CalculateHash() const {
+    // We only hash `op_sharding_` here for performance.
+    auto hlo_sharding = xla::HloSharding::FromProto(op_sharding_);
+    if (!hlo_sharding.ok()) {
+      throw xla::XlaRuntimeError(hlo_sharding.status().error_message());
+    }
+    return absl::Hash<xla::HloSharding>()(*hlo_sharding);
+  }
+
   pybind11::tuple devices_;
   xla::OpSharding op_sharding_;
+
+  std::optional<size_t> hash_;
 };
 
 void RegisterSharding(pybind11::module& m);

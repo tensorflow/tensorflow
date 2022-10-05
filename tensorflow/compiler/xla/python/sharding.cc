@@ -24,11 +24,16 @@ namespace jax {
 namespace py = pybind11;
 
 size_t ShardingHash(const pybind11::object& obj) {
-  const auto* sharding = py::cast<jax::Sharding*>(obj);
+  auto* sharding = py::cast<jax::Sharding*>(obj);
 
   if (sharding->type() == ShardingType::kMeshPspecSharding) {
     const auto* mesh_sharding = static_cast<const MeshPspecSharding*>(sharding);
     return absl::Hash<void*>()(mesh_sharding->mesh().ptr());
+  }
+
+  if (sharding->type() == ShardingType::kOpShardingSharding) {
+    auto* op_sharding = static_cast<OpShardingSharding*>(sharding);
+    return op_sharding->Hash();
   }
 
   return py::hash(obj);
