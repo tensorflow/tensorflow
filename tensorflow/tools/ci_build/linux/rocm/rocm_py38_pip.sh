@@ -50,6 +50,7 @@ export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filt
  --local_test_jobs=${N_TEST_JOBS} \
  --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
  --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
+ --test_env=HSA_TOOLS_LIB=libroctracer64.so \
  --test_timeout 600,900,2400,7200 \
  --build_tests_only \
  --test_output=errors \
