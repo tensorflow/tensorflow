@@ -2082,7 +2082,9 @@ class MklQuantizedConvOp
         reorder_attr.set_output_scales(2, scales);
       }
       auto summand_md = memory::desc(output_dims_mkl_order, MklDnnType<Tbias>(),
-                                     memory::format_tag::nhwc);
+                                     output_dims_mkl_order.size() == 4
+                                         ? memory::format_tag::nhwc
+                                         : memory::format_tag::ndhwc);
       void* summand_buf =
           static_cast<void*>(const_cast<Tbias*>(summand.flat<Tbias>().data()));
       void* dst_buf =
