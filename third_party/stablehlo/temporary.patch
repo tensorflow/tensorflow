@@ -31,4 +31,16 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
  #include "mlir/Dialect/Complex/IR/Complex.h"
  #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
  #include "mlir/Dialect/Tensor/IR/Tensor.h"
+diff --ruN a/stablehlo/stablehlo/tools/StablehloInterpreterMain.cpp b/stablehlo/stablehlo/tools/StablehloInterpreterMain.cpp
+--- stablehlo/stablehlo/tools/StablehloInterpreterMain.cpp
++++ stablehlo/stablehlo/tools/StablehloInterpreterMain.cpp
+@@ -22,7 +22,7 @@
+ namespace mlir {
+ 
+ TranslateFromMLIRRegistration stablehlo_interpreter(
+-    "interpret",
++    "interpret", "interpret stable hlo",
+     [](ModuleOp module, raw_ostream &os) {
+       auto walkResult = module.walk([&](func::FuncOp funcOp) {
+         os << "\nEvaluated results of function: " << funcOp.getSymName()
 

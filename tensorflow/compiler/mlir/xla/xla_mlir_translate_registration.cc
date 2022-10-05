@@ -207,23 +207,24 @@ static void RegisterInputDialects(mlir::DialectRegistry& registry) {
 }
 
 static mlir::TranslateFromMLIRRegistration MlirHloToHloTranslate(
-    "mlir-hlo-to-hlo", xla::MlirHloToHloTranslateFunction,
+    "mlir-hlo-to-hlo", "mlir-hlo-to-hlo", xla::MlirHloToHloTranslateFunction,
     RegisterInputDialects);
 
 static mlir::TranslateFromMLIRRegistration MlirHloToHloTextTranslate(
-    "mlir-hlo-to-hlo-text", xla::MlirHloToHloTextTranslateFunction,
-    RegisterInputDialects);
+    "mlir-hlo-to-hlo-text", "mlir-hlo-to-hlo-text",
+    xla::MlirHloToHloTextTranslateFunction, RegisterInputDialects);
 
 static mlir::TranslateToMLIRRegistration HloToHloMlirTranslate(
-    "hlo-to-mlir-hlo", HloToMlirHloTranslate);
+    "hlo-to-mlir-hlo", "hlo-to-mlir-hlo", HloToMlirHloTranslate);
 
 static mlir::TranslateToMLIRRegistration HloTextToHloMlirTranslate(
-    "hlo-text-to-mlir-hlo", HloTextToMlirHloTranslate);
+    "hlo-text-to-mlir-hlo", "hlo-text-to-mlir-hlo", HloTextToMlirHloTranslate);
 
 // MHLO doesn't support explicit layouts, while XLA service does.
 // TODO(timshen): remove it once MHLO supports explicit layouts.
 static mlir::TranslateToMLIRRegistration HloTextToLhloMlirTranslate(
-    "hlo-text-to-lhlo", [](llvm::StringRef input, mlir::MLIRContext* context) {
+    "hlo-text-to-lhlo", "hlo-text-to-lhlo",
+    [](llvm::StringRef input, mlir::MLIRContext* context) {
       return mlir::HloTextToLhloTranslateFunction(input, context,
                                                   optimize_xla_hlo);
     });
