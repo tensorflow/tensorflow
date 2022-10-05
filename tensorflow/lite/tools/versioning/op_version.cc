@@ -53,7 +53,20 @@ int GetInputMaxDims(const OpSignature& op_sig) {
 
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
-    case BuiltinOperator_CONV_2D:
+    case BuiltinOperator_CONV_2D: {
+      auto conv_params =
+          reinterpret_cast<TfLiteConvParams*>(op_sig.builtin_data);
+      TFLITE_DCHECK(conv_params != nullptr);
+
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
+        // `quantized_bias_type` is supported at version 7.
+        if (conv_params->quantized_bias_type) {
+          return 7;
+        }
+      }
+
       if (op_sig.ext_options.conv_2d.is_grouped_convolution) {
         return 6;
       }
@@ -90,7 +103,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
-
+    }
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
       // If the op accepts int16, we return version 5.
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
@@ -146,6 +159,19 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       // | Quantized Int8  |                  4 |                        4 |
       // +-----------------+--------------------+--------------------------+
 
+      auto fully_connected_params =
+          reinterpret_cast<TfLiteFullyConnectedParams*>(op_sig.builtin_data);
+      TFLITE_DCHECK(fully_connected_params != nullptr);
+
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
+        // `quantized_bias_type` is supported at version 10.
+        if (fully_connected_params->quantized_bias_type) {
+          return 10;
+        }
+      }
+
       // FullyConnected with sparse weight is supported at version 8.
       if (op_sig.ext_options.fully_connected.sparse_weight) {
         return 8;
@@ -163,9 +189,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.size() == 2) {
         return 6;
       }
-      auto fully_connected_params =
-          reinterpret_cast<TfLiteFullyConnectedParams*>(op_sig.builtin_data);
-      TFLITE_DCHECK(fully_connected_params != nullptr);
       // `keep_num_dims` is supported at version 5.
       if (fully_connected_params->keep_num_dims) {
         return 5;
@@ -294,6 +317,19 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE_CONV: {
+      auto transpose_conv_params =
+          reinterpret_cast<TfLiteTransposeConvParams*>(op_sig.builtin_data);
+      TFLITE_DCHECK(transpose_conv_params != nullptr);
+
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
+        // `quantized_bias_type` is supported at version 4.
+        if (transpose_conv_params->quantized_bias_type) {
+          return 4;
+        }
+      }
+
       if (op_sig.inputs.size() == 4 &&
           op_sig.inputs.at(3).type != kTfLiteNoType) {
         return 3;

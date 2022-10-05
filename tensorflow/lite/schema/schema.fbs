@@ -566,6 +566,9 @@ table Conv2DOptions {
   fused_activation_function:ActivationFunctionType;
   dilation_w_factor:int = 1;
   dilation_h_factor:int = 1;
+  // Parameters for Conv2D version 7 or above.
+  // If set, use this for bias accumulator.
+  quantized_bias_type: TensorType;
 }
 
 // Options for both Conv3D and Conv3DTranspose.
@@ -673,6 +676,10 @@ table FullyConnectedOptions {
   // If set to true, then weights-only op will use asymmetric quantization for
   // inputs.
   asymmetric_quantize_inputs: bool;
+
+  // Parameters for FullyConnected version 10 or above.
+  // If set, use this for bias accumulator.
+  quantized_bias_type: TensorType;
 }
 
 table SoftmaxOptions {
@@ -923,6 +930,9 @@ table TransposeConvOptions {
   padding:Padding;
   stride_w:int;
   stride_h:int;
+  // Parameters for TransposeConv version 4 or above.
+  // If set, use this for bias accumulator.
+  quantized_bias_type: TensorType;
 }
 
 table ExpandDimsOptions {

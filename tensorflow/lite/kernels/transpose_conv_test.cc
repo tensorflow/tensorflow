@@ -75,10 +75,11 @@ class BaseTransposeConvOpModel : public SingleOpModel {
 
     output_ = AddOutput(output);
 
-    SetBuiltinOp(
-        BuiltinOperator_TRANSPOSE_CONV, BuiltinOptions_TransposeConvOptions,
-        CreateTransposeConvOptions(builder_, padding, stride_w, stride_h)
-            .Union());
+    SetBuiltinOp(BuiltinOperator_TRANSPOSE_CONV,
+                 BuiltinOptions_TransposeConvOptions,
+                 CreateTransposeConvOptions(builder_, padding, stride_w,
+                                            stride_h, TensorType_INT32)
+                     .Union());
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_TRANSPOSE_CONV, registration, version);
     BuildInterpreter(
@@ -597,6 +598,7 @@ class BaseTransposeConvBiasOpModel : public SingleOpModel {
     input_ = AddInput(input);
 
     int bias_size = GetShape(filter_)[0];
+    tflite::TensorType bias_type = TensorType_INT32;
     if (input.type == TensorType_FLOAT32) {
       bias_ = AddInput({TensorType_FLOAT32, {bias_size}});
     } else if (input.type == TensorType_INT8) {
@@ -610,7 +612,7 @@ class BaseTransposeConvBiasOpModel : public SingleOpModel {
         bias_scale[i] = input.scale * filter.per_channel_quantization_scales[i];
         bias_zero_points[i] = 0;
       }
-      TensorData bias{TensorType_INT32,
+      TensorData bias{bias_type,
                       {bias_size},
                       /*min=*/0,
                       /*max=*/0,
@@ -630,10 +632,11 @@ class BaseTransposeConvBiasOpModel : public SingleOpModel {
 
     output_ = AddOutput(output);
 
-    SetBuiltinOp(
-        BuiltinOperator_TRANSPOSE_CONV, BuiltinOptions_TransposeConvOptions,
-        CreateTransposeConvOptions(builder_, padding, stride_w, stride_h)
-            .Union());
+    SetBuiltinOp(BuiltinOperator_TRANSPOSE_CONV,
+                 BuiltinOptions_TransposeConvOptions,
+                 CreateTransposeConvOptions(builder_, padding, stride_w,
+                                            stride_h, bias_type)
+                     .Union());
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_TRANSPOSE_CONV, registration, version);
     BuildInterpreter({GetShape(output_shape_), GetShape(filter_),

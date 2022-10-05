@@ -67,6 +67,7 @@ class BaseConvolutionOpModel : public SingleOpModel {
     }
 
     int bias_size = GetShape(filter_)[0];
+    tflite::TensorType bias_type = TensorType_INT32;
     if (input.type == TensorType_FLOAT32) {
       bias_ = AddInput({TensorType_FLOAT32, {bias_size}});
     } else {
@@ -85,7 +86,6 @@ class BaseConvolutionOpModel : public SingleOpModel {
               input.scale * filter.per_channel_quantization_scales[i];
           bias_zero_points[i] = 0;
         }
-        tflite::TensorType bias_type = TensorType_INT32;
         if (input.type == TensorType_INT16) {
           // In case of 16-bit, the bias type is set to be int 64.
           bias_type = TensorType_INT64;
@@ -114,7 +114,7 @@ class BaseConvolutionOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_CONV_2D, BuiltinOptions_Conv2DOptions,
                  CreateConv2DOptions(
                      builder_, padding, stride_width, stride_height, activation,
-                     dilation_width_factor, dilation_height_factor)
+                     dilation_width_factor, dilation_height_factor, bias_type)
                      .Union());
 
     resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,

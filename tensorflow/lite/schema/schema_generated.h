@@ -5010,6 +5010,7 @@ struct Conv2DOptionsT : public flatbuffers::NativeTable {
   tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE;
   int32_t dilation_w_factor = 1;
   int32_t dilation_h_factor = 1;
+  tflite::TensorType quantized_bias_type = tflite::TensorType_FLOAT32;
 };
 
 struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -5021,7 +5022,8 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_STRIDE_H = 8,
     VT_FUSED_ACTIVATION_FUNCTION = 10,
     VT_DILATION_W_FACTOR = 12,
-    VT_DILATION_H_FACTOR = 14
+    VT_DILATION_H_FACTOR = 14,
+    VT_quantized_bias_type = 16
   };
   tflite::Padding padding() const {
     return static_cast<tflite::Padding>(GetField<int8_t>(VT_PADDING, 0));
@@ -5041,6 +5043,9 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   int32_t dilation_h_factor() const {
     return GetField<int32_t>(VT_DILATION_H_FACTOR, 1);
   }
+  tflite::TensorType quantized_bias_type() const {
+    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_quantized_bias_type, 0));
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_PADDING, 1) &&
@@ -5049,6 +5054,7 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
            VerifyField<int32_t>(verifier, VT_DILATION_W_FACTOR, 4) &&
            VerifyField<int32_t>(verifier, VT_DILATION_H_FACTOR, 4) &&
+           VerifyField<int8_t>(verifier, VT_quantized_bias_type, 1) &&
            verifier.EndTable();
   }
   Conv2DOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5078,6 +5084,9 @@ struct Conv2DOptionsBuilder {
   void add_dilation_h_factor(int32_t dilation_h_factor) {
     fbb_.AddElement<int32_t>(Conv2DOptions::VT_DILATION_H_FACTOR, dilation_h_factor, 1);
   }
+  void add_quantized_bias_type(tflite::TensorType quantized_bias_type) {
+    fbb_.AddElement<int8_t>(Conv2DOptions::VT_quantized_bias_type, static_cast<int8_t>(quantized_bias_type), 0);
+  }
   explicit Conv2DOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -5096,12 +5105,14 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(
     int32_t stride_h = 0,
     tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
     int32_t dilation_w_factor = 1,
-    int32_t dilation_h_factor = 1) {
+    int32_t dilation_h_factor = 1,
+    tflite::TensorType quantized_bias_type = tflite::TensorType_FLOAT32) {
   Conv2DOptionsBuilder builder_(_fbb);
   builder_.add_dilation_h_factor(dilation_h_factor);
   builder_.add_dilation_w_factor(dilation_w_factor);
   builder_.add_stride_h(stride_h);
   builder_.add_stride_w(stride_w);
+  builder_.add_quantized_bias_type(quantized_bias_type);
   builder_.add_fused_activation_function(fused_activation_function);
   builder_.add_padding(padding);
   return builder_.Finish();
@@ -5907,6 +5918,7 @@ struct FullyConnectedOptionsT : public flatbuffers::NativeTable {
   tflite::FullyConnectedOptionsWeightsFormat weights_format = tflite::FullyConnectedOptionsWeightsFormat_DEFAULT;
   bool keep_num_dims = false;
   bool asymmetric_quantize_inputs = false;
+  tflite::TensorType quantized_bias_type = tflite::TensorType_FLOAT32;
 };
 
 struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -5916,7 +5928,8 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
     VT_FUSED_ACTIVATION_FUNCTION = 4,
     VT_WEIGHTS_FORMAT = 6,
     VT_KEEP_NUM_DIMS = 8,
-    VT_ASYMMETRIC_QUANTIZE_INPUTS = 10
+    VT_ASYMMETRIC_QUANTIZE_INPUTS = 10,
+    VT_quantized_bias_type = 12
   };
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
@@ -5930,12 +5943,16 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
   bool asymmetric_quantize_inputs() const {
     return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
   }
+  tflite::TensorType quantized_bias_type() const {
+    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_quantized_bias_type, 0));
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
            VerifyField<int8_t>(verifier, VT_WEIGHTS_FORMAT, 1) &&
            VerifyField<uint8_t>(verifier, VT_KEEP_NUM_DIMS, 1) &&
            VerifyField<uint8_t>(verifier, VT_ASYMMETRIC_QUANTIZE_INPUTS, 1) &&
+           VerifyField<int8_t>(verifier, VT_quantized_bias_type, 1) &&
            verifier.EndTable();
   }
   FullyConnectedOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5959,6 +5976,9 @@ struct FullyConnectedOptionsBuilder {
   void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
     fbb_.AddElement<uint8_t>(FullyConnectedOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
   }
+  void add_quantized_bias_type(tflite::TensorType quantized_bias_type) {
+    fbb_.AddElement<int8_t>(FullyConnectedOptions::VT_quantized_bias_type, static_cast<int8_t>(quantized_bias_type), 0);
+  }
   explicit FullyConnectedOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -5975,8 +5995,10 @@ inline flatbuffers::Offset<FullyConnectedOptions> CreateFullyConnectedOptions(
     tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
     tflite::FullyConnectedOptionsWeightsFormat weights_format = tflite::FullyConnectedOptionsWeightsFormat_DEFAULT,
     bool keep_num_dims = false,
-    bool asymmetric_quantize_inputs = false) {
+    bool asymmetric_quantize_inputs = false,
+    tflite::TensorType quantized_bias_type = tflite::TensorType_FLOAT32) {
   FullyConnectedOptionsBuilder builder_(_fbb);
+  builder_.add_quantized_bias_type(quantized_bias_type);
   builder_.add_asymmetric_quantize_inputs(asymmetric_quantize_inputs);
   builder_.add_keep_num_dims(keep_num_dims);
   builder_.add_weights_format(weights_format);
@@ -8527,6 +8549,7 @@ struct TransposeConvOptionsT : public flatbuffers::NativeTable {
   tflite::Padding padding = tflite::Padding_SAME;
   int32_t stride_w = 0;
   int32_t stride_h = 0;
+  tflite::TensorType quantized_bias_type = tflite::TensorType_FLOAT32;
 };
 
 struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -8535,7 +8558,8 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_PADDING = 4,
     VT_STRIDE_W = 6,
-    VT_STRIDE_H = 8
+    VT_STRIDE_H = 8,
+    VT_quantized_bias_type = 10
   };
   tflite::Padding padding() const {
     return static_cast<tflite::Padding>(GetField<int8_t>(VT_PADDING, 0));
@@ -8546,11 +8570,15 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   int32_t stride_h() const {
     return GetField<int32_t>(VT_STRIDE_H, 0);
   }
+  tflite::TensorType quantized_bias_type() const {
+    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_quantized_bias_type, 0));
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_PADDING, 1) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_W, 4) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_H, 4) &&
+           VerifyField<int8_t>(verifier, VT_quantized_bias_type, 1) &&
            verifier.EndTable();
   }
   TransposeConvOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -8571,6 +8599,9 @@ struct TransposeConvOptionsBuilder {
   void add_stride_h(int32_t stride_h) {
     fbb_.AddElement<int32_t>(TransposeConvOptions::VT_STRIDE_H, stride_h, 0);
   }
+  void add_quantized_bias_type(tflite::TensorType quantized_bias_type) {
+    fbb_.AddElement<int8_t>(TransposeConvOptions::VT_quantized_bias_type, static_cast<int8_t>(quantized_bias_type), 0);
+  }
   explicit TransposeConvOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -8586,10 +8617,12 @@ inline flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     tflite::Padding padding = tflite::Padding_SAME,
     int32_t stride_w = 0,
-    int32_t stride_h = 0) {
+    int32_t stride_h = 0,
+    tflite::TensorType quantized_bias_type = tflite::TensorType_FLOAT32) {
   TransposeConvOptionsBuilder builder_(_fbb);
   builder_.add_stride_h(stride_h);
   builder_.add_stride_w(stride_w);
+  builder_.add_quantized_bias_type(quantized_bias_type);
   builder_.add_padding(padding);
   return builder_.Finish();
 }
@@ -13670,6 +13703,7 @@ inline void Conv2DOptions::UnPackTo(Conv2DOptionsT *_o, const flatbuffers::resol
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
   { auto _e = dilation_w_factor(); _o->dilation_w_factor = _e; }
   { auto _e = dilation_h_factor(); _o->dilation_h_factor = _e; }
+  { auto _e = quantized_bias_type(); _o->quantized_bias_type = _e; }
 }
 
 inline flatbuffers::Offset<Conv2DOptions> Conv2DOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Conv2DOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -13686,6 +13720,7 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(flatbuffers::FlatB
   auto _fused_activation_function = _o->fused_activation_function;
   auto _dilation_w_factor = _o->dilation_w_factor;
   auto _dilation_h_factor = _o->dilation_h_factor;
+  auto _quantized_bias_type = _o->quantized_bias_type;
   return tflite::CreateConv2DOptions(
       _fbb,
       _padding,
@@ -13693,7 +13728,8 @@ inline flatbuffers::Offset<Conv2DOptions> CreateConv2DOptions(flatbuffers::FlatB
       _stride_h,
       _fused_activation_function,
       _dilation_w_factor,
-      _dilation_h_factor);
+      _dilation_h_factor,
+      _quantized_bias_type);
 }
 
 inline Conv3DOptionsT *Conv3DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -14027,6 +14063,7 @@ inline void FullyConnectedOptions::UnPackTo(FullyConnectedOptionsT *_o, const fl
   { auto _e = weights_format(); _o->weights_format = _e; }
   { auto _e = keep_num_dims(); _o->keep_num_dims = _e; }
   { auto _e = asymmetric_quantize_inputs(); _o->asymmetric_quantize_inputs = _e; }
+  { auto _e = quantized_bias_type(); _o->quantized_bias_type = _e; }
 }
 
 inline flatbuffers::Offset<FullyConnectedOptions> FullyConnectedOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const FullyConnectedOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -14041,12 +14078,14 @@ inline flatbuffers::Offset<FullyConnectedOptions> CreateFullyConnectedOptions(fl
   auto _weights_format = _o->weights_format;
   auto _keep_num_dims = _o->keep_num_dims;
   auto _asymmetric_quantize_inputs = _o->asymmetric_quantize_inputs;
+  auto _quantized_bias_type = _o->quantized_bias_type;
   return tflite::CreateFullyConnectedOptions(
       _fbb,
       _fused_activation_function,
       _weights_format,
       _keep_num_dims,
-      _asymmetric_quantize_inputs);
+      _asymmetric_quantize_inputs,
+      _quantized_bias_type);
 }
 
 inline SoftmaxOptionsT *SoftmaxOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -15313,6 +15352,7 @@ inline void TransposeConvOptions::UnPackTo(TransposeConvOptionsT *_o, const flat
   { auto _e = padding(); _o->padding = _e; }
   { auto _e = stride_w(); _o->stride_w = _e; }
   { auto _e = stride_h(); _o->stride_h = _e; }
+  { auto _e = quantized_bias_type(); _o->quantized_bias_type = _e; }
 }
 
 inline flatbuffers::Offset<TransposeConvOptions> TransposeConvOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TransposeConvOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -15326,11 +15366,13 @@ inline flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(flat
   auto _padding = _o->padding;
   auto _stride_w = _o->stride_w;
   auto _stride_h = _o->stride_h;
+  auto _quantized_bias_type = _o->quantized_bias_type;
   return tflite::CreateTransposeConvOptions(
       _fbb,
       _padding,
       _stride_w,
-      _stride_h);
+      _stride_h,
+      _quantized_bias_type);
 }
 
 inline ExpandDimsOptionsT *ExpandDimsOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

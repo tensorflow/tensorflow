@@ -24,8 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "flatbuffers/flexbuffers.h"
 #include "absl/strings/str_cat.h"
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
@@ -270,6 +270,39 @@ std::unordered_set<string> PopulateRealValueOpSet(
     }
   }
   return real_value_op_set;
+}
+
+// We set the builtin option quantized_bias_type for
+// CONV_2D/FULLY_CONNECTED/TRANSPOSE_CONV, to ensure the correct
+// accumulator is set even if no bias is used.
+void SetOperatorPropertyBiasType(ModelT* model, const TensorType& bias_type) {
+  for (int subgraph_idx = 0, end = model->subgraphs.size(); subgraph_idx < end;
+       subgraph_idx++) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    // Iterate backward to avoid messing with index.
+    for (int op_idx = subgraph->operators.size() - 1; op_idx >= 0; op_idx--) {
+      OperatorT* op = subgraph->operators[op_idx].get();
+      OperatorCodeT* op_code = model->operator_codes[op->opcode_index].get();
+      if (op_code && op_code->builtin_code == BuiltinOperator_FULLY_CONNECTED) {
+        auto* options = op->builtin_options.AsFullyConnectedOptions();
+        if (options) {
+          options->quantized_bias_type = bias_type;
+        }
+      }
+      if (op_code && op_code->builtin_code == BuiltinOperator_CONV_2D) {
+        auto* options = op->builtin_options.AsConv2DOptions();
+        if (options) {
+          options->quantized_bias_type = bias_type;
+        }
+      }
+      if (op_code && op_code->builtin_code == BuiltinOperator_TRANSPOSE_CONV) {
+        auto* options = op->builtin_options.AsTransposeConvOptions();
+        if (options) {
+          options->quantized_bias_type = bias_type;
+        }
+      }
+    }
+  }
 }
 
 TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
@@ -1923,6 +1956,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
   TF_LITE_ENSURE_STATUS(ApplyConstraints(model, operator_names,
                                          real_value_op_set, activations_type,
                                          error_reporter));
+  SetOperatorPropertyBiasType(model, bias_type);
   TF_LITE_ENSURE_STATUS(QuantizeBiases(model, operator_names, real_value_op_set,
                                        activations_type, bias_type,
                                        disable_per_channel, error_reporter));

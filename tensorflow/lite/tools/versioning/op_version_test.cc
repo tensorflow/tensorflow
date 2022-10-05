@@ -590,6 +590,16 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
   fully_connected_params.asymmetric_quantize_inputs = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 9);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_FULLY_CONNECTED,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteInt16, kTfLiteInt8}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+      .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+  };
+  fully_connected_params.quantized_bias_type = kTfLiteInt32;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 10);
 }
 
 TEST(OpVersionTest, VersioningDequantizeTest) {
@@ -681,6 +691,17 @@ TEST(OpVersionTest, VersioningConv2DTest) {
   fake_op_sig.ext_options.conv_2d.is_grouped_convolution = true;
 
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
+
+  TfLiteConvParams conv_params = {};
+  fake_op_sig = {
+      .op = BuiltinOperator_CONV_2D,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteInt16, kTfLiteInt8}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+      .builtin_data = reinterpret_cast<void*>(&conv_params),
+  };
+  conv_params.quantized_bias_type = kTfLiteInt32;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 7);
 }
 
 TEST(OpVersionTest, VersioningFloorDivOperatorTest) {
@@ -726,6 +747,17 @@ TEST(OpVersionTest, VersioningTransposeConvOperatorTest) {
           kTfLiteInt32, kTfLiteInt8, kTfLiteInt8, none_type}),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  TfLiteTransposeConvParams transpose_conv_params = {};
+  fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE_CONV,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteInt16, kTfLiteInt8}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+      .builtin_data = reinterpret_cast<void*>(&transpose_conv_params),
+  };
+  transpose_conv_params.quantized_bias_type = kTfLiteInt32;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 
 TEST(OpVersionTest, VersioningSVDFOperatorTest) {
