@@ -170,11 +170,19 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags) {
+    const absl::string_view exported_names_str, const absl::string_view tags,
+    const absl::string_view quant_opts_serialized) {
   const std::unordered_set<std::string> tag_set =
       absl::StrSplit(tags, ',', absl::SkipEmpty());
   std::vector<std::string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
+  QuantizationOptions quantization_options;
+  if (!quantization_options.ParseFromString(
+          // NOLINTNEXTLINE: std::string conversion required.
+          std::string(quant_opts_serialized))) {
+    return absl::InternalError(
+        "Failed to parse QuantizationOptions from string.");
+  }
 
   // Convert the SavedModelBundle to an MLIR module.
   mlir::DialectRegistry registry;
@@ -210,7 +218,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
 
   mlir::PassManager pm(&context);
 
-  AddQuantizePtqPreCalibrationPasses(pm);
+  AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
   AddExportPasses(pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);

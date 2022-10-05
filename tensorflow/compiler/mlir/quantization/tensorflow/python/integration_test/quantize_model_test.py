@@ -621,7 +621,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     if target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaConvV2'))
+      # Quantization for DepthwiseConv is disabled for XLA opset.
+      self.assertTrue(
+          self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative'))
     else:
       self.assertTrue(
           self._contains_quantized_function_call(output_meta_graphdef))

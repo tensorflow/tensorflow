@@ -37,7 +37,7 @@ std::pair<std::string, std::string> QuantizePtqDynamicRange(
 // (serialized GraphDef, initializer node name).
 std::pair<std::string, std::string> QuantizePtqModelPreCalibration(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags);
+    absl::string_view tags, absl::string_view quant_opts_serialized);
 
 // Runs the post-calibration step of post-training quantization (PTQ). Returns
 // (serialized GraphDef, initializer node name).

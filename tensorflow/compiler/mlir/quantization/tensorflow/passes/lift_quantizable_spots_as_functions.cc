@@ -32,10 +32,14 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace mlir {
 namespace quant {
@@ -47,6 +51,17 @@ class LiftQuantizableSpotsAsFunctionsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       LiftQuantizableSpotsAsFunctionsPass)
+
+  LiftQuantizableSpotsAsFunctionsPass() {}
+
+  explicit LiftQuantizableSpotsAsFunctionsPass(const OpSet& op_set) {
+    op_set_ = op_set;
+  }
+
+  LiftQuantizableSpotsAsFunctionsPass(
+      const LiftQuantizableSpotsAsFunctionsPass& other) {
+    op_set_ = other.op_set_;
+  }
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -60,11 +75,113 @@ class LiftQuantizableSpotsAsFunctionsPass
            "module";
   }
 
-  void getDependentDialects(DialectRegistry &registry) const override {
+  void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
   }
 
   void runOnOperation() override;
+
+ private:
+  Option<OpSet> op_set_{
+      *this, "target-opset", llvm::cl::init(OpSet::TF),
+      llvm::cl::desc("Choose target opset."),
+      llvm::cl::values(
+          clEnumValN(OpSet::TF, "TF",
+                     "Uses TF ops that mimic quantization behavior"),
+          clEnumValN(OpSet::XLA, "XLA", "Uses TF XLA ops"),
+          clEnumValN(OpSet::UNIFORM_QUANTIZED, "UNIFORM_QUANTIZED",
+                     "Uses TF Uniform Quantized ops"))};
+};
+
+class CheckQuantizableOps
+    : public mlir::OpRewritePattern<TF::PartitionedCallOp> {
+ public:
+  explicit CheckQuantizableOps(MLIRContext* context, const OpSet& op_set)
+      : OpRewritePattern<TF::PartitionedCallOp>(context), op_set_(op_set) {}
+
+ private:
+  LogicalResult matchAndRewrite(TF::PartitionedCallOp call_op,
+                                PatternRewriter& rewriter) const override {
+    StringRef function_name =
+        call_op.fAttr().cast<FlatSymbolRefAttr>().getValue();
+    if (!function_name.startswith("composite_") ||
+        !call_op->hasAttr(kQuantTraitAttrName)) {
+      return failure();
+    }
+
+    tensorflow::Status check_status;
+    switch (op_set_) {
+      case OpSet::XLA:
+        check_status = checkQuantizableOpsForXla(call_op, function_name);
+        break;
+      default:
+        check_status = tensorflow::OkStatus();
+        break;
+    }
+
+    // The OK status means this op is quantizable. Return failure since the
+    // pattern doesn't rewrite anything yet.
+    if (check_status.ok()) return failure();
+    call_op->removeAttr(kQuantTraitAttrName);
+    removeAttrMapAttribute(call_op, function_name,
+                           check_status.error_message());
+    return success();
+  }
+
+  tensorflow::Status checkQuantizableOpsForXla(TF::PartitionedCallOp call_op,
+                                               StringRef function_name) const {
+    // Disable quantization for the DepthwiseConv since it has no benefits in
+    // the XLA opset.
+    if (function_name.contains("depthwise_conv2d")) {
+      return tensorflow::errors::Unknown(
+          "DepthwiseConv2D doesn't get any benefit of quantization in XLA.");
+    } else if (function_name.contains("conv2d")) {
+      // For Conv2D, the channel dimension must be static to calculate the
+      // feature group count.
+      if (!HasStaticShapeAtDims(call_op->getOperand(0), /*dims=*/3)) {
+        return tensorflow::errors::Unknown(
+            "The channel dimension of Conv2D are required to be static.");
+      }
+    }
+
+    std::unique_ptr<OpQuantSpec> spec = GetTFOpQuantSpec(call_op);
+    for (auto iter : spec->coeff_op_quant_dim) {
+      Operation* preceding_op = call_op.getOperand(iter.first).getDefiningOp();
+      // The XLA opset only supports constant filter/weight at the moment.
+      if (!preceding_op || !preceding_op->hasTrait<OpTrait::ConstantLike>()) {
+        return tensorflow::errors::Unknown(
+            "Non-constant weights are not supported at the moment.");
+      }
+    }
+    return tensorflow::OkStatus();
+  }
+
+  void removeAttrMapAttribute(TF::PartitionedCallOp call_op,
+                              StringRef function_name,
+                              StringRef error_message) const {
+    auto module = call_op->getParentOfType<ModuleOp>();
+    SymbolTable symbol_table(module);
+    mlir::func::FuncOp composite_func =
+        dyn_cast<func::FuncOp>(symbol_table.lookup(function_name));
+    if (!composite_func) return;
+
+    composite_func.walk([&](Operation* op) {
+      if (op->hasAttr(kAttrMapAttribute)) {
+        op->removeAttr(kAttrMapAttribute);
+
+        std::string log_message;
+        llvm::raw_string_ostream log_stream(log_message);
+        op->getLoc().print(log_stream);
+        log_stream << ": Quantization disabled on this op: ";
+        log_stream << error_message << "\n";
+        log_stream << "See the current operation:\n";
+        op->print(log_stream);
+        VLOG(2) << log_message;
+      }
+    });
+  }
+
+  OpSet op_set_;
 };
 
 static PassRegistration<LiftQuantizableSpotsAsFunctionsPass> pass;
@@ -72,11 +189,12 @@ static PassRegistration<LiftQuantizableSpotsAsFunctionsPass> pass;
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/lift_quantizable_spots_as_functions.inc"
 
 void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
-  MLIRContext *ctx = &getContext();
+  MLIRContext* ctx = &getContext();
   RewritePatternSet patterns(ctx);
   ModuleOp module = getOperation();
 
   populateWithGenerated(patterns);
+  patterns.add<CheckQuantizableOps>(ctx, op_set_);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
   for (auto func : module.getOps<func::FuncOp>()) {
     if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
@@ -89,8 +207,8 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsPass() {
-  return std::make_unique<LiftQuantizableSpotsAsFunctionsPass>();
+CreateLiftQuantizableSpotsAsFunctionsPass(const OpSet& op_set) {
+  return std::make_unique<LiftQuantizableSpotsAsFunctionsPass>(op_set);
 }
 
 }  // namespace quant

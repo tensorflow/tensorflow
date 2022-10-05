@@ -46,7 +46,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags);
+    absl::string_view tags, absl::string_view quant_opts_serialized);
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
