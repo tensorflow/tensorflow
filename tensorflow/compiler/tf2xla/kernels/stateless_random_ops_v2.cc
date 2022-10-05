@@ -247,8 +247,8 @@ class StatelessRandomUniformOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("StatelessRandomUniformV2")
                     .CompileTimeConstantInput("shape")
                     .CompileTimeConstantInput("alg")
-                    .TypeConstraint("dtype",
-                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16,
+                                              DT_HALF}),
                 StatelessRandomUniformOp);
 
 class StatelessRandomUniformIntOp : public XlaOpKernel {
