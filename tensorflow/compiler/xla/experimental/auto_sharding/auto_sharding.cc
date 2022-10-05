@@ -1447,6 +1447,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kShiftLeft:
       case HloOpcode::kShiftRightArithmetic:
       case HloOpcode::kShiftRightLogical:
+      case HloOpcode::kStochasticConvert:
       // Ternary elementwise operations.
       case HloOpcode::kSelect:
       case HloOpcode::kClamp: {

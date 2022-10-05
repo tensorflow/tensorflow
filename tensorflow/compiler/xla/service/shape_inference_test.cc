@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
@@ -2444,6 +2445,17 @@ TEST_F(ShapeInferenceTest, SortManyValues) {
   EXPECT_TRUE(ShapeUtil::Compatible(
       inferred_shape,
       ShapeUtil::MakeTupleShape({keys, values_s32, values_u32})));
+}
+
+TEST_F(ShapeInferenceTest, InferStochasticConvertShape) {
+  const Shape operand = ShapeUtil::MakeShape(F32, {4, 3});
+  const Shape random = ShapeUtil::MakeShape(S32, {4, 3});
+  const Shape expected_shape = ShapeUtil::MakeShape(S8, {4, 3});
+
+  auto inferred_sr_shape =
+      ShapeInference::InferStochasticConvertShape(operand, random, S8);
+  EXPECT_TRUE(inferred_sr_shape.ok());
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_sr_shape.value(), expected_shape));
 }
 
 class GatherShapeInferenceTest : public ShapeInferenceTest {

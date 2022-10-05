@@ -452,6 +452,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
     case HloOpcode::kSlice:
     case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
+    case HloOpcode::kStochasticConvert:
     case HloOpcode::kTanh:
     case HloOpcode::kTranspose:
     case HloOpcode::kXor:

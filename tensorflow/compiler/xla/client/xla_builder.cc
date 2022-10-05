@@ -2350,6 +2350,19 @@ StatusOr<XlaOp> XlaBuilder::BitcastConvertTypeInternal(const Shape& shape,
                         {operand});
 }
 
+XlaOp XlaBuilder::StochasticConvertType(XlaOp operand, XlaOp random,
+                                        PrimitiveType new_element_type) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(const Shape* random_shape, GetShapePtr(random));
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferStochasticConvertShape(
+                            *operand_shape, *random_shape, new_element_type));
+    return AddOpWithShape(HloOpcode::kStochasticConvert, shape,
+                          {operand, random});
+  });
+}
+
 XlaOp XlaBuilder::Clamp(XlaOp min, XlaOp operand, XlaOp max) {
   return TernaryOp(HloOpcode::kClamp, min, operand, max);
 }
@@ -4943,6 +4956,12 @@ XlaOp ConvertElementType(const XlaOp operand, PrimitiveType new_element_type) {
 
 XlaOp BitcastConvertType(const XlaOp operand, PrimitiveType new_element_type) {
   return operand.builder()->BitcastConvertType(operand, new_element_type);
+}
+
+XlaOp StochasticConvertType(const XlaOp operand, const XlaOp random,
+                            PrimitiveType new_element_type) {
+  return operand.builder()->StochasticConvertType(operand, random,
+                                                  new_element_type);
 }
 
 XlaOp Neg(const XlaOp operand) {

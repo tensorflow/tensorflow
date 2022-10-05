@@ -852,6 +852,9 @@ class XlaBuilder {
   virtual StatusOr<XlaOp> BitcastConvertTypeInternal(const Shape& shape,
                                                      XlaOp operand);
 
+  XlaOp StochasticConvertType(XlaOp operand, XlaOp random,
+                              PrimitiveType new_element_type);
+
   XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
   virtual StatusOr<XlaOp> TransposeInternal(
       const Shape& shape, XlaOp operand, absl::Span<const int64_t> permutation);
@@ -1472,6 +1475,8 @@ class XlaBuilder {
                                   PrimitiveType new_element_type);
   friend XlaOp BitcastConvertType(XlaOp operand,
                                   PrimitiveType new_element_type);
+  friend XlaOp StochasticConvertType(XlaOp operand, XlaOp random,
+                                     PrimitiveType new_element_type);
   friend XlaOp Neg(XlaOp operand);
   friend XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
   friend XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
@@ -2304,7 +2309,6 @@ XlaOp ShiftRightArithmetic(XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64_t> broadcast_dimensions = {});
 XlaOp ShiftRightLogical(XlaOp lhs, XlaOp rhs,
                         absl::Span<const int64_t> broadcast_dimensions = {});
-
 // Reduces an array among the provided dimensions, given "computation" as a
 // reduction operator.
 XlaOp Reduce(XlaOp operand, XlaOp init_value, const XlaComputation& computation,
@@ -2541,6 +2545,12 @@ XlaOp ConvertElementType(XlaOp operand, PrimitiveType new_element_type);
 // bit-widths of the source and destination element types must be
 // identical.
 XlaOp BitcastConvertType(XlaOp operand, PrimitiveType new_element_type);
+
+// Enqueues a stochastic convert instruction onto the computation that changes
+// the element type of the operand array with stochastic rounding to
+// primitive_type.
+XlaOp StochasticConvertType(XlaOp operand, XlaOp random,
+                            PrimitiveType new_element_type);
 
 // Enqueues a negate instruction onto the computation.
 XlaOp Neg(XlaOp operand);

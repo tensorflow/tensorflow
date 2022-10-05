@@ -464,6 +464,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kShiftLeft:
       case HloOpcode::kShiftRightArithmetic:
       case HloOpcode::kShiftRightLogical:
+      case HloOpcode::kStochasticConvert:
       // Ternary elementwise operations.
       case HloOpcode::kSelect:
       case HloOpcode::kClamp: {
@@ -721,6 +722,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kShiftLeft:
       case HloOpcode::kShiftRightArithmetic:
       case HloOpcode::kShiftRightLogical:
+      case HloOpcode::kStochasticConvert:
       // Ternary elementwise operations.
       case HloOpcode::kSelect:
       case HloOpcode::kClamp: {

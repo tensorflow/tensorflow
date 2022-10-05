@@ -498,6 +498,40 @@ StatusOr<PrimitiveType> MaybeUpcast(
   return new_shape;
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferStochasticConvertShape(
+    const Shape& operand_shape, const Shape& random_shape,
+    PrimitiveType new_element_type) {
+  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
+  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(random_shape));
+
+  TF_RETURN_IF_ERROR(
+      ExpectArray(operand_shape, "lhs of stochastic convert operation"));
+  TF_RETURN_IF_ERROR(
+      ExpectArray(random_shape, "rhs of stochastic convert operation"));
+
+  if (!ShapeUtil::ElementIsIntegral(random_shape)) {
+    return InvalidArgument(
+        "Random numbers for stochastic convert must be integers, but got: %s",
+        random_shape.ToString());
+  }
+
+  if (!ShapeUtil::ElementIsFloating(operand_shape)) {
+    return InvalidArgument(
+        "Stochastic convert supports only floating point operand conversion, "
+        "but got: %s",
+        random_shape.ToString());
+  }
+
+  if (!ShapeUtil::EqualIgnoringElementType(operand_shape, random_shape)) {
+    return InvalidArgument(
+        "Stochastic convert operand shape does not match random tensor shape: "
+        "%s vs %s.",
+        operand_shape.ToString(), random_shape.ToString());
+  }
+
+  return ShapeUtil::ChangeElementType(operand_shape, new_element_type);
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferReducePrecisionShape(
     const Shape& operand_shape, const int exponent_bits,
     const int mantissa_bits) {

@@ -87,6 +87,9 @@ class DfsHloVisitorBase {
   virtual Status HandleBitcastConvert(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleStochasticConvert(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
+  }
   virtual Status HandleCopy(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }

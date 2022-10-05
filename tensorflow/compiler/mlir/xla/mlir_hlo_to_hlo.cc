@@ -1015,6 +1015,18 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(StochasticConvertOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand, random;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  if (failed(GetXlaOp(op.random(), value_map, &random, op))) return failure();
+
+  value_map[op] = xla::StochasticConvertType(
+      operand, random,
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+  return success();
+}
+
 LogicalResult ExportXlaOp(CosineOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   auto result = op.getResult();

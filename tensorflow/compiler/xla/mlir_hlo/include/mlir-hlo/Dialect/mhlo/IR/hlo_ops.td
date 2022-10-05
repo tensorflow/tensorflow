@@ -675,6 +675,20 @@ def HLO_SubtractOp : HLO_BinaryElementwiseOp<"subtract",
   let hasCustomHLOConverter = 1;
 }
 
+// TODO(b/232442915): Implement stochastic_convert MHLO once HLO interface is submitted.
+def HLO_StochasticConvertOp : HLO_Op<"stochastic_convert",
+      [NoSideEffect, AllShapesMatch<["operand", "random", "result"]>]> {
+  let summary = "Stochastic convert operator";
+  let description = [{
+    Performs element-wise conversion of values from one bigger type to a smaller
+    one with stochastic rounding using the random number passed in.
+  }];
+
+  let arguments = (ins HLO_FpTensor:$operand, HLO_IntTensor:$random);
+  let results = (outs HLO_Tensor:$result);
+  let hasCustomHLOConverter = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // MHLO binary logical elementwise op definitions.
 //===----------------------------------------------------------------------===//
