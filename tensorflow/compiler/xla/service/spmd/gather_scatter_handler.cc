@@ -1018,34 +1018,49 @@ StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   if (passthrough_sharding.IsTileMaximal()) {
     return nullptr;
   }
+  const GroupedSharding update_grouped = hlo_sharding_util::GroupShardingOnDims(
+      passthrough_sharding, update_group_dims);
+  // See if we can group partially replicated dimensions from the operand
+  // otherwise replicate it.
+  const GroupedSharding operand_grouped = AlignGroupsWith(
+      hlo_sharding_util::GroupShardingOnReplicatedDim(
+          operands[0].sharding(), num_groups, num_tiles, operands[0].rank()),
+      update_grouped);
+  const GroupedSharding indices_grouped =
+      AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(indices.sharding(),
+                                                             index_group_dims),
+                      update_grouped);
+  const GroupedSharding& output_grouped = operand_grouped;
+  PartitionedHlo per_group_operand =
+      PerGroupPartitionedHlo(operands[0], operand_grouped, b, clean_ups);
 
-    auto reduction_opcode = ParseReductionComputation(scatter->to_apply());
-    if (!reduction_opcode.has_value() || *reduction_opcode == HloOpcode::kXor) {
-      // XOR is not supported for now, as it will need to keep the operand
-      // around in buffer after local scatter to XOR with the final all-reduced
-      // results.
-      return nullptr;
-    }
+  auto reduction_opcode = ParseReductionComputation(scatter->to_apply());
+  if (!reduction_opcode.has_value() || *reduction_opcode == HloOpcode::kXor) {
+    // XOR is not supported for now, as it will need to keep the operand
+    // around in buffer after local scatter to XOR with the final all-reduced
+    // results.
+    return nullptr;
+  }
     HloInstruction* identity;
     switch (*reduction_opcode) {
       case HloOpcode::kAdd:
       case HloOpcode::kOr:
-        identity = CreateZero(operands[0].hlo()->shape(), b);
-        break;
+      identity = CreateZero(per_group_operand.hlo()->shape(), b);
+      break;
       case HloOpcode::kMultiply:
       case HloOpcode::kAnd:
-        identity = CreateOne(operands[0].hlo()->shape(), b);
-        break;
+      identity = CreateOne(per_group_operand.hlo()->shape(), b);
+      break;
       case HloOpcode::kMinimum:
-        identity = CreateConstant(
-            operands[0].hlo()->shape(),
-            LiteralUtil::MaxValue(scatter->shape().element_type()), b);
-        break;
+      identity = CreateConstant(
+          per_group_operand.hlo()->shape(),
+          LiteralUtil::MaxValue(scatter->shape().element_type()), b);
+      break;
       case HloOpcode::kMaximum:
-        identity = CreateConstant(
-            operands[0].hlo()->shape(),
-            LiteralUtil::MinValue(scatter->shape().element_type()), b);
-        break;
+      identity = CreateConstant(
+          per_group_operand.hlo()->shape(),
+          LiteralUtil::MinValue(scatter->shape().element_type()), b);
+      break;
       default:
         return nullptr;
     }
@@ -1069,24 +1084,11 @@ StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
     auto select_operand =
         b->AddInstruction(HloInstruction::HloInstruction::CreateTernary(
             identity->shape(), HloOpcode::kSelect, not_partition_zero, identity,
-            operands[0].hlo()));
-    PartitionedHlo new_operand = operands[0].CloneWithNewHlo(select_operand);
-    const GroupedSharding update_grouped =
-        hlo_sharding_util::GroupShardingOnDims(passthrough_sharding,
-                                               update_group_dims);
-    // See if we can group partially replicated dimensions from the operand
-    // otherwise replicate it.
-    const GroupedSharding new_operand_grouped = AlignGroupsWith(
-        hlo_sharding_util::GroupShardingOnReplicatedDim(
-            new_operand.sharding(), num_groups, num_tiles, new_operand.rank()),
-        update_grouped);
-    const GroupedSharding indices_grouped =
-        AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
-                            indices.sharding(), index_group_dims),
-                        update_grouped);
-    const GroupedSharding& output_grouped = new_operand_grouped;
+            per_group_operand.hlo()));
+    PartitionedHlo new_operand =
+        per_group_operand.CloneWithNewHlo(select_operand);
     absl::InlinedVector<PartitionedHlo, 1> per_group_new_operands = {
-        PerGroupPartitionedHlo(new_operand, new_operand_grouped, b, clean_ups)};
+        new_operand};
     absl::InlinedVector<PartitionedHlo, 1> per_group_updates = {
         PerGroupPartitionedHlo(updates[0], update_grouped, b, clean_ups)};
     PartitionedHlo per_group_indices =
