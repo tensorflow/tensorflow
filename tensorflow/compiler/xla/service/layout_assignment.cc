@@ -2430,6 +2430,35 @@ StatusOr<bool> LayoutAssignment::Run(
     }
   }
 
+  // If there is both a layout constraint on operands of a custom call, and
+  // aliasing constraint between output and operand, then it is simpler and
+  // safer to copy the operand before we assign layouts. Copying the operand
+  // during layout assignment is complicated because we may not update buffer
+  // aliasing information correctly at that stage. If we don't copy before
+  // layout assignment, and the backend imposes additional restraints on the
+  // operand (eg: if operand is a dot), then attempting to make a copy during
+  // layout assignment may still lead to wrong result due to incomplete
+  // propagation of buffer aliasing information depending on ordering of
+  // constraints. We expect that unnecessary copies may be optimized out by
+  // later passes.
+  for (HloComputation* computation : module->computations(execution_threads)) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      if (IsLayoutConstrainedCustomCall(instruction)) {
+        absl::flat_hash_set<int64_t> processed;
+        for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>&
+                 output_operand_pair :
+             instruction->custom_call_output_operand_aliasing()) {
+          int operand_no = output_operand_pair.second.first;
+          if (!processed.contains(operand_no)) {
+            TF_RETURN_IF_ERROR(AddCopyForOperand(instruction, operand_no));
+            processed.insert(operand_no);
+          }
+        }
+      }
+    }
+  }
+
   // Clone Conditional computations with multiple callsites.
   for (HloComputation* computation : module->computations(execution_threads)) {
     CallGraphNode& node = call_graph_->GetNode(computation);
