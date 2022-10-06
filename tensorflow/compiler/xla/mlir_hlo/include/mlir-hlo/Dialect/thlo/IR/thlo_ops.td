@@ -25,6 +25,10 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 def TensorOrMemref :
   AnyTypeOf<[AnyMemRef, AnyRankedTensor], "", "::mlir::ShapedType">;
 
+class TensorOrMemrefOf<list<Type> allowedTypes> :
+  AnyTypeOf<[MemRefOf<allowedTypes>, RankedTensorOf<allowedTypes>],
+  "", "::mlir::ShapedType">;
+
 def THLO_Dialect : Dialect {
   let name = "thlo";
   let cppNamespace = "::mlir::thlo";
@@ -145,7 +149,7 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
   }];
   let arguments = (ins
     // Input args
-    TensorOf<[I32, I64]>:$indices,
+    TensorOrMemrefOf<[I32, I64]>:$indices,
     TensorOrMemref:$updates,
     // Output arg
     TensorOrMemref:$init

@@ -41,6 +41,21 @@ func.func @scatter(%indices: tensor<2x2xi32>, %updates: tensor<2x1x3xf32>,
 
 // -----
 
+func.func @scatter_memref(%indices: memref<2x2xi32>,
+    %updates: memref<2x1x3xf32>, %init: memref<3x3xf32>) {
+  thlo.scatter ins(%indices : memref<2x2xi32>, %updates : memref<2x1x3xf32>)
+               outs(%init : memref<3x3xf32>)
+               (%in: f32, %out: f32) {
+    %sum = arith.addf %in, %out : f32
+    thlo.yield %sum : f32
+  }
+  func.return
+}
+
+// CHECK-LABEL: func @scatter_memref
+
+// -----
+
 func.func @transpose(%input: tensor<16x32x64xf32>,
                      %init: tensor<32x64x16xf32>) -> tensor<32x64x16xf32> {
   %transpose = thlo.transpose
