@@ -665,9 +665,9 @@ tf_cc_test(
     srcs = ["host_callback_test.cc"],
     deps = [
         ":host_callback",
+        ":pjrt_client",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],
 )

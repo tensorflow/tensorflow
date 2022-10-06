@@ -253,16 +253,19 @@ class PjRtChunk {
 // This class is thread-safe.
 class CopyToDeviceStream {
  public:
-  explicit CopyToDeviceStream(int64_t total_bytes, int64_t granule_bytes)
+  CopyToDeviceStream(int64_t total_bytes, int64_t granule_bytes)
       : total_bytes_(total_bytes), granule_bytes_(granule_bytes) {}
+
+  virtual ~CopyToDeviceStream();
 
   // Emplaces a new Chunk of data to copy to the device. Returns a non-OK status
   // if the Chunk's size causes the amount of transferred data to exceed
-  // total_bytes() or if the stream is already complete.
+  // total_bytes(), if the stream is already complete, or if the chunk is not a
+  // multiple of granule_size_in_bytes().
   //
-  // The size of the chunk must be a multiple of granule_bytes().
-  // TODO(jmolloy): Enforce the granule size.
-  Status AddChunk(PjRtChunk chunk);
+  // The transfer is started immediately, and the returned future is fulfilled
+  // when the transfer completes or fails.
+  virtual PjRtFuture<Status> AddChunk(PjRtChunk chunk) = 0;
 
   // Returns the total amount of data the stream expects to be transferred.
   int64_t total_bytes() const { return total_bytes_; }
@@ -273,31 +276,29 @@ class CopyToDeviceStream {
 
   // Returns the amount of data the stream currently has either transferred or
   // has buffered to transfer.
-  int64_t current_bytes() const {
+  int64_t current_bytes() const ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock lock(&mu_);
     return current_bytes_;
   }
 
   // Returns true if the stream is complete; all expected bytes have been
   // transferred or are buffered to transfer.
-  bool IsComplete() const {
+  bool IsComplete() const ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock lock(&mu_);
-    return current_bytes_ == total_bytes_;
+    return IsCompleteLocked();
   }
 
   // Returns true if the stream is empty; no data has been queued.
   bool empty() const { return current_bytes() == 0; }
 
-  // Consumes the next chunk. If no chunks remain, returns nullopt. Blocks
-  // until a chunk is available.
-  std::optional<PjRtChunk> ConsumeNextChunk();
-
-  // Members are protected to allow subclassing for mocking in tests.
  protected:
+  bool IsCompleteLocked() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return current_bytes_ == total_bytes_;
+  }
+
   int64_t total_bytes_;
   int64_t granule_bytes_;
   int64_t current_bytes_ ABSL_GUARDED_BY(mu_) = 0;
-  std::deque<PjRtChunk> buffered_chunks_ ABSL_GUARDED_BY(mu_);
   mutable absl::Mutex mu_;
 };
 
@@ -1001,7 +1002,7 @@ struct RecvCallback {
   // guarantee that the callback here will be invoked in the same order as their
   // corresponding HLO Recv ops.
   std::function<void(const PjRtTransferMetadata& metadata,
-                     CopyToDeviceStream& stream)>
+                     std::unique_ptr<CopyToDeviceStream> stream)>
       callback;
 };
 
