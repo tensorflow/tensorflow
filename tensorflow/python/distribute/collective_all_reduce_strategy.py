@@ -19,7 +19,6 @@ import threading
 import time
 import weakref
 
-from tensorflow.core.protobuf import coordination_config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.distribute import collective_util
@@ -486,18 +485,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       if context.context().coordination_service is None:
         coordinated_jobs = ["chief", "worker"]
         if task_type in coordinated_jobs:
-          coordinated_job_config = []
-          for job in coordinated_jobs:
-            if job in cluster_spec.jobs:
-              coordinated_job_config.append(
-                  coordination_config_pb2.CoordinatedJob(
-                      name=job,
-                      num_tasks=len(cluster_spec.job_tasks(job))))
           context.context().configure_coordination_service(
               service_type="standalone",
               service_leader=multi_worker_util.coordination_leader(
                   cluster_spec),
-              coordinated_jobs=coordinated_job_config)
+              coordinated_jobs=coordinated_jobs)
 
     # Starting a std server in eager mode and in independent worker mode.
     if (context.executing_eagerly() and

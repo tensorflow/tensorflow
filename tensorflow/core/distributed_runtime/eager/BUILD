@@ -99,7 +99,6 @@ cc_library(
         ":remote_tensor_handle",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/strings",
-        "//tensorflow/core/protobuf:coordination_config_proto_cc",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/c/eager:immediate_execution_distributed_manager",
         "//tensorflow/core/distributed_runtime/preemption:preemption_notifier",

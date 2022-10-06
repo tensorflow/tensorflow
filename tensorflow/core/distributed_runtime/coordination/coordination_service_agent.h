@@ -73,6 +73,10 @@ class CoordinationServiceAgent {
   virtual ~CoordinationServiceAgent() {}
 
   // Initialize coordination service agent.
+  virtual Status Initialize(
+      tsl::Env* env, const ServerDef& server_def,
+      std::unique_ptr<CoordinationClientCache> client_cache,
+      StatusCallback error_fn) = 0;
   virtual Status Initialize(tsl::Env* env, const std::string& job_name,
                             int task_id,
                             const CoordinationServiceConfig& configs,

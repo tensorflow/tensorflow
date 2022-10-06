@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
@@ -29,9 +30,13 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -167,41 +172,57 @@ class CoordinationServiceRecoverableJobTest : public ::testing::Test {
         /*target=*/"/job:worker/replica:0/task:1",
         state_worker_1_.GetCoordinationClient());
     coord_service_ = CoordinationServiceInterface::EnableCoordinationService(
-        Env::Default(), coordination_config_, std::move(client_cache));
+        kCoordinationServiceType, Env::Default(), server_def_,
+        std::move(client_cache));
+    const auto& coordination_config = server_def_.default_session_config()
+                                          .experimental()
+                                          .coordination_config();
     state_ps_0_.InitializeAndConnectCoordinationAgents(kParameterServerJobName,
                                                        /*task_id=*/0,
-                                                       coordination_config_);
+                                                       coordination_config);
     state_ps_1_.InitializeAndConnectCoordinationAgents(kParameterServerJobName,
                                                        /*task_id=*/1,
-                                                       coordination_config_);
-    state_worker_0_.InitializeAndConnectCoordinationAgents(
-        kWorkerJobName,
-        /*task_id=*/0, coordination_config_);
-    state_worker_1_.InitializeAndConnectCoordinationAgents(
-        kWorkerJobName,
-        /*task_id=*/1, coordination_config_);
+                                                       coordination_config);
+    state_worker_0_.InitializeAndConnectCoordinationAgents(kWorkerJobName,
+                                                           /*task_id=*/0,
+                                                           coordination_config);
+    state_worker_1_.InitializeAndConnectCoordinationAgents(kWorkerJobName,
+                                                           /*task_id=*/1,
+                                                           coordination_config);
   }
 
   void ConfigureCoordinationService() {
     // Assume the coordination service is deployed in the parameter server.
-    coordination_config_.set_service_type(kCoordinationServiceType);
-    coordination_config_.set_service_leader(kServiceLeader);
-    CoordinatedJob* ps =
-        coordination_config_.mutable_coordinated_job_list()->Add();
-    ps->set_name(kParameterServerJobName);
-    ps->set_num_tasks(2);
-    CoordinatedJob* worker =
-        coordination_config_.mutable_coordinated_job_list()->Add();
-    worker->set_name(kWorkerJobName);
-    worker->set_num_tasks(2);
+    server_def_.set_protocol("grpc");
+    server_def_.set_job_name(kParameterServerJobName);
+    server_def_.set_task_index(0);
+
+    auto ps_job_def = server_def_.mutable_cluster()->add_job();
+    ps_job_def->set_name(kParameterServerJobName);
+    (*ps_job_def->mutable_tasks())[0] = "test_address_ps_0";
+    (*ps_job_def->mutable_tasks())[1] = "test_address_ps_1";
+
+    auto worker_job_def = server_def_.mutable_cluster()->add_job();
+    worker_job_def->set_name(kWorkerJobName);
+    (*worker_job_def->mutable_tasks())[0] = "test_address_worker_0";
+    (*worker_job_def->mutable_tasks())[1] = "test_address_worker_1";
+
+    auto coordination_config = server_def_.mutable_default_session_config()
+                                   ->mutable_experimental()
+                                   ->mutable_coordination_config();
+    coordination_config->set_service_type(kCoordinationServiceType);
+    coordination_config->set_service_leader(kServiceLeader);
   }
 
   void AddJobToRecoverableJobs(const std::string& job_name) {
-    coordination_config_.add_recoverable_jobs(job_name);
+    server_def_.mutable_default_session_config()
+        ->mutable_experimental()
+        ->mutable_coordination_config()
+        ->add_recoverable_jobs(job_name);
   }
 
  protected:
-  CoordinationServiceConfig coordination_config_;
+  ServerDef server_def_;
   std::unique_ptr<CoordinationServiceInterface> coord_service_;
   TestCoordinationServiceTaskState state_ps_0_;
   TestCoordinationServiceTaskState state_ps_1_;

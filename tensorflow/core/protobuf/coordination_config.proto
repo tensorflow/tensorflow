@@ -4,13 +4,6 @@ package tensorflow;
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
-// Represents a job type and the number of tasks under this job.
-// For example, ("worker", 20) implies that there will be 20 worker tasks.
-message CoordinatedJob {
-  string name = 1;
-  int32 num_tasks = 2;
-}
-
 // Coordination service configuration parameters.
 // The system picks appropriate values for fields that are not set.
 message CoordinationServiceConfig {
@@ -36,9 +29,9 @@ message CoordinationServiceConfig {
   // recording the state change and the agent stopping heartbeats.
   int64 heartbeat_timeout_in_ms = 5;
 
-  // The list of `CoordinatedJob`s that will register in coordination service.
-  reserved 6;
-  repeated CoordinatedJob coordinated_job_list = 10;
+  // The list of jobs that partipate in the coordination service. If empty, all
+  // jobs will be included in the coordination service by default.
+  repeated string coordinated_jobs = 6;
 
   // Denotes how long to wait for all coordination agents to reach the barriers
   // (after the first shutdown request) before disconnecting together. If
