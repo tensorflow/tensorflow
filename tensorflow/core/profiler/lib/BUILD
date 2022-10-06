@@ -89,6 +89,7 @@ cc_library(
     deps = [
         ":profiler_interface",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/lib:profiler_factory",
     ] + if_static([
         ":profiler_factory_impl",
     ]),
@@ -97,7 +98,6 @@ cc_library(
 cc_library(
     name = "profiler_factory_impl",
     srcs = [
-        "profiler_factory.cc",
         "profiler_factory.h",
     ],
     copts = tf_profiler_copts(),
@@ -109,23 +109,10 @@ cc_library(
         ":profiler_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/lib:profiler_factory",
+        "//tensorflow/tsl/profiler/lib:profiler_factory_impl",
     ],
     alwayslink = True,
-)
-
-tf_cc_test(
-    name = "profiler_factory_test",
-    srcs = ["profiler_factory_test.cc"],
-    deps = [
-        ":profiler_factory",
-        ":profiler_interface",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/memory",
-    ],
 )
 
 cc_library(

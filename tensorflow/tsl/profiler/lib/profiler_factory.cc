@@ -12,19 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/lib/profiler_factory.h"
+#include "tensorflow/tsl/profiler/lib/profiler_factory.h"
 
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/core/profiler/lib/profiler_controller.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
+#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -43,7 +42,7 @@ void RegisterProfilerFactory(ProfilerFactory factory) {
 }
 
 std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
-    const ProfileOptions& options) {
+    const tensorflow::ProfileOptions& options) {
   std::vector<std::unique_ptr<profiler::ProfilerInterface>> result;
   mutex_lock lock(mu);
   for (const auto& factory : *GetFactories()) {
@@ -51,7 +50,8 @@ std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
     // A factory might return nullptr based on options.
     if (profiler == nullptr) continue;
     result.emplace_back(
-        absl::make_unique<ProfilerController>(std::move(profiler)));
+        std::make_unique<tensorflow::profiler::ProfilerController>(
+          std::move(profiler)));
   }
   return result;
 }
@@ -62,4 +62,4 @@ void ClearRegisteredProfilersForTest() {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

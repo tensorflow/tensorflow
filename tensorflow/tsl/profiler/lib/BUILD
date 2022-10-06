@@ -1,4 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test")
 load(
@@ -34,6 +35,56 @@ filegroup(
         "context_types.h",
     ],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "profiler_factory",
+    hdrs = ["profiler_factory.h"],
+    visibility = [
+        "//tensorflow/core/profiler/lib:__pkg__",
+    ],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+    ] + if_static([
+        ":profiler_factory_impl",
+    ]),
+)
+
+cc_library(
+    name = "profiler_factory_impl",
+    srcs = [
+        "profiler_factory.cc",
+        "profiler_factory.h",
+    ],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/core/profiler:__pkg__",
+        "//tensorflow/core/profiler/lib:__pkg__",
+    ],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/core/profiler/lib:profiler_controller",
+        "//tensorflow/tsl/platform:mutex",
+    ],
+    alwayslink = True,
+)
+
+tf_cc_test(
+    name = "profiler_factory_test",
+    srcs = ["profiler_factory_test.cc"],
+    deps = [
+        ":profiler_factory",
+        ":profiler_interface",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/memory",
+    ],
 )
 
 cc_library(
