@@ -1382,8 +1382,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             }
           }
           if (!output_spec.has_value()) {
-            output_spec = HloSharding::Replicate(
-                src_strategies->leaf_vector[sid].output_sharding.metadata());
+            continue;
           }
 
           std::string name = ToStringSimple(*output_spec);
@@ -1403,6 +1402,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                 std::move(resharding_costs),
                                 {input_spec}}));
         }
+
+        if (strategies->leaf_vector.empty()) {
+          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                                strategies, 0);
+        }
+
         break;
       }
       // Unary elementwise operations.
