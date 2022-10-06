@@ -47,6 +47,23 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // Turn copy->slice into slice->copy.
+  Status HandleSlice(HloInstruction* hlo) override {
+    HloInstruction* operand = hlo->mutable_operand(0);
+    if (operand->opcode() == HloOpcode::kCopy) {
+      HloInstruction* copied = operand->mutable_operand(0);
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * earlier_slice,
+          MakeSliceHlo(copied, hlo->slice_starts(), hlo->slice_limits(),
+                       hlo->slice_strides(), &hlo->metadata()));
+      *earlier_slice->mutable_shape()->mutable_layout() =
+          copied->shape().layout();
+      HloInstruction* later_copy = MakeCopyHlo(earlier_slice, hlo->shape());
+      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+    }
+    return OkStatus();
+  }
+
   Status HandleBitcastConvert(HloInstruction* hlo) override {
     return OkStatus();
   }

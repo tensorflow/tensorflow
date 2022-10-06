@@ -105,6 +105,23 @@ ENTRY main {
 )");
 }
 
+TEST_F(MoveCopyToUsersTest, Slice) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,17,9,9]{3,2,1,0} parameter(0)
+  copy = f32[1,17,9,9]{1,3,2,0} copy(input)
+  ROOT converted = f32[1,4,6,6] slice(copy), slice={[0:1],[0:4],[0:6],[0:6]}
+}
+)";
+
+  CheckMoveCopyToUsers(hlo, R"(
+// CHECK: [[slice_0:%[^ ]+]] = f32[1,4,6,6]{3,2,1,0} slice([[input_1:%[^ ]+]]), slice={[0:1], [0:4], [0:6], [0:6]}
+// CHECK-NEXT: ROOT [[copy_1_2:%[^ ]+]] = f32[1,4,6,6]{3,2,1,0} copy([[slice_0]])
+)");
+}
+
 TEST_F(MoveCopyToUsersTest, Binary) {
   const char* hlo = R"(
 HloModule module
