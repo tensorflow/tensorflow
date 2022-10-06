@@ -8980,7 +8980,7 @@ Type MhloDialect::parseType(DialectAsmParser& parser) const {
   StringRef mnemonic;
   Type parsedType;
   auto parseResult = generatedTypeParser(parser, &mnemonic, parsedType);
-  if (parseResult.hasValue()) return parsedType;
+  if (parseResult.has_value()) return parsedType;
   if (mnemonic == "token") return TokenType::get(getContext());
   parser.emitError(parser.getNameLoc()) << "unknown mhlo type: " << mnemonic;
   return nullptr;

@@ -140,46 +140,6 @@ Value createNestedPloopTiling(OpBuilder &b, Location loc, Value source,
                                             nestedTileSizes);
 }
 
-LogicalResult tileUniqueFunctionResult(
-    func::FuncOp f, ArrayRef<SmallVector<int64_t>> nestedTileSizes) {
-  assert(!nestedTileSizes.empty() && "expect tile sizes");
-
-  // Apply to functions that return a single ranked tensor.
-  FunctionType funcTy = f.getFunctionType();
-  if (funcTy.getNumResults() != 1) return failure();
-  auto resultTy = funcTy.getResults().front().dyn_cast<RankedTensorType>();
-  if (!resultTy) return failure();
-
-  // Only apply to single-block functions.
-  llvm::iplist<Block> &allBlocks = f.getBody().getBlocks();
-  if (allBlocks.size() != 1) return failure();
-  Block &block = allBlocks.front();
-
-  // Find return op and the unique source value to be tiled.
-  auto returnOp = llvm::dyn_cast<func::ReturnOp>(block.getTerminator());
-  Value source = returnOp.getOperands().front();
-  auto sourceTy = source.getType().cast<RankedTensorType>();
-
-  // All nested tiles must be of the same rank as the source value.
-  int64_t rank = sourceTy.getRank();
-  if (llvm::any_of(nestedTileSizes, [&](auto it) {
-        return static_cast<int64_t>(it.size()) != rank;
-      })) {
-    return failure();
-  }
-
-  // Create tiled implementation right before the return op.
-  OpBuilder b(f.getContext());
-  b.setInsertionPoint(returnOp);
-  Value tiledSource =
-      createNestedPloopTiling(b, source.getLoc(), source, nestedTileSizes);
-
-  // Return the tiled value.
-  b.create<func::ReturnOp>(returnOp.getLoc(), tiledSource);
-  returnOp.erase();
-  return success();
-}
-
 // Parse comma-separated integeres as tile sizes:
 //   <tile-sizes> ::== `[` <int> ( `,` <int> )* `]`
 llvm::Optional<SmallVector<int64_t>> parseTileSizes(
@@ -207,37 +167,6 @@ llvm::Optional<SmallVector<int64_t>> parseTileSizes(
   istream.get();
 
   return tileSizes;
-}
-
-// Parse comma-sepatated nested tile sizes:
-//   <nested-tile-sizes> ::== <tile-sizes> ( `,` <tile-sizes> )*
-llvm::Optional<SmallVector<SmallVector<int64_t>>> parseNestedTileSizes(
-    std::istringstream &istream) {
-  SmallVector<SmallVector<int64_t>> nestedTileSizes;
-
-  // Parse leading tile sizes.
-  llvm::Optional<SmallVector<int64_t>> tileSizes = parseTileSizes(istream);
-  if (!tileSizes) return llvm::None;
-  nestedTileSizes.push_back(*tileSizes);
-
-  // Parse trailing tile sizes.
-  while (istream.peek() == ',') {
-    istream.get();
-    tileSizes = parseTileSizes(istream);
-    if (!tileSizes) return llvm::None;
-    nestedTileSizes.push_back(*tileSizes);
-  }
-
-  // Ensure to fully parse the argument.
-  if (!istream.eof()) return llvm::None;
-
-  return nestedTileSizes;
-}
-
-llvm::Optional<SmallVector<SmallVector<int64_t>>> parseNestedTileSizes(
-    const std::string &str) {
-  std::istringstream istream(str);
-  return parseNestedTileSizes(istream);
 }
 
 struct TilingResult {

@@ -125,7 +125,7 @@ TypedValue<TensorType> ensureIndexVectorDimPosition(
     indices = insertDegenerateDimensions(b, loc, indices, {indicesRank});
   } else if (indexVectorDim != indicesRank - 1) {
     SmallVector<int64_t> permutation;
-    for (size_t i = 0; i < indicesRank; ++i)
+    for (int64_t i = 0; i < indicesRank; ++i)
       if (i != indexVectorDim) permutation.push_back(i);
     permutation.push_back(indexVectorDim);
     indices = b.create<TransposeOp>(loc, indices,

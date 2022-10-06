@@ -148,7 +148,7 @@ void MaterializeOp::build(OpBuilder &builder, OperationState &result,
                           Value source, Value set) {
   auto sourceType = source.getType().cast<ShapedType>();
   auto resultTypeOr = inferReturnType(sourceType, set.getType());
-  assert(resultTypeOr.hasValue() && "could not infer result type");
+  assert(succeeded(resultTypeOr) && "could not infer result type");
   build(builder, result, *resultTypeOr, source, set);
 }
 
