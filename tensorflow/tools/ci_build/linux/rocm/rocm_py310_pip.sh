@@ -18,14 +18,14 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_python_pip_deps python3.7
+install_ubuntu_16_python_pip_deps python3.10
 
 install_bazelisk
 
 # Export required variables for running pip.sh
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="ROCM"
-export TF_PYTHON_VERSION='python3.7'
+export TF_PYTHON_VERSION='python3.10'
 export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
 
 # .bazelrc does not have all config options listed within it for ROCm (as it does for others)
@@ -43,7 +43,7 @@ export N_TEST_JOBS=$(expr ${TF_GPU_COUNT} \* ${TF_TESTS_PER_GPU})
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # # Export optional variables for running pip.sh
-export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py37,-no_rocm'
+export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py39,-no_rocm'
 export TF_BUILD_FLAGS="--config=release_base "
 export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filters=${TF_TEST_FILTER_TAGS} \
  --test_env=TF2_BEHAVIOR=1 \
