@@ -1218,7 +1218,7 @@ TEST_F(RemapperTest, FuseConv2DWithAdd) {
 
 // Fuse  matmul + add {1,C}
 TEST_F(RemapperTest, FuseMatmulWithAdd) {
-  if (!IsEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  if (!IsOneDNNEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
 
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
