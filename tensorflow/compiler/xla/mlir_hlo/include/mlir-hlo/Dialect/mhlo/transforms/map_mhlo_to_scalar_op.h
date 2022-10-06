@@ -849,19 +849,6 @@ inline Value mhloAlwaysPropagateNaN(Value v, ValueRange args, Location loc,
 }
 
 template <>
-inline Value mapMhloOpToStdScalarOp<mhlo::LogisticOp>(
-    Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> /*argTypes*/,
-    mhlo::LogisticOp::Adaptor adaptor, OpBuilder* b) {
-  auto ty = resultTypes.front().cast<FloatType>();
-  Value one = b->create<arith::ConstantOp>(loc, b->getFloatAttr(ty, 1.0));
-  Value x = adaptor.getOperand();
-  Value negX = b->create<arith::NegFOp>(loc, x);
-  Value expNegX = b->create<::mlir::math::ExpOp>(loc, negX);
-  Value oneAddExpNegX = b->create<arith::AddFOp>(loc, one, expNegX);
-  return b->create<arith::DivFOp>(loc, one, oneAddExpNegX);
-}
-
-template <>
 inline Value mapMhloOpToStdScalarOp<mhlo::ClampOp>(Location loc,
                                                    ArrayRef<Type> resultTypes,
                                                    ArrayRef<Type> argTypes,
@@ -1007,6 +994,25 @@ inline Value mapMhloOpToStdScalarOp<mhlo::NotOp>(Location loc,
     return b->create<::mlir::arith::XOrIOp>(loc, allOnes, adaptor.getOperand());
   }
   return nullptr;
+}
+
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::LogisticOp>(
+    Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> /*argTypes*/,
+    mhlo::LogisticOp::Adaptor adaptor, OpBuilder* b) {
+  // 1.0 / (1.0 - exp(-x))
+  Value negX = mapMhloOpToStdScalarOp<mhlo::NegOp>(
+      loc, resultTypes, resultTypes, {adaptor.getOperand()}, b);
+  Value expNegX = mapMhloOpToStdScalarOp<mhlo::ExpOp>(loc, resultTypes,
+                                                      resultTypes, {{negX}}, b);
+
+  Value oneFloat = b->create<arith::ConstantOp>(loc, b->getF32FloatAttr(1.0));
+  Value one = mapConvertOpToStdScalarOp(loc, resultTypes, resultTypes,
+                                        {oneFloat.getType()}, {{oneFloat}}, b);
+  Value oneAddExprNegX = mapMhloOpToStdScalarOp<mhlo::AddOp>(
+      loc, resultTypes, resultTypes, {{expNegX, one}}, b);
+  return mapMhloOpToStdScalarOp<mhlo::DivOp>(loc, resultTypes, resultTypes,
+                                             {{one, oneAddExprNegX}}, b);
 }
 
 template <>

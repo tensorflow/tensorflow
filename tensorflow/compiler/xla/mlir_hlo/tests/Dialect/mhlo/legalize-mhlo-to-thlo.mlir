@@ -561,10 +561,10 @@ func.func @complex_log1p(%arg0: tensor<2x2xcomplex<f32>>)
 func.func @float_logistic(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: thlo.map
   // CHECK: (%[[ARG:[0-9a-z]*]]: f32) {
-  // CHECK: %[[C1:.*]] = arith.constant 1.{{.*}}e+00
   // CHECK: %[[NEG_ARG:.*]] = arith.negf %[[ARG]]
   // CHECK: %[[EXP_NEG_ARG:.*]] = math.exp %[[NEG_ARG]]
-  // CHECK: %[[ONE_ADD_EXP_NEG_ARG:.*]] = arith.addf %[[C1]], %[[EXP_NEG_ARG]]
+  // CHECK: %[[C1:.*]] = arith.constant 1.{{.*}}e+00
+  // CHECK: %[[ONE_ADD_EXP_NEG_ARG:.*]] = arith.addf %[[EXP_NEG_ARG]], %[[C1]]
   // CHECK: %[[RESULT:.*]] = arith.divf %[[C1]], %[[ONE_ADD_EXP_NEG_ARG]]
   // CHECK: thlo.yield %[[RESULT]]
   %0 = "mhlo.logistic"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
