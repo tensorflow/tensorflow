@@ -110,9 +110,9 @@ def _add_attributes_to_object_graph(trackable_objects, object_graph_proto,
   registered_savers = _add_attributes_to_object_graph_for_registered_savers(
       unmapped_registered_savers, object_graph_proto, node_ids, object_map)
   named_saveable_objects, feed_additions = (
-      add_attributes_to_object_graph_for_saveable_objects(
-          checkpoint_factory_map, object_graph_proto, node_ids, object_map,
-          call_with_mapped_captures, saveables_cache))
+      generate_saveable_objects(checkpoint_factory_map, object_graph_proto,
+                                node_ids, object_map, call_with_mapped_captures,
+                                saveables_cache))
   return named_saveable_objects, feed_additions, registered_savers
 
 
@@ -131,9 +131,12 @@ def _add_attributes_to_object_graph_for_registered_savers(
   return registered_savers
 
 
-def add_attributes_to_object_graph_for_saveable_objects(
-    checkpoint_factory_map, object_graph_proto, node_ids, object_map,
-    call_with_mapped_captures, saveables_cache):
+def generate_saveable_objects(checkpoint_factory_map,
+                              object_graph_proto=None,
+                              node_ids=None,
+                              object_map=None,
+                              call_with_mapped_captures=None,
+                              saveables_cache=None):
   """Create SaveableObjects and corresponding SerializedTensor protos."""
   named_saveable_objects = []
   if saveables_cache is None:
@@ -146,7 +149,9 @@ def add_attributes_to_object_graph_for_saveable_objects(
     # checkpoint.
     feed_additions = {}
   for trackable, factory_data_list in checkpoint_factory_map.items():
-    object_proto = object_graph_proto.nodes[node_ids[trackable]]
+    fill_object_proto = object_graph_proto is not None and node_ids is not None
+    if fill_object_proto:
+      object_proto = object_graph_proto.nodes[node_ids[trackable]]
     object_to_save = util.get_mapped_trackable(trackable, object_map)
     if saveables_cache is not None:
       cached_attributes = saveables_cache.setdefault(object_to_save, {})
@@ -210,6 +215,8 @@ def add_attributes_to_object_graph_for_saveable_objects(
       # attribute for each tensor that is serialized.
       # For Trackables that have SaveableObjects or a legacy saveable name,
       # add a single attribute to the proto.
+      if not fill_object_proto:
+        continue
       if (isinstance(saveables[0], saveable_object_util.TrackableSaveable) and
           (saveable_compat.force_checkpoint_conversion_enabled() or
            saveable_compat.get_saveable_name(object_to_save) is None)):

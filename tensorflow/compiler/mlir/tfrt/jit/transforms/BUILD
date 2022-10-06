@@ -1,6 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 # TF to TFRT kernels conversion.
 package(
@@ -59,6 +59,7 @@ cc_library(
         "tf_jitrt_rewrite_vector_multi_reduction.cc",
         "tf_jitrt_symbolic_shape_optimization.cc",
         "tf_jitrt_tile_cwise.cc",
+        "tf_jitrt_tile_matmul.cc",
         "tf_jitrt_tile_reduction.cc",
         "tf_jitrt_tile_transpose.cc",
     ],
@@ -81,7 +82,7 @@ cc_library(
         "@llvm-project//mlir:AffineAnalysis",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -100,6 +101,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorTransforms",
+        "@llvm-project//mlir:X86VectorTransforms",
     ],
     alwayslink = 1,
 )

@@ -354,26 +354,34 @@ def get_signature_def_map(saved_model_dir, tag_set):
   return meta_graph.signature_def
 
 
-def scan_meta_graph_def(meta_graph_def):
+def _get_op_denylist_set(op_denylist):
+  # Note: Discard empty ops so that "" can mean the empty denylist set.
+  set_of_denylisted_ops = set([op for op in op_denylist.split(',') if op])
+  return set_of_denylisted_ops
+
+
+def scan_meta_graph_def(meta_graph_def, op_denylist):
   """Scans meta_graph_def and reports if there are ops on denylist.
 
-  Print ops if they are on black list, or print success if no denylisted ops
+  Print ops if they are on denylist, or print success if no denylisted ops
   found.
 
   Args:
     meta_graph_def: MetaGraphDef protocol buffer.
+    op_denylist: set of ops to scan for.
   """
-  all_ops_set = set(
+  ops_in_metagraph = set(
       meta_graph_lib.ops_used_by_graph_def(meta_graph_def.graph_def))
-  denylisted_ops = _OP_DENYLIST & all_ops_set
+  denylisted_ops = op_denylist & ops_in_metagraph
   if denylisted_ops:
     # TODO(yifeif): print more warnings
     print(
         'MetaGraph with tag set %s contains the following denylisted ops:' %
         meta_graph_def.meta_info_def.tags, denylisted_ops)
   else:
-    print('MetaGraph with tag set %s does not contain denylisted ops.' %
-          meta_graph_def.meta_info_def.tags)
+    print(
+        'MetaGraph with tag set %s does not contain the default denylisted ops:'
+        % meta_graph_def.meta_info_def.tags, op_denylist)
 
 
 def run_saved_model_with_feed_dict(saved_model_dir,
@@ -792,13 +800,23 @@ def scan(args):
   Args:
     args: A namespace parsed from command line.
   """
-  if args.tag_set:
+  if args.tag_set and args.op_denylist:
     scan_meta_graph_def(
-        saved_model_utils.get_meta_graph_def(args.dir, args.tag_set))
+        saved_model_utils.get_meta_graph_def(args.dir, args.tag_set),
+        _get_op_denylist_set(args.op_denylist))
+  elif args.tag_set:
+    scan_meta_graph_def(
+        saved_model_utils.get_meta_graph_def(args.dir, args.tag_set),
+        _OP_DENYLIST)
   else:
     saved_model = saved_model_utils.read_saved_model(args.dir)
-    for meta_graph_def in saved_model.meta_graphs:
-      scan_meta_graph_def(meta_graph_def)
+    if args.op_denylist:
+      for meta_graph_def in saved_model.meta_graphs:
+        scan_meta_graph_def(meta_graph_def,
+                            _get_op_denylist_set(args.op_denylist))
+    else:
+      for meta_graph_def in saved_model.meta_graphs:
+        scan_meta_graph_def(meta_graph_def, _OP_DENYLIST)
 
 
 def convert_with_tensorrt(args):
@@ -1028,8 +1046,11 @@ def add_run_subparser(subparsers):
 def add_scan_subparser(subparsers):
   """Add parser for `scan`."""
   scan_msg = ('Usage example:\n'
-              'To scan for denylisted ops in SavedModel:\n'
+              'To scan for default denylisted ops in SavedModel:\n'
               '$saved_model_cli scan --dir /tmp/saved_model\n'
+              'To scan for a specific set of ops in SavedModel:\n'
+              '$saved_model_cli scan --dir /tmp/saved_model --op_denylist '
+              'OpName,OpName,OpName\n'
               'To scan a specific MetaGraph, pass in --tag_set\n')
   parser_scan = subparsers.add_parser(
       'scan',
@@ -1044,6 +1065,12 @@ def add_scan_subparser(subparsers):
       '--tag_set',
       type=str,
       help='tag-set of graph in SavedModel to scan, separated by \',\'')
+  parser_scan.add_argument(
+      '--op_denylist',
+      type=str,
+      help=('list of ops to detect and report, separated by \',\'. If not set, '
+            'default is WriteFile,ReadFile,PrintV2. For empty list, pass in '
+            '\'\''))
   parser_scan.set_defaults(func=scan)
 
 

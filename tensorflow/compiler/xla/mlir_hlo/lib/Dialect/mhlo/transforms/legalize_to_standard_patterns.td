@@ -16,7 +16,7 @@ limitations under the License.
 // This is the legalization pattern definition file for MHLO to StandardOps.
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Math/IR/MathOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"

@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/test.h"

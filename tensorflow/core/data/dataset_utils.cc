@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -789,13 +790,17 @@ Status CopyBatch(CopyBatchParams params,
           std::move(batch_elements.at(index)[component_index]),
           &batch_component, index);
     };
-    if (parallel_copy && first_element.AllocatedBytes() > (1 << 15)) {
+    const auto total_bytes =
+        first_element.AllocatedBytes() * num_batch_elements;
+    // Use parallelism for creating the batch as long as the final batch is at
+    // least 1MB.
+    if (parallel_copy && total_bytes >= (1 << 20)) {
       Status status;
       mutex status_mu;
-      BlockingCounter counter(num_batch_elements);
       const auto num_threads = params.runner_threadpool_size;
       const auto slice_size = num_batch_elements / num_threads;
       int64_t offset = 0;
+      BlockingCounter counter(num_threads);
       for (size_t i = 0; i < num_threads; ++i) {
         int64_t length = slice_size;
         // When the number of threads does not divide the number of elements
@@ -804,14 +809,15 @@ Status CopyBatch(CopyBatchParams params,
         if (i < num_batch_elements % num_threads) ++length;
         (*params.runner)([offset, length, &status, &status_mu, &counter,
                           &copy_element_fn]() {
+          Status s;
           for (size_t j = offset; j < offset + length; ++j) {
-            {
-              Status s = copy_element_fn(j);
-              mutex_lock l(status_mu);
-              status.Update(s);
-            }
-            counter.DecrementCount();
+            s.Update(copy_element_fn(j));
           }
+          {
+            mutex_lock l(status_mu);
+            status.Update(s);
+          }
+          counter.DecrementCount();
         });
         offset += length;
       }

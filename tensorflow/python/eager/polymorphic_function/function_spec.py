@@ -21,6 +21,8 @@ import weakref
 import numpy as np
 import six
 
+from tensorflow.core.function import trace_type
+from tensorflow.core.function.function_type import function_type as function_type_lib
 from tensorflow.python.eager.polymorphic_function import composite_tensor_utils
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -206,6 +208,93 @@ class FunctionSpec(object):
       self._flat_input_signature = tuple(nest.flatten(input_signature,
                                                       expand_composites=True))
     self.validate_input_signature_with_argspec()
+    self._default_values = self._make_default_values()
+    self._function_type = self._make_function_type()
+
+  def _make_default_values(self):
+    """Returns default values from the function's inspected fullargspec."""
+    if self.fullargspec.defaults is not None:
+      defaults = {
+          name: value for name, value in zip(
+              self.fullargspec.args[-len(self.fullargspec.defaults):],
+              self.fullargspec.defaults)
+      }
+    else:
+      defaults = {}
+
+    if self.fullargspec.kwonlydefaults is not None:
+      defaults.update(self.fullargspec.kwonlydefaults)
+
+    return defaults
+
+  @property
+  def default_values(self):
+    """Returns dict mapping parameter names to default values."""
+    return self._default_values
+
+  def _make_function_type(self):
+    """Repackages fullargspec information into an equivalent FunctionType."""
+    parameters = []
+
+    arg_kind = (
+        function_type_lib.Parameter.POSITIONAL_ONLY
+        if self.fullargspec.kwonlyargs else
+        function_type_lib.Parameter.POSITIONAL_OR_KEYWORD)
+    for arg in self.fullargspec.args:
+      # TODO(b/249802365): Add sanitization warning when load-bearing.
+      parameters.append(
+          function_type_lib.Parameter(
+              tensor_spec.sanitize_spec_name(arg), arg_kind, arg
+              in self.default_values, None))
+
+    if self.fullargspec.varargs is not None:
+      parameters.append(
+          function_type_lib.Parameter(
+              self.fullargspec.varargs,
+              function_type_lib.Parameter.VAR_POSITIONAL, False, None))
+
+    for kwarg in self.fullargspec.kwonlyargs:
+      # TODO(b/249802365): Add sanitization warning when load-bearing.
+      parameters.append(
+          function_type_lib.Parameter(
+              tensor_spec.sanitize_spec_name(kwarg),
+              function_type_lib.Parameter.KEYWORD_ONLY, kwarg
+              in self.default_values, None))
+
+    if self.fullargspec.varkw is not None:
+      parameters.append(
+          function_type_lib.Parameter(self.fullargspec.varkw,
+                                      function_type_lib.Parameter.VAR_KEYWORD,
+                                      False, None))
+
+    # Annotate with Type Constraints if needed.
+    if self.input_signature:
+      scanned_index = 0
+      for i, param in enumerate(parameters):
+        if (param.name != "self" and
+            param.kind != function_type_lib.Parameter.VAR_POSITIONAL and
+            param.kind != function_type_lib.Parameter.VAR_KEYWORD):
+          if scanned_index < len(self.input_signature):
+            type_constraint = trace_type.from_value(
+                self.input_signature[scanned_index],
+                trace_type.InternalTracingContext(is_legacy_signature=True))
+            parameters[i] = function_type_lib.Parameter(param.name, param.kind,
+                                                        param.optional,
+                                                        type_constraint)
+            scanned_index += 1
+          elif param.name in self.default_values:
+            type_constraint = trace_type.from_value(
+                self.default_values[param.name])
+            parameters[i] = function_type_lib.Parameter(param.name, param.kind,
+                                                        param.optional,
+                                                        type_constraint)
+
+    return function_type_lib.FunctionType(parameters)
+
+  @property
+  def function_type(self):
+    """Returns a FunctionType representing the Python function signature."""
+    return self._function_type
 
   @property
   def fullargspec(self):

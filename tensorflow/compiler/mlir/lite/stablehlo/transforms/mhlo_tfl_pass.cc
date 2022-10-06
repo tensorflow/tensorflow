@@ -61,7 +61,7 @@ class MhloToTflPass
   void getDependentDialects(DialectRegistry &registry) const override {
     mlir::mhlo::registerAllMhloDialects(registry);
     mlir::stablehlo::registerAllDialects(registry);
-    registry.insert<mlir::func::FuncDialect, mlir::arith::ArithmeticDialect>();
+    registry.insert<mlir::func::FuncDialect, mlir::arith::ArithDialect>();
     registry.insert<::mlir::mhlo::MhloDialect>();
     registry.insert<shape::ShapeDialect>();
     registry.insert<TensorFlowLiteDialect>();

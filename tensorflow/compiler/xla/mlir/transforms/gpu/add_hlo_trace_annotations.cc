@@ -27,7 +27,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_ADDHLOTRACEANNOTATIONSPASS
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
 
 using namespace mlir;  // NOLINT
@@ -35,7 +35,7 @@ using namespace mlir;  // NOLINT
 using xla::runtime::HloTraceAttr;
 
 class AddHloTraceAnnotationsPass
-    : public AddHloTraceAnnotationsPassBase<AddHloTraceAnnotationsPass> {
+    : public impl::AddHloTraceAnnotationsPassBase<AddHloTraceAnnotationsPass> {
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {

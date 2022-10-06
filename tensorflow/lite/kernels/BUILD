@@ -1,7 +1,7 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_combine_cc_tests", "tflite_copts", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension")
 
 package(
     default_visibility = [
@@ -279,6 +279,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + EXTRA_EIGEN_COPTS,
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     visibility = ["//visibility:private"],
     deps = [
         ":op_macros",
@@ -366,6 +367,7 @@ cc_library(
         "//tensorflow:fuchsia": [],
         "//conditions:default": ["-DTFLITE_HAVE_CPUINFO"],
     }),
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
         ":tflite_with_ruy",
         ":op_macros",
@@ -2847,14 +2849,19 @@ cc_test(
     ],
 )
 
+# TODO(b/249321616) pull unsorted_segment_test* into seperate `cc_library`.
 cc_test(
     name = "unsorted_segment_prod_test",
     size = "small",
-    srcs = ["unsorted_segment_prod_test.cc"],
+    srcs = [
+        "unsorted_segment_prod_test.cc",
+        "unsorted_segment_test.cc",
+        "unsorted_segment_test.h",
+    ],
     deps = [
         ":test_main",
         ":test_util",
-        ":unsorted_segment_test_utils",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2863,11 +2870,15 @@ cc_test(
 cc_test(
     name = "unsorted_segment_max_test",
     size = "small",
-    srcs = ["unsorted_segment_max_test.cc"],
+    srcs = [
+        "unsorted_segment_max_test.cc",
+        "unsorted_segment_test.cc",
+        "unsorted_segment_test.h",
+    ],
     deps = [
         ":test_main",
         ":test_util",
-        ":unsorted_segment_test_utils",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2876,11 +2887,15 @@ cc_test(
 cc_test(
     name = "unsorted_segment_sum_test",
     size = "small",
-    srcs = ["unsorted_segment_sum_test.cc"],
+    srcs = [
+        "unsorted_segment_sum_test.cc",
+        "unsorted_segment_test.cc",
+        "unsorted_segment_test.h",
+    ],
     deps = [
         ":test_main",
         ":test_util",
-        ":unsorted_segment_test_utils",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
@@ -2889,23 +2904,9 @@ cc_test(
 cc_test(
     name = "unsorted_segment_min_test",
     size = "small",
-    srcs = ["unsorted_segment_min_test.cc"],
-    deps = [
-        ":test_main",
-        ":test_util",
-        ":unsorted_segment_test_utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
-    name = "unsorted_segment_test_utils",
-    testonly = 1,
     srcs = [
+        "unsorted_segment_sum_test.cc",
         "unsorted_segment_test.cc",
-    ],
-    hdrs = [
         "unsorted_segment_test.h",
     ],
     deps = [

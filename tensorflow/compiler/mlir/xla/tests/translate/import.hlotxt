@@ -357,6 +357,15 @@ add {
   ROOT %add.5 = f64[4] add(f64[4] %convert.3, f64[4] %convert.4)
 }
 
+// CHECK-LABEL:  func private @test_stochastic_convert(%arg0: tensor<4x3xf32>, %arg1: tensor<4x3xi32>) -> tensor<4x3xi8>
+%test_stochastic_convert (Arg_0.1: f32[4,3], Arg_1.2: s32[4,3]) -> s8[4,3] {
+  %Arg_0.1 = f32[4,3] parameter(0)
+  %Arg_1.2 = s32[4,3] parameter(1)
+
+  // CHECK-NEXT:  "mhlo.stochastic_convert"(%arg0, %arg1) : (tensor<4x3xf32>, tensor<4x3xi32>) -> tensor<4x3xi8>
+  ROOT %stochastic-convert.0 = s8[4,3] stochastic-convert(f32[4,3] %Arg_0.1, s32[4,3] %Arg_1.2)
+}
+
 // CHECK-LABEL:  func private @test_cosine(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
 %test_cosine (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
   %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
@@ -1552,6 +1561,12 @@ add {
   // CHECK-SAME: {entry_metadata = "\08\01\1A\01\01\22\01\01", exit_metadata = "\08\02", kind = #mhlo<kind sharding>}
   %Arg_0.1 = u32[] parameter(0)
   ROOT %domain.2 = u32[] domain(u32[] %Arg_0.1), domain={kind="sharding", entry={maximal device=1}, exit={}}
+}
+
+// CHECK-LABEL : func private @sparse
+// CHECK: tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], pointerBitWidth = 32, indexBitWidth = 32 }>>) -> tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], pointerBitWidth = 32, indexBitWidth = 32 }>>
+%sparse {
+  ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
 }
 
 // CHECK-LABEL: func private @add_dependency

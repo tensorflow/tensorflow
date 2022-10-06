@@ -13,13 +13,13 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_generate_proto_text_sources")
+load("//tensorflow:tensorflow.default.bzl", "tf_generate_proto_text_sources")
 
 # buildifier: disable=same-origin-load
 load(
@@ -255,6 +255,8 @@ filegroup(
         "versions.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework/registration:registration.h",
+        "//tensorflow/tsl/framework:device_type.h",
+        "//tensorflow/tsl/framework:framework_internal_private_hdrs",
     ],
 )
 
@@ -277,7 +279,6 @@ filegroup(
         "logging.cc",
         "lookup_interface.cc",
         "memory_types.cc",
-        "metrics.cc",
         "model.cc",
         "node_def_builder.cc",
         "op_kernel.cc",
@@ -292,6 +293,7 @@ filegroup(
         "tensor_slice.cc",
         "tensor_util.cc",
         "versions.cc",
+        "//tensorflow/tsl/framework:framework_internal_impl_srcs",
     ],
 )
 
@@ -336,6 +338,7 @@ filegroup(
         "variant_op_registry.h",
         "variant_tensor_data.cc",
         "variant_tensor_data.h",
+        "//tensorflow/tsl/framework:device_type.h",
     ],
 )
 
@@ -384,7 +387,6 @@ filegroup(
         "lookup_interface.h",
         "memory_types.cc",
         "memory_types.h",
-        "metrics.cc",
         "metrics.h",
         "model.cc",
         "model.h",
@@ -440,6 +442,7 @@ filegroup(
         "versions.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework/registration:registration.h",
+        "//tensorflow/tsl/framework:mobile_srcs_only_runtime",
     ],
 )
 
@@ -627,6 +630,31 @@ cc_library(
 )
 
 cc_library(
+    name = "float8",
+    srcs = ["float8.cc"],
+    hdrs = ["float8.h"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
+    ],
+    deps = [
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "float8_test",
+    srcs = ["float8_test.cc"],
+    deps = [
+        ":float8",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test_benchmark",
+    ],
+)
+
+cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
     visibility = [
@@ -636,7 +664,6 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:types",
         "//tensorflow/tsl/framework:numeric_types",
-        "//third_party/eigen3",
     ],
 )
 
@@ -835,6 +862,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/core/public:version",
         "//tensorflow/core/util:managed_stack_trace",
+        "//tensorflow/tsl/framework:device_type",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

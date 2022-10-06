@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
@@ -38,8 +37,11 @@ namespace TFDevice {
 
 namespace {
 
+#define GEN_PASS_DEF_CLUSTERFORMATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ClusterFormationPass
-    : public TF::ClusterFormationPassBase<ClusterFormationPass> {
+    : public impl::ClusterFormationPassBase<ClusterFormationPass> {
   void runOnOperation() override;
 };
 

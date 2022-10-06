@@ -31,7 +31,7 @@ namespace tflite {
 namespace acceleration {
 constexpr int kMaxAttempts = 2;
 
-ValidatorRunner::ValidatorRunner(const Options& options)
+ValidatorRunner::ValidatorRunner(const ValidatorRunnerOptions& options)
     : storage_(options.storage_path, options.error_reporter),
       error_reporter_(options.error_reporter) {
   std::string model_path;
@@ -53,24 +53,16 @@ ValidatorRunner::ValidatorRunner(const Options& options)
 }
 
 MinibenchmarkStatus ValidatorRunner::Init() {
-  MinibenchmarkStatus status = validator_runner_impl_->Init();
-  if (status != kMinibenchmarkSuccess) {
-    return status;
-  }
-#ifndef _WIN32
-  status = storage_.Read();
+  MinibenchmarkStatus status = storage_.Read();
   if (status != kMinibenchmarkSuccess) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Storage::Read failed");
     return status;
   }
-  return kMinibenchmarkSuccess;
-#else   // _WIN32
-  return kMinibenchmarkUnsupportedPlatform;
-#endif  // !_WIN32
+  return validator_runner_impl_->Init();
 }
 
 int ValidatorRunner::TriggerMissingValidation(
-    std::vector<const TFLiteSettings*> for_settings) {
+    const std::vector<const TFLiteSettings*>& for_settings) {
   if (triggered_) {
     return 0;
   }
@@ -117,32 +109,6 @@ int ValidatorRunner::TriggerMissingValidation(
   int to_be_run_count = to_be_run->size();
   validator_runner_impl_->TriggerValidationAsync(std::move(to_be_run));
   return to_be_run_count;
-}
-
-std::vector<const BenchmarkEvent*> ValidatorRunner::GetSuccessfulResults() {
-  std::vector<const BenchmarkEvent*> results;
-  storage_.Read();
-  for (int i = 0; i < storage_.Count(); i++) {
-    const BenchmarkEvent* event = storage_.Get(i);
-    if (event->event_type() == BenchmarkEventType_END && event->result() &&
-        event->result()->ok()) {
-      results.push_back(event);
-    }
-  }
-  return results;
-}
-
-int ValidatorRunner::GetNumCompletedResults() {
-  storage_.Read();
-  int num_results = 0;
-  for (int i = 0; i < storage_.Count(); i++) {
-    const BenchmarkEvent* event = storage_.Get(i);
-    if (event->event_type() == BenchmarkEventType_ERROR ||
-        (event->event_type() == BenchmarkEventType_END && event->result())) {
-      num_results++;
-    }
-  }
-  return num_results;
 }
 
 std::vector<const BenchmarkEvent*> ValidatorRunner::GetAndFlushEventsToLog(

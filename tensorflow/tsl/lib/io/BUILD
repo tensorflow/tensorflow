@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -10,6 +10,7 @@ package(
         "//tensorflow/c/experimental/filesystem:__pkg__",
         "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
         "//tensorflow/tsl/lib/io/snappy:__pkg__",
+        "//tensorflow/compiler/xla:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/io:__subpackages__",

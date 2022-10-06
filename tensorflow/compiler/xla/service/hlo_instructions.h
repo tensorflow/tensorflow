@@ -1275,11 +1275,11 @@ class HloFusionInstruction : public HloCallableInstruction {
 
   // Returns the list of fused instructions inside this fusion instruction.  The
   // returned type is a range of HloInstruction*s.
-  const tensorflow::gtl::iterator_range<UnwrappingIterator<
+  const tsl::gtl::iterator_range<UnwrappingIterator<
       std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
   fused_instructions() const;
 
-  const tensorflow::gtl::iterator_range<
+  const tsl::gtl::iterator_range<
       UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
   fused_instructions();
 

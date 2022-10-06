@@ -176,3 +176,9 @@ opt<bool> enable_stablehlo_conversion(
     "enable-stablehlo-conversion",
     llvm::cl::desc("Enable converting TF to Stablehlo."),
     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> post_training_quantization(
+    "post-training-quantization",
+    llvm::cl::desc("Enable post_training_quantization."),
+    llvm::cl::init(false));

@@ -373,8 +373,12 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
                                 ->fused_instructions_computation()
                                 ->MakeInstructionPostOrder();
     for (HloInstruction* old_instr : def_to_use_order) {
-      if (old_instr->opcode() == HloOpcode::kParameter) {
-        // Parameters have been created.
+      if (old_instr->opcode() == HloOpcode::kParameter ||
+          (old_instr->opcode() == HloOpcode::kTuple &&
+           old_instr == fused_fusion_instrs[i]->fused_expression_root())) {
+        // Parameters have been created, and we don't need tuples from
+        // multi-output fusions, as we will directly reference the tuple
+        // operands instead by using GetOutputsOfFusible().
         continue;
       }
       std::vector<HloInstruction*> new_opnds;
@@ -510,6 +514,14 @@ Status HorizontalLoopFusionImpl::Fuse(
 StatusOr<bool> HorizontalLoopFusionImpl::Run() {
   bool changed = false;
   XLA_VLOG_LINES(3, computation_->ToString());
+
+  for (HloInstruction* instr : computation_->instructions()) {
+    if (!instr->control_successors().empty()) {
+      VLOG(1) << "Skipping HorizontalLoopFusion as there is control flow in "
+                 "the graph";
+      return false;
+    }
+  }
 
   // Traverse from use to def. Bitcasts are placed after h-fusions to resolve
   // shape mismatch but bitcasts could prevent future h-fusion from happening.

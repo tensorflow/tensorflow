@@ -210,11 +210,12 @@ struct DTensorSparseTensorToDenseTensor
 
       // Emit a SparseToDenseOp and replace the SparseTensor with the result of
       // this new op.
-      auto zero_scalar = CreateZeroScalarConst(builder, front_op->getLoc(),
-                                               sparse_tensor_value.getType()
-                                                   .cast<mlir::TensorType>()
-                                                   .getElementType());
-      if (!zero_scalar.has_value()) return signalPassFailure();
+      StatusOr<mlir::Value> zero_scalar =
+          CreateZeroScalarConst(builder, front_op->getLoc(),
+                                sparse_tensor_value.getType()
+                                    .cast<mlir::TensorType>()
+                                    .getElementType());
+      if (!zero_scalar.ok()) return signalPassFailure();
       mlir::TF::SparseToDenseOp sparse_to_dense_op =
           builder.create<mlir::TF::SparseToDenseOp>(
               front_op->getLoc(), sparse_tensor_value.getType(),

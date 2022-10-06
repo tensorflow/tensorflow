@@ -934,25 +934,27 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
 
   // The following functions are part of the printing interface but aren't
   // needed for the compact printing form for Layout printing.
-  void printAttributeWithoutType(mlir::Attribute attr) override{};
-  void printSuccessor(mlir::Block* successor) override{};
+  void printAttributeWithoutType(mlir::Attribute attr) override {}
+  void printSuccessor(mlir::Block* successor) override {}
   void printSuccessorAndUseList(mlir::Block* successor,
-                                mlir::ValueRange succOperands) override{};
+                                mlir::ValueRange succOperands) override {}
   void printOptionalAttrDict(
       llvm::ArrayRef<mlir::NamedAttribute> attrs,
-      llvm::ArrayRef<llvm::StringRef> elidedAttrs) override{};
+      llvm::ArrayRef<llvm::StringRef> elidedAttrs) override {}
   void printOptionalAttrDictWithKeyword(
       llvm::ArrayRef<mlir::NamedAttribute> attrs,
-      llvm::ArrayRef<llvm::StringRef> elidedAttrs) override{};
+      llvm::ArrayRef<llvm::StringRef> elidedAttrs) override {}
 
   void shadowRegionArgs(mlir::Region& region,
-                        mlir::ValueRange namesToUse) override{};
+                        mlir::ValueRange namesToUse) override {}
   void printAffineMapOfSSAIds(mlir::AffineMapAttr mapAttr,
-                              mlir::ValueRange operands) override{};
+                              mlir::ValueRange operands) override {}
 
   void printAffineExprOfSSAIds(mlir::AffineExpr expr,
                                mlir::ValueRange dimOperands,
-                               mlir::ValueRange symOperands) override{};
+                               mlir::ValueRange symOperands) override {}
+
+  void printOptionalLocationSpecifier(mlir::Location loc) override {}
 
  private:
   int indent_level_;

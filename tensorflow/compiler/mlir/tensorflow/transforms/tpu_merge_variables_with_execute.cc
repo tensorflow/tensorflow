@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
@@ -60,8 +59,11 @@ constexpr char kAliasingAttr[] = "tf.aliasing_output";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
+#define GEN_PASS_DEF_TPUMERGEVARIABLESWITHEXECUTEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class TPUMergeVariablesWithExecutePass
-    : public TF::TPUMergeVariablesWithExecutePassBase<
+    : public impl::TPUMergeVariablesWithExecutePassBase<
           TPUMergeVariablesWithExecutePass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     // We need this here because at the moment we deserialize the TPUCompileMlir

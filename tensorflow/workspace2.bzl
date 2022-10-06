@@ -194,18 +194,18 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        sha256 = "990fdce84197d68064e615d91c182c5bc6baa446348c3c1fe71b7e9a345badc2",
-        strip_prefix = "oneDNN-70d1198de554e61081147c199d661df049233279",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/70d1198de554e61081147c199d661df049233279.tar.gz"),
+        sha256 = "fc2b617ec8dbe907bb10853ea47c46f7acd8817bc4012748623d911aca43afbb",
+        strip_prefix = "oneDNN-2.7",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.7.tar.gz"),
     )
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "94e2e9ff87c261a9c9987bc9024c449c48014f7fe707311bdfa76b87f3dda5c5",
-        strip_prefix = "ComputeLibrary-22.05",
+        sha256 = "ac2ce7b5636e99f175b084362f83fe24d72e6ceb0bd62ee5866772f7355d024d",
+        strip_prefix = "ComputeLibrary-22.08",
         build_file = "//third_party/compute_library:BUILD",
-        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:activation_func_correct_args.patch"],
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.05.tar.gz"),
+        patch_file = ["//third_party/compute_library:compute_library.patch"],
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.08.tar.gz"),
     )
 
     tf_http_archive(
@@ -889,6 +889,32 @@ def _tf_repositories():
         strip_prefix = "upb-9effcbcb27f0a665f9f345030188c0b291e32482",
         patch_file = ["//third_party/grpc:upb_platform_fix.patch"],
         urls = tf_mirror_urls("https://github.com/protocolbuffers/upb/archive/9effcbcb27f0a665f9f345030188c0b291e32482.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "com_github_glog_glog",
+        sha256 = "f28359aeba12f30d73d9e4711ef356dc842886968112162bc73002645139c39c",
+        strip_prefix = "glog-0.4.0",
+        urls = tf_mirror_urls("https://github.com/google/glog/archive/refs/tags/v0.4.0.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "com_google_ortools",
+        sha256 = "b87922b75bbcce9b2ab5da0221751a3c8c0bff54b2a1eafa951dbf70722a640e",
+        strip_prefix = "or-tools-7.3",
+        patch_file = ["//third_party/ortools:ortools.patch"],
+        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v7.3.tar.gz"),
+        repo_mapping = {"@com_google_protobuf_cc": "@com_google_protobuf"},
+    )
+
+    tf_http_archive(
+        name = "glpk",
+        sha256 = "9a5dab356268b4f177c33e00ddf8164496dc2434e83bd1114147024df983a3bb",
+        build_file = "//third_party/ortools:glpk.BUILD",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/ftp.gnu.org/gnu/glpk/glpk-4.52.tar.gz",
+            "http://ftp.gnu.org/gnu/glpk/glpk-4.52.tar.gz",
+        ],
     )
 
 def workspace():

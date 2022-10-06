@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -637,8 +638,8 @@ void RewriteControlFlowOpRegion(
                                                         block_arg_types);
 
   if (control_flow_blocks.contains(&region.front())) {
-      ops_to_visit.push_back(
-          {/*region_idx=*/llvm::None, block_token, &region.front().front()});
+    ops_to_visit.push_back(
+        {/*region_idx=*/llvm::None, block_token, &region.front().front()});
     return;
   }
 

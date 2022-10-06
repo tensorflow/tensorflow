@@ -511,6 +511,9 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.range(10)
     dataset = apply_map(dataset, increment_fn)
+    options = options_lib.Options()
+    options.experimental_optimization.inject_prefetch = False
+    dataset = dataset.with_options(options)
 
     get_next = self.getNext(dataset, requires_initialization=True)
 
@@ -1166,6 +1169,9 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         "counter", (), dtypes.int32, use_resource=True)
     dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
     dataset = apply_map(dataset, lambda _: counter_var.assign_add(1))
+    options = options_lib.Options()
+    options.experimental_optimization.inject_prefetch = False
+    dataset = dataset.with_options(options)
     get_next = self.getNext(dataset, requires_initialization=True)
 
     self.evaluate(counter_var.initializer)

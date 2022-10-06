@@ -156,17 +156,20 @@ func.func @handles_regions_that_use_arguments(%arg0: f32, %arg1: f32) {
     "bar.a"(%arg0) : (f32) -> f32
     "bar.b"(%arg1) : (f32) -> f32
     "bar.c"(%0) : (f32) -> f32
-  }): () -> ()
+  }, {}): () -> ()
   return
 }
 
 // CHECK: func @handles_regions_that_use_arguments
-// CHECK: call [[name:@[^(]*]](%arg0, %arg1, %0)
-// CHECK: func [[name]]
-// CHECK: foo.someop
+// CHECK: call [[foo:@[^(]*]](%arg0, %arg1, %0)
+// CHECK: func [[bar:@[^(]*]]
+// CHECK-SAME: dialect = "bar"
 // CHECK: bar.a
 // CHECK: bar.b
 // CHECK: bar.c
+// CHECK: func [[foo]]
+// CHECK: foo.someop
+// CHECK: call [[bar]]
 
 // -----
 
@@ -177,16 +180,41 @@ func.func @handles_nested_regions(%arg0: f32, %arg1: f32) {
       "bar.a"(%arg0) : (f32) -> f32
       "bar.b"(%arg1) : (f32) -> f32
       "bar.c"(%0) : (f32) -> f32
-    }) : () -> ()
-  }): () -> ()
+    }, {}) : () -> ()
+  }, {}): () -> ()
   return
 }
 
 // CHECK: func @handles_nested_regions
-// CHECK: call [[name:@[^(]*]](%arg0, %arg1, %0)
-// CHECK: func [[name]]
-// CHECK: foo.someop
-// CHECK: foo.some_other_op
+// CHECK: glue.someop
+// CHECK: call [[foo:@[^(]*]](%arg0, %arg1, %0)
+// CHECK: func [[bar:@[^(]*]](
+// CHECK-SAME: dialect = "bar"
 // CHECK: bar.a
 // CHECK: bar.b
 // CHECK: bar.c
+// CHECK: func [[foo]]
+// CHECK: foo.someop
+// CHECK: foo.some_other_op
+
+// -----
+
+func.func @groups_nested_regions(%arg0: f32, %arg1: f32) {
+  %0 = "glue.someop"() : () -> f32
+  "foo.someop"() ({
+    "bar.a"(%arg0) : (f32) -> f32
+    "bar.b"(%arg1) : (f32) -> f32
+    %1 = "bar.c"(%0) : (f32) -> f32
+    "foo.a"(%1) : (f32) -> f32
+  }, {}): () -> ()
+  return
+}
+
+// CHECK: func @groups_nested_regions
+// CHECK: func [[bar:@[^(]*]](
+// CHECK-SAME: dialect = "bar"
+// CHECK-NOT: foo
+// CHECK: func
+// CHECK-SAME: dialect = "foo"
+// CHECK: call [[bar]]
+// CHECK: foo.a

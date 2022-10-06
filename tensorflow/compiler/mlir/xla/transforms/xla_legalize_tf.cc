@@ -25,9 +25,10 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -261,7 +262,7 @@ mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
     target.addLegalDialect<chlo::ChloDialect>();
   }
   target.addLegalDialect<MhloDialect>();
-  target.addLegalDialect<arith::ArithmeticDialect>();
+  target.addLegalDialect<arith::ArithDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();

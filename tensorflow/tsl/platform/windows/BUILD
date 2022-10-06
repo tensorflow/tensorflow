@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # Tensorflow windows-specific implementations of tensorflow/core/platform libraries.
 load(
@@ -6,7 +6,7 @@ load(
     "tf_copts",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 

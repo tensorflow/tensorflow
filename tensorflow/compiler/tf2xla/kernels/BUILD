@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
@@ -149,6 +149,7 @@ tf_kernel_library(
         "xla_broadcast_helper_op.cc",
         "xla_conv_op.cc",
         "xla_custom_call_op.cc",
+        "xla_custom_call_v2_op.cc",
         "xla_dequantize_op.cc",
         "xla_dot_op.cc",
         "xla_optimization_barrier_op.cc",

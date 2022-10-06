@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "mlir/Dialect/Arithmetic/Utils/Utils.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"  // from @llvm-project
@@ -344,25 +344,25 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         //     target_machine_features_.minimum_alignment_for_allocation(
         //         ShapeUtil::ByteSizeOf(dot_info_.result_shape));
         mlir::linalg::CodegenStrategy strategy;
-        strategy
-            .tile(mlir::linalg::GenericOp::getOperationName(), tilingOptions)
-            // TODO(kramerb): this has been retired upstream, reevaluate whether
-            // this path really needs it or if it is even relevant anymore.
-            // .promote(mlir::linalg::GenericOp::getOperationName(),
-            //          mlir::linalg::LinalgPromotionOptions()
-            //              .setAlignment(alignment)
-            //              .setUseFullTileBuffersByDefault(true)
-            //              .setUseAlloca(true))
-            // .vectorize(mlir::linalg::GenericOp::getOperationName())
-            .vectorLowering(
-                mlir::linalg::LinalgVectorLoweringOptions()
-                    .setVectorTransformsOptions(
-                        mlir::vector::VectorTransformsOptions()
-                            .setVectorTransformsOptions(
-                                mlir::vector::VectorContractLowering::
-                                    OuterProduct))
-                    .setVectorTransferToSCFOptions(
-                        mlir::VectorTransferToSCFOptions().enableFullUnroll()));
+        strategy.tile(mlir::linalg::GenericOp::getOperationName(),
+                      tilingOptions);
+        // TODO(kramerb): this has been retired upstream, reevaluate whether
+        // this path really needs it or if it is even relevant anymore.
+        // .promote(mlir::linalg::GenericOp::getOperationName(),
+        //          mlir::linalg::LinalgPromotionOptions()
+        //              .setAlignment(alignment)
+        //              .setUseFullTileBuffersByDefault(true)
+        //              .setUseAlloca(true))
+        // .vectorize(mlir::linalg::GenericOp::getOperationName())
+        // .vectorLowering(
+        //    mlir::linalg::LinalgVectorLoweringOptions()
+        //        .setVectorTransformsOptions(
+        //            mlir::vector::VectorTransformsOptions()
+        //                .setVectorTransformsOptions(
+        //                    mlir::vector::VectorContractLowering::
+        //                        OuterProduct))
+        //        .setVectorTransferToSCFOptions(
+        //            mlir::VectorTransferToSCFOptions().enableFullUnroll()));
         // TODO(kramerb): this should be within a pass and we should be able to
         // create a nested OpPassManager.
         // Created a nested OpPassManager, populate the strategy and run.

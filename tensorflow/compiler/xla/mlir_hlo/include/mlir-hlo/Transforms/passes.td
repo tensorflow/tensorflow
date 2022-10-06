@@ -49,7 +49,7 @@ def BufferPacking : Pass<"buffer-packing", "func::FuncOp"> {
   After this sorting, the buffers are checked whether subsequent buffers can be
   packed into them.}];
   let dependentDialects = ["func::FuncDialect","memref::MemRefDialect",
-    "arith::ArithmeticDialect"];
+    "arith::ArithDialect"];
   let constructor = "createBufferPackingPass()";
   let options = [
    Option<"window_size_", "window-size", "unsigned",
@@ -179,7 +179,11 @@ def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
 
 def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
   let summary = "Converts ops on tensors with 1 element to scalar ops.";
-  let dependentDialects = ["tensor::TensorDialect", "arith::ArithmeticDialect"];
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "gml_st::GmlStDialect",
+    "tensor::TensorDialect"
+  ];
   let constructor = "createScalarizationPass()";
 }
 

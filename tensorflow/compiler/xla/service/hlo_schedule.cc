@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
 
 namespace xla {
 
@@ -178,7 +178,7 @@ Status HloSchedule::UpdateComputationSchedule(
       worklist.pop();
       new_sequence.push_back(instruction);
       std::vector<HloInstruction*>* new_users =
-          tensorflow::gtl::FindOrNull(new_instruction_uses, instruction);
+          tsl::gtl::FindOrNull(new_instruction_uses, instruction);
       if (new_users != nullptr) {
         // This just-scheduled instruction has users which are newly added to
         // the module. Update the number of unscheduled operands and push the
@@ -243,7 +243,7 @@ Status HloSchedule::Update(
       nonfusion_computations_ids.insert(computation->unique_id());
     }
     for (auto it = sequences_.begin(); it != sequences_.end();) {
-      std::string sequence_thread_name = tensorflow::gtl::FindWithDefault(
+      std::string sequence_thread_name = tsl::gtl::FindWithDefault(
           execution_threads_, it->first, HloInstruction::kMainExecutionThread);
       bool is_thread_included =
           execution_threads.empty() ||
@@ -272,7 +272,7 @@ absl::flat_hash_map<std::string, int64_t>
 HloSchedule::num_sequences_by_execution_thread() const {
   absl::flat_hash_map<std::string, int64_t> sequence_num_by_execution_threads;
   for (const auto& id_sequence_item : sequences_) {
-    ++sequence_num_by_execution_threads[tensorflow::gtl::FindWithDefault(
+    ++sequence_num_by_execution_threads[tsl::gtl::FindWithDefault(
         execution_threads_, id_sequence_item.first,
         HloInstruction::kMainExecutionThread)];
   }

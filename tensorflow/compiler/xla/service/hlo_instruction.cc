@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/human_readable_json.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -420,7 +420,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << proto.called_computation_ids_size();
       const int64_t fusion_id = proto.called_computation_ids(0);
       auto* fused_computation =
-          tensorflow::gtl::FindPtrOrNull(computation_map, fusion_id);
+          tsl::gtl::FindPtrOrNull(computation_map, fusion_id);
       TF_RET_CHECK(fused_computation != nullptr)
           << "No fusion computation with id " << fusion_id;
       instruction =
@@ -1137,6 +1137,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert:
       break;
     default:
       LOG(FATAL) << "Invalid binary instruction opcode "
@@ -2108,6 +2109,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert:
       CHECK_EQ(new_operands.size(), 2);
       clone = CreateBinary(shape, opcode_, new_operands[0], new_operands[1]);
       break;
@@ -2537,6 +2539,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kStochasticConvert:
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
@@ -2797,45 +2800,45 @@ bool HloInstruction::IsEffectiveBitcast() const {
 }
 
 HloComputation* HloInstruction::to_apply() const {
-  switch (opcode_) {
-    case HloOpcode::kCall:
-    case HloOpcode::kMap:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kReduce:
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kReduceScatter:
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kScatter:
-    case HloOpcode::kSort:
-    case HloOpcode::kCustomCall:
-      CHECK_EQ(called_computations_.size(), 1);
-      return called_computations_[0];
-    default:
-      LOG(FATAL) << "Invalid opcode for to_apply(): "
-                 << HloOpcodeString(opcode());
+  if (has_to_apply()) {
+    CHECK_EQ(called_computations_.size(), 1)
+        << "Expected a to_apply computation for " << HloOpcodeString(opcode());
+    return called_computations_[0];
   }
+  LOG(FATAL) << "Invalid opcode for to_apply(): " << HloOpcodeString(opcode());
 }
 
 void HloInstruction::set_to_apply(HloComputation* computation) {
   // Don't allow changing the computation for fused instructions so we don't
   // have to recompute called_instructions for the entire fusion instruction.
   CHECK(!IsFused());
+  if (has_to_apply()) {
+    CHECK_EQ(called_computations_.size(), 1)
+        << "Expected a to_apply computation for " << HloOpcodeString(opcode());
+    called_computations_[0] = computation;
+    return;
+  }
+  LOG(FATAL) << "Invalid opcode for to_apply(): " << HloOpcodeString(opcode());
+}
+
+bool HloInstruction::has_to_apply() const {
   switch (opcode_) {
-    case HloOpcode::kCall:
-    case HloOpcode::kMap:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kReduce:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
+    case HloOpcode::kCall:
+    case HloOpcode::kMap:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
+      return true;
     case HloOpcode::kCustomCall:
-      CHECK_EQ(called_computations_.size(), 1);
-      called_computations_[0] = computation;
-      break;
+      // CustomCall can have a to_apply computation, but it is not required to
+      // have one.
+      return called_computations_.size() == 1;
     default:
-      LOG(FATAL) << "Invalid opcode for to_apply(): "
-                 << HloOpcodeString(opcode());
+      return false;
   }
 }
 
@@ -3538,6 +3541,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleConvert(this);
     case HloOpcode::kBitcastConvert:
       return visitor->HandleBitcastConvert(this);
+    case HloOpcode::kStochasticConvert:
+      return visitor->HandleStochasticConvert(this);
     case HloOpcode::kCopy:
       return visitor->HandleCopy(this);
     case HloOpcode::kMultiply:
@@ -4595,13 +4600,13 @@ HloInstruction* HloInstruction::fused_expression_root() const {
   return Cast<HloFusionInstruction>(this)->fused_expression_root();
 }
 
-const tensorflow::gtl::iterator_range<UnwrappingIterator<
+const tsl::gtl::iterator_range<UnwrappingIterator<
     std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
 HloInstruction::fused_instructions() const {
   return Cast<HloFusionInstruction>(this)->fused_instructions();
 }
 
-const tensorflow::gtl::iterator_range<
+const tsl::gtl::iterator_range<
     UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
 HloInstruction::fused_instructions() {
   return Cast<HloFusionInstruction>(this)->fused_instructions();

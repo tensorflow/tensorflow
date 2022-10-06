@@ -315,6 +315,9 @@ build:linux --copt="-Wno-array-bounds"
 # Add unused-result as an error on Linux.
 build:linux --copt="-Wunused-result"
 build:linux --copt="-Werror=unused-result"
+# Add switch as an error on Linux.
+build:linux --copt="-Wswitch"
+build:linux --copt="-Werror=switch"
 
 # On Windows, `__cplusplus` is wrongly defined without this switch
 # See https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/

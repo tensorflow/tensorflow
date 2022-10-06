@@ -16,7 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Transforms/passes.h"
-#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
@@ -26,8 +26,8 @@ limitations under the License.
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -60,9 +60,9 @@ class GenericHostToLLVMPass
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
-    arith::populateArithmeticExpandOpsPatterns(patterns);
+    arith::populateArithExpandOpsPatterns(patterns);
     memref::populateExpandOpsPatterns(patterns);
-    arith::populateArithmeticToLLVMConversionPatterns(typeConverter, patterns);
+    arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);
     populateMemRefToLLVMConversionPatterns(typeConverter, patterns);
     populateMathToLLVMConversionPatterns(typeConverter, patterns);
     populateFuncToLLVMConversionPatterns(typeConverter, patterns);
@@ -78,7 +78,7 @@ class GenericHostToLLVMPass
     //  Set target.
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addIllegalDialect<arith::ArithmeticDialect, func::FuncDialect,
+    target.addIllegalDialect<arith::ArithDialect, func::FuncDialect,
                              complex::ComplexDialect, math::MathDialect>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp>();

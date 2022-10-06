@@ -132,6 +132,7 @@ cc_library(
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/tsl/framework/fixedpoint",
         "//third_party/eigen3",
         "@com_google_absl//absl/strings",
     ],

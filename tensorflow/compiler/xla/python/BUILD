@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -8,12 +8,8 @@ load(
     "tf_cc_test",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pytype_library")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
+load("//tensorflow:pytype.default.bzl", "pytype_library")
 
 package(
     default_visibility = [":friends"],
@@ -410,8 +406,8 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":status_casters",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/python:status_casters",
         "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_sharding_util",
@@ -539,8 +535,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -731,6 +727,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/lib/strings:proto_serialization",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/synchronization",
@@ -852,7 +849,7 @@ pybind_extension(
         "//tensorflow/python:bfloat16_lib",
     ] + select({
         ":gpu_enabled": [
-            "//tensorflow/compiler/xla/pjrt:gpu_device",
+            "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         ],
         "//conditions:default": [],
     }) + select({

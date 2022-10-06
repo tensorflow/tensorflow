@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,7 +32,7 @@ limitations under the License.
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -69,17 +70,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/types.h"
 
 using ::int64_t;
 using ::stream_executor::port::StatusOr;
-using ::tensorflow::int16;
-using ::tensorflow::int32;
-using ::tensorflow::int8;
-using ::tensorflow::uint16;
-using ::tensorflow::uint32;
-using ::tensorflow::uint64;
-using ::tensorflow::uint8;
+using ::tsl::int16;
+using ::tsl::int32;
+using ::tsl::int8;
+using ::tsl::uint16;
+using ::tsl::uint32;
+using ::tsl::uint64;
+using ::tsl::uint8;
 
 constexpr char kShapeIndicesAttr[] = "shape_indices";
 constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
@@ -683,6 +685,19 @@ mlir::LogicalResult GetXlaOps(mlir::Operation* op,
   return mlir::success();
 }
 
+// Checks that the results of `op` are simply returned at the end of this
+// function rather than used by other ops in the same function.
+//
+// Used to check that new-style async ops on computations that contain sync
+// versions of old-style async ops can be exported by downgrading to old-style
+// async ops.
+bool SimplyReturnedOp(mlir::Operation* op) {
+  auto users = op->getResults().getUsers();
+  if (std::distance(users.begin(), users.end()) != 1) return false;
+  if (llvm::dyn_cast<mlir::mhlo::ReturnOp>((*users.begin()))) return true;
+  return false;
+}
+
 }  // namespace
 
 namespace mlir {
@@ -810,6 +825,29 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
 
   mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
       FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
+
+  auto all_gather_op =
+      dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
+  if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
+    TensorType operand_type =
+        all_gather_op.getOperand().getType().cast<TensorType>();
+    TensorType result_type = all_gather_op.getType();
+    if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
+      return failure();
+    if (operands.size() != 1) return failure();
+    auto all_gather_dim = all_gather_op.getAllGatherDim();
+    int64_t shard_count = result_type.getDimSize(all_gather_dim) /
+                          operand_type.getDimSize(all_gather_dim);
+    value_map[result] = xla::internal::XlaBuilderFriend::BuildAllGatherStart(
+        ctx.builder, operands[0], all_gather_dim, shard_count,
+        Convert_replica_groups(all_gather_op.getReplicaGroups()),
+        Convert_channel_handle(all_gather_op.getChannelHandle()),
+        ExtractLayout(all_gather_op,
+                      result_type.cast<RankedTensorType>().getRank()),
+        Convert_use_global_device_ids(all_gather_op.getUseGlobalDeviceIds()));
+    return success();
+  }
+
   if (failed(ctx.converter->RunOnFunction(callee))) return failure();
   xla::XlaComputation& computation =
       ctx.converter->GetLoweredComputation(callee);
@@ -909,6 +947,15 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
 
   mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
       FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
+  auto all_gather_op =
+      dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
+  if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
+    value_map[all_gather_op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAllGatherDone(
+            ctx.builder, operand, xla::TypeToShape(all_gather_op.getType()));
+    return success();
+  }
+
   if (failed(ctx.converter->RunOnFunction(callee))) return failure();
   xla::XlaComputation& computation =
       ctx.converter->GetLoweredComputation(callee);
@@ -965,6 +1012,18 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   value_map[op] =
       BroadcastInDim(operand, Convert_ArrayRef(type.getShape()),
                      Convert_broadcast_dimensions(op.getBroadcastDimensions()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(StochasticConvertOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand, random;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  if (failed(GetXlaOp(op.random(), value_map, &random, op))) return failure();
+
+  value_map[op] = xla::StochasticConvertType(
+      operand, random,
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
   return success();
 }
 
@@ -1960,8 +2019,7 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
                                                   xla::Layout layout) {
   auto dense_attr = attr.dyn_cast<DenseElementsAttr>();
   if (!dense_attr)
-    return tensorflow::errors::Unimplemented(
-        "Only dense elements attr are supported");
+    return tsl::errors::Unimplemented("Only dense elements attr are supported");
 
   xla::Shape shape = xla::TypeToShape(dense_attr.getType());
 
@@ -1989,7 +2047,7 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F16, Eigen::half)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::BF16, Eigen::bfloat16)
     default:
-      return tensorflow::errors::Internal(absl::StrCat(
+      return tsl::errors::Internal(absl::StrCat(  // NOLINT
           "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));
   }
 #undef ELEMENTS_ATTR_TO_LITERAL
@@ -2716,8 +2774,8 @@ Status PrepareForExport(mlir::ModuleOp module) {
   mlir::PassManager pm(module.getContext());
   pm.addNestedPass<mlir::func::FuncOp>(mhlo::CreatePrepareForExport());
   if (failed(pm.run(module)))
-    return tensorflow::errors::Internal("Unable to optimize for XLA export");
-  return ::tensorflow::OkStatus();
+    return tsl::errors::Internal("Unable to optimize for XLA export");
+  return ::tsl::OkStatus();
 }
 
 }  // namespace
@@ -2729,9 +2787,8 @@ Status ConvertRegionToComputation(mlir::Region* region,
   xla::XlaBuilder module_builder("main");
   ConvertToHloModule converter(module, module_builder, true, true, options);
   if (failed(converter.LowerRegionAsComputation(region, func)))
-    return tensorflow::errors::Internal(
-        "failed to convert region to computation");
-  return ::tensorflow::OkStatus();
+    return tsl::errors::Internal("failed to convert region to computation");
+  return ::tsl::OkStatus();
 }
 
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
@@ -2747,7 +2804,7 @@ Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
   StringRef module_name = module.getName() ? *module.getName() : "main";
   hlo_module.set_name(module_name.str());
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
@@ -2764,9 +2821,9 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
   // xla_params should only include non-constant parameters the block arguments
   // correspond to.
   if (xla_params.size() != block.getArguments().size())
-    return tensorflow::errors::Internal("xla_params size (", xla_params.size(),
-                                        ") != block arguments size (",
-                                        block.getArguments().size(), ")");
+    return tsl::errors::Internal("xla_params size (", xla_params.size(),
+                                 ") != block arguments size (",
+                                 block.getArguments().size(), ")");
   for (BlockArgument& arg : block.getArguments()) {
     auto num = arg.getArgNumber();
     lowering[arg] = xla_params[num];
@@ -2792,7 +2849,7 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
     }
   }
 
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 }  // namespace mlir

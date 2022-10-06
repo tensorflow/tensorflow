@@ -2,32 +2,32 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
-load("//tensorflow:tensorflow.bzl", "py_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_monitoring_python_deps")
+load("//tensorflow:tensorflow.default.bzl", "tf_monitoring_python_deps")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pywrap_tensorflow_macro")
+load("//tensorflow:tensorflow.default.bzl", "pywrap_tensorflow_macro")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
+load("//tensorflow:tensorflow.default.bzl", "tf_external_workspace_visible")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
+load("//tensorflow:tensorflow.default.bzl", "tf_pybind_cc_library_wrapper")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
@@ -3436,6 +3436,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
+        "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
@@ -3569,6 +3570,7 @@ filegroup(
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",  # quantization
         "//tensorflow/dtensor/cc:dtensor_device_cc",  # DTensor
+        "//tensorflow/dtensor/cc:tensor_layout",  # DTensor
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "//tensorflow/compiler/xla:status_macros",  # tfcompile
@@ -4277,6 +4279,7 @@ tf_pybind_cc_library_wrapper(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
+        "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
     ],

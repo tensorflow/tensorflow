@@ -144,16 +144,17 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
         "Negative output dimension size caused by overflow when multiplying ",
         orig_input_tensor.dim_size(0), " and ", block_shape_product);
   }
-  external_output_shape.AddDim(output_shape);
+  TF_RETURN_IF_ERROR(external_output_shape.AddDimWithStatus(output_shape));
 
   int64_t input_batch_size = orig_input_tensor.dim_size(0);
   for (int block_dim = 0; block_dim < removed_prefix_block_dims; ++block_dim) {
     const int64_t size = orig_input_tensor.dim_size(block_dim + 1);
     input_batch_size *= size;
-    external_output_shape.AddDim(size);
+    TF_RETURN_IF_ERROR(external_output_shape.AddDimWithStatus(size));
   }
-  internal_input_shape.AddDim(input_batch_size);
-  internal_output_shape.AddDim(input_batch_size * block_shape_product);
+  TF_RETURN_IF_ERROR(internal_input_shape.AddDimWithStatus(input_batch_size));
+  TF_RETURN_IF_ERROR(internal_output_shape.AddDimWithStatus(
+      input_batch_size * block_shape_product));
 
   for (int block_dim = removed_prefix_block_dims;
        block_dim < block_dims - removed_suffix_block_dims; ++block_dim) {
@@ -171,21 +172,21 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
                                      " is not divisible by block_shape[",
                                      block_dim, "]=", block_shape_value);
     }
-    internal_input_shape.AddDim(input_size);
+    TF_RETURN_IF_ERROR(internal_input_shape.AddDimWithStatus(input_size));
     const int64_t output_size = padded_size / block_shape_value;
-    internal_output_shape.AddDim(output_size);
-    external_output_shape.AddDim(output_size);
+    TF_RETURN_IF_ERROR(internal_output_shape.AddDimWithStatus(output_size));
+    TF_RETURN_IF_ERROR(external_output_shape.AddDimWithStatus(output_size));
   }
 
   int64_t depth = 1;
   for (int dim = block_dims - removed_suffix_block_dims + 1; dim < input_dims;
        ++dim) {
     const int64_t size = orig_input_tensor.dim_size(dim);
-    external_output_shape.AddDim(size);
+    TF_RETURN_IF_ERROR(external_output_shape.AddDimWithStatus(size));
     depth *= size;
   }
-  internal_input_shape.AddDim(depth);
-  internal_output_shape.AddDim(depth);
+  TF_RETURN_IF_ERROR(internal_input_shape.AddDimWithStatus(depth));
+  TF_RETURN_IF_ERROR(internal_output_shape.AddDimWithStatus(depth));
 
   // Allocate output tensor.
   Tensor* output_tensor = nullptr;

@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -453,8 +452,11 @@ LogicalResult CheckPostconditions(ModuleOp module) {
   return success();
 }
 
+#define GEN_PASS_DEF_TPUEXTRACTHEADTAILOUTSIDECOMPILATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUExtractHeadTailOutsideCompilationPass
-    : public TF::TPUExtractHeadTailOutsideCompilationPassBase<
+    : public impl::TPUExtractHeadTailOutsideCompilationPassBase<
           TPUExtractHeadTailOutsideCompilationPass> {
   void runOnOperation() override;
 };

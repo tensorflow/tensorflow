@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -101,7 +102,8 @@ bool PyBuffer::IsPyBuffer(py::handle handle) {
 
 /*static*/ StatusOr<PyBuffer*> PyBuffer::AsPyBuffer(pybind11::handle handle) {
   if (!IsPyBuffer(handle)) {
-    return InvalidArgument("Expected a DeviceArray");
+    return InvalidArgument("Expected a DeviceArray, got object of type %s",
+                           py::cast<std::string>(py::str(handle.get_type())));
   }
   return AsPyBufferUnchecked(handle);
 }

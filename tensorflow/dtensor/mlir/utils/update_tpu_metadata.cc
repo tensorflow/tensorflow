@@ -64,7 +64,7 @@ void UpdateTPUDeviceAssignment(mlir::func::FuncOp function,
     auto enclosing_launch = op->getParentOfType<mlir::tf_device::LaunchOp>();
     if (!enclosing_launch) return;
 
-    enclosing_launch.deviceAttr(builder->getStringAttr(""));
+    enclosing_launch.setDeviceAttr(builder->getStringAttr(""));
 
     // Remove placeholder device attributes of resource arguments to TPU
     // computation.

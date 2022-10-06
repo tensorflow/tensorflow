@@ -22,6 +22,9 @@ limitations under the License.
 
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/custom_validation_embedder.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
@@ -48,10 +51,17 @@ class ValidatorRunnerImpl {
         data_directory_path_(data_directory_path),
         timeout_ms_(timeout_ms),
         custom_validation_embedder_(std::move(custom_validation_embedder)),
+        error_reporter_(error_reporter),
+        storage_(storage_path_, error_reporter_),
         nnapi_helper_(nnapi_sl),
         validation_entrypoint_helper_(validation_entrypoint_name,
-                                      error_reporter),
-        error_reporter_(error_reporter) {}
+                                      error_reporter_) {
+    if (custom_validation_embedder_) {
+      benchmark_evaluator_ = std::make_unique<CustomResultEvaluator>();
+    } else {
+      benchmark_evaluator_ = std::make_unique<EmbeddedResultEvaluator>();
+    }
+  }
 
   MinibenchmarkStatus Init();
 
@@ -60,6 +70,9 @@ class ValidatorRunnerImpl {
   void TriggerValidationAsync(
       std::unique_ptr<std::vector<flatbuffers::FlatBufferBuilder>>
           tflite_settings);
+
+  std::vector<const BenchmarkEvent*> GetSuccessfulResults();
+  int GetNumCompletedResults();
 
  private:
   class NnapiHelper {
@@ -115,9 +128,11 @@ class ValidatorRunnerImpl {
   std::unique_ptr<CustomValidationEmbedder> custom_validation_embedder_;
   std::unique_ptr<flatbuffers::FlatBufferBuilder> model_with_custom_input_ =
       nullptr;
+  ErrorReporter* error_reporter_;
+  FlatbufferStorage<BenchmarkEvent> storage_;
   NnapiHelper nnapi_helper_;
   ValidationEntrypointHelper validation_entrypoint_helper_;
-  ErrorReporter* error_reporter_;
+  std::unique_ptr<BenchmarkResultEvaluator> benchmark_evaluator_ = nullptr;
 };
 
 }  // namespace acceleration

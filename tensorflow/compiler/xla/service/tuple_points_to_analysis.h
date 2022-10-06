@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/compactptrset.h"
+#include "tensorflow/tsl/lib/gtl/compactptrset.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
@@ -68,7 +68,7 @@ class PointsToSet {
 
   // Creates a set containing the union of all LogicalBuffers contained in the
   // PointsToSet.
-  using BufferSet = tensorflow::gtl::CompactPointerSet<const LogicalBuffer*>;
+  using BufferSet = tsl::gtl::CompactPointerSet<const LogicalBuffer*>;
   BufferSet CreateFlattenedSet() const;
 
   // Returns true if the given buffer is in the points-to set at the given
@@ -102,7 +102,7 @@ class PointsToSet {
   // tuple_sources() at the index of an array shape (not a tuple) returns the
   // empty set. The instructions in the set returned by tuple_sources
   // necessarily are either Tuple instructions, constants, or parameters.
-  using SourceSet = tensorflow::gtl::CompactPointerSet<HloInstruction*>;
+  using SourceSet = tsl::gtl::CompactPointerSet<HloInstruction*>;
   const SourceSet& tuple_sources(const ShapeIndex& index) const;
 
   // Add a tuple source instruction for the given index.

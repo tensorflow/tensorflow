@@ -46,8 +46,8 @@ void AlignedAllocationsPass::runOnOperation() {
   getOperation().walk([&](memref::AllocOp alloc) {
     // Add alignment attribute only if the alignment attribute is missing or the
     // current alignment is smaller.
-    if (!alloc.alignment().has_value() || *alloc.alignment() < alignment_)
-      alloc.alignmentAttr(alignment_attr);
+    if (!alloc.getAlignment().has_value() || *alloc.getAlignment() < alignment_)
+      alloc.setAlignmentAttr(alignment_attr);
   });
 }
 

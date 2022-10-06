@@ -36,7 +36,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -58,7 +58,6 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -2716,7 +2715,10 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
   }
 };
 
-class LegalizeHloToTf : public TF::LegalizeHloToTfPassBase<LegalizeHloToTf> {
+#define GEN_PASS_DEF_LEGALIZEHLOTOTFPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+class LegalizeHloToTf : public impl::LegalizeHloToTfPassBase<LegalizeHloToTf> {
   /// Performs the legalization to the TF dialect.
   void runOnOperation() override;
 };

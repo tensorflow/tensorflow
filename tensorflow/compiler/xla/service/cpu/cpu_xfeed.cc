@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_xfeed.h"
 
+#include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -34,8 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/notification.h"
 
 namespace xla {
 namespace {
@@ -76,7 +78,7 @@ class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
   void* destination_;
   int32_t length_;
   StatusOr<Shape> status_;
-  tensorflow::Notification done_;
+  tsl::Notification done_;
 };
 
 // Transfers infeed data to device. InfeedBuffer->Done() must be called to

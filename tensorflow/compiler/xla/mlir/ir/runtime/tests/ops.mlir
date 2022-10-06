@@ -1,10 +1,16 @@
 // RUN: xla-runtime-opt %s | FileCheck %s
 
+// CHECK: rt.export @pass_context
+rt.export @pass_context
+
 // CHECK-LABEL: func @pass_context(
 // CHECK:  %[[CTX:.*]]: !rt.execution_context
 func.func @pass_context(%arg0: !rt.execution_context) {
   return
 }
+
+// CHECK: rt.export @set_output ordinal 42
+rt.export @set_output ordinal 42
 
 // CHECK-LABEL: func @set_output(
 // CHECK:  %[[CTX:.*]]: !rt.execution_context

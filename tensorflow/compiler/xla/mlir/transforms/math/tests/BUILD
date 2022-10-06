@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(licenses = ["notice"])
@@ -14,7 +14,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/xla/mlir/tools/runtime:xla-runtime-opt",
+        "//tensorflow/compiler/xla/mlir/tools:xla-runtime-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//mlir:run_lit.sh",
     ],

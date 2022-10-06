@@ -1876,3 +1876,36 @@ func.func @test_squeeze_neg(%arg0: tensor<2x1x3x1xf32>) -> tensor<2x1x3xf32> {
   %0 = "tfl.squeeze"(%arg0) {squeeze_dims = [-1]} : (tensor<2x1x3x1xf32>) -> tensor<2x1x3xf32>
   func.return %0 : tensor<2x1x3xf32>
 }
+
+// -----
+
+// CHECK-LABEL: test_gelu
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<1x4x8x19xf32>
+// CHECK-DAG: %[[VAL_1:.*]] = "tosa.const"() {value = dense<3.000000e+00> : tensor<1x1x1x1xf32>}
+// CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() {value = dense<4.471500e-02> : tensor<1x1x1x1xf32>}
+// CHECK-DAG: %[[VAL_3:.*]] = "tosa.const"() {value = dense<0.797884583> : tensor<1x1x1x1xf32>}
+// CHECK-DAG: %[[VAL_4:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1x1x1x1xf32>}
+// CHECK-DAG: %[[VAL_5:.*]] = "tosa.const"() {value = dense<5.000000e-01> : tensor<1x1x1x1xf32>}
+// CHECK: %[[VAL_6:.*]] = "tosa.pow"(%[[VAL_0]], %[[VAL_1]])
+// CHECK: %[[VAL_7:.*]] = "tosa.mul"(%[[VAL_6]], %[[VAL_2]]) {shift = 0 : i32}
+// CHECK: %[[VAL_8:.*]] = "tosa.add"(%[[VAL_0]], %[[VAL_7]])
+// CHECK: %[[VAL_9:.*]] = "tosa.mul"(%[[VAL_8]], %[[VAL_3]]) {shift = 0 : i32}
+// CHECK: %[[VAL_10:.*]] = "tosa.tanh"(%[[VAL_9]])
+// CHECK: %[[VAL_11:.*]] = "tosa.add"(%[[VAL_10]], %[[VAL_4]])
+// CHECK: %[[VAL_12:.*]] = "tosa.mul"(%[[VAL_0]], %[[VAL_5]]) {shift = 0 : i32}
+// CHECK: %[[VAL_13:.*]] = "tosa.mul"(%[[VAL_12]], %[[VAL_11]]) {shift = 0 : i32}
+func.func @test_gelu(%arg0: tensor<1x4x8x19xf32>) -> tensor<1x4x8x19xf32> {
+  %0 = "tfl.gelu"(%arg0) {approximate = true} : (tensor<1x4x8x19xf32>) -> tensor<1x4x8x19xf32>
+  func.return %0 : tensor<1x4x8x19xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_gelu_qi8
+// CHECK-SAME: %[[VAR0:.*]]: tensor<1x4x4x4x!quant.uniform<i8:f32, 0.015685562044382095:-1>>
+// CHECK: %[[VAR1:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<256xi8>}
+// CHECK: %[[VAR2:.*]] = "tosa.table"(%[[VAR0]], %[[VAR1]]) : (tensor<1x4x4x4x!quant.uniform<i8:f32, 0.015685562044382095:-1>>, tensor<256xi8>)
+func.func @test_gelu_qi8(%arg0: tensor<1x4x4x4x!quant.uniform<i8:f32, 0.015685562044382095:-1>>) -> tensor<1x4x4x4x!quant.uniform<i8:f32, 0.0083315325900912285:-108>> {
+  %0 = "tfl.gelu"(%arg0) {approximate = true} : (tensor<1x4x4x4x!quant.uniform<i8:f32, 0.015685562044382095:-1>>) -> tensor<1x4x4x4x!quant.uniform<i8:f32, 0.0083315325900912285:-108>>
+  func.return %0 : tensor<1x4x4x4x!quant.uniform<i8:f32, 0.0083315325900912285:-108>>
+}

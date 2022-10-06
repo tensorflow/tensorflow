@@ -29,7 +29,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
@@ -162,11 +162,11 @@ struct LinalgGenericFusionInterface
              OpBuilder& builder) const {
     auto genericOp = llvm::cast<linalg::GenericOp>(op);
     if (genericOp.getNumOutputs() != 1) return {};
-    Value output = genericOp.outputs().front();
+    Value output = genericOp.getOutputs().front();
     auto outputRank = output.getType().cast<RankedTensorType>().getRank();
 
     auto indexingMaps =
-        to_vector(genericOp.indexing_maps().getAsValueRange<AffineMapAttr>());
+        to_vector(genericOp.getIndexingMaps().getAsValueRange<AffineMapAttr>());
     auto maybeIteratorsToOutputs = mapIteratorsToOutputs(indexingMaps.back());
     if (!maybeIteratorsToOutputs) return {};
     const SmallVector<Optional<int32_t>>& iteratorsToOutputs =
@@ -175,7 +175,7 @@ struct LinalgGenericFusionInterface
     SmallVector<Value> materializedOperands;
     SmallVector<bool> operandsArePoints;
     for (const auto&& [operand, operandMap] :
-         llvm::zip(genericOp.inputs(), indexingMaps)) {
+         llvm::zip(genericOp.getInputs(), indexingMaps)) {
       // Mapping from an operand dimension to an output dimension, or -1 if it
       // doesn't occur in the output.
       SmallVector<int64_t> operandDimsToOutputDims;

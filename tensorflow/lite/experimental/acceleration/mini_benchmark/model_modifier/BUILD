@@ -74,6 +74,7 @@ cc_library(
 cc_binary(
     name = "embedder_cmdline",
     srcs = ["embedder_main.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         ":embedder",
         "//tensorflow/lite:framework",

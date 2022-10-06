@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
+#include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -68,8 +69,10 @@ struct JitState {
   std::optional<pybind11::function> post_hook;
 };
 
-JitState& GetGlobalState();
-JitState& GetLocalState();
+JitState& GlobalJitState();
+
+// Requires the GIL.
+JitState& ThreadLocalJitState();
 
 // Getters for JitState fields that first look in thread-local state, then
 // fallback to global state.
@@ -147,7 +150,7 @@ H AbslHashValue(H h, const CallSignature& s) {
   // slow python hashing function. Consider implementing hashing function and
   // equality checks in C++ in jax::Sharding and use those here.
   for (const auto& sharding : s.dynamic_arg_shardings) {
-    h = H::combine(std::move(h), sharding.ptr());
+    h = H::combine(std::move(h), ShardingHash(sharding));
   }
 
   for (const auto& name : s.dynamic_arg_names) {

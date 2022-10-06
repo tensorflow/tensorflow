@@ -1319,6 +1319,9 @@ class TrackableSaver:
 
     Returns:
       The full path to the checkpoint.
+
+    Raises:
+      RuntimeError: if called in V1 Graph mode without a default session.
     """
     options = options or checkpoint_options.CheckpointOptions()
     feed_dict = {}
@@ -1357,6 +1360,10 @@ class TrackableSaver:
 
     if session:
       return session.run(save_path, feed_dict=feed_dict)
+    elif use_session:
+      raise RuntimeError(f"Unable to save checkpoint to \"{file_prefix}\" "
+                         "in graph mode without a default session. Please use "
+                         "`with tf.Session():` to create a session.")
     else:
       return save_path
 

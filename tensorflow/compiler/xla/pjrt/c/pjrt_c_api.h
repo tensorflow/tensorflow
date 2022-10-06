@@ -762,6 +762,19 @@ const size_t PJRT_Executable_NumOutputs_Args_STRUCT_SIZE =
 typedef PJRT_Error* PJRT_Executable_NumOutputs(
     PJRT_Executable_NumOutputs_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  int64_t size_in_bytes;  // out
+} PJRT_Executable_SizeOfGeneratedCodeInBytes_Args;
+const size_t PJRT_Executable_SizeOfGeneratedCodeInBytes_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_SizeOfGeneratedCodeInBytes_Args,
+                     size_in_bytes);  // last field in the struct
+
+typedef PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
+    PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
+
 // ---------------------------------- Buffers ----------------------------------
 
 typedef struct {
@@ -980,6 +993,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_AddressableDevices);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumOutputs);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_SizeOfGeneratedCodeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Execute);

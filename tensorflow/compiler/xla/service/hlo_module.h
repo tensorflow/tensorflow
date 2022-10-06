@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/iterator_range.h"
+#include "tensorflow/tsl/lib/gtl/iterator_range.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -200,13 +200,13 @@ class HloModule {
   //
   //   for (HloComputation* c : module->computations()) { ... }
   //
-  tensorflow::gtl::iterator_range<UnwrappingIterator<
+  tsl::gtl::iterator_range<UnwrappingIterator<
       std::vector<std::unique_ptr<HloComputation>>::const_iterator>>
   computations() const {
     return {MakeUnwrappingIterator(computations_.begin()),
             MakeUnwrappingIterator(computations_.end())};
   }
-  tensorflow::gtl::iterator_range<UnwrappingIterator<
+  tsl::gtl::iterator_range<UnwrappingIterator<
       std::vector<std::unique_ptr<HloComputation>>::iterator>>
   computations() {
     return {MakeUnwrappingIterator(computations_.begin()),
@@ -216,7 +216,7 @@ class HloModule {
   // Similar as above, but return a filtered view of computations for specified
   // `execution_threads`. Empty `execution_threads` list means all execution
   // threads are included.
-  tensorflow::gtl::iterator_range<FilteringUnwrappingIterator<
+  tsl::gtl::iterator_range<FilteringUnwrappingIterator<
       std::vector<std::unique_ptr<HloComputation>>::const_iterator,
       std::function<bool(const HloComputation*)>>>
   computations(

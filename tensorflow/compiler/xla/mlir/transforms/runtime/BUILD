@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
@@ -31,7 +31,9 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "convert_to_entrypoint.cc",
+        "convert_asserts.cc",
+        "convert_custom_calls.cc",
+        "export_functions.cc",
         "rt_to_llvm.cc",
     ],
     hdrs = ["passes.h"],
@@ -44,7 +46,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:tracing",
         "//tensorflow/compiler/xla/runtime:type_id",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -79,8 +81,8 @@ tf_cc_test(
     deps = [
         ":calling_convention",
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
@@ -102,8 +104,8 @@ cc_library(
         "@llvm-project//mlir:AMXToLLVMIRTranslation",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:ArithmeticDialect",
-        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:ArmNeonToLLVMIRTranslation",
         "@llvm-project//mlir:ArmSVEToLLVMIRTranslation",
         "@llvm-project//mlir:AsyncDialect",
@@ -179,7 +181,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:tracing",
         "//tensorflow/compiler/xla/runtime:type_id",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
@@ -198,6 +200,7 @@ cc_library(
         ":passes",
         ":specialization",
         ":type_converter",
+        "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:constraints",
         "//tensorflow/compiler/xla/runtime:errors",
@@ -222,7 +225,7 @@ cc_library(
     hdrs = ["specialization.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/compiler/xla/mlir/transforms/runtime:type_converter",
+        ":type_converter",
         "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:constraints",
@@ -233,7 +236,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -266,8 +269,8 @@ tf_cc_test(
     deps = [
         ":type_converter",
         "//tensorflow/compiler/xla/runtime:types",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "@llvm-project//mlir:IR",
     ],
 )

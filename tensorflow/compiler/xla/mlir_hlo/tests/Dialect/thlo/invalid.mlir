@@ -226,7 +226,7 @@ func.func @yield_op_inside_mhlo_reduce(
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%init: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %init, %arg3 : tensor<f32>
-    // expected-error @+1{{'thlo.yield' op expects parent op to be one of 'thlo.map, thlo.reduction, thlo.scatter'}}
+    // expected-error @+1{{'thlo.yield' op expects parent op to be one of}}
     thlo.yield %1: tensor<f32>
   }) {dimensions = dense<1> : tensor<1xi64>} :
     (tensor<5x4xf32>, tensor<f32>) -> tensor<5xf32>
@@ -280,6 +280,7 @@ func.func @map_input_mapper_arity_mismatch(
 }
 
 // -----
+
 func.func @map_input_mapper_type_mismatch(
     %lhs: tensor<64xf32>, %rhs: tensor<64xf32>, %init: tensor<64xf32>)
     -> tensor<64xf32> {
@@ -292,6 +293,22 @@ func.func @map_input_mapper_type_mismatch(
         thlo.yield %0: f64
       }
   func.return %add : tensor<64xf32>
+}
+
+// -----
+
+func.func @map_input_output_shape_mismatch(
+    %lhs: tensor<64x64xf32>, %rhs: tensor<64x64xf32>, %init: tensor<32xf32>)
+    -> tensor<32xf32> {
+    // expected-error@+1{{'thlo.map' op expected shape of input (64, 64) to match shape of output (32)}}
+  %add = thlo.map
+      ins(%lhs:tensor<64x64xf32>, %rhs:tensor<64x64xf32>)
+      outs(%init:tensor<32xf32>)
+      (%lhs_elem: f32, %rhs_elem: f32) {
+        %0 = arith.addf %lhs_elem, %rhs_elem: f32
+        thlo.yield %0: f32
+      }
+  func.return %add : tensor<32xf32>
 }
 
 // -----
@@ -315,18 +332,88 @@ func.func @variadic_reduction_wrong_yield_operand_types(
 
 // -----
 
-func.func @scatter_output_result_mismatch(
-    %indices: tensor<3x3xi64>, %updates: tensor<3xf32>, %dst: tensor<3x3xf32>)
-    -> () {
-  // expected-error@+1{{'thlo.scatter' op expected the number of results (0) to be equal to the number of output tensors (1)}}
-  "thlo.scatter"(%indices, %updates, %dst) ({
-  ^bb0(%in: f32, %out: f32):
-    %1 = "arith.addf"(%in, %out) : (f32, f32) -> f32
-    "thlo.yield"(%1) : (f32) -> ()
-  }) : (tensor<3x3xi64>, tensor<3xf32>, tensor<3x3xf32>) -> ()
-  func.return
+func.func @scatter_indices_wrong_rank(%indices: tensor<2x2x2xi32>,
+    %updates: tensor<2x1x3xf32>, %init: tensor<3x3xf32>) -> tensor<3x3xf32> {
+  // expected-error@+1{{expected `indices` to be a 2D tensor}}
+  %0 = thlo.scatter ins(%indices : tensor<2x2x2xi32>,
+                        %updates : tensor<2x1x3xf32>)
+                    outs(%init : tensor<3x3xf32>)
+                    (%in: f32, %out: f32) {
+    %sum = arith.addf %in, %out : f32
+    thlo.yield %sum : f32
+  }
+  return %0 : tensor<3x3xf32>
 }
 
+// -----
+
+func.func @scatter_updates_indices_major_dim_mismatch(%indices: tensor<2x2xi32>,
+    %updates: tensor<3x1x3xf32>, %init: tensor<3x3xf32>) -> tensor<3x3xf32> {
+  // expected-error@+1{{expected major dimension of `indices` to match major dimension of `updates`}}
+  %0 = thlo.scatter ins(%indices : tensor<2x2xi32>, %updates : tensor<3x1x3xf32>)
+                    outs(%init : tensor<3x3xf32>)
+                    (%in: f32, %out: f32) {
+    %sum = arith.addf %in, %out : f32
+    thlo.yield %sum : f32
+  }
+  return %0 : tensor<3x3xf32>
+}
+
+// -----
+
+func.func @scatter_indices_dynamic_index_vector_dim(%indices: tensor<2x?xi32>,
+    %updates: tensor<2x1x3xf32>, %init: tensor<3x3xf32>) -> tensor<3x3xf32> {
+  // expected-error@+1{{expected index vector dimension size to be static}}
+  %0 = thlo.scatter ins(%indices : tensor<2x?xi32>, %updates : tensor<2x1x3xf32>)
+                    outs(%init : tensor<3x3xf32>)
+                    (%in: f32, %out: f32) {
+    %sum = arith.addf %in, %out : f32
+    thlo.yield %sum : f32
+  }
+  return %0 : tensor<3x3xf32>
+}
+
+// -----
+
+func.func @scatter_indices_index_vector_dim_too_big(%indices: tensor<2x9xi32>,
+    %updates: tensor<2x1x3xf32>, %init: tensor<3x3xf32>) -> tensor<3x3xf32> {
+  // expected-error@+1{{expected index vector dimension size = 9 to be smaller or equal than `init` rank = 2}}
+  %0 = thlo.scatter ins(%indices : tensor<2x9xi32>, %updates : tensor<2x1x3xf32>)
+                    outs(%init : tensor<3x3xf32>)
+                    (%in: f32, %out: f32) {
+    %sum = arith.addf %in, %out : f32
+    thlo.yield %sum : f32
+  }
+  return %0 : tensor<3x3xf32>
+}
+
+// -----
+
+func.func @scatter_updates_init_rank_mismatch(%indices: tensor<2x2xi32>,
+    %updates: tensor<2x3xf32>, %init: tensor<3x3xf32>) -> tensor<3x3xf32> {
+  // expected-error@+1{{expected `updates` rank + 1 to match `init` rank}}
+  %0 = thlo.scatter ins(%indices : tensor<2x2xi32>, %updates : tensor<2x3xf32>)
+                    outs(%init : tensor<3x3xf32>)
+                    (%in: f32, %out: f32) {
+    %sum = arith.addf %in, %out : f32
+    thlo.yield %sum : f32
+  }
+  return %0 : tensor<3x3xf32>
+}
+
+// -----
+
+func.func @scatter_updates_init_element_type_mismatch(%indices: tensor<2x2xi32>,
+    %updates: tensor<2x1x3xf32>, %init: tensor<3x3xi32>) -> tensor<3x3xi32> {
+  // expected-error@+1{{expected `updates` element type to match `init` element type}}
+  %0 = thlo.scatter ins(%indices : tensor<2x2xi32>, %updates : tensor<2x1x3xf32>)
+                    outs(%init : tensor<3x3xi32>)
+                    (%in: f32, %out: f32) {
+    %sum = arith.addf %in, %out : f32
+    thlo.yield %sum : f32
+  }
+  return %0 : tensor<3x3xi32>
+}
 // -----
 
 func.func @gather_output_result_mismatch(

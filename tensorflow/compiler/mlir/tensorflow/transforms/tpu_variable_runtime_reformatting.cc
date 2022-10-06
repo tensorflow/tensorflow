@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -67,8 +66,11 @@ std::string GetRandomStateVariableName() {
   return absl::StrCat("VariablesFormatState_", tensorflow::random::New64());
 }
 
+#define GEN_PASS_DEF_TPUVARIABLERUNTIMEREFORMATTINGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUVariableRuntimeReformattingPass
-    : public TF::TPUVariableRuntimeReformattingPassBase<
+    : public impl::TPUVariableRuntimeReformattingPassBase<
           TPUVariableRuntimeReformattingPass> {
   void runOnOperation() final;
 };

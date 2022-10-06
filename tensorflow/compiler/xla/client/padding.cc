@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -120,14 +120,14 @@ std::vector<std::pair<int64_t, int64_t>> MakePadding(
         // 4'th kernel:                12345
         // padded base area:  00----------00
         int64_t output_dimension =
-            tensorflow::MathUtil::CeilOfRatio(input_dimension, window_stride);
+            tsl::MathUtil::CeilOfRatio(input_dimension, window_stride);
         int64_t padding_size =
             std::max<int64_t>((output_dimension - 1) * window_stride +
                                   window_dimension - input_dimension,
                               0);
         low_high_padding.emplace_back(
-            tensorflow::MathUtil::FloorOfRatio(padding_size, int64_t{2}),
-            tensorflow::MathUtil::CeilOfRatio(padding_size, int64_t{2}));
+            tsl::MathUtil::FloorOfRatio(padding_size, int64_t{2}),
+            tsl::MathUtil::CeilOfRatio(padding_size, int64_t{2}));
       }
       break;
   }

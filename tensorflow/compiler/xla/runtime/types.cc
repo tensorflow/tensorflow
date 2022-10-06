@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "llvm/ADT/StringExtras.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 
 namespace xla {
@@ -48,6 +49,12 @@ std::string AsyncValueType::ToString() const {
 
 std::string ScalarType::ToString() const {
   return LowercasePrimitiveTypeName(type_);
+}
+
+std::string TupleType::ToString() const {
+  auto to_string = [](const auto& elem) { return elem->ToString(); };
+  return StrCat("tuple<", llvm::join(llvm::map_range(elems_, to_string), ", "),
+                ">");
 }
 
 std::string RankedTensorType::ToString() const {

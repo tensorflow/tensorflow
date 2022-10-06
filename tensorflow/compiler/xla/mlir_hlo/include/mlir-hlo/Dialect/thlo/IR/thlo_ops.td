@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef THLO_OPS
 #define THLO_OPS
 
-include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
 include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td"
 include "mlir/Dialect/Linalg/IR/LinalgInterfaces.td"
 include "mlir/IR/OpBase.td"
@@ -25,6 +24,10 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def TensorOrMemref :
   AnyTypeOf<[AnyMemRef, AnyRankedTensor], "", "::mlir::ShapedType">;
+
+class TensorOrMemrefOf<list<Type> allowedTypes> :
+  AnyTypeOf<[MemRefOf<allowedTypes>, RankedTensorOf<allowedTypes>],
+  "", "::mlir::ShapedType">;
 
 def THLO_Dialect : Dialect {
   let name = "thlo";
@@ -50,7 +53,7 @@ class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
 }
 
 def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
-    ParentOneOf<["MapOp", "ReductionOp", "ScatterOp"]>]>,
+    ParentOneOf<["MapOp", "ReductionOp", "ScatterOp", "TransposeOp"]>]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Yield operation for tHLO ops with regions.";
   let assemblyFormat = "attr-dict $values `:` type($values)";
@@ -59,12 +62,11 @@ def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
 
 def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
     SameOperandsAndResultElementType,
-    DeclareOpInterfaceMethods<FusionInterface>,
     DeclareOpInterfaceMethods<TilingInterface>]> {
   let summary = "Destination-style twin for `mhlo.concatenate`";
   let arguments = (ins
-    Variadic<AnyTensor>:$inputs,
-    AnyTensor:$init,
+    Variadic<TensorOrMemref>:$inputs,
+    TensorOrMemref:$init,
     I64Attr:$dimension
   );
   let results = (outs AnyTensor:$result);
@@ -72,14 +74,12 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.
     mlir::ValueRange inputs() { return getInputs(); }
-    mlir::ValueRange outputs() { return getOperands().take_back(1); }
+    mlir::ValueRange getOutputs() { return getOperands().take_back(1); }
   }];
 }
 
 def THLO_DynamicBroadcastInDimOp : THLO_DstStyleOp<"dynamic_broadcast_in_dim", [
-    DeclareOpInterfaceMethods<FusionInterface>,
-    DeclareOpInterfaceMethods<TilingInterface>,
-    SameOperandsAndResultElementType]> {
+    DeclareOpInterfaceMethods<TilingInterface>]> {
   let summary = "Destination-style twin for `mhlo.dynamic_broadcast_in_dim`";
 
   let arguments = (ins
@@ -92,13 +92,13 @@ def THLO_DynamicBroadcastInDimOp : THLO_DstStyleOp<"dynamic_broadcast_in_dim", [
     OptionalAttr<DenseI64ArrayAttr>:$known_expanding_dimensions,
     OptionalAttr<DenseI64ArrayAttr>:$known_nonexpanding_dimensions
   );
-  let results = (outs TensorOrMemref:$result);
+  let results = (outs Variadic<AnyTensor>:$result);
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.
     mlir::ValueRange inputs() { return getOperands().take_front(1); }
     mlir::ValueRange getInputs() { return inputs(); }
-    mlir::ValueRange outputs() { return getOperands().take_back(1); }
+    mlir::ValueRange getOutputs() { return getOperands().take_back(1); }
   }];
 }
 
@@ -116,7 +116,7 @@ def THLO_GatherOp : THLO_DstStyleOp<"gather", [
   let arguments = (ins
     // Input args
     TensorOrMemref:$operand,
-    I64Tensor:$start_indices,
+    TensorOrMemrefOf<[I64]>:$start_indices,
     // Output arg
     TensorOrMemref:$init
   );
@@ -128,7 +128,7 @@ def THLO_GatherOp : THLO_DstStyleOp<"gather", [
       return getOperands().drop_back(getNumOutputs());
     }
     mlir::ValueRange getInputs() { return inputs(); }
-    mlir::ValueRange outputs() { return getOperands().take_back(1); }
+    mlir::ValueRange getOutputs() { return getOperands().take_back(1); }
   }];
 }
 
@@ -137,21 +137,23 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
     SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "Destination-style twin for `mhlo.scatter`";
   let description = [{
-    Caveats:
-    - the variadic case is not supported.
-    - Only point updates are supported
-      - update_window_dims is []
-      - inserted_window_dims is range(operand.shape.rank)
-      - scatter_dims_to_operand_dims is range(indices.shape.rank)
-      - index_vector_dim is indices.shape.rank-1
+    tHLO ScatterOp corresponds to the canonicalized mHLO ScatterOp, i.e.
+
+    - update_window_dims is range(1, rank(update_window_dims))
+    - inserted_window_dims is []
+    - scatter_dims_to_operand_dims is range(0, rank(indices))
+    - index_vector_dim is rank(indices) - 1
+
+    At the moment, the variadic case is not supported.
   }];
   let arguments = (ins
     // Input args
-    TensorOf<[I32, I64]>:$indices,
+    TensorOrMemrefOf<[I32, I64]>:$indices,
     TensorOrMemref:$updates,
     // Output arg
     TensorOrMemref:$init
   );
+
   let results = (outs Variadic<AnyTensor>:$result);
 
   let regions = (region SizedRegion<1>:$update_computation);
@@ -162,11 +164,20 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
       return getOperands().drop_back(getNumOutputs());
     }
     mlir::ValueRange getInputs() { return inputs(); }
-    mlir::ValueRange outputs() { return getOperands().take_back(1); }
+    mlir::ValueRange getOutputs() { return getOperands().take_back(1); }
+
+    // Returns index vector dimension size, which is always statically-known.
+    int64_t getIndexVectorDim() { return getIndices().getType().getDimSize(1); }
+
+    // Returns the number of indices, i.e. number of scalar/tensor updates.
+    int64_t getIndicesCount() { return getIndices().getType().getDimSize(0); }
   }];
 }
 
-def THLO_TransposeOp : THLO_DstStyleOp<"transpose", []> {
+def THLO_TransposeOp : THLO_DstStyleOp<"transpose", [
+    DeclareOpInterfaceMethods<LinalgStructuredInterface, ["iterator_types"]>,
+    SingleBlockImplicitTerminator<"YieldOp">,
+]> {
   let summary = "Destination-style twin for `mhlo.transpose`";
   let description = [{
     Permutes the dimensions of `operand` according to the given `permutation`.
@@ -189,13 +200,32 @@ def THLO_TransposeOp : THLO_DstStyleOp<"transpose", []> {
 
     DenseI64ArrayAttr:$permutation
   );
-  let results = (outs TensorOrMemref:$result);
+  let results = (outs Variadic<AnyTensor>:$result);
+
+  let regions = (region SizedRegion<1>:$region);
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "Type":$resultType, "Value":$input, "Value":$init,
+        "DenseI64ArrayAttr":$permutation,
+        CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>,
+    OpBuilder<(ins "Type":$resultType, "Value":$input, "Value":$init,
+        "ArrayRef<int64_t>":$permutation,
+        CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>,
+  ];
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.
     mlir::ValueRange inputs() { return getOperands().take_front(1); }
     mlir::ValueRange getInputs() { return inputs(); }
-    mlir::ValueRange outputs() { return getOperands().take_back(1); }
+    mlir::ValueRange getOutputs() { return getOperands().take_back(1); }
+
+    static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+        mlir::ArrayRef<mlir::NamedAttribute>)>
+      getRegionBuilder();
+
+    static void createRegion(::mlir::OpBuilder &opBuilder,
+                             ::mlir::OperationState & odsState);
   }];
 }
 
@@ -230,13 +260,13 @@ def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
 
     DenseI64ArrayAttr:$dimensions
   );
-  let results = (outs Variadic<TensorOrMemref>);
+  let results = (outs Variadic<AnyTensor>);
   let regions = (region SizedRegion<1>:$combiner);
 
   let extraClassDeclaration = [{
     // Implement functions necessary for DestinationStyleOpInterface.
     mlir::ValueRange inputs() { return getInputs(); }
-    mlir::ValueRange outputs() { return getInits(); }
+    mlir::ValueRange getOutputs() { return getInits(); }
     unsigned getNumInputs() { return getInputs().size(); };
     unsigned getNumOutputs() { return getInits().size(); };
     static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
@@ -248,7 +278,6 @@ def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
 }
 
 def THLO_MapOp : THLO_DstStyleOp<"map", [
-    SameOperandsAndResultShape,
     SingleBlockImplicitTerminator<"YieldOp">,
     DeclareOpInterfaceMethods<LinalgStructuredInterface, ["iterator_types"]>
 ]> {
@@ -276,13 +305,13 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
     // Output arg
     TensorOrMemref:$init
   );
-  let results = (outs AnyTensor:$result);
+  let results = (outs Variadic<AnyTensor>:$result);
   let regions = (region SizedRegion<1>:$mapper);
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.
     mlir::ValueRange inputs() { return getInputs(); }
-    mlir::ValueRange outputs() { return getOperands().take_back(1); }
+    mlir::ValueRange getOutputs() { return getOperands().take_back(1); }
     linalg::OpOperandVector getOpOperandsMatchingBBargs() { return getInputOperands(); }
 
     static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,

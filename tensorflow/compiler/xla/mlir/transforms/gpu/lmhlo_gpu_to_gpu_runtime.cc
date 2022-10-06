@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
@@ -63,7 +63,7 @@ class ConvertLmhloGpuToGpuRuntimePass
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<arith::ArithmeticDialect, func::FuncDialect,
+    registry.insert<arith::ArithDialect, func::FuncDialect,
                     memref::MemRefDialect, scf::SCFDialect>();
   }
 };

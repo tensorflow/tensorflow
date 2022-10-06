@@ -17,7 +17,9 @@
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops.script_ops import numpy_function
@@ -102,6 +104,15 @@ class PyFunctionTest(test.TestCase):
     actual_result = script_ops.eager_py_func(plus, [v1, 2], dtypes.int32)
     expect_result = constant_op.constant(3, dtypes.int32)
     self.assertAllEqual(actual_result, expect_result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_fail_on_non_utf8_token(self):
+    value = constant_op.constant(value=[1, 2])
+    token = b"\xb0"
+    data_type = [dtypes.int32]
+    with self.assertRaises((errors.InternalError, UnicodeDecodeError)):
+      self.evaluate(
+          gen_script_ops.py_func(input=[value], token=token, Tout=data_type))
 
 
 if __name__ == "__main__":

@@ -54,7 +54,7 @@ using absl::StrCat;
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 // Literals can be used as DMA targets, which can require alignment. We
-// force a tensorflow::Allocator::kAllocatorAlignment-byte minimum
+// force a tsl::Allocator::kAllocatorAlignment-byte minimum
 // alignment.
 constexpr int kMinimumAlignment = 64;
 
@@ -833,7 +833,7 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
       shape().element_type());
 }
 
-void MutableLiteralBase::PopulateR1(const tensorflow::core::Bitmap& values) {
+void MutableLiteralBase::PopulateR1(const tsl::core::Bitmap& values) {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(element_count(), values.bits());

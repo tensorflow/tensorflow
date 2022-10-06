@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -471,7 +471,7 @@ class RaiseToTFOpsPass
 
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFRDialect, TF::TensorFlowDialect, scf::SCFDialect,
-                    arith::ArithmeticDialect, func::FuncDialect>();
+                    arith::ArithDialect, func::FuncDialect>();
   }
 
   explicit RaiseToTFOpsPass(llvm::Optional<ModuleOp> tfr_module,

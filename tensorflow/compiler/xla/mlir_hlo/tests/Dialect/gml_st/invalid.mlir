@@ -174,42 +174,6 @@ func.func @space_op_mismatch_shapes_and_static_shapes() -> !gml_st.tile<5x?> {
 
 // -----
 
-func.func @point_op_different_rank() -> !gml_st.point {
-  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{expected 2 index values}}
-  %1 = "gml_st.point"(%0) {static_indices = [0]} : (!gml_st.tile<64x32>) -> !gml_st.point
-  func.return %1 : !gml_st.point
-}
-
-// -----
-
-func.func @point_op_mismatch_indices_and_static_indices(%i: index) -> !gml_st.point {
-  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{expected 0 dynamic index values}}
-  %1 = "gml_st.point"(%0, %i) {static_indices = [0, 0]} : (!gml_st.tile<64x32>, index) -> !gml_st.point
-  func.return %1 : !gml_st.point
-}
-
-// -----
-
-func.func @point_op_static_indices_out_of_bounds() -> !gml_st.point {
-  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{'gml_st.point' op expected index = 32 to be between 0 and 31}}
-  %1 = gml_st.point %0 [5, 32] : !gml_st.tile<64x32> to !gml_st.point
-  func.return %1 : !gml_st.point
-}
-
-// -----
-
-func.func @point_op_negative_static_indices(%size: index, %i: index) -> !gml_st.point {
-  %0 = gml_st.space [%size, 32] : !gml_st.tile<?x32>
-  // expected-error@+1 {{'gml_st.point' op expected index = -2 to be non-negative}}
-  %1 = gml_st.point %0 [-2, %i] : !gml_st.tile<?x32> to !gml_st.point
-  func.return %1 : !gml_st.point
-}
-
-// -----
-
 func.func @tile_op_mismatch_sizes_and_static_sizes(%i: index) {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{expected 0 dynamic size values}}
@@ -374,34 +338,6 @@ func.func @yield_with_accumulator_mismatched_type(
       acc (%in, %out: memref<f32>) {
         gml_st.yield %in : memref<f32>
       }: tensor<f32> into tensor<f32>[!gml_st.tile<>]
-  } : tensor<f32>
-  func.return %sum : tensor<f32>
-}
-
-// -----
-
-func.func @reduce_points(%arg: tensor<8xf32>,
-    %output: tensor<f32>) -> tensor<f32> {
-  %c0 = arith.constant 0 : index
-  %c1 = arith.constant 1 : index
-  %c8 = arith.constant 8 : index
-
-  %space_0d = gml_st.space [] : !gml_st.tile<>
-  %space_1d = gml_st.space [8] : !gml_st.tile<8>
-
-  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1) {
-    %point = gml_st.point %space_1d [%i]
-      : !gml_st.tile<8> to !gml_st.point
-    %arg_sub = gml_st.materialize %arg[%point]
-      : tensor<8xf32>[!gml_st.point] to f32
-
-    %point_out = gml_st.point %space_0d []
-      : !gml_st.tile<> to !gml_st.point
-    gml_st.set_yield %arg_sub into %output[%point_out]
-      acc (%in, %out: f32) {
-    // expected-error@+1 {{'gml_st.yield' op expected a single argument for the terminator of accumulator region}}
-        gml_st.yield %in, %out: f32, f32
-    } : f32 into tensor<f32>[!gml_st.point]
   } : tensor<f32>
   func.return %sum : tensor<f32>
 }

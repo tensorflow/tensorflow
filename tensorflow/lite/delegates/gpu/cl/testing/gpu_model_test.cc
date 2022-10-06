@@ -73,6 +73,16 @@ TEST_F(OpenCLOperationTest, LinkingConvElem2InputAddElemsOp) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, LinkingSliceCastOp) {
+  auto status = TestLinkingSliceCastOp(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, LinkingMulAddAddMulOp) {
+  auto status = TestLinkingAddAddMulOp(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 }  // namespace
 }  // namespace cl
 }  // namespace gpu

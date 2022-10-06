@@ -22,8 +22,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
 
 namespace xla {
 namespace gpu {

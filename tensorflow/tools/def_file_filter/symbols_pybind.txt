@@ -529,3 +529,6 @@ tensorflow::dtensor::FetchLayout
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
 tensorflow::dtensor::GetFunctionCacheHitAndMissCount
+
+[//tensorflow/dtensor/cc:tensor_layout] # DTensor
+tensorflow::dtensor::Mesh

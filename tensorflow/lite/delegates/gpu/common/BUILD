@@ -92,9 +92,12 @@ cc_library(
         ":operations",
         ":status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:cast",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu",
+        "//tensorflow/lite/delegates/gpu/common/tasks:reshape",
+        "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice",
     ],
 )
 

@@ -476,13 +476,6 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
   // instructions which do not accurately reflect the true cost. We need a
   // better cost model.
   FeedLLVMWithFlags({"-bonus-inst-threshold=2"});
-  // Increase limit when scanning memory dependencies.  This helps to reduce
-  // more redundant load instructions.
-  //
-  // The specific value is currently large enough for s3d in shoc benchmark,
-  // which contains a lot of load instructions and many arithmetic instructions
-  // between those loads.
-  FeedLLVMWithFlags({"-memdep-block-scan-limit=500"});
 
   // Use div.full -- it matters for some float-division heavy benchmarks.
   // Using div.approx produces incorrect result for float32(max)/float32(max).

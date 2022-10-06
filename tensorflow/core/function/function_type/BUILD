@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
     licenses = ["notice"],
@@ -23,6 +23,8 @@ py_strict_test(
     srcs = ["function_type_test.py"],
     python_version = "PY3",
     tags = [
+        "no_oss",
+        "no_pip",
         "nopip",
     ],
     deps = [

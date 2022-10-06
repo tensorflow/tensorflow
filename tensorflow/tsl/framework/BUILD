@@ -4,17 +4,14 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
-
-# buildifier: disable=same-origin-load
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
+    "//tensorflow/tsl/platform:build_config_root.bzl",
     "if_static",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -25,6 +22,13 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "framework_internal_impl_srcs",
+    srcs = [
+        "metrics.cc",
+    ],
+)
+
 # Files needed for core:framework_internal_impl.
 filegroup(
     name = "framework_internal_private_hdrs",
@@ -32,6 +36,9 @@ filegroup(
         "allocator.h",
         "allocator_registry.h",
         "cancellation.h",
+        "device_type.h",
+        "fixedpoint_types.h",
+        "metrics.h",
         "numeric_types.h",
         "tracking_allocator.h",
         "type_traits.h",
@@ -47,6 +54,8 @@ filegroup(
         "allocator_registry.cc",
         "allocator_registry.h",
         "cpu_allocator_impl.cc",
+        "device_type.h",
+        "fixedpoint_types.h",
         "numeric_types.h",
         "tracking_allocator.cc",
         "tracking_allocator.h",
@@ -60,6 +69,9 @@ filegroup(
     srcs = [
         "cancellation.cc",
         "cancellation.h",
+        "fixedpoint_types.h",
+        "metrics.cc",
+        "metrics.h",
     ],
 )
 
@@ -68,11 +80,18 @@ filegroup(
     srcs = [
         "allocator.h",
         "allocator_registry.h",
+        "fixedpoint_types.h",
         "numeric_types.h",
         "tracking_allocator.h",
         "type_traits.h",
     ],
     visibility = ["//tensorflow/core:__subpackages__"],
+)
+
+# Files needed for tf2xla build.
+filegroup(
+    name = "xla_cpu_runtime_hdrs",
+    srcs = ["fixedpoint_types.h"],
 )
 
 # Individual targets. These should be preferred over tensorflow/core:framework
@@ -145,7 +164,6 @@ cc_library(
         ":numeric_types",
         ":type_traits",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
-        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tsl/lib/gtl:inlined_vector",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
@@ -155,10 +173,103 @@ cc_library(
         "//tensorflow/tsl/platform:stringprintf",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "bfc_allocator",
+    srcs = [
+        "allocator_retry.cc",
+        "allocator_retry.h",
+        "bfc_allocator.cc",
+        # metric is provided by libtensorflow_framework right now, including the
+        # header here avoids to depend directly on the metric library, which
+        # would lead to duplicated symbols later. The migration to cc_shared_library
+        # should clean this all up.
+        "metrics.h",
+    ],
+    hdrs = ["bfc_allocator.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":allocator",
+        ":shared_counter",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
+        "//tensorflow/tsl/lib/core:bits",
+        "//tensorflow/tsl/lib/monitoring:counter",
+        "//tensorflow/tsl/lib/monitoring:gauge",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:numbers",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:str_util",
+        "//tensorflow/tsl/platform:strcat",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:traceme",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "device_type",
+    srcs = ["device_type.cc"],
+    hdrs = ["device_type.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "device_id",
+    textual_hdrs = [
+        "device_id.h",
+        "device_id_manager.h",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:types",
+    ] + if_static([
+        ":device_id_impl",
+    ]),
+)
+
+cc_library(
+    name = "device_id_impl",
+    srcs = ["device_id_manager.cc"],
+    hdrs = [
+        "device_id.h",
+        "device_id_manager.h",
+    ],
+    deps = [
+        ":device_type",
+        "//tensorflow/tsl/lib/gtl:int_type",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:types",
+    ],
+)
+
+filegroup(
+    name = "device_runtime_headers",
+    srcs = [
+        "device_id.h",
+        "device_id_manager.h",
+    ],
 )
 
 cc_library(
@@ -169,7 +280,45 @@ cc_library(
         "//tensorflow/core:__subpackages__",
     ],
     deps = [
+        ":fixedpoint_types",
         "//tensorflow/tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "shared_counter",
+    hdrs = ["shared_counter.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/tsl/lib/monitoring:counter",
+        "//tensorflow/tsl/lib/monitoring:gauge",
+        "//tensorflow/tsl/lib/monitoring:sampler",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "fixedpoint_types",
+    hdrs = ["fixedpoint_types.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
         "//third_party/eigen3",
     ],
 )
@@ -238,11 +387,20 @@ tf_cc_tests(
 exports_files(
     srcs = [
         "allocator_registry.h",
+        "allocator_retry.cc",
+        "allocator_retry.h",
+        "bfc_allocator.cc",
+        "bfc_allocator.h",
+        "device_type.h",
+        "metrics.h",
+        "shared_counter.h",
         "tracking_allocator.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime:__pkg__",
+        "//tensorflow/core/common_runtime/gpu:__pkg__",
+        "//tensorflow/core/framework:__pkg__",
     ],
 )
 

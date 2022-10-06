@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"  // IWYU pragma: keep
 
+#include <iterator>
+
 #include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.h"
 
 namespace xla {
@@ -24,6 +27,42 @@ namespace runtime {
 using namespace mlir;  // NOLINT
 
 using llvm::Optional;
+
+//===----------------------------------------------------------------------===//
+// ExportOp
+//===----------------------------------------------------------------------===//
+
+void ExportOp::build(OpBuilder &builder, OperationState &result,
+                     func::FuncOp function_ref) {
+  result.addAttribute("function_ref", SymbolRefAttr::get(function_ref));
+}
+
+void ExportOp::build(OpBuilder &builder, OperationState &result,
+                     func::FuncOp function_ref, unsigned ordinal) {
+  build(builder, result, function_ref);
+  result.addAttribute("ordinal", builder.getI32IntegerAttr(ordinal));
+}
+
+LogicalResult ExportOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  Operation *op = getOperation();
+  auto func = symbolTable.lookupNearestSymbolFrom<func::FuncOp>(
+      op, getFunctionRefAttr());
+
+  // Function reference must reference a valid FuncOp operation.
+  if (!func) {
+    return op->emitError() << "func.func op named '" << getFunctionRef()
+                           << "' not found for export";
+  }
+
+  // Function must have just once symbol use.
+  auto uses = func.getSymbolUses(op->getParentOp());
+  if (std::distance(uses->begin(), uses->end()) != 1) {
+    return op->emitError() << "func.func op named '" << getFunctionRef()
+                           << "' has multiple uses and can't be exported";
+  }
+
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // TraceOp

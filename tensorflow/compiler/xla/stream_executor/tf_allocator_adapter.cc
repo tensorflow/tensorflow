@@ -23,13 +23,12 @@ limitations under the License.
 
 namespace stream_executor {
 
-TfAllocatorAdapter::TfAllocatorAdapter(tensorflow::Allocator *wrapped,
-                                       Stream *stream)
+TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream)
     : DeviceMemoryAllocator(stream->parent()->platform()),
       wrapped_(wrapped),
       stream_(stream) {}
 
-TfAllocatorAdapter::TfAllocatorAdapter(tensorflow::Allocator *wrapped,
+TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped,
                                        Platform *platform)
     : DeviceMemoryAllocator(platform), wrapped_(wrapped), stream_(nullptr) {}
 
@@ -39,12 +38,12 @@ port::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
     int device_ordinal, uint64_t size, bool retry_on_failure,
     int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
-  tensorflow::AllocationAttributes attrs;
+  tsl::AllocationAttributes attrs;
   attrs.retry_on_failure = retry_on_failure;
   void *data = nullptr;
   if (size != 0) {
-    data = wrapped_->AllocateRaw(tensorflow::Allocator::kAllocatorAlignment,
-                                 size, attrs);
+    data =
+        wrapped_->AllocateRaw(tsl::Allocator::kAllocatorAlignment, size, attrs);
     if (data == nullptr) {
       return tsl::errors::ResourceExhausted(
           "Out of memory while trying to allocate ", size, " bytes.");

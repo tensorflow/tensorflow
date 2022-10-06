@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 #define DEBUG_TYPE "tf-gpu-op-fusion"
 
@@ -35,10 +34,13 @@ namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_TENSORFLOWGPUFUSION
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // GpuOpFusionPass is a pass performing fusion specific to GPU targets.
 // This is an ad-hoc pass for now, but should be integrated with some notion
 // of "target" in the MLIR pipeline in the future.
-class GpuOpFusionPass : public TensorflowGPUFusionBase<GpuOpFusionPass> {
+class GpuOpFusionPass : public impl::TensorflowGPUFusionBase<GpuOpFusionPass> {
  public:
   void runOnOperation() final;
 };

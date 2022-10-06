@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/regexp.h"
 

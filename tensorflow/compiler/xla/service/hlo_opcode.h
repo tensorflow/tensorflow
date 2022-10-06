@@ -157,6 +157,7 @@ namespace xla {
   V(kSlice, "slice", 1)                                                        \
   V(kSort, "sort", kHloOpcodeIsVariadic)                                       \
   V(kSqrt, "sqrt", 1)                                                          \
+  V(kStochasticConvert, "stochastic-convert", 2)                               \
   V(kCbrt, "cbrt", 1)                                                          \
   V(kSubtract, "subtract", 2)                                                  \
   V(kTanh, "tanh", 1)                                                          \
@@ -164,7 +165,7 @@ namespace xla {
   V(kTriangularSolve, "triangular-solve", 2)                                   \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                                     \
   V(kWhile, "while", 1)
-// LINT.ThenChange(../../mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td)
+// LINT.ThenChange(../mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td)
 
 enum class HloOpcode {
 #define DECLARE_ENUM(enum_name, opcode_name, ...) enum_name,

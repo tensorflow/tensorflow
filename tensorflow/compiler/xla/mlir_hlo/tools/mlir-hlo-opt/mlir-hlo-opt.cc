@@ -14,27 +14,59 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
 #include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
-#include "mlir-hlo/Transforms/register_gml_st_passes.h"
-#include "mlir-hlo/Transforms/register_gpu_passes.h"
-#include "mlir-hlo/Transforms/register_passes.h"
+#include "mlir-hlo/Transforms/gml_st_pipeline.h"
+#include "mlir-hlo/Transforms/gpu_passes.h"
+#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "stablehlo/dialect/Register.h"
 
+using namespace mlir;
+
+namespace {
+struct HloToGpuPipelineOptions
+    : public PassPipelineOptions<HloToGpuPipelineOptions> {
+  ListOption<int64_t> blockTileDim{
+      *this, "block-tile",
+      llvm::cl::desc("dimensions of the subproblem processed by the block")};
+  ListOption<int64_t> warpTileDim{
+      *this, "warp-tile",
+      llvm::cl::desc("dimensions of the subproblem processed by the warp")};
+  ListOption<int64_t> threadTileDim{
+      *this, "thread-tile",
+      llvm::cl::desc("dimensions of the subproblem processed by the thread")};
+};
+}  // namespace
+
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
+  mlir::hlo::registerLMHLOTransformsPasses();
+  mlir::registerLMHLOGPUTransformsPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
-  mlir::hlo::registerAllHloPasses();
-  mlir::hlo::registerAllHloGpuPasses();
-  mlir::gml_st::registerAllGmlStPasses();
+  mlir::gml_st::registerGmlStPasses();
+  mlir::gml_st::registerGmlStTestPasses();
+
+  PassPipelineRegistration<HloToGpuPipelineOptions>(
+      "hlo-to-gpu-pipeline",
+      "Pipeline to transform HLO to LLVM + NVVM dialects.",
+      [](OpPassManager &pm, const HloToGpuPipelineOptions &options) {
+        createHloToGpuPipeline(pm, options.blockTileDim, options.warpTileDim,
+                               options.threadTileDim);
+      });
+
+  PassPipelineRegistration<GmlStPipelineOptions>(
+      "gml-st-pipeline", "Pipeline to transform HLO to GmlSt and Linalg.",
+      createGmlStPipeline);
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

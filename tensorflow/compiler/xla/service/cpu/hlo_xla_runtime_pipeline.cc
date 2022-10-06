@@ -19,8 +19,8 @@ limitations under the License.
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
@@ -68,7 +68,8 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
 
 void AddSparsificationPasses(OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
-  pm.addNestedPass<FuncOp>(mlir::createLinalgInitTensorToAllocTensorPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(mlir::bufferization::createTensorCopyInsertionPass(
       GetBufferizationOptions()));
   pm.addPass(mlir::createSparsificationPass());
@@ -84,6 +85,10 @@ void AddSparsificationPasses(OpPassManager& pm) {
 // Assemble a HLO XLA Runtime pipeline to lower from HLO to Linalg on buffers.
 // -------------------------------------------------------------------------- //
 void CreateDefaultHloXlaRuntimePipeline(OpPassManager& pm) {
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mlir::mhlo::createExpandHloTuplesPass("main"));
+  // TODO(b/233771980): Remove once custom_call doesn't use tuples.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createFlattenTuplePass());
   // Remove redundant shape operations left after legalizing to HLO.
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

@@ -58,10 +58,12 @@ while [[ ! "${TPU_CREATED}" == "true" ]]; do
 
   # retry for $RETRY_LIMIT minutes if resources are not available
   if [[ ! "${TPU_CREATED}" == "true" ]]; then
-    ((RETRY_COUNTER++))
-    if [[ "$RETRY_COUNTER" -eq "$RETRY_LIMIT" ]]; then
+    RETRY_COUNTER="$(( RETRY_COUNTER+1 ))"
+    if (( RETRY_COUNTER == RETRY_LIMIT )); then
+      echo "Retry limit exceeded. Retry count: $RETRY_COUNTER"
       exit 1
     fi
+    echo "Retry number $RETRY_COUNTER"
     sleep 1m
   fi
 done

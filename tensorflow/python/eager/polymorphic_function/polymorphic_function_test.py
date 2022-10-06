@@ -2452,7 +2452,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           testcase_name='MissingVararg',
           conc_args=lambda: (1, 2, constant_op.constant(1.0)),
           call_args=lambda: (1, 2),
-          error=r'func\(x, y, <arg3>\) missing required arguments: <arg3>'),
+          error=r'func\(x, y, arg3\) missing required arguments: arg3'),
       dict(
           testcase_name='ExtraPositionalArg',
           conc_args=lambda: (1, 2),
@@ -2756,7 +2756,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return (x, y, args, kwargs)
 
     c4 = func2.get_concrete_function(scalar, 4, 5, a=scalar)
-    c4_summary = 'func2(x, y=4, <arg3>=5, *, a)'
+    c4_summary = 'func2(x, y=4, arg3=5, *, a)'
     self.assertEqual(c4.pretty_printed_signature(verbose=False), c4_summary)
 
     c5 = func2.get_concrete_function(8, vector)

@@ -32,31 +32,31 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "if_nccl")
+load("//tensorflow:tensorflow.default.bzl", "if_nccl")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_disable_ptxas_warning_flags")
+load("//tensorflow:tensorflow.default.bzl", "tf_disable_ptxas_warning_flags")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_tests")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -69,7 +69,7 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_cc_shared_library")
 
 # Description:
 # Op kernel implementations for TensorFlow.
@@ -866,6 +866,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "//third_party/eigen3",
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/tsl/framework/fixedpoint",
     ] + select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
@@ -885,6 +886,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/tsl/framework/fixedpoint",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
     ],
@@ -939,6 +941,7 @@ cc_library(
         "eigen_spatial_convolutions.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
         ":eigen_contraction_kernel",
         ":eigen_convolution_helpers",
@@ -958,6 +961,7 @@ cc_library(
         "eigen_pooling.h",
         "eigen_spatial_convolutions.h",
     ],
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
         ":eigen_convolution_helpers",
         ":eigen_spatial_convolutions-inl",
@@ -2553,7 +2557,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime:forward_type_inference",
+        "//tensorflow/core/common_runtime:type_inference",
     ],
 )
 
@@ -4151,7 +4155,9 @@ tf_kernel_library(
     }) + select({
         ":xsmm_backward_convolutions": ["TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS"],
         "//conditions:default": [],
-    }),
+    }) + [
+        "EIGEN_NEON_GEBP_NR=4",
+    ],
     prefix = "conv_ops",
     deps = [
         ":conv_grad_shape_utils",
@@ -7084,6 +7090,7 @@ cc_library(
         "//tensorflow/core/kernels:portable_extended_ops",
     ]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     linkopts = if_android(["-ldl"]),
     tags = [
         "manual",
@@ -7100,6 +7107,7 @@ cc_library(
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/framework/fixedpoint",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
         "//third_party/icu/data:conversion_data",
@@ -7164,7 +7172,6 @@ tf_kernel_library(
         ":pooling_ops",
         ":quantization_utils",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util:image_resizer_state",

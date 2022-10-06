@@ -754,9 +754,9 @@ class Context:
     config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
     if coordinated_jobs is not None:
       if isinstance(coordinated_jobs, list):
-        config.coordinated_jobs.extend(coordinated_jobs)
+        config.coordinated_job_list.extend(coordinated_jobs)
       else:
-        raise ValueError("`coordinated_jobs` must be a list of job names or "
+        raise ValueError("`coordinated_jobs` must be list[CoordinatedJob] or "
                          "None, but got: %s" % (coordinated_jobs,))
     self._coordination_service_config = config
 

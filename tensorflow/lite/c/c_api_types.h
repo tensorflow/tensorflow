@@ -77,6 +77,13 @@ typedef enum TfLiteStatus {
   // resolved at runtime. This could happen when the specific op is not
   // registered or built with the TF Lite framework.
   kTfLiteUnresolvedOps = 7,
+
+  // Generally referring to invocation cancelled by the user.
+  // See `interpreter::Cancel`.
+  // TODO(b/194915839): Implement `interpreter::Cancel`.
+  // TODO(b/250636993): Cancellation triggered by `SetCancellationFunction`
+  // should also return this status code.
+  kTfLiteCancelled = 8,
 } TfLiteStatus;
 
 // Types supported by tensor

@@ -878,10 +878,11 @@ ProgramShape HloComputation::ComputeProgramShape(bool include_ids) const {
   return program_shape;
 }
 
-bool HloComputation::EqualInternal(const HloComputation& other,
-                                   bool is_layout_sensitive,
-                                   bool ignore_channel_id_values,
-                                   bool ignore_thread) const {
+bool HloComputation::EqualInternal(
+    const HloComputation& other, bool is_layout_sensitive,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        computations_comparator,
+    bool ignore_channel_id_values, bool ignore_execution_thread) const {
   if (this == &other) {
     return true;
   }
@@ -904,16 +905,23 @@ bool HloComputation::EqualInternal(const HloComputation& other,
     auto operands_eq = [](const HloInstruction*, const HloInstruction*) {
       return true;
     };
+
     auto comp_eq = [&](const HloComputation* a, const HloComputation* b) {
-      return a->EqualInternal(*b, is_layout_sensitive, ignore_channel_id_values,
-                              ignore_thread);
+      return a->EqualInternal(*b, is_layout_sensitive, computations_comparator,
+                              ignore_channel_id_values,
+                              ignore_execution_thread);
     };
+
     bool identical_ignoring_operands =
         ignore_channel_id_values
             ? pair.first->IdenticalIgnoringChannelIdValues(
-                  *pair.second, operands_eq, comp_eq, is_layout_sensitive)
-            : pair.first->Identical(*pair.second, operands_eq, comp_eq,
-                                    is_layout_sensitive);
+                  *pair.second, operands_eq,
+                  (computations_comparator ? computations_comparator : comp_eq),
+                  is_layout_sensitive)
+            : pair.first->Identical(
+                  *pair.second, operands_eq,
+                  (computations_comparator ? computations_comparator : comp_eq),
+                  is_layout_sensitive);
     if (!identical_ignoring_operands) {
       return false;
     }
@@ -922,7 +930,7 @@ bool HloComputation::EqualInternal(const HloComputation& other,
     }
   }
 
-  if (!ignore_thread) {
+  if (!ignore_execution_thread) {
     return execution_thread() == other.execution_thread();
   }
   return true;

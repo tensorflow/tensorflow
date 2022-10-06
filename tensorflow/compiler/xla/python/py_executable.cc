@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_executable.h"
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/pjrt/host_callback.h"
@@ -43,11 +46,12 @@ Status PyShardedToken::Await() {
   return status;
 }
 
-PyExecutable::PyExecutable(std::shared_ptr<PyClient> client,
-                           std::unique_ptr<PjRtLoadedExecutable> executable,
-                           std::shared_ptr<Traceback> traceback,
-                           std::optional<std::string> fingerprint,
-                           std::vector<pybind11::capsule> host_callbacks)
+PyLoadedExecutable::PyLoadedExecutable(
+    std::shared_ptr<PyClient> client,
+    std::unique_ptr<PjRtLoadedExecutable> executable,
+    std::shared_ptr<Traceback> traceback,
+    std::optional<std::string> fingerprint,
+    std::vector<pybind11::capsule> host_callbacks)
     : client_(std::move(client)),
       executable_(std::move(executable)),
       traceback_(std::move(traceback)),
@@ -68,7 +72,7 @@ PyExecutable::PyExecutable(std::shared_ptr<PyClient> client,
   }
 }
 
-PyExecutable::~PyExecutable() {
+PyLoadedExecutable::~PyLoadedExecutable() {
   CHECK(PyGILState_Check());
   if (client_->executables_ == this) {
     client_->executables_ = next_;
@@ -81,7 +85,8 @@ PyExecutable::~PyExecutable() {
   }
 }
 
-std::vector<ClientAndPtr<PjRtDevice>> PyExecutable::AddressableDevices() const {
+std::vector<ClientAndPtr<PjRtDevice>> PyLoadedExecutable::AddressableDevices()
+    const {
   std::vector<ClientAndPtr<PjRtDevice>> devices;
   devices.reserve(executable_->addressable_devices().size());
   for (PjRtDevice* device : executable_->addressable_devices()) {
@@ -91,7 +96,7 @@ std::vector<ClientAndPtr<PjRtDevice>> PyExecutable::AddressableDevices() const {
 }
 
 StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
-PyExecutable::ExecuteInternal(
+PyLoadedExecutable::ExecuteInternal(
     absl::Span<PyBuffer::object const> args, PjRtDevice* device,
     std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
@@ -173,14 +178,14 @@ PyExecutable::ExecuteInternal(
 }
 
 StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
-PyExecutable::ExecuteWithToken(absl::Span<PyBuffer::object const> args,
-                               PjRtDevice* device) {
+PyLoadedExecutable::ExecuteWithToken(absl::Span<PyBuffer::object const> args,
+                                     PjRtDevice* device) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   if (executable_->IsReturnedFutureSupported()) returned_futures.emplace();
   return ExecuteInternal(args, device, returned_futures);
 }
 
-StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
+StatusOr<std::vector<PyBuffer::object>> PyLoadedExecutable::Execute(
     absl::Span<PyBuffer::object const> args, PjRtDevice* device) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   TF_ASSIGN_OR_RETURN(auto outputs_and_token,
@@ -352,7 +357,7 @@ ExecuteShardedOnLocalDevicesInternal(
 }  // namespace
 
 StatusOr<std::vector<PyShardedBuffer>>
-PyExecutable::ExecuteShardedOnLocalDevices(
+PyLoadedExecutable::ExecuteShardedOnLocalDevices(
     absl::Span<PyShardedBuffer* const> args) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   TF_ASSIGN_OR_RETURN(auto outputs_and_tokens,
@@ -363,7 +368,7 @@ PyExecutable::ExecuteShardedOnLocalDevices(
 }
 
 StatusOr<std::pair<std::vector<PyShardedBuffer>, PyShardedToken>>
-PyExecutable::ExecuteShardedOnLocalDevicesWithTokens(
+PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens(
     absl::Span<PyShardedBuffer* const> args) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   if (executable_->IsReturnedFutureSupported()) returned_futures.emplace();
@@ -373,7 +378,7 @@ PyExecutable::ExecuteShardedOnLocalDevicesWithTokens(
 }
 
 StatusOr<std::vector<std::vector<PyBuffer::object>>>
-PyExecutable::ExecuteShardedOnLocalDevices(
+PyLoadedExecutable::ExecuteShardedOnLocalDevices(
     absl::Span<const std::vector<PyBuffer::object>> args) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   TF_ASSIGN_OR_RETURN(auto outputs_and_tokens,
@@ -384,7 +389,7 @@ PyExecutable::ExecuteShardedOnLocalDevices(
 }
 
 StatusOr<std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
-PyExecutable::ExecuteShardedOnLocalDevicesWithTokens(
+PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens(
     absl::Span<const std::vector<PyBuffer::object>> args) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   if (executable_->IsReturnedFutureSupported()) returned_futures.emplace();
@@ -393,12 +398,12 @@ PyExecutable::ExecuteShardedOnLocalDevicesWithTokens(
       returned_futures);
 }
 
-StatusOr<std::vector<std::shared_ptr<HloModule>>> PyExecutable::HloModules()
-    const {
+StatusOr<std::vector<std::shared_ptr<HloModule>>>
+PyLoadedExecutable::HloModules() const {
   return executable_->GetHloModules();
 }
 
-void PyExecutable::KeepAlive(py::object obj) {
+void PyLoadedExecutable::KeepAlive(py::object obj) {
   keepalives_.push_back(std::move(obj));
 }
 

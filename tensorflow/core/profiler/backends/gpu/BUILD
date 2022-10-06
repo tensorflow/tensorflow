@@ -5,7 +5,7 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_device_tracer_srcs",
@@ -268,6 +268,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:trace_utils",
     ] + tf_additional_cupti_deps(),
 )
 

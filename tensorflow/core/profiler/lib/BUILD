@@ -1,7 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_not_android", "tf_cc_test", "tf_cuda_library")
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/core/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
@@ -139,6 +139,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/lib:profiler_interface",
     ],
 )
 
@@ -194,6 +195,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+        "//tensorflow/tsl/profiler/lib:traceme_encode",
+        "//tensorflow/tsl/profiler/lib:traceme",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder",
         "//tensorflow/core/profiler/utils:time_utils",
@@ -206,18 +209,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "traceme_encode_test",
-    srcs = ["traceme_encode_test.cc"],
-    deps = [
-        ":traceme_encode",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform",
+        "//tensorflow/tsl/profiler/lib:traceme_encode",
         "@com_google_absl//absl/strings",
     ],
 )

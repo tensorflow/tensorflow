@@ -17,13 +17,8 @@ limitations under the License.
 #define TENSORFLOW_TSL_FRAMEWORK_NUMERIC_TYPES_H_
 
 #include <complex>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-// Disable clang-format to prevent 'FixedPoint' header from being included
-// before 'Tensor' header on which it depends.
-// clang-format off
-#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
-// clang-format on
 
+#include "tensorflow/tsl/framework/fixedpoint_types.h"
 #include "tensorflow/tsl/platform/types.h"
 
 namespace tsl {

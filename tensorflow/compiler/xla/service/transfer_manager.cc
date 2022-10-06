@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/notification.h"
 
 using absl::StrCat;
 
@@ -56,7 +56,7 @@ StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
   substream->ThenWaitFor(stream);
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
-  tensorflow::Notification n;
+  tsl::Notification n;
   Status s;
   Literal literal(device_buffer.on_host_shape());
   TransferLiteralFromDevice(
@@ -81,7 +81,7 @@ Status TransferManager::TransferLiteralFromDevice(
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
   Status ret;
-  tensorflow::Notification n;
+  tsl::Notification n;
   TransferLiteralFromDevice(
       substream, device_buffer, literal,
       [&](Status status) {
@@ -118,7 +118,7 @@ StatusOr<Literal> TransferManager::TransferArrayFromDevice(
   se::Stream* substream = stream->GetOrCreateSubStream();
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
-  tensorflow::Notification n;
+  tsl::Notification n;
   Literal literal(shape);
   Status s;
   TransferArrayFromDevice(

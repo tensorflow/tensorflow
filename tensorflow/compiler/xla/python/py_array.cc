@@ -148,8 +148,7 @@ void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
   PyArray py_array = self;
 
   if (!skip_checks) {
-    py_array.Check();
-    py_array.Rearrange();
+    py_array.CheckAndRearrange();
   }
 }
 
@@ -165,8 +164,7 @@ void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
   PyArray py_array = self;
 
   if (!skip_checks) {
-    py_array.Check();
-    py_array.Rearrange();
+    py_array.CheckAndRearrange();
   }
 }
 
@@ -185,8 +183,7 @@ PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
             std::move(pjrt_buffers));
 
   if (!skip_checks) {
-    Check();
-    Rearrange();
+    CheckAndRearrange();
   }
 }
 
@@ -198,23 +195,24 @@ const PyArray::Storage& PyArray::GetStorage() const {
   return *GetPyArrayStorageFromObject(reinterpret_cast<PyArrayObject*>(ptr()));
 }
 
-void PyArray::Check() {
-  try {
-    this->attr("_check")();
-  } catch (py::error_already_set& err) {
-    throw py::value_error(err.what());
-  }
-}
+void PyArray::CheckAndRearrange() { this->attr("_check_and_rearrange")(); }
 
-void PyArray::Rearrange() { this->attr("_rearrange")(); }
-
-py::object PyArray::arrays() const {
+py::object PyArray::arrays() {
+  // For performance, we only keep pjrt buffers by default. But on python side
+  // "_arrays" returns PyBuffers instead, and subsequent calls to "_arrays"
+  // should return the same PyBuffers (to avoid duplicate device to host
+  // transfers). So we create PyBuffers the first time it is called and reuse
+  // them later.
   if (pjrt_buffers().empty()) return py::none();
 
-  std::vector<PyBuffer::object> py_buffers;
-  py_buffers.reserve(pjrt_buffers().size());
-  for (const auto& pjrt_buffer : pjrt_buffers()) {
-    py_buffers.push_back(PyBuffer::Make(py_client(), pjrt_buffer, traceback()));
+  auto& py_buffers = this->py_buffers();
+
+  if (py_buffers.empty()) {
+    py_buffers.reserve(pjrt_buffers().size());
+    for (const auto& pjrt_buffer : pjrt_buffers()) {
+      py_buffers.push_back(
+          PyBuffer::Make(py_client(), pjrt_buffer, traceback()));
+    }
   }
 
   return py::cast(py_buffers);
@@ -223,6 +221,7 @@ py::object PyArray::arrays() const {
 Status PyArray::set_arrays(py::object obj) {
   if (obj.is_none()) {
     pjrt_buffers().clear();
+    py_buffers().clear();
     return OkStatus();
   }
 
@@ -236,6 +235,7 @@ Status PyArray::set_arrays(py::object obj) {
   if (list.empty()) return OkStatus();
 
   pjrt_buffers().clear();
+  py_buffers().clear();
   pjrt_buffers().reserve(list.size());
   for (py::handle obj : list) {
     // TODO(chky): Currently only List[Buffer] is handled here. We need to
@@ -325,6 +325,7 @@ Status PyArray::RegisterTypes(py::module& m) {
         return self;
       },
       py::is_method(type));
+  type.attr("__module__") = m.attr("__name__");
 
   return OkStatus();
 }

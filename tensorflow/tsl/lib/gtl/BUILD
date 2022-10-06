@@ -1,7 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -213,10 +213,10 @@ tf_cc_tests(
         ":int_type",
         ":iterator_range",
         ":map_util",
-        "//tensorflow/core/platform:test_main",
         "//tensorflow/tsl/platform:hash",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/platform:types",
     ],
 )

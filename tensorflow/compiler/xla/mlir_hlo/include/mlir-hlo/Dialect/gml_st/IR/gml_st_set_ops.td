@@ -44,15 +44,8 @@ def GMLST_TileType : GMLST_Set<"Tile"> {
   }];
 }
 
-def GMLST_PointType : GMLST_Set<"Point">,
-    BuildableType<"$_builder.getType<::mlir::gml_st::PointType>()"> {
-  let mnemonic = "point";
-  let summary = "Type that represents a point of an index space.";
-  let assemblyFormat = "";
-}
-
 // Whether a type is a subset type.
-def IsSetTypePred : Or<[GMLST_TileType.predicate, GMLST_PointType.predicate]>;
+def IsSetTypePred : Or<[GMLST_TileType.predicate]>;
 
 def AnySet : Type<IsSetTypePred, "subset type">;
 
@@ -77,28 +70,6 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
   let hasVerifier = 1;
 }
 
-def GMLST_PointOp : GMLST_Op<"point", [
-    NoSideEffect,
-    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
-  let arguments = (ins GMLST_TileType:$superset,
-                       Variadic<Index>:$dynamic_indices,
-                       I64ArrayAttr:$static_indices);
-  let results = (outs GMLST_PointType:$result);
-  let assemblyFormat = [{
-    $superset
-    custom<DynamicIndexList>($dynamic_indices, $static_indices,
-                               "ShapedType::kDynamicStrideOrOffset")
-    attr-dict `:` qualified(type($superset)) `to` qualified(type($result))
-  }];
-  let builders = [
-    OpBuilder<(ins "Value":$superset, "ArrayRef<OpFoldResult>":$offsets,
-                   CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
-  ];
-  let extraClassDeclaration = [{
-    unsigned getRank() { return getStaticIndices().size(); }
-  }];
-  let hasVerifier = 1;
-}
 
 def GMLST_TileOp : GMLST_Op<"tile", [
     NoSideEffect,
@@ -152,7 +123,7 @@ def GMLST_DropDimsOp : GMLST_Op<"drop_dims", [
   }];
   let description = [{
     Selects specific dimensions of a subset and drops the remaining ones. The
-    result is a tile or point in a space of smaller rank, which is implicitly
+    result is a tile in a space of smaller rank, which is implicitly
     defined by the root space.
   }];
   let arguments = (ins

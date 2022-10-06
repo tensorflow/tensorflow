@@ -3248,7 +3248,7 @@ name=None))
 
     >>> ds1 = tf.data.Dataset.random(seed=4).take(10)
     >>> ds2 = tf.data.Dataset.random(seed=4).take(10)
-    >>> print(list(ds2.as_numpy_iterator())==list(ds2.as_numpy_iterator()))
+    >>> print(list(ds1.as_numpy_iterator())==list(ds2.as_numpy_iterator()))
     True
 
     Args:
@@ -5417,8 +5417,7 @@ class PaddedBatchDataset(UnaryDataset):
       if not isinstance(component_spec, tensor_spec.TensorSpec):
         raise TypeError(f"`padded_batch` is only supported for datasets that "
                         f"produce tensor elements but the input dataset "
-                        f"produces elements of unsupported type "
-                        f"{component_spec.value_type()}.")
+                        f"spec contains: `{component_spec}`.")
 
     nest.map_structure(check_types, input_dataset.element_spec)
     self._input_dataset = input_dataset

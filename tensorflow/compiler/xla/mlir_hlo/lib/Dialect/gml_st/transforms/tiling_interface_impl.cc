@@ -120,7 +120,7 @@ struct ExternalLinalgOpTilingInterface
     // map the offsets and sizes from the result to iteration space tiles
     // (filling in full extent for dimensions not used to access the result).
     AffineMap indexingMap =
-        linalgOp.getTiedIndexingMapForResult(op->getResult(resultNumber));
+        linalgOp.getIndexingMapMatchingResult(op->getResult(resultNumber));
     if (!indexingMap.isProjectedPermutation()) {
       return op->emitOpError(
           "unhandled tiled implementation generation when result is not "
@@ -165,6 +165,8 @@ void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
         *ctx);
     thlo::ReductionOp::attachInterface<
         ExternalLinalgOpTilingInterface<thlo::ReductionOp>>(*ctx);
+    thlo::TransposeOp::attachInterface<
+        ExternalLinalgOpTilingInterface<thlo::TransposeOp>>(*ctx);
   });
 }
 

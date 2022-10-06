@@ -16,7 +16,6 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
-    "tf_additional_test_srcs",
     "tf_google_mobile_srcs_only_runtime",
     "tf_kernel_tests_linkstatic",
     "tf_platform_alias",
@@ -46,13 +45,13 @@ load(
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -219,7 +218,6 @@ cc_library(
     deps = [
         ":platform",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
-        "//tensorflow/tsl/platform:cuda",
     ],
 )
 
@@ -905,6 +903,7 @@ cc_library(
         ":bfloat16",
         ":platform",
         ":tstring",
+        "//tensorflow/tsl/framework:device_type",
         "//tensorflow/tsl/platform:types",
     ],
 )
@@ -1687,12 +1686,6 @@ filegroup(
 alias(
     name = "legacy_lib_internal_srcs",
     actual = "//tensorflow/core/platform/profile_utils:legacy_lib_internal_srcs",
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_test_srcs",
-    srcs = tf_additional_test_srcs(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 

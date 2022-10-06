@@ -1782,5 +1782,27 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # ResourceVariables with expand_composites=True.
     self.assertIsInstance(result[0], resource_variable_ops.ResourceVariable)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testUniqueIdPreservedThroughPackAndUnpack(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(v.initializer)
+    expected_unique_id = v._unique_id
+    reconstructed_v = nest.pack_sequence_as(
+        v,
+        nest.flatten(v, expand_composites=True),
+        expand_composites=True)
+    self.assertEqual(reconstructed_v._unique_id, expected_unique_id)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testHandleNamePreservedThroughPackAndUnpack(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(v.initializer)
+    expected_handle_name = v._handle_name
+    reconstructed_v = nest.pack_sequence_as(
+        v,
+        nest.flatten(v, expand_composites=True),
+        expand_composites=True)
+    self.assertEqual(reconstructed_v._handle_name, expected_handle_name)
+
 if __name__ == "__main__":
   test.main()

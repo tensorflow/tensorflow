@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/status.h"
 
@@ -149,7 +149,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
       int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
-      std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
+      std::unique_ptr<tsl::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
   ~PjRtStreamExecutorClient() override = default;
@@ -218,9 +218,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
       const Shape& shape, PjRtDevice* device,
       std::shared_ptr<BufferSequencingEvent> definition_event);
 
-  StatusOr<std::unique_ptr<PjRtClient::AsyncBufferTransferManager>>
-  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
-                                PjRtDevice* device) override {
+  StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtDevice* device) override {
     return Unimplemented("Async transfer to buffers not implemented");
   };
 
@@ -270,7 +270,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
   LocalClient* client() const { return client_; }
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
-  tensorflow::Allocator* host_memory_allocator() const {
+  tsl::Allocator* host_memory_allocator() const {
     return host_memory_allocator_.get();
   }
   bool should_stage_host_to_device_transfers() const {
@@ -335,7 +335,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   LocalClient* client_;
 
   // Allocator to be used for staging memory transfers to devices.
-  std::unique_ptr<tensorflow::Allocator> host_memory_allocator_;
+  std::unique_ptr<tsl::Allocator> host_memory_allocator_;
 
   // Device memory allocator. If owned, the allocator must outlive the devices,
   // because it is the device destructor that waits for any outstanding work to

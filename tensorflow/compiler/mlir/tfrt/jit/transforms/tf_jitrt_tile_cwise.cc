@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -88,9 +88,8 @@ bool isNonTiledCwiseGeneric(Operation *op) {
   auto linalg_op = mlir::dyn_cast<GenericOp>(op);
   if (linalg_op) {
     if (!linalg_op.hasTensorSemantics()) return false;
-    return llvm::all_of(linalg_op.iterator_types(), [](auto type) {
-      return mlir::linalg::isParallelIterator(type);
-    });
+    return llvm::all_of(linalg_op.getIteratorTypesArray(),
+                        mlir::linalg::isParallelIterator);
   }
   if (auto fill_op = mlir::dyn_cast<FillOp>(op)) {
     return fill_op.hasTensorSemantics();

@@ -7,10 +7,10 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # For platform specific build config
 load(
@@ -64,13 +64,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/common_runtime/device:device_event_mgr_hdrs",
-    ],
-)
-
-cc_library(
-    name = "cuda",
-    deps = [
-        "//tensorflow/tsl/platform/default/build_config:cuda",
     ],
 )
 
@@ -148,6 +141,7 @@ filegroup(
         "gpu_virtual_mem_allocator.h",
         "//tensorflow/core/common_runtime:gpu_runtime_headers",
         "//tensorflow/core/common_runtime/device:device_runtime_headers",
+        "//tensorflow/tsl/framework:bfc_allocator.h",
     ],
     visibility = ["//visibility:private"],
 )
@@ -192,7 +186,6 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
-        "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -351,6 +344,7 @@ tf_cuda_cc_test(
     deps = [
         ":gpu_id",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -482,6 +476,7 @@ tf_cuda_cc_test(
     deps = [
         ":gpu_id",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:platform",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -507,6 +502,7 @@ tf_cc_test(
     deps = [
         ":gpu_init",
         ":gpu_virtual_mem_allocator",
+        "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

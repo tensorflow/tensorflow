@@ -189,7 +189,7 @@ StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
   return xla_assignment;
 }
 
-class CpuAllocator : public tensorflow::Allocator {
+class CpuAllocator : public tsl::Allocator {
  public:
   CpuAllocator() = default;
 
@@ -205,7 +205,7 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
     int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
-    std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
+    std::unique_ptr<tsl::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
     : platform_id_(tsl::Fingerprint64(platform_name)),
@@ -789,7 +789,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
       should_stage_host_to_device_transfers() ||
       !host_and_device_strides_equal) {
     void* ptr = host_memory_allocator()->AllocateRaw(
-        tensorflow::Allocator::kAllocatorAlignment, size);
+        tsl::Allocator::kAllocatorAlignment, size);
     staging_buffer = std::shared_ptr<void>(
         ptr, [host_memory_allocator = host_memory_allocator()](void* ptr) {
           host_memory_allocator->DeallocateRaw(ptr);
@@ -1917,6 +1917,8 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   absl::Span<int const> donated_params =
       ParametersThatMustBeDonated(executable_idx);
   auto donate_it = donated_params.begin();
+  absl::flat_hash_set<PjRtStreamExecutorBuffer*> used_buffers;
+  absl::flat_hash_set<PjRtStreamExecutorBuffer*> donated_buffers;
   for (int i = 0; i < argument_handles.size(); ++i) {
     auto* handle =
         tensorflow::down_cast<PjRtStreamExecutorBuffer*>(argument_handles[i]);
@@ -1929,6 +1931,29 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
     bool must_donate = donate_it != donated_params.end() && *donate_it == i;
     if (must_donate) {
       ++donate_it;
+    }
+    bool already_used = !used_buffers.emplace(handle).second;
+    bool already_donated =
+        must_donate ? !donated_buffers.emplace(handle).second
+                    : donated_buffers.find(handle) != donated_buffers.end();
+    if (must_donate && already_donated) {
+      return InvalidArgument(
+          "Attempt to donate the same buffer twice in Execute() (second use: "
+          "flattened argument %d, replica %d). "
+          "Toy example for this bug: `f(donate(a), donate(a))`.",
+          i, replica);
+    } else if (must_donate && already_used) {
+      return InvalidArgument(
+          "Attempt to donate a buffer which is also used by the same call to "
+          "Execute() (second use: flattened argument %d, replica %d). "
+          "Toy example for this bug: `f(a, donate(a))`.",
+          i, replica);
+    } else if (already_donated) {
+      return InvalidArgument(
+          "Attempt to use a buffer that was previously donated in the same "
+          "call to Execute() (second use: flattened argument %d, replica %d). "
+          "Toy example for this bug: `f(donate(a), a)`.",
+          i, replica);
     }
     device_buffers->emplace_back(handle->GetBufferWithHold(
         must_donate ? PjRtStreamExecutorBuffer::ScopedHold::kDonation

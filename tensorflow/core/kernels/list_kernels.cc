@@ -406,6 +406,7 @@ class TensorListResize : public OpKernel {
     output_list.element_dtype = input_list->element_dtype;
     output_list.max_num_elements = input_list->max_num_elements;
     if (size > input_list->tensors().size()) {
+      output_list.tensors().reserve(size);
       output_list.tensors().insert(output_list.tensors().begin(),
                                    input_list->tensors().begin(),
                                    input_list->tensors().end());

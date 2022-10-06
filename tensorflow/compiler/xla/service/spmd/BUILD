@@ -1,6 +1,6 @@
 # Description: SPMD partitioning pass.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -90,7 +90,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:sharding_propagation",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
     ],
 )
 
@@ -107,7 +108,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
     ],
 )
 
@@ -136,7 +138,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
     ],
 )
 
@@ -180,6 +183,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:sharding_propagation",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
     ],
 )

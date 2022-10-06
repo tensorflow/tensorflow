@@ -21,8 +21,10 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/PassTimingInfo.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/TargetSelect.h"
@@ -30,7 +32,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
 namespace xla {
@@ -40,6 +42,7 @@ using namespace mlir;  // NOLINT
 
 using absl::InternalError;
 using absl::StrCat;
+using absl::StrFormat;
 
 static bool DebugJitCompiler() {
 #if defined(DEBUG_XLA_RUNTIME_COMPILER)
@@ -140,7 +143,7 @@ static std::unique_ptr<MLIRContext> CreateMlirContext(
 
 JitCompiler::JitCompiler(JitCompiler::Options opts,
                          std::string_view mlir_module,
-                         std::string_view entrypoint)
+                         absl::Span<const std::string_view> exported)
     : opts_(std::move(opts)),
       context_(CreateMlirContext(opts_)),
       diagnostic_os_(diagnostic_),
@@ -151,19 +154,30 @@ JitCompiler::JitCompiler(JitCompiler::Options opts,
       llvm::SMLoc());
 
   module_ = parseSourceFile<ModuleOp>(source_mgr_, context_.get());
-  if (module_) entrypoint_ = module_->lookupSymbol<func::FuncOp>(entrypoint);
+
+  if (module_) {
+    for (std::string_view name : exported)
+      exported_.push_back(module_->lookupSymbol<func::FuncOp>(name));
+  }
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<JitCompiler>>
 JitCompiler::Instantiate(JitCompiler::Options opts,
                          std::string_view mlir_module,
-                         std::string_view entrypoint) {
+                         absl::Span<const std::string_view> exported) {
   std::unique_ptr<JitCompiler> context(
-      new JitCompiler(std::move(opts), mlir_module, entrypoint));
+      new JitCompiler(std::move(opts), mlir_module, exported));
+
+  // Check that mlir source was parsed into module operation.
   if (!context->module_)
     return context->Error("failed to parse the mlir source");
-  if (!context->entrypoint_)
-    return context->Error("failed to resolve entrypoint function");
+
+  // Check that all exported functions were successfully resolved.
+  for (auto& indexed : llvm::enumerate(exported)) {
+    if (!context->exported(indexed.index()))
+      return context->Error(
+          StrFormat("failed to resolve exported function %s", indexed.value()));
+  }
 
   InitializeCompiler();
 
@@ -173,45 +187,62 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 /*static*/ absl::StatusOr<Executable> JitCompiler::Compile(
     std::unique_ptr<JitCompiler> compiler, std::string_view memory_region_name,
     std::optional<size_t> specialization) {
-  const JitCompiler::Options& opts = compiler->options();
-  func::FuncOp entry_func = compiler->entrypoint();
-  std::string entrypoint = entry_func.getName().str();
-
   // We track end-to-end time to compile the final executable.
   auto compilation_start = std::chrono::steady_clock::now();
 
-  // Get the signature of the entrypoint function.
-  auto signature = opts.type_converter.Convert(entry_func.getFunctionType());
-  if (!signature.ok()) return signature.status();
+  const JitCompiler::Options& opts = compiler->options();
 
-  // Get the calling convention for the entrypoint function.
+  // Calling convention must be defined so we can get the run-time signature.
   if (!opts.calling_convention)
     return compiler->Error("calling convention is not defined");
 
-  // Calling convention conversion can fail if some types are not supported.
-  auto runtime_type = opts.calling_convention(entry_func.getFunctionType());
-  if (!runtime_type)
-    return compiler->Error(
-        "calling convention failed to convert entrypoint type");
+  // Prepare exported functions that will be handed to the Executable.
+  std::vector<Executable::Function> functions;
+  std::vector<std::string_view> exported;  // names of exported functions
 
-  // Get the runtime signature of the entrypoint function.
-  auto runtime_signature = opts.type_converter.Convert(runtime_type);
-  if (!runtime_signature.ok()) return runtime_signature.status();
+  for (auto& indexed : llvm::enumerate(compiler->exported())) {
+    func::FuncOp func = indexed.value();
+    std::string_view name = exported.emplace_back(func.getName());
 
-  // Get the memory layout for passing function arguments.
-  auto arguments_memory_layout =
-      Executable::GetArgumentsMemoryLayout(*runtime_signature);
-  if (!arguments_memory_layout.ok()) return arguments_memory_layout.status();
+    // Get the signature of the exported function.
+    auto signature = opts.type_converter.Convert(func.getFunctionType());
+    if (!signature.ok()) return signature.status();
 
-  // Get the memory layout for returning function results.
-  auto results_memory_layout =
-      Executable::GetResultsMemoryLayout(*runtime_signature);
-  if (!results_memory_layout.ok()) return results_memory_layout.status();
+    // Calling convention conversion can fail if some types are not supported.
+    auto runtime_type = opts.calling_convention(func.getFunctionType());
+    if (!runtime_type)
+      return compiler->Error(StrFormat(
+          "calling convention failed to convert function type for %s", name));
 
-  // Mark entry function with an attribute, so it can be converted to an Xla
-  // entrypoint (see `rt-convert-to-entrypoint` pass).
-  auto unit_attr = UnitAttr::get(entry_func.getContext());
-  entry_func->setAttr(kEntrypointAttrName, unit_attr);
+    // Get the runtime signature of the exported function.
+    auto runtime_signature = opts.type_converter.Convert(runtime_type);
+    if (!runtime_signature.ok()) return runtime_signature.status();
+
+    // Get the memory layout for passing function arguments.
+    auto arguments_memory_layout =
+        Executable::GetArgumentsMemoryLayout(*runtime_signature);
+    if (!arguments_memory_layout.ok()) return arguments_memory_layout.status();
+
+    // Get the memory layout for returning function results.
+    auto results_memory_layout =
+        Executable::GetResultsMemoryLayout(*runtime_signature);
+    if (!results_memory_layout.ok()) return results_memory_layout.status();
+
+    // Mark function for export, so that compilation pipeline will correctly
+    // lower it to the runtime ABI (see `xla-rt-export-functions` pass).
+    compiler->Export(func, indexed.index());
+
+    // Add function with an unresolved function pointer; it will be updated once
+    // we compile the input module to the native executable.
+    Executable::Function function{std::string(name),
+                                  /*fptr=*/nullptr,
+                                  std::move(*signature),
+                                  std::move(*runtime_signature),
+                                  std::move(*arguments_memory_layout),
+                                  std::move(*results_memory_layout)};
+
+    functions.push_back(std::move(function));
+  }
 
   // Run the compilation pipeline to lower the module to LLVM dialect.
   if (failed(RunCompilationPipeline(compiler->module(), opts)))
@@ -232,8 +263,8 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
   // Memory region name to mmap executable code.
   std::string mapper_name = llvm::formatv(
-      "/xla{0}{1}:@{2}::@{3}:{4}", memory_region_name.empty() ? "" : ":",
-      EscapeMemRegionName(memory_region_name), module_name, entrypoint,
+      "/xla{0}{1}:@{2}::@{3}", memory_region_name.empty() ? "" : ":",
+      EscapeMemRegionName(memory_region_name), module_name,
       specialization.has_value() ? "specialized" : "default");
 
   // Custom memory mapper to tag memory allocated for XLA executables.
@@ -260,31 +291,38 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
   // Compile input module to the native function.
   auto engine = ExecutionEngine::CreateFromModule(
-      std::move(llvm_ctx), std::move(llvm_module), entrypoint, engine_options);
+      std::move(llvm_ctx), std::move(llvm_module), engine_options, exported);
   if (!engine.ok()) return engine.status();
 
   // At this point compilation is completed, and all symbols in the LLVM module
-  // materialized as addresses (entrypoint is an executable function pointer).
+  // materialized as addresses (all exported functions have a corresponding
+  // function pointer).
   auto time_to_compile = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - compilation_start);
 
   if (EnablePassTiming()) llvm::reportAndResetTimings();
 
-  return Executable(
-      compiler->name(), std::move(memory_mapper), std::move(*engine),
-      std::move(*signature), std::move(*runtime_signature),
-      std::move(*arguments_memory_layout), std::move(*results_memory_layout),
-      specialization, time_to_compile);
+  // Resolve all exported functions to function pointers.
+  for (unsigned i = 0; i < exported.size(); ++i)
+    functions[i].fptr = (*engine)->exported(i);
+
+  return Executable(compiler->name(), std::move(memory_mapper),
+                    std::move(*engine), std::move(functions), specialization,
+                    time_to_compile);
 }
 
-absl::Status JitCompiler::Specialize(ArgumentsRef arguments,
+// TODO(ezhulenev): Currently it's possible to specialize only one function. It
+// should be possible to specialize multiple functions, and run specialization
+// pipeline once all specialized functions signatures are updated.
+
+absl::Status JitCompiler::Specialize(unsigned ordinal, ArgumentsRef arguments,
                                      ArrayRef<SymbolicShape> symbolic_shapes,
                                      ArrayRef<ArgumentConstraint> constraints,
                                      const SpecializationListener* listener) {
   assert(!specialized_ && "can specialize executable only once");
   specialized_ = true;
 
-  func::FuncOp func = entrypoint();
+  func::FuncOp func = exported(ordinal);
 
   // Update function signature and sink constant arguments into the body.
   if (auto specialized = SpecializeFunction(func, arguments, symbolic_shapes,
@@ -302,6 +340,13 @@ absl::Status JitCompiler::Specialize(ArgumentsRef arguments,
     return Error("failed to run specialization pipeline");
 
   return absl::OkStatus();
+}
+
+void JitCompiler::Export(mlir::func::FuncOp func, unsigned ordinal) const {
+  assert(module_ && "failed to parse the mlir module");
+  mlir::OpBuilder builder(*module_);
+  builder.setInsertionPoint(func);
+  builder.create<ExportOp>(func.getLoc(), func, ordinal);
 }
 
 }  // namespace runtime

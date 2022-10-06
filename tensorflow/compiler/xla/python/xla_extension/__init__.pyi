@@ -514,6 +514,8 @@ class Executable:
   traceback: Traceback
   fingerprint: Optional[bytes]
 
+LoadedExecutable = Executable
+
 def buffer_to_dlpack_managed_tensor(
     buffer: Buffer,
     take_ownership: bool = ...) -> Any: ...

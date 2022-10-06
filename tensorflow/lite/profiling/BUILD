@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "clean_dep")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
@@ -169,8 +169,6 @@ cc_library(
 cc_test(
     name = "memory_usage_monitor_test",
     srcs = ["memory_usage_monitor_test.cc"],
-    tags = [
-    ],
     deps = [
         ":memory_info",
         ":memory_usage_monitor",
@@ -237,6 +235,7 @@ cc_test(
 cc_test(
     name = "profile_summarizer_test",
     srcs = ["profile_summarizer_test.cc"],
+    copts = common_copts,
     deps = [
         ":profile_summarizer",
         ":profiler",
@@ -249,4 +248,7 @@ cc_test(
     ],
 )
 
-tflite_portable_test_suite_combined(combine_conditions = {"deps": ["@com_google_googletest//:gtest_main"]})
+tflite_portable_test_suite_combined(
+    combine_conditions = {"deps": ["@com_google_googletest//:gtest_main"]},
+    enable_ios_test_suite = True,
+)

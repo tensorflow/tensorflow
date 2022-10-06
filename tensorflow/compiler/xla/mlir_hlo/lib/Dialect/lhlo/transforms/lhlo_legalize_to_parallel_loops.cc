@@ -17,7 +17,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -701,7 +701,7 @@ struct LhloLegalizeToParallelLoopsPass
     : public impl::LhloLegalizeToParallelLoopsPassBase<
           LhloLegalizeToParallelLoopsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<arith::ArithmeticDialect, func::FuncDialect,
+    registry.insert<arith::ArithDialect, func::FuncDialect,
                     memref::MemRefDialect, scf::SCFDialect>();
   }
 
@@ -718,7 +718,7 @@ struct LhloLegalizeToParallelLoopsPass
     // clang-format on
 
     ConversionTarget target(getContext());
-    target.addLegalDialect<arith::ArithmeticDialect, linalg::LinalgDialect,
+    target.addLegalDialect<arith::ArithDialect, linalg::LinalgDialect,
                            memref::MemRefDialect, func::FuncDialect,
                            scf::SCFDialect, LmhloDialect>();
     target.addIllegalOp<lmhlo::ReduceOp, lmhlo::ReduceWindowOp,

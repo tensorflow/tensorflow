@@ -3267,7 +3267,7 @@ Status ConvertPool(const OpConverterParams* params) {
     return errors::InvalidArgument("Window dimensions are not within bounds");
   }
 
-  if (params->validation_only) return Status::OK();
+  if (params->validation_only) return OkStatus();
 
   if (data_format == "NHWC") {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
@@ -4357,6 +4357,7 @@ Status ConvertGather(const OpConverterParams* params) {
   if (axis.size() != 1) {
     return errors::InvalidArgument("Axis for GatherV2 must be a scalar");
   }
+
   int trt_axis = 0;
   TF_RETURN_IF_ERROR(ConvertAxis(
       axis[0], params_input.GetTrtDims().nbDims, node_def.name(),
@@ -4391,6 +4392,18 @@ Status ConvertGather(const OpConverterParams* params) {
         "Result of gather has dimension greater than ",
         nvinfer1::Dims::MAX_DIMS + 1);
   }
+
+  int32 batch_dims;
+  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "batch_dims", &batch_dims));
+  if (params->use_implicit_batch && batch_dims) {
+    return errors::InvalidArgument(
+        "batch_dims must be zero in implicit batch mode");
+  }
+  if (!params->use_implicit_batch && batch_dims > 1) {
+    return errors::InvalidArgument(
+        "batch_dims cannot exceed 1 in dynamic shape mode");
+  }
+
   if (params->validation_only) return OkStatus();
 
   // Convert input or indices to tensor if it is a constant.
@@ -4419,6 +4432,7 @@ Status ConvertGather(const OpConverterParams* params) {
       *params_tensor->trt_tensor(), *indices_tensor->trt_tensor(), trt_axis);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   params->converter->SetLayerName(layer, node_def);
+  layer->setNbElementWiseDims(batch_dims);
 
   ITensorProxyPtr output_tensor = layer->getOutput(0);
   nvinfer1::Dims trt_gather_output_dims = output_tensor->getDimensions();

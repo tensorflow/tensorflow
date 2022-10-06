@@ -276,7 +276,7 @@ void ExecuteOp::print(OpAsmPrinter &p) {
   p << " key(" << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt()
     << ") cost(" << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
     << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
-    << '(' << op.operands() << ')';
+    << '(' << op.getArgs() << ')';
 
   fallback_common::PrintExecuteOpCommon(p, op);
   fallback_common::PrintExecuteOpFuncAttribute(p, op);
@@ -289,7 +289,7 @@ void ExecuteOpSeq::print(OpAsmPrinter &p) {
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
     << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
     << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
-    << '(' << op.operands() << ')';
+    << '(' << op.getArgs() << ')';
 
   fallback_common::PrintExecuteOpCommon(p, op);
   fallback_common::PrintExecuteOpFuncAttribute(p, op);
@@ -302,7 +302,7 @@ void ExecuteOpWithAllocator::print(OpAsmPrinter &p) {
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
     << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
     << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
-    << '(' << op.operands() << ')';
+    << '(' << op.getArgs() << ')';
 
   fallback_common::PrintExecuteOpCommon(p, op);
   fallback_common::PrintExecuteOpFuncAttribute(p, op);
@@ -315,7 +315,7 @@ void ExecuteOpSeqWithAllocator::print(OpAsmPrinter &p) {
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
     << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
     << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
-    << '(' << op.operands() << ')';
+    << '(' << op.getArgs() << ')';
 
   fallback_common::PrintExecuteOpCommon(p, op);
   fallback_common::PrintExecuteOpFuncAttribute(p, op);
@@ -324,7 +324,7 @@ void ExecuteOpSeqWithAllocator::print(OpAsmPrinter &p) {
 
 void BatchFunctionOp::print(OpAsmPrinter &p) {
   p << "(" << getInOpChain() << ") " << getOperation()->getAttr("f") << " ("
-    << operands() << ") ";
+    << getArgs() << ") ";
 
   fallback_common::PrintExecuteOpCommon(p, *this);
   if (!getResults().empty()) p << " : " << getResults().size();
@@ -362,7 +362,7 @@ struct ConstCoreRTTensorHandleToFallbackTensorCanonicalization
                                 PatternRewriter &rewriter) const override {
     SmallVector<Value, 1> new_values;
     bool should_rewrite = false;
-    for (auto operand : op.operands()) {
+    for (auto operand : op.getArgs()) {
       if (auto corert_const_dense_tensor_op =
               operand.getDefiningOp<corert::ConstDenseTensorOp>()) {
         new_values.push_back(

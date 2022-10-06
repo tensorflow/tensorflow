@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_linux_x86_64",
@@ -6,7 +6,7 @@ load(
     "tf_copts",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -62,9 +62,9 @@ tf_cc_test(
     srcs = ["crc32c_test.cc"],
     deps = [
         ":crc32c",
-        "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )

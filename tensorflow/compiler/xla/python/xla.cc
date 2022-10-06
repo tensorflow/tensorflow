@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
 #include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
-#include "tensorflow/compiler/xla/pjrt/gpu_device.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -311,8 +311,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("CUDA_ASYNC", GpuAllocatorConfig::Kind::kCudaAsync);
 
   // TODO(tomhennigan): Remove this types.
-  py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>> gpu_device(
-      m, "GpuDevice");
+  py::class_<StreamExecutorGpuDevice, PjRtDevice,
+             ClientAndPtr<StreamExecutorGpuDevice>>
+      gpu_device(m, "GpuDevice");
   m.def(
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
@@ -321,10 +322,11 @@ PYBIND11_MODULE(xla_extension, m) {
          std::optional<std::string> platform_name)
           -> StatusOr<std::shared_ptr<PyClient>> {
         py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                            GetGpuClient(asynchronous, allocator_config,
-                                         std::move(distributed_client), node_id,
-                                         allowed_devices, platform_name));
+        TF_ASSIGN_OR_RETURN(
+            std::unique_ptr<PjRtClient> client,
+            GetStreamExecutorGpuClient(asynchronous, allocator_config,
+                                       std::move(distributed_client), node_id,
+                                       allowed_devices, platform_name));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true,
@@ -387,11 +389,11 @@ PYBIND11_MODULE(xla_extension, m) {
                              })
       .def("__str__", &CompiledMemoryStats::DebugString);
 
-  py::class_<PyExecutable, std::shared_ptr<PyExecutable>> executable(
-      m, "Executable");
-  executable.def_property_readonly("client", &PyExecutable::client)
+  py::class_<PyLoadedExecutable, std::shared_ptr<PyLoadedExecutable>>
+      executable(m, "Executable");
+  executable.def_property_readonly("client", &PyLoadedExecutable::client)
       .def("local_logical_device_ids",
-           [](PyExecutable* exec) {
+           [](PyLoadedExecutable* exec) {
              auto span = exec->addressable_device_logical_ids();
              // Not on dispatch critical path, so ok to have heap allocation.
              std::vector<std::pair<int, int>> addressable_device_logic_ids;
@@ -401,38 +403,39 @@ PYBIND11_MODULE(xla_extension, m) {
                    logical_device_id.replica, logical_device_id.partition));
              }
            })
-      .def("local_devices", &PyExecutable::AddressableDevices)
+      .def("local_devices", &PyLoadedExecutable::AddressableDevices)
       .def("size_of_generated_code_in_bytes",
-           &PyExecutable::SizeOfGeneratedCodeInBytes)
-      .def("get_compiled_memory_stats", &PyExecutable::GetCompiledMemoryStats)
-      .def("delete", &PyExecutable::Delete)
-      .def("execute", &PyExecutable::Execute, py::arg("arguments"),
+           &PyLoadedExecutable::SizeOfGeneratedCodeInBytes)
+      .def("get_compiled_memory_stats",
+           &PyLoadedExecutable::GetCompiledMemoryStats)
+      .def("delete", &PyLoadedExecutable::Delete)
+      .def("execute", &PyLoadedExecutable::Execute, py::arg("arguments"),
            py::arg("device") = std::nullopt)
       // TODO(chky): Change execute() to always return token rather than hanving
       // two API entry points.
-      .def("execute_with_token", &PyExecutable::ExecuteWithToken,
+      .def("execute_with_token", &PyLoadedExecutable::ExecuteWithToken,
            py::arg("arguments"), py::arg("device") = std::nullopt)
       .def("execute_sharded_on_local_devices",
            py::overload_cast<absl::Span<const std::vector<PyBuffer::object>>>(
-               &PyExecutable::ExecuteShardedOnLocalDevices),
+               &PyLoadedExecutable::ExecuteShardedOnLocalDevices),
            py::arg("arguments"))
       .def("execute_sharded_on_local_devices",
            py::overload_cast<absl::Span<PyShardedBuffer* const>>(
-               &PyExecutable::ExecuteShardedOnLocalDevices),
+               &PyLoadedExecutable::ExecuteShardedOnLocalDevices),
            py::arg("arguments"))
       .def("execute_sharded_on_local_devices_with_tokens",
            py::overload_cast<absl::Span<const std::vector<PyBuffer::object>>>(
-               &PyExecutable::ExecuteShardedOnLocalDevicesWithTokens),
+               &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
            py::arg("arguments"))
       .def("execute_sharded_on_local_devices_with_tokens",
            py::overload_cast<absl::Span<PyShardedBuffer* const>>(
-               &PyExecutable::ExecuteShardedOnLocalDevicesWithTokens),
+               &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
            py::arg("arguments"))
-      .def("hlo_modules", &PyExecutable::HloModules)
-      .def("keep_alive", &PyExecutable::KeepAlive)
-      .def_property_readonly("traceback", &PyExecutable::traceback)
+      .def("hlo_modules", &PyLoadedExecutable::HloModules)
+      .def("keep_alive", &PyLoadedExecutable::KeepAlive)
+      .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",
-                             [](PyExecutable* exec) -> py::object {
+                             [](PyLoadedExecutable* exec) -> py::object {
                                if (exec->fingerprint().has_value()) {
                                  return py::bytes(*exec->fingerprint());
                                } else {

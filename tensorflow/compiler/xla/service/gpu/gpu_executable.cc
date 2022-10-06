@@ -55,9 +55,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -156,9 +156,16 @@ class GpuExecutable::JitRtExecutable {
 
   runtime::Executable& executable() {
     // Exactly one kind of `Executable` should be available at run time.
-    assert((default_executable_ || executable_) &&
-           !(default_executable_ && executable_));
-    return default_executable_ ? *default_executable_ : *executable_;
+    if (std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
+            executable_)) {
+      runtime::JitExecutable* jit_executable =
+          std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
+      return *jit_executable->DefaultExecutable();
+    } else {
+      runtime::Executable* aot_executable =
+          std::get<std::unique_ptr<runtime::Executable>>(executable_).get();
+      return *aot_executable;
+    }
   }
 
   // We pass a pointer to the buffer size to the compiled function, so we return
@@ -170,12 +177,15 @@ class GpuExecutable::JitRtExecutable {
   const DebugOptions& debug_options() const { return debug_options_; }
 
   StatusOr<std::string> GetObjFile() const {
-    if (!jit_executable_) {
-      return InternalError("JitExecutable is null");
+    if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
+            executable_)) {
+      return InternalError("No JitExecutable");
     }
 
+    runtime::JitExecutable* jit_executable =
+        std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
     std::unique_ptr<llvm::MemoryBuffer> obj_file =
-        jit_executable_->DefaultExecutable()->obj_file();
+        jit_executable->DefaultExecutable()->obj_file();
     if (!obj_file)
       return InternalError("xla_runtime_executable didn't save the obj file");
 
@@ -185,11 +195,14 @@ class GpuExecutable::JitRtExecutable {
   }
 
   StatusOr<std::string> GetMlirModule() const {
-    if (!jit_executable_) {
-      return InternalError("JitExecutable is null");
+    if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
+            executable_)) {
+      return InternalError("No JitExecutable");
     }
 
-    return jit_executable_->mlir_module();
+    runtime::JitExecutable* jit_executable =
+        std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
+    return jit_executable->mlir_module();
   }
 
  private:
@@ -197,27 +210,23 @@ class GpuExecutable::JitRtExecutable {
                   std::unique_ptr<runtime::JitExecutable> jit_executable,
                   DebugOptions debug_options)
       : buffer_sizes_(std::move(buffer_sizes)),
-        jit_executable_(std::move(jit_executable)),
-        default_executable_(&jit_executable_->DefaultExecutable().get()),
+        executable_(std::move(jit_executable)),
         debug_options_(std::move(debug_options)) {}
 
   JitRtExecutable(std::vector<int64_t> buffer_sizes,
                   std::unique_ptr<runtime::Executable> aot_executable,
                   DebugOptions debug_options)
       : buffer_sizes_(std::move(buffer_sizes)),
-        aot_executable_(std::move(aot_executable)),
-        executable_(aot_executable_.get()),
+        executable_(std::move(aot_executable)),
         debug_options_(std::move(debug_options)) {}
 
   std::vector<int64_t> buffer_sizes_;
 
-  // In JIT compilation mode the `JitExecutable` owns the default `Executable`.
-  std::unique_ptr<runtime::JitExecutable> jit_executable_;
-  runtime::Executable* default_executable_ = nullptr;
-
-  // In AOT compilation mode we directly own the `Executable`.
-  std::unique_ptr<runtime::Executable> aot_executable_;
-  runtime::Executable* executable_ = nullptr;
+  // In JIT compilation mode `JitExecutable` is used. In AOT compilation mode
+  // `Executable` is used.
+  std::variant<std::unique_ptr<runtime::JitExecutable>,
+               std::unique_ptr<runtime::Executable>>
+      executable_;
 
   DebugOptions debug_options_;
 
@@ -1119,12 +1128,16 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   auto symbol_map = runtime::ToSymbolsBinding(PopulateXlaGpuCustomCalls,
                                               PopulateXlaGpuTypeIdNames);
 
+  // Gpu executable has a single exported function.
+  std::vector<runtime::Executable::LoadFunction> functions;
+  functions.push_back({hlo_module->entry_computation()->name(),
+                       std::move(signature), std::move(rt_signature)});
+
   // Load JitRt executable from an object file, and link it with Gpu runtime
   // intrinsics implementing Gpu custom calls.
   auto executable = runtime::Executable::LoadFromObjFile(
-      hlo_module->name(), std::move(buffer),
-      hlo_module->entry_computation()->name(), std::move(signature),
-      std::move(rt_signature), symbol_map);
+      hlo_module->name(), std::move(buffer), std::move(functions), symbol_map);
+
   if (!executable.ok())
     return InternalError("Failed to load JitRt executable: %s",
                          executable.status().message());

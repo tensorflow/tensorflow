@@ -859,6 +859,19 @@ bool PjRtCApiExecutable::IsDeleted() {
   return args.is_deleted;
 }
 
+int64_t PjRtCApiExecutable::SizeOfGeneratedCodeInBytes() const {
+  PJRT_Executable_SizeOfGeneratedCodeInBytes_Args args;
+  args.struct_size =
+      PJRT_Executable_SizeOfGeneratedCodeInBytes_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_.get();
+
+  const PJRT_Api* c_api = pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(
+      c_api->PJRT_Executable_SizeOfGeneratedCodeInBytes(&args), c_api);
+  return args.size_in_bytes;
+}
+
 // ---------------------------------- Buffers ----------------------------------
 
 PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
@@ -1042,16 +1055,20 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
     return std::unique_ptr<PjRtBuffer>(
         std::make_unique<PjRtCApiBuffer>(client_, args.dst_buffer));
   } else {
-    if (kPjRtCApiBypass) {
-      VLOG(1) << "PJRT C API BYPASS: CopyToDevice";
-      // TODO(b/239735405) Copying across different clients where `dst_device`
-      // is not a PjRtCApiDevice raises an error.
-      return wrapped_->CopyToDevice(dst_device);
-    }
-    return Unimplemented(
-        "PjRtCApiBuffer::CopyToDevice does not support cross-platform device "
-        "transfers, got destination device: %s",
-        dst_device->ToString());
+    // Copy across PjRtClients by copying through host
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
+    absl::InlinedVector<int64_t, 4> byte_strides(
+        literal->shape().dimensions_size());
+    TF_RETURN_IF_ERROR(
+        ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
+    // Avoid use-after-free on `literal` due to unsequenced move and use.
+    Literal* literal_pointer = literal.get();
+    return dst_device->client()->BufferFromHostBuffer(
+        literal_pointer->untyped_data(),
+        literal_pointer->shape().element_type(),
+        literal_pointer->shape().dimensions(), byte_strides,
+        PjRtClient::HostBufferSemantics::kZeroCopy,
+        [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
   }
 }
 

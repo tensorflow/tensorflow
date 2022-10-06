@@ -33,9 +33,9 @@ limitations under the License.
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir-hlo/Transforms/rewriters.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/Arithmetic/Transforms/BufferizableOpInterfaceImpl.h"
-#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
@@ -174,7 +174,7 @@ struct ComputeOpAndFuncBufferizePass
     auto& context = getContext();
     ConversionTarget target(context);
     target.addLegalDialect<
-        arith::ArithmeticDialect, complex::ComplexDialect, lmhlo::LmhloDialect,
+        arith::ArithDialect, complex::ComplexDialect, lmhlo::LmhloDialect,
         AffineDialect, vector::VectorDialect, memref::MemRefDialect,
         func::FuncDialect, tensor::TensorDialect, math::MathDialect>();
     target.addLegalOp<UnrealizedConversionCastOp, gml_st::LoopOp>();
@@ -268,7 +268,7 @@ struct FinalBufferizePass
         .insert<AffineDialect, bufferization::BufferizationDialect,
                 linalg::LinalgDialect, memref::MemRefDialect, scf::SCFDialect,
                 shape::ShapeDialect, tensor::TensorDialect, lmhlo::LmhloDialect,
-                arith::ArithmeticDialect, vector::VectorDialect>();
+                arith::ArithDialect, vector::VectorDialect>();
     arith::registerBufferizableOpInterfaceExternalModels(registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
@@ -296,7 +296,7 @@ struct FinalBufferizePass
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
     options.opFilter.allowDialect<
-        arith::ArithmeticDialect, bufferization::BufferizationDialect,
+        arith::ArithDialect, bufferization::BufferizationDialect,
         linalg::LinalgDialect, func::FuncDialect, shape::ShapeDialect,
         tensor::TensorDialect, vector::VectorDialect>();
     if (failed(bufferization::bufferizeOp(getOperation(), options))) {
@@ -314,7 +314,7 @@ struct FinalBufferizePass
     auto& context = getContext();
     ConversionTarget target(context);
     target.addLegalDialect<
-        arith::ArithmeticDialect, bufferization::BufferizationDialect,
+        arith::ArithDialect, bufferization::BufferizationDialect,
         cf::ControlFlowDialect, complex::ComplexDialect, memref::MemRefDialect,
         func::FuncDialect, scf::SCFDialect, tensor::TensorDialect,
         AffineDialect, shape::ShapeDialect, lmhlo::LmhloDialect,

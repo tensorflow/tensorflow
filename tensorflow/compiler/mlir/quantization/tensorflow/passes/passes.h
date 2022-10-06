@@ -35,8 +35,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateInsertMainFunctionPass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertFakeQuantToQdqPass();
 
 // Lifts the quantizable spots as composite functions.
+// TODO(b/249914162): Pass OpSet by value instead of reference.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsPass();
+CreateLiftQuantizableSpotsAsFunctionsPass(const OpSet& op_set);
 
 // Apply graph optimizations such as fusing and constant folding to prepare
 // lifting.

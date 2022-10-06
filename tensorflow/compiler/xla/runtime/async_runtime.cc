@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdlib>
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
-#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 
 // -------------------------------------------------------------------------- //
 // Define AsyncToken and AsyncGroup in the mlir::runtime namespace to implement
@@ -37,10 +37,11 @@ limitations under the License.
 namespace mlir {
 namespace runtime {
 
-using tfrt::AsyncValueRef;
+using tfrt::AsyncValueOwningRef;
 using tfrt::Chain;
-using tfrt::GetReadyChain;
+using tfrt::MakeAvailableAsyncValueRef;
 using tfrt::MakeConstructedAsyncValueRef;
+using tfrt::internal::AsyncValueStorage;
 
 using xla::runtime::AsyncRuntimeObject;
 
@@ -51,30 +52,33 @@ class AsyncToken : public AsyncRuntimeObject {
  public:
   explicit AsyncToken(unsigned ref_count = 1)
       : AsyncRuntimeObject(ref_count),
-        chain_(MakeConstructedAsyncValueRef<Chain>()) {}
+        chain_(MakeConstructedAsyncValueRef<Chain>(storage_)) {}
 
-  tfrt::AsyncValue* GetAsyncValue() const { return chain_.GetAsyncValue(); }
+  tfrt::AsyncValue* GetAsyncValue() const { return chain_.AsPtr().value(); }
 
  private:
-  AsyncValueRef<Chain> chain_;
+  AsyncValueStorage<Chain> storage_;
+  AsyncValueOwningRef<Chain> chain_;
 };
 
 class AsyncValue : public AsyncRuntimeObject {
  public:
   explicit AsyncValue(size_t size, size_t alignment, unsigned ref_count = 1)
       : AsyncRuntimeObject(ref_count),
-        storage_(MakeConstructedAsyncValueRef<Storage>(size, alignment)) {
+        data_storage_(size, alignment),
+        chain_(MakeConstructedAsyncValueRef<Chain>(storage_)) {
     // Storage memory will be initialized by the compiled executable.
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(GetStorage(), size);
   }
 
-  void* GetStorage() const {
+  void* GetStorage() {
     assert(!GetAsyncValue()->IsError() && "unexpected error state");
-    if (storage_->is_inline) return &storage_->inline_buffer;
-    return storage_->allocated_buffer;
+    if (data_storage_.is_inline)
+      return reinterpret_cast<void*>(&data_storage_.inline_buffer[0]);
+    return data_storage_.allocated_buffer;
   }
 
-  tfrt::AsyncValue* GetAsyncValue() const { return storage_.GetAsyncValue(); }
+  tfrt::AsyncValue* GetAsyncValue() const { return chain_.AsPtr().value(); }
 
  private:
   // If the requested async value storage is small, use the inlined storage.
@@ -99,12 +103,17 @@ class AsyncValue : public AsyncRuntimeObject {
 
     bool is_inline;
     union {
-      std::aligned_storage<kSize, kAlign>::type inline_buffer;
+      alignas(kAlign) std::array<std::byte, kSize> inline_buffer;
       void* allocated_buffer;
     };
   };
 
-  AsyncValueRef<Storage> storage_;
+  Storage data_storage_;
+
+  // Async value that tracks value readiness. It becomes available when result
+  // is written to the data storage and ready for consumption.
+  AsyncValueStorage<Chain> storage_;
+  AsyncValueOwningRef<Chain> chain_;
 };
 
 class AsyncGroup : public AsyncRuntimeObject {
@@ -115,8 +124,8 @@ class AsyncGroup : public AsyncRuntimeObject {
         rank_(0),
         pending_tokens_(size),
         num_errors_(0),
-        completed_(size == 0 ? GetReadyChain()
-                             : MakeConstructedAsyncValueRef<Chain>()) {
+        completed_(size_ == 0 ? MakeAvailableAsyncValueRef<Chain>(storage_)
+                              : MakeConstructedAsyncValueRef<Chain>(storage_)) {
     assert(size_ >= 0 && "size can't be negative");
   }
 
@@ -136,14 +145,14 @@ class AsyncGroup : public AsyncRuntimeObject {
       // We do track group error state with the number of errors, and never
       // set completion async value state to error.
       if (group->pending_tokens_.fetch_sub(1) == 1)
-        group->completed_.SetStateConcrete();
+        group->completed_.AsPtr().SetStateConcrete();
     });
 
     return rank;
   }
 
   tfrt::AsyncValue* GetCompletionAsyncValue() const {
-    return completed_.GetAsyncValue();
+    return completed_.AsPtr().value();
   }
 
   bool IsError() const { return num_errors_.load() != 0; }
@@ -156,7 +165,8 @@ class AsyncGroup : public AsyncRuntimeObject {
 
   // Async value that keeps track the group completion, it will become available
   // when the number of pending tokens will drop to zero.
-  AsyncValueRef<Chain> completed_;
+  AsyncValueStorage<Chain> storage_;
+  AsyncValueOwningRef<Chain> completed_;
 };
 
 }  // namespace runtime
@@ -168,7 +178,6 @@ namespace xla {
 namespace runtime {
 
 using tfrt::AsyncValue;
-using tfrt::DecodedDiagnostic;
 
 namespace {
 // Always keep the current active async runtime in a thread local variable.
@@ -216,7 +225,7 @@ static_assert(sizeof(AsyncRuntime) == 1 * sizeof(void*),
   return group->GetCompletionAsyncValue();
 }
 
-void AsyncRuntime::Await(AsyncValue* awaitable) {
+/*static*/ void AsyncRuntime::Await(AsyncValue* awaitable) {
   // Short circuit the trivial case.
   if (awaitable->IsAvailable()) return;
   tfrt::Await({awaitable});
@@ -247,7 +256,7 @@ void AsyncRuntime::Await(AsyncValue* awaitable) {
   return static_cast<AsyncRuntimeObject*>(group);
 }
 
-AsyncRuntime::Token* AsyncRuntime::CreateToken() {
+/*static*/ AsyncRuntime::Token* AsyncRuntime::CreateToken() {
   // AsyncRuntime::Token created with a reference count of 2 because it will be
   // returned to the `async.execute` caller and also will be later on emplaced
   // by the asynchronously executed task. If the caller immediately will drop
@@ -256,14 +265,14 @@ AsyncRuntime::Token* AsyncRuntime::CreateToken() {
   return new AsyncRuntime::Token(/*ref_count=*/2);
 }
 
-void AsyncRuntime::SetAvailable(AsyncRuntime::Token* token) {
+/*static*/ void AsyncRuntime::SetAvailable(AsyncRuntime::Token* token) {
   token->GetAsyncValue()->SetStateConcrete();
   // Async tokens created with a ref count `2` to keep token alive until the
   // async task completes. Drop extra reference explicitly when token emplaced.
   DropRef(token);
 }
 
-void AsyncRuntime::SetError(AsyncRuntime::Token* token) {
+/*static*/ void AsyncRuntime::SetError(AsyncRuntime::Token* token) {
   // TODO(ezhulenev): Construct a better diagnostincs when async runtime API
   // will support passing custom error messages.
   token->GetAsyncValue()->SetError(
@@ -273,15 +282,16 @@ void AsyncRuntime::SetError(AsyncRuntime::Token* token) {
   DropRef(token);
 }
 
-bool AsyncRuntime::IsError(AsyncRuntime::Token* token) {
+/*static*/ bool AsyncRuntime::IsError(AsyncRuntime::Token* token) {
   return token->GetAsyncValue()->IsError();
 }
 
-void AsyncRuntime::AwaitToken(AsyncRuntime::Token* token) {
+/*static*/ void AsyncRuntime::AwaitToken(AsyncRuntime::Token* token) {
   Await(token->GetAsyncValue());
 }
 
-AsyncRuntime::Value* AsyncRuntime::CreateValue(size_t size, size_t alignment) {
+/*static*/ AsyncRuntime::Value* AsyncRuntime::CreateValue(size_t size,
+                                                          size_t alignment) {
   // AsyncRuntime::Value created with a reference count of 2 because it will be
   // returned to the `async.execute` caller and also will be later on emplaced
   // by the asynchronously executed task. If the caller immediately will drop
@@ -290,14 +300,14 @@ AsyncRuntime::Value* AsyncRuntime::CreateValue(size_t size, size_t alignment) {
   return new AsyncRuntime::Value(size, alignment, /*ref_count=*/2);
 }
 
-void AsyncRuntime::SetAvailable(AsyncRuntime::Value* value) {
+/*static*/ void AsyncRuntime::SetAvailable(AsyncRuntime::Value* value) {
   value->GetAsyncValue()->SetStateConcrete();
   // Async values created with a ref count `2` to keep token alive until the
   // async task completes. Drop extra reference explicitly when token emplaced.
   DropRef(value);
 }
 
-void AsyncRuntime::SetError(AsyncRuntime::Value* value) {
+/*static*/ void AsyncRuntime::SetError(AsyncRuntime::Value* value) {
   // TODO(ezhulenev): Construct a better diagnostincs when async runtime API
   // will support passing custom error messages.
   value->GetAsyncValue()->SetError(
@@ -307,28 +317,28 @@ void AsyncRuntime::SetError(AsyncRuntime::Value* value) {
   DropRef(value);
 }
 
-bool AsyncRuntime::IsError(AsyncRuntime::Value* value) {
+/*static*/ bool AsyncRuntime::IsError(AsyncRuntime::Value* value) {
   return value->GetAsyncValue()->IsError();
 }
 
-void AsyncRuntime::AwaitValue(AsyncRuntime::Value* value) {
+/*static*/ void AsyncRuntime::AwaitValue(AsyncRuntime::Value* value) {
   Await(value->GetAsyncValue());
 }
 
-AsyncRuntime::Group* AsyncRuntime::CreateGroup(int64_t size) {
+/*static*/ AsyncRuntime::Group* AsyncRuntime::CreateGroup(int64_t size) {
   return new AsyncRuntime::Group(size);
 }
 
-size_t AsyncRuntime::AddTokenToGroup(AsyncRuntime::Group* group,
-                                     AsyncRuntime::Token* token) {
+/*static*/ size_t AsyncRuntime::AddTokenToGroup(AsyncRuntime::Group* group,
+                                                AsyncRuntime::Token* token) {
   return group->AddToken(token);
 }
 
-bool AsyncRuntime::IsError(AsyncRuntime::Group* group) {
+/*static*/ bool AsyncRuntime::IsError(AsyncRuntime::Group* group) {
   return group->IsError();
 }
 
-void AsyncRuntime::AwaitGroup(AsyncRuntime::Group* group) {
+/*static*/ void AsyncRuntime::AwaitGroup(AsyncRuntime::Group* group) {
   Await(group->GetCompletionAsyncValue());
 }
 

@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
@@ -95,7 +95,7 @@ td_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-        "@llvm-project//mlir:ArithmeticOpsTdFiles",
+        "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
     ],
 )
@@ -336,6 +336,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/importexport:mangling",
@@ -344,13 +345,15 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -373,7 +376,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -382,7 +385,6 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Transforms",
         "//tensorflow/cc/saved_model:loader",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op_and_kernels",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
@@ -417,7 +419,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -427,7 +429,6 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op_and_kernels",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",

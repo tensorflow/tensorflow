@@ -42,6 +42,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
+using tsl::profiler::kThreadIdOverhead;
 
 namespace {
 // Set the all XLines of specified XPlane to starting walltime.
@@ -849,7 +850,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         *line_id = event.thread_id;
         return true;
       } else {
-        *line_id = kThreadIdOverhead;
+        *line_id = tsl::profiler::kThreadIdOverhead;
         return false;
       }
     }

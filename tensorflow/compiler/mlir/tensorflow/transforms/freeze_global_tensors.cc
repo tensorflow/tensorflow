@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 
 #define DEBUG_TYPE "freeze-global-tensor"
 
@@ -42,8 +42,10 @@ namespace tf_saved_model {
 
 namespace {
 
+#define GEN_PASS_DEF_FREEZEGLOBALTENSORSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 struct FreezeGlobalTensorsPass
-    : public FreezeGlobalTensorsPassBase<FreezeGlobalTensorsPass> {
+    : public impl::FreezeGlobalTensorsPassBase<FreezeGlobalTensorsPass> {
   explicit FreezeGlobalTensorsPass(bool allow_mutable_tensors) {
     this->allow_mutable_tensors = allow_mutable_tensors;
   }

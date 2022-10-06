@@ -79,10 +79,10 @@ struct DetensorizeLinalgOp : public OpConversionPattern<GenericOp> {
     if (!found_zero_dim_tensor) return failure();
 
     auto linalg_op = rewriter.create<GenericOp>(
-        loc, op.getResultTypes(), inputs, op.outputs(),
+        loc, op.getResultTypes(), inputs, op.getOutputs(),
         rewriter.getAffineMapArrayAttr(indexing_maps), op.iterator_types(),
         mlir::StringAttr(), mlir::StringAttr());
-    mlir::Region& region = linalg_op.region();
+    mlir::Region& region = linalg_op.getRegion();
     rewriter.inlineRegionBefore(op.getBodyRegion(), region, region.end());
     rewriter.replaceOp(op, linalg_op.getResults());
     return success();
@@ -100,7 +100,7 @@ struct DetensorizeLinalgPass
     mlir::ConversionTarget target(*context);
     target.markUnknownOpDynamicallyLegal([](mlir::Operation*) { return true; });
     target.addDynamicallyLegalOp<GenericOp>([&](GenericOp op) {
-      return llvm::all_of(TypeRange{op.inputs()}, [&](Type type) {
+      return llvm::all_of(TypeRange{op.getInputs()}, [&](Type type) {
         return IsNotZeroRankTensor(type.dyn_cast<RankedTensorType>());
       });
     });

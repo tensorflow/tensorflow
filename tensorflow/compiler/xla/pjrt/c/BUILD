@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 cc_library(
     name = "pjrt_c_api_hdrs",

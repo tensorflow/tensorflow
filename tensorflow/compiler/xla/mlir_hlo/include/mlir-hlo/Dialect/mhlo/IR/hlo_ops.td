@@ -675,6 +675,20 @@ def HLO_SubtractOp : HLO_BinaryElementwiseOp<"subtract",
   let hasCustomHLOConverter = 1;
 }
 
+// TODO(b/232442915): Implement stochastic_convert MHLO once HLO interface is submitted.
+def HLO_StochasticConvertOp : HLO_Op<"stochastic_convert",
+      [NoSideEffect, AllShapesMatch<["operand", "random", "result"]>]> {
+  let summary = "Stochastic convert operator";
+  let description = [{
+    Performs element-wise conversion of values from one bigger type to a smaller
+    one with stochastic rounding using the random number passed in.
+  }];
+
+  let arguments = (ins HLO_FpTensor:$operand, HLO_IntTensor:$random);
+  let results = (outs HLO_Tensor:$result);
+  let hasCustomHLOConverter = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // MHLO binary logical elementwise op definitions.
 //===----------------------------------------------------------------------===//
@@ -1749,7 +1763,7 @@ def HLO_ConcatenateOp : HLO_ShapedInterfaceOp<"concatenate",
 
   let arguments = (ins
     Variadic<HLO_Tensor>:$val,
-    I64Attr: $dimension
+    I64Attr:$dimension
   );
 
   let results = (outs HLO_Tensor);
@@ -2041,7 +2055,7 @@ def HLO_FftOp: HLO_Op<"fft", [InferTensorType, NoSideEffect]> {
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
-    HLO_FftTypeAttr: $fft_type,
+    HLO_FftTypeAttr:$fft_type,
     I64ElementsAttr:$fft_length
   );
 
@@ -2206,6 +2220,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [SameVariadicOperandSize, RecursiveSideEffe
 
   let hasFolder = 1;
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
@@ -2401,9 +2416,9 @@ def HLO_PadOp: HLO_ShapedInterfaceOp<"pad",
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$padding_value,
-    I64ElementsAttr: $edge_padding_low,
-    I64ElementsAttr: $edge_padding_high,
-    I64ElementsAttr: $interior_padding
+    I64ElementsAttr:$edge_padding_low,
+    I64ElementsAttr:$edge_padding_high,
+    I64ElementsAttr:$interior_padding
   );
 
   let results = (outs HLO_Tensor);

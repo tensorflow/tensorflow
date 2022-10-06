@@ -1,7 +1,10 @@
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
-    default_visibility = ["//tensorflow/core/function/capture:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/core/function/capture:__subpackages__",
+        "//tensorflow/python/eager/polymorphic_function:__subpackages__",
+    ],
 )
 
 py_library(
@@ -11,8 +14,9 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:util",
+        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct/static_analysis",
     ],
 )
 

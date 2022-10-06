@@ -1158,7 +1158,7 @@ Status MoveIntoBranch(
             inst->CloneWithNewOperands(inst->shape(), operands));
       }));
   TF_RETURN_IF_ERROR(inst->parent()->RemoveInstruction(inst));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Hoist operands of a conditional from outside to inside the branches.
