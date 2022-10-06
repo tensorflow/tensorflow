@@ -47,7 +47,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  // Turn copy->slice into slice->copy.
+  // Turn copy->slice into slice->copy, as slice is layout-preserving.
   Status HandleSlice(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
     if (operand->opcode() == HloOpcode::kCopy) {
@@ -59,6 +59,25 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
       *earlier_slice->mutable_shape()->mutable_layout() =
           copied->shape().layout();
       HloInstruction* later_copy = MakeCopyHlo(earlier_slice, hlo->shape());
+      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+    }
+    return OkStatus();
+  }
+
+  // Turn copy->reduce_window into reduce_window->copy, as reduce_window is
+  // layout-preserving.
+  Status HandleReduceWindow(HloInstruction* hlo) override {
+    HloInstruction* operand = hlo->mutable_operand(0);
+    if (operand->opcode() == HloOpcode::kCopy) {
+      HloInstruction* copied = operand->mutable_operand(0);
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * earlier_reduce_window,
+          MakeReduceWindowHlo(copied, hlo->mutable_operand(1), hlo->window(),
+                              hlo->called_computations()[0], &hlo->metadata()));
+      *earlier_reduce_window->mutable_shape()->mutable_layout() =
+          copied->shape().layout();
+      HloInstruction* later_copy =
+          MakeCopyHlo(earlier_reduce_window, hlo->shape());
       TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
     }
     return OkStatus();
