@@ -392,7 +392,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("__str__", &CompiledMemoryStats::DebugString);
 
   py::class_<PyLoadedExecutable, std::shared_ptr<PyLoadedExecutable>>
-      executable(m, "Executable");
+      executable(m, "LoadedExecutable");
   executable.def_property_readonly("client", &PyLoadedExecutable::client)
       .def("local_logical_device_ids",
            [](PyLoadedExecutable* exec) {
