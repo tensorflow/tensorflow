@@ -901,6 +901,23 @@ InstructionBatchDimMap BuildInstructionBatchDimMap(
   return batch_map;
 }
 
+// Returns true if there is one row with only infinity cost.
+bool AllInfinityCosts(
+    const std::vector<std::vector<double>>& resharding_costs) {
+  for (const auto& costs : resharding_costs) {
+    bool all_infinity = true;
+    for (const auto& cost : costs) {
+      if (cost < kInfinityCost) {
+        all_infinity = false;
+      }
+    }
+    if (all_infinity) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Remove duplicated strategies with the same output sharding spec.
 // If duplicates strategies have different costs, an arbitrary one will be
 // chosen. A exception is replicated strategy. Only *real* replicated strategies
@@ -914,30 +931,36 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
     for (auto& child : strategies->childs) {
       RemoveDuplicatedStrategy(child);
     }
-  } else {
+  } else if (!strategies->following) {
     std::vector<ShardingStrategy> new_vector;
-    absl::flat_hash_set<HloSharding> added;
-    int32_t replicated_index = -1;
+    std::vector<ShardingStrategy> deduped_replicated_strategies;
+    absl::flat_hash_set<std::string> added;
     for (size_t i = 0; i < strategies->leaf_vector.size(); ++i) {
-      if (strategies->leaf_vector[i].output_sharding.IsReplicated() &&
-          !(strategies->leaf_vector[i].name == "R" ||
-            absl::StrContains(strategies->leaf_vector[i].name,
-                              "R (allreduce"))) {
+      if (AllInfinityCosts(strategies->leaf_vector[i].resharding_costs)) {
         continue;
       }
-      if (strategies->leaf_vector[i].output_sharding.IsReplicated()) {
-        replicated_index = i;
-        continue;
+      std::string key = strategies->leaf_vector[i].output_sharding.ToString();
+      if (!strategies->leaf_vector[i].input_shardings.empty()) {
+        for (const auto& sharding :
+             strategies->leaf_vector[i].input_shardings) {
+          key += "/" + sharding.ToString();
+        }
       }
-      if (!added.count(strategies->leaf_vector[i].output_sharding)) {
-        added.insert(strategies->leaf_vector[i].output_sharding);
-        new_vector.push_back(std::move(strategies->leaf_vector[i]));
+      if (!added.contains(key)) {
+        added.insert(key);
+        if (!strategies->leaf_vector[i].output_sharding.IsReplicated()) {
+          new_vector.push_back(std::move(strategies->leaf_vector[i]));
+        } else {
+          deduped_replicated_strategies.push_back(
+              std::move(strategies->leaf_vector[i]));
+        }
       }
     }
-    // Keeps replicated strategy as the last one.
-    if (replicated_index >= 0) {
-      new_vector.push_back(
-          std::move(strategies->leaf_vector[replicated_index]));
+    // Keeps replicated strategies as the last ones.
+    if (!deduped_replicated_strategies.empty()) {
+      for (size_t i = 0; i < deduped_replicated_strategies.size(); ++i) {
+        new_vector.push_back(std::move(deduped_replicated_strategies[i]));
+      }
     }
     strategies->leaf_vector = std::move(new_vector);
   }
