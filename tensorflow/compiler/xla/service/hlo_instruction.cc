@@ -2800,45 +2800,45 @@ bool HloInstruction::IsEffectiveBitcast() const {
 }
 
 HloComputation* HloInstruction::to_apply() const {
-  switch (opcode_) {
-    case HloOpcode::kCall:
-    case HloOpcode::kMap:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kReduce:
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kReduceScatter:
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kScatter:
-    case HloOpcode::kSort:
-    case HloOpcode::kCustomCall:
-      CHECK_EQ(called_computations_.size(), 1);
-      return called_computations_[0];
-    default:
-      LOG(FATAL) << "Invalid opcode for to_apply(): "
-                 << HloOpcodeString(opcode());
+  if (has_to_apply()) {
+    CHECK_EQ(called_computations_.size(), 1)
+        << "Expected a to_apply computation for " << HloOpcodeString(opcode());
+    return called_computations_[0];
   }
+  LOG(FATAL) << "Invalid opcode for to_apply(): " << HloOpcodeString(opcode());
 }
 
 void HloInstruction::set_to_apply(HloComputation* computation) {
   // Don't allow changing the computation for fused instructions so we don't
   // have to recompute called_instructions for the entire fusion instruction.
   CHECK(!IsFused());
+  if (has_to_apply()) {
+    CHECK_EQ(called_computations_.size(), 1)
+        << "Expected a to_apply computation for " << HloOpcodeString(opcode());
+    called_computations_[0] = computation;
+    return;
+  }
+  LOG(FATAL) << "Invalid opcode for to_apply(): " << HloOpcodeString(opcode());
+}
+
+bool HloInstruction::has_to_apply() const {
   switch (opcode_) {
-    case HloOpcode::kCall:
-    case HloOpcode::kMap:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kReduce:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
+    case HloOpcode::kCall:
+    case HloOpcode::kMap:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
+      return true;
     case HloOpcode::kCustomCall:
-      CHECK_EQ(called_computations_.size(), 1);
-      called_computations_[0] = computation;
-      break;
+      // CustomCall can have a to_apply computation, but it is not required to
+      // have one.
+      return called_computations_.size() == 1;
     default:
-      LOG(FATAL) << "Invalid opcode for to_apply(): "
-                 << HloOpcodeString(opcode());
+      return false;
   }
 }
 

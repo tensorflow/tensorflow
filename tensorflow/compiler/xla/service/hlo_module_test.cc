@@ -471,6 +471,45 @@ ENTRY ReduceR3ToR2.v3 {
   }
 }
 
+TEST_F(HloModuleTest, VerifyReplaceComputationsWithReduceScatter) {
+  const std::string text = R"(
+  HloModule reduce-scatter
+  %sum (a: f32[], b: f32[]) -> f32[] {
+    %a = f32[] parameter(0)
+    %b = f32[] parameter(1)
+    ROOT %add = f32[] add(f32[] a, f32[] b)
+  }
+  ENTRY main {
+    %param = f32[16,8,128]{2,1,0} parameter(0)
+    ROOT %rs = f32[4,8,128]{2,1,0} reduce-scatter(f32[16,8,128]{2,1,0} %param), replica_groups={}, to_apply=%sum, dimensions={0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
+
+  // Create a replacement computation
+  HloComputation* new_comp;
+  {
+    auto b = HloComputation::Builder("Fused");
+    auto p0 =
+        b.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p0"));
+    auto p1 =
+        b.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "p1"));
+    b.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kMultiply, p0, p1));
+    new_comp = module->AddEmbeddedComputation(b.Build());
+  }
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* root = entry->root_instruction();
+  EXPECT_EQ(root->to_apply()->root_instruction()->opcode(), HloOpcode::kAdd);
+
+  absl::flat_hash_map<HloComputation*, HloComputation*> replacement;
+  replacement[root->to_apply()] = new_comp;
+  module->ReplaceComputations(replacement);
+
+  EXPECT_EQ(root->to_apply(), new_comp);
+}
+
 TEST_F(HloModuleTest, VerifyReplaceComputationsWithSortOp) {
   const std::string text = R"(
   HloModule sort

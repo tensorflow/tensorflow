@@ -1462,6 +1462,8 @@ class HloInstruction {
   // Precondition: The instruction has a valid to_apply_ field.
   HloComputation* to_apply() const;
   void set_to_apply(HloComputation* computation);
+  // Whether the instruction has a valid to_apply_ field.
+  bool has_to_apply() const;
 
   // Gets/sets the while_condition or while_body HloComputation for While. The
   // setters should only be called by HloModule or HloComputation methods.
