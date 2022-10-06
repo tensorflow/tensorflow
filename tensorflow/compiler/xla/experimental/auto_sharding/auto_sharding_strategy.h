@@ -414,7 +414,8 @@ class ClusterEnvironment {
   }
 
   // TODO(zhuohan): distinguish dtype and reduce_op.
-  double AllReduceCost(double num_bytes, int mesh_dim) const {
+  double AllReduceCost(double num_bytes, int32_t mesh_dim,
+                       int32_t mesh_dim_another = -1) const {
     if (solver_option_.override_all_reduce_cost) {
       return solver_option_.all_reduce_cost;
     }
@@ -423,12 +424,22 @@ class ClusterEnvironment {
       return prof_result_.EstimateAllReduceCost(
           cached_replica_groups_[mesh_dim], num_bytes / 4, "float32");
     }
-
-    int64_t num_devices = device_mesh_.dim(mesh_dim);
-    return (round(mesh_alpha_[mesh_dim] + mesh_beta_[mesh_dim] * 2 *
-                                              (num_devices - 1) / num_devices *
-                                              num_bytes) +
-            0.01);
+    double alpha, beta;
+    int64_t num_devices;
+    if (mesh_dim_another == -1) {
+      // Only communicating on one mesh dimension.
+      alpha = mesh_alpha_[mesh_dim];
+      beta = mesh_beta_[mesh_dim];
+      num_devices = device_mesh_.dim(mesh_dim);
+    } else {
+      // Communicating through both mesh dimensions.
+      alpha = std::max(mesh_alpha_[mesh_dim], mesh_alpha_[mesh_dim_another]);
+      beta = std::max(mesh_beta_[mesh_dim], mesh_beta_[mesh_dim_another]);
+      num_devices = device_mesh_.num_elements();
+    }
+    return (
+        round(alpha + beta * 2 * (num_devices - 1) / num_devices * num_bytes) +
+        0.01);
   }
 
   double ReduceScatterCost(double num_bytes, int mesh_dim) const {
