@@ -2041,9 +2041,10 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
         reinterpret_cast<nvinfer1::IConstantLayer*>(*weights_layer)
             ->getWeights();
 
-    TRT_ENSURE(weights_rsck.count() == weights_rsck.count());
+    //TRT_ENSURE(weights_rsck.count() == const_weights_rsck.count());
     const auto* weights_ptr =
         static_cast<const float*>(const_weights_rsck.values);
+    // src, count, dst
     std::copy_n(weights_ptr, const_weights_rsck.count,
                 weights_rsck.GetPointer<float>());
   }
@@ -2055,7 +2056,31 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
       nvinfer1::DataType::kFLOAT, nvinfer1::Dims{1, {noutput}});
   TRT_ENSURE_OK(biases);
   std::fill_n(biases->GetPointer<float>(), noutput, 0.0f);
-  ReorderRSCKToKCRS(weights_rsck, &*weights, num_groups);
+
+  ITensorProxyPtr transposed_weights = nullptr;
+  if (!params->use_explicit_precision) {
+    ReorderRSCKToKCRS(weights_rsck, &*weights, num_groups);
+  } else {
+    TRT_ENSURE(inputs.at(1).is_tensor());
+
+    auto input_weights = inputs.at(1).tensor();
+
+    std::vector<int> transpose_order(4, 0);
+    if (group) {
+      transpose_order = {3, 2, 0, 1};
+    } else { // depthwise convolution
+      transpose_order = {2, 3, 0, 1};
+    }
+
+    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
+        input_weights, transpose_order, &transposed_weights, node_def, "wts_to_NCHW"));
+
+    VLOG(2) << "QDQ weights dims before transpose = "
+      << DebugString(input_weights->getDimensions())
+      << " | after transpose = "
+      << DebugString(transposed_weights->getDimensions());
+
+  }
 
   // Add convolution.
   nvinfer1::ILayer* conv_layer = nullptr;
@@ -2097,12 +2122,8 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
   // calling setInput() on the layer.
   if (params->use_explicit_precision) {
     TRT_ENSURE(inputs.at(1).is_tensor());
-
-    nvinfer1::IShuffleLayer* layer = params->converter->network()->addShuffle(
-        *inputs.at(1).tensor()->trt_tensor());
-    layer->setFirstTranspose({3, 2, 0, 1});
-    layer->setReshapeDimensions({4, {0, 0, 0, 0}});
-    conv_layer->setInput(1, *layer->getOutput(0));
+    TRT_ENSURE(transposed_weights != nullptr);
+    conv_layer->setInput(1, *transposed_weights->trt_tensor());
   }
 
   params->converter->SetLayerName(conv_layer, node_def, "conv");
