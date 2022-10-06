@@ -43,11 +43,6 @@ cc_library(
     deps = [
         ":error_windows",
         ":wide_char",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
-        "//third_party/eigen3",
-        # TODO(ddunleavy) move to TSL
-        "//tensorflow/core/lib/core:error_codes_proto_cc",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:blocking_counter",
         "//tensorflow/tsl/platform:context",
@@ -74,6 +69,10 @@ cc_library(
         "//tensorflow/tsl/platform:threadpool_interface",
         "//tensorflow/tsl/platform:tracing",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
