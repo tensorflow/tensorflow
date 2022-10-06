@@ -1426,28 +1426,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "env_test",
-    size = "small",
-    srcs = ["env_test.cc"],
-    deps = [
-        ":cord",
-        ":env",
-        ":env_impl",
-        ":null_file_system",
-        ":path",
-        ":protobuf",
-        ":str_util",
-        ":strcat",
-        ":stringpiece",
-        ":test",
-        ":test_main",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
     name = "errors_test",
     size = "small",
     srcs = ["errors_test.cc"],

@@ -279,6 +279,28 @@ cc_library(
     ] + tf_windows_aware_platform_deps("env"),
 )
 
+tf_cc_test(
+    name = "env_test",
+    size = "small",
+    srcs = ["env_test.cc"],
+    deps = [
+        ":cord",
+        ":env",
+        ":env_impl",
+        ":null_file_system",
+        ":path",
+        ":protobuf",
+        ":str_util",
+        ":strcat",
+        ":stringpiece",
+        ":test",
+        ":test_main",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//third_party/eigen3",
+    ],
+)
+
 cc_library(
     name = "env_impl",
     deps = tf_windows_aware_platform_deps("env_impl"),
