@@ -4005,6 +4005,25 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     self._assertReturns(x, x_shape, y, y_shape)
 
 
+class ResizeNearestNeighborGrad(test_util.TensorFlowTestCase):
+
+  def testSizeTooLarge(self):
+    align_corners = True
+    half_pixel_centers = False
+    grads = constant_op.constant(1, shape=[1, 8, 16, 3], dtype=dtypes.float16)
+    size = constant_op.constant([1879048192, 1879048192],
+                                shape=[2],
+                                dtype=dtypes.int32)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r"Encountered overflow when multiplying"):
+      self.evaluate(
+          gen_image_ops.ResizeNearestNeighborGrad(
+              grads=grads,
+              size=size,
+              align_corners=align_corners,
+              half_pixel_centers=half_pixel_centers))
+
+
 class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithCropOrPad(self, x, target_height, target_width,
